@@ -9,11 +9,15 @@ import contractRoutes from "./routes/contract/contract.routes";
 import {
   authRoutes,
   associationRoutes,
+  businessDashboardRoutes,
   investorRoutes,
   orgJoinRoutes,
   orgMemberRoutes,
+  orgTaskRoutes,
+  orgGamesRoutes,
   partnerRequestRoutes,
   partnerRoutes,
+  personalOrganizationRoutes,
   vendorSetupRoutes,
   warehouseSetupRoutes,
   businessCategoriesRoutes,
@@ -45,6 +49,8 @@ import {
   vendorCardTerminalRoutes,
   upgradePlansRoutes,
   adminGrantPlanRoutes,
+  appVersionRoutes,
+  metaMarketingRoutes,
 } from "./routes";
 
 const app = express();
@@ -109,11 +115,14 @@ app.use(
   }),
 );
 
-// Global rate limiter: 200 req / 15 min per IP
+// The mobile apps keep chat/call state fresh while they are in the foreground.
+// A small IP-only limit also groups every employee behind the same office/NAT IP,
+// so 200 requests was exhausted by a single active chat in a few minutes.
+const globalRateLimitMax = Number(process.env.GLOBAL_RATE_LIMIT_MAX || 3000);
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 200,
+    max: globalRateLimitMax,
     skip: (req) =>
       req.method === "OPTIONS" || (!isProduction && isLocalRequest(req.ip)),
     standardHeaders: true,
@@ -126,9 +135,13 @@ app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 app.use("/api", partnerRequestRoutes);
 app.use("/api", associationRoutes);
+app.use("/api", businessDashboardRoutes);
 app.use("/api", partnerRoutes);
 app.use("/api", orgJoinRoutes);
 app.use("/api", orgMemberRoutes);
+app.use("/api", orgTaskRoutes);
+app.use("/api", orgGamesRoutes);
+app.use("/api", personalOrganizationRoutes);
 app.use("/api", businessCategoriesRoutes);
 app.use("/api", dashboardRoutes);
 app.use("/api", jobApplicationRoutes);
@@ -161,22 +174,16 @@ app.use("/api", vendorUpgradeRoutes);
 app.use("/api", vendorCardTerminalRoutes);
 app.use("/api", upgradePlansRoutes);
 app.use("/api", adminGrantPlanRoutes);
+app.use("/api", appVersionRoutes);
+app.use("/api", metaMarketingRoutes);
 app.use("/api", contractRoutes);
 
 app.get("/", (_req, res) => {
   res.send("API is running...");
 });
 
-// Stricter rate limit for auth endpoints: 15 req / 15 min per IP
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 15,
-  skip: (req) => !isProduction && isLocalRequest(req.ip),
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { message: "Хэт олон нэвтрэх оролдлого. Түр хүлээнэ үү." },
-});
-app.use("/auth", authLimiter, authRoutes);
+app.use("/auth", authRoutes);
+app.use("/api/auth", authRoutes);
 
 const port = process.env.PORT || 4000;
 

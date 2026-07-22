@@ -24,6 +24,11 @@ const paymentLabels: Record<string, string> = {
   MIXED: "Холимог",
 };
 
+const saleStatusLabels: Record<string, { label: string; className: string }> = {
+  COMPLETED: { label: "Амжилттай", className: "bg-emerald-50 text-emerald-700" },
+  VOIDED: { label: "Буцаагдсан", className: "bg-rose-50 text-rose-700" },
+};
+
 const formatSaleDate = (value: string) =>
   new Intl.DateTimeFormat("mn-MN", {
     month: "short",
@@ -92,7 +97,11 @@ export default function SalesHistoryPanel({
   }, [loadSales]);
 
   const recentTotal = useMemo(
-    () => sales.reduce((sum, sale) => sum + sale.grandTotal, 0),
+    () =>
+      sales.reduce(
+        (sum, sale) => (sale.status === "VOIDED" ? sum : sum + sale.grandTotal),
+        0,
+      ),
     [sales],
   );
 
@@ -160,44 +169,61 @@ export default function SalesHistoryPanel({
           </div>
         ) : (
           <div className="overflow-hidden rounded-2xl border border-slate-100">
-            {sales.map((sale, index) => (
-              <article
-                key={sale.id}
-                className={`grid gap-3 p-4 md:grid-cols-[minmax(0,1.4fr)_110px_120px] md:items-center ${
-                  index === 0 ? "" : "border-t border-slate-100"
-                }`}
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="truncate text-sm font-black text-slate-950">
-                      {sale.receiptNo}
-                    </p>
-                    <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700">
-                      {paymentLabels[sale.paymentMethod] || sale.paymentMethod}
-                    </span>
-                    {sale.status !== "COMPLETED" ? (
-                      <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-black text-amber-700">
-                        {sale.status}
+            {sales.map((sale, index) => {
+              const isVoided = sale.status === "VOIDED";
+              const statusConfig = saleStatusLabels[sale.status] || {
+                label: sale.status,
+                className: "bg-amber-50 text-amber-700",
+              };
+
+              return (
+                <article
+                  key={sale.id}
+                  className={`grid gap-3 p-4 md:grid-cols-[minmax(0,1.4fr)_110px_120px] md:items-center ${
+                    index === 0 ? "" : "border-t border-slate-100"
+                  } ${isVoided ? "bg-rose-50/40" : ""}`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className={`truncate text-sm font-black ${
+                        isVoided ? "text-rose-700 line-through" : "text-slate-950"
+                      }`}>
+                        {sale.receiptNo}
+                      </p>
+                      <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-700">
+                        {paymentLabels[sale.paymentMethod] || sale.paymentMethod}
                       </span>
+                      {sale.status !== "COMPLETED" ? (
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${statusConfig.className}`}>
+                          {statusConfig.label}
+                        </span>
+                      ) : null}
+                    </div>
+                    <p className="mt-1 truncate text-xs font-semibold text-slate-500">
+                      {sale.branchName}
+                      {sale.registerName ? ` · ${sale.registerName}` : ""} ·{" "}
+                      {sale.cashierName}
+                    </p>
+                    <p className="mt-1 truncate text-xs font-bold text-slate-400">
+                      {saleLineSummary(sale)}
+                    </p>
+                    {isVoided && sale.voidReason ? (
+                      <p className="mt-1 truncate text-xs font-bold text-rose-600">
+                        {sale.voidReason}
+                      </p>
                     ) : null}
                   </div>
-                  <p className="mt-1 truncate text-xs font-semibold text-slate-500">
-                    {sale.branchName}
-                    {sale.registerName ? ` · ${sale.registerName}` : ""} ·{" "}
-                    {sale.cashierName}
+                  <p className="text-xs font-bold text-slate-500 md:text-right">
+                    {formatSaleDate(sale.createdAt)}
                   </p>
-                  <p className="mt-1 truncate text-xs font-bold text-slate-400">
-                    {saleLineSummary(sale)}
+                  <p className={`text-base font-black tabular-nums md:text-right ${
+                    isVoided ? "text-rose-600 line-through" : "text-slate-950"
+                  }`}>
+                    {money(sale.grandTotal)}
                   </p>
-                </div>
-                <p className="text-xs font-bold text-slate-500 md:text-right">
-                  {formatSaleDate(sale.createdAt)}
-                </p>
-                <p className="text-base font-black tabular-nums text-slate-950 md:text-right">
-                  {money(sale.grandTotal)}
-                </p>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         )}
       </div>

@@ -39,6 +39,28 @@
       transform: translateY(0) scale(1);
     }
   }
+
+  @keyframes slideFade {
+    0% {
+      opacity: 0;
+      transform: translateY(6px) scale(0.995);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Dark mode disabled — light-only design */
@@ -57,12 +79,12 @@ body {
   -ms-overflow-style: none;
   scrollbar-width: none;
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 html {
   max-width: 100%;
-  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body::-webkit-scrollbar {

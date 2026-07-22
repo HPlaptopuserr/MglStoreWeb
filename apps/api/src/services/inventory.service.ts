@@ -1,7 +1,10 @@
-import { prisma, InventoryReason } from "@mgl/database";
+import { prisma, InventoryReason, WarehouseType } from "@mgl/database";
 import type { Prisma, PrismaClient } from "@prisma/client";
 
-type Tx = Omit<PrismaClient, "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends">;
+type Tx = Omit<
+  PrismaClient,
+  "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
+>;
 
 interface AdjustStockInput {
   productId: string;
@@ -24,7 +27,10 @@ interface AdjustStockInput {
  *
  * Must be called inside a Prisma transaction (pass `tx`).
  */
-export async function adjustStock(tx: Tx, input: AdjustStockInput): Promise<void> {
+export async function adjustStock(
+  tx: Tx,
+  input: AdjustStockInput,
+): Promise<void> {
   const {
     productId,
     warehouseId,
@@ -102,9 +108,17 @@ export async function resolveOrgWarehouse(
 
   if (inventory) return inventory.warehouseId;
 
-  // Fallback: check if org has any assigned warehouse
+  // Vendor products belong to the organization's internal inventory warehouse,
+  // never to a centrally operated distribution warehouse.
   const assignment = await tx.warehouseOrganization.findFirst({
-    where: { organizationId },
+    where: {
+      organizationId,
+      warehouse: {
+        type: WarehouseType.VENDOR_INTERNAL,
+        isActive: true,
+        deletedAt: null,
+      },
+    },
     select: { warehouseId: true },
   });
 

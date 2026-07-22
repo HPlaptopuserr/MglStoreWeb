@@ -86,7 +86,7 @@ export type RestaurantTicket = {
   shiftId: string;
   tableId: string | null;
   orderMode: "DINE_IN" | "TO_GO" | "DELIVERY";
-  status: "OPEN" | "KITCHEN" | "READY" | "SERVED" | "PAID" | "CLOSED";
+  status: "OPEN" | "KITCHEN" | "READY" | "SERVED" | "PAID" | "CLOSED" | "CANCELLED";
   guestCount: number;
   note: string | null;
   openedAt: string;

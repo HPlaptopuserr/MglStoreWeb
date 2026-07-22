@@ -771,6 +771,7 @@ export function RestaurantPosScreen() {
   const [cardSetupMinuBranchId, setCardSetupMinuBranchId] = useState("");
   const [cardSetupSubmitting, setCardSetupSubmitting] = useState(false);
   const [cardSetupError, setCardSetupError] = useState("");
+  const [showCardTerminalSetup, setShowCardTerminalSetup] = useState(false);
   const [creditBorrowers, setCreditBorrowers] = useState<PosCreditBorrower[]>(
     [],
   );
@@ -1494,6 +1495,9 @@ export function RestaurantPosScreen() {
       ? `Android PGW · ${selectedRegister?.terminalBridgeUrl || DEFAULT_ANDROID_PGW_BRIDGE_URL}`
       : `${effectiveCardProvider} · ${selectedRegister?.cardTerminalId || "terminalId дутуу"}`
     : "Terminal тохируулаагүй";
+  const cardPaymentModeLabel = cardTerminalReady
+    ? `${cardTerminalLabel} · ${cardTerminalSourceLabel(selectedRegister?.cardTerminalSource)}`
+    : "Terminal тохиргоогүй. Картын төлбөр manual-аар бүртгэгдэнэ.";
   const selectedTicketPaid = selectedTable.currentTicket?.status === "PAID";
   const selectedTicketActive = Boolean(
     selectedTable.currentTicket && !selectedTicketPaid,
@@ -2481,6 +2485,7 @@ export function RestaurantPosScreen() {
             });
       updateRegisterInState(updated);
       setCardSetupMinuPassword("");
+      setShowCardTerminalSetup(false);
       setNotice(`${updated.cardProviderType || cardSetupProvider} terminal холбогдлоо.`);
       setCardMessage("Картын terminal бэлэн боллоо.");
     } catch (error) {
@@ -2497,17 +2502,6 @@ export function RestaurantPosScreen() {
       throw new Error("POS register шаардлагатай.");
     }
     const provider = getEffectiveCardProvider(selectedRegister);
-    if (!provider || !selectedRegister.cardEnabled) {
-      throw new Error("Картын terminal холбогдоогүй байна.");
-    }
-    if (provider === "ANDROID_PGW" && !selectedRegister.terminalBridgeUrl) {
-      throw new Error(
-        "ANDROID_PGW Bridge URL тохируулаагүй байна. http://127.0.0.1:7420 оруулна уу.",
-      );
-    }
-    if (provider !== "ANDROID_PGW" && !selectedRegister.cardTerminalId) {
-      throw new Error(`${provider} terminalId тохируулаагүй байна.`);
-    }
 
     const run: CardPaymentRun = {
       abortController: new AbortController(),
@@ -2522,20 +2516,28 @@ export function RestaurantPosScreen() {
     const isCancelled = () => run.cancelled || cardPaymentRunRef.current !== run;
     const terminalId = selectedRegister.cardTerminalId || "terminal-1";
     const useClientBridge =
-      provider === "ANDROID_PGW" && Boolean(selectedRegister.terminalBridgeUrl);
+      cardTerminalReady &&
+      provider === "ANDROID_PGW" &&
+      Boolean(selectedRegister.terminalBridgeUrl);
+    const shouldSendBridgeUrl =
+      cardTerminalReady &&
+      Boolean(selectedRegister.terminalBridgeUrl) &&
+      provider !== "MINU_AGENT" &&
+      provider !== "PUSH_ECR";
+    const cardProcessingMessage = !cardTerminalReady
+      ? "Картын төлбөр manual-аар бүртгэгдэж байна..."
+      : provider === "ANDROID_PGW"
+        ? "Android PGW terminal руу төлбөр илгээж байна..."
+        : `${provider} terminal дээр карт уншуулна уу...`;
 
     setCardProcessing(true);
-    setCardMessage(
-      provider === "ANDROID_PGW"
-        ? "Android PGW terminal руу төлбөр илгээж байна..."
-        : `${provider} terminal дээр карт уншуулна уу...`,
-    );
+    setCardMessage(cardProcessingMessage);
 
     try {
       const attempt = await createRestaurantCardAttempt({
         amount,
         terminalId,
-        bridgeUrl: useClientBridge ? selectedRegister.terminalBridgeUrl : null,
+        bridgeUrl: shouldSendBridgeUrl ? selectedRegister.terminalBridgeUrl : null,
         registerId: selectedRegister.id,
         organizationId: user.organizationId,
         clientBridge: useClientBridge,
@@ -2610,12 +2612,6 @@ export function RestaurantPosScreen() {
     }
     if (!shiftMatchesRegister) {
       setCheckoutError("Нээлттэй ээлж сонгосон POS касстай таарахгүй байна.");
-      return;
-    }
-    if (paymentMethod === "CARD" && !cardTerminalReady) {
-      setCheckoutError(
-        "Картын terminal холбогдоогүй байна. Доорх хэсгээс Android PGW эсвэл Minu Agent холбоно уу.",
-      );
       return;
     }
     if (paymentMethod === "CREDIT" && !selectedCreditBorrower) {
@@ -2851,12 +2847,6 @@ export function RestaurantPosScreen() {
       );
       return;
     }
-    if (!cardTerminalReady) {
-      setCreditSalesError(
-        "Картын terminal холбогдоогүй байна. Dashboard > Тохиргоо > POS terminal дээрээс холбоно уу.",
-      );
-      return;
-    }
     if (qpayPaymentActive || creditQPayRepayment) {
       setCreditSalesError("Өөр төлбөр нээлттэй байна. Эхлээд хаана уу.");
       return;
@@ -2955,12 +2945,6 @@ export function RestaurantPosScreen() {
     if (!selectedRegister || !user.organizationId) {
       setCreditSalesError(
         "Картын төлөлт авахын тулд POS register сонгогдсон байх ёстой.",
-      );
-      return;
-    }
-    if (!cardTerminalReady) {
-      setCreditSalesError(
-        "Картын terminal холбогдоогүй байна. Dashboard > Тохиргоо > POS terminal дээрээс холбоно уу.",
       );
       return;
     }
@@ -4225,8 +4209,8 @@ export function RestaurantPosScreen() {
                     </p>
                     <p className="mt-1 text-[11px] font-semibold leading-4 text-sky-100/70">
                       {cardTerminalReady
-                        ? `${cardTerminalLabel} · ${cardTerminalSourceLabel(selectedRegister?.cardTerminalSource)}`
-                        : "Terminal холбогдоогүй байна. Android PGW bridge эсвэл Minu Agent terminal шинээр холбоно уу."}
+                        ? cardPaymentModeLabel
+                        : `${cardPaymentModeLabel} Terminal холбовол төлбөр terminal руу илгээгдэнэ.`}
                     </p>
                   </div>
                   {cardTerminalReady ? (
@@ -4235,7 +4219,7 @@ export function RestaurantPosScreen() {
                     </span>
                   ) : (
                     <span className="shrink-0 rounded-full bg-amber-300 px-2 py-1 text-[10px] font-black text-slate-950">
-                      SETUP
+                      MANUAL
                     </span>
                   )}
                 </div>
@@ -4247,8 +4231,24 @@ export function RestaurantPosScreen() {
                 ) : null}
 
                 {!cardTerminalReady ? (
-                  <div className="mt-3 space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowCardTerminalSetup((current) => !current);
+                        setCardSetupError("");
+                      }}
+                      className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-sky-300/30 px-3 text-[11px] font-black text-sky-100 transition hover:bg-sky-300 hover:text-slate-950"
+                    >
+                      <CreditCard className="h-3.5 w-3.5" />
+                      {showCardTerminalSetup
+                        ? "Terminal тохиргоо хаах"
+                        : "Terminal тохируулах"}
+                    </button>
+
+                    {showCardTerminalSetup ? (
+                      <div className="mt-3 space-y-3">
+                        <div className="grid grid-cols-2 gap-2">
                       {(["ANDROID_PGW", "MINU_AGENT"] as const).map(
                         (provider) => (
                           <button
@@ -4355,6 +4355,8 @@ export function RestaurantPosScreen() {
                       )}
                       Terminal холбох
                     </button>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -4728,8 +4730,7 @@ export function RestaurantPosScreen() {
                               qpayPaymentActive ||
                               cardProcessing ||
                               !selectedRegister ||
-                              !user.organizationId ||
-                              !cardTerminalReady
+                              !user.organizationId
                             }
                             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-violet-300/40 bg-violet-300/10 px-3 text-xs font-black text-violet-100 transition hover:bg-violet-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-slate-700 disabled:text-slate-400"
                           >
@@ -4852,14 +4853,13 @@ export function RestaurantPosScreen() {
                                     qpayPaymentActive ||
                                     cardProcessing ||
                                     !selectedRegister ||
-                                    !user.organizationId ||
-                                    !cardTerminalReady
+                                    !user.organizationId
                                   }
                                   className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-violet-300/40 bg-violet-300/10 text-xs font-black text-violet-100 transition hover:bg-violet-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-slate-700 disabled:text-slate-400"
                                   title={
                                     cardTerminalReady
                                       ? "Зээлийн төлөлтийг картаар авах"
-                                      : "Эхлээд картын terminal холбоно уу"
+                                      : "Terminalгүй manual картаар төлөлт бүртгэх"
                                   }
                                 >
                                   {payingThisCredit ? (

@@ -8,25 +8,46 @@ import { LoginModal } from "@/components/organisms/auth/LoginModal";
 import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import { useAuth } from "@/lib/auth-context";
 import { API } from "@/lib/api";
-import { AUTH_LOGIN_BANNER_KEY, createLoginMarketingBanner, parseLoginMarketingBanner } from "@/lib/site-banners";
+import {
+  AUTH_LOGIN_BANNER_KEY,
+  createLoginMarketingBanner,
+  parseLoginMarketingBanner,
+} from "@/lib/site-banners";
+
+function getSafeNextPath() {
+  if (typeof window === "undefined") return ACCOUNT_ROUTES.profile;
+  const next = new URLSearchParams(window.location.search).get("next") || "";
+  if (!next.startsWith("/") || next.startsWith("//")) {
+    return ACCOUNT_ROUTES.profile;
+  }
+  return next;
+}
 
 export default function LoginPage() {
   const router = useRouter();
   const { user, loading, login, register } = useAuth();
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
-  const [marketingBanner, setMarketingBanner] = useState(() => createLoginMarketingBanner());
+  const [marketingBanner, setMarketingBanner] = useState(() =>
+    createLoginMarketingBanner(),
+  );
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace(ACCOUNT_ROUTES.profile);
+      router.replace(getSafeNextPath());
     }
   }, [loading, router, user]);
 
   useEffect(() => {
     fetch(`${API}/site-settings`)
-      .then((response) => (response.ok ? response.json() : ({} as Record<string, string>)))
-      .then((settings) => setMarketingBanner(parseLoginMarketingBanner(settings?.[AUTH_LOGIN_BANNER_KEY])))
+      .then((response) =>
+        response.ok ? response.json() : ({} as Record<string, string>),
+      )
+      .then((settings) =>
+        setMarketingBanner(
+          parseLoginMarketingBanner(settings?.[AUTH_LOGIN_BANNER_KEY]),
+        ),
+      )
       .catch(() => setMarketingBanner(createLoginMarketingBanner()));
   }, []);
 
@@ -46,9 +67,12 @@ export default function LoginPage() {
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-orange-50 text-orange-600">
             <UserRound className="h-8 w-8" />
           </div>
-          <h1 className="mt-5 text-3xl font-black tracking-tight text-slate-950">Нэвтрэх</h1>
+          <h1 className="mt-5 text-3xl font-black tracking-tight text-slate-950">
+            Нэвтрэх
+          </h1>
           <p className="mx-auto mt-2 max-w-sm text-sm font-semibold leading-6 text-slate-500">
-            Худалдан авалт, захиалга, хадгалсан бараагаа удирдахын тулд MGL Store-д нэвтэрнэ үү.
+            Худалдан авалт, захиалга, хадгалсан бараагаа удирдахын тулд MGL
+            Store-д нэвтэрнэ үү.
           </p>
           <button
             type="button"
@@ -76,9 +100,11 @@ export default function LoginPage() {
           try {
             const result = await login(identifier, password, options);
             if (result?.requiresEmailOtp) return result;
-            router.replace(ACCOUNT_ROUTES.profile);
+            router.replace(getSafeNextPath());
           } catch (err: unknown) {
-            setAuthError(err instanceof Error ? err.message : "Нэвтрэхэд алдаа гарлаа.");
+            setAuthError(
+              err instanceof Error ? err.message : "Нэвтрэхэд алдаа гарлаа.",
+            );
           } finally {
             setAuthLoading(false);
           }
@@ -88,9 +114,11 @@ export default function LoginPage() {
           setAuthLoading(true);
           try {
             await register(fullName, identifier, password, options);
-            router.replace(ACCOUNT_ROUTES.profile);
+            router.replace(getSafeNextPath());
           } catch (err: unknown) {
-            setAuthError(err instanceof Error ? err.message : "Бүртгүүлэхэд алдаа гарлаа.");
+            setAuthError(
+              err instanceof Error ? err.message : "Бүртгүүлэхэд алдаа гарлаа.",
+            );
           } finally {
             setAuthLoading(false);
           }

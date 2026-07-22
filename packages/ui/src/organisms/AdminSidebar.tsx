@@ -152,6 +152,12 @@ const ADMIN_MENU_SECTIONS: AppSidebarItem[] = [
         href: "/product-development",
       },
       {
+        id: "master-products",
+        label: "Нэгдсэн барааны сан",
+        icon: PackageSearch,
+        href: "/master-products",
+      },
+      {
         id: "services",
         label: "Үйлчилгээ",
         icon: Headphones,

@@ -8,6 +8,7 @@ import { HomeCommerceDock } from "./HomeCommerceDock";
 import { ProductShelfRow } from "./ProductShelfRow";
 import {
   buildFallbackShelves,
+  HOMEPAGE_FEATURED_PRODUCTS_KEY,
   MARKETPLACE_SERVICES_PROMO_KEY,
   MARKETPLACE_SIDE_BANNER_KEY,
   parseMarketplaceSideBanner,
@@ -15,6 +16,7 @@ import {
   parseShowcaseShelves,
   resolveProjectBanners,
   resolveConfiguredShelves,
+  resolveHomepageFeaturedProducts,
   SHOWCASE_KEY,
   type ApiProduct,
   type MarketplaceServicesPromoConfig,
@@ -38,6 +40,7 @@ export const ProductGrid = () => {
   const [configuredShelves, setConfiguredShelves] = useState<ResolvedShelf[]>(
     [],
   );
+  const [featuredProducts, setFeaturedProducts] = useState<ApiProduct[]>([]);
   const [sideBanner, setSideBanner] =
     useState<MarketplaceSideBannerConfig | null>(null);
   const [servicesPromo, setServicesPromo] =
@@ -74,6 +77,12 @@ export const ProductGrid = () => {
         setProducts(nextProducts);
         setConfiguredShelves(
           resolveConfiguredShelves(nextShelves, nextProducts),
+        );
+        setFeaturedProducts(
+          resolveHomepageFeaturedProducts(
+            settings?.[HOMEPAGE_FEATURED_PRODUCTS_KEY],
+            nextProducts,
+          ),
         );
         setSideBanner(
           parseMarketplaceSideBanner(settings?.[MARKETPLACE_SIDE_BANNER_KEY]),
@@ -151,7 +160,9 @@ export const ProductGrid = () => {
                       Catalog
                     </p>
                     <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
-                      Бүх бүтээгдэхүүн
+                      {featuredProducts.length > 0
+                        ? "Онцлох бүтээгдэхүүн"
+                        : "Бүх бүтээгдэхүүн"}
                     </h2>
                   </div>
                   <a
@@ -162,7 +173,11 @@ export const ProductGrid = () => {
                   </a>
                 </div>
                 <ProductCarousel
-                  products={products.slice(0, 10)}
+                  products={
+                    featuredProducts.length > 0
+                      ? featuredProducts
+                      : products.slice(0, 10)
+                  }
                   onSelect={(id) => setSelectedId(id)}
                 />
               </section>

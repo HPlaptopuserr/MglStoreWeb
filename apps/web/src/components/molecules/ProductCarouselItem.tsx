@@ -4,9 +4,10 @@ import { ProductCard } from "@mgl/ui";
 import { resolveApiAssetUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { resolveMemberPricing } from "@/lib/member-pricing";
+import type { CarouselProduct } from "./product-carousel.types";
 
 interface Props {
-  product: any;
+  product: CarouselProduct;
   idx: number;
   onClick: () => void;
 }
@@ -33,8 +34,8 @@ export const ProductCarouselItem = ({ product, idx, onClick }: Props) => {
         }
         originalPrice={pricing.originalPrice ?? undefined}
         memberDiscountLabel={pricing.label}
-        storeName={product.organization?.name}
-        stock={product.stock}
+        storeName={product.organization?.name ?? undefined}
+        stock={product.stock ?? 0}
         isPreorder={product.supplyType === "CHINA_PREORDER"}
         preorderLeadTimeDays={product.preorderLeadTimeDays}
         isPrime={idx % 5 === 0}

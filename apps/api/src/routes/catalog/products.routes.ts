@@ -4,9 +4,9 @@ import * as XLSX from "xlsx";
 import crypto from "crypto";
 import path from "path";
 import JSZip from "jszip";
-import { InventoryReason, prisma } from "@mgl/database";
+import { InventoryReason, WarehouseType, prisma } from "@mgl/database";
 import type { PrismaClient } from "@prisma/client";
-import { Permission } from "@mgl/types";
+import { Permission, hasPlatformPermission, isFullAdmin } from "@mgl/types";
 import { optionalAuth, requireAuth } from "../../middleware/auth";
 import {
   requireOrgPermission,
@@ -36,6 +36,12 @@ import {
   scoreProductForInterest,
 } from "../../services/product-personalization.service";
 import {
+  addMasterProductAlias,
+  normalizeMasterBarcode,
+  normalizeMasterName,
+  resolveMasterProduct,
+} from "../../services/master-product.service";
+import {
   extractExcelImages,
   uploadBufferToSupabase,
   PRODUCT_COL_MAP,
@@ -49,6 +55,203 @@ import {
 } from "../../lib/excel-import";
 
 const router: ExpressRouter = Router();
+
+function canAccessMasterCatalogAdmin(req: Parameters<typeof requireAuth>[0]) {
+  const role = (req as typeof req & { user?: { role?: string } }).user?.role;
+  return Boolean(
+    role &&
+    (isFullAdmin(role) ||
+      hasPlatformPermission(role, Permission.MANAGE_SITE_SETTINGS) ||
+      hasPlatformPermission(role, Permission.MANAGE_WAREHOUSES)),
+  );
+}
+
+async function buildMasterCatalogDataset(search = "", take?: number) {
+  const since = new Date();
+  since.setDate(since.getDate() - 90);
+  const normalizedSearch = normalizeMasterName(search);
+  const masters = await prisma.masterProduct.findMany({
+    where: {
+      status: "ACTIVE",
+      ...(normalizedSearch
+        ? {
+            OR: [
+              { normalizedName: { contains: normalizedSearch } },
+              { barcode: { contains: search.trim() } },
+              {
+                aliases: {
+                  some: { normalizedValue: { contains: normalizedSearch } },
+                },
+              },
+            ],
+          }
+        : {}),
+    },
+    select: {
+      id: true,
+      canonicalName: true,
+      barcode: true,
+      brand: true,
+      unit: true,
+      categoryName: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+      products: {
+        where: { deletedAt: null },
+        select: { id: true, organizationId: true, isActive: true },
+      },
+      aliases: { select: { value: true }, take: 20 },
+    },
+    orderBy: { canonicalName: "asc" },
+    ...(take ? { take } : {}),
+  });
+  const productToMaster = new Map<string, string>();
+  masters.forEach((master) =>
+    master.products.forEach((product) =>
+      productToMaster.set(product.id, master.id),
+    ),
+  );
+  const productIds = [...productToMaster.keys()];
+  const [onlineSales, posSales, stockRequests, inventory] = productIds.length
+    ? await Promise.all([
+        prisma.orderItem.groupBy({
+          by: ["productId"],
+          where: {
+            productId: { in: productIds },
+            order: {
+              status: { not: "CANCELLED" },
+              deletedAt: null,
+              createdAt: { gte: since },
+            },
+          },
+          _sum: { quantity: true },
+        }),
+        prisma.posSaleLine.groupBy({
+          by: ["productId"],
+          where: {
+            productId: { in: productIds },
+            sale: { status: "COMPLETED", createdAt: { gte: since } },
+          },
+          _sum: { qty: true },
+        }),
+        prisma.warehouseStockRequestItem.groupBy({
+          by: ["productId"],
+          where: {
+            productId: { in: productIds },
+            request: {
+              status: { notIn: ["CANCELLED", "REJECTED"] },
+              createdAt: { gte: since },
+            },
+          },
+          _sum: { quantity: true },
+        }),
+        prisma.warehouseInventory.groupBy({
+          by: ["productId"],
+          where: { productId: { in: productIds } },
+          _sum: { quantity: true },
+        }),
+      ])
+    : [[], [], [], []];
+  const aggregate = (rows: Array<{ productId: string; quantity: number }>) => {
+    const totals = new Map<string, number>();
+    rows.forEach((row) => {
+      const masterId = productToMaster.get(row.productId);
+      if (masterId)
+        totals.set(masterId, (totals.get(masterId) || 0) + row.quantity);
+    });
+    return totals;
+  };
+  const sales = aggregate([
+    ...onlineSales.map((row) => ({
+      productId: row.productId,
+      quantity: row._sum.quantity || 0,
+    })),
+    ...posSales.map((row) => ({
+      productId: row.productId,
+      quantity: row._sum.qty || 0,
+    })),
+  ]);
+  const requests = aggregate(
+    stockRequests.map((row) => ({
+      productId: row.productId,
+      quantity: row._sum.quantity || 0,
+    })),
+  );
+  const stock = aggregate(
+    inventory.map((row) => ({
+      productId: row.productId,
+      quantity: row._sum.quantity || 0,
+    })),
+  );
+
+  return masters.map((master) => ({
+    id: master.id,
+    canonicalName: master.canonicalName,
+    barcode: master.barcode,
+    brand: master.brand,
+    unit: master.unit,
+    categoryName: master.categoryName,
+    aliases: master.aliases.map((alias) => alias.value),
+    linkedProductCount: master.products.length,
+    organizationCount: new Set(
+      master.products.map((product) => product.organizationId),
+    ).size,
+    activeProductCount: master.products.filter((product) => product.isActive)
+      .length,
+    systemSoldQuantity90d: sales.get(master.id) || 0,
+    systemRequestedQuantity90d: requests.get(master.id) || 0,
+    systemStock: stock.get(master.id) || 0,
+    createdAt: master.createdAt.toISOString(),
+    updatedAt: master.updatedAt.toISOString(),
+  }));
+}
+
+async function assertProductMutationPermission(
+  req: Parameters<typeof assertOrgPermission>[0],
+  res: Parameters<typeof assertOrgPermission>[1],
+  product: { organizationId: string; managedByWarehouseId: string | null },
+) {
+  if (!product.managedByWarehouseId) {
+    return assertOrgPermission(
+      req,
+      res,
+      product.organizationId,
+      Permission.MANAGE_PRODUCTS,
+    );
+  }
+
+  const user = (
+    req as typeof req & {
+      user?: { userId?: string; role?: string };
+    }
+  ).user;
+  const platformAllowed =
+    Boolean(user?.role) &&
+    (isFullAdmin(user!.role!) ||
+      hasPlatformPermission(user!.role!, Permission.MANAGE_WAREHOUSES));
+  const operatorAllowed = user?.userId
+    ? Boolean(
+        await prisma.warehouseSetupToken.findFirst({
+          where: {
+            userId: user.userId,
+            warehouseId: product.managedByWarehouseId,
+            usedAt: { not: null },
+          },
+          select: { id: true },
+        }),
+      )
+    : false;
+
+  if (!platformAllowed && !operatorAllowed) {
+    res.status(403).json({
+      code: "WAREHOUSE_MANAGED_PRODUCT",
+      message: "Энэ барааг зөвхөн бүртгэсэн агуулах өөрчлөх боломжтой",
+    });
+    return null;
+  }
+  return { warehouseManaged: true };
+}
 
 type Tx = Omit<
   PrismaClient,
@@ -84,7 +287,9 @@ const RESTAURANT_MENU_CATEGORIES = new Set([
 const KITCHEN_STATIONS = new Set(["HOT_KITCHEN", "COLD_KITCHEN", "BAR"]);
 
 const normalizeTaxType = (value: unknown) => {
-  const normalized = String(value || "VAT_ABLE").trim().toUpperCase();
+  const normalized = String(value || "VAT_ABLE")
+    .trim()
+    .toUpperCase();
   return TAX_TYPES.has(normalized) ? normalized : "VAT_ABLE";
 };
 
@@ -215,7 +420,11 @@ async function resolveProductInventoryWarehouseId(
   const assignment = await tx.warehouseOrganization.findFirst({
     where: {
       organizationId,
-      warehouse: { deletedAt: null, isActive: true },
+      warehouse: {
+        deletedAt: null,
+        isActive: true,
+        type: WarehouseType.VENDOR_INTERNAL,
+      },
     },
     orderBy: { assignedAt: "asc" },
     select: { warehouseId: true },
@@ -236,6 +445,7 @@ async function resolveProductInventoryWarehouseId(
       capacity: 0,
       createdById: createdById ?? null,
       isActive: true,
+      type: WarehouseType.VENDOR_INTERNAL,
       organizations: {
         create: {
           organizationId,
@@ -460,7 +670,9 @@ router.get("/products", optionalAuth, async (req, res) => {
     >;
     const restaurantMenuOnly = isTruthyQueryValue(req.query.restaurantMenu);
     const search = String(req.query.search ?? req.query.q ?? "").trim();
-    const supplyType = String(req.query.type || req.query.supplyType || "").trim();
+    const supplyType = String(
+      req.query.type || req.query.supplyType || "",
+    ).trim();
     const sort = String(req.query.sort || "newest").trim();
     const stockFilter = String(req.query.stock || "").trim();
     const discountOnly = isTruthyQueryValue(req.query.discount);
@@ -533,7 +745,10 @@ router.get("/products", optionalAuth, async (req, res) => {
 
     if (search) {
       const searchWhere = buildProductSearchWhere(search);
-      where.AND = [...(Array.isArray(where.AND) ? where.AND : []), { OR: searchWhere }];
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : []),
+        { OR: searchWhere },
+      ];
     }
 
     if (
@@ -558,15 +773,17 @@ router.get("/products", optionalAuth, async (req, res) => {
       }
     }
 
-    const totalCountPromise = includeMeta ? prisma.product.count({ where }) : null;
+    const totalCountPromise = includeMeta
+      ? prisma.product.count({ where })
+      : null;
     const useDatabasePagination = limit > 0 && !search;
     const productCandidateLimit =
       limit > 0
         ? useDatabasePagination
           ? limit
           : search
-          ? Math.min(Math.max(offset + limit, limit * 3), 240)
-          : offset + limit
+            ? Math.min(Math.max(offset + limit, limit * 3), 240)
+            : offset + limit
         : 0;
 
     const products = await prisma.product.findMany({
@@ -584,7 +801,7 @@ router.get("/products", optionalAuth, async (req, res) => {
                     { discounts: { _count: "desc" } },
                     { createdAt: "desc" },
                   ]
-              : [{ marketplacePriority: "desc" }, { createdAt: "desc" }],
+                : [{ marketplacePriority: "desc" }, { createdAt: "desc" }],
       ...(useDatabasePagination ? { skip: offset } : {}),
       ...(productCandidateLimit > 0 ? { take: productCandidateLimit } : {}),
       include: {
@@ -683,7 +900,9 @@ router.get("/products", optionalAuth, async (req, res) => {
         limit,
         offset,
         hasMore:
-          limit > 0 ? offset + response.length < (totalCount ?? response.length) : false,
+          limit > 0
+            ? offset + response.length < (totalCount ?? response.length)
+            : false,
       });
     }
 
@@ -815,7 +1034,9 @@ router.get("/products/trending", optionalAuth, async (req, res) => {
     const limit =
       Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(18, rawLimit) : 6;
     const categoryId = String(req.query.businessCategoryId || "").trim();
-    const period = String(req.query.period || "1d").trim().toLowerCase();
+    const period = String(req.query.period || "1d")
+      .trim()
+      .toLowerCase();
     const periodDays = period === "1m" ? 30 : period === "1w" ? 7 : 1;
     const since = new Date(Date.now() - periodDays * 86_400_000);
 
@@ -911,13 +1132,15 @@ router.get("/products/trending", optionalAuth, async (req, res) => {
             include: trendingProductInclude,
           });
 
-    const products = [...rankedProducts, ...fallbackProducts].map((product) => ({
-      ...product,
-      images: product.images.filter(
-        (image) => !isOversizedInlineImage(image.url),
-      ),
-      trendScore: popularWeightById.get(product.id) || 0,
-    }));
+    const products = [...rankedProducts, ...fallbackProducts].map(
+      (product) => ({
+        ...product,
+        images: product.images.filter(
+          (image) => !isOversizedInlineImage(image.url),
+        ),
+        trendScore: popularWeightById.get(product.id) || 0,
+      }),
+    );
 
     return res.json({ products, period, categoryId: categoryId || null });
   } catch (error) {
@@ -1417,9 +1640,21 @@ router.post(
               where: {
                 organizationId_sku: { organizationId, sku: normalizedSku },
               },
-              select: { id: true },
+              select: { id: true, masterProductId: true },
             });
             wasUpdate = !!existing;
+            const masterProduct = await resolveMasterProduct(prisma, {
+              masterProductId: existing?.masterProductId,
+              name: productData.name,
+              description: productData.description,
+              imageUrl: imageUrls[0] || null,
+            });
+            if (!masterProduct) throw new Error("MASTER_PRODUCT_NOT_FOUND");
+            await addMasterProductAlias(
+              prisma,
+              masterProduct.id,
+              productData.name,
+            );
             // Upsert: update if SKU exists, create if not
             product = await prisma.product.upsert({
               where: {
@@ -1427,6 +1662,7 @@ router.post(
               },
               update: {
                 ...productData,
+                masterProductId: masterProduct.id,
                 deletedAt: null,
                 ...(imageUrls.length > 0 && {
                   images: {
@@ -1439,6 +1675,7 @@ router.post(
                 organizationId,
                 sku: normalizedSku,
                 ...productData,
+                masterProductId: masterProduct.id,
                 ...(imageUrls.length > 0 && {
                   images: { create: imageUrls.map((url) => ({ url })) },
                 }),
@@ -1452,11 +1689,23 @@ router.post(
               },
             });
           } else {
+            const masterProduct = await resolveMasterProduct(prisma, {
+              name: productData.name,
+              description: productData.description,
+              imageUrl: imageUrls[0] || null,
+            });
+            if (!masterProduct) throw new Error("MASTER_PRODUCT_NOT_FOUND");
+            await addMasterProductAlias(
+              prisma,
+              masterProduct.id,
+              productData.name,
+            );
             product = await prisma.product.create({
               data: {
                 organizationId,
                 sku: null,
                 ...productData,
+                masterProductId: masterProduct.id,
                 ...(imageUrls.length > 0 && {
                   images: { create: imageUrls.map((url) => ({ url })) },
                 }),
@@ -1513,6 +1762,259 @@ router.post(
     }
   },
 );
+
+/* ─── GET /products/master-catalog/search ──────────────────────────── */
+router.get(
+  "/products/master-catalog/admin/export",
+  requireAuth,
+  async (req, res) => {
+    if (!canAccessMasterCatalogAdmin(req)) {
+      return res
+        .status(403)
+        .json({ message: "Нэгдсэн барааны сан экспортлох эрхгүй" });
+    }
+    try {
+      const rows = await buildMasterCatalogDataset(
+        String(req.query.search || ""),
+      );
+      const sheet = XLSX.utils.json_to_sheet(
+        rows.map((row, index) => ({
+          "№": index + 1,
+          "Canonical ID": row.id,
+          "Барааны нэр": row.canonicalName,
+          Баркод: row.barcode || "",
+          Брэнд: row.brand || "",
+          Нэгж: row.unit || "",
+          Ангилал: row.categoryName || "",
+          "Өөр нэршлүүд": row.aliases.join(", "),
+          "Холбогдсон бараа": row.linkedProductCount,
+          "Байгууллагын тоо": row.organizationCount,
+          "Системийн үлдэгдэл": row.systemStock,
+          "90 хоногийн борлуулалт": row.systemSoldQuantity90d,
+          "90 хоногийн татан авалт": row.systemRequestedQuantity90d,
+          Шинэчилсэн: row.updatedAt,
+        })),
+      );
+      sheet["!cols"] = [
+        { wch: 6 },
+        { wch: 38 },
+        { wch: 34 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 12 },
+        { wch: 22 },
+        { wch: 45 },
+        { wch: 18 },
+        { wch: 18 },
+        { wch: 20 },
+        { wch: 22 },
+        { wch: 22 },
+        { wch: 24 },
+      ];
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, "Нэгдсэн бараа");
+      const buffer = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="master-products-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+      );
+      return res.send(Buffer.from(buffer));
+    } catch (error) {
+      console.error("master catalog export error", error);
+      return res
+        .status(500)
+        .json({ message: "Excel экспорт хийхэд алдаа гарлаа" });
+    }
+  },
+);
+
+router.post(
+  "/products/master-catalog/admin/sync",
+  requireAuth,
+  async (req, res) => {
+    if (!canAccessMasterCatalogAdmin(req)) {
+      return res
+        .status(403)
+        .json({ message: "Нэгдсэн барааны сан шинэчлэх эрхгүй" });
+    }
+    try {
+      const products = await prisma.product.findMany({
+        where: { masterProductId: null, deletedAt: null },
+        select: {
+          id: true,
+          name: true,
+          barcode: true,
+          unit: true,
+          description: true,
+          businessCategory: { select: { name: true } },
+          category: { select: { name: true } },
+          images: { select: { url: true }, take: 1 },
+        },
+        orderBy: { createdAt: "asc" },
+        take: 500,
+      });
+      let linked = 0;
+      for (const product of products) {
+        const master = await resolveMasterProduct(prisma, {
+          name: product.name,
+          barcode: product.barcode,
+          unit: product.unit,
+          description: product.description,
+          imageUrl: product.images[0]?.url || null,
+          categoryName:
+            product.businessCategory?.name || product.category?.name || null,
+        });
+        if (!master) continue;
+        await addMasterProductAlias(prisma, master.id, product.name);
+        await prisma.product.update({
+          where: { id: product.id },
+          data: { masterProductId: master.id },
+        });
+        linked++;
+      }
+      const remaining = await prisma.product.count({
+        where: { masterProductId: null, deletedAt: null },
+      });
+      return res.json({ linked, remaining, hasMore: remaining > 0 });
+    } catch (error) {
+      console.error("master catalog sync error", error);
+      return res.status(500).json({
+        message: "Нэгдсэн барааны сан шинэчлэхэд алдаа гарлаа",
+      });
+    }
+  },
+);
+
+router.get(
+  "/products/master-catalog/admin/ai-dataset",
+  requireAuth,
+  async (req, res) => {
+    if (!canAccessMasterCatalogAdmin(req)) {
+      return res.status(403).json({ message: "AI dataset авах эрхгүй" });
+    }
+    try {
+      const products = await buildMasterCatalogDataset(
+        String(req.query.search || ""),
+      );
+      return res.json({
+        schemaVersion: "master-product-analytics.v1",
+        generatedAt: new Date().toISOString(),
+        periodDays: 90,
+        privacy: "Aggregated metrics only; organization identities excluded",
+        fields: {
+          systemSoldQuantity90d: "Online + POS completed sales",
+          systemRequestedQuantity90d: "Non-cancelled warehouse requests",
+          systemStock: "Current stock across warehouses",
+        },
+        products,
+      });
+    } catch (error) {
+      console.error("master catalog AI dataset error", error);
+      return res
+        .status(500)
+        .json({ message: "AI dataset бэлтгэхэд алдаа гарлаа" });
+    }
+  },
+);
+
+router.get("/products/master-catalog/admin", requireAuth, async (req, res) => {
+  if (!canAccessMasterCatalogAdmin(req)) {
+    return res
+      .status(403)
+      .json({ message: "Нэгдсэн барааны сан харах эрхгүй" });
+  }
+  try {
+    const page = Math.max(1, Number(req.query.page) || 1);
+    const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 50));
+    const rows = await buildMasterCatalogDataset(
+      String(req.query.search || ""),
+    );
+    const start = (page - 1) * limit;
+    return res.json({
+      items: rows.slice(start, start + limit),
+      total: rows.length,
+      page,
+      limit,
+      hasMore: start + limit < rows.length,
+      unlinkedProductCount: await prisma.product.count({
+        where: { masterProductId: null, deletedAt: null },
+      }),
+    });
+  } catch (error) {
+    console.error("master catalog admin list error", error);
+    return res
+      .status(500)
+      .json({ message: "Нэгдсэн барааны сан авахад алдаа гарлаа" });
+  }
+});
+
+router.get("/products/master-catalog/search", requireAuth, async (req, res) => {
+  try {
+    const query = String(req.query.q || "").trim();
+    const barcode = normalizeMasterBarcode(String(req.query.barcode || ""));
+    if (!barcode && query.length < 2) return res.json([]);
+
+    const normalizedQuery = normalizeMasterName(query);
+    const products = await prisma.masterProduct.findMany({
+      where: {
+        status: "ACTIVE",
+        ...(barcode
+          ? { barcode }
+          : {
+              OR: [
+                { normalizedName: { contains: normalizedQuery } },
+                {
+                  aliases: {
+                    some: { normalizedValue: { contains: normalizedQuery } },
+                  },
+                },
+              ],
+            }),
+      },
+      select: {
+        id: true,
+        canonicalName: true,
+        barcode: true,
+        brand: true,
+        unit: true,
+        description: true,
+        imageUrl: true,
+        categoryName: true,
+        _count: { select: { products: true } },
+      },
+      orderBy: [{ products: { _count: "desc" } }, { canonicalName: "asc" }],
+      take: 40,
+    });
+
+    const seen = new Set<string>();
+    return res.json(
+      products
+        .filter((product) => {
+          const key = product.barcode
+            ? `barcode:${product.barcode}`
+            : `name:${normalizeMasterName(product.canonicalName)}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 12)
+        .map(({ _count, ...product }) => ({
+          ...product,
+          usageCount: _count.products,
+          exactBarcodeMatch: Boolean(barcode && product.barcode === barcode),
+        })),
+    );
+  } catch (error) {
+    console.error("search master products error", error);
+    return res
+      .status(500)
+      .json({ message: "Нэгдсэн барааны сан хайхад алдаа гарлаа" });
+  }
+});
 
 /* ─── GET /products/:id ─────────────────────────────────────────────── */
 router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
@@ -1661,12 +2163,10 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
     });
   } catch (error) {
     console.error("get product recommendations error", error);
-    return res
-      .status(500)
-      .json({
-        message: "Санал болгох бараа авахад алдаа гарлаа",
-        error: String(error),
-      });
+    return res.status(500).json({
+      message: "Санал болгох бараа авахад алдаа гарлаа",
+      error: String(error),
+    });
   }
 });
 
@@ -1738,6 +2238,7 @@ router.post(
     try {
       const {
         organizationId,
+        masterProductId,
         name,
         description,
         sku,
@@ -1764,6 +2265,7 @@ router.post(
       } = req.body;
 
       let businessCategoryId = inputCategoryId;
+      let businessCategoryName: string | null = null;
 
       if (!organizationId || !name || price === undefined) {
         return res
@@ -1819,16 +2321,16 @@ router.post(
       const normalizedTaxType = normalizeTaxType(taxType);
       const normalizedCityTaxRate = normalizePercent(cityTaxRate, 0);
       if (normalizedCityTaxRate === undefined) {
-        return res.status(400).json({ message: "Хотын татвар 0-100 хооронд байх ёстой" });
+        return res
+          .status(400)
+          .json({ message: "Хотын татвар 0-100 хооронд байх ёстой" });
       }
       const normalizedPreparationMinutes =
         normalizePreparationMinutes(preparationMinutes);
       if (normalizedPreparationMinutes === undefined) {
-        return res
-          .status(400)
-          .json({
-            message: "Бэлтгэх хугацаа 0-1440 минутын хооронд байх ёстой",
-          });
+        return res.status(400).json({
+          message: "Бэлтгэх хугацаа 0-1440 минутын хооронд байх ёстой",
+        });
       }
       const restaurantMenuEnabled = isTruthyQueryValue(isRestaurantMenuItem);
       const normalizedMenuCategory = restaurantMenuEnabled
@@ -1867,7 +2369,8 @@ router.post(
         normalizeMarketplacePriority(marketplacePriority);
       if (normalizedMarketplacePriority === undefined) {
         return res.status(400).json({
-          message: "Marketplace дараалал 0-1,000,000 хооронд бүхэл тоо байх ёстой",
+          message:
+            "Marketplace дараалал 0-1,000,000 хооронд бүхэл тоо байх ёстой",
         });
       }
 
@@ -1889,16 +2392,33 @@ router.post(
         }
       }
 
+      if (normalizedBarcode) {
+        const existingBarcode = await prisma.product.findFirst({
+          where: {
+            organizationId,
+            barcode: normalizedBarcode,
+            deletedAt: null,
+          },
+          select: { id: true },
+        });
+        if (existingBarcode) {
+          return res.status(409).json({
+            message: "Ижил баркодтой бараа танай бүртгэлд байна",
+          });
+        }
+      }
+
       if (businessCategoryId) {
         const category = await prisma.businessCategory.findUnique({
           where: { id: String(businessCategoryId) },
-          select: { id: true },
+          select: { id: true, name: true },
         });
         if (!category) {
           return res
             .status(400)
             .json({ message: "Сонгосон ангилал олдсонгүй" });
         }
+        businessCategoryName = category.name;
       }
 
       // Validate max 5 images
@@ -1909,15 +2429,29 @@ router.post(
       const reviewData = await getReviewStatusForVendorMutation();
 
       const product = await prisma.$transaction(async (tx) => {
+        const masterProduct = await resolveMasterProduct(tx, {
+          masterProductId: masterProductId ? String(masterProductId) : null,
+          name: String(name),
+          barcode: normalizedBarcode,
+          unit: unit ? String(unit) : null,
+          description: description ? String(description) : null,
+          imageUrl: imageUrls[0] || null,
+          categoryName: businessCategoryName,
+        });
+        if (!masterProduct) {
+          throw new Error("MASTER_PRODUCT_NOT_FOUND");
+        }
+
         const created = await tx.product.create({
           data: {
             organizationId,
+            masterProductId: masterProduct.id,
             submittedById: actorId,
-            name: String(name).trim(),
+            name: masterProduct.canonicalName,
             description: description ? String(description).trim() : null,
             sku: normalizedSku,
-            barcode: normalizedBarcode,
-            unit: unit ? String(unit).trim() : null,
+            barcode: masterProduct.barcode || normalizedBarcode,
+            unit: masterProduct.unit || (unit ? String(unit).trim() : null),
             price: priceNum,
             costPrice: costPriceNum,
             taxType: normalizedTaxType,
@@ -1954,6 +2488,17 @@ router.post(
           },
         });
 
+        await addMasterProductAlias(tx, masterProduct.id, String(name));
+        if (!masterProduct.sourceProductId) {
+          await tx.masterProduct.update({
+            where: { id: masterProduct.id },
+            data: {
+              sourceProductId: created.id,
+              imageUrl: masterProduct.imageUrl || imageUrls[0] || null,
+            },
+          });
+        }
+
         await upsertVendorProductInventory(tx, {
           organizationId,
           productId: created.id,
@@ -1976,6 +2521,14 @@ router.post(
 
       return res.status(201).json(product);
     } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "MASTER_PRODUCT_NOT_FOUND"
+      ) {
+        return res.status(400).json({
+          message: "Сонгосон нэгдсэн бараа олдсонгүй",
+        });
+      }
       const maybePrisma = error as {
         code?: string;
         meta?: { target?: unknown };
@@ -2045,12 +2598,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     });
     if (!existing) return res.status(404).json({ message: "Бараа олдсонгүй" });
 
-    const perm = await assertOrgPermission(
-      req,
-      res,
-      existing.organizationId,
-      Permission.MANAGE_PRODUCTS,
-    );
+    const perm = await assertProductMutationPermission(req, res, existing);
     if (!perm) return;
 
     const nextSupplyType =
@@ -2086,7 +2634,9 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (cityTaxRate !== undefined) {
       const normalizedCityTaxRate = normalizePercent(cityTaxRate, 0);
       if (normalizedCityTaxRate === undefined) {
-        return res.status(400).json({ message: "Хотын татвар 0-100 хооронд байх ёстой" });
+        return res
+          .status(400)
+          .json({ message: "Хотын татвар 0-100 хооронд байх ёстой" });
       }
       data.cityTaxRate = normalizedCityTaxRate;
     }
@@ -2125,11 +2675,9 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
           : existing.preparationMinutes,
       );
       if (nextPreparationMinutes === undefined) {
-        return res
-          .status(400)
-          .json({
-            message: "Бэлтгэх хугацаа 0-1440 минутын хооронд байх ёстой",
-          });
+        return res.status(400).json({
+          message: "Бэлтгэх хугацаа 0-1440 минутын хооронд байх ёстой",
+        });
       }
       if (
         nextRestaurantMenuEnabled &&
@@ -2188,7 +2736,8 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
         normalizeMarketplacePriority(marketplacePriority);
       if (normalizedMarketplacePriority === undefined) {
         return res.status(400).json({
-          message: "Marketplace дараалал 0-1,000,000 хооронд бүхэл тоо байх ёстой",
+          message:
+            "Marketplace дараалал 0-1,000,000 хооронд бүхэл тоо байх ёстой",
         });
       }
       data.marketplacePriority = normalizedMarketplacePriority;
@@ -2262,12 +2811,7 @@ router.patch("/products/:id/images", requireAuth, async (req, res) => {
     });
     if (!existing) return res.status(404).json({ message: "Бараа олдсонгүй" });
 
-    const perm = await assertOrgPermission(
-      req,
-      res,
-      existing.organizationId,
-      Permission.MANAGE_PRODUCTS,
-    );
+    const perm = await assertProductMutationPermission(req, res, existing);
     if (!perm) return;
 
     const imageUrls = images.slice(0, 5);
@@ -2367,12 +2911,7 @@ router.delete("/products/:id", requireAuth, async (req, res) => {
     });
     if (!existing) return res.status(404).json({ message: "Бараа олдсонгүй" });
 
-    const perm = await assertOrgPermission(
-      req,
-      res,
-      existing.organizationId,
-      Permission.MANAGE_PRODUCTS,
-    );
+    const perm = await assertProductMutationPermission(req, res, existing);
     if (!perm) return;
 
     await prisma.product.update({

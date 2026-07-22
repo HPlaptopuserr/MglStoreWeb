@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/organisms/layouts/AppShell";
 import { MglAppBootLoader } from "@mgl/ui";
+import { MetaPixel } from "@/components/analytics/MetaPixel";
 
 const SITE_URL = "https://mglstore.mn";
 const SOCIAL_LOGO_IMAGE = "/social/mglstore-og.jpg";
@@ -79,6 +80,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         suppressHydrationWarning
       >
         <MglAppBootLoader label="Дэлгүүрийг ачааллаж байна" />
+        <MetaPixel />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

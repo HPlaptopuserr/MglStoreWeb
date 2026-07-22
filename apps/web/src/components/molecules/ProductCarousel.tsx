@@ -1,7 +1,8 @@
 import { ProductCarouselItem } from "./ProductCarouselItem";
+import type { CarouselProduct } from "./product-carousel.types";
 
 interface Props {
-  products: any[];
+  products: CarouselProduct[];
   onSelect: (id: string) => void;
 }
 

@@ -5,19 +5,6 @@ import { useRouter } from "next/navigation";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { QRCodeSVG } from "qrcode.react";
-function MobileBlock() {
-  return (
-    <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 px-6 text-center md:hidden">
-      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-        <Monitor className="h-8 w-8 text-slate-400" />
-      </div>
-      <h2 className="text-lg font-bold text-slate-800">POS касс утсан дээр ажиллахгүй</h2>
-      <p className="text-sm text-slate-500 max-w-xs">
-        POS систем нь зөвхөн компьютер болон таблет дээр ажилладаг. Томоохон дэлгэц ашиглана уу.
-      </p>
-    </div>
-  );
-}
 
 import {
   Barcode,
@@ -28,7 +15,6 @@ import {
   Filter,
   HandCoins,
   Loader2,
-  Monitor,
   Info,
   MinusCircle,
   PlusCircle,
@@ -84,6 +70,7 @@ import {
   type EbarimtBuyer,
   type RegisterConfig,
   type CashDenominationCount,
+  type CashDrawerEvent,
   type CashDrawerEventType,
   type CashDrawerSummary,
   type PosShiftHistoryItem,
@@ -91,9 +78,16 @@ import {
   CUSTOMER_DISPLAY_THEME_STORAGE_KEY,
   type CustomerDisplayThemeId,
   isCustomerDisplayThemeId,
+  MobileBlock,
+  PosAccessGate,
+  PosRegisterPendingBanner,
+  PosRegisterPicker,
+  PosRegisterSetupBanner,
+  PosRegisterSetupPanel,
+  usePosAccess,
+  usePosRegisterSetup,
 } from "@/features/pos";
-import { API, API_BASE, authFetch } from "@/lib/api";
-import { isFeatureEnabled, POS_FEATURE_KEY } from "@/lib/vendor-features";
+import { API, authFetch } from "@/lib/api";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 
 type PosView = "register" | "checkout" | "history";
@@ -503,9 +497,7 @@ const printReceipt = (receipt: PosReceipt) => {
 
 export default function PosDemoPage() {
   const router = useRouter();
-  const [organizationId, setOrganizationId] = useState("");
-  const [posAccess, setPosAccess] = useState<"checking" | "enabled" | "disabled">("checking");
-  const [posAccessMessage, setPosAccessMessage] = useState("POS кассын эрх шалгаж байна...");
+  const { organizationId, posAccess, posAccessMessage, posEnabled } = usePosAccess();
   const [scanBuffer, setScanBuffer] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [lastScannedCode, setLastScannedCode] = useState("");
@@ -542,7 +534,31 @@ export default function PosDemoPage() {
   });
   const [selectedRestaurantTableId, setSelectedRestaurantTableId] = useState(RESTAURANT_TABLES[0]?.id ?? "A1");
   const [customerDisplaySuccess, setCustomerDisplaySuccess] = useState<CustomerDisplaySuccess | null>(null);
-  const [registerConfig, setRegisterConfig] = useState<RegisterConfig | null>(null);
+  const {
+    registerConfig,
+    setRegisterConfig,
+    orgRegisters,
+    showRegisterPicker,
+    setShowRegisterPicker,
+    showSetupPanel,
+    setShowSetupPanel,
+    setupTab,
+    setSetupTab,
+    setupName,
+    setSetupName,
+    setupBranches,
+    setupBranchId,
+    setSetupBranchId,
+    setupRegistering,
+    setupError,
+    setSetupError,
+    setupExistingId,
+    setSetupExistingId,
+    handleSelfRegister,
+    handleConnectExisting,
+    handleDisconnectRegister,
+    selectRegister,
+  } = usePosRegisterSetup({ organizationId, posEnabled });
   const effectiveEbarimtEnabled = EBARIMT_ENABLED && Boolean(registerConfig?.ebarimtEnabled);
   const ebarimtStatusText = !EBARIMT_ENABLED
     ? "eBarimt систем идэвхгүй байна."
@@ -550,15 +566,6 @@ export default function PosDemoPage() {
       ? "eBarimt идэвхтэй. Төлбөрийн дараа QR гарна."
       : "Энэ касс дээр eBarimt унтраалттай.";
   const [showPosSettings, setShowPosSettings] = useState(false);
-  const [showSetupPanel, setShowSetupPanel] = useState(false);
-  // self-registration form
-  const [setupTab, setSetupTab] = useState<"new" | "existing">("new");
-  const [setupName, setSetupName] = useState("");
-  const [setupBranches, setSetupBranches] = useState<{ id: string; name: string }[]>([]);
-  const [setupBranchId, setSetupBranchId] = useState("");
-  const [setupRegistering, setSetupRegistering] = useState(false);
-  const [setupError, setSetupError] = useState("");
-  const [setupExistingId, setSetupExistingId] = useState("");
   // Shift management
   const [showShiftPanel, setShowShiftPanel] = useState(false);
   const [showShiftHistoryPanel, setShowShiftHistoryPanel] = useState(false);
@@ -595,7 +602,6 @@ export default function PosDemoPage() {
   const cardPaymentRunRef = useRef<CardPaymentRun | null>(null);
   const ebarimtSendDataInFlightRef = useRef(false);
 
-  const posEnabled = posAccess === "enabled";
   const registerBranchId = posEnabled ? (registerConfig?.branchId ?? "") : "";
   const posProductsState = usePosProducts(registerBranchId);
   const ownProductsState = useOwnProducts(registerBranchId || !posEnabled ? "" : organizationId);
@@ -877,77 +883,6 @@ export default function PosDemoPage() {
     }
   };
 
-  useEffect(() => {
-    const token = localStorage.getItem("vendor_token");
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
-
-    let cancelled = false;
-    const storedUser = JSON.parse(localStorage.getItem("vendor_user") || "{}");
-    if (storedUser.organizationId) {
-      setOrganizationId(storedUser.organizationId);
-      return;
-    }
-
-    fetch(`${API_BASE}/auth/me`, {
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error("Session expired");
-        const me = await res.json();
-        if (!me.organizationId) throw new Error("Organization missing");
-        if (cancelled) return;
-        const nextUser = { ...storedUser, ...me };
-        localStorage.setItem("vendor_user", JSON.stringify(nextUser));
-        setOrganizationId(me.organizationId);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        localStorage.removeItem("vendor_token");
-        localStorage.removeItem("vendor_user");
-        router.replace("/login");
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
-
-  useEffect(() => {
-    if (!organizationId) return;
-    let cancelled = false;
-
-    setPosAccess("checking");
-
-    fetch(`${API}/site-settings`, { cache: "no-store" })
-      .then(async (r) => {
-        const settings = r.ok
-          ? ((await r.json()) as Record<string, unknown>)
-          : {};
-        if (cancelled) return;
-        const enabled = isFeatureEnabled(settings, POS_FEATURE_KEY, organizationId);
-        if (enabled) {
-          setPosAccess("enabled");
-        } else {
-          setPosAccessMessage("Танай байгууллагад POS кассын эрх идэвхжээгүй байна. Admin дээр pos-enabled feature-г асаана уу.");
-          setPosAccess("disabled");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setPosAccessMessage("POS эрх шалгах үед API-тай холбогдож чадсангүй. API server ажиллаж байгаа эсэхийг шалгана уу.");
-          setPosAccess("disabled");
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [organizationId]);
-
   // Fetch current open shift on load
   useEffect(() => {
     if (!posEnabled) return;
@@ -1015,9 +950,13 @@ export default function PosDemoPage() {
         setDrawerSummary(summary);
         if (summary.cashCount.length > 0) {
           setCashCounts(
-            Object.fromEntries(
-              summary.cashCount.map((item) => [item.denomination, item.count]),
-            ) as Record<number, number>,
+            summary.cashCount.reduce<Record<number, number>>(
+              (counts: Record<number, number>, item: CashDenominationCount) => {
+                counts[item.denomination] = item.count;
+                return counts;
+              },
+              {},
+            ),
           );
         }
       })
@@ -1052,7 +991,7 @@ export default function PosDemoPage() {
       controller.signal,
     )
       .then((data) => {
-        const shifts = Array.isArray(data.shifts) ? data.shifts : [];
+        const shifts: PosShiftHistoryItem[] = data.shifts ?? [];
         setShiftHistory(shifts);
         setSelectedShiftHistoryId((current) =>
           current && shifts.some((item) => item.id === current)
@@ -1147,7 +1086,7 @@ export default function PosDemoPage() {
     const eventLines =
       summary.events.length === 0
         ? ["Шургуулгын хөдөлгөөн алга"]
-        : summary.events.map((event) => {
+        : summary.events.map((event: CashDrawerEvent) => {
             const label =
               event.type === "PAID_IN"
                 ? "Орлого нэмсэн"
@@ -1160,8 +1099,8 @@ export default function PosDemoPage() {
       summary.cashCount.length === 0
         ? ["Тооллого: -"]
         : summary.cashCount
-            .filter((item) => item.count > 0)
-            .map((item) => `${formatMoney(item.denomination)} x ${item.count} = ${formatMoney(item.total)}`);
+            .filter((item: CashDenominationCount) => item.count > 0)
+            .map((item: CashDenominationCount) => `${formatMoney(item.denomination)} x ${item.count} = ${formatMoney(item.total)}`);
 
     printPlainReport("Кассын шургуулгын тайлан", [
       "КАССЫН ШУРГУУЛГЫН ТАЙЛАН",
@@ -1244,129 +1183,6 @@ export default function PosDemoPage() {
     } finally {
       setDrawerEventSubmitting(false);
     }
-  };
-
-  const [orgRegisters, setOrgRegisters] = useState<RegisterConfig[]>([]);
-  const [showRegisterPicker, setShowRegisterPicker] = useState(false);
-
-  useEffect(() => {
-    if (!posEnabled) return;
-    const registerId = localStorage.getItem("pos_register_id");
-    if (registerId) {
-      fetchRegisterConfig(registerId)
-        .then(setRegisterConfig)
-        .catch(() => {
-          // Saved ID is stale/invalid — clear it and try org registers
-          localStorage.removeItem("pos_register_id");
-          setRegisterConfig(null);
-        });
-    }
-  }, [posEnabled]);
-
-  // Auto-discover org registers when no register is loaded yet
-  useEffect(() => {
-    if (!posEnabled) return;
-    if (registerConfig) return; // already connected
-    if (!organizationId) return;
-    const token = localStorage.getItem("vendor_token");
-    if (!token) return;
-
-    fetch(`${API}/pos/registers/mine`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((list: RegisterConfig[]) => {
-        if (!Array.isArray(list) || list.length === 0) return;
-        if (list.length === 1) {
-          // Only one register — auto-connect
-          localStorage.setItem("pos_register_id", list[0].id);
-          setRegisterConfig(list[0]);
-        } else {
-          // Multiple registers — let vendor choose
-          setOrgRegisters(list);
-          setShowRegisterPicker(true);
-        }
-      })
-      .catch(() => {});
-  }, [organizationId, posEnabled, registerConfig]);
-
-
-  // Load branches whenever setup panel opens
-  useEffect(() => {
-    if (!showSetupPanel || !organizationId) return;
-    authFetch(`${API}/admin/branches?organizationId=${organizationId}`)
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data: { id: string; name: string }[]) => {
-        setSetupBranches(Array.isArray(data) ? data : []);
-        if (data.length > 0 && !setupBranchId) setSetupBranchId(data[0].id);
-      })
-      .catch(() => {});
-  }, [showSetupPanel, organizationId]);
-
-  const handleSelfRegister = async () => {
-    if (!setupName.trim() || !setupBranchId) {
-      setSetupError("Нэр болон салбараа сонгоно уу.");
-      return;
-    }
-    const token = localStorage.getItem("vendor_token");
-    if (!token) {
-      setSetupError("Нэвтрэлтийн хугацаа дууссан байна. Дахин нэвтэрнэ үү.");
-      return;
-    }
-
-    setSetupRegistering(true);
-    setSetupError("");
-    try {
-      const res = await fetch(`${API}/pos/registers/self-claim`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          organizationId,
-          branchId: setupBranchId,
-          name: setupName.trim(),
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        setSetupError(err.message || "Бүртгэхэд алдаа гарлаа.");
-        return;
-      }
-      const created = await res.json();
-      localStorage.setItem("pos_register_id", created.id);
-      setRegisterConfig(created);
-      setShowSetupPanel(false);
-      setSetupName("");
-    } catch {
-      setSetupError("Сервертэй холбогдоход алдаа гарлаа.");
-    } finally {
-      setSetupRegistering(false);
-    }
-  };
-
-  const handleConnectExisting = () => {
-    const id = setupExistingId.trim();
-    if (!id) return;
-    setSetupRegistering(true);
-    setSetupError("");
-    localStorage.setItem("pos_register_id", id);
-    fetchRegisterConfig(id)
-      .then((cfg) => {
-        setRegisterConfig(cfg);
-        setShowSetupPanel(false);
-        setSetupExistingId("");
-      })
-      .catch(() => setSetupError("Register ID олдсонгүй эсвэл идэвхгүй байна."))
-      .finally(() => setSetupRegistering(false));
-  };
-
-  const handleDisconnectRegister = () => {
-    localStorage.removeItem("pos_register_id");
-    setRegisterConfig(null);
-    setShowSetupPanel(false);
-    setSetupError("");
   };
 
   useEffect(() => {
@@ -1875,7 +1691,7 @@ export default function PosDemoPage() {
     setEbarimtCompanyLookupLoading(true);
     setEbarimtBuyerError("");
     try {
-      const result = await lookupEbarimtTin(regNo);
+      const result = await lookupEbarimtTin(regNo, registerConfig);
       setEbarimtCompanyRegNo(result.regNo);
       setEbarimtCompanyTin(result.tin);
       return result;
@@ -2898,7 +2714,7 @@ export default function PosDemoPage() {
           <div className="max-h-[280px] overflow-y-auto overscroll-contain rounded-lg bg-slate-50 p-2">
             {drawerSummary?.events.length ? (
               <div className="space-y-1.5">
-                {drawerSummary.events.map((event) => (
+                {drawerSummary.events.map((event: CashDrawerEvent) => (
                   <div
                     key={event.id}
                     className="flex items-start justify-between gap-2 rounded-md bg-white px-2 py-1.5 text-xs"
@@ -3147,54 +2963,17 @@ export default function PosDemoPage() {
     </div>
   );
 
-  if (posAccess === "checking") {
+  if (posAccess !== "enabled") {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center bg-slate-50 px-6 text-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-          <p className="text-sm font-medium text-slate-500">
-            POS кассын эрх шалгаж байна...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (posAccess === "disabled") {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6 text-center">
-        <div className="w-full max-w-md rounded-2xl border border-amber-200 bg-white p-6 shadow-xl">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-            <AlertTriangle size={24} />
-          </div>
-          <h1 className="mt-4 text-xl font-black text-slate-950">
-            POS эрх идэвхгүй байна
-          </h1>
-          <p className="mt-2 text-sm font-medium leading-6 text-slate-600">
-            {posAccessMessage}
-          </p>
-          <div className="mt-5 flex flex-col gap-2 sm:flex-row">
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="flex-1 rounded-xl bg-slate-950 px-4 py-3 text-sm font-bold text-white hover:bg-slate-800"
-            >
-              Дахин шалгах
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                localStorage.removeItem("vendor_token");
-                localStorage.removeItem("vendor_user");
-                router.replace("/login");
-              }}
-              className="flex-1 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
-            >
-              Гарах
-            </button>
-          </div>
-        </div>
-      </div>
+      <PosAccessGate
+        status={posAccess}
+        message={posAccessMessage}
+        onLogout={() => {
+          localStorage.removeItem("vendor_token");
+          localStorage.removeItem("vendor_user");
+          router.replace("/login");
+        }}
+      />
     );
   }
 
@@ -3351,239 +3130,50 @@ export default function PosDemoPage() {
       <div className="mx-auto flex h-[calc(100vh-1.5rem)] max-w-[1800px] flex-col gap-3 overflow-hidden">
       {/* ── Register setup banner ────────────────────────────────── */}
       {!registerConfig && !showSetupPanel && !showRegisterPicker && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
-          <AlertTriangle size={16} className="text-amber-600 shrink-0" />
-          <p className="flex-1 text-sm text-amber-800 font-medium">
-            POS бүртгэгдээгүй байна.
-          </p>
-          <button
-            type="button"
-            onClick={() => { setShowSetupPanel(true); setSetupError(""); }}
-            className="flex items-center gap-1.5 h-8 px-3 rounded-lg bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600"
-          >
-            <Settings size={13} />
-            Бүртгэх
-          </button>
-        </div>
+        <PosRegisterSetupBanner
+          onOpen={() => {
+            setShowSetupPanel(true);
+            setSetupError("");
+          }}
+        />
       )}
 
       {/* ── Register picker (multiple approved registers) ──────────── */}
       {showRegisterPicker && !registerConfig && (
-        <div className="rounded-2xl border border-violet-200 bg-white shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-            <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Monitor size={15} className="text-violet-600" />
-              POS кассаа сонгох
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowRegisterPicker(false)}
-              className="text-slate-400 hover:text-slate-600"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <div className="px-5 py-4 space-y-2">
-            <p className="text-xs text-slate-500 mb-3">
-              Таны байгууллагад бүртгэгдсэн {orgRegisters.length} POS касс байна. Нэгийг сонгоно уу.
-            </p>
-            {orgRegisters.map((reg) => (
-              <button
-                key={reg.id}
-                type="button"
-                onClick={() => {
-                  localStorage.setItem("pos_register_id", reg.id);
-                  setRegisterConfig(reg);
-                  setShowRegisterPicker(false);
-                }}
-                className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-violet-400 hover:bg-violet-50 transition-colors text-left"
-              >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-600">
-                  <Monitor size={16} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-800">{reg.name}</p>
-                  <p className="text-xs text-slate-500">{reg.branch?.name}</p>
-                </div>
-                <div className="flex gap-1 flex-wrap justify-end">
-                  {reg.cardEnabled && (
-                    <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Карт</span>
-                  )}
-                  {reg.qpayEnabled && (
-                    <span className="text-[10px] font-semibold bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full">QPay</span>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+        <PosRegisterPicker
+          registers={orgRegisters}
+          onClose={() => setShowRegisterPicker(false)}
+          onSelect={selectRegister}
+        />
       )}
 
       {showSetupPanel && (
-        <div className="rounded-2xl border border-violet-200 bg-white shadow-sm overflow-hidden">
-          {/* panel header */}
-          <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-            <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
-              <Monitor size={15} className="text-violet-600" />
-              POS тохируулах
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowSetupPanel(false)}
-              className="text-slate-400 hover:text-slate-600"
-            >
-              <X size={16} />
-            </button>
-          </div>
-
-          {/* tabs */}
-          <div className="flex border-b border-slate-100">
-            <button
-              type="button"
-              onClick={() => { setSetupTab("new"); setSetupError(""); }}
-              className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${setupTab === "new" ? "bg-violet-50 text-violet-700 border-b-2 border-violet-500" : "text-slate-500 hover:bg-slate-50"}`}
-            >
-              Шинэ register үүсгэх
-            </button>
-            <button
-              type="button"
-              onClick={() => { setSetupTab("existing"); setSetupError(""); }}
-              className={`flex-1 py-2.5 text-sm font-semibold transition-colors ${setupTab === "existing" ? "bg-violet-50 text-violet-700 border-b-2 border-violet-500" : "text-slate-500 hover:bg-slate-50"}`}
-            >
-              Байгаа ID оруулах
-            </button>
-          </div>
-
-          <div className="px-5 py-4 space-y-3">
-            {setupError && (
-              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {setupError}
-              </div>
-            )}
-
-            {setupTab === "new" ? (
-              <div className="space-y-3">
-                <p className="text-xs text-slate-500">
-                  Энэ кассын нэрийг оруулна уу. Шинэ register үүсгэгдэн Admin батлалт хүлээнэ.
-                </p>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-500">Нэр</label>
-                  <input
-                    value={setupName}
-                    onChange={(e) => setSetupName(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSelfRegister()}
-                    placeholder="Касс 1"
-                    className="h-9 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-500">Салбар</label>
-                  {setupBranches.length === 0 ? (
-                    <p className="text-xs text-amber-600">Салбар олдсонгүй. Эхлээд салбар бүртгэнэ үү.</p>
-                  ) : (
-                    <select
-                      value={setupBranchId}
-                      onChange={(e) => setSetupBranchId(e.target.value)}
-                      className="h-9 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100 bg-white"
-                    >
-                      {setupBranches.map((b) => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                      ))}
-                    </select>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleSelfRegister}
-                  disabled={setupRegistering || !setupName.trim() || !setupBranchId}
-                  className="flex items-center gap-2 h-9 px-5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition-colors"
-                >
-                  {setupRegistering ? <Loader2 size={14} className="animate-spin" /> : <Monitor size={14} />}
-                  Register үүсгэх
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <p className="text-xs text-slate-500">
-                  Өмнө нь Admin-аас авсан Register UUID-г оруулна уу.
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    value={setupExistingId}
-                    onChange={(e) => setSetupExistingId(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleConnectExisting()}
-                    placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                    className="flex-1 h-9 rounded-xl border border-slate-200 px-3 text-sm font-mono outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleConnectExisting}
-                    disabled={setupRegistering || !setupExistingId.trim()}
-                    className="h-9 px-4 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50"
-                  >
-                    {setupRegistering ? <Loader2 size={14} className="animate-spin" /> : "Холбох"}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* QPay status info */}
-            <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs text-slate-600">
-                <Info size={13} className="text-slate-400 shrink-0" />
-                <span>QPay төлбөр:</span>
-                {registerConfig?.effectiveQpayEnabled ? (
-                  <span className="font-semibold text-emerald-600">Идэвхтэй</span>
-                ) : (
-                  <span className="font-semibold text-amber-600">Тохируулаагүй</span>
-                )}
-              </div>
-              <a
-                href={`${process.env.NEXT_PUBLIC_VENDOR_PORTAL_URL || "https://vendor.mglstore.mn"}/profile?tab=qpay`}
-                className="text-xs font-semibold text-violet-600 hover:underline shrink-0"
-              >
-                QPay тохиргоо →
-              </a>
-            </div>
-
-            {registerConfig && (
-              <button
-                type="button"
-                onClick={handleDisconnectRegister}
-                className="text-xs text-rose-500 hover:underline"
-              >
-                Одоогийн холболтыг салгах ({registerConfig.name})
-              </button>
-            )}
-          </div>
-        </div>
+        <PosRegisterSetupPanel
+          registerConfig={registerConfig}
+          setupTab={setupTab}
+          setupName={setupName}
+          setupBranches={setupBranches}
+          setupBranchId={setupBranchId}
+          setupRegistering={setupRegistering}
+          setupError={setupError}
+          setupExistingId={setupExistingId}
+          onClose={() => setShowSetupPanel(false)}
+          onChangeTab={setSetupTab}
+          onClearError={() => setSetupError("")}
+          onChangeName={setSetupName}
+          onChangeBranchId={setSetupBranchId}
+          onChangeExistingId={setSetupExistingId}
+          onCreate={handleSelfRegister}
+          onConnect={handleConnectExisting}
+          onDisconnect={handleDisconnectRegister}
+        />
       )}
 
       {registerConfig && !registerConfig.isActive && !showSetupPanel && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start justify-between gap-3">
-          <div className="flex items-start gap-2 text-sm text-amber-800 min-w-0">
-            <AlertTriangle size={14} className="text-amber-600 mt-0.5 shrink-0" />
-            <div className="min-w-0">
-              <p className="font-semibold">
-                {registerConfig.name}
-                <span className="font-normal text-amber-600"> · {registerConfig.branch.name}</span>
-              </p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                Admin батлахыг хүлээж байна. ID-г Admin-д дамжуулна уу:
-              </p>
-              <p className="text-xs font-mono text-amber-900 bg-amber-100 rounded px-1.5 py-0.5 mt-1 break-all select-all">
-                {registerConfig.id}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowSetupPanel(true)}
-            className="text-slate-400 hover:text-slate-600 shrink-0 mt-0.5"
-          >
-            <Settings size={14} />
-          </button>
-        </div>
+        <PosRegisterPendingBanner
+          registerConfig={registerConfig}
+          onOpenSettings={() => setShowSetupPanel(true)}
+        />
       )}
 
       {/* ── Shift open/close panel ─────────────────────────────── */}

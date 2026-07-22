@@ -26,6 +26,7 @@ import { getSupabase, ORG_IMAGES_BUCKET } from "../../lib/supabase";
 import { sendSmtpMail } from "../../lib/smtp";
 import { shouldExposeOrgProductsOnWeb } from "../../services/product-visibility.service";
 import { syncOwnerPersonalMembershipFromActiveOrgPlan } from "../../services/owner-membership-sync.service";
+import { sendPushToUsers } from "../../services/push-notification.service";
 
 const router: ExpressRouter = Router();
 const orgImagesDir = path.resolve(__dirname, "../../../uploads/organizations");
@@ -61,7 +62,8 @@ const sortProductsByExpiry = <
     );
   });
 
-const hasText = (value?: string | null) => String(value || "").trim().length > 0;
+const hasText = (value?: string | null) =>
+  String(value || "").trim().length > 0;
 
 const getPartnerPublicInfoScore = (partner: any) => {
   let score = 0;
@@ -75,7 +77,8 @@ const getPartnerPublicInfoScore = (partner: any) => {
   if (partner.subdomainEnabled) score += 4;
   if (partner.isVerified) score += 2;
   if (hasText(partner.businessCategory)) score += 2;
-  if (Array.isArray(partner.openingHours) && partner.openingHours.length > 0) score += 2;
+  if (Array.isArray(partner.openingHours) && partner.openingHours.length > 0)
+    score += 2;
   if (hasText(partner.deliveryText)) score += 2;
   if (hasText(partner.address)) score += 1;
   if (hasText(partner.phone)) score += 1;
@@ -87,16 +90,21 @@ const getPartnerInvestmentAmount = (partner: any) =>
   parseInvestmentAmount(partner?.investorProfile?.investmentLevel) || 0;
 
 const compareWebPartners = (a: any, b: any) => {
-  const publicInfoDiff = getPartnerPublicInfoScore(b) - getPartnerPublicInfoScore(a);
+  const publicInfoDiff =
+    getPartnerPublicInfoScore(b) - getPartnerPublicInfoScore(a);
   if (publicInfoDiff !== 0) return publicInfoDiff;
 
-  const investorDiff = Number(Boolean(b.investorProfile)) - Number(Boolean(a.investorProfile));
+  const investorDiff =
+    Number(Boolean(b.investorProfile)) - Number(Boolean(a.investorProfile));
   if (investorDiff !== 0) return investorDiff;
 
-  const investmentDiff = getPartnerInvestmentAmount(b) - getPartnerInvestmentAmount(a);
+  const investmentDiff =
+    getPartnerInvestmentAmount(b) - getPartnerInvestmentAmount(a);
   if (investmentDiff !== 0) return investmentDiff;
 
-  const createdDiff = getExpirySortValue(b.createdAt ?? null) - getExpirySortValue(a.createdAt ?? null);
+  const createdDiff =
+    getExpirySortValue(b.createdAt ?? null) -
+    getExpirySortValue(a.createdAt ?? null);
   if (createdDiff !== 0) return createdDiff;
 
   return String(a.name || "").localeCompare(String(b.name || ""), "mn");
@@ -110,6 +118,66 @@ const getStartOfToday = () => {
   date.setHours(0, 0, 0, 0);
   return date;
 };
+
+const toBusinessAppControlPayload = (organization: {
+  id: string;
+  name: string;
+  slug: string;
+  maxMembers: number;
+  businessOrdersEnabled: boolean;
+  businessInventoryEnabled: boolean;
+  businessAttendanceEnabled: boolean;
+  businessAttendanceManualEnabled: boolean;
+  businessTasksEnabled: boolean;
+  ceoServiceEnabled: boolean;
+  ceoAdviceNotificationsEnabled: boolean;
+  ceoCalendarRemindersEnabled: boolean;
+  ceoWeeklyDigestEnabled: boolean;
+  ceoRiskAlertsEnabled: boolean;
+  ceoKpiInsightsEnabled: boolean;
+  ceoDecisionBriefEnabled: boolean;
+  members?: Array<{
+    id: string;
+    role: string;
+    isPrimary: boolean;
+    isActive: boolean;
+    createdAt: Date;
+    user: {
+      id: string;
+      email: string | null;
+      isActive: boolean;
+      passwordHash: string | null;
+      lastLoginAt: Date | null;
+      profile: { fullName: string | null; phoneNumber: string | null } | null;
+    };
+  }>;
+  _count?: { members?: number };
+}) => ({
+  id: organization.id,
+  name: organization.name,
+  slug: organization.slug,
+  maxMembers: organization.maxMembers,
+  activeMembers: organization._count?.members ?? 0,
+  features: {
+    orders: organization.businessOrdersEnabled,
+    inventory: organization.businessInventoryEnabled,
+    attendance: organization.businessAttendanceEnabled,
+    tasks: organization.businessTasksEnabled,
+  },
+  ceoService: {
+    enabled: organization.ceoServiceEnabled,
+    adviceNotifications: organization.ceoAdviceNotificationsEnabled,
+    calendarReminders: organization.ceoCalendarRemindersEnabled,
+    weeklyDigest: organization.ceoWeeklyDigestEnabled,
+    riskAlerts: organization.ceoRiskAlertsEnabled,
+    kpiInsights: organization.ceoKpiInsightsEnabled,
+    decisionBrief: organization.ceoDecisionBriefEnabled,
+  },
+  settings: {
+    attendanceManual: organization.businessAttendanceManualEnabled,
+  },
+  members: organization.members?.map(mapOrganizationLoginMember) ?? [],
+});
 
 const orgImportUpload = multer({
   storage: multer.memoryStorage(),
@@ -174,12 +242,27 @@ const partnerLocationAliases: Record<string, string[]> = {
   khentii: ["Хэнтий", "Khentii", "Hentii"],
 };
 
+const localPartnerLocationKeys = Object.keys(partnerLocationAliases).filter(
+  (key) => key !== "ulaanbaatar",
+);
+
 // Temporary public catalog hold: keep records intact while showing this location as empty.
 const temporarilyEmptyPartnerLocations = new Set(["erdenet"]);
 
 function getPartnerLocationAliases(value: string) {
   const key = value.trim().toLowerCase();
   if (!key) return [];
+  if (key === "local") {
+    return Array.from(
+      new Set(
+        localPartnerLocationKeys.flatMap((locationKey) => [
+          locationKey,
+          locationKey.replace(/[-_]/g, " "),
+          ...(partnerLocationAliases[locationKey] ?? []),
+        ]),
+      ),
+    );
+  }
   const aliases = partnerLocationAliases[key] ?? [];
   return Array.from(
     new Set(
@@ -279,9 +362,7 @@ function normalizeLoginPhone(value: unknown) {
 
   const digits = raw.replace(/[^\d]/g, "");
   const phone =
-    digits.startsWith("976") && digits.length === 11
-      ? digits.slice(3)
-      : digits;
+    digits.startsWith("976") && digits.length === 11 ? digits.slice(3) : digits;
 
   if (phone.length < 6 || phone.length > 12) {
     return {
@@ -293,7 +374,10 @@ function normalizeLoginPhone(value: unknown) {
   return { phone, error: "" };
 }
 
-async function assertVendorPhoneIsAvailable(phone: string | null, userId: string) {
+async function assertVendorPhoneIsAvailable(
+  phone: string | null,
+  userId: string,
+) {
   if (!phone) return null;
 
   return prisma.profile.findFirst({
@@ -417,6 +501,536 @@ function haversineDistanceMeters(
   return earthRadius * c;
 }
 
+router.get(
+  "/admin/organizations/app-controls",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const search = String(req.query.search || "").trim();
+      const organizations = await prisma.organization.findMany({
+        where: {
+          deletedAt: null,
+          ...(search
+            ? {
+                OR: [
+                  { name: { contains: search, mode: "insensitive" } },
+                  { slug: { contains: search, mode: "insensitive" } },
+                  { phone: { contains: search, mode: "insensitive" } },
+                ],
+              }
+            : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          maxMembers: true,
+          businessOrdersEnabled: true,
+          businessInventoryEnabled: true,
+          businessAttendanceEnabled: true,
+          businessAttendanceManualEnabled: true,
+          businessTasksEnabled: true,
+          ceoServiceEnabled: true,
+          ceoAdviceNotificationsEnabled: true,
+          ceoCalendarRemindersEnabled: true,
+          ceoWeeklyDigestEnabled: true,
+          ceoRiskAlertsEnabled: true,
+          ceoKpiInsightsEnabled: true,
+          ceoDecisionBriefEnabled: true,
+          members: {
+            where: { isActive: true, deletedAt: null },
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            select: {
+              id: true,
+              role: true,
+              isPrimary: true,
+              isActive: true,
+              createdAt: true,
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  isActive: true,
+                  passwordHash: true,
+                  lastLoginAt: true,
+                  profile: {
+                    select: { fullName: true, phoneNumber: true },
+                  },
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              members: {
+                where: { isActive: true, deletedAt: null },
+              },
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 80,
+      });
+
+      return res.json(organizations.map(toBusinessAppControlPayload));
+    } catch (error) {
+      console.error("get business app controls error", error);
+      return res
+        .status(500)
+        .json({ message: "Business app control татахад алдаа гарлаа" });
+    }
+  },
+);
+
+router.patch(
+  "/admin/organizations/:id/app-controls",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const body = req.body as {
+        maxMembers?: number;
+        features?: {
+          orders?: boolean;
+          inventory?: boolean;
+          attendance?: boolean;
+          tasks?: boolean;
+        };
+        settings?: {
+          attendanceManual?: boolean;
+        };
+        ceoService?: {
+          enabled?: boolean;
+          adviceNotifications?: boolean;
+          calendarReminders?: boolean;
+          weeklyDigest?: boolean;
+          riskAlerts?: boolean;
+          kpiInsights?: boolean;
+          decisionBrief?: boolean;
+        };
+      };
+
+      const data: Prisma.OrganizationUpdateInput = {};
+      if (body.maxMembers !== undefined) {
+        const nextMaxMembers = Number(body.maxMembers);
+        if (!Number.isInteger(nextMaxMembers) || nextMaxMembers < 1) {
+          return res
+            .status(400)
+            .json({ message: "Ажилчдын лимит 1-ээс их бүхэл тоо байна" });
+        }
+        const activeMembers = await prisma.organizationMember.count({
+          where: { organizationId: id, isActive: true, deletedAt: null },
+        });
+        if (nextMaxMembers < activeMembers) {
+          return res.status(400).json({
+            message: `Одоо ${activeMembers} идэвхтэй ажилтантай тул лимит түүнээс бага байж болохгүй`,
+          });
+        }
+        data.maxMembers = nextMaxMembers;
+      }
+
+      if (body.features) {
+        if (body.features.orders !== undefined) {
+          data.businessOrdersEnabled = Boolean(body.features.orders);
+        }
+        if (body.features.inventory !== undefined) {
+          data.businessInventoryEnabled = Boolean(body.features.inventory);
+        }
+        if (body.features.attendance !== undefined) {
+          data.businessAttendanceEnabled = Boolean(body.features.attendance);
+        }
+        if (body.features.tasks !== undefined) {
+          data.businessTasksEnabled = Boolean(body.features.tasks);
+        }
+      }
+      if (body.settings?.attendanceManual !== undefined) {
+        data.businessAttendanceManualEnabled = Boolean(
+          body.settings.attendanceManual,
+        );
+      }
+      if (body.ceoService) {
+        if (body.ceoService.enabled !== undefined) {
+          data.ceoServiceEnabled = Boolean(body.ceoService.enabled);
+        }
+        if (body.ceoService.adviceNotifications !== undefined) {
+          data.ceoAdviceNotificationsEnabled = Boolean(
+            body.ceoService.adviceNotifications,
+          );
+        }
+        if (body.ceoService.calendarReminders !== undefined) {
+          data.ceoCalendarRemindersEnabled = Boolean(
+            body.ceoService.calendarReminders,
+          );
+        }
+        if (body.ceoService.weeklyDigest !== undefined) {
+          data.ceoWeeklyDigestEnabled = Boolean(body.ceoService.weeklyDigest);
+        }
+        if (body.ceoService.riskAlerts !== undefined) {
+          data.ceoRiskAlertsEnabled = Boolean(body.ceoService.riskAlerts);
+        }
+        if (body.ceoService.kpiInsights !== undefined) {
+          data.ceoKpiInsightsEnabled = Boolean(body.ceoService.kpiInsights);
+        }
+        if (body.ceoService.decisionBrief !== undefined) {
+          data.ceoDecisionBriefEnabled = Boolean(body.ceoService.decisionBrief);
+        }
+      }
+
+      if (Object.keys(data).length === 0) {
+        return res.status(400).json({ message: "Өөрчлөх тохиргоо алга" });
+      }
+
+      const organization = await prisma.organization.update({
+        where: { id },
+        data,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          maxMembers: true,
+          businessOrdersEnabled: true,
+          businessInventoryEnabled: true,
+          businessAttendanceEnabled: true,
+          businessAttendanceManualEnabled: true,
+          businessTasksEnabled: true,
+          ceoServiceEnabled: true,
+          ceoAdviceNotificationsEnabled: true,
+          ceoCalendarRemindersEnabled: true,
+          ceoWeeklyDigestEnabled: true,
+          ceoRiskAlertsEnabled: true,
+          ceoKpiInsightsEnabled: true,
+          ceoDecisionBriefEnabled: true,
+          members: {
+            where: { isActive: true, deletedAt: null },
+            orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+            select: {
+              id: true,
+              role: true,
+              isPrimary: true,
+              isActive: true,
+              createdAt: true,
+              user: {
+                select: {
+                  id: true,
+                  email: true,
+                  isActive: true,
+                  passwordHash: true,
+                  lastLoginAt: true,
+                  profile: {
+                    select: { fullName: true, phoneNumber: true },
+                  },
+                },
+              },
+            },
+          },
+          _count: {
+            select: {
+              members: {
+                where: { isActive: true, deletedAt: null },
+              },
+            },
+          },
+        },
+      });
+
+      return res.json(toBusinessAppControlPayload(organization));
+    } catch (error) {
+      console.error("update business app controls error", error);
+      return res
+        .status(500)
+        .json({ message: "Business app control хадгалахад алдаа гарлаа" });
+    }
+  },
+);
+
+router.post(
+  "/admin/organizations/:id/ceo-service/advice",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const title = String(req.body?.title || "CEO зөвлөгөө")
+        .trim()
+        .slice(0, 80);
+      const body = String(req.body?.body || "")
+        .trim()
+        .slice(0, 500);
+      if (!body) {
+        return res
+          .status(400)
+          .json({ message: "Зөвлөгөөний агуулга шаардлагатай" });
+      }
+
+      const organization = await prisma.organization.findFirst({
+        where: { id: req.params.id, deletedAt: null },
+        select: {
+          id: true,
+          ceoServiceEnabled: true,
+          ceoAdviceNotificationsEnabled: true,
+          members: {
+            where: {
+              isActive: true,
+              deletedAt: null,
+              OR: [{ isPrimary: true }, { role: "OWNER" }],
+            },
+            select: { userId: true },
+          },
+        },
+      });
+      if (!organization) {
+        return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+      }
+      if (
+        !organization.ceoServiceEnabled ||
+        !organization.ceoAdviceNotificationsEnabled
+      ) {
+        return res
+          .status(409)
+          .json({ message: "CEO зөвлөгөөний үйлчилгээ идэвхгүй байна" });
+      }
+
+      const userIds = organization.members.map((member) => member.userId);
+      const sentCount = await sendPushToUsers({
+        userIds,
+        title,
+        body,
+        data: { type: "ceo_advice", organizationId: organization.id },
+      });
+      return res.json({ recipientCount: userIds.length, sentCount });
+    } catch (error) {
+      console.error("send CEO advice error", error);
+      return res
+        .status(500)
+        .json({ message: "CEO зөвлөгөө илгээхэд алдаа гарлаа" });
+    }
+  },
+);
+
+router.get("/org/ceo-service/brief", requireAuth, async (req, res) => {
+  try {
+    const user = (req as unknown as { user: AuthPayload }).user;
+    const organizationId = String(req.query.organizationId || "").trim();
+    if (!organizationId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+
+    const membership = await prisma.organizationMember.findFirst({
+      where: {
+        organizationId,
+        userId: user.userId,
+        isActive: true,
+        deletedAt: null,
+        OR: [{ isPrimary: true }, { role: "OWNER" }],
+      },
+      select: {
+        organization: {
+          select: {
+            ceoServiceEnabled: true,
+            ceoWeeklyDigestEnabled: true,
+            ceoRiskAlertsEnabled: true,
+            ceoKpiInsightsEnabled: true,
+            ceoDecisionBriefEnabled: true,
+          },
+        },
+      },
+    });
+    if (!membership) {
+      return res.status(403).json({ message: "CEO / Owner эрх шаардлагатай" });
+    }
+    if (!membership.organization.ceoServiceEnabled) {
+      return res
+        .status(403)
+        .json({ message: "CEO тусгай үйлчилгээ идэвхгүй байна" });
+    }
+
+    const now = new Date();
+    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const nextDay = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const [weeklyAssignees, riskTasks] = await Promise.all([
+      prisma.organizationTaskAssignee.findMany({
+        where: {
+          task: { organizationId, deletedAt: null },
+          updatedAt: { gte: weekStart },
+        },
+        select: { status: true },
+      }),
+      prisma.organizationTask.findMany({
+        where: {
+          organizationId,
+          deletedAt: null,
+          dueAt: { not: null, lte: nextDay },
+          assignees: { some: { status: { notIn: ["DONE", "CANCELLED"] } } },
+        },
+        select: { id: true, title: true, dueAt: true, priority: true },
+        orderBy: { dueAt: "asc" },
+        take: 10,
+      }),
+    ]);
+
+    const completed = weeklyAssignees.filter(
+      (item) => item.status === "DONE",
+    ).length;
+    const total = weeklyAssignees.length;
+    const completionRate =
+      total === 0 ? 0 : Math.round((completed / total) * 100);
+    const overdueCount = riskTasks.filter(
+      (task) => task.dueAt && task.dueAt.getTime() < now.getTime(),
+    ).length;
+    const decisions = [
+      ...(overdueCount > 0
+        ? [
+            `Хугацаа хэтэрсэн ${overdueCount} ажлын эзэн, дараагийн алхмыг баталгаажуулах`,
+          ]
+        : []),
+      ...(completionRate < 70 && total > 0
+        ? ["7 хоногийн гүйцэтгэл 70%-аас доош байгаа шалтгааныг багтай ярилцах"]
+        : []),
+      ...(riskTasks.length > overdueCount
+        ? [
+            `24 цагийн дотор дуусах ${riskTasks.length - overdueCount} ажлыг эрэмбэлэх`,
+          ]
+        : []),
+    ];
+
+    return res.json({
+      generatedAt: now,
+      weeklyDigest: membership.organization.ceoWeeklyDigestEnabled
+        ? { total, completed, open: total - completed, completionRate }
+        : null,
+      riskAlerts: membership.organization.ceoRiskAlertsEnabled
+        ? riskTasks.map((task) => ({
+            ...task,
+            isOverdue: Boolean(
+              task.dueAt && task.dueAt.getTime() < now.getTime(),
+            ),
+          }))
+        : null,
+      kpiInsights: membership.organization.ceoKpiInsightsEnabled
+        ? {
+            taskCompletionRate: completionRate,
+            completedTasks: completed,
+            activeTasks: total - completed,
+            health:
+              total === 0
+                ? "NO_DATA"
+                : completionRate >= 80
+                  ? "GOOD"
+                  : completionRate >= 60
+                    ? "WATCH"
+                    : "AT_RISK",
+          }
+        : null,
+      decisionBrief: membership.organization.ceoDecisionBriefEnabled
+        ? decisions.slice(0, 3)
+        : null,
+    });
+  } catch (error) {
+    console.error("get CEO service brief error", error);
+    return res
+      .status(500)
+      .json({ message: "CEO товч мэдээлэл татахад алдаа гарлаа" });
+  }
+});
+
+router.post(
+  "/admin/ceo-service/calendar-reminders/run",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (_req, res) => {
+    try {
+      const now = new Date();
+      const reminderWindowEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      const tasks = await prisma.organizationTask.findMany({
+        where: {
+          deletedAt: null,
+          dueAt: { gt: now, lte: reminderWindowEnd },
+          organization: {
+            deletedAt: null,
+            ceoServiceEnabled: true,
+            ceoCalendarRemindersEnabled: true,
+          },
+          assignees: {
+            some: { status: { notIn: ["DONE", "CANCELLED"] } },
+          },
+        },
+        select: {
+          id: true,
+          title: true,
+          dueAt: true,
+          organizationId: true,
+          organization: {
+            select: {
+              members: {
+                where: {
+                  isActive: true,
+                  deletedAt: null,
+                  OR: [{ isPrimary: true }, { role: "OWNER" }],
+                },
+                select: { userId: true },
+              },
+            },
+          },
+        },
+        take: 200,
+      });
+
+      let sentCount = 0;
+      for (const task of tasks) {
+        const referenceKey = `${task.id}:${task.dueAt?.toISOString().slice(0, 10)}`;
+        const recipientIds = task.organization.members
+          .map((member) => member.userId)
+          .filter(Boolean);
+        const delivered = await prisma.ceoNotificationDelivery.findMany({
+          where: {
+            organizationId: task.organizationId,
+            userId: { in: recipientIds },
+            type: "CALENDAR_DUE",
+            referenceKey,
+          },
+          select: { userId: true },
+        });
+        const deliveredIds = new Set(delivered.map((item) => item.userId));
+        const pendingIds = recipientIds.filter(
+          (userId) => !deliveredIds.has(userId),
+        );
+        if (pendingIds.length === 0) continue;
+
+        const successful = await sendPushToUsers({
+          userIds: pendingIds,
+          title: "Ажлын хугацаа ойртлоо",
+          body: `“${task.title}” ажил 24 цагийн дотор дуусна.`,
+          data: {
+            type: "ceo_calendar_reminder",
+            organizationId: task.organizationId,
+            taskId: task.id,
+          },
+        });
+        if (successful > 0) {
+          await prisma.ceoNotificationDelivery.createMany({
+            data: pendingIds.map((userId) => ({
+              organizationId: task.organizationId,
+              userId,
+              type: "CALENDAR_DUE",
+              referenceKey,
+            })),
+            skipDuplicates: true,
+          });
+          sentCount += successful;
+        }
+      }
+
+      return res.json({ taskCount: tasks.length, sentCount });
+    } catch (error) {
+      console.error("run CEO calendar reminders error", error);
+      return res
+        .status(500)
+        .json({ message: "Calendar сануулга ажиллуулахад алдаа гарлаа" });
+    }
+  },
+);
+
 // Grouped by businessCategory (must be before /partners to avoid Express matching issues)
 router.post(
   "/admin/organizations",
@@ -462,7 +1076,9 @@ router.post(
           .status(400)
           .json({ message: "Owner email зөв форматтай байх ёстой" });
       }
-      const resolvedOwnerRole: StaffRole = VALID_STAFF_ROLES.includes(ownerRole as StaffRole)
+      const resolvedOwnerRole: StaffRole = VALID_STAFF_ROLES.includes(
+        ownerRole as StaffRole,
+      )
         ? (ownerRole as StaffRole)
         : "OWNER";
 
@@ -546,8 +1162,14 @@ router.post(
               },
               create: {
                 userId: existingUser.id,
-                fullName: ownerName?.trim() || existingUser.profile?.fullName || name.trim(),
-                phoneNumber: ownerPhone?.trim() || existingUser.profile?.phoneNumber || null,
+                fullName:
+                  ownerName?.trim() ||
+                  existingUser.profile?.fullName ||
+                  name.trim(),
+                phoneNumber:
+                  ownerPhone?.trim() ||
+                  existingUser.profile?.phoneNumber ||
+                  null,
               },
             });
 
@@ -597,14 +1219,12 @@ router.post(
           },
           select: { id: true, name: true, slug: true, taxId: true },
         });
-        return res
-          .status(201)
-          .json({
-            organization,
-            user: null,
-            inviteToken: null,
-            inviteLink: null,
-          });
+        return res.status(201).json({
+          organization,
+          user: null,
+          inviteToken: null,
+          inviteLink: null,
+        });
       }
 
       const existingUser = await prisma.user.findUnique({
@@ -615,7 +1235,9 @@ router.post(
         },
       });
 
-      const inviteToken = existingUser?.passwordHash ? null : generateInviteToken();
+      const inviteToken = existingUser?.passwordHash
+        ? null
+        : generateInviteToken();
       const inviteTokenExpiresAt = inviteToken ? getInviteTokenExpiry() : null;
 
       const result = await prisma.$transaction(
@@ -720,7 +1342,9 @@ router.post(
         user: result.user,
         inviteToken,
         inviteTokenExpiresAt,
-        inviteLink: inviteToken ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}` : null,
+        inviteLink: inviteToken
+          ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}`
+          : null,
       });
     } catch (error) {
       console.error("create admin organization error", error);
@@ -1127,7 +1751,9 @@ router.get("/partners", async (req, res) => {
       isInvestor: !!partner.investorProfile,
       investorTier: partner.investorProfile?.tier || null,
       investorLevel: partner.investorProfile?.investmentLevel || null,
-      investmentAmount: parseInvestmentAmount(partner.investorProfile?.investmentLevel),
+      investmentAmount: parseInvestmentAmount(
+        partner.investorProfile?.investmentLevel,
+      ),
       publicInfoScore: getPartnerPublicInfoScore(partner),
       subdomainEnabled: partner.subdomainEnabled,
       planActivatedAt: partner.planActivatedAt,
@@ -1250,7 +1876,11 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
       await Promise.all([
         getOrganizationLoginMembers(partner.id),
         prisma.organizationMember.count({
-          where: { organizationId: partner.id, isActive: true, deletedAt: null },
+          where: {
+            organizationId: partner.id,
+            isActive: true,
+            deletedAt: null,
+          },
         }),
         prisma.product.count({
           where: { organizationId: partner.id, deletedAt: null },
@@ -1290,7 +1920,9 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
       isInvestor: !!partner.investorProfile,
       investorTier: partner.investorProfile?.tier || null,
       investorLevel: partner.investorProfile?.investmentLevel || null,
-      investmentAmount: parseInvestmentAmount(partner.investorProfile?.investmentLevel),
+      investmentAmount: parseInvestmentAmount(
+        partner.investorProfile?.investmentLevel,
+      ),
       subdomainEnabled: partner.subdomainEnabled,
       planType: (partner as any).planType,
       planActivatedAt: partner.planActivatedAt,
@@ -1510,12 +2142,10 @@ router.post(
           },
         });
         if (alreadyMember) {
-          return res
-            .status(409)
-            .json({
-              message:
-                "Энэ хэрэглэгч аль хэдийн тухайн байгууллагад бүртгэлтэй байна",
-            });
+          return res.status(409).json({
+            message:
+              "Энэ хэрэглэгч аль хэдийн тухайн байгууллагад бүртгэлтэй байна",
+          });
         }
       }
 
@@ -1543,7 +2173,9 @@ router.post(
             await tx.profile.upsert({
               where: { userId: user.id },
               update: {
-                ...(phone !== undefined ? { phoneNumber: phone?.trim() || null } : {}),
+                ...(phone !== undefined
+                  ? { phoneNumber: phone?.trim() || null }
+                  : {}),
               },
               create: {
                 userId: user.id,
@@ -1757,11 +2389,9 @@ router.post(
         return res.status(404).json({ message: "Байгууллага олдсонгүй" });
       }
       if (organization.status !== "ACTIVE") {
-        return res
-          .status(400)
-          .json({
-            message: "Зөвхөн active байгууллагад салбар нэмэх боломжтой",
-          });
+        return res.status(400).json({
+          message: "Зөвхөн active байгууллагад салбар нэмэх боломжтой",
+        });
       }
 
       const hasLatInput =
@@ -1813,11 +2443,9 @@ router.post(
       });
 
       if (duplicate) {
-        return res
-          .status(409)
-          .json({
-            message: "Энэ байгууллагад ижил нэр эсвэл хаягтай салбар байна",
-          });
+        return res.status(409).json({
+          message: "Энэ байгууллагад ижил нэр эсвэл хаягтай салбар байна",
+        });
       }
 
       const created = await prisma.branch.create({
@@ -1975,7 +2603,9 @@ router.get("/partners/:slugOrId", optionalAuth, async (req, res) => {
       isInvestor: !!partner.investorProfile,
       investorTier: partner.investorProfile?.tier || null,
       investorLevel: partner.investorProfile?.investmentLevel || null,
-      investmentAmount: parseInvestmentAmount(partner.investorProfile?.investmentLevel),
+      investmentAmount: parseInvestmentAmount(
+        partner.investorProfile?.investmentLevel,
+      ),
       subdomainEnabled: partner.subdomainEnabled,
       planActivatedAt: partner.planActivatedAt,
       planExpiresAt: partner.planExpiresAt,
@@ -2085,10 +2715,14 @@ router.post(
 
       const normalizedEmail = normalizeEmail(email);
       if (!fullName?.trim()) {
-        return res.status(400).json({ message: "Login хэрэглэгчийн нэр шаардлагатай" });
+        return res
+          .status(400)
+          .json({ message: "Login хэрэглэгчийн нэр шаардлагатай" });
       }
       if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
-        return res.status(400).json({ message: "Login email зөв форматтай байх ёстой" });
+        return res
+          .status(400)
+          .json({ message: "Login email зөв форматтай байх ёстой" });
       }
 
       const organization = await prisma.organization.findUnique({
@@ -2102,12 +2736,15 @@ router.post(
       const activeMembersCount = await prisma.organizationMember.count({
         where: { organizationId, isActive: true },
       });
-      const resolvedRole: StaffRole = VALID_STAFF_ROLES.includes(role as StaffRole)
+      const resolvedRole: StaffRole = VALID_STAFF_ROLES.includes(
+        role as StaffRole,
+      )
         ? (role as StaffRole)
         : activeMembersCount === 0
           ? "OWNER"
           : "ADMIN";
-      const shouldBePrimary = resolvedRole === "OWNER" || activeMembersCount === 0;
+      const shouldBePrimary =
+        resolvedRole === "OWNER" || activeMembersCount === 0;
 
       const existingUser = await prisma.user.findUnique({
         where: { email: normalizedEmail },
@@ -2138,14 +2775,12 @@ router.post(
           !existingMembership.deletedAt
         ) {
           const members = await getOrganizationLoginMembers(organizationId);
-          return res
-            .status(409)
-            .json({
-              message:
-                "Энэ хэрэглэгч тухайн байгууллагад аль хэдийн login эрхтэй байна",
-              existingUserId: existingUser.id,
-              members,
-            });
+          return res.status(409).json({
+            message:
+              "Энэ хэрэглэгч тухайн байгууллагад аль хэдийн login эрхтэй байна",
+            existingUserId: existingUser.id,
+            members,
+          });
         }
 
         if (existingMembership?.organizationId === organizationId) {
@@ -2153,7 +2788,9 @@ router.post(
         }
       }
 
-      const inviteToken = existingUser?.passwordHash ? null : generateInviteToken();
+      const inviteToken = existingUser?.passwordHash
+        ? null
+        : generateInviteToken();
       const inviteTokenExpiresAt = inviteToken ? getInviteTokenExpiry() : null;
 
       const result = await prisma.$transaction(
@@ -2196,7 +2833,9 @@ router.post(
             await tx.profile.upsert({
               where: { userId: user.id },
               update: {
-                ...(phone !== undefined ? { phoneNumber: phone?.trim() || null } : {}),
+                ...(phone !== undefined
+                  ? { phoneNumber: phone?.trim() || null }
+                  : {}),
               },
               create: {
                 userId: user.id,
@@ -2263,12 +2902,17 @@ router.post(
         grantedUserId: result.grantedUserId,
         inviteToken,
         inviteTokenExpiresAt,
-        inviteLink: inviteToken ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}` : null,
+        inviteLink: inviteToken
+          ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}`
+          : null,
         members: result.members,
       });
     } catch (error) {
       console.error("grant vendor login error", error);
-      const maybePrisma = error as { code?: string; meta?: { target?: unknown } };
+      const maybePrisma = error as {
+        code?: string;
+        meta?: { target?: unknown };
+      };
       if (maybePrisma?.code === "P2002") {
         return res.status(409).json({
           message:
@@ -2312,23 +2956,28 @@ router.patch(
       });
 
       if (!target) {
-        return res.status(404).json({ message: "Role солих хэрэглэгч олдсонгүй" });
+        return res
+          .status(404)
+          .json({ message: "Role солих хэрэглэгч олдсонгүй" });
       }
 
       if (target.role === "OWNER" || target.isPrimary) {
         return res.status(409).json({
-          message: "Owner эрхийг dropdown-оор солихгүй. Эхлээд өөр user-г Owner болгоно уу.",
+          message:
+            "Owner эрхийг dropdown-оор солихгүй. Эхлээд өөр user-г Owner болгоно уу.",
         });
       }
 
-      const members = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-        await tx.organizationMember.update({
-          where: { id: target.id },
-          data: { role: role as StaffRole },
-        });
+      const members = await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          await tx.organizationMember.update({
+            where: { id: target.id },
+            data: { role: role as StaffRole },
+          });
 
-        return getOrganizationLoginMembers(organizationId, tx);
-      });
+          return getOrganizationLoginMembers(organizationId, tx);
+        },
+      );
 
       return res.json({ members });
     } catch (error) {
@@ -2428,12 +3077,9 @@ router.patch(
       });
     } catch (error) {
       console.error("update vendor login member error", error);
-      return res
-        .status(500)
-        .json({
-          message:
-            "Login утас баталгаажуулах email илгээхэд алдаа гарлаа",
-        });
+      return res.status(500).json({
+        message: "Login утас баталгаажуулах email илгээхэд алдаа гарлаа",
+      });
     }
   },
 );
@@ -2548,7 +3194,11 @@ router.patch(
       const members = await prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
           await tx.organizationMember.updateMany({
-            where: { organizationId: id, userId: { not: userId }, role: "OWNER" },
+            where: {
+              organizationId: id,
+              userId: { not: userId },
+              role: "OWNER",
+            },
             data: { role: "ADMIN", isPrimary: false },
           });
 
@@ -2636,12 +3286,10 @@ router.post(
 
       if (error) {
         console.error("org image upload error", error);
-        return res
-          .status(500)
-          .json({
-            message: "Зураг upload хийхэд алдаа гарлаа",
-            error: error.message,
-          });
+        return res.status(500).json({
+          message: "Зураг upload хийхэд алдаа гарлаа",
+          error: error.message,
+        });
       }
 
       const { data: publicUrlData } = getSupabase()
@@ -2651,27 +3299,33 @@ router.post(
       return res.json({ url: publicUrlData.publicUrl });
     } catch (error) {
       console.error("org image upload error", error);
-      return res
-        .status(500)
-        .json({
-          message: "Зураг upload хийхэд алдаа гарлаа",
-          error: String(error),
-        });
+      return res.status(500).json({
+        message: "Зураг upload хийхэд алдаа гарлаа",
+        error: String(error),
+      });
     }
   },
 );
 
-// Update partner profile (vendor can update own org, admin can update any)
+// Update partner profile (organization managers can update their own org,
+// platform admins can update any organization).
 router.patch("/partners/:id/profile", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const user = (req as any).user as AuthPayload;
 
-    // Allow if admin OR if user belongs to this organization
+    // A membership alone is not enough: STAFF and VIEWER accounts must never
+    // be able to mutate their employer's public company profile.
     const isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
     if (!isAdmin) {
       const membership = await prisma.organizationMember.findFirst({
-        where: { userId: user.userId, organizationId: id },
+        where: {
+          userId: user.userId,
+          organizationId: id,
+          isActive: true,
+          deletedAt: null,
+          role: { in: ["OWNER", "ADMIN"] },
+        },
         select: { id: true },
       });
       if (!membership) {
@@ -2688,6 +3342,7 @@ router.patch("/partners/:id/profile", requireAuth, async (req, res) => {
       address,
       logoUrl,
       bannerUrl,
+      businessCategory,
       description,
       shortDescription,
       openingHours,
@@ -2698,12 +3353,22 @@ router.patch("/partners/:id/profile", requireAuth, async (req, res) => {
 
     const updateData: Record<string, any> = {};
 
-    if (name !== undefined) updateData.name = name;
+    if (name !== undefined) {
+      const normalizedName = String(name).trim();
+      if (!normalizedName) {
+        return res
+          .status(400)
+          .json({ message: "Байгууллагын нэр шаардлагатай" });
+      }
+      updateData.name = normalizedName;
+    }
     if (phone !== undefined) updateData.phone = phone;
     if (email !== undefined) updateData.email = email;
     if (address !== undefined) updateData.address = address;
     if (logoUrl !== undefined) updateData.logoUrl = logoUrl;
     if (bannerUrl !== undefined) updateData.bannerUrl = bannerUrl;
+    if (businessCategory !== undefined)
+      updateData.businessCategory = businessCategory || null;
     if (description !== undefined) updateData.description = description;
     if (shortDescription !== undefined)
       updateData.shortDescription = shortDescription;
@@ -2727,6 +3392,7 @@ router.patch("/partners/:id/profile", requireAuth, async (req, res) => {
       address: updated.address,
       logoUrl: updated.logoUrl,
       bannerUrl: updated.bannerUrl,
+      businessCategory: updated.businessCategory,
       description: updated.description,
       shortDescription: updated.shortDescription,
       openingHours: updated.openingHours,
@@ -3057,11 +3723,9 @@ router.post(
       }
 
       if (rows.length > 200) {
-        return res
-          .status(400)
-          .json({
-            message: "Нэг удаад 200-аас олон байгууллага оруулах боломжгүй",
-          });
+        return res.status(400).json({
+          message: "Нэг удаад 200-аас олон байгууллага оруулах боломжгүй",
+        });
       }
 
       // Column name mapping — exact match to the ODS template
@@ -3255,8 +3919,12 @@ router.post(
           const slug = await generateUniqueOrganizationSlug(orgName);
           const finalTaxId =
             resolvedTaxId || (await generateUniqueTaxId("TEMP"));
-          const inviteToken = existingUser?.passwordHash ? null : generateInviteToken();
-          const inviteTokenExpiresAt = inviteToken ? getInviteTokenExpiry() : null;
+          const inviteToken = existingUser?.passwordHash
+            ? null
+            : generateInviteToken();
+          const inviteTokenExpiresAt = inviteToken
+            ? getInviteTokenExpiry()
+            : null;
 
           const orgType =
             type &&
@@ -3363,7 +4031,9 @@ router.post(
             id: result.organization.id,
             name: result.organization.name,
             email: result.user.email,
-            inviteLink: inviteToken ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}` : null,
+            inviteLink: inviteToken
+              ? `${VENDOR_APP_URL}/set-password?token=${inviteToken}`
+              : null,
           });
           results.created++;
         } catch (err) {

@@ -1,222 +1,250 @@
 import { Router, type Router as RouterType } from "express";
 import { prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
-import { requireAuth, requireRole, requireAnyAdmin, requirePlatformPermission } from "../../middleware/auth";
+import {
+  requireAuth,
+  requireRole,
+  requireAnyAdmin,
+  requirePlatformPermission,
+} from "../../middleware/auth";
 import { requireOrgPermission } from "../../services/permission.service";
 import bcrypt from "bcryptjs";
+import {
+  buildSystemFinancialOverview,
+  type FinancialOverviewWindow,
+} from "../../services/system-financial-overview.service";
+import {
+  countConsistentlyActiveOrganizations,
+  shiftActivityDate,
+  toActivityDate,
+} from "../../services/organization-activity.service";
 
 const router: RouterType = Router();
 
 /* ─── GET /admin/dashboard/stats ─────────────────────── */
-router.get("/admin/dashboard/stats", requireAuth, requireAnyAdmin, async (_req, res) => {
-  try {
-    const now = new Date();
-    const todayStart = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate(),
-    );
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+router.get(
+  "/admin/dashboard/stats",
+  requireAuth,
+  requireAnyAdmin,
+  async (_req, res) => {
+    try {
+      const now = new Date();
+      const todayStart = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+      );
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const [
-      totalUsers,
-      activeOrganizations,
-      totalRegistrations,
-      newRegistrationsToday,
-      pendingRequests,
-      approvedRequests,
-      rejectedRequests,
-      totalJobApplications,
-      todayJobApplications,
-      recentActivity,
-      requestsByStatus,
-      usersLast30Days,
-      orgsLast30Days,
-      jobAppsLast30Days,
-      totalInvestors,
-      investorProfiles,
-    ] = await Promise.all([
-      // Total active users
-      prisma.user.count({ where: { isActive: true, deletedAt: null } }),
-
-      // Active organizations
-      prisma.organization.count({
-        where: { status: "ACTIVE", deletedAt: null },
-      }),
-
-      // Total registration requests
-      prisma.registrationRequest.count(),
-
-      // New registrations today
-      prisma.registrationRequest.count({
-        where: { createdAt: { gte: todayStart } },
-      }),
-
-      // Pending requests
-      prisma.registrationRequest.count({ where: { status: "PENDING" } }),
-
-      // Approved requests (today)
-      prisma.registrationRequest.count({
-        where: { status: "APPROVED", approvedAt: { gte: todayStart } },
-      }),
-
-      // Rejected requests (today)
-      prisma.registrationRequest.count({
-        where: { status: "REJECTED", rejectedAt: { gte: todayStart } },
-      }),
-
-      // Total job applications
-      prisma.jobApplication.count(),
-
-      // Today's job applications
-      prisma.jobApplication.count({
-        where: { createdAt: { gte: todayStart } },
-      }),
-
-      // Recent audit logs (last 10)
-      prisma.auditLog.findMany({
-        orderBy: { createdAt: "desc" },
-        take: 10,
-        include: {
-          user: {
-            select: {
-              email: true,
-              profile: { select: { fullName: true } },
-            },
-          },
-        },
-      }),
-
-      // Registration requests grouped by status
-      prisma.registrationRequest.groupBy({
-        by: ["status"],
-        _count: { id: true },
-      }),
-
-      // Users created in last 30 days (grouped by day)
-      prisma.user.findMany({
-        where: { createdAt: { gte: thirtyDaysAgo }, deletedAt: null },
-        select: { createdAt: true },
-        orderBy: { createdAt: "asc" },
-      }),
-
-      // Orgs created in last 30 days
-      prisma.organization.findMany({
-        where: { createdAt: { gte: thirtyDaysAgo }, deletedAt: null },
-        select: { createdAt: true },
-        orderBy: { createdAt: "asc" },
-      }),
-
-      // Job applications in last 30 days
-      prisma.jobApplication.findMany({
-        where: { createdAt: { gte: thirtyDaysAgo } },
-        select: { createdAt: true },
-        orderBy: { createdAt: "asc" },
-      }),
-
-      // Total investors
-      prisma.investorProfile.count(),
-
-      // All investor profiles with investment amounts
-      prisma.investorProfile.findMany({
-        select: { investmentLevel: true },
-      }),
-    ]);
-
-    // Calculate total investment amount
-    const totalInvestmentAmount = investorProfiles.reduce((sum: number, p: (typeof investorProfiles)[number]) => {
-      return sum + (p.investmentLevel ? Number(p.investmentLevel) : 0);
-    }, 0);
-
-    // Build daily user counts for sparkline (last 12 data points)
-    const userSparkline = buildDailySparkline(
-      usersLast30Days.map((u: (typeof usersLast30Days)[number]) => u.createdAt),
-      30,
-    );
-
-    const orgSparkline = buildDailySparkline(
-      orgsLast30Days.map((o: (typeof orgsLast30Days)[number]) => o.createdAt),
-      30,
-    );
-
-    const jobAppsSparkline = buildDailySparkline(
-      jobAppsLast30Days.map((j: (typeof jobAppsLast30Days)[number]) => j.createdAt),
-      30,
-    );
-
-    // Build pie chart from request statuses
-    const statusMap: Record<string, number> = {};
-    for (const s of requestsByStatus) {
-      statusMap[s.status] = s._count.id;
-    }
-
-    const pieChart = {
-      total: totalRegistrations,
-      label: "Нийт хүсэлт",
-      items: [
-        {
-          label: "Шинэ хүсэлт",
-          count: statusMap["PENDING"] || 0,
-          color: "#6366f1",
-        },
-        {
-          label: "Зөвшөөрсөн",
-          count: statusMap["APPROVED"] || 0,
-          color: "#10b981",
-        },
-        {
-          label: "Татгалзсан",
-          count: statusMap["REJECTED"] || 0,
-          color: "#ef4444",
-        },
-        {
-          label: "Цуцлагдсан",
-          count: statusMap["CANCELLED"] || 0,
-          color: "#f59e0b",
-        },
-      ],
-    };
-
-    // Format audit logs for recent activity
-    const activity = recentActivity.map((log: (typeof recentActivity)[number]) => ({
-      id: log.id,
-      action: log.action,
-      userName: log.user?.profile?.fullName || log.user?.email || "Систем",
-      meta: log.meta,
-      createdAt: log.createdAt,
-    }));
-
-    // Today summary
-    const todaySummary = {
-      newRequests: newRegistrationsToday,
-      approved: approvedRequests,
-      rejected: rejectedRequests,
-      todayJobApplications,
-    };
-
-    return res.json({
-      stats: {
+      const [
         totalUsers,
         activeOrganizations,
         totalRegistrations,
+        newRegistrationsToday,
+        pendingRequests,
+        approvedRequests,
+        rejectedRequests,
         totalJobApplications,
+        todayJobApplications,
+        recentActivity,
+        requestsByStatus,
+        usersLast30Days,
+        orgsLast30Days,
+        jobAppsLast30Days,
         totalInvestors,
-        totalInvestmentAmount,
-      },
-      sparklines: {
-        users: userSparkline,
-        organizations: orgSparkline,
-        jobApplications: jobAppsSparkline,
-      },
-      pieChart,
-      activity,
-      todaySummary,
-    });
-  } catch (error) {
-    console.error("[dashboard stats error]", error);
-    return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
-  }
-});
+        investorProfiles,
+      ] = await Promise.all([
+        // Total active users
+        prisma.user.count({ where: { isActive: true, deletedAt: null } }),
+
+        // Active organizations
+        prisma.organization.count({
+          where: { status: "ACTIVE", deletedAt: null },
+        }),
+
+        // Total registration requests
+        prisma.registrationRequest.count(),
+
+        // New registrations today
+        prisma.registrationRequest.count({
+          where: { createdAt: { gte: todayStart } },
+        }),
+
+        // Pending requests
+        prisma.registrationRequest.count({ where: { status: "PENDING" } }),
+
+        // Approved requests (today)
+        prisma.registrationRequest.count({
+          where: { status: "APPROVED", approvedAt: { gte: todayStart } },
+        }),
+
+        // Rejected requests (today)
+        prisma.registrationRequest.count({
+          where: { status: "REJECTED", rejectedAt: { gte: todayStart } },
+        }),
+
+        // Total job applications
+        prisma.jobApplication.count(),
+
+        // Today's job applications
+        prisma.jobApplication.count({
+          where: { createdAt: { gte: todayStart } },
+        }),
+
+        // Recent audit logs (last 10)
+        prisma.auditLog.findMany({
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          include: {
+            user: {
+              select: {
+                email: true,
+                profile: { select: { fullName: true } },
+              },
+            },
+          },
+        }),
+
+        // Registration requests grouped by status
+        prisma.registrationRequest.groupBy({
+          by: ["status"],
+          _count: { id: true },
+        }),
+
+        // Users created in last 30 days (grouped by day)
+        prisma.user.findMany({
+          where: { createdAt: { gte: thirtyDaysAgo }, deletedAt: null },
+          select: { createdAt: true },
+          orderBy: { createdAt: "asc" },
+        }),
+
+        // Orgs created in last 30 days
+        prisma.organization.findMany({
+          where: { createdAt: { gte: thirtyDaysAgo }, deletedAt: null },
+          select: { createdAt: true },
+          orderBy: { createdAt: "asc" },
+        }),
+
+        // Job applications in last 30 days
+        prisma.jobApplication.findMany({
+          where: { createdAt: { gte: thirtyDaysAgo } },
+          select: { createdAt: true },
+          orderBy: { createdAt: "asc" },
+        }),
+
+        // Total investors
+        prisma.investorProfile.count(),
+
+        // All investor profiles with investment amounts
+        prisma.investorProfile.findMany({
+          select: { investmentLevel: true },
+        }),
+      ]);
+
+      // Calculate total investment amount
+      const totalInvestmentAmount = investorProfiles.reduce(
+        (sum: number, p: (typeof investorProfiles)[number]) => {
+          return sum + (p.investmentLevel ? Number(p.investmentLevel) : 0);
+        },
+        0,
+      );
+
+      // Build daily user counts for sparkline (last 12 data points)
+      const userSparkline = buildDailySparkline(
+        usersLast30Days.map(
+          (u: (typeof usersLast30Days)[number]) => u.createdAt,
+        ),
+        30,
+      );
+
+      const orgSparkline = buildDailySparkline(
+        orgsLast30Days.map((o: (typeof orgsLast30Days)[number]) => o.createdAt),
+        30,
+      );
+
+      const jobAppsSparkline = buildDailySparkline(
+        jobAppsLast30Days.map(
+          (j: (typeof jobAppsLast30Days)[number]) => j.createdAt,
+        ),
+        30,
+      );
+
+      // Build pie chart from request statuses
+      const statusMap: Record<string, number> = {};
+      for (const s of requestsByStatus) {
+        statusMap[s.status] = s._count.id;
+      }
+
+      const pieChart = {
+        total: totalRegistrations,
+        label: "Нийт хүсэлт",
+        items: [
+          {
+            label: "Шинэ хүсэлт",
+            count: statusMap["PENDING"] || 0,
+            color: "#6366f1",
+          },
+          {
+            label: "Зөвшөөрсөн",
+            count: statusMap["APPROVED"] || 0,
+            color: "#10b981",
+          },
+          {
+            label: "Татгалзсан",
+            count: statusMap["REJECTED"] || 0,
+            color: "#ef4444",
+          },
+          {
+            label: "Цуцлагдсан",
+            count: statusMap["CANCELLED"] || 0,
+            color: "#f59e0b",
+          },
+        ],
+      };
+
+      // Format audit logs for recent activity
+      const activity = recentActivity.map(
+        (log: (typeof recentActivity)[number]) => ({
+          id: log.id,
+          action: log.action,
+          userName: log.user?.profile?.fullName || log.user?.email || "Систем",
+          meta: log.meta,
+          createdAt: log.createdAt,
+        }),
+      );
+
+      // Today summary
+      const todaySummary = {
+        newRequests: newRegistrationsToday,
+        approved: approvedRequests,
+        rejected: rejectedRequests,
+        todayJobApplications,
+      };
+
+      return res.json({
+        stats: {
+          totalUsers,
+          activeOrganizations,
+          totalRegistrations,
+          totalJobApplications,
+          totalInvestors,
+          totalInvestmentAmount,
+        },
+        sparklines: {
+          users: userSparkline,
+          organizations: orgSparkline,
+          jobApplications: jobAppsSparkline,
+        },
+        pieChart,
+        activity,
+        todaySummary,
+      });
+    } catch (error) {
+      console.error("[dashboard stats error]", error);
+      return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
+    }
+  },
+);
 
 /* ─── Helper: build daily sparkline (last N days → 12 points) ─── */
 function buildDailySparkline(dates: Date[], days: number): number[] {
@@ -297,7 +325,9 @@ function buildExpiryRecommendation(params: {
     return "Хугацаа дууссан байж болзошгүй. Вэбээс түр нууж, буцаалт эсвэл устгалын шийдвэр шалгаарай.";
   }
   if (daysUntilExpiry <= 7) {
-    return dailyVelocity > 0 && sellThroughDays !== null && sellThroughDays <= daysUntilExpiry
+    return dailyVelocity > 0 &&
+      sellThroughDays !== null &&
+      sellThroughDays <= daysUntilExpiry
       ? "FEFO урсгал ажиллаж байна. Нүүр хуудсанд илүү байршуулж борлуулалтыг барина."
       : "7 хоногийн flash хямдрал, bundle эсвэл нүүр хуудсын онцлох байрлал санал болго.";
   }
@@ -344,7 +374,9 @@ async function buildVendorExpiryInsights(organizationId: string) {
   });
 
   const productIds = Array.from(
-    new Set(inventory.map((item: (typeof inventory)[number]) => item.product.id)),
+    new Set(
+      inventory.map((item: (typeof inventory)[number]) => item.product.id),
+    ),
   );
 
   const [onlineSales, posSales] = productIds.length
@@ -391,7 +423,9 @@ async function buildVendorExpiryInsights(organizationId: string) {
   const products = inventory
     .map((item: (typeof inventory)[number]) => {
       const expiryDate = item.expiryDate!;
-      const daysUntilExpiry = Math.ceil((expiryDate.getTime() - today.getTime()) / DAY_MS);
+      const daysUntilExpiry = Math.ceil(
+        (expiryDate.getTime() - today.getTime()) / DAY_MS,
+      );
       const salesLast30Days = salesByProductId.get(item.product.id) ?? 0;
       const dailyVelocity = round1(salesLast30Days / 30);
       const sellThroughDays =
@@ -433,12 +467,16 @@ async function buildVendorExpiryInsights(organizationId: string) {
       return a.daysUntilExpiry - b.daysUntilExpiry;
     });
 
-  const criticalCount = products.filter((item) => item.riskLevel === "critical").length;
+  const criticalCount = products.filter(
+    (item) => item.riskLevel === "critical",
+  ).length;
   const highCount = products.filter((item) => item.riskLevel === "high").length;
   const urgentCount = products.filter(
     (item) => item.daysUntilExpiry >= 0 && item.daysUntilExpiry <= 14,
   ).length;
-  const stagnantCount = products.filter((item) => item.salesLast30Days === 0).length;
+  const stagnantCount = products.filter(
+    (item) => item.salesLast30Days === 0,
+  ).length;
   const riskValue = products.reduce((sum, item) => sum + item.stockValue, 0);
 
   const recommendations: string[] = [];
@@ -449,10 +487,14 @@ async function buildVendorExpiryInsights(organizationId: string) {
     recommendations.push(`${urgentCount} бараа 14 хоногийн дотор дуусна.`);
   }
   if (stagnantCount > 0) {
-    recommendations.push(`${stagnantCount} бараа сүүлийн 30 хоногт борлуулалтгүй байна.`);
+    recommendations.push(
+      `${stagnantCount} бараа сүүлийн 30 хоногт борлуулалтгүй байна.`,
+    );
   }
   if (recommendations.length === 0) {
-    recommendations.push("Одоогоор дуусах хугацааны өндөр эрсдэлтэй бараа бага байна.");
+    recommendations.push(
+      "Одоогоор дуусах хугацааны өндөр эрсдэлтэй бараа бага байна.",
+    );
   }
 
   return {
@@ -471,1070 +513,1422 @@ async function buildVendorExpiryInsights(organizationId: string) {
 }
 
 /* ─── GET /admin/statistics/insights ─────────────────────── */
-router.get("/admin/statistics/insights", requireAuth, requireAnyAdmin, async (req, res) => {
-  try {
-    const requestedDays = String(req.query.days || 30);
-    const allTime = requestedDays === "all";
-    const parsedDays = Number(requestedDays);
-    const days = [7, 30, 90].includes(parsedDays) ? parsedDays : 30;
-    const since = allTime ? new Date(0) : new Date(Date.now() - days * DAY_MS);
-    const previousSince = allTime ? new Date(0) : new Date(Date.now() - days * 2 * DAY_MS);
-    const windowLabel = allTime ? "all" : days;
-
-    const [
-      activeUsers,
-      previousActiveUsers,
-      loginSessions,
-      previousLoginSessions,
-      onlineRevenue,
-      previousOnlineRevenue,
-      posRevenue,
-      previousPosRevenue,
-      onlineUnits,
-      posUnits,
-      onlineProducts,
-      posProducts,
-      onlineBranches,
-      posBranches,
-      orderStatus,
-      paymentStatus,
-      recentSales,
-    ] = await Promise.all([
-      prisma.user.count({ where: { lastLoginAt: { gte: since }, deletedAt: null } }),
-      prisma.user.count({ where: { lastLoginAt: { gte: previousSince, lt: since }, deletedAt: null } }),
-      prisma.userSession.count({ where: { createdAt: { gte: since } } }),
-      prisma.userSession.count({ where: { createdAt: { gte: previousSince, lt: since } } }),
-      prisma.order.aggregate({
-        where: { createdAt: { gte: since }, deletedAt: null, status: { not: "CANCELLED" }, paymentStatus: "PAID" },
-        _sum: { total: true },
-        _count: { id: true },
-      }),
-      prisma.order.aggregate({
-        where: { createdAt: { gte: previousSince, lt: since }, deletedAt: null, status: { not: "CANCELLED" }, paymentStatus: "PAID" },
-        _sum: { total: true },
-        _count: { id: true },
-      }),
-      prisma.posSale.aggregate({
-        where: { createdAt: { gte: since }, status: "COMPLETED" },
-        _sum: { grandTotal: true },
-        _count: { id: true },
-      }),
-      prisma.posSale.aggregate({
-        where: { createdAt: { gte: previousSince, lt: since }, status: "COMPLETED" },
-        _sum: { grandTotal: true },
-        _count: { id: true },
-      }),
-      prisma.orderItem.aggregate({
-        where: { order: { createdAt: { gte: since }, deletedAt: null, status: { not: "CANCELLED" } } },
-        _sum: { quantity: true },
-      }),
-      prisma.posSaleLine.aggregate({
-        where: { sale: { createdAt: { gte: since }, status: "COMPLETED" } },
-        _sum: { qty: true },
-      }),
-      prisma.orderItem.groupBy({
-        by: ["productId"],
-        where: { order: { createdAt: { gte: since }, deletedAt: null, status: { not: "CANCELLED" } } },
-        _sum: { quantity: true, subtotal: true },
-        _count: { id: true },
-      }),
-      prisma.posSaleLine.groupBy({
-        by: ["productId"],
-        where: { sale: { createdAt: { gte: since }, status: "COMPLETED" } },
-        _sum: { qty: true, lineTotal: true },
-        _count: { id: true },
-      }),
-      prisma.order.groupBy({
-        by: ["branchId"],
-        where: { branchId: { not: null }, createdAt: { gte: since }, deletedAt: null, status: { not: "CANCELLED" } },
-        _sum: { total: true },
-        _count: { id: true },
-      }),
-      prisma.posSale.groupBy({
-        by: ["branchId"],
-        where: { createdAt: { gte: since }, status: "COMPLETED" },
-        _sum: { grandTotal: true },
-        _count: { id: true },
-      }),
-      prisma.order.groupBy({
-        by: ["status"],
-        where: { createdAt: { gte: since }, deletedAt: null },
-        _count: { id: true },
-      }),
-      prisma.order.groupBy({
-        by: ["paymentStatus"],
-        where: { createdAt: { gte: since }, deletedAt: null },
-        _count: { id: true },
-      }),
-      prisma.posSale.findMany({
-        where: { createdAt: { gte: since }, status: "COMPLETED" },
-        orderBy: { createdAt: "desc" },
-        take: 12,
-        select: {
-          id: true,
-          receiptNo: true,
-          grandTotal: true,
-          createdAt: true,
-          branch: { select: { name: true } },
-          organization: { select: { name: true } },
-        },
-      }),
-    ]);
-
-    let loyaltySummary: {
-      action: string;
-      _sum: { earnedPoints: number | null; redeemedPoints: number | null; saleTotal: unknown };
-      _count: { id: number };
-    }[] = [];
-    let recentLoyaltyTransactions: {
-      id: string;
-      action: string;
-      customerPhone: string;
-      saleTotal: unknown;
-      earnedPoints: number;
-      redeemedPoints: number;
-      effectiveRate: unknown;
-      membershipBadge: string | null;
-      createdAt: Date;
-      sale: { receiptNo: string; paymentMethod: string } | null;
-      organization: { name: string } | null;
-      branch: { name: string } | null;
-      user: { profile: { fullName: string | null } | null } | null;
-    }[] = [];
-
+router.get(
+  "/admin/statistics/insights",
+  requireAuth,
+  requireAnyAdmin,
+  async (req, res) => {
     try {
-      [loyaltySummary, recentLoyaltyTransactions] = await Promise.all([
-        prisma.posLoyaltyTransaction.groupBy({
-          by: ["action"],
-          where: { createdAt: { gte: since } },
-          _sum: { earnedPoints: true, redeemedPoints: true, saleTotal: true },
+      const requestedDays = String(req.query.days || 30);
+      const allTime = requestedDays === "all";
+      const parsedDays = Number(requestedDays);
+      const days = [7, 30, 90].includes(parsedDays) ? parsedDays : 30;
+      const since = allTime
+        ? new Date(0)
+        : new Date(Date.now() - days * DAY_MS);
+      const previousSince = allTime
+        ? new Date(0)
+        : new Date(Date.now() - days * 2 * DAY_MS);
+      const windowLabel: FinancialOverviewWindow = allTime
+        ? "all"
+        : (days as Exclude<FinancialOverviewWindow, "all">);
+      const periodDescription = allTime
+        ? "Бүх хугацааны"
+        : `Сүүлийн ${days} хоногийн`;
+
+      const activityWindowDays = allTime ? 30 : days;
+      const activityEnd = shiftActivityDate(toActivityDate(new Date()), 1);
+      const activityStart = shiftActivityDate(activityEnd, -activityWindowDays);
+      const previousActivityStart = shiftActivityDate(
+        activityStart,
+        -activityWindowDays,
+      );
+      const consistentActivityPromise = Promise.all([
+        countConsistentlyActiveOrganizations(
+          activityStart,
+          activityEnd,
+          activityWindowDays,
+        ),
+        countConsistentlyActiveOrganizations(
+          previousActivityStart,
+          activityStart,
+          activityWindowDays,
+        ),
+      ]);
+
+      const financialOverviewPromise =
+        buildSystemFinancialOverview(windowLabel);
+
+      const [
+        activeUsers,
+        previousActiveUsers,
+        loginSessions,
+        previousLoginSessions,
+        onlineRevenue,
+        previousOnlineRevenue,
+        posRevenue,
+        previousPosRevenue,
+        onlineUnits,
+        posUnits,
+        onlineProducts,
+        posProducts,
+        onlineBranches,
+        posBranches,
+        orderStatus,
+        paymentStatus,
+        recentSales,
+      ] = await Promise.all([
+        prisma.user.count({
+          where: { lastLoginAt: { gte: since }, deletedAt: null },
+        }),
+        prisma.user.count({
+          where: {
+            lastLoginAt: { gte: previousSince, lt: since },
+            deletedAt: null,
+          },
+        }),
+        prisma.userSession.count({ where: { createdAt: { gte: since } } }),
+        prisma.userSession.count({
+          where: { createdAt: { gte: previousSince, lt: since } },
+        }),
+        prisma.order.aggregate({
+          where: {
+            deletedAt: null,
+            status: { not: "CANCELLED" },
+            paymentStatus: "PAID",
+            payments: {
+              some: { status: "PAID", paidAt: { gte: since } },
+            },
+          },
+          _sum: { total: true },
           _count: { id: true },
         }),
-        prisma.posLoyaltyTransaction.findMany({
-          where: { createdAt: { gte: since } },
-          orderBy: { createdAt: "desc" },
-          take: 30,
-          select: {
-            id: true,
-            action: true,
-            customerPhone: true,
-            saleTotal: true,
-            earnedPoints: true,
-            redeemedPoints: true,
-            effectiveRate: true,
-            membershipBadge: true,
-            createdAt: true,
-            sale: { select: { receiptNo: true, paymentMethod: true } },
-            organization: { select: { name: true } },
-            branch: { select: { name: true } },
-            user: { select: { profile: { select: { fullName: true } } } },
-          },
-        }),
-      ]);
-    } catch (loyaltyError) {
-      console.warn("[admin statistics loyalty unavailable]", loyaltyError);
-    }
-
-    const [
-      newUsers,
-      previousNewUsers,
-      newOrganizations,
-      previousNewOrganizations,
-      activeOrganizations,
-      verifiedOrganizations,
-      supplierOrganizations,
-      qpayEnabledOrganizations,
-      subdomainEnabledOrganizations,
-      activeBranches,
-      newProducts,
-      activeProducts,
-      activeServicePosts,
-      servicePostViews,
-      serviceRequests,
-      previousServiceRequests,
-      stockRequests,
-      cardTerminalRequests,
-      registrationRequests,
-      approvedRegistrationRequests,
-      pendingRegistrationRequests,
-      allOnlineOrders,
-      cancelledOnlineOrders,
-      paymentMethods,
-      organizationTypes,
-      businessCategories,
-    ] = await Promise.all([
-      prisma.user.count({ where: { createdAt: { gte: since }, deletedAt: null } }),
-      prisma.user.count({ where: { createdAt: { gte: previousSince, lt: since }, deletedAt: null } }),
-      prisma.organization.count({ where: { createdAt: { gte: since }, deletedAt: null } }),
-      prisma.organization.count({ where: { createdAt: { gte: previousSince, lt: since }, deletedAt: null } }),
-      prisma.organization.count({ where: { status: "ACTIVE", deletedAt: null } }),
-      prisma.organization.count({ where: { isVerified: true, deletedAt: null } }),
-      prisma.organization.count({ where: { type: "SUPPLIER", deletedAt: null } }),
-      prisma.organization.count({ where: { qpayEnabled: true, deletedAt: null } }),
-      prisma.organization.count({ where: { subdomainEnabled: true, deletedAt: null } }),
-      prisma.branch.count({ where: { deletedAt: null } }),
-      prisma.product.count({ where: { createdAt: { gte: since }, deletedAt: null } }),
-      prisma.product.count({ where: { isActive: true, deletedAt: null } }),
-      prisma.servicePost.count({ where: { isActive: true, deletedAt: null } }),
-      prisma.servicePost.aggregate({
-        where: { isActive: true, deletedAt: null },
-        _sum: { viewCount: true },
-      }),
-      prisma.serviceRequest.count({ where: { createdAt: { gte: since } } }),
-      prisma.serviceRequest.count({ where: { createdAt: { gte: previousSince, lt: since } } }),
-      prisma.warehouseStockRequest.count({ where: { requestedAt: { gte: since } } }),
-      prisma.cardTerminalRequest.count({ where: { createdAt: { gte: since } } }),
-      prisma.registrationRequest.count({ where: { createdAt: { gte: since } } }),
-      prisma.registrationRequest.count({ where: { createdAt: { gte: since }, status: "APPROVED" } }),
-      prisma.registrationRequest.count({ where: { status: "PENDING" } }),
-      prisma.order.count({ where: { createdAt: { gte: since }, deletedAt: null } }),
-      prisma.order.count({ where: { createdAt: { gte: since }, deletedAt: null, status: "CANCELLED" } }),
-      prisma.paymentAttempt.groupBy({
-        by: ["method"],
-        where: { createdAt: { gte: since } },
-        _sum: { amount: true },
-        _count: { id: true },
-      }),
-      prisma.organization.groupBy({
-        by: ["type"],
-        where: { deletedAt: null },
-        _count: { id: true },
-      }),
-      prisma.organization.groupBy({
-        by: ["businessCategory"],
-        where: { deletedAt: null, businessCategory: { not: null } },
-        _count: { id: true },
-        orderBy: { _count: { id: "desc" } },
-        take: 8,
-      }),
-    ]);
-
-    const productIds = Array.from(new Set([...onlineProducts, ...posProducts].map((item) => item.productId)));
-    const branchIds = Array.from(
-      new Set([...onlineBranches, ...posBranches].map((item) => item.branchId).filter((id): id is string => Boolean(id))),
-    );
-
-    const [products, branches] = await Promise.all([
-      productIds.length
-        ? prisma.product.findMany({
-            where: { id: { in: productIds } },
-            select: {
-              id: true,
-              name: true,
-              sku: true,
-              stock: true,
-              price: true,
-              organization: { select: { name: true } },
-              images: { select: { url: true }, take: 1 },
-            },
-          })
-        : [],
-      branchIds.length
-        ? prisma.branch.findMany({
-            where: { id: { in: branchIds } },
-            select: { id: true, name: true, address: true, organization: { select: { name: true } } },
-          })
-        : [],
-    ]);
-
-    const productMeta = new Map(products.map((p) => [p.id, p]));
-    const branchMeta = new Map(branches.map((b) => [b.id, b]));
-    const productMap = new Map<string, { productId: string; units: number; revenue: number; transactions: number }>();
-    for (const item of onlineProducts) {
-      productMap.set(item.productId, {
-        productId: item.productId,
-        units: item._sum.quantity ?? 0,
-        revenue: Number(item._sum.subtotal ?? 0),
-        transactions: item._count.id,
-      });
-    }
-    for (const item of posProducts) {
-      const prev = productMap.get(item.productId) ?? { productId: item.productId, units: 0, revenue: 0, transactions: 0 };
-      prev.units += item._sum.qty ?? 0;
-      prev.revenue += Number(item._sum.lineTotal ?? 0);
-      prev.transactions += item._count.id;
-      productMap.set(item.productId, prev);
-    }
-
-    const branchMap = new Map<string, { branchId: string; orders: number; onlineOrders: number; posSales: number; revenue: number }>();
-    for (const item of onlineBranches) {
-      if (!item.branchId) continue;
-      branchMap.set(item.branchId, {
-        branchId: item.branchId,
-        orders: item._count.id,
-        onlineOrders: item._count.id,
-        posSales: 0,
-        revenue: Number(item._sum.total ?? 0),
-      });
-    }
-    for (const item of posBranches) {
-      const prev = branchMap.get(item.branchId) ?? {
-        branchId: item.branchId,
-        orders: 0,
-        onlineOrders: 0,
-        posSales: 0,
-        revenue: 0,
-      };
-      prev.orders += item._count.id;
-      prev.posSales += item._count.id;
-      prev.revenue += Number(item._sum.grandTotal ?? 0);
-      branchMap.set(item.branchId, prev);
-    }
-
-    const totalRevenue = Number(onlineRevenue._sum.total ?? 0) + Number(posRevenue._sum.grandTotal ?? 0);
-    const previousRevenue = Number(previousOnlineRevenue._sum.total ?? 0) + Number(previousPosRevenue._sum.grandTotal ?? 0);
-    const totalOrders = onlineRevenue._count.id + posRevenue._count.id;
-    const previousOrders = previousOnlineRevenue._count.id + previousPosRevenue._count.id;
-    const trend = (current: number, previous: number) =>
-      previous > 0 ? Math.round(((current - previous) / previous) * 100) : current > 0 ? 100 : 0;
-    const windowTrend = (current: number, previous: number) => (allTime ? 0 : trend(current, previous));
-    const rate = (part: number, total: number) => (total > 0 ? Math.round((part / total) * 100) : 0);
-    const onlineRevenueValue = Number(onlineRevenue._sum.total ?? 0);
-    const posRevenueValue = Number(posRevenue._sum.grandTotal ?? 0);
-    const paidOnlineOrders = onlineRevenue._count.id;
-    const paidOrderRate = rate(paidOnlineOrders, allOnlineOrders);
-    const cancellationRate = rate(cancelledOnlineOrders, allOnlineOrders);
-    const registrationApprovalRate = rate(approvedRegistrationRequests, registrationRequests);
-    const verifiedOrgRate = rate(verifiedOrganizations, activeOrganizations);
-    const qpayAdoptionRate = rate(qpayEnabledOrganizations, activeOrganizations);
-    const subdomainAdoptionRate = rate(subdomainEnabledOrganizations, activeOrganizations);
-    const serviceConversionRate = rate(serviceRequests, servicePostViews._sum.viewCount ?? 0);
-    const unitsSold = (onlineUnits._sum.quantity ?? 0) + (posUnits._sum.qty ?? 0);
-    const avgTicket = totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
-    const loyaltyEarn = loyaltySummary.find((item) => item.action === "EARN");
-    const loyaltySpend = loyaltySummary.find((item) => item.action === "SPEND");
-    const loyaltyEarnedPoints = Number(loyaltyEarn?._sum.earnedPoints ?? 0);
-    const loyaltyRedeemedPoints = Number(loyaltySpend?._sum.redeemedPoints ?? 0);
-    const loyaltyTransactions = loyaltySummary.reduce((sum, item) => sum + item._count.id, 0);
-    const previousMetricValues = new Map<string, number | null>([
-      ["active-users", allTime ? null : previousActiveUsers],
-      ["new-users", allTime ? null : previousNewUsers],
-      ["login-sessions", allTime ? null : previousLoginSessions],
-      ["new-organizations", allTime ? null : previousNewOrganizations],
-      ["total-revenue", allTime ? null : previousRevenue],
-      ["online-revenue", allTime ? null : Number(previousOnlineRevenue._sum.total ?? 0)],
-      ["pos-revenue", allTime ? null : Number(previousPosRevenue._sum.grandTotal ?? 0)],
-      ["service-requests", allTime ? null : previousServiceRequests],
-    ]);
-
-    const topProducts = Array.from(productMap.values())
-      .map((item) => {
-        const meta = productMeta.get(item.productId);
-        return {
-          ...item,
-          name: meta?.name ?? "Unknown product",
-          sku: meta?.sku ?? null,
-          stock: meta?.stock ?? 0,
-          price: meta?.price ? Number(meta.price) : 0,
-          organizationName: meta?.organization.name ?? "",
-          imageUrl: meta?.images[0]?.url ?? null,
-          velocityScore: Math.round(item.units * 0.55 + item.transactions * 0.25 + item.revenue / 100000),
-        };
-      })
-      .sort((a, b) => b.units - a.units || b.revenue - a.revenue)
-      .slice(0, 10);
-
-    const topBranches = Array.from(branchMap.values())
-      .map((item) => {
-        const meta = branchMeta.get(item.branchId);
-        return {
-          ...item,
-          name: meta?.name ?? "Unknown branch",
-          address: meta?.address ?? "",
-          organizationName: meta?.organization.name ?? "",
-          avgTicket: item.orders > 0 ? Math.round(item.revenue / item.orders) : 0,
-          sharePercent: totalRevenue > 0 ? Math.round((item.revenue / totalRevenue) * 100) : 0,
-        };
-      })
-      .sort((a, b) => b.revenue - a.revenue || b.orders - a.orders)
-      .slice(0, 10);
-
-    const rawMarketingMetrics = [
-      {
-        id: "active-users",
-        label: "Идэвхтэй хэрэглэгч",
-        value: activeUsers,
-        unit: "user",
-        trend: windowTrend(activeUsers, previousActiveUsers),
-        category: "Audience",
-        description: allTime ? "Нийт хугацаанд системд нэвтэрсэн хэрэглэгч." : `${days} хоногт системд нэвтэрсэн хэрэглэгч.`,
-      },
-      {
-        id: "new-users",
-        label: "Шинэ хэрэглэгч",
-        value: newUsers,
-        unit: "user",
-        trend: windowTrend(newUsers, previousNewUsers),
-        category: "Audience",
-        description: "Шинээр бүртгэгдсэн хэрэглэгчийн өсөлт.",
-      },
-      {
-        id: "login-sessions",
-        label: "Login session",
-        value: loginSessions,
-        unit: "session",
-        trend: windowTrend(loginSessions, previousLoginSessions),
-        category: "Audience",
-        description: "Системд үүссэн бодит нэвтрэлтийн session.",
-      },
-      {
-        id: "new-organizations",
-        label: "Шинэ байгууллага",
-        value: newOrganizations,
-        unit: "org",
-        trend: windowTrend(newOrganizations, previousNewOrganizations),
-        category: "Acquisition",
-        description: "Vendor/partner acquisition-ийн үндсэн хэмжүүр.",
-      },
-      {
-        id: "active-organizations",
-        label: "Идэвхтэй байгууллага",
-        value: activeOrganizations,
-        unit: "org",
-        trend: 0,
-        category: "Acquisition",
-        description: "Одоогоор идэвхтэй байгаа байгууллагын нийт тоо.",
-      },
-      {
-        id: "verified-organization-rate",
-        label: "Баталгаажсан байгууллага",
-        value: verifiedOrgRate,
-        unit: "%",
-        trend: 0,
-        category: "Trust",
-        description: "Идэвхтэй байгууллагын баталгаажуулалтын хувь.",
-      },
-      {
-        id: "registration-approval-rate",
-        label: "Бүртгэл зөвшөөрөл",
-        value: registrationApprovalRate,
-        unit: "%",
-        trend: 0,
-        category: "Conversion",
-        description: "Ирсэн бүртгэлийн хүсэлтээс зөвшөөрөгдсөн хувь.",
-      },
-      {
-        id: "pending-registrations",
-        label: "Хүлээгдэж буй бүртгэл",
-        value: pendingRegistrationRequests,
-        unit: "request",
-        trend: 0,
-        category: "Conversion",
-        description: "Шийдвэрлэх шаардлагатай бүртгэлийн хүсэлтийн үлдэгдэл.",
-      },
-      {
-        id: "total-revenue",
-        label: "Нийт орлого",
-        value: totalRevenue,
-        unit: "MNT",
-        trend: windowTrend(totalRevenue, previousRevenue),
-        category: "Revenue",
-        description: "Online болон POS борлуулалтын нийлбэр.",
-      },
-      {
-        id: "online-revenue",
-        label: "Online орлого",
-        value: onlineRevenueValue,
-        unit: "MNT",
-        trend: windowTrend(onlineRevenueValue, Number(previousOnlineRevenue._sum.total ?? 0)),
-        category: "Revenue",
-        description: "Web checkout-оор төлөгдсөн захиалгын орлого.",
-      },
-      {
-        id: "pos-revenue",
-        label: "POS орлого",
-        value: posRevenueValue,
-        unit: "MNT",
-        trend: windowTrend(posRevenueValue, Number(previousPosRevenue._sum.grandTotal ?? 0)),
-        category: "Revenue",
-        description: "POS сувгийн дууссан борлуулалтын орлого.",
-      },
-      {
-        id: "average-ticket",
-        label: "Дундаж сагс",
-        value: totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0,
-        unit: "MNT",
-        trend: 0,
-        category: "Revenue",
-        description: "Нэг борлуулалт тутмын дундаж төлбөр.",
-      },
-      {
-        id: "paid-order-rate",
-        label: "Төлөгдсөн захиалга",
-        value: paidOrderRate,
-        unit: "%",
-        trend: 0,
-        category: "Conversion",
-        description: "Online захиалга төлбөрт шилжсэн хувь.",
-      },
-      {
-        id: "cancellation-rate",
-        label: "Цуцлалтын хувь",
-        value: cancellationRate,
-        unit: "%",
-        trend: 0,
-        category: "Conversion",
-        description: "Online захиалгаас цуцлагдсан хувь.",
-      },
-      {
-        id: "units-sold",
-        label: "Зарагдсан нэгж",
-        value: unitsSold,
-        unit: "unit",
-        trend: 0,
-        category: "Product",
-        description: "Online болон POS сувгаар зарагдсан барааны тоо.",
-      },
-      {
-        id: "new-products",
-        label: "Шинэ бараа",
-        value: newProducts,
-        unit: "sku",
-        trend: 0,
-        category: "Product",
-        description: "Сонгосон хугацаанд нэмэгдсэн бараа.",
-      },
-      {
-        id: "active-products",
-        label: "Идэвхтэй бараа",
-        value: activeProducts,
-        unit: "sku",
-        trend: 0,
-        category: "Product",
-        description: "Одоогоор зарагдах боломжтой барааны сан.",
-      },
-      {
-        id: "service-views",
-        label: "Service post view",
-        value: servicePostViews._sum.viewCount ?? 0,
-        unit: "view",
-        trend: 0,
-        category: "Demand",
-        description: "Үйлчилгээний контентын нийт үзэлт.",
-      },
-      {
-        id: "service-requests",
-        label: "Service request",
-        value: serviceRequests,
-        unit: "request",
-        trend: windowTrend(serviceRequests, previousServiceRequests),
-        category: "Demand",
-        description: "Үйлчилгээ сонирхсон хэрэглэгчийн intent.",
-      },
-      {
-        id: "service-conversion-rate",
-        label: "Service conversion",
-        value: serviceConversionRate,
-        unit: "%",
-        trend: 0,
-        category: "Demand",
-        description: "Service view-ээс request болсон ойролцоо хувь.",
-      },
-      {
-        id: "qpay-adoption",
-        label: "QPay adoption",
-        value: qpayAdoptionRate,
-        unit: "%",
-        trend: 0,
-        category: "Enablement",
-        description: "Идэвхтэй байгууллагаас QPay холбосон хувь.",
-      },
-      {
-        id: "subdomain-adoption",
-        label: "Subdomain adoption",
-        value: subdomainAdoptionRate,
-        unit: "%",
-        trend: 0,
-        category: "Enablement",
-        description: "Брэндийн web presence идэвхжүүлсэн байгууллагын хувь.",
-      },
-      {
-        id: "branches",
-        label: "Салбар",
-        value: activeBranches,
-        unit: "branch",
-        trend: 0,
-        category: "Coverage",
-        description: "Fulfillment болон offline reach-ийн суурь.",
-      },
-      {
-        id: "supplier-organizations",
-        label: "Supplier байгууллага",
-        value: supplierOrganizations,
-        unit: "org",
-        trend: 0,
-        category: "Coverage",
-        description: "Marketplace supply талын coverage.",
-      },
-      {
-        id: "stock-requests",
-        label: "Агуулах хүсэлт",
-        value: stockRequests,
-        unit: "request",
-        trend: 0,
-        category: "Operations",
-        description: "Агуулахын нөхөн дүүргэлттэй холбоотой бодит хүсэлт.",
-      },
-      {
-        id: "card-terminal-requests",
-        label: "Card terminal хүсэлт",
-        value: cardTerminalRequests,
-        unit: "request",
-        trend: 0,
-        category: "Enablement",
-        description: "Offline payment enablement-ийн сонирхол.",
-      },
-      {
-        id: "pos-mpoint-earned",
-        label: "M Point олголт",
-        value: loyaltyEarnedPoints,
-        unit: "point",
-        trend: 0,
-        category: "Loyalty",
-        description: "POS худалдан авалтаас хэрэглэгчдэд олгосон M Point.",
-      },
-      {
-        id: "pos-mpoint-redeemed",
-        label: "M Point хасалт",
-        value: loyaltyRedeemedPoints,
-        unit: "point",
-        trend: 0,
-        category: "Loyalty",
-        description: "POS төлбөр дээр хэрэглэгчийн ашигласан M Point.",
-      },
-    ];
-    const marketingMetrics = rawMarketingMetrics.map((item) => ({
-      ...item,
-      previousValue: previousMetricValues.get(item.id) ?? null,
-    }));
-
-    return res.json({
-      generatedAt: new Date().toISOString(),
-      windowDays: windowLabel,
-      hero: {
-        activeUsers,
-        activeUsersTrend: windowTrend(activeUsers, previousActiveUsers),
-        loginSessions,
-        loginSessionsTrend: windowTrend(loginSessions, previousLoginSessions),
-        totalRevenue,
-        revenueTrend: windowTrend(totalRevenue, previousRevenue),
-        totalOrders,
-        ordersTrend: windowTrend(totalOrders, previousOrders),
-        unitsSold,
-        avgTicket,
-      },
-      topProducts,
-      topBranches,
-      marketingMetrics,
-      marketingSegments: {
-        paymentMethods: paymentMethods.map((item) => ({
-          method: item.method,
-          count: item._count.id,
-          amount: Number(item._sum.amount ?? 0),
-        })),
-        organizationTypes: organizationTypes.map((item) => ({
-          type: item.type,
-          count: item._count.id,
-        })),
-        businessCategories: businessCategories.map((item) => ({
-          category: item.businessCategory ?? "Uncategorized",
-          count: item._count.id,
-        })),
-      },
-      orderStatus: orderStatus.map((item) => ({ status: item.status, count: item._count.id })),
-      paymentStatus: paymentStatus.map((item) => ({ status: item.paymentStatus, count: item._count.id })),
-      recentSales: recentSales.map((sale) => ({
-        id: sale.id,
-        receiptNo: sale.receiptNo,
-        total: Number(sale.grandTotal),
-        createdAt: sale.createdAt,
-        branchName: sale.branch.name,
-        organizationName: sale.organization.name,
-      })),
-      loyalty: {
-        earnedPoints: loyaltyEarnedPoints,
-        redeemedPoints: loyaltyRedeemedPoints,
-        transactions: loyaltyTransactions,
-        earnTransactions: loyaltyEarn?._count.id ?? 0,
-        redeemTransactions: loyaltySpend?._count.id ?? 0,
-        recent: recentLoyaltyTransactions.map((item) => ({
-          id: item.id,
-          action: item.action,
-          customerPhone: item.customerPhone,
-          customerName: item.user?.profile?.fullName ?? null,
-          receiptNo: item.sale?.receiptNo ?? "",
-          paymentMethod: item.sale?.paymentMethod ?? "",
-          saleTotal: Number(item.saleTotal),
-          earnedPoints: item.earnedPoints,
-          redeemedPoints: item.redeemedPoints,
-          effectiveRate: Number(item.effectiveRate),
-          membershipBadge: item.membershipBadge,
-          createdAt: item.createdAt,
-          organizationName: item.organization?.name ?? "",
-          branchName: item.branch?.name ?? "",
-        })),
-      },
-    });
-  } catch (error) {
-    console.error("[admin statistics insights error]", error);
-    return res.status(500).json({ message: "Статистик дата ачаалахад алдаа гарлаа" });
-  }
-});
-
-/* ─── GET /vendor/dashboard/stats?organizationId=xxx ─── */
-router.get("/vendor/dashboard/stats", requireAuth, requireOrgPermission({ from: "query" }, Permission.VIEW_ORG_DASHBOARD), async (req, res) => {
-  try {
-    const { organizationId } = req.query;
-    if (!organizationId || typeof organizationId !== "string") {
-      return res.status(400).json({ message: "organizationId шаардлагатай" });
-    }
-
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-    const [
-      totalProducts,
-      activeProducts,
-      totalServicePosts,
-      activeServicePosts,
-      servicePostViews,
-      stockRequestsByStatus,
-      totalServiceRequests,
-      pendingServiceRequests,
-      inProgressServiceRequests,
-      warehouseCount,
-      recentStockRequests,
-      pendingPayments,
-      recentServiceRequests,
-      expiryInsights,
-    ] = await Promise.all([
-      // Products
-      prisma.product.count({
-        where: { organizationId, deletedAt: null },
-      }),
-      prisma.product.count({
-        where: { organizationId, deletedAt: null, isActive: true },
-      }),
-
-      // Service posts (ads)
-      prisma.servicePost.count({
-        where: { organizationId, deletedAt: null },
-      }),
-      prisma.servicePost.count({
-        where: { organizationId, deletedAt: null, isActive: true },
-      }),
-      prisma.servicePost.aggregate({
-        where: { organizationId, deletedAt: null },
-        _sum: { viewCount: true },
-      }),
-
-      // Stock requests by status
-      prisma.warehouseStockRequest.groupBy({
-        by: ["status"],
-        where: { organizationId },
-        _count: { id: true },
-      }),
-
-      // Service requests
-      prisma.serviceRequest.count({ where: { organizationId } }),
-      prisma.serviceRequest.count({
-        where: { organizationId, status: "PENDING" },
-      }),
-      prisma.serviceRequest.count({
-        where: { organizationId, status: "IN_PROGRESS" },
-      }),
-
-      // Warehouses assigned
-      prisma.warehouseOrganization.count({ where: { organizationId } }),
-
-      // Recent 6 stock requests
-      prisma.warehouseStockRequest.findMany({
-        where: { organizationId },
-        orderBy: { createdAt: "desc" },
-        take: 6,
-        select: {
-          id: true,
-          requestNumber: true,
-          status: true,
-          createdAt: true,
-          warehouse: { select: { name: true } },
-          items: { select: { id: true } },
-          payment: { select: { totalAmount: true, status: true } },
-          dispatch: {
-            select: {
-              id: true,
-              dispatchNumber: true,
-              status: true,
-              driverName: true,
-              driverPhone: true,
-              vehicleNumber: true,
-              dispatchedAt: true,
-              deliveredAt: true,
-            },
-          },
-        },
-      }),
-
-      // Pending payment total
-      prisma.stockRequestPayment.aggregate({
-        where: {
-          organizationId,
-          status: "PENDING",
-        },
-        _sum: { totalAmount: true },
-        _count: { id: true },
-      }),
-
-      // Recent 4 service requests
-      prisma.serviceRequest.findMany({
-        where: { organizationId },
-        orderBy: { createdAt: "desc" },
-        take: 4,
-        select: {
-          id: true,
-          title: true,
-          type: true,
-          status: true,
-          createdAt: true,
-        },
-      }),
-
-      buildVendorExpiryInsights(organizationId),
-    ]);
-
-    // Build stock request status map
-    const srMap: Record<string, number> = {};
-    for (const s of stockRequestsByStatus) {
-      srMap[s.status] = s._count.id;
-    }
-
-    const stockRequests = {
-      pending: srMap["PENDING"] || 0,
-      approved: srMap["APPROVED"] || 0,
-      completed: srMap["COMPLETED"] || 0,
-      rejected: srMap["REJECTED"] || 0,
-      cancelled: srMap["CANCELLED"] || 0,
-      total: stockRequestsByStatus.reduce((a: number, b: (typeof stockRequestsByStatus)[number]) => a + b._count.id, 0),
-    };
-
-    return res.json({
-      products: {
-        total: totalProducts,
-        active: activeProducts,
-        inactive: totalProducts - activeProducts,
-      },
-      servicePosts: {
-        total: totalServicePosts,
-        active: activeServicePosts,
-        totalViews: servicePostViews._sum.viewCount || 0,
-      },
-      stockRequests,
-      serviceRequests: {
-        total: totalServiceRequests,
-        pending: pendingServiceRequests,
-        inProgress: inProgressServiceRequests,
-        completed:
-          totalServiceRequests - pendingServiceRequests - inProgressServiceRequests,
-      },
-      warehouses: warehouseCount,
-      pendingPayments: {
-        count: pendingPayments._count.id,
-        totalAmount: Number(pendingPayments._sum.totalAmount || 0),
-      },
-      recentStockRequests: recentStockRequests.map((r: (typeof recentStockRequests)[number]) => ({
-        id: r.id,
-        requestNumber: r.requestNumber,
-        status: r.status,
-        warehouseName: r.warehouse.name,
-        itemCount: r.items.length,
-        totalAmount: r.payment ? Number(r.payment.totalAmount) : null,
-        paymentStatus: r.payment?.status || null,
-        createdAt: r.createdAt,
-        dispatch: r.dispatch
-          ? {
-              id: r.dispatch.id,
-              dispatchNumber: r.dispatch.dispatchNumber,
-              status: r.dispatch.status,
-              driverName: r.dispatch.driverName,
-              driverPhone: r.dispatch.driverPhone,
-              vehicleNumber: r.dispatch.vehicleNumber,
-              dispatchedAt: r.dispatch.dispatchedAt,
-              deliveredAt: r.dispatch.deliveredAt,
-            }
-          : null,
-      })),
-      recentServiceRequests: recentServiceRequests.map((r: (typeof recentServiceRequests)[number]) => ({
-        id: r.id,
-        title: r.title,
-        type: r.type,
-        status: r.status,
-        createdAt: r.createdAt,
-      })),
-      expiryInsights,
-    });
-  } catch (error) {
-    console.error("[vendor dashboard stats error]", error);
-    return res.status(500).json({ message: "Серверийн алдаа гарлаа" });
-  }
-});
-
-/* ─── GET /admin/users ─── list all system users ─────── */
-router.get("/admin/users", requireAuth, requirePlatformPermission(Permission.MANAGE_USERS), async (req, res) => {
-  try {
-    const { role, search, isActive, isPrime } = req.query;
-    const page = Math.max(1, Number.parseInt(String(req.query.page || "1"), 10) || 1);
-    const requestedLimit = Number.parseInt(String(req.query.limit || "15"), 10) || 15;
-    const limit = Math.min(100, Math.max(1, requestedLimit));
-    const skip = (page - 1) * limit;
-
-    const where: Record<string, unknown> = { deletedAt: null };
-    const andFilters: Record<string, unknown>[] = [];
-    if (role && typeof role === "string") where.role = role;
-    if (isActive === "true") where.isActive = true;
-    if (isActive === "false") where.isActive = false;
-    if (isPrime === "true") {
-      where.isPrime = true;
-      andFilters.push({
-        OR: [
-          { membershipExpiresAt: null },
-          { membershipExpiresAt: { gt: new Date() } },
-        ],
-      });
-    }
-    if (search && typeof search === "string") {
-      const q = search.trim();
-      if (q) {
-        const searchTerms = Array.from(
-          new Set([
-            q,
-            ...q
-              .split(/[\s.,;:|/\\()[\]{}'"`]+/g)
-              .map((term) => term.trim())
-              .filter((term) => term.length >= 2),
-          ]),
-        );
-        andFilters.push({
-          OR: searchTerms.flatMap((term) => [
-            { email: { contains: term, mode: "insensitive" } },
-            { profile: { fullName: { contains: term, mode: "insensitive" } } },
-            { profile: { phoneNumber: { contains: term, mode: "insensitive" } } },
-          ]),
-        });
-      }
-    }
-    if (andFilters.length > 0) where.AND = andFilters;
-
-    const [users, total, totalUsers, activeCount, primeCount, roleCounts] = await Promise.all([
-      prisma.user.findMany({
-        where,
-        orderBy: { createdAt: "desc" },
-        skip,
-        take: limit,
-        select: {
-          id: true,
-          email: true,
-          role: true,
-          isPrime: true,
-          membershipPaidAt: true,
-          membershipStartedAt: true,
-          membershipExpiresAt: true,
-          membershipDiscountPhone: true,
-          isActive: true,
-          emailVerified: true,
-          lastLoginAt: true,
-          createdAt: true,
-          profile: {
-            select: {
-              fullName: true,
-              phoneNumber: true,
-              avatarUrl: true,
-            },
-          },
-          organizationMemberships: {
-            where: { isActive: true },
-            select: {
-              role: true,
-              isActive: true,
-              isPrimary: true,
-              organization: {
-                select: { id: true, name: true },
+        prisma.order.aggregate({
+          where: {
+            deletedAt: null,
+            status: { not: "CANCELLED" },
+            paymentStatus: "PAID",
+            payments: {
+              some: {
+                status: "PAID",
+                paidAt: { gte: previousSince, lt: since },
               },
             },
           },
+          _sum: { total: true },
+          _count: { id: true },
+        }),
+        prisma.posSale.aggregate({
+          where: { createdAt: { gte: since }, status: "COMPLETED" },
+          _sum: { grandTotal: true },
+          _count: { id: true },
+        }),
+        prisma.posSale.aggregate({
+          where: {
+            createdAt: { gte: previousSince, lt: since },
+            status: "COMPLETED",
+          },
+          _sum: { grandTotal: true },
+          _count: { id: true },
+        }),
+        prisma.orderItem.aggregate({
+          where: {
+            order: {
+              deletedAt: null,
+              status: { not: "CANCELLED" },
+              paymentStatus: "PAID",
+              payments: {
+                some: { status: "PAID", paidAt: { gte: since } },
+              },
+            },
+          },
+          _sum: { quantity: true },
+        }),
+        prisma.posSaleLine.aggregate({
+          where: { sale: { createdAt: { gte: since }, status: "COMPLETED" } },
+          _sum: { qty: true },
+        }),
+        prisma.orderItem.groupBy({
+          by: ["productId"],
+          where: {
+            order: {
+              deletedAt: null,
+              status: { not: "CANCELLED" },
+              paymentStatus: "PAID",
+              payments: {
+                some: { status: "PAID", paidAt: { gte: since } },
+              },
+            },
+          },
+          _sum: { quantity: true, subtotal: true },
+          _count: { id: true },
+        }),
+        prisma.posSaleLine.groupBy({
+          by: ["productId"],
+          where: { sale: { createdAt: { gte: since }, status: "COMPLETED" } },
+          _sum: { qty: true, lineTotal: true },
+          _count: { id: true },
+        }),
+        prisma.order.groupBy({
+          by: ["branchId"],
+          where: {
+            branchId: { not: null },
+            deletedAt: null,
+            status: { not: "CANCELLED" },
+            paymentStatus: "PAID",
+            payments: {
+              some: { status: "PAID", paidAt: { gte: since } },
+            },
+          },
+          _sum: { total: true },
+          _count: { id: true },
+        }),
+        prisma.posSale.groupBy({
+          by: ["branchId"],
+          where: { createdAt: { gte: since }, status: "COMPLETED" },
+          _sum: { grandTotal: true },
+          _count: { id: true },
+        }),
+        prisma.order.groupBy({
+          by: ["status"],
+          where: { createdAt: { gte: since }, deletedAt: null },
+          _count: { id: true },
+        }),
+        prisma.order.groupBy({
+          by: ["paymentStatus"],
+          where: { createdAt: { gte: since }, deletedAt: null },
+          _count: { id: true },
+        }),
+        prisma.posSale.findMany({
+          where: { createdAt: { gte: since }, status: "COMPLETED" },
+          orderBy: { createdAt: "desc" },
+          take: 12,
+          select: {
+            id: true,
+            receiptNo: true,
+            grandTotal: true,
+            createdAt: true,
+            branch: { select: { name: true } },
+            organization: { select: { name: true } },
+          },
+        }),
+      ]);
+
+      let loyaltySummary: {
+        action: string;
+        _sum: {
+          earnedPoints: number | null;
+          redeemedPoints: number | null;
+          saleTotal: unknown;
+        };
+        _count: { id: number };
+      }[] = [];
+      let recentLoyaltyTransactions: {
+        id: string;
+        action: string;
+        customerPhone: string;
+        saleTotal: unknown;
+        earnedPoints: number;
+        redeemedPoints: number;
+        effectiveRate: unknown;
+        membershipBadge: string | null;
+        createdAt: Date;
+        sale: { receiptNo: string; paymentMethod: string } | null;
+        organization: { name: string } | null;
+        branch: { name: string } | null;
+        user: { profile: { fullName: string | null } | null } | null;
+      }[] = [];
+
+      try {
+        [loyaltySummary, recentLoyaltyTransactions] = await Promise.all([
+          prisma.posLoyaltyTransaction.groupBy({
+            by: ["action"],
+            where: { createdAt: { gte: since } },
+            _sum: { earnedPoints: true, redeemedPoints: true, saleTotal: true },
+            _count: { id: true },
+          }),
+          prisma.posLoyaltyTransaction.findMany({
+            where: { createdAt: { gte: since } },
+            orderBy: { createdAt: "desc" },
+            take: 30,
+            select: {
+              id: true,
+              action: true,
+              customerPhone: true,
+              saleTotal: true,
+              earnedPoints: true,
+              redeemedPoints: true,
+              effectiveRate: true,
+              membershipBadge: true,
+              createdAt: true,
+              sale: { select: { receiptNo: true, paymentMethod: true } },
+              organization: { select: { name: true } },
+              branch: { select: { name: true } },
+              user: { select: { profile: { select: { fullName: true } } } },
+            },
+          }),
+        ]);
+      } catch (loyaltyError) {
+        console.warn("[admin statistics loyalty unavailable]", loyaltyError);
+      }
+
+      const [
+        newUsers,
+        previousNewUsers,
+        newOrganizations,
+        previousNewOrganizations,
+        activeOrganizations,
+        verifiedOrganizations,
+        supplierOrganizations,
+        qpayEnabledOrganizations,
+        subdomainEnabledOrganizations,
+        activeBranches,
+        newProducts,
+        activeProducts,
+        servicePostViews,
+        serviceRequests,
+        previousServiceRequests,
+        stockRequests,
+        cardTerminalRequests,
+        registrationRequests,
+        approvedRegistrationRequests,
+        pendingRegistrationRequests,
+        allOnlineOrders,
+        paidOnlineOrdersInCohort,
+        cancelledOnlineOrders,
+        paymentMethods,
+        organizationTypes,
+        businessCategories,
+      ] = await Promise.all([
+        prisma.user.count({
+          where: { createdAt: { gte: since }, deletedAt: null },
+        }),
+        prisma.user.count({
+          where: {
+            createdAt: { gte: previousSince, lt: since },
+            deletedAt: null,
+          },
+        }),
+        prisma.organization.count({
+          where: { createdAt: { gte: since }, deletedAt: null },
+        }),
+        prisma.organization.count({
+          where: {
+            createdAt: { gte: previousSince, lt: since },
+            deletedAt: null,
+          },
+        }),
+        prisma.organization.count({
+          where: { status: "ACTIVE", deletedAt: null },
+        }),
+        prisma.organization.count({
+          where: { isVerified: true, status: "ACTIVE", deletedAt: null },
+        }),
+        prisma.organization.count({
+          where: { type: "SUPPLIER", status: "ACTIVE", deletedAt: null },
+        }),
+        prisma.organization.count({
+          where: { qpayEnabled: true, status: "ACTIVE", deletedAt: null },
+        }),
+        prisma.organization.count({
+          where: {
+            subdomainEnabled: true,
+            status: "ACTIVE",
+            deletedAt: null,
+          },
+        }),
+        prisma.branch.count({ where: { deletedAt: null } }),
+        prisma.product.count({
+          where: { createdAt: { gte: since }, deletedAt: null },
+        }),
+        prisma.product.count({
+          where: {
+            isActive: true,
+            deletedAt: null,
+            organization: { status: "ACTIVE", deletedAt: null },
+          },
+        }),
+        prisma.servicePost.aggregate({
+          where: { isActive: true, deletedAt: null },
+          _sum: { viewCount: true },
+        }),
+        prisma.serviceRequest.count({ where: { createdAt: { gte: since } } }),
+        prisma.serviceRequest.count({
+          where: { createdAt: { gte: previousSince, lt: since } },
+        }),
+        prisma.warehouseStockRequest.count({
+          where: { requestedAt: { gte: since } },
+        }),
+        prisma.cardTerminalRequest.count({
+          where: { createdAt: { gte: since } },
+        }),
+        prisma.registrationRequest.count({
+          where: { createdAt: { gte: since } },
+        }),
+        prisma.registrationRequest.count({
+          where: { createdAt: { gte: since }, status: "APPROVED" },
+        }),
+        prisma.registrationRequest.count({ where: { status: "PENDING" } }),
+        prisma.order.count({
+          where: { createdAt: { gte: since }, deletedAt: null },
+        }),
+        prisma.order.count({
+          where: {
+            createdAt: { gte: since },
+            deletedAt: null,
+            status: { not: "CANCELLED" },
+            paymentStatus: "PAID",
+          },
+        }),
+        prisma.order.count({
+          where: {
+            createdAt: { gte: since },
+            deletedAt: null,
+            status: "CANCELLED",
+          },
+        }),
+        prisma.paymentAttempt.groupBy({
+          by: ["method"],
+          where: { paidAt: { gte: since }, status: "PAID" },
+          _sum: { amount: true },
+          _count: { id: true },
+        }),
+        prisma.organization.groupBy({
+          by: ["type"],
+          where: { deletedAt: null },
+          _count: { id: true },
+        }),
+        prisma.organization.groupBy({
+          by: ["businessCategory"],
+          where: { deletedAt: null, businessCategory: { not: null } },
+          _count: { id: true },
+          orderBy: { _count: { id: "desc" } },
+          take: 8,
+        }),
+      ]);
+
+      const productIds = Array.from(
+        new Set(
+          [...onlineProducts, ...posProducts].map((item) => item.productId),
+        ),
+      );
+      const branchIds = Array.from(
+        new Set(
+          [...onlineBranches, ...posBranches]
+            .map((item) => item.branchId)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+
+      const [products, branches] = await Promise.all([
+        productIds.length
+          ? prisma.product.findMany({
+              where: { id: { in: productIds } },
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                stock: true,
+                price: true,
+                organization: { select: { name: true } },
+                images: { select: { url: true }, take: 1 },
+              },
+            })
+          : [],
+        branchIds.length
+          ? prisma.branch.findMany({
+              where: { id: { in: branchIds } },
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                organization: { select: { name: true } },
+              },
+            })
+          : [],
+      ]);
+
+      const productMeta = new Map(products.map((p) => [p.id, p]));
+      const branchMeta = new Map(branches.map((b) => [b.id, b]));
+      const productMap = new Map<
+        string,
+        {
+          productId: string;
+          units: number;
+          revenue: number;
+          transactions: number;
+        }
+      >();
+      for (const item of onlineProducts) {
+        productMap.set(item.productId, {
+          productId: item.productId,
+          units: item._sum.quantity ?? 0,
+          revenue: Number(item._sum.subtotal ?? 0),
+          transactions: item._count.id,
+        });
+      }
+      for (const item of posProducts) {
+        const prev = productMap.get(item.productId) ?? {
+          productId: item.productId,
+          units: 0,
+          revenue: 0,
+          transactions: 0,
+        };
+        prev.units += item._sum.qty ?? 0;
+        prev.revenue += Number(item._sum.lineTotal ?? 0);
+        prev.transactions += item._count.id;
+        productMap.set(item.productId, prev);
+      }
+
+      const branchMap = new Map<
+        string,
+        {
+          branchId: string;
+          orders: number;
+          onlineOrders: number;
+          posSales: number;
+          revenue: number;
+        }
+      >();
+      for (const item of onlineBranches) {
+        if (!item.branchId) continue;
+        branchMap.set(item.branchId, {
+          branchId: item.branchId,
+          orders: item._count.id,
+          onlineOrders: item._count.id,
+          posSales: 0,
+          revenue: Number(item._sum.total ?? 0),
+        });
+      }
+      for (const item of posBranches) {
+        const prev = branchMap.get(item.branchId) ?? {
+          branchId: item.branchId,
+          orders: 0,
+          onlineOrders: 0,
+          posSales: 0,
+          revenue: 0,
+        };
+        prev.orders += item._count.id;
+        prev.posSales += item._count.id;
+        prev.revenue += Number(item._sum.grandTotal ?? 0);
+        branchMap.set(item.branchId, prev);
+      }
+
+      const totalRevenue =
+        Number(onlineRevenue._sum.total ?? 0) +
+        Number(posRevenue._sum.grandTotal ?? 0);
+      const previousRevenue =
+        Number(previousOnlineRevenue._sum.total ?? 0) +
+        Number(previousPosRevenue._sum.grandTotal ?? 0);
+      const totalOrders = onlineRevenue._count.id + posRevenue._count.id;
+      const previousOrders =
+        previousOnlineRevenue._count.id + previousPosRevenue._count.id;
+      const trend = (current: number, previous: number): number | null =>
+        previous > 0
+          ? Math.round(((current - previous) / previous) * 100)
+          : null;
+      const windowTrend = (current: number, previous: number): number | null =>
+        allTime ? null : trend(current, previous);
+      const rate = (part: number, total: number) =>
+        total > 0 ? Math.round((part / total) * 100) : 0;
+      const onlineRevenueValue = Number(onlineRevenue._sum.total ?? 0);
+      const posRevenueValue = Number(posRevenue._sum.grandTotal ?? 0);
+      const paidOrderRate = rate(paidOnlineOrdersInCohort, allOnlineOrders);
+      const cancellationRate = rate(cancelledOnlineOrders, allOnlineOrders);
+      const registrationApprovalRate = rate(
+        approvedRegistrationRequests,
+        registrationRequests,
+      );
+      const verifiedOrgRate = rate(verifiedOrganizations, activeOrganizations);
+      const qpayAdoptionRate = rate(
+        qpayEnabledOrganizations,
+        activeOrganizations,
+      );
+      const subdomainAdoptionRate = rate(
+        subdomainEnabledOrganizations,
+        activeOrganizations,
+      );
+      const unitsSold =
+        (onlineUnits._sum.quantity ?? 0) + (posUnits._sum.qty ?? 0);
+      const avgTicket =
+        totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+      const previousAvgTicket =
+        previousOrders > 0 ? Math.round(previousRevenue / previousOrders) : 0;
+      const loyaltyEarn = loyaltySummary.find((item) => item.action === "EARN");
+      const loyaltySpend = loyaltySummary.find(
+        (item) => item.action === "SPEND",
+      );
+      const loyaltyEarnedPoints = Number(loyaltyEarn?._sum.earnedPoints ?? 0);
+      const loyaltyRedeemedPoints = Number(
+        loyaltySpend?._sum.redeemedPoints ?? 0,
+      );
+      const loyaltyTransactions = loyaltySummary.reduce(
+        (sum, item) => sum + item._count.id,
+        0,
+      );
+      const [
+        consistentlyActiveOrganizations,
+        previousConsistentlyActiveOrganizations,
+      ] = await consistentActivityPromise;
+      const previousMetricValues = new Map<string, number | null>([
+        ["active-users", allTime ? null : previousActiveUsers],
+        ["new-users", allTime ? null : previousNewUsers],
+        ["login-sessions", allTime ? null : previousLoginSessions],
+        ["new-organizations", allTime ? null : previousNewOrganizations],
+        [
+          "active-organizations",
+          allTime ? null : previousConsistentlyActiveOrganizations,
+        ],
+        ["total-revenue", allTime ? null : previousRevenue],
+        [
+          "online-revenue",
+          allTime ? null : Number(previousOnlineRevenue._sum.total ?? 0),
+        ],
+        [
+          "pos-revenue",
+          allTime ? null : Number(previousPosRevenue._sum.grandTotal ?? 0),
+        ],
+        [
+          "average-ticket",
+          allTime || previousOrders === 0 ? null : previousAvgTicket,
+        ],
+        ["service-requests", allTime ? null : previousServiceRequests],
+      ]);
+
+      const topProducts = Array.from(productMap.values())
+        .map((item) => {
+          const meta = productMeta.get(item.productId);
+          return {
+            ...item,
+            name: meta?.name ?? "Unknown product",
+            sku: meta?.sku ?? null,
+            stock: meta?.stock ?? 0,
+            price: meta?.price ? Number(meta.price) : 0,
+            organizationName: meta?.organization.name ?? "",
+            imageUrl: meta?.images[0]?.url ?? null,
+          };
+        })
+        .sort((a, b) => b.units - a.units || b.revenue - a.revenue)
+        .slice(0, 10);
+
+      const topBranches = Array.from(branchMap.values())
+        .map((item) => {
+          const meta = branchMeta.get(item.branchId);
+          return {
+            ...item,
+            name: meta?.name ?? "Unknown branch",
+            address: meta?.address ?? "",
+            organizationName: meta?.organization.name ?? "",
+            avgTicket:
+              item.orders > 0 ? Math.round(item.revenue / item.orders) : 0,
+            sharePercent:
+              totalRevenue > 0
+                ? Math.round((item.revenue / totalRevenue) * 100)
+                : 0,
+          };
+        })
+        .sort((a, b) => b.revenue - a.revenue || b.orders - a.orders)
+        .slice(0, 10);
+
+      const rawMarketingMetrics = [
+        {
+          id: "active-users",
+          label: "Идэвхтэй хэрэглэгч",
+          value: activeUsers,
+          unit: "user",
+          trend: windowTrend(activeUsers, previousActiveUsers),
+          category: "Audience",
+          description: allTime
+            ? "Нийт хугацаанд системд нэвтэрсэн хэрэглэгч."
+            : `${days} хоногт системд нэвтэрсэн хэрэглэгч.`,
         },
-      }),
-      prisma.user.count({ where }),
-      prisma.user.count({ where: { deletedAt: null } }),
-      prisma.user.count({ where: { deletedAt: null, isActive: true } }),
-      prisma.user.count({
-        where: {
-          deletedAt: null,
-          isPrime: true,
+        {
+          id: "new-users",
+          label: "Шинэ хэрэглэгч",
+          value: newUsers,
+          unit: "user",
+          trend: windowTrend(newUsers, previousNewUsers),
+          category: "Audience",
+          description: "Шинээр бүртгэгдсэн хэрэглэгчийн өсөлт.",
+        },
+        {
+          id: "login-sessions",
+          label: "Нэвтрэлтийн session",
+          value: loginSessions,
+          unit: "session",
+          trend: windowTrend(loginSessions, previousLoginSessions),
+          category: "Audience",
+          description: `${periodDescription} системд үүссэн нэвтрэлтийн session.`,
+        },
+        {
+          id: "new-organizations",
+          label: "Шинэ байгууллага",
+          value: newOrganizations,
+          unit: "org",
+          trend: windowTrend(newOrganizations, previousNewOrganizations),
+          category: "Acquisition",
+          description: `${periodDescription} шинээр бүртгэгдсэн байгууллага.`,
+        },
+        {
+          id: "active-organizations",
+          label: "Тогтмол идэвхтэй байгууллага",
+          value: consistentlyActiveOrganizations,
+          unit: "org",
+          trend: windowTrend(
+            consistentlyActiveOrganizations,
+            previousConsistentlyActiveOrganizations,
+          ),
+          category: "Acquisition",
+          description: `Сүүлийн ${activityWindowDays} хоногийн өдөр бүр дор хаяж нэг удаа систем ашигласан байгууллага.`,
+        },
+        {
+          id: "verified-organization-rate",
+          label: "Баталгаажсан байгууллага",
+          value: verifiedOrgRate,
+          unit: "%",
+          trend: null,
+          category: "Trust",
+          description: "Идэвхтэй байгууллагын баталгаажуулалтын хувь.",
+        },
+        {
+          id: "registration-approval-rate",
+          label: "Бүртгэл зөвшөөрөл",
+          value: registrationApprovalRate,
+          unit: "%",
+          trend: null,
+          category: "Conversion",
+          description: `${periodDescription} үүссэн хүсэлтээс одоогоор APPROVED төлөвтэй хүсэлтийн хувь.`,
+        },
+        {
+          id: "pending-registrations",
+          label: "Хүлээгдэж буй бүртгэл",
+          value: pendingRegistrationRequests,
+          unit: "request",
+          trend: null,
+          category: "Conversion",
+          description: "Шийдвэрлэх шаардлагатай бүртгэлийн хүсэлтийн үлдэгдэл.",
+        },
+        {
+          id: "total-revenue",
+          label: "Нийт борлуулалт (GMV)",
+          value: totalRevenue,
+          unit: "MNT",
+          trend: windowTrend(totalRevenue, previousRevenue),
+          category: "Revenue",
+          description: `${periodDescription} төлөгдсөн online захиалга болон дууссан POS борлуулалтын нийлбэр. Энэ нь платформын цэвэр орлого биш.`,
+        },
+        {
+          id: "online-revenue",
+          label: "Online борлуулалт",
+          value: onlineRevenueValue,
+          unit: "MNT",
+          trend: windowTrend(
+            onlineRevenueValue,
+            Number(previousOnlineRevenue._sum.total ?? 0),
+          ),
+          category: "Revenue",
+          description: `${periodDescription} web checkout-оор төлөгдсөн захиалгын нийлбэр.`,
+        },
+        {
+          id: "pos-revenue",
+          label: "POS борлуулалт",
+          value: posRevenueValue,
+          unit: "MNT",
+          trend: windowTrend(
+            posRevenueValue,
+            Number(previousPosRevenue._sum.grandTotal ?? 0),
+          ),
+          category: "Revenue",
+          description: `${periodDescription} completed POS борлуулалтын нийлбэр.`,
+        },
+        {
+          id: "average-ticket",
+          label: "Дундаж сагс",
+          value: totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0,
+          unit: "MNT",
+          trend: windowTrend(avgTicket, previousAvgTicket),
+          category: "Revenue",
+          description: `${periodDescription} баталгаажсан борлуулалтын нэг гүйлгээ тутмын дундаж.`,
+        },
+        {
+          id: "paid-order-rate",
+          label: "Төлөгдсөн захиалга",
+          value: paidOrderRate,
+          unit: "%",
+          trend: null,
+          category: "Conversion",
+          description: `${periodDescription} үүссэн online захиалгаас PAID болсон, цуцлагдаагүй захиалгын хувь.`,
+        },
+        {
+          id: "cancellation-rate",
+          label: "Цуцлалтын хувь",
+          value: cancellationRate,
+          unit: "%",
+          trend: null,
+          category: "Conversion",
+          description: `${periodDescription} үүссэн online захиалгаас CANCELLED болсон хувь.`,
+        },
+        {
+          id: "units-sold",
+          label: "Зарагдсан нэгж",
+          value: unitsSold,
+          unit: "unit",
+          trend: null,
+          category: "Product",
+          description: `${periodDescription} төлөгдсөн online order болон completed POS-оор зарагдсан нийт ширхэг.`,
+        },
+        {
+          id: "new-products",
+          label: "Шинэ бараа",
+          value: newProducts,
+          unit: "sku",
+          trend: null,
+          category: "Product",
+          description: `${periodDescription} шинээр бүртгэгдсэн product record.`,
+        },
+        {
+          id: "active-products",
+          label: "Идэвхтэй бараа",
+          value: activeProducts,
+          unit: "sku",
+          trend: null,
+          category: "Product",
+          description: "Одоогоор зарагдах боломжтой барааны сан.",
+        },
+        {
+          id: "service-views",
+          label: "Үйлчилгээний нийт үзэлт",
+          value: servicePostViews._sum.viewCount ?? 0,
+          unit: "view",
+          trend: null,
+          category: "Demand",
+          description:
+            "Одоогоор идэвхтэй service post-уудын бүх хугацаанд хуримтлагдсан viewCount.",
+        },
+        {
+          id: "service-requests",
+          label: "Үйлчилгээний хүсэлт",
+          value: serviceRequests,
+          unit: "request",
+          trend: windowTrend(serviceRequests, previousServiceRequests),
+          category: "Demand",
+          description: `${periodDescription} шинээр үүссэн үйлчилгээний хүсэлт.`,
+        },
+        {
+          id: "qpay-adoption",
+          label: "QPay идэвхжүүлэлт",
+          value: qpayAdoptionRate,
+          unit: "%",
+          trend: null,
+          category: "Enablement",
+          description: "Идэвхтэй байгууллагаас QPay холбосон хувь.",
+        },
+        {
+          id: "subdomain-adoption",
+          label: "Subdomain идэвхжүүлэлт",
+          value: subdomainAdoptionRate,
+          unit: "%",
+          trend: null,
+          category: "Enablement",
+          description: "Брэндийн web presence идэвхжүүлсэн байгууллагын хувь.",
+        },
+        {
+          id: "branches",
+          label: "Бүртгэлтэй салбар",
+          value: activeBranches,
+          unit: "branch",
+          trend: null,
+          category: "Coverage",
+          description: "Одоогоор устгагдаагүй салбарын нийт record.",
+        },
+        {
+          id: "supplier-organizations",
+          label: "Supplier байгууллага",
+          value: supplierOrganizations,
+          unit: "org",
+          trend: null,
+          category: "Coverage",
+          description: "Marketplace supply талын coverage.",
+        },
+        {
+          id: "stock-requests",
+          label: "Агуулах хүсэлт",
+          value: stockRequests,
+          unit: "request",
+          trend: null,
+          category: "Operations",
+          description: `${periodDescription} үүссэн агуулахын татан авалтын хүсэлт.`,
+        },
+        {
+          id: "card-terminal-requests",
+          label: "Карт терминалын хүсэлт",
+          value: cardTerminalRequests,
+          unit: "request",
+          trend: null,
+          category: "Enablement",
+          description: `${periodDescription} үүссэн карт терминалын хүсэлт.`,
+        },
+        {
+          id: "pos-mpoint-earned",
+          label: "M Point олголт",
+          value: loyaltyEarnedPoints,
+          unit: "point",
+          trend: null,
+          category: "Loyalty",
+          description: `${periodDescription} POS худалдан авалтаас олгосон M Point.`,
+        },
+        {
+          id: "pos-mpoint-redeemed",
+          label: "M Point хасалт",
+          value: loyaltyRedeemedPoints,
+          unit: "point",
+          trend: null,
+          category: "Loyalty",
+          description: `${periodDescription} POS төлбөрт ашигласан M Point.`,
+        },
+      ];
+      const snapshotMetricIds = new Set([
+        "verified-organization-rate",
+        "pending-registrations",
+        "active-products",
+        "qpay-adoption",
+        "subdomain-adoption",
+        "branches",
+        "supplier-organizations",
+      ]);
+      const lifetimeMetricIds = new Set(["service-views"]);
+      const metricSources: Record<string, string> = {
+        "active-users": "User.lastLoginAt",
+        "new-users": "User.createdAt",
+        "login-sessions": "UserSession.createdAt",
+        "new-organizations": "Organization.createdAt",
+        "active-organizations":
+          "OrganizationDailyActivity: өдөр бүр ≥ 1 authenticated activity",
+        "verified-organization-rate":
+          "Active Organization.isVerified / active organizations",
+        "registration-approval-rate":
+          "Approved RegistrationRequest / created requests",
+        "pending-registrations": "RegistrationRequest.status = PENDING",
+        "total-revenue": "Paid Order + completed PosSale",
+        "online-revenue": "Order with paid PaymentAttempt.paidAt",
+        "pos-revenue": "PosSale.status = COMPLETED",
+        "average-ticket": "Confirmed GMV / confirmed transactions",
+        "paid-order-rate": "Paid orders / orders created in period",
+        "cancellation-rate": "Cancelled orders / orders created in period",
+        "units-sold": "Paid OrderItem.quantity + completed PosSaleLine.qty",
+        "new-products": "Product.createdAt",
+        "active-products": "Product.isActive = true",
+        "service-views": "Active ServicePost.viewCount cumulative counter",
+        "service-requests": "ServiceRequest.createdAt",
+        "qpay-adoption": "Active Organization.qpayEnabled",
+        "subdomain-adoption": "Active Organization.subdomainEnabled",
+        branches: "Non-deleted Branch",
+        "supplier-organizations": "Active Organization.type = SUPPLIER",
+        "stock-requests": "WarehouseStockRequest.requestedAt",
+        "card-terminal-requests": "CardTerminalRequest.createdAt",
+        "pos-mpoint-earned": "PosLoyaltyTransaction.earnedPoints",
+        "pos-mpoint-redeemed": "PosLoyaltyTransaction.redeemedPoints",
+      };
+      const marketingMetrics = rawMarketingMetrics.map((item) => ({
+        ...item,
+        previousValue: previousMetricValues.get(item.id) ?? null,
+        scope: lifetimeMetricIds.has(item.id)
+          ? ("LIFETIME" as const)
+          : snapshotMetricIds.has(item.id)
+            ? ("CURRENT_SNAPSHOT" as const)
+            : ("SELECTED_PERIOD" as const),
+        source: metricSources[item.id] ?? "System database aggregate",
+      }));
+
+      const financialOverview = await financialOverviewPromise;
+
+      return res.json({
+        generatedAt: new Date().toISOString(),
+        windowDays: windowLabel,
+        financialOverview,
+        dataQuality: {
+          basis: "DATABASE_AGGREGATES",
+          generatedAt: new Date().toISOString(),
+          rules: [
+            "Online revenue uses PAID payment confirmation time",
+            "POS revenue includes COMPLETED sales only",
+            "Cancelled and unpaid orders are excluded from sales rankings",
+            "Snapshot and lifetime metrics are explicitly labeled",
+          ],
+        },
+        hero: {
+          activeUsers,
+          activeUsersTrend: windowTrend(activeUsers, previousActiveUsers),
+          loginSessions,
+          loginSessionsTrend: windowTrend(loginSessions, previousLoginSessions),
+          totalRevenue,
+          revenueTrend: windowTrend(totalRevenue, previousRevenue),
+          totalOrders,
+          ordersTrend: windowTrend(totalOrders, previousOrders),
+          unitsSold,
+          avgTicket,
+        },
+        topProducts,
+        topBranches,
+        marketingMetrics,
+        marketingSegments: {
+          paymentMethods: paymentMethods.map((item) => ({
+            method: item.method,
+            count: item._count.id,
+            amount: Number(item._sum.amount ?? 0),
+          })),
+          organizationTypes: organizationTypes.map((item) => ({
+            type: item.type,
+            count: item._count.id,
+          })),
+          businessCategories: businessCategories.map((item) => ({
+            category: item.businessCategory ?? "Uncategorized",
+            count: item._count.id,
+          })),
+        },
+        orderStatus: orderStatus.map((item) => ({
+          status: item.status,
+          count: item._count.id,
+        })),
+        paymentStatus: paymentStatus.map((item) => ({
+          status: item.paymentStatus,
+          count: item._count.id,
+        })),
+        recentSales: recentSales.map((sale) => ({
+          id: sale.id,
+          receiptNo: sale.receiptNo,
+          total: Number(sale.grandTotal),
+          createdAt: sale.createdAt,
+          branchName: sale.branch.name,
+          organizationName: sale.organization.name,
+        })),
+        loyalty: {
+          earnedPoints: loyaltyEarnedPoints,
+          redeemedPoints: loyaltyRedeemedPoints,
+          transactions: loyaltyTransactions,
+          earnTransactions: loyaltyEarn?._count.id ?? 0,
+          redeemTransactions: loyaltySpend?._count.id ?? 0,
+          recent: recentLoyaltyTransactions.map((item) => ({
+            id: item.id,
+            action: item.action,
+            customerPhone: item.customerPhone,
+            customerName: item.user?.profile?.fullName ?? null,
+            receiptNo: item.sale?.receiptNo ?? "",
+            paymentMethod: item.sale?.paymentMethod ?? "",
+            saleTotal: Number(item.saleTotal),
+            earnedPoints: item.earnedPoints,
+            redeemedPoints: item.redeemedPoints,
+            effectiveRate: Number(item.effectiveRate),
+            membershipBadge: item.membershipBadge,
+            createdAt: item.createdAt,
+            organizationName: item.organization?.name ?? "",
+            branchName: item.branch?.name ?? "",
+          })),
+        },
+      });
+    } catch (error) {
+      console.error("[admin statistics insights error]", error);
+      return res
+        .status(500)
+        .json({ message: "Статистик дата ачаалахад алдаа гарлаа" });
+    }
+  },
+);
+
+/* ─── GET /vendor/dashboard/stats?organizationId=xxx ─── */
+router.get(
+  "/vendor/dashboard/stats",
+  requireAuth,
+  requireOrgPermission({ from: "query" }, Permission.VIEW_ORG_DASHBOARD),
+  async (req, res) => {
+    try {
+      const { organizationId } = req.query;
+      if (!organizationId || typeof organizationId !== "string") {
+        return res.status(400).json({ message: "organizationId шаардлагатай" });
+      }
+
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+      const [
+        totalProducts,
+        activeProducts,
+        totalServicePosts,
+        activeServicePosts,
+        servicePostViews,
+        stockRequestsByStatus,
+        totalServiceRequests,
+        pendingServiceRequests,
+        inProgressServiceRequests,
+        warehouseCount,
+        recentStockRequests,
+        pendingPayments,
+        recentServiceRequests,
+        expiryInsights,
+      ] = await Promise.all([
+        // Products
+        prisma.product.count({
+          where: { organizationId, deletedAt: null },
+        }),
+        prisma.product.count({
+          where: { organizationId, deletedAt: null, isActive: true },
+        }),
+
+        // Service posts (ads)
+        prisma.servicePost.count({
+          where: { organizationId, deletedAt: null },
+        }),
+        prisma.servicePost.count({
+          where: { organizationId, deletedAt: null, isActive: true },
+        }),
+        prisma.servicePost.aggregate({
+          where: { organizationId, deletedAt: null },
+          _sum: { viewCount: true },
+        }),
+
+        // Stock requests by status
+        prisma.warehouseStockRequest.groupBy({
+          by: ["status"],
+          where: { organizationId },
+          _count: { id: true },
+        }),
+
+        // Service requests
+        prisma.serviceRequest.count({ where: { organizationId } }),
+        prisma.serviceRequest.count({
+          where: { organizationId, status: "PENDING" },
+        }),
+        prisma.serviceRequest.count({
+          where: { organizationId, status: "IN_PROGRESS" },
+        }),
+
+        // Warehouses assigned
+        prisma.warehouseOrganization.count({ where: { organizationId } }),
+
+        // Recent 6 stock requests
+        prisma.warehouseStockRequest.findMany({
+          where: { organizationId },
+          orderBy: { createdAt: "desc" },
+          take: 6,
+          select: {
+            id: true,
+            requestNumber: true,
+            status: true,
+            createdAt: true,
+            warehouse: { select: { name: true } },
+            items: { select: { id: true } },
+            payment: { select: { totalAmount: true, status: true } },
+            dispatch: {
+              select: {
+                id: true,
+                dispatchNumber: true,
+                status: true,
+                driverName: true,
+                driverPhone: true,
+                vehicleNumber: true,
+                dispatchedAt: true,
+                deliveredAt: true,
+              },
+            },
+          },
+        }),
+
+        // Pending payment total
+        prisma.stockRequestPayment.aggregate({
+          where: {
+            organizationId,
+            status: "PENDING",
+          },
+          _sum: { totalAmount: true },
+          _count: { id: true },
+        }),
+
+        // Recent 4 service requests
+        prisma.serviceRequest.findMany({
+          where: { organizationId },
+          orderBy: { createdAt: "desc" },
+          take: 4,
+          select: {
+            id: true,
+            title: true,
+            type: true,
+            status: true,
+            createdAt: true,
+          },
+        }),
+
+        buildVendorExpiryInsights(organizationId),
+      ]);
+
+      // Build stock request status map
+      const srMap: Record<string, number> = {};
+      for (const s of stockRequestsByStatus) {
+        srMap[s.status] = s._count.id;
+      }
+
+      const stockRequests = {
+        pending: srMap["PENDING"] || 0,
+        approved: srMap["APPROVED"] || 0,
+        completed: srMap["COMPLETED"] || 0,
+        rejected: srMap["REJECTED"] || 0,
+        cancelled: srMap["CANCELLED"] || 0,
+        total: stockRequestsByStatus.reduce(
+          (a: number, b: (typeof stockRequestsByStatus)[number]) =>
+            a + b._count.id,
+          0,
+        ),
+      };
+
+      return res.json({
+        products: {
+          total: totalProducts,
+          active: activeProducts,
+          inactive: totalProducts - activeProducts,
+        },
+        servicePosts: {
+          total: totalServicePosts,
+          active: activeServicePosts,
+          totalViews: servicePostViews._sum.viewCount || 0,
+        },
+        stockRequests,
+        serviceRequests: {
+          total: totalServiceRequests,
+          pending: pendingServiceRequests,
+          inProgress: inProgressServiceRequests,
+          completed:
+            totalServiceRequests -
+            pendingServiceRequests -
+            inProgressServiceRequests,
+        },
+        warehouses: warehouseCount,
+        pendingPayments: {
+          count: pendingPayments._count.id,
+          totalAmount: Number(pendingPayments._sum.totalAmount || 0),
+        },
+        recentStockRequests: recentStockRequests.map(
+          (r: (typeof recentStockRequests)[number]) => ({
+            id: r.id,
+            requestNumber: r.requestNumber,
+            status: r.status,
+            warehouseName: r.warehouse.name,
+            itemCount: r.items.length,
+            totalAmount: r.payment ? Number(r.payment.totalAmount) : null,
+            paymentStatus: r.payment?.status || null,
+            createdAt: r.createdAt,
+            dispatch: r.dispatch
+              ? {
+                  id: r.dispatch.id,
+                  dispatchNumber: r.dispatch.dispatchNumber,
+                  status: r.dispatch.status,
+                  driverName: r.dispatch.driverName,
+                  driverPhone: r.dispatch.driverPhone,
+                  vehicleNumber: r.dispatch.vehicleNumber,
+                  dispatchedAt: r.dispatch.dispatchedAt,
+                  deliveredAt: r.dispatch.deliveredAt,
+                }
+              : null,
+          }),
+        ),
+        recentServiceRequests: recentServiceRequests.map(
+          (r: (typeof recentServiceRequests)[number]) => ({
+            id: r.id,
+            title: r.title,
+            type: r.type,
+            status: r.status,
+            createdAt: r.createdAt,
+          }),
+        ),
+        expiryInsights,
+      });
+    } catch (error) {
+      console.error("[vendor dashboard stats error]", error);
+      return res.status(500).json({ message: "Серверийн алдаа гарлаа" });
+    }
+  },
+);
+
+/* ─── GET /admin/users ─── list all system users ─────── */
+router.get(
+  "/admin/users",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_USERS),
+  async (req, res) => {
+    try {
+      const { role, search, isActive, isPrime } = req.query;
+      const page = Math.max(
+        1,
+        Number.parseInt(String(req.query.page || "1"), 10) || 1,
+      );
+      const requestedLimit =
+        Number.parseInt(String(req.query.limit || "15"), 10) || 15;
+      const limit = Math.min(100, Math.max(1, requestedLimit));
+      const skip = (page - 1) * limit;
+
+      const where: Record<string, unknown> = { deletedAt: null };
+      const andFilters: Record<string, unknown>[] = [];
+      if (role && typeof role === "string") where.role = role;
+      if (isActive === "true") where.isActive = true;
+      if (isActive === "false") where.isActive = false;
+      if (isPrime === "true") {
+        where.isPrime = true;
+        andFilters.push({
           OR: [
             { membershipExpiresAt: null },
             { membershipExpiresAt: { gt: new Date() } },
           ],
+        });
+      }
+      if (search && typeof search === "string") {
+        const q = search.trim();
+        if (q) {
+          const searchTerms = Array.from(
+            new Set([
+              q,
+              ...q
+                .split(/[\s.,;:|/\\()[\]{}'"`]+/g)
+                .map((term) => term.trim())
+                .filter((term) => term.length >= 2),
+            ]),
+          );
+          andFilters.push({
+            OR: searchTerms.flatMap((term) => [
+              { email: { contains: term, mode: "insensitive" } },
+              {
+                profile: { fullName: { contains: term, mode: "insensitive" } },
+              },
+              {
+                profile: {
+                  phoneNumber: { contains: term, mode: "insensitive" },
+                },
+              },
+            ]),
+          });
+        }
+      }
+      if (andFilters.length > 0) where.AND = andFilters;
+
+      const [users, total, totalUsers, activeCount, primeCount, roleCounts] =
+        await Promise.all([
+          prisma.user.findMany({
+            where,
+            orderBy: { createdAt: "desc" },
+            skip,
+            take: limit,
+            select: {
+              id: true,
+              email: true,
+              role: true,
+              isPrime: true,
+              membershipPaidAt: true,
+              membershipStartedAt: true,
+              membershipExpiresAt: true,
+              membershipDiscountPhone: true,
+              isActive: true,
+              emailVerified: true,
+              lastLoginAt: true,
+              createdAt: true,
+              profile: {
+                select: {
+                  fullName: true,
+                  phoneNumber: true,
+                  avatarUrl: true,
+                },
+              },
+              organizationMemberships: {
+                where: { isActive: true },
+                select: {
+                  role: true,
+                  isActive: true,
+                  isPrimary: true,
+                  organization: {
+                    select: { id: true, name: true },
+                  },
+                },
+              },
+            },
+          }),
+          prisma.user.count({ where }),
+          prisma.user.count({ where: { deletedAt: null } }),
+          prisma.user.count({ where: { deletedAt: null, isActive: true } }),
+          prisma.user.count({
+            where: {
+              deletedAt: null,
+              isPrime: true,
+              OR: [
+                { membershipExpiresAt: null },
+                { membershipExpiresAt: { gt: new Date() } },
+              ],
+            },
+          }),
+          prisma.user.groupBy({
+            by: ["role"],
+            where: { deletedAt: null },
+            _count: { _all: true },
+          }),
+        ]);
+
+      const result = users.map((u: (typeof users)[number]) => {
+        const primary =
+          u.organizationMemberships.find(
+            (m: (typeof u.organizationMemberships)[number]) => m.isPrimary,
+          ) ||
+          u.organizationMemberships[0] ||
+          null;
+        return {
+          id: u.id,
+          email: u.email,
+          fullName: u.profile?.fullName || "",
+          phone: u.profile?.phoneNumber || null,
+          avatarUrl: u.profile?.avatarUrl || null,
+          role: u.role,
+          isPrime: u.isPrime,
+          membershipPaidAt: u.membershipPaidAt,
+          membershipStartedAt: u.membershipStartedAt,
+          membershipExpiresAt: u.membershipExpiresAt,
+          membershipDiscountPhone: u.membershipDiscountPhone,
+          isActive: u.isActive,
+          emailVerified: u.emailVerified,
+          lastLoginAt: u.lastLoginAt,
+          organizationId: primary?.organization.id || null,
+          organizationName: primary?.organization.name || null,
+          memberships: u.organizationMemberships.map(
+            (m: (typeof u.organizationMemberships)[number]) => ({
+              role: m.role,
+              isActive: m.isActive,
+              isPrimary: m.isPrimary,
+              orgId: m.organization.id,
+              orgName: m.organization.name,
+            }),
+          ),
+          createdAt: u.createdAt,
+        };
+      });
+
+      return res.json({
+        items: result,
+        total,
+        page,
+        limit,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+        summary: {
+          totalUsers,
+          activeUsers: activeCount,
+          primeUsers: primeCount,
+          roles: Object.fromEntries(
+            roleCounts.map((item: (typeof roleCounts)[number]) => [
+              item.role,
+              item._count._all,
+            ]),
+          ),
         },
-      }),
-      prisma.user.groupBy({
-        by: ["role"],
-        where: { deletedAt: null },
-        _count: { _all: true },
-      }),
-    ]);
-
-    const result = users.map((u: (typeof users)[number]) => {
-      const primary = u.organizationMemberships.find((m: (typeof u.organizationMemberships)[number]) => m.isPrimary) || u.organizationMemberships[0] || null;
-      return {
-        id: u.id,
-        email: u.email,
-        fullName: u.profile?.fullName || "",
-        phone: u.profile?.phoneNumber || null,
-        avatarUrl: u.profile?.avatarUrl || null,
-        role: u.role,
-        isPrime: u.isPrime,
-        membershipPaidAt: u.membershipPaidAt,
-        membershipStartedAt: u.membershipStartedAt,
-        membershipExpiresAt: u.membershipExpiresAt,
-        membershipDiscountPhone: u.membershipDiscountPhone,
-        isActive: u.isActive,
-        emailVerified: u.emailVerified,
-        lastLoginAt: u.lastLoginAt,
-        organizationId: primary?.organization.id || null,
-        organizationName: primary?.organization.name || null,
-        memberships: u.organizationMemberships.map((m: (typeof u.organizationMemberships)[number]) => ({
-          role: m.role,
-          isActive: m.isActive,
-          isPrimary: m.isPrimary,
-          orgId: m.organization.id,
-          orgName: m.organization.name,
-        })),
-        createdAt: u.createdAt,
-      };
-    });
-
-    return res.json({
-      items: result,
-      total,
-      page,
-      limit,
-      totalPages: Math.max(1, Math.ceil(total / limit)),
-      summary: {
-        totalUsers,
-        activeUsers: activeCount,
-        primeUsers: primeCount,
-        roles: Object.fromEntries(
-          roleCounts.map((item: (typeof roleCounts)[number]) => [
-            item.role,
-            item._count._all,
-          ]),
-        ),
-      },
-    });
-  } catch (error) {
-    console.error("[admin users list error]", error);
-    return res.status(500).json({ message: "Хэрэглэгчдийн жагсаалт ачаалахад алдаа гарлаа" });
-  }
-});
+      });
+    } catch (error) {
+      console.error("[admin users list error]", error);
+      return res
+        .status(500)
+        .json({ message: "Хэрэглэгчдийн жагсаалт ачаалахад алдаа гарлаа" });
+    }
+  },
+);
 
 const DEFAULT_MEMBERSHIP_DURATION_MONTHS = 12;
 
@@ -1561,190 +1955,255 @@ function resolveMembershipExpiresAt(body: {
     return date;
   }
 
-  const requestedMonths = Number(body.durationMonths ?? DEFAULT_MEMBERSHIP_DURATION_MONTHS);
-  const months = Math.max(1, Math.min(60, Math.round(requestedMonths || DEFAULT_MEMBERSHIP_DURATION_MONTHS)));
+  const requestedMonths = Number(
+    body.durationMonths ?? DEFAULT_MEMBERSHIP_DURATION_MONTHS,
+  );
+  const months = Math.max(
+    1,
+    Math.min(
+      60,
+      Math.round(requestedMonths || DEFAULT_MEMBERSHIP_DURATION_MONTHS),
+    ),
+  );
   return addMembershipMonths(new Date(), months);
 }
 
 /* ─── PATCH /admin/users/:id/prime ─── grant/revoke membership access ── */
-router.patch("/admin/users/:id/prime", requireAuth, requirePlatformPermission(Permission.MANAGE_USERS), async (req, res) => {
-  try {
-    const id = req.params.id as string;
-    const { isPrime } = req.body as { isPrime?: boolean };
+router.patch(
+  "/admin/users/:id/prime",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_USERS),
+  async (req, res) => {
+    try {
+      const id = req.params.id as string;
+      const { isPrime } = req.body as { isPrime?: boolean };
 
-    if (typeof isPrime !== "boolean") {
-      return res.status(400).json({ message: "isPrime boolean утга шаардлагатай" });
-    }
-
-    const user = await prisma.user.findFirst({
-      where: { id, deletedAt: null },
-      select: {
-        id: true,
-        profile: { select: { phoneNumber: true } },
-      },
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
-    }
-
-    const now = new Date();
-    const membershipDiscountPhone = user.profile?.phoneNumber?.trim() || null;
-    let membershipExpiresAt: Date | null = null;
-    if (isPrime) {
-      try {
-        membershipExpiresAt = resolveMembershipExpiresAt(req.body || {});
-      } catch (error) {
-        return res.status(400).json({
-          message:
-            error instanceof Error ? error.message : "Membership хугацаа буруу байна",
-        });
+      if (typeof isPrime !== "boolean") {
+        return res
+          .status(400)
+          .json({ message: "isPrime boolean утга шаардлагатай" });
       }
+
+      const user = await prisma.user.findFirst({
+        where: { id, deletedAt: null },
+        select: {
+          id: true,
+          profile: { select: { phoneNumber: true } },
+        },
+      });
+
+      if (!user) {
+        return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
+      }
+
+      const now = new Date();
+      const membershipDiscountPhone = user.profile?.phoneNumber?.trim() || null;
+      let membershipExpiresAt: Date | null = null;
+      if (isPrime) {
+        try {
+          membershipExpiresAt = resolveMembershipExpiresAt(req.body || {});
+        } catch (error) {
+          return res.status(400).json({
+            message:
+              error instanceof Error
+                ? error.message
+                : "Membership хугацаа буруу байна",
+          });
+        }
+      }
+
+      const updated = await prisma.user.update({
+        where: { id },
+        data: isPrime
+          ? {
+              isPrime: true,
+              membershipPaidAt: now,
+              membershipStartedAt: now,
+              membershipExpiresAt,
+              membershipDiscountPhone,
+            }
+          : {
+              isPrime: false,
+              membershipExpiresAt: now,
+              membershipDiscountPhone: null,
+            },
+        select: {
+          id: true,
+          email: true,
+          isPrime: true,
+          membershipPaidAt: true,
+          membershipStartedAt: true,
+          membershipExpiresAt: true,
+          membershipDiscountPhone: true,
+        },
+      });
+
+      return res.json({
+        message: isPrime
+          ? "Membership эрх идэвхжлээ. Хугацаа төлбөр төлөгдсөн цагаас эхэллээ."
+          : "Membership эрх цуцлагдлаа",
+        data: updated,
+      });
+    } catch (error) {
+      console.error("[admin change prime error]", error);
+      return res
+        .status(500)
+        .json({ message: "Membership эрх солиход алдаа гарлаа" });
     }
-
-    const updated = await prisma.user.update({
-      where: { id },
-      data: isPrime
-        ? {
-            isPrime: true,
-            membershipPaidAt: now,
-            membershipStartedAt: now,
-            membershipExpiresAt,
-            membershipDiscountPhone,
-          }
-        : {
-            isPrime: false,
-            membershipExpiresAt: now,
-            membershipDiscountPhone: null,
-          },
-      select: {
-        id: true,
-        email: true,
-        isPrime: true,
-        membershipPaidAt: true,
-        membershipStartedAt: true,
-        membershipExpiresAt: true,
-        membershipDiscountPhone: true,
-      },
-    });
-
-    return res.json({
-      message: isPrime
-        ? "Membership эрх идэвхжлээ. Хугацаа төлбөр төлөгдсөн цагаас эхэллээ."
-        : "Membership эрх цуцлагдлаа",
-      data: updated,
-    });
-  } catch (error) {
-    console.error("[admin change prime error]", error);
-    return res.status(500).json({ message: "Membership эрх солиход алдаа гарлаа" });
-  }
-});
+  },
+);
 
 /* ─── PATCH /admin/users/:id/role ─── change user system role ── */
 import { ADMIN_ROLES } from "@mgl/types";
-const VALID_ROLES = ["SUPER_ADMIN", "ADMIN", "HR_ADMIN", "CONTENT_ADMIN", "PARTNER_ADMIN", "WAREHOUSE_ADMIN", "FINANCE_ADMIN", "SERVICE_ADMIN", "LAWYER", "USER"] as const;
+const VALID_ROLES = [
+  "SUPER_ADMIN",
+  "ADMIN",
+  "HR_ADMIN",
+  "CONTENT_ADMIN",
+  "PARTNER_ADMIN",
+  "WAREHOUSE_ADMIN",
+  "FINANCE_ADMIN",
+  "SERVICE_ADMIN",
+  "LAWYER",
+  "USER",
+] as const;
 
-router.patch("/admin/users/:id/role", requireAuth, requirePlatformPermission(Permission.MANAGE_ADMIN_STAFF), async (req, res) => {
-  try {
-    const id = req.params.id as string;
-    const { role } = req.body;
+router.patch(
+  "/admin/users/:id/role",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ADMIN_STAFF),
+  async (req, res) => {
+    try {
+      const id = req.params.id as string;
+      const { role } = req.body;
 
-    if (!role || !VALID_ROLES.includes(role)) {
-      return res.status(400).json({
-        message: `Зөвшөөрөгдөх role: ${VALID_ROLES.join(", ")}`,
-      });
-    }
-
-    const user = await prisma.user.findFirst({
-      where: { id, deletedAt: null },
-    });
-
-    if (!user) {
-      return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
-    }
-
-    // Prevent removing the last full admin (SUPER_ADMIN or ADMIN)
-    if ((user.role === "ADMIN" || user.role === "SUPER_ADMIN") && role !== "ADMIN" && role !== "SUPER_ADMIN") {
-      const fullAdminCount = await prisma.user.count({
-        where: { role: { in: ["ADMIN", "SUPER_ADMIN"] }, isActive: true, deletedAt: null },
-      });
-      if (fullAdminCount <= 1) {
+      if (!role || !VALID_ROLES.includes(role)) {
         return res.status(400).json({
-          message: "Сүүлийн ерөнхий админы role-ийг солих боломжгүй",
+          message: `Зөвшөөрөгдөх role: ${VALID_ROLES.join(", ")}`,
         });
       }
+
+      const user = await prisma.user.findFirst({
+        where: { id, deletedAt: null },
+      });
+
+      if (!user) {
+        return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
+      }
+
+      // Prevent removing the last full admin (SUPER_ADMIN or ADMIN)
+      if (
+        (user.role === "ADMIN" || user.role === "SUPER_ADMIN") &&
+        role !== "ADMIN" &&
+        role !== "SUPER_ADMIN"
+      ) {
+        const fullAdminCount = await prisma.user.count({
+          where: {
+            role: { in: ["ADMIN", "SUPER_ADMIN"] },
+            isActive: true,
+            deletedAt: null,
+          },
+        });
+        if (fullAdminCount <= 1) {
+          return res.status(400).json({
+            message: "Сүүлийн ерөнхий админы role-ийг солих боломжгүй",
+          });
+        }
+      }
+
+      const updated = await prisma.user.update({
+        where: { id },
+        data: { role },
+        select: { id: true, email: true, role: true },
+      });
+
+      return res.json({
+        message: "Хэрэглэгчийн role амжилттай солигдлоо",
+        data: updated,
+      });
+    } catch (error) {
+      console.error("[admin change role error]", error);
+      return res.status(500).json({ message: "Role солиход алдаа гарлаа" });
     }
-
-    const updated = await prisma.user.update({
-      where: { id },
-      data: { role },
-      select: { id: true, email: true, role: true },
-    });
-
-    return res.json({
-      message: "Хэрэглэгчийн role амжилттай солигдлоо",
-      data: updated,
-    });
-  } catch (error) {
-    console.error("[admin change role error]", error);
-    return res.status(500).json({ message: "Role солиход алдаа гарлаа" });
-  }
-});
+  },
+);
 
 /* ─── POST /admin/users ─── create admin user (SUPER_ADMIN only) ── */
-const ASSIGNABLE_ROLES = ["ADMIN", "HR_ADMIN", "CONTENT_ADMIN", "PARTNER_ADMIN", "WAREHOUSE_ADMIN", "FINANCE_ADMIN", "SERVICE_ADMIN", "LAWYER"] as const;
+const ASSIGNABLE_ROLES = [
+  "ADMIN",
+  "HR_ADMIN",
+  "CONTENT_ADMIN",
+  "PARTNER_ADMIN",
+  "WAREHOUSE_ADMIN",
+  "FINANCE_ADMIN",
+  "SERVICE_ADMIN",
+  "LAWYER",
+] as const;
 
-router.post("/admin/users", requireAuth, requirePlatformPermission(Permission.MANAGE_ADMIN_STAFF), async (req, res) => {
-  try {
-    const { email, fullName, password, role } = req.body;
+router.post(
+  "/admin/users",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ADMIN_STAFF),
+  async (req, res) => {
+    try {
+      const { email, fullName, password, role } = req.body;
 
-    if (!email || !fullName || !password || !role) {
-      return res.status(400).json({ message: "email, fullName, password, role бүгд шаардлагатай" });
-    }
+      if (!email || !fullName || !password || !role) {
+        return res.status(400).json({
+          message: "email, fullName, password, role бүгд шаардлагатай",
+        });
+      }
 
-    if (!ASSIGNABLE_ROLES.includes(role)) {
-      return res.status(400).json({
-        message: `Зөвшөөрөгдөх role: ${ASSIGNABLE_ROLES.join(", ")}`,
+      if (!ASSIGNABLE_ROLES.includes(role)) {
+        return res.status(400).json({
+          message: `Зөвшөөрөгдөх role: ${ASSIGNABLE_ROLES.join(", ")}`,
+        });
+      }
+
+      if (password.length < 6) {
+        return res
+          .status(400)
+          .json({ message: "Нууц үг хамгийн багадаа 6 тэмдэгт байх ёстой" });
+      }
+
+      const existing = await prisma.user.findFirst({
+        where: { email: email.toLowerCase().trim(), deletedAt: null },
       });
-    }
 
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Нууц үг хамгийн багадаа 6 тэмдэгт байх ёстой" });
-    }
+      if (existing) {
+        return res
+          .status(409)
+          .json({ message: "Энэ имэйлтэй хэрэглэгч бүртгэлтэй байна" });
+      }
 
-    const existing = await prisma.user.findFirst({
-      where: { email: email.toLowerCase().trim(), deletedAt: null },
-    });
+      const hashedPassword = await bcrypt.hash(password, 12);
 
-    if (existing) {
-      return res.status(409).json({ message: "Энэ имэйлтэй хэрэглэгч бүртгэлтэй байна" });
-    }
-
-    const hashedPassword = await bcrypt.hash(password, 12);
-
-    const user = await prisma.user.create({
-      data: {
-        email: email.toLowerCase().trim(),
-        passwordHash: hashedPassword,
-        role,
-        isActive: true,
-        profile: {
-          create: {
-            fullName: fullName.trim(),
+      const user = await prisma.user.create({
+        data: {
+          email: email.toLowerCase().trim(),
+          passwordHash: hashedPassword,
+          role,
+          isActive: true,
+          profile: {
+            create: {
+              fullName: fullName.trim(),
+            },
           },
         },
-      },
-      select: { id: true, email: true, role: true },
-    });
+        select: { id: true, email: true, role: true },
+      });
 
-    return res.status(201).json({
-      message: "Админ хэрэглэгч амжилттай үүсгэгдлээ",
-      data: user,
-    });
-  } catch (error) {
-    console.error("[admin create user error]", error);
-    return res.status(500).json({ message: "Хэрэглэгч үүсгэхэд алдаа гарлаа" });
-  }
-});
+      return res.status(201).json({
+        message: "Админ хэрэглэгч амжилттай үүсгэгдлээ",
+        data: user,
+      });
+    } catch (error) {
+      console.error("[admin create user error]", error);
+      return res
+        .status(500)
+        .json({ message: "Хэрэглэгч үүсгэхэд алдаа гарлаа" });
+    }
+  },
+);
 
 export default router;

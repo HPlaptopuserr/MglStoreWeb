@@ -9,14 +9,15 @@ import {
   Menu,
   X,
   ChevronRight,
-  ChevronLeft,
+  ChevronDown,
   Flame,
   LogOut,
   Settings,
   Package,
   FolderKanban,
-  GraduationCap,
   Building2,
+  UsersRound,
+  MapPinned,
   RefreshCcw,
   ShieldCheck,
   Sparkles,
@@ -25,7 +26,6 @@ import Image from "next/image";
 import { SearchBar } from "../../molecules/SearchBar";
 import { MegaMenu } from "@/components/organisms/MegaMenu";
 import { PartnerMenu } from "@/components/organisms/home/PartnerMenu";
-import { HrServicesMenu } from "@/components/organisms/home/HrServicesMenu";
 import { CategoryIcon } from "@/components/atoms/CategoryIcon";
 import { LoginModal } from "@/components/organisms/auth/LoginModal";
 import { useBusinessCategories } from "@/hooks/useBusinessCategories";
@@ -49,6 +49,12 @@ import {
 } from "@/lib/site-banners";
 
 const presentationPdfUrl = "/mgl-sma-taniltsuulga.pdf";
+const HIDDEN_MOBILE_NAV_HREFS = new Set([
+  "/hr",
+  "/study",
+  "/franchise",
+  "/projects",
+]);
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -62,53 +68,26 @@ export const Header = () => {
     createLoginMarketingBanner(),
   );
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [mglMenuOpen, setMglMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const mglDropdownRef = useRef<HTMLDivElement>(null);
   const { user, login, register, logout } = useAuth();
   const { count, total } = useCart();
   const { categories } = useBusinessCategories();
   const router = useRouter();
   const pathname = usePathname();
-  const mobileNavLinks = NAV_LINKS;
+  const mobileNavLinks = NAV_LINKS.filter(
+    (link) => !HIDDEN_MOBILE_NAV_HREFS.has(link.href),
+  );
   const isProfileRoute = pathname.startsWith("/profile");
   const isOrdersRoute = pathname.startsWith(ACCOUNT_ROUTES.orders);
   const hideBrowseNav =
     pathname.startsWith("/study") || isProfileRoute || isOrdersRoute;
   const hideSearch = isProfileRoute || isOrdersRoute;
 
-  // Desktop category scroll
-  const catScrollRef = useRef<HTMLDivElement>(null);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
-
-  const checkCatScroll = useCallback(() => {
-    const el = catScrollRef.current;
-    if (!el) return;
-    setCanScrollLeft(el.scrollLeft > 2);
-    setCanScrollRight(el.scrollLeft < el.scrollWidth - el.clientWidth - 2);
-  }, []);
-
-  useEffect(() => {
-    checkCatScroll();
-    const el = catScrollRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", checkCatScroll, { passive: true });
-    const ro = new ResizeObserver(checkCatScroll);
-    ro.observe(el);
-    return () => {
-      el.removeEventListener("scroll", checkCatScroll);
-      ro.disconnect();
-    };
-  }, [categories, checkCatScroll]);
-
-  const scrollCats = (dir: "left" | "right") => {
-    catScrollRef.current?.scrollBy({
-      left: dir === "left" ? -260 : 260,
-      behavior: "smooth",
-    });
-  };
-
   useEffect(() => {
     setMobileMenuOpen(false);
+    setMglMenuOpen(false);
   }, [pathname]);
 
   useEffect(() => {
@@ -136,6 +115,12 @@ export const Header = () => {
         !dropdownRef.current.contains(e.target as Node)
       ) {
         setUserDropdownOpen(false);
+      }
+      if (
+        mglDropdownRef.current &&
+        !mglDropdownRef.current.contains(e.target as Node)
+      ) {
+        setMglMenuOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
@@ -352,102 +337,99 @@ export const Header = () => {
           </div>
         )}
 
-        {!hideBrowseNav && categories.length > 0 && (
-          <div
-            className="scrollbar-hide flex w-full max-w-full gap-2 overflow-x-auto overscroll-x-contain border-b border-gray-100 px-3 py-2 md:hidden"
-            style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-          >
-            {categories.map((cat) => (
-              <Link
-                key={cat.id}
-                href={`/products?category=${cat.id}`}
-                className="flex shrink-0 items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm transition-colors active:bg-amber-50 active:border-amber-300 active:text-amber-700"
-              >
-                <CategoryIcon category={cat} size={12} />
-                {cat.name}
-              </Link>
-            ))}
-          </div>
-        )}
-
         {!hideBrowseNav && (
           <div className="relative hidden border-t border-gray-100 md:block">
             <div className="container mx-auto flex h-14 items-center gap-8 px-4">
               <div className="flex h-12 items-center gap-8">
                 <MegaMenu />
                 <PartnerMenu />
-                <HrServicesMenu />
-                <Link
-                  href="/study"
-                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
-                    pathname.startsWith("/study")
-                      ? "bg-emerald-50 text-emerald-700"
-                      : "text-gray-600 hover:bg-emerald-50 hover:text-emerald-700"
-                  }`}
-                >
-                  <GraduationCap size={14} />
-                  Сургалт
-                </Link>
-                <Link
-                  href="/franchise"
-                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
-                    pathname.startsWith("/franchise")
-                      ? "bg-cyan-50 text-cyan-700"
-                      : "text-gray-600 hover:bg-cyan-50 hover:text-cyan-700"
-                  }`}
-                >
-                  <FolderKanban size={14} />
-                  Франчайз
-                </Link>
-                <Link
-                  href="/projects"
-                  className={`flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
-                    pathname.startsWith("/projects")
-                      ? "bg-violet-50 text-violet-700"
-                      : "text-gray-600 hover:bg-violet-50 hover:text-violet-700"
-                  }`}
-                >
-                  <FolderKanban size={14} />
-                  Төсөл
-                </Link>
-              </div>
-
-              {categories.length > 0 && (
-                <div className="relative flex-1 min-w-0">
-                  {canScrollLeft && (
-                    <button
-                      onClick={() => scrollCats("left")}
-                      className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow border border-gray-200 text-gray-500 hover:text-black hover:shadow-md transition-all"
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-                  )}
-                  <div
-                    ref={catScrollRef}
-                    className="flex items-center gap-1 overflow-x-auto px-8"
-                    style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+                <div className="relative shrink-0" ref={mglDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setMglMenuOpen((open) => !open)}
+                    aria-expanded={mglMenuOpen}
+                    className={`flex h-full items-center gap-1.5 text-sm font-semibold transition-colors ${
+                      pathname.startsWith("/franchise") ||
+                      pathname.startsWith("/projects") ||
+                      pathname.startsWith("/hr") ||
+                      mglMenuOpen
+                        ? "text-orange-600"
+                        : "text-gray-600 hover:text-gray-900"
+                    }`}
                   >
-                    {categories.map((cat) => (
+                    <FolderKanban size={14} />
+                    MGL
+                    <ChevronDown
+                      size={13}
+                      className={`transition-transform ${
+                        mglMenuOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {mglMenuOpen && (
+                    <div className="absolute left-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-200/70">
                       <Link
-                        key={cat.id}
-                        href={`/products?category=${cat.id}`}
-                        className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-orange-50 hover:text-orange-600"
+                        href="/hr"
+                        className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
+                          pathname.startsWith("/hr")
+                            ? "bg-teal-50 text-teal-700"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                        }`}
                       >
-                        <CategoryIcon category={cat} size={14} />
-                        {cat.name}
+                        <UsersRound size={15} />
+                        Хүний нөөц
                       </Link>
-                    ))}
-                  </div>
-                  {canScrollRight && (
-                    <button
-                      onClick={() => scrollCats("right")}
-                      className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white shadow border border-gray-200 text-gray-500 hover:text-black hover:shadow-md transition-all"
-                    >
-                      <ChevronRight size={16} />
-                    </button>
+                      <Link
+                        href="/franchise"
+                        className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
+                          pathname.startsWith("/franchise")
+                            ? "bg-cyan-50 text-cyan-700"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                        }`}
+                      >
+                        <FolderKanban size={15} />
+                        Франчайз
+                      </Link>
+                      <Link
+                        href="/projects"
+                        className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
+                          pathname.startsWith("/projects")
+                            ? "bg-violet-50 text-violet-700"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                        }`}
+                      >
+                        <FolderKanban size={15} />
+                        Төсөл
+                      </Link>
+                    </div>
                   )}
                 </div>
-              )}
+                <Link
+                  href="/mgl-store"
+                  className={`flex h-full items-center gap-1.5 text-sm font-semibold transition-colors ${
+                    pathname.startsWith("/mgl-store")
+                      ? "text-amber-600"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <Package size={14} />
+                  MGL Store
+                </Link>
+                <Link
+                  href="/organizations?location=local"
+                  title="Орон нутгийн гишүүд"
+                  aria-label="Орон нутгийн гишүүд"
+                  className={`flex h-full items-center gap-1.5 text-sm font-semibold transition-colors ${
+                    pathname.startsWith("/organizations")
+                      ? "text-emerald-700"
+                      : "text-gray-600 hover:text-gray-900"
+                  }`}
+                >
+                  <MapPinned size={14} />
+                  Орон нутаг
+                </Link>
+              </div>
             </div>
           </div>
         )}

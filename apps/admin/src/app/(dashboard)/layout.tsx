@@ -20,6 +20,7 @@ import {
   BarChart3,
   GraduationCap,
   ShieldCheck,
+  MapPinned,
 } from "lucide-react";
 import { AdminSidebar, type NavItem } from "@mgl/ui";
 import { MobileDashboard } from "@/components/organisms/MobileDashboard";
@@ -120,6 +121,13 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     requires: ["MANAGE_REGISTRATIONS"],
   },
   {
+    id: "association-local-members",
+    label: "Орон нутгийн гишүүд",
+    icon: MapPinned,
+    href: "/association/local-members",
+    requires: ["MANAGE_REGISTRATIONS"],
+  },
+  {
     id: "study-registrations",
     label: "Сургалтын бүртгэл",
     icon: GraduationCap,
@@ -146,6 +154,13 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     icon: PackageSearch,
     href: "/product-development",
     requires: ["MANAGE_SITE_SETTINGS"],
+  },
+  {
+    id: "master-products",
+    label: "Нэгдсэн барааны сан",
+    icon: PackageSearch,
+    href: "/master-products",
+    requires: ["MANAGE_SITE_SETTINGS", "MANAGE_WAREHOUSES"],
   },
   {
     id: "categories",

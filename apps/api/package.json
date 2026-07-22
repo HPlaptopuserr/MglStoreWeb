@@ -5,12 +5,13 @@
   "scripts": {
     "build": "tsc",
     "start": "node --max-old-space-size=400 dist/index.js",
-    "dev": "tsx watch src/index.ts",
+    "dev": "MGL_LOCAL_DEV=true tsx watch src/index.ts",
     "lint": "eslint \"src/**/*.ts\" --fix",
     "categories:cleanup": "tsx src/scripts/cleanup-business-categories.ts",
     "categories:seed-marketplace": "tsx src/scripts/seed-marketplace-categories.ts",
     "seed:mgl-water-products": "tsx src/scripts/seed-mgl-water-products.ts",
     "products:classify": "tsx src/scripts/classify-products.ts",
+    "pos:sync-voided-restaurant-tickets": "tsx src/scripts/sync-voided-restaurant-tickets.ts",
     "test:pos-shift": "tsx --test src/routes/operations/pos/shift-accounting.test.ts",
     "type-check": "tsc --noEmit"
   },
@@ -23,6 +24,7 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.3.2",
+    "firebase-admin": "^14.1.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "jszip": "^3.10.1",

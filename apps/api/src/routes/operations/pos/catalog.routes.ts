@@ -11,6 +11,8 @@ import {
   PosSaleStatus,
   PosCreditStatus,
   CashDrawerEventType,
+  KitchenTicketStatus,
+  RestaurantTicketStatus,
 } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import {
@@ -1454,7 +1456,10 @@ router.post("/pos/sales/:id/void", async (req, res) => {
 
     const sale = await prisma.posSale.findUnique({
       where: { id: saleId },
-      include: { lines: true },
+      include: {
+        lines: true,
+        restaurantTicket: { select: { id: true, note: true } },
+      },
     });
     if (!sale) {
       return res.status(404).json({ message: "Борлуулалт олдсонгүй" });
@@ -1483,15 +1488,46 @@ router.post("/pos/sales/:id/void", async (req, res) => {
 
     await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
+        const voidedAt = new Date();
+
         await tx.posSale.update({
           where: { id: saleId },
           data: {
             status: PosSaleStatus.VOIDED,
-            voidedAt: new Date(),
+            voidedAt,
             voidReason: reason,
             voidedById: actor.id,
           },
         });
+
+        if (sale.restaurantTicket) {
+          const existingNote = sale.restaurantTicket.note?.trim();
+          await tx.restaurantTicket.update({
+            where: { id: sale.restaurantTicket.id },
+            data: {
+              status: RestaurantTicketStatus.CANCELLED,
+              closedAt: voidedAt,
+              note: existingNote ? `${existingNote}\nVOID: ${reason}` : `VOID: ${reason}`,
+            },
+          });
+
+          await tx.kitchenTicket.updateMany({
+            where: {
+              restaurantTicketId: sale.restaurantTicket.id,
+              status: {
+                in: [
+                  KitchenTicketStatus.NEW,
+                  KitchenTicketStatus.PREPARING,
+                  KitchenTicketStatus.READY,
+                ],
+              },
+            },
+            data: {
+              status: KitchenTicketStatus.CANCELLED,
+              cancelledAt: voidedAt,
+            },
+          });
+        }
 
         // Reverse stock for each line
         for (const line of sale.lines) {

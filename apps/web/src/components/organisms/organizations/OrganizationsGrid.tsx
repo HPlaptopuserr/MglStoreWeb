@@ -1,24 +1,10 @@
 "use client";
 
 import { OrganizationCard } from "./OrganizationCard";
-
-interface StoreItem {
-  id: string;
-  name: string;
-  slug: string;
-  logo: string;
-  banner: string;
-  isOpen: boolean;
-  category: string;
-  rating: number;
-  deliveryTime: string;
-  products: string[];
-  isInvestor?: boolean;
-  investmentAmount?: number;
-}
+import type { OrganizationStore } from "@/features/organizations/types";
 
 interface OrganizationsGridProps {
-  stores: StoreItem[];
+  stores: OrganizationStore[];
 }
 
 export function OrganizationsGrid({ stores }: OrganizationsGridProps) {

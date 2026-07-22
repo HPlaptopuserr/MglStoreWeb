@@ -1,4 +1,5 @@
 export const SHOWCASE_KEY = "product-showcase-shelves";
+export const HOMEPAGE_FEATURED_PRODUCTS_KEY = "homepage-featured-products";
 export const MARKETPLACE_SIDE_BANNER_KEY = "marketplace-side-banner";
 export const MARKETPLACE_SERVICES_PROMO_KEY = "marketplace-services-promo";
 
@@ -34,6 +35,36 @@ export type ResolvedShelf = ProductShelf & {
   products: ApiProduct[];
 };
 
+export function resolveHomepageFeaturedProducts(
+  raw: string | undefined,
+  products: ApiProduct[],
+): ApiProduct[] {
+  if (!raw) return [];
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    const productById = new Map(
+      products.map((product) => [product.id, product]),
+    );
+    const uniqueIds = [
+      ...new Set(
+        parsed
+          .map((id) => (typeof id === "string" ? id.trim() : ""))
+          .filter(Boolean),
+      ),
+    ];
+
+    return uniqueIds
+      .map((id) => productById.get(id))
+      .filter((product): product is ApiProduct => Boolean(product))
+      .slice(0, 10);
+  } catch {
+    return [];
+  }
+}
+
 export type MarketplaceSideBannerConfig = {
   isActive: boolean;
   imageUrl: string;
@@ -68,7 +99,9 @@ type ProjectLike = {
   isActive?: unknown;
 };
 
-export function resolveProjectBanners(projects: ProjectLike[]): MarketplaceProjectBannerConfig[] {
+export function resolveProjectBanners(
+  projects: ProjectLike[],
+): MarketplaceProjectBannerConfig[] {
   const banners: MarketplaceProjectBannerConfig[] = [];
 
   for (const project of projects) {
@@ -83,7 +116,8 @@ export function resolveProjectBanners(projects: ProjectLike[]): MarketplaceProje
     banners.push({
       id: String(project.id || image),
       title: String(project.title || "MGL Store төсөл"),
-      summary: typeof project.summary === "string" ? project.summary : undefined,
+      summary:
+        typeof project.summary === "string" ? project.summary : undefined,
       imageUrl: image,
     });
 
@@ -93,7 +127,9 @@ export function resolveProjectBanners(projects: ProjectLike[]): MarketplaceProje
   return banners;
 }
 
-export function parseMarketplaceSideBanner(raw?: string): MarketplaceSideBannerConfig | null {
+export function parseMarketplaceSideBanner(
+  raw?: string,
+): MarketplaceSideBannerConfig | null {
   if (!raw) return null;
 
   try {
@@ -114,7 +150,9 @@ export function parseMarketplaceSideBanner(raw?: string): MarketplaceSideBannerC
   }
 }
 
-export function parseMarketplaceServicesPromo(raw?: string): MarketplaceServicesPromoConfig | null {
+export function parseMarketplaceServicesPromo(
+  raw?: string,
+): MarketplaceServicesPromoConfig | null {
   if (!raw) return null;
 
   try {
@@ -174,8 +212,12 @@ export function resolveConfiguredShelves(
 }
 
 export function buildFallbackShelves(products: ApiProduct[]): ResolvedShelf[] {
-  const discounted = products.filter((product) => product.discounts?.[0]?.percent);
-  const preorder = products.filter((product) => product.supplyType === "CHINA_PREORDER");
+  const discounted = products.filter(
+    (product) => product.discounts?.[0]?.percent,
+  );
+  const preorder = products.filter(
+    (product) => product.supplyType === "CHINA_PREORDER",
+  );
   const fresh = [...products].slice(0, 12);
 
   const shelves: ResolvedShelf[] = [

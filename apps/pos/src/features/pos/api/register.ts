@@ -1,8 +1,8 @@
 import { posRequest } from "./_pos-client";
 import { authFetch, API } from "@/lib/api";
-import type { RegisterConfig } from "@mgl/types";
+import type { RegisterConfig } from "../types/pos.types";
 
-export type { RegisterConfig } from "@mgl/types";
+export type { RegisterConfig } from "../types/pos.types";
 
 export type Branch = { id: string; name: string };
 

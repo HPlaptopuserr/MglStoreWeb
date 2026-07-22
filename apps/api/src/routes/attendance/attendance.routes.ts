@@ -1,8 +1,157 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma } from "@mgl/database";
+import { prisma, type Prisma } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
+type AttendanceMethod = "FINGERPRINT" | "FACE" | "PIN" | "AUTO";
+type TeamAttendanceStatus = "PRESENT" | "CLOCKED_OUT" | "ABSENT";
+type AttendanceContext = {
+  userId: string;
+  organizationId: string;
+  orgRole: string | null;
+};
+type AttendanceTeamMember = {
+  id: string;
+  userId: string;
+  role: string;
+  department?: string | null;
+  user: {
+    id: string;
+    email: string | null;
+    profile: {
+      fullName: string | null;
+      phoneNumber: string | null;
+      avatarUrl: string | null;
+    } | null;
+  };
+};
+
+const MANAGER_ROLES = new Set(["OWNER", "ADMIN", "CEO", "MANAGER", "HR"]);
+const ATTENDANCE_UTC_OFFSET_MINUTES = Number(
+  process.env.ATTENDANCE_UTC_OFFSET_MINUTES ?? 480,
+);
+
+async function resolveAttendanceContext(
+  user: AuthPayload,
+): Promise<AttendanceContext | null> {
+  const baseWhere = {
+    userId: user.userId,
+    isActive: true,
+    deletedAt: null,
+  };
+
+  const tokenMembership = user.organizationId
+    ? await prisma.organizationMember.findFirst({
+        where: { ...baseWhere, organizationId: user.organizationId },
+        select: { organizationId: true, role: true },
+      })
+    : null;
+
+  const membership =
+    tokenMembership ??
+    (await prisma.organizationMember.findFirst({
+      where: baseWhere,
+      orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+      select: { organizationId: true, role: true },
+    }));
+
+  if (!membership) return null;
+
+  return {
+    userId: user.userId,
+    organizationId: membership.organizationId,
+    orgRole: membership.role,
+  };
+}
+
+function parseAttendanceMethod(method: unknown): AttendanceMethod {
+  if (method === "AUTO") return "AUTO";
+  if (method === "FACE") return "FACE";
+  if (method === "PIN") return "PIN";
+  return "FINGERPRINT";
+}
+
+function parseClientDate(value: unknown): Date | null {
+  if (typeof value !== "string" || value.trim().length === 0) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/**
+ * Attendance timestamps are stored as UTC-shaped wall time because mobile
+ * clients intentionally submit local ISO values without an offset. Build the
+ * current wall clock explicitly so a UTC production server does not treat
+ * 00:00-07:59 in Mongolia as the previous attendance day.
+ */
+function attendanceWallNow(now = new Date()): Date {
+  return new Date(now.getTime() + ATTENDANCE_UTC_OFFSET_MINUTES * 60_000);
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+}
+
+function nextDay(date: Date): Date {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + 1);
+  return next;
+}
+
+async function listAttendanceTeamMembers(
+  organizationId: string,
+): Promise<AttendanceTeamMember[]> {
+  try {
+    return await prisma.organizationMember.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        deletedAt: null,
+      },
+      orderBy: [{ department: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        userId: true,
+        role: true,
+        department: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: { fullName: true, phoneNumber: true, avatarUrl: true },
+            },
+          },
+        },
+      },
+    });
+  } catch (error) {
+    console.warn("team attendance member department fallback", error);
+    return prisma.organizationMember.findMany({
+      where: {
+        organizationId,
+        isActive: true,
+        deletedAt: null,
+      },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        userId: true,
+        role: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            profile: {
+              select: { fullName: true, phoneNumber: true, avatarUrl: true },
+            },
+          },
+        },
+      },
+    });
+  }
+}
 
 // ── Haversine distance (meters) ──────────────────────────────────────────────
 function haversineMeters(
@@ -29,11 +178,14 @@ function haversineMeters(
 router.get("/attendance/zones", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
-    if (!user.organizationId) {
-      return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return res
+        .status(400)
+        .json({ message: "Байгууллага холбогдоогүй байна" });
     }
     const zones = await prisma.attendanceZone.findMany({
-      where: { organizationId: user.organizationId },
+      where: { organizationId: context.organizationId },
       include: { branch: { select: { id: true, name: true } } },
       orderBy: { createdAt: "desc" },
     });
@@ -48,8 +200,11 @@ router.get("/attendance/zones", requireAuth, async (req, res) => {
 router.post("/attendance/zones", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
-    if (!user.organizationId) {
-      return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return res
+        .status(400)
+        .json({ message: "Байгууллага холбогдоогүй байна" });
     }
 
     const { name, lat, lng, radiusMeters, branchId } = req.body;
@@ -58,12 +213,14 @@ router.post("/attendance/zones", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "Бүсийн нэр шаардлагатай" });
     }
     if (typeof lat !== "number" || typeof lng !== "number") {
-      return res.status(400).json({ message: "Байршлын координат шаардлагатай" });
+      return res
+        .status(400)
+        .json({ message: "Байршлын координат шаардлагатай" });
     }
 
     const zone = await prisma.attendanceZone.create({
       data: {
-        organizationId: user.organizationId,
+        organizationId: context.organizationId,
         branchId: branchId || null,
         name: name.trim(),
         lat,
@@ -83,8 +240,15 @@ router.post("/attendance/zones", requireAuth, async (req, res) => {
 router.patch("/attendance/zones/:id", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return res
+        .status(400)
+        .json({ message: "Байгууллага холбогдоогүй байна" });
+    }
+
     const zone = await prisma.attendanceZone.findFirst({
-      where: { id: req.params.id, organizationId: user.organizationId ?? "" },
+      where: { id: req.params.id, organizationId: context.organizationId },
     });
     if (!zone) return res.status(404).json({ message: "Бүс олдсонгүй" });
 
@@ -111,8 +275,15 @@ router.patch("/attendance/zones/:id", requireAuth, async (req, res) => {
 router.delete("/attendance/zones/:id", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return res
+        .status(400)
+        .json({ message: "Байгууллага холбогдоогүй байна" });
+    }
+
     const zone = await prisma.attendanceZone.findFirst({
-      where: { id: req.params.id, organizationId: user.organizationId ?? "" },
+      where: { id: req.params.id, organizationId: context.organizationId },
     });
     if (!zone) return res.status(404).json({ message: "Бүс олдсонгүй" });
 
@@ -132,11 +303,14 @@ router.delete("/attendance/zones/:id", requireAuth, async (req, res) => {
 router.post("/attendance/clock-in", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
-    if (!user.organizationId) {
-      return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return res
+        .status(400)
+        .json({ message: "Байгууллага холбогдоогүй байна" });
     }
 
-    const { zoneId, lat, lng, method } = req.body;
+    const { zoneId, lat, lng, method, clockInAt } = req.body;
 
     if (!zoneId || typeof lat !== "number" || typeof lng !== "number") {
       return res.status(400).json({ message: "zoneId, lat, lng шаардлагатай" });
@@ -144,7 +318,11 @@ router.post("/attendance/clock-in", requireAuth, async (req, res) => {
 
     // Validate zone exists and is active
     const zone = await prisma.attendanceZone.findFirst({
-      where: { id: zoneId, organizationId: user.organizationId, isActive: true },
+      where: {
+        id: zoneId,
+        organizationId: context.organizationId,
+        isActive: true,
+      },
     });
     if (!zone) return res.status(404).json({ message: "Бүс олдсонгүй" });
 
@@ -158,33 +336,35 @@ router.post("/attendance/clock-in", requireAuth, async (req, res) => {
       });
     }
 
-    // Check if already clocked in today (no clock-out yet)
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const clockIn = parseClientDate(clockInAt) ?? attendanceWallNow();
+
+    // Check if already clocked in for the submitted day (no clock-out yet)
+    const today = startOfDay(clockIn);
+    const tomorrow = nextDay(today);
 
     const existing = await prisma.attendanceRecord.findFirst({
       where: {
-        userId: user.userId,
-        organizationId: user.organizationId,
+        userId: context.userId,
+        organizationId: context.organizationId,
         clockIn: { gte: today, lt: tomorrow },
         clockOut: null,
       },
     });
     if (existing) {
-      return res.status(400).json({ message: "Аль хэдийн ирсэнээ бүртгүүлсэн байна" });
+      return res
+        .status(400)
+        .json({ message: "Аль хэдийн ирсэнээ бүртгүүлсэн байна" });
     }
 
     const record = await prisma.attendanceRecord.create({
       data: {
-        userId: user.userId,
-        organizationId: user.organizationId,
+        userId: context.userId,
+        organizationId: context.organizationId,
         zoneId,
-        clockIn: new Date(),
+        clockIn,
         clockInLat: lat,
         clockInLng: lng,
-        clockInMethod: method || "FINGERPRINT",
+        clockInMethod: parseAttendanceMethod(method),
       },
       include: { zone: { select: { name: true } } },
     });
@@ -200,38 +380,45 @@ router.post("/attendance/clock-in", requireAuth, async (req, res) => {
 router.post("/attendance/clock-out", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
-    if (!user.organizationId) {
-      return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return res
+        .status(400)
+        .json({ message: "Байгууллага холбогдоогүй байна" });
     }
 
-    const { lat, lng, method } = req.body;
+    const { lat, lng, method, clockOutAt } = req.body;
 
     if (typeof lat !== "number" || typeof lng !== "number") {
       return res.status(400).json({ message: "lat, lng шаардлагатай" });
     }
 
-    // Find today's open record
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-
+    // Find the latest open record. Restricting this to the server's UTC day
+    // loses early-morning and overnight shifts.
     const record = await prisma.attendanceRecord.findFirst({
       where: {
-        userId: user.userId,
-        organizationId: user.organizationId,
-        clockIn: { gte: today, lt: tomorrow },
+        userId: context.userId,
+        organizationId: context.organizationId,
         clockOut: null,
       },
       include: { zone: true },
+      orderBy: { clockIn: "desc" },
     });
 
     if (!record) {
       return res.status(400).json({ message: "Ирсэн бүртгэл олдсонгүй" });
     }
 
-    // Check distance from the zone
-    const distance = haversineMeters(lat, lng, record.zone.lat, record.zone.lng);
+    const attendanceMethod = parseAttendanceMethod(method);
+
+    // Clock-out is an explicit biometric action and must happen inside the
+    // configured attendance zone.
+    const distance = haversineMeters(
+      lat,
+      lng,
+      record.zone.lat,
+      record.zone.lng,
+    );
     if (distance > record.zone.radiusMeters) {
       return res.status(400).json({
         message: `Бүсээс гадуур байна (${Math.round(distance)}м зайтай)`,
@@ -240,7 +427,12 @@ router.post("/attendance/clock-out", requireAuth, async (req, res) => {
       });
     }
 
-    const clockOut = new Date();
+    const clockOut = parseClientDate(clockOutAt) ?? attendanceWallNow();
+    if (clockOut.getTime() < record.clockIn.getTime()) {
+      return res
+        .status(400)
+        .json({ message: "Явсан цаг ирсэн цагаас өмнө байж болохгүй" });
+    }
     const totalMinutes = Math.round(
       (clockOut.getTime() - record.clockIn.getTime()) / 60000,
     );
@@ -251,7 +443,7 @@ router.post("/attendance/clock-out", requireAuth, async (req, res) => {
         clockOut,
         clockOutLat: lat,
         clockOutLng: lng,
-        clockOutMethod: method || "FINGERPRINT",
+        clockOutMethod: attendanceMethod,
         totalMinutes,
       },
       include: { zone: { select: { name: true } } },
@@ -268,19 +460,20 @@ router.post("/attendance/clock-out", requireAuth, async (req, res) => {
 router.get("/attendance/today", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
-    if (!user.organizationId) {
-      return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return res
+        .status(400)
+        .json({ message: "Байгууллага холбогдоогүй байна" });
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
+    const today = startOfDay(attendanceWallNow());
+    const tomorrow = nextDay(today);
 
     const record = await prisma.attendanceRecord.findFirst({
       where: {
-        userId: user.userId,
-        organizationId: user.organizationId,
+        userId: context.userId,
+        organizationId: context.organizationId,
         clockIn: { gte: today, lt: tomorrow },
       },
       include: { zone: { select: { id: true, name: true } } },
@@ -298,21 +491,24 @@ router.get("/attendance/today", requireAuth, async (req, res) => {
 router.get("/attendance/history", requireAuth, async (req, res) => {
   try {
     const user = (req as any).user as AuthPayload;
-    if (!user.organizationId) {
-      return res.status(400).json({ message: "Байгууллага холбогдоогүй байна" });
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return res
+        .status(400)
+        .json({ message: "Байгууллага холбогдоогүй байна" });
     }
 
     const { userId, from, to, limit } = req.query;
 
     // Managers can view any user; staff can only view their own
     const targetUserId =
-      userId && (user.orgRole === "OWNER" || user.orgRole === "ADMIN")
+      userId && context.orgRole && MANAGER_ROLES.has(context.orgRole)
         ? String(userId)
-        : user.userId;
+        : context.userId;
 
-    const where: any = {
+    const where: Prisma.AttendanceRecordWhereInput = {
       userId: targetUserId,
-      organizationId: user.organizationId,
+      organizationId: context.organizationId,
     };
 
     if (from || to) {
@@ -325,7 +521,13 @@ router.get("/attendance/history", requireAuth, async (req, res) => {
       where,
       include: {
         zone: { select: { name: true } },
-        user: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
+        user: {
+          select: {
+            id: true,
+            email: true,
+            profile: { select: { fullName: true } },
+          },
+        },
       },
       orderBy: { clockIn: "desc" },
       take: limit ? parseInt(String(limit), 10) : 30,
@@ -335,6 +537,105 @@ router.get("/attendance/history", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("get history error", error);
     res.status(500).json({ message: "Түүх авахад алдаа" });
+  }
+});
+
+// ── GET /attendance/team/today ──────────────────────────────────────────────
+router.get("/attendance/team/today", requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user as AuthPayload;
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return res
+        .status(400)
+        .json({ message: "Байгууллага холбогдоогүй байна" });
+    }
+    if (!context.orgRole || !MANAGER_ROLES.has(context.orgRole)) {
+      return res
+        .status(403)
+        .json({ message: "Ирцийн самбар харах эрх хүрэлцэхгүй" });
+    }
+
+    const requestedDate = parseClientDate(req.query.date);
+    const today = startOfDay(requestedDate ?? attendanceWallNow());
+    const tomorrow = nextDay(today);
+
+    const [members, records] = await Promise.all([
+      listAttendanceTeamMembers(context.organizationId),
+      prisma.attendanceRecord.findMany({
+        where: {
+          organizationId: context.organizationId,
+          clockIn: { gte: today, lt: tomorrow },
+        },
+        include: { zone: { select: { id: true, name: true } } },
+        orderBy: { clockIn: "desc" },
+      }),
+    ]);
+
+    const latestRecordByUser = new Map<string, (typeof records)[number]>();
+    for (const record of records) {
+      if (!latestRecordByUser.has(record.userId)) {
+        latestRecordByUser.set(record.userId, record);
+      }
+    }
+
+    const rows = members.map((member) => {
+      const record = latestRecordByUser.get(member.userId);
+      const status: TeamAttendanceStatus = record
+        ? record.clockOut
+          ? "CLOCKED_OUT"
+          : "PRESENT"
+        : "ABSENT";
+
+      return {
+        memberId: member.id,
+        userId: member.userId,
+        email: member.user.email || "",
+        fullName:
+          member.user.profile?.fullName || member.user.email || "Ажилтан",
+        phone: member.user.profile?.phoneNumber || null,
+        avatarUrl: member.user.profile?.avatarUrl || null,
+        role: member.role,
+        department: member.department || "Хэлтэсгүй",
+        status,
+        record: record
+          ? {
+              id: record.id,
+              clockIn: record.clockIn,
+              clockOut: record.clockOut,
+              totalMinutes: record.totalMinutes,
+              zoneName: record.zone?.name ?? null,
+              method: record.clockInMethod,
+            }
+          : null,
+      };
+    });
+
+    const departments = Array.from(
+      new Set(rows.map((row) => row.department)),
+    ).sort((a, b) => a.localeCompare(b));
+    const presentCount = rows.filter((row) => row.status === "PRESENT").length;
+    const clockedOutCount = rows.filter(
+      (row) => row.status === "CLOCKED_OUT",
+    ).length;
+    const absentCount = rows.filter((row) => row.status === "ABSENT").length;
+
+    return res.json({
+      date: today,
+      summary: {
+        total: rows.length,
+        present: presentCount,
+        clockedOut: clockedOutCount,
+        absent: absentCount,
+      },
+      departments,
+      members: rows,
+    });
+  } catch (error) {
+    console.error("team attendance today error", error);
+    return res
+      .status(500)
+      .json({ message: "Нийт ирцийн мэдээлэл авахад алдаа гарлаа" });
   }
 });
 

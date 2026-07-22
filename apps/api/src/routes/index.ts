@@ -2,11 +2,15 @@ export { authRoutes } from "./auth";
 
 export {
   associationRoutes,
+  businessDashboardRoutes,
   investorRoutes,
   orgJoinRoutes,
   orgMemberRoutes,
+  orgTaskRoutes,
+  orgGamesRoutes,
   partnerRequestRoutes,
   partnerRoutes,
+  personalOrganizationRoutes,
   vendorSetupRoutes,
   warehouseSetupRoutes,
 } from "./business";
@@ -36,6 +40,7 @@ export {
   teamRoutes,
   upgradePlansRoutes,
   adminGrantPlanRoutes,
+  appVersionRoutes,
 } from "./system";
 
 export { formRoutes } from "./forms";
@@ -53,3 +58,4 @@ export {
 export { default as vendorMerchantRoutes } from "./vendor/vendor-merchant.routes";
 export { default as vendorUpgradeRoutes } from "./vendor/vendor-upgrade.routes";
 export { default as vendorCardTerminalRoutes } from "./vendor/vendor-card-terminal.routes";
+export { metaMarketingRoutes } from "./marketing";

@@ -19,6 +19,18 @@ interface SearchOption {
   icon?: string;
 }
 
+interface SearchCategoryResponse {
+  id: string;
+  name: string;
+  icon?: string;
+}
+
+interface SearchPartnerResponse {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 import { API } from "@/lib/api";
 import { organizationPath } from "@/lib/organization-links";
 
@@ -61,15 +73,15 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
           fetch(`${API}/partners`),
         ]);
         if (catRes.ok) {
-          const cats = await catRes.json();
+          const cats = (await catRes.json()) as SearchCategoryResponse[];
           setApiCategories(
-            cats.map((c: any) => ({ id: c.id, name: c.name, icon: c.icon })),
+            cats.map((category) => ({ id: category.id, name: category.name, icon: category.icon })),
           );
         }
         if (partRes.ok) {
-          const raw = await partRes.json();
-          const parts = Array.isArray(raw) ? raw : raw?.data || [];
-          setApiBrands(parts.map((p: any) => ({ id: p.id, name: p.name, slug: p.slug })));
+          const raw = (await partRes.json()) as SearchPartnerResponse[] | { data?: SearchPartnerResponse[] };
+          const parts = Array.isArray(raw) ? raw : raw.data ?? [];
+          setApiBrands(parts.map((partner) => ({ id: partner.id, name: partner.name, slug: partner.slug })));
         }
       } catch {
         setApiCategories([]);

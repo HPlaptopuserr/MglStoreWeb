@@ -80,6 +80,18 @@ type Payment = {
   };
 };
 
+type OutstandingPaymentSummary = {
+  count: number;
+  totalUnpaid: number;
+  payments: Array<{
+    id: string;
+    invoiceNumber: string;
+    requestNumber: string;
+    outstandingAmount: number;
+    status: PaymentStatus;
+  }>;
+};
+
 type WarehouseInventoryItem = {
   id: string;
   quantity: number;
@@ -195,6 +207,113 @@ const statusConfig: Record<
   },
 };
 
+type WorkflowSection = "new" | "requests" | "payments";
+
+interface StockRequestWorkflowNavProps {
+  active: WorkflowSection;
+  pendingRequestCount: number;
+  outstandingPaymentCount: number;
+  isNewOrderLocked: boolean;
+  onNavigate: (section: WorkflowSection) => void;
+}
+
+function StockRequestWorkflowNav({
+  active,
+  pendingRequestCount,
+  outstandingPaymentCount,
+  isNewOrderLocked,
+  onNavigate,
+}: StockRequestWorkflowNavProps) {
+  const items = [
+    {
+      key: "new" as const,
+      label: "Шинэ захиалга",
+      description: isNewOrderLocked ? "Төлбөр хүлээгдэж байна" : "Бараа сонгох",
+      icon: Package,
+      count: 0,
+      warning: isNewOrderLocked,
+    },
+    {
+      key: "requests" as const,
+      label: "Захиалгын түүх",
+      description: "Явц, хүргэлт",
+      icon: Clock,
+      count: pendingRequestCount,
+      warning: false,
+    },
+    {
+      key: "payments" as const,
+      label: "Төлбөрийн түүх",
+      description: "Нэхэмжлэх, үлдэгдэл",
+      icon: CreditCard,
+      count: outstandingPaymentCount,
+      warning: outstandingPaymentCount > 0,
+    },
+  ];
+
+  return (
+    <nav
+      aria-label="Бараа таталтын үндсэн хэсгүүд"
+      className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:grid-cols-3"
+    >
+      {items.map((item, index) => {
+        const Icon = item.icon;
+        const isActive = active === item.key;
+
+        return (
+          <button
+            key={item.key}
+            type="button"
+            aria-current={isActive ? "page" : undefined}
+            onClick={() => onNavigate(item.key)}
+            className={`flex min-h-16 items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFAD02] focus-visible:ring-offset-2 ${
+              isActive
+                ? "bg-slate-900 text-white shadow-md"
+                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+            }`}
+          >
+            <span
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
+                isActive
+                  ? "bg-white/10 text-[#FFAD02]"
+                  : item.warning
+                    ? "bg-red-50 text-red-600"
+                    : "bg-slate-100 text-slate-500"
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[10px] font-black uppercase tracking-wider opacity-60">
+                Алхам {index + 1}
+              </span>
+              <span className="block truncate text-sm font-bold">
+                {item.label}
+              </span>
+              <span className="block truncate text-xs opacity-60">
+                {item.description}
+              </span>
+            </span>
+            {item.count > 0 && (
+              <span
+                className={`rounded-full px-2 py-0.5 text-xs font-black ${
+                  item.warning
+                    ? "bg-red-100 text-red-700"
+                    : isActive
+                      ? "bg-white/10 text-white"
+                      : "bg-amber-100 text-amber-700"
+                }`}
+              >
+                {item.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 export default function StockRequestsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("warehouses");
   const [requests, setRequests] = useState<StockRequest[]>([]);
@@ -225,6 +344,8 @@ export default function StockRequestsPage() {
   // Payment history states
   const [paymentHistory, setPaymentHistory] = useState<Payment[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
+  const [outstandingPayments, setOutstandingPayments] =
+    useState<OutstandingPaymentSummary | null>(null);
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [loadingPaymentDetail, setLoadingPaymentDetail] = useState(false);
@@ -250,9 +371,14 @@ export default function StockRequestsPage() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [requestsRes, warehousesRes] = await Promise.all([
-        authFetch(`${API}/stock-requests?organizationId=${user?.organizationId}`),
+      const [requestsRes, warehousesRes, outstandingRes] = await Promise.all([
+        authFetch(
+          `${API}/stock-requests?organizationId=${user?.organizationId}`,
+        ),
         authFetch(`${API}/warehouses/organization/${user?.organizationId}`),
+        authFetch(
+          `${API}/stock-requests/payments/unpaid/${user?.organizationId}`,
+        ),
       ]);
       if (requestsRes.ok) {
         const reqs = (await requestsRes.json()) || [];
@@ -260,6 +386,9 @@ export default function StockRequestsPage() {
         setFilteredRequests(reqs);
       }
       if (warehousesRes.ok) setWarehouses((await warehousesRes.json()) || []);
+      if (outstandingRes.ok) {
+        setOutstandingPayments(await outstandingRes.json());
+      }
     } catch (error) {
       console.error("Failed to fetch data:", error);
     } finally {
@@ -286,7 +415,9 @@ export default function StockRequestsPage() {
     setLoadingPaymentDetail(true);
     setShowPaymentModal(true);
     try {
-      const res = await authFetch(`${API}/stock-requests/payments/${paymentId}`);
+      const res = await authFetch(
+        `${API}/stock-requests/payments/${paymentId}`,
+      );
       if (res.ok) {
         const data = await res.json();
         setSelectedPayment(data);
@@ -308,7 +439,22 @@ export default function StockRequestsPage() {
     }
   }, [viewMode, user?.organizationId]);
 
+  useEffect(() => {
+    if (
+      viewMode === "warehouses" &&
+      outstandingPayments !== null &&
+      outstandingPayments.count > 0
+    ) {
+      setViewMode("payments");
+    }
+  }, [outstandingPayments, viewMode]);
+
   const enterWarehouse = async (warehouse: Warehouse, autoItems?: any[]) => {
+    if ((outstandingPayments?.count ?? 0) > 0) {
+      setViewMode("payments");
+      return;
+    }
+
     setSelectedWarehouse(warehouse);
     setProductsLoading(true);
     setViewMode("browse");
@@ -323,11 +469,13 @@ export default function StockRequestsPage() {
         if (autoItems && autoItems.length > 0) {
           const newCartItems: CartItem[] = [];
           for (const suggested of autoItems) {
-            const matched = fetchedProducts.find((p: any) => p.product.id === suggested.product.id);
+            const matched = fetchedProducts.find(
+              (p: any) => p.product.id === suggested.product.id,
+            );
             if (matched) {
               const requestQty = Math.max(
                 5,
-                (suggested.alertThreshold || 0) * 2 - (suggested.quantity || 0)
+                (suggested.alertThreshold || 0) * 2 - (suggested.quantity || 0),
               );
               newCartItems.push({
                 productId: matched.product.id,
@@ -442,22 +590,37 @@ export default function StockRequestsPage() {
           })),
         }),
       });
-      if (!response.ok)
-        throw new Error((await response.json()).message || "Failed");
+      if (!response.ok) {
+        const responseBody = (await response.json()) as {
+          code?: string;
+          message?: string;
+        };
+        if (responseBody.code === "OUTSTANDING_STOCK_PAYMENT") {
+          await fetchData();
+          setShowConfirmModal(false);
+          setViewMode("payments");
+          return;
+        }
+        throw new Error(responseBody.message || "Failed");
+      }
       clearCart();
       exitWarehouse();
       fetchData();
       setViewMode("requests");
-      alert("Хүсэлт амжилттай илгээгдлээ. Админ зөвшөөрснөөр идэвхжинэ.");
-    } catch (error: any) {
-      alert(error.message || "Хүсэлт илгээхэд алдаа гарлаа");
+      alert("Захиалга амжилттай илгээгдлээ. Админ зөвшөөрснөөр идэвхжинэ.");
+    } catch (error: unknown) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Захиалга илгээхэд алдаа гарлаа",
+      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleCancel = async (requestId: string) => {
-    if (!confirm("Хүсэлтийг цуцлах уу?")) return;
+    if (!confirm("Захиалгыг цуцлах уу?")) return;
     try {
       const response = await authFetch(
         `${API}/stock-requests/${requestId}/cancel`,
@@ -466,13 +629,18 @@ export default function StockRequestsPage() {
       if (!response.ok) throw new Error("Failed");
       fetchData();
     } catch (error) {
-      alert("Хүсэлт цуцлахад алдаа гарлаа");
+      alert("Захиалга цуцлахад алдаа гарлаа");
     }
   };
 
   const categories = Array.from(
     new Set(
-      warehouseProducts.map((p: any) => p.product.category?.name || p.product.businessCategory?.name).filter(Boolean),
+      warehouseProducts
+        .map(
+          (p: any) =>
+            p.product.category?.name || p.product.businessCategory?.name,
+        )
+        .filter(Boolean),
     ),
   ) as string[];
 
@@ -480,17 +648,44 @@ export default function StockRequestsPage() {
     const matchesSearch =
       item.product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
       item.product.sku?.toLowerCase().includes(productSearch.toLowerCase());
-    
-    const itemCategory = item.product.category?.name || item.product.businessCategory?.name;
+
+    const itemCategory =
+      item.product.category?.name || item.product.businessCategory?.name;
     const matchesCategory =
       !selectedCategory || itemCategory === selectedCategory;
-      
+
     return matchesSearch && matchesCategory;
   });
 
   const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const pendingRequestCount = requests.filter(
+    (request) => request.status === "PENDING",
+  ).length;
+  const outstandingPaymentCount = outstandingPayments?.count ?? 0;
+  const isNewOrderLocked = outstandingPaymentCount > 0;
 
-  const renderProductCard = (item: WarehouseInventoryItem, isHorizontal = false) => {
+  const navigateWorkflow = (section: WorkflowSection) => {
+    if (section === "new") {
+      setViewMode(isNewOrderLocked ? "payments" : "warehouses");
+      return;
+    }
+    setViewMode(section);
+  };
+
+  const workflowNav = (active: WorkflowSection) => (
+    <StockRequestWorkflowNav
+      active={active}
+      pendingRequestCount={pendingRequestCount}
+      outstandingPaymentCount={outstandingPaymentCount}
+      isNewOrderLocked={isNewOrderLocked}
+      onNavigate={navigateWorkflow}
+    />
+  );
+
+  const renderProductCard = (
+    item: WarehouseInventoryItem,
+    isHorizontal = false,
+  ) => {
     const cartQty = getCartItemQuantity(item.product.id);
     const isInCart = cartQty > 0;
     return (
@@ -516,9 +711,11 @@ export default function StockRequestsPage() {
               <Package className="h-10 w-10 text-slate-300" />
             </div>
           )}
-          {(item.product.category || (item.product as any).businessCategory) && (
+          {(item.product.category ||
+            (item.product as any).businessCategory) && (
             <span className="absolute left-2 top-2 max-w-[70%] truncate rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-medium text-slate-600 backdrop-blur-sm">
-              {item.product.category?.name || (item.product as any).businessCategory?.name}
+              {item.product.category?.name ||
+                (item.product as any).businessCategory?.name}
             </span>
           )}
           <span className="absolute right-2 top-2 rounded-full bg-green-500 px-2 py-0.5 text-[10px] font-bold text-white">
@@ -546,9 +743,7 @@ export default function StockRequestsPage() {
             >
               <Minus className="h-4 w-4" />
             </button>
-            <span className="text-sm font-bold text-[#FFAD02]">
-              {cartQty}
-            </span>
+            <span className="text-sm font-bold text-[#FFAD02]">{cartQty}</span>
             <button
               onClick={() => {
                 if (cartQty < item.quantity) {
@@ -585,47 +780,52 @@ export default function StockRequestsPage() {
   if (viewMode === "warehouses") {
     return (
       <div className="space-y-6 p-2">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight text-slate-900">
-              Бараа татах
-            </h1>
-            <p className="text-sm text-slate-500">
-              Агуулах сонгож бараа татах хүсэлт илгээх
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setViewMode("payments")}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
-            >
-              <CreditCard className="h-4 w-4" />
-              Төлбөрийн түүх
-            </button>
-            <button
-              onClick={() => setViewMode("requests")}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
-            >
-              <Clock className="h-4 w-4" />
-              Миний хүсэлтүүд
-              {requests.filter((r) => r.status === "PENDING").length > 0 && (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">
-                  {requests.filter((r) => r.status === "PENDING").length}
-                </span>
-              )}
-            </button>
-          </div>
+        <div>
+          <h1 className="text-3xl font-black tracking-tight text-slate-900">
+            Бараа таталтын удирдлага
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Бараа сонгохоос төлбөр, хүргэлт хүртэл нэг урсгалаар удирдана.
+          </p>
         </div>
+
+        {workflowNav("new")}
 
         <div className="flex items-start gap-3 rounded-2xl bg-amber-50 p-4">
           <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
           <p className="text-sm font-medium text-amber-800">
-            Агуулах руу орж барааг сонгоод хүсэлт илгээнэ үү. Админ зөвшөөрснөөр
-            бараа татах боломжтой.
+            Агуулах руу орж бараагаа сонгоод захиалга илгээнэ. Админ
+            зөвшөөрснөөр бараа татах боломжтой.
           </p>
         </div>
 
-        {user?.organizationId && (
+        {(outstandingPayments?.count ?? 0) > 0 && (
+          <div className="flex flex-col gap-4 rounded-2xl border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+              <div>
+                <p className="text-sm font-bold text-red-900">
+                  Өмнөх төлбөрийн үлдэгдэл байна
+                </p>
+                <p className="mt-1 text-sm text-red-700">
+                  {outstandingPayments?.count} нэхэмжлэхийн нийт үлдэгдэл{" "}
+                  {(outstandingPayments?.totalUnpaid ?? 0).toLocaleString()}₮.
+                  Төлбөр бүрэн төлөгдсөний дараа шинэ захиалга шууд нээгдэнэ.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setViewMode("payments")}
+              className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+            >
+              <CreditCard className="h-4 w-4" />
+              Төлбөр төлөх
+            </button>
+          </div>
+        )}
+
+        {user?.organizationId && (outstandingPayments?.count ?? 0) === 0 && (
           <StockSuggestionBanner
             organizationId={user.organizationId}
             onEnterWarehouse={enterWarehouseById}
@@ -650,7 +850,12 @@ export default function StockRequestsPage() {
               <div
                 key={warehouse.id}
                 onClick={() => enterWarehouse(warehouse)}
-                className="group cursor-pointer rounded-2xl border border-slate-100 bg-white p-5 transition-all hover:border-[#FFAD02]/30 hover:shadow-lg hover:shadow-[#FFAD02]/10"
+                aria-disabled={(outstandingPayments?.count ?? 0) > 0}
+                className={`group rounded-2xl border border-slate-100 bg-white p-5 transition-all ${
+                  (outstandingPayments?.count ?? 0) > 0
+                    ? "cursor-not-allowed opacity-55"
+                    : "cursor-pointer hover:border-[#FFAD02]/30 hover:shadow-lg hover:shadow-[#FFAD02]/10"
+                }`}
               >
                 <div className="flex items-start gap-4">
                   <div className="rounded-xl bg-[#FFAD02]/10 p-3 transition-all group-hover:bg-[#FFAD02] group-hover:shadow-lg group-hover:shadow-[#FFAD02]/30">
@@ -792,13 +997,17 @@ export default function StockRequestsPage() {
                         Шинээр нэмэгдсэн
                       </h2>
                       <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide">
-                        {warehouseProducts.slice(-6).reverse().map((item) => renderProductCard(item, true))}
+                        {warehouseProducts
+                          .slice(-6)
+                          .reverse()
+                          .map((item) => renderProductCard(item, true))}
                       </div>
                     </div>
                   )}
 
                   {/* Санал болгох бараа */}
-                  {warehouseProducts.filter((i) => i.quantity <= i.minQuantity).length > 0 && (
+                  {warehouseProducts.filter((i) => i.quantity <= i.minQuantity)
+                    .length > 0 && (
                     <div>
                       <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800">
                         <TrendingUp className="h-4 w-4 text-emerald-500" />
@@ -1023,7 +1232,7 @@ export default function StockRequestsPage() {
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <>
-                  <span>Хүсэлт илгээх</span>
+                  <span>Захиалга илгээх</span>
                   <ChevronRight className="h-4 w-4" />
                 </>
               )}
@@ -1044,7 +1253,7 @@ export default function StockRequestsPage() {
                 Итгэлтэй байна уу?
               </h3>
               <p className="mt-2 text-center text-sm text-slate-500">
-                Та {totalCartItems} ширхэг бараа татах хүсэлт илгээхдээ итгэлтэй
+                Та {totalCartItems} ширхэг барааны захиалга илгээхдээ итгэлтэй
                 байна уу?
               </p>
               <div className="mt-6 flex gap-3">
@@ -1091,23 +1300,18 @@ export default function StockRequestsPage() {
 
     return (
       <div className="space-y-6 p-2">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
           <div>
             <h1 className="text-3xl font-black tracking-tight text-slate-900">
               Төлбөрийн түүх
             </h1>
             <p className="text-sm text-slate-500">
-              Бараа татах хүсэлтүүдийн нэхэмжлэхүүд
+              Бараа таталтын захиалгуудын нэхэмжлэх
             </p>
           </div>
-          <button
-            onClick={() => setViewMode("warehouses")}
-            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Буцах
-          </button>
         </div>
+
+        {workflowNav("payments")}
 
         {/* Stats */}
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
@@ -1158,7 +1362,7 @@ export default function StockRequestsPage() {
                 Анхааруулга
               </p>
               <p className="text-sm text-amber-700 mt-0.5">
-                Төлөгдөөгүй нэхэмжлэх байгаа тул шинэ хүсэлт зөвшөөрөгдөхгүй.
+                Төлөгдөөгүй нэхэмжлэх байгаа тул шинэ захиалга нээгдэхгүй.
                 Эхлээд өмнөх төлбөрөө төлнө үү.
               </p>
             </div>
@@ -1178,7 +1382,7 @@ export default function StockRequestsPage() {
               Төлбөрийн түүх байхгүй
             </p>
             <p className="mt-1 text-sm text-slate-400">
-              Бараа татах хүсэлт илгээсний дараа энд харагдана
+              Бараа таталтын захиалга илгээсний дараа энд харагдана
             </p>
           </div>
         ) : (
@@ -1242,7 +1446,7 @@ export default function StockRequestsPage() {
                         </span>
                       </div>
                       <p className="mt-1 text-sm text-slate-600">
-                        Хүсэлт: {payment.request?.requestNumber || "-"}
+                        Захиалга: {payment.request?.requestNumber || "-"}
                       </p>
                       <p className="text-sm text-slate-500">
                         {new Date(payment.createdAt).toLocaleDateString(
@@ -1369,7 +1573,7 @@ export default function StockRequestsPage() {
                           </p>
                         </div>
                         <div>
-                          <p className="text-slate-500">Хүсэлтийн дугаар</p>
+                          <p className="text-slate-500">Захиалгын дугаар</p>
                           <p className="font-medium">
                             {selectedPayment.request?.requestNumber || "-"}
                           </p>
@@ -1519,21 +1723,18 @@ export default function StockRequestsPage() {
   // ===================== REQUESTS VIEW =====================
   return (
     <div className="space-y-6 p-2">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
         <div>
           <h1 className="text-3xl font-black tracking-tight text-slate-900">
-            Миний хүсэлтүүд
+            Захиалгын түүх
           </h1>
-          <p className="text-sm text-slate-500">Илгээсэн хүсэлтүүдийн түүх</p>
+          <p className="mt-1 text-sm text-slate-500">
+            Илгээсэн захиалгын төлөв, төлбөр болон хүргэлтийн явц
+          </p>
         </div>
-        <button
-          onClick={() => setViewMode("warehouses")}
-          className="inline-flex items-center gap-2 rounded-xl bg-[#FFAD02] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#FFAD02]/20 transition-all hover:bg-[#E09D00]"
-        >
-          <Plus className="h-5 w-5" />
-          Шинэ хүсэлт
-        </button>
       </div>
+
+      {workflowNav("requests")}
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {[
@@ -1597,14 +1798,16 @@ export default function StockRequestsPage() {
             <Package className="h-8 w-8 text-slate-300" />
           </div>
           <p className="text-lg font-semibold text-slate-600">
-            {requests.length === 0 ? "Хүсэлт байхгүй байна" : "Шүүлтүүрт тохирох хүсэлт олдсонгүй"}
+            {requests.length === 0
+              ? "Захиалгын түүх хоосон байна"
+              : "Шүүлтүүрт тохирох захиалга олдсонгүй"}
           </p>
           {requests.length === 0 ? (
             <button
               onClick={() => setViewMode("warehouses")}
               className="mt-4 rounded-xl bg-[#FFAD02] px-6 py-2.5 text-sm font-bold text-white"
             >
-              Хүсэлт илгээх
+              Шинэ захиалга
             </button>
           ) : null}
         </div>
@@ -1885,7 +2088,7 @@ export default function StockRequestsPage() {
                   {selectedRequest.payment.status === "PENDING" && (
                     <div className="mt-3 p-3 rounded-lg bg-amber-50 border border-amber-100">
                       <p className="text-xs text-amber-700">
-                        Төлбөр төлөгдөөгүй байгаа тул шинэ хүсэлт батлагдахгүй
+                        Төлбөр төлөгдөөгүй байгаа тул шинэ захиалга батлагдахгүй
                         болно
                       </p>
                     </div>

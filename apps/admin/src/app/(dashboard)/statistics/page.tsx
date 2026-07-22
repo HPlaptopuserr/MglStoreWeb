@@ -4,31 +4,22 @@ import { useEffect, useMemo, useState } from "react";
 import {
   FileSpreadsheet,
   FileText,
-  Flame,
   Gift,
   RefreshCw,
   Search,
   Sparkles,
-  Store,
 } from "lucide-react";
 import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { fetchStatisticsInsights, type StatisticsInsights } from "@/lib/statistics-api";
+  fetchStatisticsInsights,
+  type StatisticsInsights,
+} from "@/lib/statistics-api";
 import { BranchLeaderboard } from "./_components/BranchLeaderboard";
 import { StatisticsHeroCards } from "./_components/StatisticsHeroCards";
 import { StatisticsMetricPanel } from "./_components/StatisticsMetricPanel";
+import { StatisticsRankingCharts } from "./_components/StatisticsRankingCharts";
+import { SystemFinancialOverview } from "./_components/SystemFinancialOverview";
 import { TopProductsList } from "./_components/TopProductsList";
 import {
-  compact,
   dayOptions,
   metricValue,
   money,
@@ -68,6 +59,8 @@ function buildReportHtml(data: StatisticsInsights) {
           <td>${escapeHtml(metricValue(item.value, item.unit))}</td>
           <td>${escapeHtml(item.unit)}</td>
           <td>${escapeHtml(trendText(item.trend))}</td>
+          <td>${escapeHtml(item.scope)}</td>
+          <td>${escapeHtml(item.source)}</td>
           <td>${escapeHtml(item.description)}</td>
         </tr>`,
     )
@@ -84,7 +77,6 @@ function buildReportHtml(data: StatisticsInsights) {
           <td>${escapeHtml(money(item.revenue))}</td>
           <td>${item.transactions}</td>
           <td>${item.stock}</td>
-          <td>${item.velocityScore}</td>
         </tr>`,
     )
     .join("");
@@ -131,6 +123,8 @@ function buildReportHtml(data: StatisticsInsights) {
               <th>Утга</th>
               <th>Нэгж</th>
               <th>Trend</th>
+              <th>Хамрах хүрээ</th>
+              <th>Эх үүсвэр</th>
               <th>Тайлбар</th>
             </tr>
           </thead>
@@ -139,7 +133,7 @@ function buildReportHtml(data: StatisticsInsights) {
         <h2>Top products</h2>
         <table>
           <thead>
-            <tr><th>#</th><th>Бараа</th><th>Байгууллага</th><th>SKU</th><th>Нэгж</th><th>Орлого</th><th>Transactions</th><th>Үлдэгдэл</th><th>Velocity</th></tr>
+            <tr><th>#</th><th>Бараа</th><th>Байгууллага</th><th>SKU</th><th>Нэгж</th><th>Борлуулалт</th><th>Transactions</th><th>Үлдэгдэл</th></tr>
           </thead>
           <tbody>${productRows}</tbody>
         </table>
@@ -162,7 +156,9 @@ export default function StatisticsPage() {
   const [query, setQuery] = useState("");
   const [view, setView] = useState<"all" | "products" | "branches">("all");
   const [selectedMetricId, setSelectedMetricId] = useState<string | null>(null);
-  const [loyaltyDetail, setLoyaltyDetail] = useState<"all" | "earn" | "redeem">("all");
+  const [loyaltyDetail, setLoyaltyDetail] = useState<"all" | "earn" | "redeem">(
+    "all",
+  );
 
   const load = async (nextDays = days) => {
     setLoading(true);
@@ -170,7 +166,9 @@ export default function StatisticsPage() {
     try {
       setData(await fetchStatisticsInsights(nextDays));
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Статистик дата ачаалагдсангүй");
+      setError(
+        err instanceof Error ? err.message : "Статистик дата ачаалагдсангүй",
+      );
     } finally {
       setLoading(false);
     }
@@ -180,26 +178,6 @@ export default function StatisticsPage() {
     load(days);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days]);
-
-  const branchChart = useMemo(
-    () =>
-      (data?.topBranches ?? []).slice(0, 6).map((item) => ({
-        name: item.name.length > 12 ? `${item.name.slice(0, 12)}...` : item.name,
-        revenue: item.revenue,
-        orders: item.orders,
-      })),
-    [data],
-  );
-
-  const productChart = useMemo(
-    () =>
-      (data?.topProducts ?? []).slice(0, 7).map((item) => ({
-        name: item.name.length > 14 ? `${item.name.slice(0, 14)}...` : item.name,
-        units: item.units,
-        revenue: item.revenue,
-      })),
-    [data],
-  );
 
   const normalizedQuery = query.trim().toLowerCase();
   const filteredProducts = useMemo(() => {
@@ -225,7 +203,10 @@ export default function StatisticsPage() {
   }, [data, normalizedQuery]);
 
   const statusRows = useMemo(() => {
-    const total = (data?.orderStatus ?? []).reduce((sum, item) => sum + item.count, 0);
+    const total = (data?.orderStatus ?? []).reduce(
+      (sum, item) => sum + item.count,
+      0,
+    );
     return (data?.orderStatus ?? []).map((item) => ({
       ...item,
       percent: total > 0 ? Math.round((item.count / total) * 100) : 0,
@@ -240,15 +221,12 @@ export default function StatisticsPage() {
     return Array.from(groups.entries());
   }, [data]);
 
-  const selectedMetric = useMemo(() => {
-    const metrics = data?.marketingMetrics ?? [];
-    return metrics.find((item) => item.id === selectedMetricId) ?? metrics[0] ?? null;
-  }, [data, selectedMetricId]);
-
   const loyaltyRows = useMemo(() => {
     const items = data?.loyalty?.recent ?? [];
-    if (loyaltyDetail === "earn") return items.filter((item) => item.action === "EARN");
-    if (loyaltyDetail === "redeem") return items.filter((item) => item.action === "SPEND");
+    if (loyaltyDetail === "earn")
+      return items.filter((item) => item.action === "EARN");
+    if (loyaltyDetail === "redeem")
+      return items.filter((item) => item.action === "SPEND");
     return items;
   }, [data, loyaltyDetail]);
 
@@ -283,7 +261,8 @@ export default function StatisticsPage() {
               MGL Store data room
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
-              Нэвтрэлт, борлуулалт, хамгийн халуун бараа, салбарын эргэлтийг нэг дороос хурдан уншина.
+              Нэвтрэлт, борлуулалт, хамгийн халуун бараа, салбарын эргэлтийг нэг
+              дороос хурдан уншина.
             </p>
           </div>
           <div className="flex flex-col justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -293,7 +272,9 @@ export default function StatisticsPage() {
                   key={option.value}
                   onClick={() => setDays(option.value)}
                   className={`rounded-xl px-4 py-2 text-sm font-black transition ${
-                    days === option.value ? "bg-lime-300 text-slate-950" : "bg-white/10 text-white hover:bg-white/15"
+                    days === option.value
+                      ? "bg-lime-300 text-slate-950"
+                      : "bg-white/10 text-white hover:bg-white/15"
                   }`}
                 >
                   {option.label}
@@ -304,7 +285,9 @@ export default function StatisticsPage() {
               onClick={() => load()}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-white text-sm font-black text-slate-950"
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+              />
               Шинэчлэх
             </button>
             <div className="grid grid-cols-2 gap-2">
@@ -356,7 +339,9 @@ export default function StatisticsPage() {
                 key={item.key}
                 onClick={() => setView(item.key as typeof view)}
                 className={`rounded-lg px-4 py-2 transition ${
-                  view === item.key ? "bg-white text-slate-950 shadow-sm" : "hover:text-slate-950"
+                  view === item.key
+                    ? "bg-white text-slate-950 shadow-sm"
+                    : "hover:text-slate-950"
                 }`}
               >
                 {item.label}
@@ -367,6 +352,10 @@ export default function StatisticsPage() {
       </section>
 
       <StatisticsHeroCards data={data} loading={loading} />
+      <SystemFinancialOverview
+        overview={data?.financialOverview ?? null}
+        loading={loading}
+      />
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -376,7 +365,8 @@ export default function StatisticsPage() {
               POS M Point бүртгэл
             </h3>
             <p className="text-sm font-medium text-slate-500">
-              Оноо олголт, оноо хасалт болон тухайн receipt-ийн дэлгэрэнгүй хөдөлгөөн.
+              Оноо олголт, оноо хасалт болон тухайн receipt-ийн дэлгэрэнгүй
+              хөдөлгөөн.
             </p>
           </div>
           <div className="grid grid-cols-3 rounded-xl bg-slate-100 p-1 text-xs font-black text-slate-600">
@@ -388,9 +378,13 @@ export default function StatisticsPage() {
               <button
                 key={item.key}
                 type="button"
-                onClick={() => setLoyaltyDetail(item.key as typeof loyaltyDetail)}
+                onClick={() =>
+                  setLoyaltyDetail(item.key as typeof loyaltyDetail)
+                }
                 className={`rounded-lg px-4 py-2 transition ${
-                  loyaltyDetail === item.key ? "bg-white text-slate-950 shadow-sm" : "hover:text-slate-950"
+                  loyaltyDetail === item.key
+                    ? "bg-white text-slate-950 shadow-sm"
+                    : "hover:text-slate-950"
                 }`}
               >
                 {item.label}
@@ -425,12 +419,20 @@ export default function StatisticsPage() {
               type="button"
               onClick={() => setLoyaltyDetail(item.key as typeof loyaltyDetail)}
               className={`rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md ${
-                loyaltyDetail === item.key ? "border-amber-300 bg-amber-50 ring-2 ring-amber-100" : "border-slate-200 bg-slate-50"
+                loyaltyDetail === item.key
+                  ? "border-amber-300 bg-amber-50 ring-2 ring-amber-100"
+                  : "border-slate-200 bg-slate-50"
               }`}
             >
-              <p className="text-xs font-black uppercase text-slate-500">{item.label}</p>
-              <p className="mt-2 text-2xl font-black text-slate-950">{item.value}</p>
-              <p className="mt-1 text-xs font-semibold text-slate-500">{item.sub}</p>
+              <p className="text-xs font-black uppercase text-slate-500">
+                {item.label}
+              </p>
+              <p className="mt-2 text-2xl font-black text-slate-950">
+                {item.value}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                {item.sub}
+              </p>
             </button>
           ))}
         </div>
@@ -445,23 +447,39 @@ export default function StatisticsPage() {
           </div>
           <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
             {loyaltyRows.map((item) => (
-              <div key={item.id} className="grid grid-cols-[1.1fr_0.9fr_0.8fr_0.8fr_0.8fr] items-center gap-3 px-4 py-3 text-sm">
+              <div
+                key={item.id}
+                className="grid grid-cols-[1.1fr_0.9fr_0.8fr_0.8fr_0.8fr] items-center gap-3 px-4 py-3 text-sm"
+              >
                 <div className="min-w-0">
-                  <p className="truncate font-black text-slate-950">{item.receiptNo}</p>
+                  <p className="truncate font-black text-slate-950">
+                    {item.receiptNo}
+                  </p>
                   <p className="truncate text-xs font-semibold text-slate-500">
-                    {item.customerName || item.customerPhone} · {new Date(item.createdAt).toLocaleString("mn-MN")}
+                    {item.customerName || item.customerPhone} ·{" "}
+                    {new Date(item.createdAt).toLocaleString("mn-MN")}
                   </p>
                 </div>
                 <div className="min-w-0">
-                  <p className="truncate font-bold text-slate-700">{item.organizationName}</p>
-                  <p className="truncate text-xs font-semibold text-slate-500">{item.branchName}</p>
+                  <p className="truncate font-bold text-slate-700">
+                    {item.organizationName}
+                  </p>
+                  <p className="truncate text-xs font-semibold text-slate-500">
+                    {item.branchName}
+                  </p>
                 </div>
-                <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-black ${
-                  item.action === "EARN" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-                }`}>
+                <span
+                  className={`w-fit rounded-full px-2.5 py-1 text-xs font-black ${
+                    item.action === "EARN"
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-amber-50 text-amber-700"
+                  }`}
+                >
                   {item.action === "EARN" ? "Олголт" : "Хасалт"}
                 </span>
-                <p className="text-right font-black text-slate-950">{money(item.saleTotal)}</p>
+                <p className="text-right font-black text-slate-950">
+                  {money(item.saleTotal)}
+                </p>
                 <p className="text-right font-black text-slate-950">
                   {item.action === "EARN"
                     ? `+${item.earnedPoints.toLocaleString("mn-MN")} M`
@@ -482,55 +500,20 @@ export default function StatisticsPage() {
         data={data}
         loading={loading}
         metricGroups={metricGroups}
-        selectedMetric={selectedMetric}
         selectedMetricId={selectedMetricId}
-        onMetricSelect={setSelectedMetricId}
+        onMetricSelect={(metricId) =>
+          setSelectedMetricId((current) =>
+            current === metricId ? null : metricId,
+          )
+        }
         onExport={exportExcel}
       />
 
-      <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-black text-slate-950">Салбарын эргэлт</h3>
-              <p className="text-sm font-medium text-slate-500">Орлогоор тэргүүлж буй салбарууд</p>
-            </div>
-            <Store className="h-5 w-5 text-slate-400" />
-          </div>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={branchChart}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={11} />
-                <YAxis tickLine={false} axisLine={false} fontSize={11} tickFormatter={compact} />
-                <Tooltip formatter={(value) => money(Number(value))} />
-                <Bar dataKey="revenue" fill="#84cc16" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h3 className="text-lg font-black text-slate-950">Хамгийн их зарагдаж буй бараа</h3>
-              <p className="text-sm font-medium text-slate-500">Хамгийн их зарагдсан бараа</p>
-            </div>
-            <Flame className="h-5 w-5 text-orange-500" />
-          </div>
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={productChart}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={11} />
-                <YAxis tickLine={false} axisLine={false} fontSize={11} />
-                <Tooltip />
-                <Area type="monotone" dataKey="units" stroke="#0ea5e9" fill="#bae6fd" strokeWidth={3} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </section>
+      <StatisticsRankingCharts
+        branches={data?.topBranches ?? []}
+        products={data?.topProducts ?? []}
+        windowDays={data?.windowDays ?? days}
+      />
 
       <section className="grid gap-4 xl:grid-cols-2">
         <TopProductsList
@@ -541,17 +524,22 @@ export default function StatisticsPage() {
           branches={filteredBranches}
           maxRevenue={data?.topBranches[0]?.revenue ?? 0}
           visibleCount={view === "products" ? 4 : 8}
+          windowDays={data?.windowDays ?? days}
         />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="mb-4 text-lg font-black text-slate-950">Order status mix</h3>
+          <h3 className="mb-4 text-lg font-black text-slate-950">
+            Order status mix
+          </h3>
           <div className="space-y-3">
             {statusRows.map((item) => (
               <div key={item.status}>
                 <div className="mb-1 flex items-center justify-between text-sm">
-                  <span className="font-black text-slate-700">{item.status}</span>
+                  <span className="font-black text-slate-700">
+                    {item.status}
+                  </span>
                   <span className="font-bold text-slate-500">
                     {item.count} · {item.percent}%
                   </span>
@@ -573,18 +561,27 @@ export default function StatisticsPage() {
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="mb-4 text-lg font-black text-slate-950">Recent POS sales</h3>
+          <h3 className="mb-4 text-lg font-black text-slate-950">
+            Recent POS sales
+          </h3>
           <div className="space-y-3">
             {(data?.recentSales ?? []).slice(0, 8).map((sale) => (
-              <div key={sale.id} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
+              <div
+                key={sale.id}
+                className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3"
+              >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-slate-950">{sale.receiptNo}</p>
+                  <p className="truncate text-sm font-black text-slate-950">
+                    {sale.receiptNo}
+                  </p>
                   <p className="truncate text-xs font-semibold text-slate-500">
                     {sale.organizationName} · {sale.branchName}
                   </p>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-black text-slate-950">{money(sale.total)}</p>
+                  <p className="text-sm font-black text-slate-950">
+                    {money(sale.total)}
+                  </p>
                   <p className="text-xs font-bold text-slate-500">
                     {new Date(sale.createdAt).toLocaleDateString("mn-MN")}
                   </p>

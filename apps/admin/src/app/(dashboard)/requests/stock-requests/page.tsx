@@ -134,6 +134,7 @@ const statusConfig: Record<
 export default function AdminStockRequestsPage() {
   const [requests, setRequests] = useState<StockRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StockRequestStatus | "ALL">(
     "ALL",
   );
@@ -160,20 +161,38 @@ export default function AdminStockRequestsPage() {
   const [approvalError, setApprovalError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchRequests();
+    void fetchRequests();
+    const interval = window.setInterval(() => void fetchRequests(true), 20000);
+    return () => window.clearInterval(interval);
   }, [statusFilter]);
 
-  const fetchRequests = async () => {
+  const fetchRequests = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
+      setFetchError(null);
       const params = new URLSearchParams();
       if (statusFilter !== "ALL") params.set("status", statusFilter);
-      const res = await adminFetch(`${API}/stock-requests?${params.toString()}`);
-      if (res.ok) setRequests((await res.json()) || []);
+      const res = await adminFetch(
+        `${API}/stock-requests?${params.toString()}`,
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          message?: string;
+        } | null;
+        throw new Error(
+          body?.message || "Хүсэлтийн жагсаалт авахад алдаа гарлаа",
+        );
+      }
+      setRequests((await res.json()) || []);
     } catch (error) {
       console.error("Failed to fetch requests:", error);
+      setFetchError(
+        error instanceof Error
+          ? error.message
+          : "Хүсэлтийн жагсаалт авахад алдаа гарлаа",
+      );
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -393,13 +412,30 @@ export default function AdminStockRequestsPage() {
           </p>
         </div>
         <button
-          onClick={fetchRequests}
+          type="button"
+          onClick={() => void fetchRequests()}
           className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
         >
           <RefreshCw className="h-4 w-4" />
           Шинэчлэх
         </button>
       </div>
+
+      {fetchError && (
+        <div className="flex items-start justify-between gap-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+            <span>{fetchError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchRequests()}
+            className="shrink-0 underline underline-offset-2 hover:text-red-900"
+          >
+            Дахин оролдох
+          </button>
+        </div>
+      )}
 
       {pendingCount > 0 && (
         <div className="flex items-start gap-3 rounded-xl  bg-[#5B4CFF]/10 border border-[#5B4CFF]/10 p-4">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   Smartphone,
   Building2,
@@ -53,6 +53,15 @@ type StoreBranchLocation = {
   };
 };
 
+type StoreProduct = {
+  id: string;
+  name: string;
+  price: number;
+  images?: { id?: string; url: string }[];
+  organization?: { id: string; name: string } | null;
+  businessCategory?: { id: string; name: string } | null;
+};
+
 /* ── icon helper: data URI / URL → <img>, otherwise emoji/text ── */
 function CatIcon({ icon, size = 20 }: { icon: string | null; size?: number }) {
   if (!icon) return <Package size={size} className="text-slate-400" />;
@@ -75,9 +84,14 @@ function CatIcon({ icon, size = 20 }: { icon: string | null; size?: number }) {
 export function MglStoreTab() {
   const [banners, setBanners] = useState<string[]>([]);
   const [allCategories, setAllCategories] = useState<BusinessCategory[]>([]);
+  const [allProducts, setAllProducts] = useState<StoreProduct[]>([]);
   const [selectedCatIds, setSelectedCatIds] = useState<string[]>([]);
+  const [featuredProductIds, setFeaturedProductIds] = useState<string[]>([]);
+  const [productSearch, setProductSearch] = useState("");
   const [showLocations, setShowLocations] = useState(true);
-  const [branchLocations, setBranchLocations] = useState<StoreBranchLocation[]>([]);
+  const [branchLocations, setBranchLocations] = useState<StoreBranchLocation[]>(
+    [],
+  );
   const [branchSearch, setBranchSearch] = useState("");
   const [branchLoading, setBranchLoading] = useState(true);
   const [branchError, setBranchError] = useState("");
@@ -85,7 +99,9 @@ export function MglStoreTab() {
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [previewBannerIdx, setPreviewBannerIdx] = useState(0);
-  const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
+  const [expandedParents, setExpandedParents] = useState<Set<string>>(
+    new Set(),
+  );
   const fileRef = useRef<HTMLInputElement>(null);
 
   /* ── load ALL categories (flat) ── */
@@ -93,27 +109,58 @@ export function MglStoreTab() {
     Promise.all([
       adminFetch(`${API}/site-settings`).then((r) => (r.ok ? r.json() : {})),
       fetch(`${API}/business-categories`).then((r) => (r.ok ? r.json() : [])),
+      adminFetch(`${API}/products?limit=100`).then((r) =>
+        r.ok ? r.json() : [],
+      ),
     ])
-      .then(([settings, cats]: [Record<string, string>, BusinessCategory[]]) => {
-        if (settings["app-promo-banners"]) {
-          try {
-            const p = JSON.parse(settings["app-promo-banners"]);
-            if (Array.isArray(p)) setBanners(p);
-          } catch {}
-        }
-        if (settings["app-home-categories"]) {
-          try {
-            const p = JSON.parse(settings["app-home-categories"]);
-            if (Array.isArray(p)) setSelectedCatIds(p);
-          } catch {}
-        }
-        const showLocationsRaw =
-          settings["app-show-branch-locations"] ?? settings["show-branch-map"];
-        setShowLocations(
-          !["false", "0", "off"].includes(String(showLocationsRaw || "").toLowerCase()),
-        );
-        setAllCategories(cats);
-      })
+      .then(
+        ([
+          settings,
+          cats,
+          products,
+        ]: [
+          Record<string, string>,
+          BusinessCategory[],
+          StoreProduct[] | { products?: StoreProduct[]; data?: StoreProduct[] },
+        ]) => {
+          if (settings["app-promo-banners"]) {
+            try {
+              const p = JSON.parse(settings["app-promo-banners"]);
+              if (Array.isArray(p)) setBanners(p);
+            } catch {}
+          }
+          if (settings["app-home-categories"]) {
+            try {
+              const p = JSON.parse(settings["app-home-categories"]);
+              if (Array.isArray(p)) setSelectedCatIds(p);
+            } catch {}
+          }
+          if (settings["app-featured-products"]) {
+            try {
+              const p = JSON.parse(settings["app-featured-products"]);
+              if (Array.isArray(p)) setFeaturedProductIds(p);
+            } catch {}
+          }
+          const showLocationsRaw =
+            settings["app-show-branch-locations"] ??
+            settings["show-branch-map"];
+          setShowLocations(
+            !["false", "0", "off"].includes(
+              String(showLocationsRaw || "").toLowerCase(),
+            ),
+          );
+          setAllCategories(cats);
+          setAllProducts(
+            Array.isArray(products)
+              ? products
+              : Array.isArray(products.products)
+                ? products.products
+                : Array.isArray(products.data)
+                  ? products.data
+                  : [],
+          );
+        },
+      )
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
@@ -158,7 +205,8 @@ export function MglStoreTab() {
     reader.readAsDataURL(file);
     e.target.value = "";
   };
-  const removeBanner = (i: number) => setBanners((p) => p.filter((_, k) => k !== i));
+  const removeBanner = (i: number) =>
+    setBanners((p) => p.filter((_, k) => k !== i));
   const swapBanners = (i: number, j: number) => {
     if (j < 0 || j >= banners.length) return;
     setBanners((p) => {
@@ -170,9 +218,26 @@ export function MglStoreTab() {
 
   /* ── category ── */
   const toggleCat = (id: string) =>
-    setSelectedCatIds((p) => (p.includes(id) ? p.filter((c) => c !== id) : [...p, id]));
+    setSelectedCatIds((p) =>
+      p.includes(id) ? p.filter((c) => c !== id) : [...p, id],
+    );
   const moveCat = (id: string, dir: -1 | 1) => {
     setSelectedCatIds((p) => {
+      const i = p.indexOf(id);
+      const t = i + dir;
+      if (t < 0 || t >= p.length) return p;
+      const n = [...p];
+      [n[i], n[t]] = [n[t], n[i]];
+      return n;
+    });
+  };
+
+  const toggleFeaturedProduct = (id: string) =>
+    setFeaturedProductIds((p) =>
+      p.includes(id) ? p.filter((productId) => productId !== id) : [...p, id],
+    );
+  const moveFeaturedProduct = (id: string, dir: -1 | 1) => {
+    setFeaturedProductIds((p) => {
       const i = p.indexOf(id);
       const t = i + dir;
       if (t < 0 || t >= p.length) return p;
@@ -186,26 +251,49 @@ export function MglStoreTab() {
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      await adminFetch(`${API}/site-settings`, {
+      const response = await adminFetch(`${API}/site-settings`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           "app-promo-banners": JSON.stringify(banners),
           "app-home-categories": JSON.stringify(selectedCatIds),
+          "app-featured-products": JSON.stringify(featuredProductIds),
           "app-show-branch-locations": showLocations ? "true" : "false",
         }),
       });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.message || "Хадгалахад алдаа гарлаа");
+      }
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
-    } catch {
-      alert("Хадгалахад алдаа гарлаа");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Хадгалахад алдаа гарлаа");
     }
     setSaving(false);
-  }, [banners, selectedCatIds, showLocations]);
+  }, [banners, featuredProductIds, selectedCatIds, showLocations]);
 
   const selectedCats = selectedCatIds
     .map((id) => allCategories.find((c) => c.id === id))
     .filter(Boolean) as BusinessCategory[];
+  const selectedFeaturedProducts = featuredProductIds
+    .map((id) => allProducts.find((p) => p.id === id))
+    .filter(Boolean) as StoreProduct[];
+  const normalizedProductSearch = productSearch.trim().toLowerCase();
+  const filteredProducts = useMemo(() => {
+    if (!normalizedProductSearch) return allProducts;
+    return allProducts.filter((product) => {
+      const haystack = [
+        product.name,
+        product.organization?.name,
+        product.businessCategory?.name,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedProductSearch);
+    });
+  }, [allProducts, normalizedProductSearch]);
   const normalizedBranchSearch = branchSearch.trim().toLowerCase();
   const filteredBranchLocations = branchLocations.filter((branch) => {
     if (!normalizedBranchSearch) return true;
@@ -221,9 +309,13 @@ export function MglStoreTab() {
     return haystack.includes(normalizedBranchSearch);
   });
 
-  const nextBanner = () => setPreviewBannerIdx((i) => (i + 1) % Math.max(banners.length, 1));
+  const nextBanner = () =>
+    setPreviewBannerIdx((i) => (i + 1) % Math.max(banners.length, 1));
   const prevBanner = () =>
-    setPreviewBannerIdx((i) => (i - 1 + Math.max(banners.length, 1)) % Math.max(banners.length, 1));
+    setPreviewBannerIdx(
+      (i) =>
+        (i - 1 + Math.max(banners.length, 1)) % Math.max(banners.length, 1),
+    );
 
   if (loading) {
     return (
@@ -276,7 +368,9 @@ export function MglStoreTab() {
         <section className="rounded-2xl border border-slate-200 bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-slate-800">Промо баннерууд</h3>
+              <h3 className="text-sm font-bold text-slate-800">
+                Промо баннерууд
+              </h3>
               <p className="text-xs text-slate-400 mt-0.5">
                 Нүүр хуудасны слайдер. Ихдээ {MAX_BANNERS} зураг.
               </p>
@@ -345,7 +439,13 @@ export function MglStoreTab() {
               </div>
             )}
           </div>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleFile}
+          />
 
           {banners.length > 0 && (
             <button
@@ -446,31 +546,75 @@ export function MglStoreTab() {
                     <div className="ml-8 mt-1 mb-1 space-y-1 border-l-2 border-slate-100 pl-3">
                       {children.map((child) => {
                         const childOn = selectedCatIds.includes(child.id);
+                        const grandchildren = childrenOf(child.id);
                         return (
-                          <div
-                            key={child.id}
-                            className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 transition-all"
-                          >
-                            <div className="h-7 w-7 rounded-lg bg-white border border-slate-100 flex items-center justify-center shrink-0">
-                              <CatIcon icon={child.icon} size={14} />
-                            </div>
-                            <span className="flex-1 text-[13px] font-medium text-slate-600 min-w-0 truncate">
-                              {child.name}
-                            </span>
-                            <button
-                              onClick={() => toggleCat(child.id)}
-                              className={`h-6 shrink-0 rounded-md px-2 text-[10px] font-bold border transition-all ${
-                                childOn
-                                  ? "border-violet-300 bg-violet-500 text-white"
-                                  : "border-slate-200 bg-white text-slate-400 hover:border-violet-300 hover:text-violet-600"
-                              }`}
-                            >
-                              {childOn ? (
-                                <Check size={10} />
-                              ) : (
-                                <Plus size={10} />
+                          <div key={child.id} className="space-y-1">
+                            <div className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 transition-all">
+                              <div className="h-7 w-7 rounded-lg bg-white border border-slate-100 flex items-center justify-center shrink-0">
+                                <CatIcon icon={child.icon} size={14} />
+                              </div>
+                              <span className="flex-1 text-[13px] font-medium text-slate-600 min-w-0 truncate">
+                                {child.name}
+                              </span>
+                              {grandchildren.length > 0 && (
+                                <span className="text-[10px] font-medium text-slate-400">
+                                  {grandchildren.length} дэд
+                                </span>
                               )}
-                            </button>
+                              <button
+                                onClick={() => toggleCat(child.id)}
+                                className={`h-6 shrink-0 rounded-md px-2 text-[10px] font-bold border transition-all ${
+                                  childOn
+                                    ? "border-violet-300 bg-violet-500 text-white"
+                                    : "border-slate-200 bg-white text-slate-400 hover:border-violet-300 hover:text-violet-600"
+                                }`}
+                              >
+                                {childOn ? (
+                                  <Check size={10} />
+                                ) : (
+                                  <Plus size={10} />
+                                )}
+                              </button>
+                            </div>
+                            {grandchildren.length > 0 && (
+                              <div className="ml-7 space-y-1 border-l border-slate-100 pl-3">
+                                {grandchildren.map((grandchild) => {
+                                  const grandchildOn = selectedCatIds.includes(
+                                    grandchild.id,
+                                  );
+                                  return (
+                                    <div
+                                      key={grandchild.id}
+                                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50 transition-all"
+                                    >
+                                      <div className="h-6 w-6 rounded-md bg-white border border-slate-100 flex items-center justify-center shrink-0">
+                                        <CatIcon
+                                          icon={grandchild.icon}
+                                          size={13}
+                                        />
+                                      </div>
+                                      <span className="flex-1 text-[12px] font-medium text-slate-500 min-w-0 truncate">
+                                        {grandchild.name}
+                                      </span>
+                                      <button
+                                        onClick={() => toggleCat(grandchild.id)}
+                                        className={`h-6 shrink-0 rounded-md px-2 text-[10px] font-bold border transition-all ${
+                                          grandchildOn
+                                            ? "border-violet-300 bg-violet-500 text-white"
+                                            : "border-slate-200 bg-white text-slate-400 hover:border-violet-300 hover:text-violet-600"
+                                        }`}
+                                      >
+                                        {grandchildOn ? (
+                                          <Check size={10} />
+                                        ) : (
+                                          <Plus size={10} />
+                                        )}
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -544,6 +688,147 @@ export function MglStoreTab() {
           )}
         </section>
 
+        {/* ── FEATURED PRODUCTS ── */}
+        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">
+                Онцлох бүтээгдэхүүн
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Shop нүүрний жижиг бүтээгдэхүүний мөрөнд харагдах барааг сонгоно.
+              </p>
+            </div>
+            <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-bold text-orange-600">
+              {featuredProductIds.length} сонгосон
+            </span>
+          </div>
+
+          <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+            <Search size={14} className="text-slate-400" />
+            <input
+              value={productSearch}
+              onChange={(e) => setProductSearch(e.target.value)}
+              placeholder="Бараа, байгууллага, ангиллаар хайх"
+              className="min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+            />
+            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-slate-500">
+              {filteredProducts.length}/{allProducts.length}
+            </span>
+          </div>
+
+          <div className="grid max-h-80 gap-2 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-3 md:grid-cols-2">
+            {filteredProducts.length === 0 ? (
+              <div className="col-span-full rounded-xl border border-dashed border-slate-200 bg-white px-3 py-8 text-center text-sm text-slate-400">
+                Бүтээгдэхүүн олдсонгүй
+              </div>
+            ) : (
+              filteredProducts.map((product) => {
+                const selected = featuredProductIds.includes(product.id);
+                const imageUrl = product.images?.[0]?.url;
+                return (
+                  <button
+                    key={product.id}
+                    type="button"
+                    onClick={() => toggleFeaturedProduct(product.id)}
+                    className={`flex items-center gap-3 rounded-xl border bg-white p-2 text-left transition ${
+                      selected
+                        ? "border-orange-300 ring-2 ring-orange-100"
+                        : "border-slate-100 hover:border-slate-200"
+                    }`}
+                  >
+                    <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
+                      {imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={imageUrl}
+                          alt={product.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <Package size={22} className="text-slate-300" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold text-slate-800">
+                        {product.name}
+                      </p>
+                      <p className="truncate text-xs font-semibold text-slate-400">
+                        {product.organization?.name || "MGL Store"} · ₮
+                        {Number(product.price || 0).toLocaleString()}
+                      </p>
+                    </div>
+                    {selected && (
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white">
+                        <Check size={14} />
+                      </span>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+
+          {selectedFeaturedProducts.length > 0 && (
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Харагдах дараалал
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setFeaturedProductIds([])}
+                  className="text-xs font-bold text-slate-400 hover:text-red-500"
+                >
+                  Цэвэрлэх
+                </button>
+              </div>
+              <div className="space-y-1.5">
+                {selectedFeaturedProducts.map((product, i) => (
+                  <div
+                    key={product.id}
+                    className="flex items-center gap-3 rounded-xl border border-slate-150 bg-slate-50/50 px-3 py-2 group hover:bg-white hover:border-slate-200 transition-all"
+                  >
+                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-orange-100 text-[11px] font-bold text-orange-600">
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-slate-700">
+                        {product.name}
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        {product.organization?.name || "MGL Store"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => moveFeaturedProduct(product.id, -1)}
+                        disabled={i === 0}
+                        className="h-6 w-6 rounded-md bg-slate-100 flex items-center justify-center disabled:opacity-30 hover:bg-slate-200 transition-colors"
+                      >
+                        <ArrowUp size={12} className="text-slate-600" />
+                      </button>
+                      <button
+                        onClick={() => moveFeaturedProduct(product.id, 1)}
+                        disabled={i === selectedFeaturedProducts.length - 1}
+                        className="h-6 w-6 rounded-md bg-slate-100 flex items-center justify-center disabled:opacity-30 hover:bg-slate-200 transition-colors"
+                      >
+                        <ArrowDown size={12} className="text-slate-600" />
+                      </button>
+                      <button
+                        onClick={() => toggleFeaturedProduct(product.id)}
+                        className="h-6 w-6 rounded-md bg-red-50 flex items-center justify-center hover:bg-red-100 transition-colors ml-1"
+                      >
+                        <X size={12} className="text-red-500" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
         {/* ── BRANCH LOCATIONS ── */}
         <section className="rounded-2xl border border-slate-200 bg-white p-5">
           <div className="mb-4 flex items-start justify-between gap-4">
@@ -606,8 +891,12 @@ export function MglStoreTab() {
                       <MapPin size={16} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-slate-800">{branch.name}</p>
-                      <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">{branch.address}</p>
+                      <p className="truncate text-sm font-bold text-slate-800">
+                        {branch.name}
+                      </p>
+                      <p className="mt-0.5 line-clamp-2 text-xs text-slate-500">
+                        {branch.address}
+                      </p>
                       <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-400">
                         <span className="inline-flex items-center gap-1">
                           <Building2 size={12} />
@@ -653,7 +942,10 @@ export function MglStoreTab() {
 
               {/* Screen */}
               <div className="mx-1 rounded-b-[2rem] bg-white overflow-hidden">
-                <div className="h-[500px] overflow-y-auto" style={{ scrollbarWidth: "none" }}>
+                <div
+                  className="h-[500px] overflow-y-auto"
+                  style={{ scrollbarWidth: "none" }}
+                >
                   {/* App bar */}
                   <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500">
                     <div className="flex items-center gap-1.5">
@@ -670,7 +962,9 @@ export function MglStoreTab() {
 
                   {/* Greeting */}
                   <div className="px-4 pt-3 pb-2 bg-gradient-to-b from-amber-50 to-white">
-                    <p className="text-[9px] text-slate-400">Сайн байна уу? 👋</p>
+                    <p className="text-[9px] text-slate-400">
+                      Сайн байна уу? 👋
+                    </p>
                     <p className="text-[11px] font-bold text-slate-800">
                       MGL Store-д тавтай морил
                     </p>
@@ -730,14 +1024,18 @@ export function MglStoreTab() {
                   <div className="px-3 pb-2.5">
                     <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2">
                       <Search size={10} className="text-slate-300" />
-                      <span className="text-[9px] text-slate-300">Бараа хайх...</span>
+                      <span className="text-[9px] text-slate-300">
+                        Бараа хайх...
+                      </span>
                     </div>
                   </div>
 
                   {/* Categories */}
                   {selectedCats.length > 0 && (
                     <div className="px-3 pb-3">
-                      <p className="text-[9px] font-bold text-slate-500 mb-2">Ангиллууд</p>
+                      <p className="text-[9px] font-bold text-slate-500 mb-2">
+                        Ангиллууд
+                      </p>
                       <div className="flex gap-3 overflow-x-hidden pb-0.5">
                         {selectedCats.slice(0, 5).map((cat) => (
                           <div
@@ -768,7 +1066,9 @@ export function MglStoreTab() {
 
                   {/* Product skeleton */}
                   <div className="px-3 pb-4">
-                    <p className="text-[9px] font-bold text-slate-500 mb-2">Бүтээгдэхүүн</p>
+                    <p className="text-[9px] font-bold text-slate-500 mb-2">
+                      Бүтээгдэхүүн
+                    </p>
                     <div className="grid grid-cols-2 gap-2">
                       {[1, 2, 3, 4].map((n) => (
                         <div

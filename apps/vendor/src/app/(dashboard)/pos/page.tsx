@@ -1043,7 +1043,7 @@ export default function PosDemoPage() {
         if (summary.cashCount.length > 0) {
           setCashCounts(
             Object.fromEntries(
-              summary.cashCount.map((item) => [item.denomination, item.count]),
+              summary.cashCount.map((item: CashDenominationCount) => [item.denomination, item.count]),
             ) as Record<number, number>,
           );
         }
@@ -1952,7 +1952,7 @@ export default function PosDemoPage() {
     setEbarimtCompanyLookupLoading(true);
     setEbarimtBuyerError("");
     try {
-      const result = await lookupEbarimtTin(regNo);
+      const result = await lookupEbarimtTin(regNo, registerConfig);
       setEbarimtCompanyRegNo(result.regNo);
       setEbarimtCompanyTin(result.tin);
       return result;

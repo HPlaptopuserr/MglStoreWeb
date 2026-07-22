@@ -5,25 +5,10 @@ import Image from "next/image";
 import { Clock, Star, ShoppingBag, ChevronRight } from "lucide-react";
 import { toCategoryMN } from "@/lib/constants";
 import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
-
-interface StoreItem {
-  id: string;
-  name: string;
-  slug: string;
-  logo: string;
-  banner: string;
-  isOpen: boolean;
-  category: string;
-  rating: number;
-  deliveryTime: string;
-  products: string[];
-  localAreaLabel?: string;
-  isInvestor?: boolean;
-  investmentAmount?: number;
-}
+import type { OrganizationStore } from "@/features/organizations/types";
 
 interface OrganizationCardProps {
-  company: StoreItem;
+  company: OrganizationStore;
 }
 
 export function OrganizationCard({ company }: OrganizationCardProps) {

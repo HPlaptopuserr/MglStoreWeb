@@ -1,5 +1,12 @@
 import type { AuthOrganization, AuthUser } from "@/lib/auth-context";
 
+// ADMIN is the organization-level manager role in the current RBAC model.
+const ORGANIZATION_MANAGEMENT_ROLES = new Set(["OWNER", "ADMIN"]);
+
+export function canManageOrganization(role?: string | null): boolean {
+  return ORGANIZATION_MANAGEMENT_ROLES.has((role || "").toUpperCase());
+}
+
 export function getMembershipTierLabel(user: AuthUser) {
   const membership = user.membership as
     | { tier?: string; membershipType?: string; active?: boolean }
@@ -14,10 +21,18 @@ export function getMembershipTierLabel(user: AuthUser) {
 
 export function getManagedOrganizations(user: AuthUser): AuthOrganization[] {
   if (Array.isArray(user.organizations) && user.organizations.length > 0) {
-    return user.organizations;
+    return user.organizations.filter((organization) =>
+      canManageOrganization(organization.role),
+    );
   }
 
-  if (!user.organizationId || !user.orgRole) return [];
+  if (
+    !user.organizationId ||
+    !user.orgRole ||
+    !canManageOrganization(user.orgRole)
+  ) {
+    return [];
+  }
 
   return [
     {

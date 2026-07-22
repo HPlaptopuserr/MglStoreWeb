@@ -9,6 +9,17 @@ import { Loader2 } from "lucide-react";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { ServiceQPayModal } from "./ServiceQPayModal";
+import type { PaymentDeepLink } from "@/components/molecules/payments/MobileBankAppLinks";
+
+interface ServiceQPayData {
+  success: boolean;
+  message?: string;
+  orderId: string;
+  orderNumber: string;
+  invoiceId: string;
+  qrImage: string;
+  urls: PaymentDeepLink[];
+}
 
 interface Props {
   categories: ServiceCategory[];
@@ -22,7 +33,7 @@ export function ServiceSelector({ categories, loading }: Props) {
   const [selectedPrices, setSelectedPrices] = useState<Record<string, number>>({});
   
   const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [qpayData, setQpayData] = useState<any>(null);
+  const [qpayData, setQpayData] = useState<ServiceQPayData | null>(null);
 
   const toggleItem = (id: string, price: number, parentId?: string) => {
     const newSet = new Set(selectedItems);
@@ -124,7 +135,7 @@ export function ServiceSelector({ categories, loading }: Props) {
                   items: Array.from(selectedItems),
                 }),
               });
-              const data = await res.json();
+              const data = (await res.json()) as ServiceQPayData;
               if (data.success) {
                 setQpayData(data);
               } else {

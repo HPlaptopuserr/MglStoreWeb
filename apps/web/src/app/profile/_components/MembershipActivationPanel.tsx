@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertCircle, BadgeCheck, CheckCircle2 } from "lucide-react";
 import { API } from "@/lib/api";
 import type { AuthUser } from "@/lib/auth-context";
@@ -22,7 +22,6 @@ export type MembershipUpgradeCopy = {
   swipeHint?: string;
   missingPaymentConfigMessage?: string;
   phoneRequiredMessage?: string;
-  addressRequiredMessage?: string;
   successTitle?: string;
   successDescription?: string;
 };
@@ -81,6 +80,7 @@ export function MembershipActivationPanel({
       : DEFAULT_TYPES;
   const [membershipType, setMembershipType] = useState("");
   const [durationMonths, setDurationMonths] = useState("");
+  const [agentCode, setAgentCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submittingPlanKey, setSubmittingPlanKey] = useState("");
   const [success, setSuccess] = useState(false);
@@ -93,6 +93,11 @@ export function MembershipActivationPanel({
     () => splitName(form.fullName || user.fullName || ""),
     [form.fullName, user.fullName],
   );
+
+  useEffect(() => {
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) setAgentCode(ref.toUpperCase());
+  }, []);
 
   const submit = async (
     nextType = membershipType,
@@ -119,13 +124,6 @@ export function MembershipActivationPanel({
       );
       return;
     }
-    if (!form.fullAddress.trim()) {
-      setError(
-        copy?.addressRequiredMessage ||
-          "Profile дээр хаягаа бөглөсний дараа идэвхжүүлнэ үү.",
-      );
-      return;
-    }
 
     setMembershipType(nextType);
     setDurationMonths(nextDuration);
@@ -138,10 +136,11 @@ export function MembershipActivationPanel({
         body: JSON.stringify({
           lastName,
           firstName,
-          address: form.fullAddress.trim(),
+          address: form.fullAddress.trim() || undefined,
           phone: form.phone.trim(),
           membershipType: nextType,
           durationMonths: Number(nextDuration),
+          agentCode: agentCode.trim() || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -195,11 +194,11 @@ export function MembershipActivationPanel({
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4">
           <div className="flex items-center gap-2 text-sm font-black text-emerald-800">
             <CheckCircle2 size={18} />
-            {copy?.successTitle || "Гишүүнчлэлийн хүсэлт илгээгдлээ"}
+            {copy?.successTitle || "Гишүүнчлэл идэвхжлээ"}
           </div>
           <p className="mt-1 text-xs font-semibold leading-relaxed text-emerald-700">
             {copy?.successDescription ||
-              "QuickQR төлбөр амжилттай баталгаажлаа. Гишүүнчлэл admin баталгаажуулсны дараа идэвхжинэ."}
+              "QuickQR төлбөр амжилттай баталгаажиж, таны member эрх идэвхтэй боллоо."}
           </p>
           {error && (
             <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-relaxed text-amber-700">
@@ -216,6 +215,22 @@ export function MembershipActivationPanel({
             </div>
           )}
 
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 sm:px-4">
+            <label className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400">
+              Зөвлөхийн code
+            </label>
+            <input
+              value={agentCode}
+              onChange={(event) =>
+                setAgentCode(event.target.value.toUpperCase())
+              }
+              placeholder="Жишээ: BOLD123"
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-black uppercase tracking-wide text-slate-800 outline-none transition focus:border-orange-300 focus:ring-2 focus:ring-orange-100"
+            />
+            <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">
+              Танд зөвлөхийн code байгаа бол төлбөр төлөхөөс өмнө энд оруулна.
+            </p>
+          </div>
           <MembershipPlanPicker
             plans={membershipTypes}
             selectedType={membershipType}
@@ -237,7 +252,7 @@ export function MembershipActivationPanel({
           checkUrl={`${API}/association/systemqr/check`}
           request={request}
           successTitle="Төлбөр баталгаажлаа"
-          successDescription="Гишүүнчлэлийн хүсэлт admin баталгаажуулалт хүлээж байна."
+          successDescription="Гишүүнчлэл идэвхжиж байна..."
           onPaid={async () => {
             setPaymentSession(null);
             setSuccess(true);

@@ -12,6 +12,7 @@ export {
   ReturnStatus,
   PaymentStatus,
   PaymentMethod,
+  ReferralCommissionStatus,
   InventoryReason,
   Gender,
   ApprovalStatus,
@@ -23,6 +24,7 @@ export {
   ServiceRequestType,
   ServiceRequestStatus,
   StockRequestStatus,
+  WarehouseType,
   PosActivationStatus,
   PosPaymentStatus,
   PosQPayStatus,
@@ -44,4 +46,6 @@ export {
   ReelAssetKind,
   ReelProcessingStatus,
   ReelInteractionType,
+  OrganizationTaskPriority,
+  OrganizationTaskStatus,
 } from "@prisma/client";

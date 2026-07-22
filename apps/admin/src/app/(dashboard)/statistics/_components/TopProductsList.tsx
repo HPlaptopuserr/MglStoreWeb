@@ -42,20 +42,33 @@ export function TopProductsList({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
                   <div className="min-w-0">
-                    <p className="truncate text-base font-black text-slate-950">{item.name}</p>
+                    <p className="truncate text-base font-black text-slate-950">
+                      {item.name}
+                    </p>
                     <p className="truncate text-xs font-semibold text-slate-500">
-                      {item.organizationName || "Байгууллагагүй"} {item.sku ? `· SKU ${item.sku}` : ""}
+                      {item.organizationName || "Байгууллагагүй"}{" "}
+                      {item.sku ? `· SKU ${item.sku}` : ""}
                     </p>
                   </div>
                   <div className="shrink-0 text-left md:text-right">
-                    <p className="text-base font-black text-slate-950">{item.units.toLocaleString("mn-MN")} ш</p>
-                    <p className="text-sm font-black text-emerald-600">{money(item.revenue)}</p>
+                    <p className="text-base font-black text-slate-950">
+                      {item.units.toLocaleString("mn-MN")} ш
+                    </p>
+                    <p className="text-sm font-black text-emerald-600">
+                      {money(item.revenue)}
+                    </p>
                   </div>
                 </div>
                 <div className="mt-3 grid gap-2 text-xs font-bold text-slate-500 sm:grid-cols-3">
-                  <Metric label="Transaction" value={item.transactions.toLocaleString("mn-MN")} />
-                  <Metric label="Үлдэгдэл" value={`${item.stock.toLocaleString("mn-MN")} ш`} />
-                  <Metric label="Velocity" value={item.velocityScore.toLocaleString("mn-MN")} />
+                  <Metric
+                    label="Transaction"
+                    value={item.transactions.toLocaleString("mn-MN")}
+                  />
+                  <Metric
+                    label="Үлдэгдэл"
+                    value={`${item.stock.toLocaleString("mn-MN")} ш`}
+                  />
+                  <Metric label="Бүртгэлтэй үнэ" value={money(item.price)} />
                 </div>
               </div>
             </div>
@@ -69,7 +82,9 @@ export function TopProductsList({
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg bg-white px-3 py-2">
-      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">{label}</p>
+      <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+        {label}
+      </p>
       <p className="mt-1 text-sm font-black text-slate-800">{value}</p>
     </div>
   );

@@ -33,7 +33,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { API, authFetch } from "@/lib/api";
+import { API, API_BASE, authFetch } from "@/lib/api";
 import { MerchantSettingsSection } from "./merchant-settings";
 
 type BusinessCategory = {
@@ -44,6 +44,8 @@ type BusinessCategory = {
 };
 
 type ProfileFormData = {
+  name: string;
+  businessCategory: string;
   phone: string;
   email: string;
   address: string;
@@ -80,6 +82,8 @@ export default function ProfilePage() {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSaved, setProfileSaved] = useState(false);
   const [formData, setFormData] = useState<ProfileFormData>({
+    name: "",
+    businessCategory: "",
     phone: "",
     email: "",
     address: "",
@@ -177,11 +181,26 @@ export default function ProfilePage() {
         const storedUser = JSON.parse(
           localStorage.getItem("vendor_user") || "{}",
         );
-        const orgId = storedUser.organizationId;
-        const userEmail = storedUser.email;
+        let orgId = storedUser.organizationId;
+        let userEmail = storedUser.email;
 
         const catsRes = await authFetch(`${API}/business-categories`);
         if (catsRes.ok) setCategories(await catsRes.json());
+
+        if (!orgId) {
+          const meRes = await authFetch(`${API_BASE}/auth/me`, {
+            cache: "no-store",
+          });
+          if (meRes.ok) {
+            const me = await meRes.json();
+            orgId = me.organizationId || orgId;
+            userEmail = me.email || userEmail;
+            localStorage.setItem(
+              "vendor_user",
+              JSON.stringify({ ...storedUser, ...me }),
+            );
+          }
+        }
 
         // Fetch this org directly by ID to avoid pagination issues
         if (orgId) {
@@ -193,6 +212,8 @@ export default function ProfilePage() {
             const found = await partnerRes.json();
             setPartner(found);
             setFormData({
+              name: found.name || "",
+              businessCategory: found.businessCategory || "",
               phone: found.phone || "",
               email: found.email || "",
               address: found.address || "",
@@ -217,6 +238,8 @@ export default function ProfilePage() {
             if (found) {
               setPartner(found);
               setFormData({
+                name: found.name || "",
+                businessCategory: found.businessCategory || "",
                 phone: found.phone || "",
                 email: found.email || "",
                 address: found.address || "",
@@ -254,13 +277,19 @@ export default function ProfilePage() {
     setSaving(true);
     setSaved(false);
     try {
-      const res = await authFetch(`${API}/partners/${partner.id}/category`, {
+      const res = await authFetch(`${API}/partners/${partner.id}/profile`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ businessCategory: value }),
       });
       if (res.ok) {
-        setPartner((prev: any) => ({ ...prev, businessCategory: value }));
+        const updatedPartner = await res.json().catch(() => null);
+        setPartner((prev: any) => ({
+          ...prev,
+          ...(updatedPartner || {}),
+          businessCategory: value,
+        }));
+        setFormData((prev) => ({ ...prev, businessCategory: value || "" }));
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
       }
@@ -277,13 +306,19 @@ export default function ProfilePage() {
     setSaving(true);
     setSaved(false);
     try {
-      const res = await authFetch(`${API}/partners/${partner.id}/category`, {
+      const res = await authFetch(`${API}/partners/${partner.id}/profile`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ businessCategory: null }),
       });
       if (res.ok) {
-        setPartner((prev: any) => ({ ...prev, businessCategory: null }));
+        const updatedPartner = await res.json().catch(() => null);
+        setPartner((prev: any) => ({
+          ...prev,
+          ...(updatedPartner || {}),
+          businessCategory: null,
+        }));
+        setFormData((prev) => ({ ...prev, businessCategory: "" }));
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
       }
@@ -296,13 +331,21 @@ export default function ProfilePage() {
 
   const handleProfileSave = async () => {
     if (!partner?.id) return;
+    if (!formData.name.trim()) {
+      window.alert("Байгууллагын нэр оруулна уу");
+      return;
+    }
     setProfileSaving(true);
     setProfileSaved(false);
     try {
       const res = await authFetch(`${API}/partners/${partner.id}/profile`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          name: formData.name.trim(),
+          businessCategory: formData.businessCategory || null,
+        }),
       });
       if (res.ok) {
         const updated = await res.json();
@@ -325,6 +368,8 @@ export default function ProfilePage() {
   const handleCancelEdit = () => {
     // Reset form data to current partner data
     setFormData({
+      name: partner?.name || "",
+      businessCategory: partner?.businessCategory || "",
       phone: partner?.phone || "",
       email: partner?.email || "",
       address: partner?.address || "",
@@ -615,9 +660,21 @@ export default function ProfilePage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
+              <div className="flex items-center justify-between gap-3 mb-5">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
                 Байгууллагын мэдээлэл
-              </h3>
+                </h3>
+                {!isEditing && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+                  >
+                    <Pencil size={14} />
+                    Засах
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <InfoItem
                   icon={<FileText size={18} className="text-slate-400" />}
@@ -819,6 +876,42 @@ export default function ProfilePage() {
                 <div className="space-y-6">
                   {/* Basic Info */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                        Байгууллагын нэр
+                      </label>
+                      <div className="relative">
+                        <Building2 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          value={formData.name}
+                          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                          className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                          placeholder="Байгууллагын нэр"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                        Бизнес ангилал
+                      </label>
+                      <div className="relative">
+                        <Briefcase size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <select
+                          value={formData.businessCategory.split(",").filter(Boolean)[0] || ""}
+                          onChange={(e) => setFormData(prev => ({ ...prev, businessCategory: e.target.value }))}
+                          className="w-full appearance-none pl-10 pr-10 py-3 border border-slate-200 rounded-xl text-sm font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+                        >
+                          <option value="">Ангилал сонгоно уу</option>
+                          {categories.map((category) => (
+                            <option key={category.slug} value={category.slug}>
+                              {category.name}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      </div>
+                    </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
                         И-мэйл
