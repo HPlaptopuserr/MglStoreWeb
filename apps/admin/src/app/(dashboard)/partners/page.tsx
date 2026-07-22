@@ -38,211 +38,15 @@ import {
   type VendorLoginRole,
 } from "@/components/organisms/partners/VendorLoginAccountSelector";
 
-type Partner = {
-  id: string;
-  name: string;
-  slug: string;
-  taxId: string;
-  type: string;
-  status: string;
-  isVerified: boolean;
-  businessCategory: string | null;
-  email: string | null;
-  phone: string | null;
-  logoUrl?: string | null;
-  imageUrl?: string | null;
-  avatarUrl?: string | null;
-  profileImage?: string | null;
-  profileImageUrl?: string | null;
-  owner?: {
-    image?: string | null;
-    imageUrl?: string | null;
-    avatarUrl?: string | null;
-    profileImage?: string | null;
-  } | null;
-  address: string | null;
-  createdAt: string;
-  isInvestor?: boolean;
-  investmentAmount?: number | null;
-  stats: {
-    users: number;
-    products: number;
-    branches: number;
-    orders: number;
-  };
-};
-
-function getPartnerProfileImage(partner: Partner) {
-  return (
-    partner.logoUrl ||
-    partner.profileImageUrl ||
-    partner.profileImage ||
-    partner.imageUrl ||
-    partner.avatarUrl ||
-    partner.owner?.profileImage ||
-    partner.owner?.imageUrl ||
-    partner.owner?.avatarUrl ||
-    partner.owner?.image ||
-    null
-  );
-}
-
-type ApiCategory = {
-  id: string;
-  slug: string;
-  name: string;
-  icon: string | null;
-  sortOrder: number;
-  level: number;
-};
-
-type CreateOrganizationForm = {
-  name: string;
-  ownerEmail: string;
-  ownerName: string;
-  ownerPhone: string;
-  ownerUserId: string;
-  ownerRole: VendorLoginRole;
-  phone: string;
-  address: string;
-  type: string;
-  businessCategory: string;
-  taxId: string;
-};
-
-const EMPTY_CREATE_FORM: CreateOrganizationForm = {
-  name: "",
-  ownerEmail: "",
-  ownerName: "",
-  ownerPhone: "",
-  ownerUserId: "",
-  ownerRole: "OWNER",
-  phone: "",
-  address: "",
-  type: "SUPPLIER",
-  businessCategory: "",
-  taxId: "",
-};
-
-const INVESTOR_RING_COLORS = [
-  "#FF6B6B", "#FF9F43", "#FECA57", "#2ED573", "#0ABDE3",
-  "#48DBFB", "#A55EEA", "#F368E0", "#1DD1A1", "#FF6348",
-];
-
-function getInvestorRingStyle(amount: number | null | undefined) {
-  if (!amount || amount <= 0) return undefined;
-  const count = Math.min(Math.floor(amount / 10_000_000), 10);
-  if (count <= 0) return undefined;
-  const stops: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const start = (i / count) * 360;
-    const end = ((i + 1) / count) * 360;
-    stops.push(`${INVESTOR_RING_COLORS[i]} ${start}deg ${end}deg`);
-  }
-  return {
-    background: `conic-gradient(${stops.join(", ")})`,
-    padding: "3px",
-    borderRadius: "14px",
-  } as React.CSSProperties;
-}
-
-function CategoryDropdown({
-  partner,
-  categories,
-  onUpdated,
-}: {
-  partner: Partner;
-  categories: ApiCategory[];
-  onUpdated: (id: string, cat: string | null) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const current = categories.find((c) => c.slug === partner.businessCategory);
-
-  const handleSelect = async (value: string | null) => {
-    setOpen(false);
-    setSaving(true);
-    try {
-      await adminFetch(`${API}/partners/${partner.id}/category`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ businessCategory: value }),
-      });
-      onUpdated(partner.id, value);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="relative">
-      <button
-        onClick={(e) => {
-          e.preventDefault();
-          setOpen((v) => !v);
-        }}
-        disabled={saving}
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer select-none bg-indigo-50 text-indigo-600 border-indigo-200 hover:opacity-80"
-      >
-        <Store size={11} />
-        {saving ? "..." : (current?.name ?? "Ангилал сонгох")}
-        <ChevronDown
-          size={11}
-          className={`transition-transform ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-
-      {open && (
-        <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={(e) => {
-              e.preventDefault();
-              setOpen(false);
-            }}
-          />
-          <div className="absolute left-0 top-full mt-1 z-20 min-w-40 bg-white rounded-xl border border-slate-200 shadow-lg overflow-hidden">
-            <button
-              onClick={(e) => {
-                e.preventDefault();
-                handleSelect(null);
-              }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-400 hover:bg-slate-50 transition-colors"
-            >
-              <span className="w-3" />
-              Ангилалгүй
-            </button>
-            <div className="border-t border-slate-100" />
-            {categories.map((cat) => (
-              <button
-                key={cat.slug}
-                onClick={(e) => {
-                  e.preventDefault();
-                  handleSelect(cat.slug);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-slate-50 transition-colors"
-              >
-                {partner.businessCategory === cat.slug ? (
-                  <Check size={12} className="text-indigo-500 shrink-0" />
-                ) : (
-                  <span className="w-3" />
-                )}
-                <span className="font-medium text-slate-600">
-                  {cat.icon && !cat.icon.startsWith("data:") && !cat.icon.startsWith("http") ? `${cat.icon} ` : ""}
-                  {cat.name}
-                </span>
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
+import {
+  CategoryDropdown,
+  EMPTY_CREATE_FORM,
+  getInvestorRingStyle,
+  getPartnerProfileImage,
+  type ApiCategory,
+  type CreateOrganizationForm,
+  type Partner,
+} from "./partners.shared";
 export default function PartnersPage() {
   const [partners, setPartners] = useState<Partner[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -260,7 +64,8 @@ export default function PartnersPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
-  const [createForm, setCreateForm] = useState<CreateOrganizationForm>(EMPTY_CREATE_FORM);
+  const [createForm, setCreateForm] =
+    useState<CreateOrganizationForm>(EMPTY_CREATE_FORM);
   const [createLoginAccount, setCreateLoginAccount] =
     useState<PersonalAccountOption | null>(null);
   const [inviteModal, setInviteModal] = useState<{
@@ -406,7 +211,9 @@ export default function PartnersPage() {
       await fetchPartners();
     } catch (error) {
       setCreateError(
-        error instanceof Error ? error.message : "Байгууллага үүсгэхэд алдаа гарлаа",
+        error instanceof Error
+          ? error.message
+          : "Байгууллага үүсгэхэд алдаа гарлаа",
       );
     } finally {
       setCreating(false);
@@ -420,7 +227,6 @@ export default function PartnersPage() {
     setTimeout(() => setInviteCopied(false), 2000);
   };
 
-
   return (
     <div className="text-slate-800 font-sans">
       {inviteModal && (
@@ -431,19 +237,27 @@ export default function PartnersPage() {
                 <CheckCircle2 className="h-6 w-6 text-emerald-600" />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Байгууллага амжилттай үүслээ</h3>
-                <p className="text-sm text-slate-500">Owner хэрэглэгч invite link-ээр нууц үгээ тохируулна.</p>
+                <h3 className="text-lg font-bold text-slate-900">
+                  Байгууллага амжилттай үүслээ
+                </h3>
+                <p className="text-sm text-slate-500">
+                  Owner хэрэглэгч invite link-ээр нууц үгээ тохируулна.
+                </p>
               </div>
             </div>
 
             <div className="space-y-3 rounded-xl bg-slate-50 p-4">
               <div>
                 <p className="text-xs text-slate-400">Байгууллага</p>
-                <p className="font-semibold text-slate-900">{inviteModal.organizationName}</p>
+                <p className="font-semibold text-slate-900">
+                  {inviteModal.organizationName}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-slate-400">Owner email</p>
-                <p className="font-medium text-slate-700">{inviteModal.email}</p>
+                <p className="font-medium text-slate-700">
+                  {inviteModal.email}
+                </p>
               </div>
               <div>
                 <p className="text-xs text-slate-400">Invite link</p>
@@ -477,9 +291,12 @@ export default function PartnersPage() {
           <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
             <div className="mb-5 flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-bold text-slate-900">Байгууллага бүртгэх</h3>
+                <h3 className="text-xl font-bold text-slate-900">
+                  Байгууллага бүртгэх
+                </h3>
                 <p className="text-sm text-slate-500">
-                  Байгууллагын контакт болон vendor login owner user-ийг тусад нь бүртгэнэ.
+                  Байгууллагын контакт болон vendor login owner user-ийг тусад
+                  нь бүртгэнэ.
                 </p>
               </div>
               <button
@@ -508,70 +325,118 @@ export default function PartnersPage() {
                     <Building2 size={18} />
                   </div>
                   <div>
-                    <h4 className="text-sm font-black text-slate-950">Байгууллагын мэдээлэл</h4>
-                    <p className="text-xs font-medium text-slate-500">Public profile болон холбоо барих үндсэн мэдээлэл.</p>
+                    <h4 className="text-sm font-black text-slate-950">
+                      Байгууллагын мэдээлэл
+                    </h4>
+                    <p className="text-xs font-medium text-slate-500">
+                      Public profile болон холбоо барих үндсэн мэдээлэл.
+                    </p>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Байгууллагын нэр *</label>
-                <input
-                  value={createForm.name}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, name: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Байгууллагын контакт утас</label>
-                <input
-                  value={createForm.phone}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, phone: e.target.value }))}
-                  placeholder="Жишээ: 89123581"
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Төрөл</label>
-                <select
-                  value={createForm.type}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, type: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                >
-                  <option value="SUPPLIER">SUPPLIER</option>
-                  <option value="SERVICE_PROVIDER">SERVICE_PROVIDER</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Татварын дугаар</label>
-                <input
-                  value={createForm.taxId}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, taxId: e.target.value }))}
-                  placeholder="Хоосон бол автоматаар үүсгэнэ"
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">Ангилал</label>
-                <select
-                  value={createForm.businessCategory}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, businessCategory: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                >
-                  <option value="">Сонгоогүй</option>
-                  {apiCategories.map((cat) => (
-                    <option key={cat.id} value={cat.slug}>{cat.name}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-sm font-medium text-slate-700">Хаяг</label>
-                <textarea
-                  value={createForm.address}
-                  onChange={(e) => setCreateForm((prev) => ({ ...prev, address: e.target.value }))}
-                  rows={3}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-              </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Байгууллагын нэр *
+                    </label>
+                    <input
+                      value={createForm.name}
+                      onChange={(e) =>
+                        setCreateForm((prev) => ({
+                          ...prev,
+                          name: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Байгууллагын контакт утас
+                    </label>
+                    <input
+                      value={createForm.phone}
+                      onChange={(e) =>
+                        setCreateForm((prev) => ({
+                          ...prev,
+                          phone: e.target.value,
+                        }))
+                      }
+                      placeholder="Жишээ: 89123581"
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Төрөл
+                    </label>
+                    <select
+                      value={createForm.type}
+                      onChange={(e) =>
+                        setCreateForm((prev) => ({
+                          ...prev,
+                          type: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    >
+                      <option value="SUPPLIER">SUPPLIER</option>
+                      <option value="SERVICE_PROVIDER">SERVICE_PROVIDER</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Татварын дугаар
+                    </label>
+                    <input
+                      value={createForm.taxId}
+                      onChange={(e) =>
+                        setCreateForm((prev) => ({
+                          ...prev,
+                          taxId: e.target.value,
+                        }))
+                      }
+                      placeholder="Хоосон бол автоматаар үүсгэнэ"
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Ангилал
+                    </label>
+                    <select
+                      value={createForm.businessCategory}
+                      onChange={(e) =>
+                        setCreateForm((prev) => ({
+                          ...prev,
+                          businessCategory: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    >
+                      <option value="">Сонгоогүй</option>
+                      {apiCategories.map((cat) => (
+                        <option key={cat.id} value={cat.slug}>
+                          {cat.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Хаяг
+                    </label>
+                    <textarea
+                      value={createForm.address}
+                      onChange={(e) =>
+                        setCreateForm((prev) => ({
+                          ...prev,
+                          address: e.target.value,
+                        }))
+                      }
+                      rows={3}
+                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -581,9 +446,12 @@ export default function PartnersPage() {
                     <UserRound size={18} />
                   </div>
                   <div>
-                    <h4 className="text-sm font-black text-emerald-950">Нэвтрэх owner хэрэглэгч</h4>
+                    <h4 className="text-sm font-black text-emerald-950">
+                      Нэвтрэх owner хэрэглэгч
+                    </h4>
                     <p className="text-xs font-medium text-emerald-700">
-                      Vendor portal дээр энэ хэрэглэгчийн и-мэйл эсвэл утсаар нэвтэрнэ.
+                      Vendor portal дээр энэ хэрэглэгчийн и-мэйл эсвэл утсаар
+                      нэвтэрнэ.
                     </p>
                   </div>
                 </div>
@@ -600,7 +468,9 @@ export default function PartnersPage() {
                     }));
                   }}
                   role={createForm.ownerRole}
-                  onRoleChange={(role) => setCreateForm((prev) => ({ ...prev, ownerRole: role }))}
+                  onRoleChange={(role) =>
+                    setCreateForm((prev) => ({ ...prev, ownerRole: role }))
+                  }
                   tone="emerald"
                   title="Personal account холбох"
                   description="Шинэ байгууллагад owner/admin зэрэг role-той login account шууд онооно."
@@ -624,29 +494,50 @@ export default function PartnersPage() {
                     </summary>
                     <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
                       <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Owner нэр</label>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">
+                          Owner нэр
+                        </label>
                         <input
                           value={createForm.ownerName}
-                          onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerName: e.target.value }))}
+                          onChange={(e) =>
+                            setCreateForm((prev) => ({
+                              ...prev,
+                              ownerName: e.target.value,
+                            }))
+                          }
                           placeholder="Хариуцсан хүний нэр"
                           className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                         />
                       </div>
                       <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Login email</label>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">
+                          Login email
+                        </label>
                         <input
                           type="email"
                           value={createForm.ownerEmail}
-                          onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerEmail: e.target.value }))}
+                          onChange={(e) =>
+                            setCreateForm((prev) => ({
+                              ...prev,
+                              ownerEmail: e.target.value,
+                            }))
+                          }
                           placeholder="owner@company.mn"
                           className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                         />
                       </div>
                       <div>
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Login утас</label>
+                        <label className="mb-1 block text-sm font-medium text-slate-700">
+                          Login утас
+                        </label>
                         <input
                           value={createForm.ownerPhone}
-                          onChange={(e) => setCreateForm((prev) => ({ ...prev, ownerPhone: e.target.value }))}
+                          onChange={(e) =>
+                            setCreateForm((prev) => ({
+                              ...prev,
+                              ownerPhone: e.target.value,
+                            }))
+                          }
                           placeholder="Login хийх утас"
                           className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                         />
@@ -655,8 +546,9 @@ export default function PartnersPage() {
                   </details>
                 )}
                 <p className="mt-3 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold leading-5 text-emerald-800">
-                  Анхаарах: байгууллагын контакт утас болон login утас хоёр өөр байж болно.
-                  Personal account сонгосон бол email/утас заавал биш.
+                  Анхаарах: байгууллагын контакт утас болон login утас хоёр өөр
+                  байж болно. Personal account сонгосон бол email/утас заавал
+                  биш.
                 </p>
               </div>
             </div>
@@ -713,11 +605,16 @@ export default function PartnersPage() {
               <p className="text-xs md:text-sm text-slate-500 mt-0.5 md:mt-1">
                 {searchQuery ? (
                   <>
-                    <span className="font-medium text-indigo-600">&ldquo;{searchQuery}&rdquo;</span>
-                    {" "}хайлтын үр дүн — {totalCount} олдлоо
+                    <span className="font-medium text-indigo-600">
+                      &ldquo;{searchQuery}&rdquo;
+                    </span>{" "}
+                    хайлтын үр дүн — {totalCount} олдлоо
                   </>
                 ) : (
-                  <>Нийт {totalCount} байгууллага<span className="mx-1">·</span>{currentPage}/{totalPages} хуудас</>
+                  <>
+                    Нийт {totalCount} байгууллага<span className="mx-1">·</span>
+                    {currentPage}/{totalPages} хуудас
+                  </>
                 )}
               </p>
             </div>
@@ -756,7 +653,10 @@ export default function PartnersPage() {
               />
               {searchInput && (
                 <button
-                  onClick={() => { setSearchInput(""); setSearchQuery(""); }}
+                  onClick={() => {
+                    setSearchInput("");
+                    setSearchQuery("");
+                  }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 rounded-full p-1 hover:bg-slate-100 transition-colors"
                 >
                   <X size={14} />
@@ -766,11 +666,16 @@ export default function PartnersPage() {
           </div>
         </div>
 
-        <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4 transition-opacity ${isLoading ? "opacity-50 pointer-events-none" : ""}`}>
+        <div
+          className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4 transition-opacity ${isLoading ? "opacity-50 pointer-events-none" : ""}`}
+        >
           {isLoading && partners.length === 0 ? (
             // Skeleton loader
             Array.from({ length: PAGE_SIZE }).map((_, i) => (
-              <div key={i} className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden animate-pulse">
+              <div
+                key={i}
+                className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden animate-pulse"
+              >
                 <div className="p-5 border-b border-slate-100">
                   <div className="flex items-center gap-3 mb-3">
                     <div className="w-11 h-11 rounded-xl bg-slate-200" />
@@ -801,9 +706,13 @@ export default function PartnersPage() {
               <div className="mb-4 rounded-full bg-slate-100 p-5">
                 <Building2 className="h-10 w-10 text-slate-300" />
               </div>
-              <p className="font-semibold text-slate-600">Байгууллага олдсонгүй</p>
+              <p className="font-semibold text-slate-600">
+                Байгууллага олдсонгүй
+              </p>
               <p className="mt-1 text-sm text-slate-400">
-                {searchQuery ? `"${searchQuery}" хайлтад тохирох үр дүн байхгүй` : "Одоогоор нэг ч байгууллага бүртгэлгүй байна"}
+                {searchQuery
+                  ? `"${searchQuery}" хайлтад тохирох үр дүн байхгүй`
+                  : "Одоогоор нэг ч байгууллага бүртгэлгүй байна"}
               </p>
             </div>
           ) : (
@@ -816,21 +725,44 @@ export default function PartnersPage() {
                   key={partner.id}
                   className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden flex flex-col group hover:shadow-lg hover:border-indigo-200/60 transition-all duration-300 cursor-pointer"
                 >
-                <div className={`p-4 md:p-5 border-b ${partner.isInvestor ? 'border-amber-200' : 'border-slate-100'}`}>
-                  {partner.isInvestor && (
-                    <div className="flex items-center gap-1.5 mb-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg w-fit">
-                      <TrendingUp size={12} className="text-amber-600" />
-                      <span className="text-xs font-semibold text-amber-700">
-                        Хөрөнгө оруулагч
-                        {partner.investmentAmount ? ` · ${Number(partner.investmentAmount).toLocaleString()}₮` : ''}
-                      </span>
-                    </div>
-                  )}
-                  <div className="flex justify-between items-start mb-3 gap-2">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      {partner.isInvestor && partner.investmentAmount ? (
-                        <div style={getInvestorRingStyle(partner.investmentAmount)} className="shrink-0">
-                          <div className="w-10 h-10 md:w-11 md:h-11 overflow-hidden rounded-xl flex items-center justify-center bg-amber-50 text-amber-600 group-hover:bg-amber-100 transition-colors">
+                  <div
+                    className={`p-4 md:p-5 border-b ${partner.isInvestor ? "border-amber-200" : "border-slate-100"}`}
+                  >
+                    {partner.isInvestor && (
+                      <div className="flex items-center gap-1.5 mb-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg w-fit">
+                        <TrendingUp size={12} className="text-amber-600" />
+                        <span className="text-xs font-semibold text-amber-700">
+                          Хөрөнгө оруулагч
+                          {partner.investmentAmount
+                            ? ` · ${Number(partner.investmentAmount).toLocaleString()}₮`
+                            : ""}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-start mb-3 gap-2">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        {partner.isInvestor && partner.investmentAmount ? (
+                          <div
+                            style={getInvestorRingStyle(
+                              partner.investmentAmount,
+                            )}
+                            className="shrink-0"
+                          >
+                            <div className="w-10 h-10 md:w-11 md:h-11 overflow-hidden rounded-xl flex items-center justify-center bg-amber-50 text-amber-600 group-hover:bg-amber-100 transition-colors">
+                              {profileImage ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={profileImage}
+                                  alt={partner.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <Building2 size={20} />
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 md:w-11 md:h-11 overflow-hidden rounded-xl flex items-center justify-center shrink-0 transition-colors bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100">
                             {profileImage ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img
@@ -842,130 +774,125 @@ export default function PartnersPage() {
                               <Building2 size={20} />
                             )}
                           </div>
-                        </div>
-                      ) : (
-                        <div className="w-10 h-10 md:w-11 md:h-11 overflow-hidden rounded-xl flex items-center justify-center shrink-0 transition-colors bg-indigo-50 text-indigo-600 group-hover:bg-indigo-100">
-                          {profileImage ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={profileImage}
-                              alt={partner.name}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <Building2 size={20} />
-                          )}
-                        </div>
-                      )}
+                        )}
 
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <h3 className="font-bold text-slate-900 text-sm md:text-base truncate">
-                            {partner.name}
-                          </h3>
-                          {partner.isVerified && (
-                            <BadgeCheck
-                              size={18}
-                              className="text-blue-500 shrink-0"
-                            />
-                          )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <h3 className="font-bold text-slate-900 text-sm md:text-base truncate">
+                              {partner.name}
+                            </h3>
+                            {partner.isVerified && (
+                              <BadgeCheck
+                                size={18}
+                                className="text-blue-500 shrink-0"
+                              />
+                            )}
+                          </div>
+                          <div className="text-sm text-slate-500 truncate">
+                            @{partner.slug}
+                          </div>
                         </div>
-                        <div className="text-sm text-slate-500 truncate">
-                          @{partner.slug}
-                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Delete Button - small icon */}
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDeleteModal(partner);
+                          }}
+                          className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
+                          title="Устгах"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+                          {partner.status}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {/* Delete Button - small icon */}
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setDeleteModal(partner);
-                        }}
-                        className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
-                        title="Устгах"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
-                        {partner.status}
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-medium text-slate-600">
+                        <Briefcase size={12} />
+                        {partner.type}
+                      </span>
+
+                      {/* ← Inline ангилал сонгогч */}
+                      <CategoryDropdown
+                        partner={partner}
+                        categories={apiCategories}
+                        onUpdated={handleCategoryUpdated}
+                      />
+
+                      <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-medium text-slate-600">
+                        <FileText size={12} />
+                        {partner.taxId}
                       </span>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-medium text-slate-600">
-                      <Briefcase size={12} />
-                      {partner.type}
-                    </span>
+                  <div className="p-4 md:p-5 space-y-2.5 flex-1 bg-slate-50/40">
+                    <div className="flex items-start gap-3 text-sm text-slate-600">
+                      <Mail
+                        size={16}
+                        className="text-slate-400 mt-0.5 shrink-0"
+                      />
+                      <span className="truncate">{partner.email || "N/A"}</span>
+                    </div>
 
-                    {/* ← Inline ангилал сонгогч */}
-                    <CategoryDropdown
-                      partner={partner}
-                      categories={apiCategories}
-                      onUpdated={handleCategoryUpdated}
-                    />
+                    <div className="flex items-start gap-3 text-sm text-slate-600">
+                      <Phone
+                        size={16}
+                        className="text-slate-400 mt-0.5 shrink-0"
+                      />
+                      <span>{partner.phone || "N/A"}</span>
+                    </div>
 
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-slate-50 border border-slate-200 rounded text-xs font-medium text-slate-600">
-                      <FileText size={12} />
-                      {partner.taxId}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-4 md:p-5 space-y-2.5 flex-1 bg-slate-50/40">
-                  <div className="flex items-start gap-3 text-sm text-slate-600">
-                    <Mail size={16} className="text-slate-400 mt-0.5 shrink-0" />
-                    <span className="truncate">{partner.email || "N/A"}</span>
-                  </div>
-
-                  <div className="flex items-start gap-3 text-sm text-slate-600">
-                    <Phone size={16} className="text-slate-400 mt-0.5 shrink-0" />
-                    <span>{partner.phone || "N/A"}</span>
+                    <div className="flex items-start gap-3 text-sm text-slate-600">
+                      <MapPin
+                        size={16}
+                        className="text-slate-400 mt-0.5 shrink-0"
+                      />
+                      <span className="line-clamp-2">
+                        {partner.address || "N/A"}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="flex items-start gap-3 text-sm text-slate-600">
-                    <MapPin
-                      size={16}
-                      className="text-slate-400 mt-0.5 shrink-0"
-                    />
-                    <span className="line-clamp-2">
-                      {partner.address || "N/A"}
-                    </span>
-                  </div>
-                </div>
+                  <div className="p-3 md:p-4 border-t border-slate-100 bg-white grid grid-cols-4 divide-x divide-slate-100">
+                    <div className="flex flex-col items-center justify-center py-1">
+                      <Users size={12} className="text-slate-300 mb-0.5" />
+                      <span className="font-bold text-slate-800 text-xs md:text-sm">
+                        {partner.stats.users}
+                      </span>
+                    </div>
 
-                <div className="p-3 md:p-4 border-t border-slate-100 bg-white grid grid-cols-4 divide-x divide-slate-100">
-                  <div className="flex flex-col items-center justify-center py-1">
-                    <Users size={12} className="text-slate-300 mb-0.5" />
-                    <span className="font-bold text-slate-800 text-xs md:text-sm">
-                      {partner.stats.users}
-                    </span>
-                  </div>
+                    <div className="flex flex-col items-center justify-center py-1">
+                      <Package size={12} className="text-slate-300 mb-0.5" />
+                      <span className="font-bold text-slate-800 text-xs md:text-sm">
+                        {partner.stats.products}
+                      </span>
+                    </div>
 
-                  <div className="flex flex-col items-center justify-center py-1">
-                    <Package size={12} className="text-slate-300 mb-0.5" />
-                    <span className="font-bold text-slate-800 text-xs md:text-sm">
-                      {partner.stats.products}
-                    </span>
-                  </div>
+                    <div className="flex flex-col items-center justify-center py-1">
+                      <Store size={12} className="text-slate-300 mb-0.5" />
+                      <span className="font-bold text-slate-800 text-xs md:text-sm">
+                        {partner.stats.branches}
+                      </span>
+                    </div>
 
-                  <div className="flex flex-col items-center justify-center py-1">
-                    <Store size={12} className="text-slate-300 mb-0.5" />
-                    <span className="font-bold text-slate-800 text-xs md:text-sm">
-                      {partner.stats.branches}
-                    </span>
+                    <div className="flex flex-col items-center justify-center py-1">
+                      <ShoppingCart
+                        size={12}
+                        className="text-slate-300 mb-0.5"
+                      />
+                      <span className="font-bold text-slate-800 text-xs md:text-sm">
+                        {partner.stats.orders}
+                      </span>
+                    </div>
                   </div>
-
-                  <div className="flex flex-col items-center justify-center py-1">
-                    <ShoppingCart size={12} className="text-slate-300 mb-0.5" />
-                    <span className="font-bold text-slate-800 text-xs md:text-sm">
-                      {partner.stats.orders}
-                    </span>
-                  </div>
-                </div>
                 </Link>
               );
             })
@@ -976,8 +903,14 @@ export default function PartnersPage() {
         {totalPages > 1 && (
           <div className="mt-6 flex items-center justify-between">
             <p className="text-sm text-slate-500">
-              Нийт <span className="font-semibold text-slate-800">{totalCount}</span> байгууллагаас{" "}
-              <span className="font-semibold text-slate-800">{(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, totalCount)}</span>-г харуулж байна
+              Нийт{" "}
+              <span className="font-semibold text-slate-800">{totalCount}</span>{" "}
+              байгууллагаас{" "}
+              <span className="font-semibold text-slate-800">
+                {(currentPage - 1) * PAGE_SIZE + 1}–
+                {Math.min(currentPage * PAGE_SIZE, totalCount)}
+              </span>
+              -г харуулж байна
             </p>
 
             <div className="flex items-center gap-1">
@@ -1006,27 +939,33 @@ export default function PartnersPage() {
                 }
                 return pages.map((p, idx) =>
                   p === "…" ? (
-                    <span key={`ellipsis-${idx}`} className="flex h-9 w-9 items-center justify-center text-sm text-slate-400">
+                    <span
+                      key={`ellipsis-${idx}`}
+                      className="flex h-9 w-9 items-center justify-center text-sm text-slate-400"
+                    >
                       …
                     </span>
                   ) : (
                     <button
                       key={p}
                       onClick={() => setCurrentPage(p as number)}
-                      className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-semibold transition-all ${currentPage === p
-                        ? "border-indigo-500 bg-indigo-600 text-white shadow-sm shadow-indigo-200"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600"
-                        }`}
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg border text-sm font-semibold transition-all ${
+                        currentPage === p
+                          ? "border-indigo-500 bg-indigo-600 text-white shadow-sm shadow-indigo-200"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:text-indigo-600"
+                      }`}
                     >
                       {p}
                     </button>
-                  )
+                  ),
                 );
               })()}
 
               {/* Next */}
               <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() =>
+                  setCurrentPage((p) => Math.min(totalPages, p + 1))
+                }
                 disabled={currentPage === totalPages}
                 className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition-all hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
               >
