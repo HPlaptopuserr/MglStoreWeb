@@ -7,7 +7,13 @@ import {
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { OrderDispatchAttemptStatus } from "@prisma/client";
-import { DeliveryStatus, prisma, OrderStatus } from "@mgl/database";
+import {
+  DeliveryStatus,
+  prisma,
+  OrderStatus,
+  type Prisma,
+} from "@mgl/database";
+import { isFullAdmin } from "@mgl/types";
 
 const router: ExpressRouter = Router();
 const JWT_SECRET =
@@ -45,7 +51,30 @@ const getVendorUser = async (req: Request) => {
 
     if (!user || !user.isActive || user.deletedAt) return null;
 
-    return { ...user, organizationId: decoded.organizationId };
+    const [organization, membership] = await Promise.all([
+      prisma.organization.findFirst({
+        where: { id: decoded.organizationId, deletedAt: null },
+        select: { businessOrdersEnabled: true },
+      }),
+      prisma.organizationMember.findFirst({
+        where: {
+          userId: user.id,
+          organizationId: decoded.organizationId,
+          isActive: true,
+          deletedAt: null,
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!organization) return null;
+    if (!isFullAdmin(user.role) && !membership) return null;
+
+    return {
+      ...user,
+      organizationId: decoded.organizationId,
+      ordersEnabled: organization.businessOrdersEnabled,
+    };
   } catch {
     return null;
   }
@@ -58,7 +87,10 @@ function generateDeliveryCode(): string {
 
 const DISPATCH_WINDOW_SECONDS = 10;
 
-async function advanceNextDispatchAttempt(tx: any, orderId: string) {
+async function advanceNextDispatchAttempt(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+) {
   const next = await tx.orderDispatchAttempt.findFirst({
     where: {
       orderId,
@@ -108,6 +140,12 @@ router.get("/vendor/orders", async (req: Request, res: Response) => {
   try {
     const user = await getVendorUser(req);
     if (!user) return res.status(401).json({ message: "Нэвтэрнэ үү" });
+    if (!user.ordersEnabled) {
+      return res.status(403).json({
+        code: "BUSINESS_ORDERS_DISABLED",
+        message: "Надад ирсэн захиалгын хэсэг идэвхгүй байна",
+      });
+    }
 
     const {
       status,
@@ -246,6 +284,12 @@ router.get("/vendor/order-dispatches", async (req: Request, res: Response) => {
   try {
     const user = await getVendorUser(req);
     if (!user) return res.status(401).json({ message: "Нэвтэрнэ үү" });
+    if (!user.ordersEnabled) {
+      return res.status(403).json({
+        code: "BUSINESS_ORDERS_DISABLED",
+        message: "Надад ирсэн захиалгын хэсэг идэвхгүй байна",
+      });
+    }
 
     const attempts = await prisma.orderDispatchAttempt.findMany({
       where: {
@@ -346,6 +390,12 @@ router.post(
     try {
       const user = await getVendorUser(req);
       if (!user) return res.status(401).json({ message: "Нэвтэрнэ үү" });
+      if (!user.ordersEnabled) {
+        return res.status(403).json({
+          code: "BUSINESS_ORDERS_DISABLED",
+          message: "Надад ирсэн захиалгын хэсэг идэвхгүй байна",
+        });
+      }
 
       const { attemptId } = req.params;
       const attempt = await prisma.orderDispatchAttempt.findUnique({
@@ -453,6 +503,12 @@ router.post(
     try {
       const user = await getVendorUser(req);
       if (!user) return res.status(401).json({ message: "Нэвтэрнэ үү" });
+      if (!user.ordersEnabled) {
+        return res.status(403).json({
+          code: "BUSINESS_ORDERS_DISABLED",
+          message: "Надад ирсэн захиалгын хэсэг идэвхгүй байна",
+        });
+      }
 
       const { attemptId } = req.params;
       const { note } = req.body as { note?: string };
@@ -473,11 +529,9 @@ router.post(
           .json({ message: "Энэ захиалгыг өөр салбар аль хэдийн авсан байна" });
       }
       if (attempt.status !== OrderDispatchAttemptStatus.PENDING) {
-        return res
-          .status(400)
-          .json({
-            message: "Зөвхөн идэвхтэй radar хүсэлтийг татгалзах боломжтой",
-          });
+        return res.status(400).json({
+          message: "Зөвхөн идэвхтэй radar хүсэлтийг татгалзах боломжтой",
+        });
       }
 
       const next = await prisma.$transaction(async (tx) => {
@@ -534,6 +588,12 @@ router.patch(
     try {
       const user = await getVendorUser(req);
       if (!user) return res.status(401).json({ message: "Нэвтэрнэ үү" });
+      if (!user.ordersEnabled) {
+        return res.status(403).json({
+          code: "BUSINESS_ORDERS_DISABLED",
+          message: "Надад ирсэн захиалгын хэсэг идэвхгүй байна",
+        });
+      }
 
       const { orderId } = req.params;
 

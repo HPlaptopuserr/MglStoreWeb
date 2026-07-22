@@ -38,11 +38,7 @@ export default function SettingsPage() {
 
     const load = async () => {
       try {
-        let url = `${API}/warehouses`;
-        if (u.organizationId) {
-          url = `${API}/warehouses/organization/${u.organizationId}`;
-        }
-        const res = await wmsFetch(url);
+        const res = await wmsFetch(`${API}/warehouses`);
         if (res.ok) {
           const data = await res.json();
           setWarehouses(Array.isArray(data) ? data : data.warehouses || []);
@@ -79,7 +75,9 @@ export default function SettingsPage() {
       if (res.ok) {
         const updated = await res.json();
         setWarehouses(
-          warehouses.map((wh) => (wh.id === editingId ? { ...wh, ...updated } : wh)),
+          warehouses.map((wh) =>
+            wh.id === editingId ? { ...wh, ...updated } : wh,
+          ),
         );
         setEditingId(null);
         setSaved(true);

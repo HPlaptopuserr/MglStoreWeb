@@ -104,8 +104,19 @@ type WarehouseInventoryItem = {
     price: string;
     images: { url: string }[];
     category: { id: string; name: string } | null;
+    businessCategory?: { id: string; name: string } | null;
   };
 };
+
+function readWarehouseProducts(payload: unknown): WarehouseInventoryItem[] {
+  if (Array.isArray(payload)) return payload as WarehouseInventoryItem[];
+  if (typeof payload !== "object" || payload === null || !("items" in payload)) {
+    return [];
+  }
+  return Array.isArray(payload.items)
+    ? (payload.items as WarehouseInventoryItem[])
+    : [];
+}
 
 type Warehouse = {
   id: string;
@@ -164,6 +175,8 @@ type CartItem = {
 };
 
 type ViewMode = "warehouses" | "browse" | "cart" | "requests" | "payments";
+
+const IS_LOCAL_DEVELOPMENT = process.env.NODE_ENV === "development";
 
 const statusConfig: Record<
   StockRequestStatus,
@@ -349,6 +362,7 @@ export default function StockRequestsPage() {
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [loadingPaymentDetail, setLoadingPaymentDetail] = useState(false);
+  const [markingPaymentPaid, setMarkingPaymentPaid] = useState(false);
 
   const [filteredRequests, setFilteredRequests] = useState<StockRequest[]>([]);
 
@@ -375,7 +389,9 @@ export default function StockRequestsPage() {
         authFetch(
           `${API}/stock-requests?organizationId=${user?.organizationId}`,
         ),
-        authFetch(`${API}/warehouses/organization/${user?.organizationId}`),
+        authFetch(
+          `${API}/warehouses/organization/${user?.organizationId}/order-sources`,
+        ),
         authFetch(
           `${API}/stock-requests/payments/unpaid/${user?.organizationId}`,
         ),
@@ -433,6 +449,38 @@ export default function StockRequestsPage() {
     window.print();
   };
 
+  const markPaymentPaidLocally = async () => {
+    if (!selectedPayment || selectedPayment.status === "PAID") return;
+
+    setMarkingPaymentPaid(true);
+    try {
+      const response = await authFetch(
+        `${API}/stock-requests/payments/${selectedPayment.id}/dev-mark-paid`,
+        { method: "POST" },
+      );
+      const body = (await response.json().catch(() => ({}))) as {
+        message?: string;
+      };
+      if (!response.ok) {
+        throw new Error(body.message || "Төлбөр баталгаажуулахад алдаа гарлаа");
+      }
+
+      await Promise.all([
+        openPaymentDetail(selectedPayment.id),
+        fetchPayments(),
+        fetchData(),
+      ]);
+    } catch (error: unknown) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Төлбөр баталгаажуулахад алдаа гарлаа",
+      );
+    } finally {
+      setMarkingPaymentPaid(false);
+    }
+  };
+
   useEffect(() => {
     if (viewMode === "payments" && user?.organizationId) {
       fetchPayments();
@@ -463,7 +511,7 @@ export default function StockRequestsPage() {
         `${API}/stock-requests/warehouse/${warehouse.id}/products`,
       );
       if (res.ok) {
-        const fetchedProducts = (await res.json()) || [];
+        const fetchedProducts = readWarehouseProducts(await res.json());
         setWarehouseProducts(fetchedProducts);
 
         if (autoItems && autoItems.length > 0) {
@@ -635,16 +683,19 @@ export default function StockRequestsPage() {
 
   const categories = Array.from(
     new Set(
-      warehouseProducts
+      (Array.isArray(warehouseProducts) ? warehouseProducts : [])
         .map(
-          (p: any) =>
-            p.product.category?.name || p.product.businessCategory?.name,
+          (product) =>
+            product.product.category?.name ||
+            product.product.businessCategory?.name,
         )
         .filter(Boolean),
     ),
   ) as string[];
 
-  const filteredProducts = warehouseProducts.filter((item: any) => {
+  const filteredProducts = (
+    Array.isArray(warehouseProducts) ? warehouseProducts : []
+  ).filter((item) => {
     const matchesSearch =
       item.product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
       item.product.sku?.toLowerCase().includes(productSearch.toLowerCase());
@@ -838,10 +889,10 @@ export default function StockRequestsPage() {
               <WarehouseIcon className="h-8 w-8 text-slate-300" />
             </div>
             <p className="text-lg font-semibold text-slate-600">
-              Танд агуулах хуваарилагдаагүй байна
+              Захиалга авах төв агуулах хуваарилагдаагүй байна
             </p>
             <p className="mt-1 text-sm text-slate-400">
-              Админтай холбогдоно уу
+              Төв агуулахын эрх авахын тулд админтай холбогдоно уу
             </p>
           </div>
         ) : (
@@ -1700,6 +1751,37 @@ export default function StockRequestsPage() {
                         </div>
                       </div>
                     </div>
+
+                    {IS_LOCAL_DEVELOPMENT &&
+                      selectedPayment.status !== "PAID" &&
+                      selectedPayment.status !== "CANCELLED" && (
+                        <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 print:hidden">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-sm font-bold text-emerald-900">
+                                Local development төлбөр
+                              </p>
+                              <p className="mt-1 text-xs text-emerald-700">
+                                Бодит төлбөрийн систем дуудахгүйгээр энэ
+                                нэхэмжлэхийг бүтэн төлөгдсөн болгоно.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={markPaymentPaidLocally}
+                              disabled={markingPaymentPaid}
+                              className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
+                            >
+                              {markingPaymentPaid ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <CheckCircle className="h-4 w-4" />
+                              )}
+                              Төлсөн гэж тэмдэглэх
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                     {/* Footer for print */}
                     <div className="hidden print:block mt-8 pt-4 border-t border-slate-200 text-center text-xs text-slate-500">

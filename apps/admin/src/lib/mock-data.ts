@@ -1,7 +1,19 @@
 import type { TimeRange } from "@/components/organisms/RevenueChart";
 
-const generateChartData = (days: number, points: number, startRevenue: number) => {
-    const data = [];
+export interface RevenueChartPoint {
+    name: string;
+    fullDate: string;
+    leads: number;
+    revenue: number;
+    isCurrent: boolean;
+}
+
+const generateChartData = (
+    days: number,
+    points: number,
+    startRevenue: number,
+): RevenueChartPoint[] => {
+    const data: RevenueChartPoint[] = [];
     const today = new Date();
 
     let currentLeads = 200;
@@ -37,7 +49,7 @@ const generateChartData = (days: number, points: number, startRevenue: number) =
     return data;
 };
 
-export const MOCK_REVENUE_DATA: Record<TimeRange, any[]> = {
+export const MOCK_REVENUE_DATA: Record<TimeRange, RevenueChartPoint[]> = {
     "7d": generateChartData(7, 42, 2000),
     "30d": generateChartData(30, 30, 15000),
     "6m": generateChartData(180, 60, 50000),

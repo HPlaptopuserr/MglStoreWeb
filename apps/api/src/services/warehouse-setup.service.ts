@@ -29,8 +29,116 @@ export type SetPasswordResult = {
   email?: string;
 };
 
+export type ExistingPersonalAccount = {
+  id: string;
+  email: string;
+  fullName: string;
+  phoneNumber: string | null;
+  avatarUrl: string | null;
+  isAssigned: boolean;
+};
+
 function generateOperatorId(): string {
   return crypto.randomInt(10_000_000, 99_999_999).toString();
+}
+
+export async function searchPersonalAccounts(
+  search: string,
+  warehouseId: string,
+): Promise<ExistingPersonalAccount[]> {
+  const query = search.trim();
+  if (query.length < 2) return [];
+
+  const users = await prisma.user.findMany({
+    where: {
+      role: "USER",
+      isActive: true,
+      deletedAt: null,
+      OR: [
+        { email: { contains: query, mode: "insensitive" } },
+        { profile: { fullName: { contains: query, mode: "insensitive" } } },
+        { profile: { phoneNumber: { contains: query } } },
+      ],
+    },
+    select: {
+      id: true,
+      email: true,
+      profile: {
+        select: { fullName: true, phoneNumber: true, avatarUrl: true },
+      },
+      warehouseSetupTokens: {
+        where: { warehouseId },
+        select: { id: true },
+        take: 1,
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 10,
+  });
+
+  return users.map((user) => ({
+    id: user.id,
+    email: user.email,
+    fullName: user.profile?.fullName || "Нэр оруулаагүй",
+    phoneNumber: user.profile?.phoneNumber || null,
+    avatarUrl: user.profile?.avatarUrl || null,
+    isAssigned: user.warehouseSetupTokens.length > 0,
+  }));
+}
+
+export async function assignPersonalAccountToWarehouse(params: {
+  userId: string;
+  warehouseId: string;
+}): Promise<RegisterOperatorResult> {
+  const { userId, warehouseId } = params;
+  const [warehouse, user, existingAssignment] = await Promise.all([
+    prisma.warehouse.findFirst({ where: { id: warehouseId, deletedAt: null } }),
+    prisma.user.findFirst({
+      where: { id: userId, role: "USER", isActive: true, deletedAt: null },
+      select: {
+        id: true,
+        email: true,
+        registerNumber: true,
+        passwordHash: true,
+      },
+    }),
+    prisma.warehouseSetupToken.findFirst({ where: { userId, warehouseId } }),
+  ]);
+
+  if (!warehouse) return { success: false, message: "Агуулах олдсонгүй" };
+  if (!user) return { success: false, message: "Personal account олдсонгүй" };
+  if (existingAssignment) {
+    return {
+      success: false,
+      message: "Энэ хэрэглэгч агуулахад аль хэдийн оноогдсон байна",
+    };
+  }
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+  await prisma.warehouseSetupToken.create({
+    data: {
+      userId,
+      warehouseId,
+      token,
+      expiresAt,
+      usedAt: user.passwordHash ? new Date() : null,
+    },
+  });
+
+  const baseUrl =
+    process.env.WAREHOUSE_APP_URL || "https://warehouse.mglstore.mn";
+  return {
+    success: true,
+    message: "Personal account агуулахад амжилттай оноогдлоо",
+    data: {
+      userId: user.id,
+      operatorId: user.registerNumber || "PERSONAL",
+      email: user.email,
+      setupLink: user.passwordHash ? "" : `${baseUrl}/setup?token=${token}`,
+      expiresAt,
+    },
+  };
 }
 
 /**
@@ -79,38 +187,41 @@ export async function registerWarehouseOperator(params: {
   const token = crypto.randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
-  const user = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    // Create user without password
-    const newUser = await tx.user.create({
-      data: {
-        email,
-        registerNumber: operatorId,
-        role: "USER",
-        isActive: true,
-        onboardingSource: "ADMIN",
-        profile: {
-          create: {
-            fullName,
-            phoneNumber: phoneNumber || null,
+  const user = await prisma.$transaction(
+    async (tx: Prisma.TransactionClient) => {
+      // Create user without password
+      const newUser = await tx.user.create({
+        data: {
+          email,
+          registerNumber: operatorId,
+          role: "USER",
+          isActive: true,
+          onboardingSource: "ADMIN",
+          profile: {
+            create: {
+              fullName,
+              phoneNumber: phoneNumber || null,
+            },
           },
         },
-      },
-    });
+      });
 
-    // Create setup token (5 min expiry)
-    await tx.warehouseSetupToken.create({
-      data: {
-        userId: newUser.id,
-        warehouseId,
-        token,
-        expiresAt,
-      },
-    });
+      // Create setup token (5 min expiry)
+      await tx.warehouseSetupToken.create({
+        data: {
+          userId: newUser.id,
+          warehouseId,
+          token,
+          expiresAt,
+        },
+      });
 
-    return newUser;
-  });
+      return newUser;
+    },
+  );
 
-  const baseUrl = process.env.WAREHOUSE_APP_URL || "https://warehouse.mglstore.mn";
+  const baseUrl =
+    process.env.WAREHOUSE_APP_URL || "https://warehouse.mglstore.mn";
   const setupLink = `${baseUrl}/setup?token=${token}`;
 
   return {
@@ -212,7 +323,10 @@ export async function setWarehouseOperatorPassword(
   }
 
   if (setupToken.usedAt) {
-    return { success: false, message: "Энэ token аль хэдийн ашиглагдсан байна" };
+    return {
+      success: false,
+      message: "Энэ token аль хэдийн ашиглагдсан байна",
+    };
   }
 
   if (new Date() > setupToken.expiresAt) {
@@ -220,7 +334,10 @@ export async function setWarehouseOperatorPassword(
   }
 
   if (setupToken.user.passwordHash) {
-    return { success: false, message: "Нууц үг аль хэдийн тохируулагдсан байна" };
+    return {
+      success: false,
+      message: "Нууц үг аль хэдийн тохируулагдсан байна",
+    };
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
@@ -289,7 +406,8 @@ export async function regenerateWarehouseSetupToken(
     });
   });
 
-  const baseUrl = process.env.WAREHOUSE_APP_URL || "https://warehouse.mglstore.mn";
+  const baseUrl =
+    process.env.WAREHOUSE_APP_URL || "https://warehouse.mglstore.mn";
   const setupLink = `${baseUrl}/setup?token=${newToken}`;
 
   return { setupLink, expiresAt };

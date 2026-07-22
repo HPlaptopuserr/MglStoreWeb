@@ -27,6 +27,15 @@ function isValidLatLng(lat: number, lng: number) {
   return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
 }
 
+function errorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const message = error.message;
+    if (typeof message === "string" && message) return message;
+  }
+  return fallback;
+}
+
 export function useBranches(enabled: boolean) {
   const [branchItems, setBranchItems] = useState<BranchMapItem[]>([]);
   const [branchPartners, setBranchPartners] = useState<CardPartner[]>([]);
@@ -53,8 +62,7 @@ export function useBranches(enabled: boolean) {
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
           throw new Error(
-            (err as any)?.message ||
-              "Байгууллагын жагсаалт авахад алдаа гарлаа",
+            errorMessage(err, "Байгууллагын жагсаалт авахад алдаа гарлаа"),
           );
         }
         return r.json();
@@ -63,7 +71,7 @@ export function useBranches(enabled: boolean) {
         if (!r.ok) {
           const err = await r.json().catch(() => ({}));
           throw new Error(
-            (err as any)?.message || "Салбарын жагсаалт авахад алдаа гарлаа",
+            errorMessage(err, "Салбарын жагсаалт авахад алдаа гарлаа"),
           );
         }
         return r.json();
@@ -92,9 +100,9 @@ export function useBranches(enabled: boolean) {
           });
         }
       })
-      .catch((error: any) => {
+      .catch((error: unknown) => {
         setBranchLoadError(
-          error?.message || "Салбарын мэдээлэл ачаалахад алдаа гарлаа",
+          errorMessage(error, "Салбарын мэдээлэл ачаалахад алдаа гарлаа"),
         );
         setBranchPartners([]);
         setBranchItems([]);
@@ -199,7 +207,7 @@ export function useBranches(enabled: boolean) {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error((err as any)?.message || "Салбар нэмэхэд алдаа гарлаа");
+        throw new Error(errorMessage(err, "Салбар нэмэхэд алдаа гарлаа"));
       }
 
       const created = await res.json();
@@ -222,8 +230,8 @@ export function useBranches(enabled: boolean) {
 
       setBranchForm(EMPTY_FORM);
       setBranchSuccess("Салбар амжилттай нэмэгдлээ");
-    } catch (error: any) {
-      setBranchError(error?.message || "Салбар нэмэхэд алдаа гарлаа");
+    } catch (error: unknown) {
+      setBranchError(errorMessage(error, "Салбар нэмэхэд алдаа гарлаа"));
     } finally {
       setBranchSaving(false);
     }

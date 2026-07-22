@@ -108,12 +108,7 @@ export default function InventoryPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const user = JSON.parse(localStorage.getItem("wms_user") || "{}");
-        let url = `${API}/warehouses`;
-        if (user.organizationId) {
-          url = `${API}/warehouses/organization/${user.organizationId}`;
-        }
-        const res = await wmsFetch(url);
+        const res = await wmsFetch(`${API}/warehouses`);
         if (res.ok) {
           const data = await res.json();
           const list = Array.isArray(data) ? data : data.warehouses || [];
@@ -161,7 +156,9 @@ export default function InventoryPage() {
           const data = await res.json();
           setInventory(data.inventories || []);
         } else if (attempt < 2) {
-          setTimeout(() => { if (!cancelled) load(attempt + 1); }, 1500);
+          setTimeout(() => {
+            if (!cancelled) load(attempt + 1);
+          }, 1500);
           return;
         } else {
           setFetchError(true);
@@ -169,7 +166,9 @@ export default function InventoryPage() {
       } catch {
         if (cancelled) return;
         if (attempt < 2) {
-          setTimeout(() => { if (!cancelled) load(attempt + 1); }, 1500);
+          setTimeout(() => {
+            if (!cancelled) load(attempt + 1);
+          }, 1500);
           return;
         }
         setFetchError(true);
@@ -178,7 +177,9 @@ export default function InventoryPage() {
       }
     };
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [selectedWarehouseId, retryCount]);
 
   const handleDelete = async () => {
@@ -212,10 +213,16 @@ export default function InventoryPage() {
       barcode: item.product.barcode || "",
       unit: item.product.unit || "",
       price: String(Number(item.product.price)),
-      costPrice: item.product.costPrice == null ? "" : String(Number(item.product.costPrice)),
+      costPrice:
+        item.product.costPrice == null
+          ? ""
+          : String(Number(item.product.costPrice)),
       businessCategoryId: item.product.businessCategoryId || "",
       supplyType: item.product.supplyType || "IN_STOCK",
-      preorderLeadTimeDays: item.product.preorderLeadTimeDays == null ? "" : String(item.product.preorderLeadTimeDays),
+      preorderLeadTimeDays:
+        item.product.preorderLeadTimeDays == null
+          ? ""
+          : String(item.product.preorderLeadTimeDays),
       preorderNote: item.product.preorderNote || "",
       isActive: item.product.isActive,
       quantity: String(item.quantity),
@@ -245,12 +252,15 @@ export default function InventoryPage() {
 
     const quantity = Number(editForm.quantity);
     const minQuantity = Number(editForm.minQuantity);
-    const maxQuantity = editForm.maxQuantity === "" ? null : Number(editForm.maxQuantity);
+    const maxQuantity =
+      editForm.maxQuantity === "" ? null : Number(editForm.maxQuantity);
     const price = Number(editForm.price);
-    const costPrice = editForm.costPrice === "" ? null : Number(editForm.costPrice);
-    const preorderLeadTimeDays = editForm.preorderLeadTimeDays === ""
-      ? null
-      : Number(editForm.preorderLeadTimeDays);
+    const costPrice =
+      editForm.costPrice === "" ? null : Number(editForm.costPrice);
+    const preorderLeadTimeDays =
+      editForm.preorderLeadTimeDays === ""
+        ? null
+        : Number(editForm.preorderLeadTimeDays);
 
     if (!editForm.name.trim()) {
       alert("Барааны нэр оруулна уу");
@@ -261,7 +271,8 @@ export default function InventoryPage() {
       quantity < 0 ||
       !Number.isFinite(minQuantity) ||
       minQuantity < 0 ||
-      (maxQuantity !== null && (!Number.isFinite(maxQuantity) || maxQuantity < 0)) ||
+      (maxQuantity !== null &&
+        (!Number.isFinite(maxQuantity) || maxQuantity < 0)) ||
       !Number.isFinite(price) ||
       price < 0 ||
       (costPrice !== null && (!Number.isFinite(costPrice) || costPrice < 0)) ||
@@ -358,10 +369,15 @@ export default function InventoryPage() {
   }, [inventory, search, statusFilter]);
 
   // Reset to page 1 when filter/search changes
-  useMemo(() => { setCurrentPage(1); }, [search, statusFilter, selectedWarehouseId]);
+  useMemo(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, selectedWarehouseId]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const paginated = filtered.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
 
   const counts = useMemo(() => {
     const healthy = inventory.filter((i) => getStatus(i) === "healthy").length;
@@ -477,8 +493,12 @@ export default function InventoryPage() {
         ) : fetchError ? (
           <div className="flex h-64 flex-col items-center justify-center gap-3 text-slate-400">
             <Package className="h-8 w-8 text-red-300" />
-            <p className="text-sm font-medium text-slate-600">Сервертэй холбогдоход алдаа гарлаа</p>
-            <p className="text-xs text-slate-400">Интернэт холболт болон серверийн байдлыг шалгана уу</p>
+            <p className="text-sm font-medium text-slate-600">
+              Сервертэй холбогдоход алдаа гарлаа
+            </p>
+            <p className="text-xs text-slate-400">
+              Интернэт холболт болон серверийн байдлыг шалгана уу
+            </p>
             <button
               onClick={() => setRetryCount((c) => c + 1)}
               className="mt-1 flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
@@ -504,12 +524,8 @@ export default function InventoryPage() {
                   <th className="px-4 py-3 text-right font-semibold">
                     Гар дээрх
                   </th>
-                  <th className="px-4 py-3 text-right font-semibold">
-                    Min
-                  </th>
-                  <th className="px-4 py-3 text-right font-semibold">
-                    Үнэ
-                  </th>
+                  <th className="px-4 py-3 text-right font-semibold">Min</th>
+                  <th className="px-4 py-3 text-right font-semibold">Үнэ</th>
                 </tr>
               </thead>
               <tbody>
@@ -582,10 +598,16 @@ export default function InventoryPage() {
             {totalPages > 1 && (
               <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
                 <p className="text-xs text-slate-500">
-                  Нийт <span className="font-semibold text-slate-700">{filtered.length}</span> барааны{" "}
+                  Нийт{" "}
                   <span className="font-semibold text-slate-700">
-                    {(currentPage - 1) * PAGE_SIZE + 1}–{Math.min(currentPage * PAGE_SIZE, filtered.length)}
-                  </span>-г харуулж байна
+                    {filtered.length}
+                  </span>{" "}
+                  барааны{" "}
+                  <span className="font-semibold text-slate-700">
+                    {(currentPage - 1) * PAGE_SIZE + 1}–
+                    {Math.min(currentPage * PAGE_SIZE, filtered.length)}
+                  </span>
+                  -г харуулж байна
                 </p>
 
                 <div className="flex items-center gap-1">
@@ -614,7 +636,10 @@ export default function InventoryPage() {
                     }
                     return pages.map((p, idx) =>
                       p === "…" ? (
-                        <span key={`e${idx}`} className="flex h-8 w-8 items-center justify-center text-xs text-slate-400">
+                        <span
+                          key={`e${idx}`}
+                          className="flex h-8 w-8 items-center justify-center text-xs text-slate-400"
+                        >
                           …
                         </span>
                       ) : (
@@ -629,13 +654,15 @@ export default function InventoryPage() {
                         >
                           {p}
                         </button>
-                      )
+                      ),
                     );
                   })()}
 
                   {/* Next */}
                   <button
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    onClick={() =>
+                      setCurrentPage((p) => Math.min(totalPages, p + 1))
+                    }
                     disabled={currentPage === totalPages}
                     className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition-colors hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
                   >
@@ -679,7 +706,9 @@ export default function InventoryPage() {
                     </label>
                     <input
                       value={editForm.name}
-                      onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, name: e.target.value })
+                      }
                       className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
@@ -692,7 +721,9 @@ export default function InventoryPage() {
                       type="number"
                       min="0"
                       value={editForm.costPrice}
-                      onChange={(e) => setEditForm({ ...editForm, costPrice: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, costPrice: e.target.value })
+                      }
                       placeholder="0"
                       className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
@@ -704,7 +735,9 @@ export default function InventoryPage() {
                     </label>
                     <select
                       value={editForm.supplyType}
-                      onChange={(e) => setEditForm({ ...editForm, supplyType: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, supplyType: e.target.value })
+                      }
                       className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     >
                       <option value="IN_STOCK">Бэлэн</option>
@@ -723,7 +756,12 @@ export default function InventoryPage() {
                           min="0"
                           max="365"
                           value={editForm.preorderLeadTimeDays}
-                          onChange={(e) => setEditForm({ ...editForm, preorderLeadTimeDays: e.target.value })}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              preorderLeadTimeDays: e.target.value,
+                            })
+                          }
                           className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
@@ -734,7 +772,12 @@ export default function InventoryPage() {
                         </label>
                         <input
                           value={editForm.preorderNote}
-                          onChange={(e) => setEditForm({ ...editForm, preorderNote: e.target.value })}
+                          onChange={(e) =>
+                            setEditForm({
+                              ...editForm,
+                              preorderNote: e.target.value,
+                            })
+                          }
                           className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                         />
                       </div>
@@ -747,7 +790,9 @@ export default function InventoryPage() {
                     </label>
                     <input
                       value={editForm.sku}
-                      onChange={(e) => setEditForm({ ...editForm, sku: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, sku: e.target.value })
+                      }
                       className="h-11 w-full rounded-lg border border-slate-200 px-3 font-mono text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
@@ -758,7 +803,9 @@ export default function InventoryPage() {
                     </label>
                     <input
                       value={editForm.barcode}
-                      onChange={(e) => setEditForm({ ...editForm, barcode: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, barcode: e.target.value })
+                      }
                       className="h-11 w-full rounded-lg border border-slate-200 px-3 font-mono text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
@@ -769,7 +816,9 @@ export default function InventoryPage() {
                     </label>
                     <select
                       value={editForm.unit}
-                      onChange={(e) => setEditForm({ ...editForm, unit: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, unit: e.target.value })
+                      }
                       className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     >
                       <option value="">Сонгох</option>
@@ -789,7 +838,12 @@ export default function InventoryPage() {
                     </label>
                     <select
                       value={editForm.businessCategoryId}
-                      onChange={(e) => setEditForm({ ...editForm, businessCategoryId: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          businessCategoryId: e.target.value,
+                        })
+                      }
                       className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     >
                       <option value="">Ангилалгүй</option>
@@ -807,7 +861,12 @@ export default function InventoryPage() {
                     </label>
                     <textarea
                       value={editForm.description}
-                      onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          description: e.target.value,
+                        })
+                      }
                       rows={2}
                       className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
@@ -821,7 +880,9 @@ export default function InventoryPage() {
                       type="number"
                       min="0"
                       value={editForm.price}
-                      onChange={(e) => setEditForm({ ...editForm, price: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, price: e.target.value })
+                      }
                       className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
@@ -834,7 +895,9 @@ export default function InventoryPage() {
                       type="number"
                       min="0"
                       value={editForm.quantity}
-                      onChange={(e) => setEditForm({ ...editForm, quantity: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, quantity: e.target.value })
+                      }
                       className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
@@ -847,7 +910,12 @@ export default function InventoryPage() {
                       type="number"
                       min="0"
                       value={editForm.minQuantity}
-                      onChange={(e) => setEditForm({ ...editForm, minQuantity: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          minQuantity: e.target.value,
+                        })
+                      }
                       className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
@@ -860,7 +928,12 @@ export default function InventoryPage() {
                       type="number"
                       min="0"
                       value={editForm.maxQuantity}
-                      onChange={(e) => setEditForm({ ...editForm, maxQuantity: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          maxQuantity: e.target.value,
+                        })
+                      }
                       placeholder="Хязгаарлалтгүй"
                       className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
@@ -872,7 +945,9 @@ export default function InventoryPage() {
                     </label>
                     <input
                       value={editForm.location}
-                      onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, location: e.target.value })
+                      }
                       placeholder="A-1-3"
                       className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
@@ -884,7 +959,12 @@ export default function InventoryPage() {
                     </label>
                     <input
                       value={editForm.batchNumber}
-                      onChange={(e) => setEditForm({ ...editForm, batchNumber: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          batchNumber: e.target.value,
+                        })
+                      }
                       className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
@@ -896,7 +976,9 @@ export default function InventoryPage() {
                     <input
                       type="date"
                       value={editForm.expiryDate}
-                      onChange={(e) => setEditForm({ ...editForm, expiryDate: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, expiryDate: e.target.value })
+                      }
                       className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
@@ -907,7 +989,9 @@ export default function InventoryPage() {
                     </label>
                     <input
                       value={editForm.note}
-                      onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, note: e.target.value })
+                      }
                       className="h-11 w-full rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
                     />
                   </div>
@@ -916,7 +1000,9 @@ export default function InventoryPage() {
                     <input
                       type="checkbox"
                       checked={editForm.isActive}
-                      onChange={(e) => setEditForm({ ...editForm, isActive: e.target.checked })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, isActive: e.target.checked })
+                      }
                       className="h-4 w-4 rounded border-slate-300 text-blue-600"
                     />
                     Идэвхтэй бараа
@@ -946,149 +1032,149 @@ export default function InventoryPage() {
                 </div>
               </div>
             ) : (
-            <div className="space-y-6 p-8">
-              {/* Header */}
-              <div className="space-y-2 border-b border-slate-100 pb-6">
-                <h2 className="text-2xl font-bold text-slate-900">
-                  {selectedItem.product.name}
-                </h2>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
-                      getStatusLabel(selectedItem).color
-                    }`}
+              <div className="space-y-6 p-8">
+                {/* Header */}
+                <div className="space-y-2 border-b border-slate-100 pb-6">
+                  <h2 className="text-2xl font-bold text-slate-900">
+                    {selectedItem.product.name}
+                  </h2>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-semibold ${
+                        getStatusLabel(selectedItem).color
+                      }`}
+                    >
+                      {getStatusLabel(selectedItem).label}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Main Grid */}
+                <div className="grid grid-cols-2 gap-6">
+                  {/* Left column */}
+                  <div className="space-y-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        SKU
+                      </p>
+                      <p className="mt-1 font-mono text-base text-slate-900">
+                        {selectedItem.product.sku || "—"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Barcode
+                      </p>
+                      <p className="mt-1 flex items-center gap-2 font-mono text-sm text-slate-700">
+                        <Barcode className="h-4 w-4 text-slate-400" />
+                        {selectedItem.product.barcode || "—"}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Үнэ
+                      </p>
+                      <p className="mt-1 text-lg font-bold text-slate-900">
+                        {Number(selectedItem.product.price).toLocaleString()}₮
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Байрлал
+                      </p>
+                      <p className="mt-1 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 font-mono text-sm text-slate-700">
+                        <MapPin className="h-4 w-4 text-slate-400" />
+                        {selectedItem.location || "Тодорхойгүй"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right column */}
+                  <div className="space-y-4">
+                    <div className="rounded-lg bg-blue-50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Гар дээрх тоо
+                      </p>
+                      <p className="mt-2 text-3xl font-bold text-blue-900">
+                        {selectedItem.quantity.toLocaleString()}
+                      </p>
+                    </div>
+
+                    <div className="space-y-3 rounded-lg border border-slate-200 p-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Хамгийн бага тоо
+                        </p>
+                        <p className="mt-1 text-lg font-bold text-slate-900">
+                          {selectedItem.minQuantity}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                          Хамгийн их тоо
+                        </p>
+                        <p className="mt-1 text-lg font-bold text-slate-900">
+                          {selectedItem.maxQuantity || "Хязгаарлалт байхгүй"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Additional Info */}
+                <div className="space-y-4 border-t border-slate-100 pt-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Batch Number
+                      </p>
+                      <p className="mt-1 font-mono text-sm text-slate-700">
+                        {selectedItem.batchNumber || "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Хүчинтэй болох хугацаа
+                      </p>
+                      <p className="mt-1 flex items-center gap-2 text-sm text-slate-700">
+                        <Calendar className="h-4 w-4 text-slate-400" />
+                        {selectedItem.expiryDate
+                          ? new Date(
+                              selectedItem.expiryDate,
+                            ).toLocaleDateString("mn-MN")
+                          : "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex gap-3 border-t border-slate-100 pt-6">
+                  <button
+                    onClick={closeDetail}
+                    className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-50"
                   >
-                    {getStatusLabel(selectedItem).label}
-                  </span>
+                    Хаах
+                  </button>
+                  <button
+                    onClick={() => openEdit(selectedItem)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-4 py-2.5 font-medium text-blue-600 hover:bg-blue-100"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    Засах
+                  </button>
+                  <button
+                    onClick={() => setDeleteConfirm(true)}
+                    className="inline-flex items-center gap-2 rounded-lg bg-red-50 px-4 py-2.5 font-medium text-red-600 hover:bg-red-100"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Устгах
+                  </button>
                 </div>
               </div>
-
-              {/* Main Grid */}
-              <div className="grid grid-cols-2 gap-6">
-                {/* Left column */}
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      SKU
-                    </p>
-                    <p className="mt-1 font-mono text-base text-slate-900">
-                      {selectedItem.product.sku || "—"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Barcode
-                    </p>
-                    <p className="mt-1 flex items-center gap-2 font-mono text-sm text-slate-700">
-                      <Barcode className="h-4 w-4 text-slate-400" />
-                      {selectedItem.product.barcode || "—"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Үнэ
-                    </p>
-                    <p className="mt-1 text-lg font-bold text-slate-900">
-                      {Number(selectedItem.product.price).toLocaleString()}₮
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Байрлал
-                    </p>
-                    <p className="mt-1 flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 font-mono text-sm text-slate-700">
-                      <MapPin className="h-4 w-4 text-slate-400" />
-                      {selectedItem.location || "Тодорхойгүй"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Right column */}
-                <div className="space-y-4">
-                  <div className="rounded-lg bg-blue-50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Гар дээрх тоо
-                    </p>
-                    <p className="mt-2 text-3xl font-bold text-blue-900">
-                      {selectedItem.quantity.toLocaleString()}
-                    </p>
-                  </div>
-
-                  <div className="space-y-3 rounded-lg border border-slate-200 p-4">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Хамгийн бага тоо
-                      </p>
-                      <p className="mt-1 text-lg font-bold text-slate-900">
-                        {selectedItem.minQuantity}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Хамгийн их тоо
-                      </p>
-                      <p className="mt-1 text-lg font-bold text-slate-900">
-                        {selectedItem.maxQuantity || "Хязгаарлалт байхгүй"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Additional Info */}
-              <div className="space-y-4 border-t border-slate-100 pt-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Batch Number
-                    </p>
-                    <p className="mt-1 font-mono text-sm text-slate-700">
-                      {selectedItem.batchNumber || "—"}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Хүчинтэй болох хугацаа
-                    </p>
-                    <p className="mt-1 flex items-center gap-2 text-sm text-slate-700">
-                      <Calendar className="h-4 w-4 text-slate-400" />
-                      {selectedItem.expiryDate
-                        ? new Date(selectedItem.expiryDate).toLocaleDateString(
-                            "mn-MN",
-                          )
-                        : "—"}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="flex gap-3 border-t border-slate-100 pt-6">
-                <button
-                  onClick={closeDetail}
-                  className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Хаах
-                </button>
-                <button
-                  onClick={() => openEdit(selectedItem)}
-                  className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-4 py-2.5 font-medium text-blue-600 hover:bg-blue-100"
-                >
-                  <Edit3 className="h-4 w-4" />
-                  Засах
-                </button>
-                <button
-                  onClick={() => setDeleteConfirm(true)}
-                  className="inline-flex items-center gap-2 rounded-lg bg-red-50 px-4 py-2.5 font-medium text-red-600 hover:bg-red-100"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Устгах
-                </button>
-              </div>
-            </div>
             )}
           </div>
         </div>
@@ -1104,7 +1190,9 @@ export default function InventoryPage() {
               </div>
               <div>
                 <h3 className="font-bold text-slate-900">Бараа устгах</h3>
-                <p className="text-sm text-slate-500">Агуулахаас бүрмөсөн хасагдана</p>
+                <p className="text-sm text-slate-500">
+                  Агуулахаас бүрмөсөн хасагдана
+                </p>
               </div>
             </div>
             <p className="mb-5 rounded-lg bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
@@ -1123,7 +1211,11 @@ export default function InventoryPage() {
                 disabled={deleting}
                 className="flex-1 inline-flex items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 font-medium text-white hover:bg-red-700 disabled:opacity-50"
               >
-                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {deleting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
                 Устгах
               </button>
             </div>

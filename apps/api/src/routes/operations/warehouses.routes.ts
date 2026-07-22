@@ -21,11 +21,21 @@ import {
   syncProductStock,
 } from "../../services/inventory.service";
 import {
+  hasPlatformWarehouseAccess,
+  hasWarehouseAccess,
+} from "../../services/warehouse-access.service";
+import {
   addMasterProductAlias,
   resolveMasterProduct,
 } from "../../services/master-product.service";
+import { getWarehouseAdminSummary } from "../../services/warehouse-admin-summary.service";
 
 const router: ExpressRouter = Router();
+
+// The database enum keeps its historical names, while these aliases express
+// the actual ownership boundary used by the applications.
+const ADMIN_MANAGED_WAREHOUSE = WarehouseType.CENTRAL;
+const PARTNER_MANAGED_WAREHOUSE = WarehouseType.VENDOR_INTERNAL;
 
 async function assertWarehouseMutationPermission(
   req: Parameters<typeof requireAuth>[0],
@@ -71,15 +81,29 @@ async function getImportBusinessCategoryChoices() {
   return buildBusinessCategoryChoices(categories);
 }
 
-// Get independently operated central warehouses for administration.
+// Warehouses created and operated by admins through the standalone WMS.
 router.get("/warehouses", requireAuth, async (req, res) => {
   try {
     const { organizationId, isActive } = req.query;
+    const actor = (
+      req as typeof req & { user?: { userId?: string; role?: string } }
+    ).user;
 
     const where: any = {
       deletedAt: null,
-      type: WarehouseType.CENTRAL,
+      type: ADMIN_MANAGED_WAREHOUSE,
     };
+
+    // Operators may only access the admin-managed warehouse explicitly assigned
+    // during setup. Platform warehouse admins can see every admin-managed one.
+    if (!hasPlatformWarehouseAccess(actor?.role)) {
+      if (!actor?.userId) {
+        return res.status(403).json({ message: "Агуулахын эрх олдсонгүй" });
+      }
+      where.setupTokens = {
+        some: { userId: actor.userId, usedAt: { not: null } },
+      };
+    }
 
     if (organizationId) {
       where.organizations = {
@@ -148,14 +172,35 @@ router.get("/warehouses", requireAuth, async (req, res) => {
   }
 });
 
-// Get warehouses for a specific organization (Vendor)
+// Get partner-managed warehouses for that organization's own portal.
 router.get("/warehouses/organization/:orgId", requireAuth, async (req, res) => {
   try {
     const { orgId } = req.params;
+    const actor = (
+      req as typeof req & { user?: { userId?: string; role?: string } }
+    ).user;
+
+    if (!hasPlatformWarehouseAccess(actor?.role)) {
+      const hasOrganizationAccess = actor?.userId
+        ? await prisma.organizationMember.findFirst({
+            where: {
+              userId: actor.userId,
+              organizationId: orgId,
+              isActive: true,
+            },
+            select: { id: true },
+          })
+        : null;
+      if (!hasOrganizationAccess) {
+        return res.status(403).json({
+          message: "Энэ байгууллагын агуулахыг харах эрхгүй байна",
+        });
+      }
+    }
 
     const warehouses = await prisma.warehouse.findMany({
       where: {
-        type: WarehouseType.CENTRAL,
+        type: PARTNER_MANAGED_WAREHOUSE,
         organizations: {
           some: {
             organizationId: orgId,
@@ -190,6 +235,65 @@ router.get("/warehouses/organization/:orgId", requireAuth, async (req, res) => {
     });
   }
 });
+
+// Admin-managed central warehouses from which this organization may order stock.
+// This is intentionally separate from the organization's own VENDOR_INTERNAL
+// warehouses returned above: ownership and procurement are different workflows.
+router.get(
+  "/warehouses/organization/:orgId/order-sources",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { orgId } = req.params;
+      const actor = (
+        req as typeof req & { user?: { userId?: string; role?: string } }
+      ).user;
+
+      if (!hasPlatformWarehouseAccess(actor?.role)) {
+        const membership = actor?.userId
+          ? await prisma.organizationMember.findFirst({
+              where: {
+                userId: actor.userId,
+                organizationId: orgId,
+                isActive: true,
+              },
+              select: { id: true },
+            })
+          : null;
+        if (!membership) {
+          return res.status(403).json({
+            message: "Энэ байгууллагын захиалгын агуулахыг харах эрхгүй байна",
+          });
+        }
+      }
+
+      const warehouses = await prisma.warehouse.findMany({
+        where: {
+          type: ADMIN_MANAGED_WAREHOUSE,
+          organizations: { some: { organizationId: orgId } },
+          deletedAt: null,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          city: true,
+          district: true,
+          phone: true,
+        },
+        orderBy: [{ name: "asc" }],
+      });
+
+      return res.json(warehouses);
+    } catch (error) {
+      console.error("get stock order source warehouses error", error);
+      return res.status(500).json({
+        message: "Захиалга авах төв агуулахуудыг татахад алдаа гарлаа",
+      });
+    }
+  },
+);
 
 // Create warehouse (Admin creates)
 router.post(
@@ -229,7 +333,7 @@ router.post(
           lng: lng || null,
           createdById: createdById || null,
           isActive: true,
-          type: WarehouseType.CENTRAL,
+          type: ADMIN_MANAGED_WAREHOUSE,
           organizations: organizationIds?.length
             ? {
                 create: organizationIds.map((orgId: string) => ({
@@ -423,11 +527,37 @@ router.delete(
     }
   },
 );
-
-// Get warehouse detail with inventory
-router.get("/warehouses/:id/detail", async (req, res) => {
+// Lightweight admin view backed by aggregate queries in the service layer.
+router.get(
+  "/warehouses/:id/admin-summary",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
+  async (req, res) => {
+    try {
+      const summary = await getWarehouseAdminSummary(req.params.id);
+      if (!summary) {
+        return res.status(404).json({ message: "Агуулах олдсонгүй" });
+      }
+      return res.json(summary);
+    } catch (error) {
+      console.error("get warehouse admin summary error", error);
+      return res.status(500).json({
+        message: "Агуулахын хураангуй мэдээлэл авахад алдаа гарлаа",
+      });
+    }
+  },
+);
+router.get("/warehouses/:id/detail", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
+    const actor = (
+      req as typeof req & { user?: { userId?: string; role?: string } }
+    ).user;
+    if (!(await hasWarehouseAccess(actor, id))) {
+      return res.status(403).json({
+        message: "Энэ агуулахын мэдээллийг харах эрхгүй байна",
+      });
+    }
 
     const warehouse = await prisma.warehouse.findUnique({
       where: { id, deletedAt: null },
@@ -502,6 +632,31 @@ router.get("/warehouses/:id/detail", async (req, res) => {
             },
           },
         },
+        setupTokens: {
+          orderBy: { createdAt: "desc" },
+          select: {
+            createdAt: true,
+            expiresAt: true,
+            usedAt: true,
+            user: {
+              select: {
+                id: true,
+                email: true,
+                registerNumber: true,
+                isActive: true,
+                lastLoginAt: true,
+                createdAt: true,
+                profile: {
+                  select: {
+                    fullName: true,
+                    phoneNumber: true,
+                    avatarUrl: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -521,11 +676,48 @@ router.get("/warehouses/:id/detail", async (req, res) => {
         inv.quantity <= inv.minQuantity,
     ).length;
 
+    const employeesById = new Map<
+      string,
+      {
+        id: string;
+        fullName: string;
+        email: string;
+        phoneNumber: string | null;
+        avatarUrl: string | null;
+        operatorId: string | null;
+        isActive: boolean;
+        lastLoginAt: Date | null;
+        assignedAt: Date;
+        setupCompletedAt: Date | null;
+        setupExpiresAt: Date;
+      }
+    >();
+    for (const setupToken of warehouse.setupTokens) {
+      if (employeesById.has(setupToken.user.id)) continue;
+      employeesById.set(setupToken.user.id, {
+        id: setupToken.user.id,
+        fullName: setupToken.user.profile?.fullName || "Нэр оруулаагүй",
+        email: setupToken.user.email,
+        phoneNumber: setupToken.user.profile?.phoneNumber || null,
+        avatarUrl: setupToken.user.profile?.avatarUrl || null,
+        operatorId: setupToken.user.registerNumber || null,
+        isActive: setupToken.user.isActive,
+        lastLoginAt: setupToken.user.lastLoginAt,
+        assignedAt: setupToken.createdAt,
+        setupCompletedAt: setupToken.usedAt,
+        setupExpiresAt: setupToken.expiresAt,
+      });
+    }
+    const responsibleEmployees = Array.from(employeesById.values());
+
+    const { setupTokens: _setupTokens, ...warehouseDetail } = warehouse;
+
     res.json({
-      ...warehouse,
+      ...warehouseDetail,
       organizations: warehouse.organizations.map(
         (wo: (typeof warehouse.organizations)[number]) => wo.organization,
       ),
+      responsibleEmployees,
       summary: {
         totalProducts,
         totalQuantity,

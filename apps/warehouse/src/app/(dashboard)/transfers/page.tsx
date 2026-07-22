@@ -48,12 +48,7 @@ export default function TransfersPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const user = JSON.parse(localStorage.getItem("wms_user") || "{}");
-        let url = `${API}/warehouses`;
-        if (user.organizationId) {
-          url = `${API}/warehouses/organization/${user.organizationId}`;
-        }
-        const res = await wmsFetch(url);
+        const res = await wmsFetch(`${API}/warehouses`);
         if (res.ok) {
           const data = await res.json();
           const list = Array.isArray(data) ? data : data.warehouses || [];
@@ -123,7 +118,9 @@ export default function TransfersPage() {
   const updateQuantity = (productId: string, qty: number) => {
     if (qty < 1) return;
     setItems(
-      items.map((i) => (i.productId === productId ? { ...i, quantity: qty } : i)),
+      items.map((i) =>
+        i.productId === productId ? { ...i, quantity: qty } : i,
+      ),
     );
   };
 
@@ -144,8 +141,7 @@ export default function TransfersPage() {
 
     const sourceName =
       warehouses.find((w) => w.id === sourceId)?.name || "Unknown";
-    const destName =
-      warehouses.find((w) => w.id === destId)?.name || "Unknown";
+    const destName = warehouses.find((w) => w.id === destId)?.name || "Unknown";
 
     try {
       for (const item of items) {
@@ -383,7 +379,9 @@ export default function TransfersPage() {
                         )
                       }
                       className={`h-8 w-16 rounded border text-center text-sm font-semibold outline-none ${
-                        overStock ? "border-red-300 text-red-600" : "border-slate-200"
+                        overStock
+                          ? "border-red-300 text-red-600"
+                          : "border-slate-200"
                       }`}
                     />
                     <button

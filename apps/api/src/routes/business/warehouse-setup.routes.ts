@@ -4,11 +4,62 @@ import {
   validateWarehouseSetupToken,
   setWarehouseOperatorPassword,
   regenerateWarehouseSetupToken,
+  searchPersonalAccounts,
+  assignPersonalAccountToWarehouse,
 } from "../../services/warehouse-setup.service";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 import { Permission } from "@mgl/types";
 
 const router: ExpressRouter = Router();
+
+router.get(
+  "/warehouse-setup/personal-accounts",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
+  async (req, res) => {
+    try {
+      const search =
+        typeof req.query.search === "string" ? req.query.search : "";
+      const warehouseId =
+        typeof req.query.warehouseId === "string" ? req.query.warehouseId : "";
+      if (!warehouseId) {
+        return res.status(400).json({ message: "warehouseId шаардлагатай" });
+      }
+      return res.json(await searchPersonalAccounts(search, warehouseId));
+    } catch (error) {
+      console.error("search personal warehouse accounts error", error);
+      return res
+        .status(500)
+        .json({ message: "Personal account хайхад алдаа гарлаа" });
+    }
+  },
+);
+
+router.post(
+  "/warehouse-setup/assign-personal-account",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
+  async (req, res) => {
+    try {
+      const { userId, warehouseId } = req.body;
+      if (!userId || !warehouseId) {
+        return res
+          .status(400)
+          .json({ message: "userId болон warehouseId шаардлагатай" });
+      }
+      const result = await assignPersonalAccountToWarehouse({
+        userId,
+        warehouseId,
+      });
+      return res.status(result.success ? 200 : 400).json(result);
+    } catch (error) {
+      console.error("assign personal warehouse account error", error);
+      return res
+        .status(500)
+        .json({ message: "Personal account онооход алдаа гарлаа" });
+    }
+  },
+);
 
 /**
  * POST /warehouse-setup/register

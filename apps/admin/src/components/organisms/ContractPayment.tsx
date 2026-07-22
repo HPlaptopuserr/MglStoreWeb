@@ -3,11 +3,18 @@ import { QrCode, Loader2, Smartphone, CheckCircle2 } from "lucide-react";
 
 import { QRCodeCanvas } from "qrcode.react";
 
+interface QPayDeeplink {
+  name: string;
+  link: string;
+  logo?: string;
+  description?: string;
+}
+
 interface QPayData {
   invoiceId: string;
   qrImage?: string;
   qrText: string;
-  urls: any[];
+  urls: QPayDeeplink[];
   amount: number;
 }
 
@@ -16,6 +23,69 @@ interface ContractPaymentProps {
   pollCountdown: number;
   checkingPayment: boolean;
   onCheckPayment: () => void;
+}
+
+function PaymentQr({ data }: { data: QPayData }) {
+  if (data.qrImage) {
+    const source = data.qrImage.startsWith("data:")
+      ? data.qrImage
+      : `data:image/png;base64,${data.qrImage}`;
+    return (
+      <img
+        src={source}
+        alt="QPay төлбөрийн QR код"
+        className="h-52 w-52 rounded-xl border-2 border-neutral-200 shadow-sm"
+      />
+    );
+  }
+
+  if (data.qrText) {
+    return (
+      <div className="rounded-xl border-2 border-neutral-200 bg-white p-2 shadow-sm">
+        <QRCodeCanvas value={data.qrText} size={192} />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      role="status"
+      className="flex h-52 w-52 items-center justify-center rounded-xl border-2 border-neutral-200 bg-neutral-100 text-sm text-neutral-400"
+    >
+      QR код ачааллаж байна...
+    </div>
+  );
+}
+
+function BankDeeplinks({ urls }: { urls: QPayDeeplink[] }) {
+  if (urls.length === 0) return null;
+
+  return (
+    <div className="w-full">
+      <div className="mb-2 flex items-center gap-2 text-xs text-neutral-500">
+        <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
+        Банкны аппаар нэвтрэх:
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        {urls.slice(0, 6).map((url) => (
+          <a
+            key={url.name}
+            href={url.link}
+            className="flex items-center gap-2 truncate rounded-lg border border-neutral-200 px-3 py-2 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            {url.logo && (
+              <img
+                src={url.logo}
+                alt=""
+                className="h-5 w-5 flex-shrink-0 rounded"
+              />
+            )}
+            {url.description || url.name}
+          </a>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 export function ContractPayment({
@@ -36,21 +106,7 @@ export function ContractPayment({
         </div>
 
         <div className="p-6 flex flex-col items-center gap-5">
-          {qpayData.qrImage ? (
-            <img
-              src={qpayData.qrImage.startsWith('data:') ? qpayData.qrImage : `data:image/png;base64,${qpayData.qrImage}`}
-              alt="QPay QR"
-              className="w-52 h-52 rounded-xl border-2 border-neutral-200 shadow-sm"
-            />
-          ) : qpayData.qrText ? (
-            <div className="p-2 bg-white rounded-xl border-2 border-neutral-200 shadow-sm">
-              <QRCodeCanvas value={qpayData.qrText} size={192} />
-            </div>
-          ) : (
-            <div className="w-52 h-52 bg-neutral-100 rounded-xl border-2 border-neutral-200 flex items-center justify-center text-neutral-400 text-sm">
-              QR код ачааллаж байна...
-            </div>
-          )}
+          <PaymentQr data={qpayData} />
 
           <div className="text-center">
             <div className="text-sm text-neutral-500">Төлөх дүн</div>
@@ -71,31 +127,7 @@ export function ContractPayment({
             </div>
           </div>
 
-          {qpayData.urls.length > 0 && (
-            <div className="w-full">
-              <div className="flex items-center gap-2 text-xs text-neutral-500 mb-2">
-                <Smartphone className="w-3.5 h-3.5" /> Банкны аппаар нэвтрэх:
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {qpayData.urls.slice(0, 6).map((u: any) => (
-                  <a
-                    key={u.name}
-                    href={u.link}
-                    className="flex items-center gap-2 px-3 py-2 border border-neutral-200 rounded-lg text-xs font-medium text-neutral-700 hover:bg-neutral-50 transition-colors truncate"
-                  >
-                    {u.logo && (
-                      <img
-                        src={u.logo}
-                        alt={u.name}
-                        className="w-5 h-5 rounded flex-shrink-0"
-                      />
-                    )}
-                    {u.description || u.name}
-                  </a>
-                ))}
-              </div>
-            </div>
-          )}
+          <BankDeeplinks urls={qpayData.urls} />
 
           <button
             onClick={onCheckPayment}

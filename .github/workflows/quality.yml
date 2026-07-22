@@ -1,0 +1,35 @@
+name: Code quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Type-check critical workspaces
+        run: |
+          pnpm --filter @mgl/admin type-check
+          pnpm --filter @mgl/api type-check
+      - name: Run unit tests
+        run: |
+          pnpm --filter @mgl/admin test
+          pnpm --filter @mgl/api test
+      - name: Report architecture debt
+        run: pnpm audit:architecture

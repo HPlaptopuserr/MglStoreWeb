@@ -4,7 +4,10 @@
   "scripts": {
     "dev": "turbo dev --filter=!@mgl/types --filter=!@mgl/pos-bridge",
     "build": "turbo build",
+    "audit:architecture": "node scripts/audit-architecture.mjs",
+    "audit:architecture:strict": "node scripts/audit-architecture.mjs --strict",
     "lint": "turbo lint",
+    "test": "turbo test",
     "format": "prettier --write \"**/*.{ts,tsx,md}\""
   },
   "devDependencies": {

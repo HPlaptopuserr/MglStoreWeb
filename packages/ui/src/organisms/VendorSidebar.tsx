@@ -15,6 +15,7 @@ import {
   RotateCcw,
   ScanLine,
   ShoppingCart,
+  Truck,
   Users,
 } from "lucide-react";
 import {
@@ -144,6 +145,13 @@ const VENDOR_NAV_GROUPS: Array<
             label: "Хүсэлтүүд",
             href: "/requests",
             icon: ClipboardList,
+          },
+          {
+            id: "central-warehouse-orders",
+            label: "Төв агуулахын захиалга",
+            href: "/shipments",
+            icon: Truck,
+            tone: "warning",
           },
         ],
       },

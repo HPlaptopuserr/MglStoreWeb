@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 import {
   Check,
   CreditCard,
@@ -19,466 +19,55 @@ import {
 } from "lucide-react";
 import type {
   ProjectItem,
-  ProjectPaymentAccount,
   ProjectResponsiblePerson,
   ProjectShowcaseSection,
 } from "@/lib/sections/types";
 import { API, adminFetch } from "@/lib/api";
 import { ProjectOrderList } from "./ProjectOrderList";
-
-const generateId = () => Math.random().toString(36).slice(2, 10);
-const MAX_PROJECT_IMAGES = 12;
-const PROJECT_PDF_UPLOAD_LIMIT_BYTES = 200 * 1024 * 1024;
-const STUDY_DELIVERY_TYPE_OPTIONS = [
-  "Бүртгэл авч байна",
-  "Танхимын сургалт",
-  "Online сургалт удахгүй",
-  "Online сургалт",
-  "Hybrid сургалт",
-  "Хаалттай сургалт",
-];
-const STUDY_DURATION_OPTIONS = [
-  "2 цаг",
-  "3 цаг",
-  "4.5 цаг",
-  "1 өдөр",
-  "2 өдөр",
-  "7 хоног",
-  "Хугацаа тохиролцоно",
-];
-const STUDY_LOCATION_OPTIONS = [
-  "Танхим",
-  "Online",
-  "Hybrid",
-  "Байгууллага дээр",
-  "Online сургалт удахгүй",
-  "Байршил тохиролцоно",
-];
-const STUDY_CAPACITY_OPTIONS = [
-  "1 хүн",
-  "1-10 хүн",
-  "10-20 хүн",
-  "20-30 хүн",
-  "30+ хүн",
-  "Багийн сургалт",
-  "Хүний тоо тохиролцоно",
-];
-const STUDY_PRICE_NOTE_OPTIONS = [
-  "1 хүний эрх",
-  "Багийн үнэ",
-  "Байгууллагын багц",
-  "Нээлттэй бүртгэл",
-  "Төлбөртэй бүртгэл",
-  "Үнэгүй бүртгэл",
-];
-const STUDY_REGISTRATION_LABEL_OPTIONS = [
-  "Бүртгэл нээлттэй",
-  "Нээлттэй",
-  "Бүртгэл авч байна",
-  "Удахгүй эхэлнэ",
-  "Дүүрсэн",
-  "Хаалттай",
-];
-
-type StudyProgramRow = {
-  title: string;
-  description: string;
-};
-
-const EMPTY_STUDY_PROGRAM_ROW: StudyProgramRow = {
-  title: "",
-  description: "",
-};
-const EMPTY_STUDY_PROGRAM_MARKER = "__EMPTY_STUDY_PROGRAM_ROW__";
-
-type StudyTeacherRow = {
-  name: string;
-  description: string;
-  imageUrl?: string;
-};
-
-const EMPTY_STUDY_TEACHER_ROW: StudyTeacherRow = {
-  name: "",
-  description: "",
-  imageUrl: "",
-};
-const EMPTY_STUDY_TEACHER_MARKER = "__EMPTY_STUDY_TEACHER_ROW__";
-
-function looksLikeUrl(value: string) {
-  return /^https?:\/\//i.test(value.trim()) || value.startsWith("data:image/");
-}
-
-type Props = {
-  projects: ProjectItem[];
-  paymentAccounts?: ProjectPaymentAccount[];
-  projectShowcaseSections?: ProjectShowcaseSection[];
-  mode?: "project" | "franchise" | "study";
-  setProjects: (
-    update: ProjectItem[] | ((prev: ProjectItem[]) => ProjectItem[]),
-  ) => void;
-  setProjectShowcaseSections?: (
-    update:
-      | ProjectShowcaseSection[]
-      | ((prev: ProjectShowcaseSection[]) => ProjectShowcaseSection[]),
-  ) => void;
-  onSave: (
-    currentProjects?: ProjectItem[],
-    currentShowcaseSections?: ProjectShowcaseSection[],
-  ) => Promise<boolean | void> | boolean | void;
-  saving?: boolean;
-  saved?: boolean;
-};
-
-type ContractTemplateOption = {
-  id: string;
-  title: string;
-  isPaid?: boolean;
-};
-
-type TeamMemberOption = {
-  id: string;
-  name: string;
-  role?: string;
-  department?: string | null;
-  bio?: string | null;
-  avatarUrl?: string | null;
-  email?: string | null;
-  phoneNumber?: string | null;
-  isActive?: boolean;
-};
-
-function StudyEditorPanel({
-  title,
-  description,
-  action,
-  defaultOpen = false,
-  children,
-}: {
-  title: string;
-  description: string;
-  action?: ReactNode;
-  defaultOpen?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <details
-      className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm open:shadow-md"
-      open={defaultOpen}
-    >
-      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 border-b border-transparent bg-slate-50 px-4 py-3 transition hover:bg-slate-100 group-open:border-slate-100">
-        <div className="min-w-0">
-          <p className="text-sm font-black text-slate-950">{title}</p>
-          <p className="mt-0.5 text-xs font-semibold leading-5 text-slate-500">
-            {description}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {action}
-          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-black text-slate-500">
-            Нээх
-          </span>
-        </div>
-      </summary>
-      <div className="p-4">{children}</div>
-    </details>
-  );
-}
-
-const emptyProject = (
-  mode: "project" | "franchise" | "study" = "project",
-): ProjectItem => ({
-  id: generateId(),
-  title:
-    mode === "franchise"
-      ? "Шинэ franchise"
-      : mode === "study"
-        ? "Шинэ сургалт"
-        : "Шинэ төсөл",
-  category:
-    mode === "franchise" ? "Franchise" : mode === "study" ? "Сургалт" : "Төсөл",
-  summary: "",
-  details: "",
-  price: mode === "study" ? 0 : 5000,
-  imageUrl: "",
-  imageUrls: [],
-  pdfUrl: "",
-  pdfPreviewUrl: "",
-  pdfThumbnailUrl: "",
-  teacherInfo: "",
-  duration: "",
-  capacity: "",
-  courseDate: "",
-  courseTime: "",
-  deliveryType: mode === "study" ? "Бүртгэл авч байна" : "",
-  location: "",
-  address: "",
-  registrationLabel: mode === "study" ? "Бүртгэл нээлттэй" : "",
-  scheduleNote: "",
-  priceNote: "",
-  originalPrice: 0,
-  tags: [],
-  isActive: true,
-  isFeatured: false,
-  featuredOrder: 0,
-  paymentAccountId: "",
-  paymentMerchantCode: "",
-  contractTemplateId: "",
-  responsiblePeople: [],
-});
-
-const emptyResponsiblePerson = (): ProjectResponsiblePerson => ({
-  id: generateId(),
-  teamMemberId: "",
-  name: "",
-  role: "",
-  responsibility: "",
-  phone: "",
-  email: "",
-  avatarUrl: "",
-});
-
-function getResponsiblePeople(project?: ProjectItem) {
-  return Array.isArray(project?.responsiblePeople)
-    ? project.responsiblePeople
-    : [];
-}
-
-function normalizeTeamMembers(data: unknown): TeamMemberOption[] {
-  if (!Array.isArray(data)) return [];
-  return data
-    .map((member: any) => ({
-      id: String(member?.id || "").trim(),
-      name: String(member?.name || "").trim(),
-      role: String(member?.role || "").trim(),
-      department: member?.department ?? null,
-      bio: member?.bio ?? null,
-      avatarUrl: member?.avatarUrl ?? null,
-      email: member?.email ?? null,
-      phoneNumber: member?.phoneNumber ?? null,
-      isActive: member?.isActive !== false,
-    }))
-    .filter((member) => member.id && member.name);
-}
-
-function getProjectImages(project?: ProjectItem) {
-  if (!project) return [];
-
-  return Array.from(
-    new Set(
-      [
-        ...(Array.isArray(project.imageUrls) ? project.imageUrls : []),
-        project.imageUrl,
-      ]
-        .filter((url): url is string => typeof url === "string")
-        .map((url) => url.trim())
-        .filter(Boolean),
-    ),
-  );
-}
-
-function parseImageUrls(value: string) {
-  return Array.from(
-    new Set(
-      value
-        .split(/[\n,]+/)
-        .map((url) => url.trim())
-        .filter(Boolean),
-    ),
-  ).slice(0, MAX_PROJECT_IMAGES);
-}
-
-function tagText(project: ProjectItem) {
-  return (project.tags || []).join(", ");
-}
-
-function parseTags(value: string) {
-  return value
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-}
-
-function getSelectOptions(options: string[], current?: string) {
-  const value = String(current || "").trim();
-  return Array.from(new Set(value ? [value, ...options] : options));
-}
-
-function parseStudyProgramRows(value?: string): StudyProgramRow[] {
-  return String(value || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      if (line === EMPTY_STUDY_PROGRAM_MARKER) {
-        return EMPTY_STUDY_PROGRAM_ROW;
-      }
-      const [rawTitle, ...rawDescriptionParts] = line.split("::");
-      return {
-        title: rawTitle.trim(),
-        description: rawDescriptionParts.join("::").trim(),
-      };
-    });
-}
-
-function serializeStudyProgramRows(rows: StudyProgramRow[]) {
-  return rows
-    .map((row) => ({
-      title: row.title.trim(),
-      description: row.description.trim(),
-    }))
-    .map((row) =>
-      row.title || row.description
-        ? row.description
-          ? `${row.title} :: ${row.description}`
-          : row.title
-        : EMPTY_STUDY_PROGRAM_MARKER,
-    )
-    .join("\n");
-}
-
-function parseStudyTeacherRows(value?: string): StudyTeacherRow[] {
-  return String(value || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      if (line === EMPTY_STUDY_TEACHER_MARKER) {
-        return EMPTY_STUDY_TEACHER_ROW;
-      }
-      const [rawName, ...rawDescriptionParts] = line.split("::");
-      const description = rawDescriptionParts[0]?.trim() || "";
-      const imageUrl = rawDescriptionParts.slice(1).join("::").trim();
-      const name = rawName.trim();
-      if (looksLikeUrl(name) && !description && !imageUrl) {
-        return {
-          name: "",
-          description: "",
-          imageUrl: name,
-        };
-      }
-      return {
-        name,
-        description,
-        imageUrl,
-      };
-    });
-}
-
-function serializeStudyTeacherRows(rows: StudyTeacherRow[]) {
-  return rows
-    .map((row) => ({
-      name: row.name.trim(),
-      description: row.description.trim(),
-      imageUrl: String(row.imageUrl || "").trim(),
-    }))
-    .map((row) =>
-      row.name || row.description || row.imageUrl
-        ? [row.name, row.description, row.imageUrl].join(" :: ")
-        : EMPTY_STUDY_TEACHER_MARKER,
-    )
-    .join("\n");
-}
-
-function formatMnt(value: number) {
-  return `₮${Number(value || 0).toLocaleString("mn-MN")}`;
-}
-
-function getBankLabel(bankCode?: string) {
-  const banks: Record<string, string> = {
-    "050000": "Хаан банк",
-    "150000": "Голомт банк",
-    "040000": "TDB",
-    "320000": "ХасБанк",
-    "340000": "Төрийн банк",
-    "010000": "Монголбанк",
-    "300000": "Капитрон банк",
-    "380000": "Богд банк",
-    "290000": "Үндэсний хөрөнгө оруулалтын банк",
-  };
-  return banks[bankCode || ""] || bankCode || "-";
-}
-
-function getSelectedPaymentAccount(
-  project: ProjectItem,
-  accounts: ProjectPaymentAccount[],
-) {
-  return accounts.find(
-    (account) =>
-      (project.paymentAccountId && account.id === project.paymentAccountId) ||
-      (project.paymentMerchantCode &&
-        account.merchantCode === project.paymentMerchantCode),
-  );
-}
-
-function formatPaymentAccount(account?: ProjectPaymentAccount) {
-  if (!account) return "Данс сонгоогүй";
-  return `${account.label || account.merchantName || "Minu данс"} · ${getBankLabel(
-    account.bankCode,
-  )} ${account.accountNumber || "-"} · ${account.merchantCode || "-"}`;
-}
-
-function parsePrice(value: string) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
-}
-
-function formatUploadSize(bytes: number) {
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
-}
-
-function uploadErrorMessage(data: unknown, fallback: string) {
-  if (!data || typeof data !== "object") return fallback;
-  const record = data as Record<string, unknown>;
-  const message = typeof record.message === "string" ? record.message : "";
-  const detail = typeof record.detail === "string" ? record.detail : "";
-  return [message, detail].filter(Boolean).join(": ") || fallback;
-}
-
-function compressImage(
-  file: File,
-  maxWidth = 1600,
-  quality = 0.84,
-): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      const scale = img.width > maxWidth ? maxWidth / img.width : 1;
-      const width = Math.round(img.width * scale);
-      const height = Math.round(img.height * scale);
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        reject(new Error("Зураг боловсруулахад алдаа гарлаа"));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, width, height);
-      canvas.toBlob(
-        (blob) =>
-          blob
-            ? resolve(blob)
-            : reject(new Error("Зураг шахахад алдаа гарлаа")),
-        "image/jpeg",
-        quality,
-      );
-    };
-    img.onerror = reject;
-    img.src = url;
-  });
-}
-
-function blobToDataUrl(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-}
-
+import { StudyEditorPanel } from "./StudyEditorPanel";
+import {
+  EMPTY_STUDY_PROGRAM_ROW,
+  EMPTY_STUDY_TEACHER_ROW,
+  MAX_PROJECT_IMAGES,
+  PROJECT_PDF_UPLOAD_LIMIT_BYTES,
+  STUDY_CAPACITY_OPTIONS,
+  STUDY_DELIVERY_TYPE_OPTIONS,
+  STUDY_DURATION_OPTIONS,
+  STUDY_LOCATION_OPTIONS,
+  STUDY_PRICE_NOTE_OPTIONS,
+  STUDY_REGISTRATION_LABEL_OPTIONS,
+} from "./project-editor.constants";
+import type {
+  ContractTemplateOption,
+  ProjectsSectionProps as Props,
+  StudyProgramRow,
+  StudyTeacherRow,
+  TeamMemberOption,
+} from "./project-editor.types";
+import {
+  blobToDataUrl,
+  compressImage,
+  emptyProject,
+  emptyResponsiblePerson,
+  formatMnt,
+  formatPaymentAccount,
+  formatUploadSize,
+  generateId,
+  getProjectImages,
+  getResponsiblePeople,
+  getSelectOptions,
+  getSelectedPaymentAccount,
+  normalizeTeamMembers,
+  parseImageUrls,
+  parsePrice,
+  parseStudyProgramRows,
+  parseStudyTeacherRows,
+  parseTags,
+  serializeStudyProgramRows,
+  serializeStudyTeacherRows,
+  tagText,
+  uploadErrorMessage,
+} from "./project-editor.utils";
 export function ProjectsSection({
   projects,
   paymentAccounts = [],
