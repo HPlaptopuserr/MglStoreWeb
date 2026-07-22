@@ -1105,7 +1105,7 @@ router.get(
 
       const search = (req.query.search as string | undefined)?.trim();
       const category = (req.query.category as string | undefined)?.trim();
-      const sort = (req.query.sort as string | undefined) || "recommended";
+      const sort = (req.query.sort as string | undefined) || "name";
       const lowStockOnly = req.query.lowStock === "true";
       const page = Math.max(1, Number(req.query.page) || 1);
       const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 40));

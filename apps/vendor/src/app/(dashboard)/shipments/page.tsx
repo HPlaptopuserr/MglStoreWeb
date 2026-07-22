@@ -339,6 +339,7 @@ export default function StockRequestsPage() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [productsLoading, setProductsLoading] = useState(false);
+  const [productsError, setProductsError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [productSearch, setProductSearch] = useState("");
@@ -505,45 +506,64 @@ export default function StockRequestsPage() {
 
     setSelectedWarehouse(warehouse);
     setProductsLoading(true);
+    setProductsError(null);
     setViewMode("browse");
     try {
+      if (!user?.organizationId) {
+        throw new Error("Байгууллагын мэдээлэл олдсонгүй");
+      }
+      const params = new URLSearchParams({
+        organizationId: user.organizationId,
+        sort: "name",
+      });
       const res = await authFetch(
-        `${API}/stock-requests/warehouse/${warehouse.id}/products`,
+        `${API}/stock-requests/warehouse/${warehouse.id}/products?${params.toString()}`,
       );
-      if (res.ok) {
-        const fetchedProducts = readWarehouseProducts(await res.json());
-        setWarehouseProducts(fetchedProducts);
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          payload?.message || "Агуулахын бараа татахад алдаа гарлаа",
+        );
+      }
 
-        if (autoItems && autoItems.length > 0) {
-          const newCartItems: CartItem[] = [];
-          for (const suggested of autoItems) {
-            const matched = fetchedProducts.find(
-              (p: any) => p.product.id === suggested.product.id,
+      const fetchedProducts = readWarehouseProducts(payload);
+      setWarehouseProducts(fetchedProducts);
+
+      if (autoItems && autoItems.length > 0) {
+        const newCartItems: CartItem[] = [];
+        for (const suggested of autoItems) {
+          const matched = fetchedProducts.find(
+            (p: any) => p.product.id === suggested.product.id,
+          );
+          if (matched) {
+            const requestQty = Math.max(
+              5,
+              (suggested.alertThreshold || 0) * 2 - (suggested.quantity || 0),
             );
-            if (matched) {
-              const requestQty = Math.max(
-                5,
-                (suggested.alertThreshold || 0) * 2 - (suggested.quantity || 0),
-              );
-              newCartItems.push({
-                productId: matched.product.id,
-                quantity: requestQty,
-                name: matched.product.name,
-                sku: matched.product.sku,
-                price: matched.product.price,
-                available: matched.quantity,
-                image: matched.product.images[0]?.url || null,
-              });
-            }
+            newCartItems.push({
+              productId: matched.product.id,
+              quantity: requestQty,
+              name: matched.product.name,
+              sku: matched.product.sku,
+              price: matched.product.price,
+              available: matched.quantity,
+              image: matched.product.images[0]?.url || null,
+            });
           }
-          if (newCartItems.length > 0) {
-            setCart(newCartItems);
-            setViewMode("cart");
-          }
+        }
+        if (newCartItems.length > 0) {
+          setCart(newCartItems);
+          setViewMode("cart");
         }
       }
     } catch (error) {
       console.error("Failed to fetch warehouse products:", error);
+      setWarehouseProducts([]);
+      setProductsError(
+        error instanceof Error
+          ? error.message
+          : "Агуулахын бараа татахад алдаа гарлаа",
+      );
     } finally {
       setProductsLoading(false);
     }
@@ -557,6 +577,7 @@ export default function StockRequestsPage() {
   const exitWarehouse = () => {
     setSelectedWarehouse(null);
     setWarehouseProducts([]);
+    setProductsError(null);
     setProductSearch("");
     setSelectedCategory(null);
     setViewMode("warehouses");
@@ -1026,6 +1047,15 @@ export default function StockRequestsPage() {
           {productsLoading ? (
             <div className="flex h-64 items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-[#FFAD02]" />
+            </div>
+          ) : productsError ? (
+            <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-red-200 bg-red-50 py-16 text-center">
+              <div className="mb-4 rounded-full bg-red-100 p-4">
+                <AlertCircle className="h-8 w-8 text-red-500" />
+              </div>
+              <p className="text-base font-semibold text-red-700">
+                {productsError}
+              </p>
             </div>
           ) : filteredProducts.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white py-16">
