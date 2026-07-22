@@ -1,4 +1,13 @@
-import { Router, type Request, type Router as ExpressRouter } from "express";
+import express, {
+  Router,
+  type Request,
+  type Response,
+  type Router as ExpressRouter,
+} from "express";
+import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import multer from "multer";
 import {
   prisma,
   StockRequestStatus,
@@ -35,8 +44,34 @@ import {
   type WarehouseActor,
 } from "../../services/warehouse-access.service";
 import stockReturnRoutes from "./stock-returns.routes";
+import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 
 const router: ExpressRouter = Router();
+const padaanUploadsDir = path.resolve(
+  __dirname,
+  "../../../uploads/stock-request-padaan",
+);
+if (!fs.existsSync(padaanUploadsDir)) {
+  fs.mkdirSync(padaanUploadsDir, { recursive: true });
+}
+
+const padaanImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Зөвхөн JPG, PNG, WebP, GIF зураг upload хийнэ үү"));
+    }
+  },
+});
+
+router.use(
+  "/stock-requests/padaan/uploads",
+  express.static(padaanUploadsDir),
+);
 const DISPATCH_STATUSES = [
   "PENDING",
   "CONFIRMED",
@@ -47,6 +82,109 @@ const DISPATCH_STATUSES = [
 
 function getActor(req: Request) {
   return (req as Request & { user?: AuthPayload }).user;
+}
+
+async function findEditablePadaanRequest(
+  req: Request,
+  res: Response,
+  id: string,
+) {
+  const request = await prisma.warehouseStockRequest.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      organizationId: true,
+      status: true,
+      dispatch: {
+        select: {
+          id: true,
+          status: true,
+          padaanUrl: true,
+        },
+      },
+    },
+  });
+
+  if (!request) {
+    res.status(404).json({ message: "Хүсэлт олдсонгүй" });
+    return null;
+  }
+
+  const permissions = await assertOrgPermission(
+    req,
+    res,
+    request.organizationId,
+    Permission.REQUEST_STOCK,
+  );
+  if (!permissions) return null;
+
+  if (!request.dispatch) {
+    res.status(400).json({
+      message: "Энэ захиалгад хүргэлтийн мэдээлэл үүсээгүй байна",
+    });
+    return null;
+  }
+
+  if (
+    request.status !== StockRequestStatus.COMPLETED &&
+    request.dispatch.status !== "DELIVERED"
+  ) {
+    res.status(409).json({
+      message: "Бараа хүргэгдсэний дараа падаан оруулах боломжтой",
+    });
+    return null;
+  }
+
+  return {
+    ...request,
+    dispatch: request.dispatch,
+  };
+}
+
+function getPadaanImageExtension(file: Express.Multer.File) {
+  const extensionByMime: Record<string, string> = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+  };
+  return (
+    extensionByMime[file.mimetype] ||
+    path.extname(file.originalname || "").toLowerCase() ||
+    ".jpg"
+  );
+}
+
+async function savePadaanImage(file: Express.Multer.File) {
+  const ext = getPadaanImageExtension(file);
+  const fileName = `padaan-${Date.now()}-${crypto
+    .randomBytes(8)
+    .toString("hex")}${ext}`;
+
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
+    await fs.promises.writeFile(
+      path.join(padaanUploadsDir, fileName),
+      file.buffer,
+    );
+    return `/api/stock-requests/padaan/uploads/${fileName}`;
+  }
+
+  const filePath = `stock-request-padaan/${fileName}`;
+  const { error } = await getSupabase()
+    .storage.from(PRODUCT_IMAGES_BUCKET)
+    .upload(filePath, file.buffer, {
+      contentType: file.mimetype,
+      upsert: false,
+    });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const { data } = getSupabase()
+    .storage.from(PRODUCT_IMAGES_BUCKET)
+    .getPublicUrl(filePath);
+  return data.publicUrl;
 }
 
 async function assertWarehouseAccess(
@@ -473,6 +611,7 @@ router.get("/stock-requests/:id", requireAuth, async (req, res) => {
           },
         },
         payment: true,
+        dispatch: true,
       },
     });
 
@@ -488,6 +627,93 @@ router.get("/stock-requests/:id", requireAuth, async (req, res) => {
     });
   }
 });
+
+// Vendor attaches or updates the received goods padaan for a completed stock request.
+router.patch("/stock-requests/:id/padaan", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const rawPadaanUrl = req.body?.padaanUrl;
+    const padaanUrl =
+      typeof rawPadaanUrl === "string" ? rawPadaanUrl.trim() : "";
+
+    if (padaanUrl && padaanUrl.length > 5000) {
+      return res.status(400).json({
+        message: "Падааны холбоос хэт урт байна",
+      });
+    }
+
+    const request = await findEditablePadaanRequest(req, res, id);
+    if (!request) return;
+
+    const dispatch = await prisma.stockDispatch.update({
+      where: { id: request.dispatch.id },
+      data: { padaanUrl: padaanUrl || null },
+    });
+
+    return res.json(dispatch);
+  } catch (error) {
+    console.error("update stock request padaan error", error);
+    return res.status(500).json({
+      message: "Падаан хадгалахад алдаа гарлаа",
+    });
+  }
+});
+
+router.post(
+  "/stock-requests/:id/padaan/upload",
+  requireAuth,
+  (req, res, next) => {
+    padaanImageUpload.single("image")(req, res, (error) => {
+      if (!error) {
+        next();
+        return;
+      }
+
+      if (
+        error instanceof multer.MulterError &&
+        error.code === "LIMIT_FILE_SIZE"
+      ) {
+        res.status(400).json({
+          message: "Падааны зураг 10MB-аас ихгүй байх шаардлагатай",
+        });
+        return;
+      }
+
+      res.status(400).json({
+        message:
+          error instanceof Error
+            ? error.message
+            : "Падааны зураг upload хийхэд алдаа гарлаа",
+      });
+    });
+  },
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!req.file) {
+        return res
+          .status(400)
+          .json({ message: "Падааны зураг шаардлагатай" });
+      }
+
+      const request = await findEditablePadaanRequest(req, res, id);
+      if (!request) return;
+
+      const padaanUrl = await savePadaanImage(req.file);
+      const dispatch = await prisma.stockDispatch.update({
+        where: { id: request.dispatch.id },
+        data: { padaanUrl },
+      });
+
+      return res.json(dispatch);
+    } catch (error) {
+      console.error("upload stock request padaan error", error);
+      return res.status(500).json({
+        message: "Падааны зураг upload хийхэд алдаа гарлаа",
+      });
+    }
+  },
+);
 
 // Create stock request (Vendor creates)
 router.post(

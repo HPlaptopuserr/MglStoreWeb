@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Package,
   Warehouse as WarehouseIcon,
@@ -27,8 +27,12 @@ import {
   Printer,
   Sparkles,
   TrendingUp,
+  Upload,
+  FileImage,
+  ExternalLink,
+  Trash2,
 } from "lucide-react";
-import { API, authFetch } from "@/lib/api";
+import { API, API_BASE, authFetch } from "@/lib/api";
 import { StockSuggestionBanner } from "@/components/organisms/StockSuggestionBanner";
 import { RequestFilter } from "@/components/organisms/RequestFilter";
 
@@ -118,6 +122,28 @@ function readWarehouseProducts(payload: unknown): WarehouseInventoryItem[] {
     : [];
 }
 
+const PADAAN_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const PADAAN_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
+
+function resolveAssetUrl(url?: string | null) {
+  if (!url) return "";
+  if (/^(https?:|data:|blob:)/i.test(url)) return url;
+  return url.startsWith("/") ? `${API_BASE}${url}` : url;
+}
+
+function isLikelyImageUrl(url?: string | null) {
+  if (!url) return false;
+  return (
+    /^data:image\//i.test(url) ||
+    /\.(png|jpe?g|webp|gif)(\?.*)?(#.*)?$/i.test(url)
+  );
+}
+
 type Warehouse = {
   id: string;
   name: string;
@@ -162,6 +188,18 @@ type StockRequest = {
   };
   items: StockRequestItem[];
   payment?: Payment;
+  dispatch?: {
+    id: string;
+    dispatchNumber: string;
+    status: string;
+    driverName: string | null;
+    driverPhone: string | null;
+    vehicleNumber: string | null;
+    dispatchedAt: string | null;
+    deliveredAt: string | null;
+    note: string | null;
+    padaanUrl: string | null;
+  } | null;
 };
 
 type CartItem = {
@@ -353,6 +391,8 @@ export default function StockRequestsPage() {
   const [selectedRequest, setSelectedRequest] = useState<StockRequest | null>(
     null,
   );
+  const [savingPadaan, setSavingPadaan] = useState(false);
+  const padaanFileInputRef = useRef<HTMLInputElement>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   // Payment history states
@@ -700,6 +740,127 @@ export default function StockRequestsPage() {
     } catch (error) {
       alert("Захиалга цуцлахад алдаа гарлаа");
     }
+  };
+
+  const applyPadaanUpdate = (
+    dispatch: NonNullable<StockRequest["dispatch"]>,
+  ) => {
+    if (!selectedRequest) return;
+
+    const updateRequest = (request: StockRequest): StockRequest =>
+      request.id === selectedRequest.id
+        ? {
+            ...request,
+            dispatch: request.dispatch
+              ? {
+                  ...request.dispatch,
+                  ...dispatch,
+                }
+              : dispatch,
+          }
+        : request;
+
+    setRequests((current) => current.map(updateRequest));
+    setFilteredRequests((current) => current.map(updateRequest));
+    setSelectedRequest((current) =>
+      current
+        ? {
+            ...current,
+            dispatch: current.dispatch
+              ? {
+                  ...current.dispatch,
+                  ...dispatch,
+                }
+              : dispatch,
+          }
+        : current,
+    );
+  };
+
+  const savePadaanUrl = async (padaanUrl: string, successMessage: string) => {
+    if (!selectedRequest) return;
+    setSavingPadaan(true);
+    try {
+      const response = await authFetch(
+        `${API}/stock-requests/${selectedRequest.id}/padaan`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ padaanUrl }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || "Падаан хадгалахад алдаа гарлаа");
+      }
+
+      applyPadaanUpdate(payload);
+      alert(successMessage);
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Падаан хадгалахад алдаа гарлаа",
+      );
+    } finally {
+      setSavingPadaan(false);
+    }
+  };
+
+  const handlePadaanImageUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedRequest) return;
+
+    if (!PADAAN_IMAGE_TYPES.has(file.type)) {
+      alert("Зөвхөн JPG, PNG, WebP, GIF зураг сонгоно уу");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > PADAAN_IMAGE_MAX_BYTES) {
+      alert("Падааны зураг 10MB-аас ихгүй байх шаардлагатай");
+      event.target.value = "";
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("image", file);
+    setSavingPadaan(true);
+    try {
+      const response = await authFetch(
+        `${API}/stock-requests/${selectedRequest.id}/padaan/upload`,
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(
+          payload?.message || "Падааны зураг upload хийхэд алдаа гарлаа",
+        );
+      }
+
+      applyPadaanUpdate(payload);
+      alert("Падааны зураг хадгалагдлаа");
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Падааны зураг upload хийхэд алдаа гарлаа",
+      );
+    } finally {
+      setSavingPadaan(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleClearPadaan = async () => {
+    if (!selectedRequest?.dispatch?.padaanUrl) return;
+    if (!confirm("Падааны зургийг устгах уу?")) return;
+    await savePadaanUrl("", "Падааны зураг устгагдлаа");
   };
 
   const categories = Array.from(
@@ -2205,6 +2366,108 @@ export default function StockRequestsPage() {
                       </p>
                     </div>
                   )}
+                </div>
+              )}
+
+              {(selectedRequest.status === "COMPLETED" ||
+                selectedRequest.dispatch?.status === "DELIVERED") && (
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <Receipt className="h-5 w-5 text-slate-600" />
+                      <p className="font-semibold text-slate-800">
+                        Ирсэн падаан
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {(() => {
+                      const rawPadaanUrl =
+                        selectedRequest.dispatch?.padaanUrl || "";
+                      const padaanUrl = resolveAssetUrl(rawPadaanUrl);
+                      const canPreviewImage =
+                        isLikelyImageUrl(rawPadaanUrl) ||
+                        isLikelyImageUrl(padaanUrl);
+
+                      return (
+                        <>
+                          <input
+                            ref={padaanFileInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/webp,image/gif"
+                            className="hidden"
+                            onChange={handlePadaanImageUpload}
+                          />
+
+                          {padaanUrl ? (
+                            <div className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+                              {canPreviewImage ? (
+                                <img
+                                  src={padaanUrl}
+                                  alt="Ирсэн падаан"
+                                  className="max-h-72 w-full bg-white object-contain"
+                                />
+                              ) : (
+                                <div className="flex h-32 flex-col items-center justify-center gap-2 text-slate-500">
+                                  <FileImage className="h-8 w-8" />
+                                  <span className="text-sm font-semibold">
+                                    Падаан хадгалагдсан
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex h-32 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 text-slate-500">
+                              <FileImage className="h-8 w-8" />
+                              <span className="text-sm font-semibold">
+                                Падааны зураг оруулаагүй байна
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {padaanUrl && (
+                              <a
+                                href={padaanUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-50"
+                              >
+                                <ExternalLink className="h-4 w-4" />
+                                Нээх
+                              </a>
+                            )}
+                            {padaanUrl && (
+                              <button
+                                type="button"
+                                onClick={handleClearPadaan}
+                                disabled={savingPadaan}
+                                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-red-100 px-4 text-sm font-bold text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Устгах
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => padaanFileInputRef.current?.click()}
+                              disabled={savingPadaan || !selectedRequest.dispatch}
+                              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {savingPadaan ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Upload className="h-4 w-4" />
+                              )}
+                              {savingPadaan
+                                ? "Upload хийж байна..."
+                                : "Зураг upload"}
+                            </button>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
                 </div>
               )}
 
