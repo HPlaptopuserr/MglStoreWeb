@@ -60,14 +60,25 @@ export async function countConsistentlyActiveOrganizations(
   endDateExclusive: Date,
   expectedDays: number,
 ): Promise<number> {
-  const rows = await prisma.organizationDailyActivity.groupBy({
-    by: ["organizationId"],
-    where: {
-      activityDate: { gte: startDate, lt: endDateExclusive },
-      organization: { status: "ACTIVE", deletedAt: null },
-    },
-    _count: { activityDate: true },
-  });
+  try {
+    const rows = await prisma.organizationDailyActivity.groupBy({
+      by: ["organizationId"],
+      where: {
+        activityDate: { gte: startDate, lt: endDateExclusive },
+        organization: { status: "ACTIVE", deletedAt: null },
+      },
+      _count: { activityDate: true },
+    });
 
-  return rows.filter((row) => row._count.activityDate >= expectedDays).length;
+    return rows.filter((row) => row._count.activityDate >= expectedDays).length;
+  } catch (error: unknown) {
+    // This analytics table may lag behind application deployment while a
+    // migration is pending. Statistics should degrade to zero instead of
+    // terminating the entire API process and breaking unrelated workflows.
+    console.warn(
+      "[organization activity statistics unavailable]",
+      error instanceof Error ? error.message : "Unknown database error",
+    );
+    return 0;
+  }
 }

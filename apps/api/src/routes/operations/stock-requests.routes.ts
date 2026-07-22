@@ -556,11 +556,19 @@ router.post(
             organizationId,
           },
         },
+        select: {
+          warehouse: { select: { type: true, isActive: true, deletedAt: true } },
+        },
       });
 
-      if (!warehouseOrg) {
+      if (
+        !warehouseOrg ||
+        warehouseOrg.warehouse.type !== WarehouseType.CENTRAL ||
+        !warehouseOrg.warehouse.isActive ||
+        warehouseOrg.warehouse.deletedAt
+      ) {
         return res.status(403).json({
-          message: "Энэ агуулахаас бараа татах эрхгүй байна",
+          message: "Энэ төв агуулахаас бараа татах эрхгүй байна",
         });
       }
 
@@ -1079,11 +1087,19 @@ router.get(
         where: {
           warehouseId_organizationId: { warehouseId, organizationId },
         },
-        select: { warehouseId: true },
+        select: {
+          warehouseId: true,
+          warehouse: { select: { type: true, isActive: true, deletedAt: true } },
+        },
       });
-      if (!assignment) {
+      if (
+        !assignment ||
+        assignment.warehouse.type !== WarehouseType.CENTRAL ||
+        !assignment.warehouse.isActive ||
+        assignment.warehouse.deletedAt
+      ) {
         return res.status(403).json({
-          message: "Энэ агуулахаас бараа татах эрхгүй байна",
+          message: "Энэ төв агуулахаас бараа татах эрхгүй байна",
         });
       }
 
@@ -2692,6 +2708,64 @@ router.post(
         paidAt: new Date(),
         paymentMethod: PaymentMethod.QPAY,
         note: "Local fake QPay баталгаажуулалт",
+      },
+    });
+
+    return res.json({ status: updated.status, paymentId: updated.id });
+  },
+);
+
+// POST /stock-requests/payments/:id/dev-mark-paid — local development only.
+// Allows the vendor invoice screen to complete a payment without contacting a
+// real payment provider. Production deliberately exposes this route as 404.
+router.post(
+  "/stock-requests/payments/:id/dev-mark-paid",
+  requireAuth,
+  async (req, res) => {
+    if (process.env.MGL_LOCAL_DEV !== "true") {
+      return res.status(404).json({ message: "Endpoint олдсонгүй" });
+    }
+
+    const id = req.params.id as string;
+    const payment = await prisma.stockRequestPayment.findUnique({
+      where: { id },
+      include: { request: { select: { status: true } } },
+    });
+    if (!payment) {
+      return res.status(404).json({ message: "Төлбөр олдсонгүй" });
+    }
+
+    const permissions = await assertOrgPermission(
+      req,
+      res,
+      payment.organizationId,
+      Permission.REQUEST_STOCK,
+    );
+    if (!permissions) return;
+
+    if (payment.status === PaymentStatus.PAID) {
+      return res.json({ status: payment.status, paymentId: payment.id });
+    }
+    if (payment.status === PaymentStatus.CANCELLED) {
+      return res.status(400).json({ message: "Цуцлагдсан төлбөр байна" });
+    }
+    if (!canPayApprovedStockRequest(payment.request.status)) {
+      return res.status(409).json({
+        code: "STOCK_REQUEST_NOT_APPROVED",
+        message: "Админ зөвшөөрсний дараа төлсөн гэж тэмдэглэх боломжтой",
+      });
+    }
+
+    const actor = getActor(req);
+    const updated = await prisma.stockRequestPayment.update({
+      where: { id },
+      data: {
+        status: PaymentStatus.PAID,
+        paidAmount: payment.totalAmount,
+        paidAt: new Date(),
+        paymentMethod: PaymentMethod.CASH,
+        confirmedById: actor?.userId || null,
+        note: "Local development төлбөрийн баталгаажуулалт",
       },
     });
 

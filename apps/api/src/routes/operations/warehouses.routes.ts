@@ -236,6 +236,65 @@ router.get("/warehouses/organization/:orgId", requireAuth, async (req, res) => {
   }
 });
 
+// Admin-managed central warehouses from which this organization may order stock.
+// This is intentionally separate from the organization's own VENDOR_INTERNAL
+// warehouses returned above: ownership and procurement are different workflows.
+router.get(
+  "/warehouses/organization/:orgId/order-sources",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { orgId } = req.params;
+      const actor = (
+        req as typeof req & { user?: { userId?: string; role?: string } }
+      ).user;
+
+      if (!hasPlatformWarehouseAccess(actor?.role)) {
+        const membership = actor?.userId
+          ? await prisma.organizationMember.findFirst({
+              where: {
+                userId: actor.userId,
+                organizationId: orgId,
+                isActive: true,
+              },
+              select: { id: true },
+            })
+          : null;
+        if (!membership) {
+          return res.status(403).json({
+            message: "Энэ байгууллагын захиалгын агуулахыг харах эрхгүй байна",
+          });
+        }
+      }
+
+      const warehouses = await prisma.warehouse.findMany({
+        where: {
+          type: ADMIN_MANAGED_WAREHOUSE,
+          organizations: { some: { organizationId: orgId } },
+          deletedAt: null,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          address: true,
+          city: true,
+          district: true,
+          phone: true,
+        },
+        orderBy: [{ name: "asc" }],
+      });
+
+      return res.json(warehouses);
+    } catch (error) {
+      console.error("get stock order source warehouses error", error);
+      return res.status(500).json({
+        message: "Захиалга авах төв агуулахуудыг татахад алдаа гарлаа",
+      });
+    }
+  },
+);
+
 // Create warehouse (Admin creates)
 router.post(
   "/warehouses",

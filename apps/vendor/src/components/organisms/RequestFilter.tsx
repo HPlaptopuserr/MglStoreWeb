@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Search,
   X,
@@ -75,6 +75,11 @@ export function RequestFilter({ requests, warehouses, onChange }: RequestFilterP
   const [warehouseId, setWarehouseId] = useState("");
   const [days, setDays] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+  const onChangeRef = useRef(onChange);
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
 
   const activeFilterCount =
     (selectedStatuses.length > 0 ? 1 : 0) +
@@ -99,9 +104,14 @@ export function RequestFilter({ requests, warehouses, onChange }: RequestFilterP
         const matchDate = !cutoff || new Date(r.requestedAt).getTime() >= cutoff;
         return matchSearch && matchStatus && matchWarehouse && matchDate;
       });
-      onChange(filtered, { search: q, statuses, warehouseId: wId, days: d });
+      onChangeRef.current(filtered, {
+        search: q,
+        statuses,
+        warehouseId: wId,
+        days: d,
+      });
     },
-    [requests, onChange],
+    [requests],
   );
 
   useEffect(() => {
