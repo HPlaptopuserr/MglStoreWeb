@@ -63,10 +63,18 @@ type Dispatch = {
       profile?: { fullName: string; phoneNumber?: string };
     } | null;
     payment?: {
+      id?: string;
       invoiceNumber: string;
       totalAmount: string | number;
       paidAmount: string | number;
       status: string;
+      paymentMethod?: string | null;
+      paidAt?: string | null;
+      dueDate?: string | null;
+      createdAt?: string;
+      confirmedAt?: string | null;
+      transactionId?: string | null;
+      note?: string | null;
     } | null;
   };
   warehouse: { id: string; name: string; address?: string; phone?: string };
@@ -178,6 +186,50 @@ function stepIndex(status: string): number {
   return idx >= 0 ? idx : -1;
 }
 
+function formatMoney(value: string | number | null | undefined) {
+  return `₮${Number(value || 0).toLocaleString()}`;
+}
+
+function paymentStatusLabel(status?: string | null) {
+  switch (status) {
+    case "PAID":
+      return "Төлсөн";
+    case "PENDING":
+      return "Төлөөгүй";
+    case "FAILED":
+      return "Амжилтгүй";
+    case "REFUNDED":
+      return "Буцаасан";
+    case "CANCELLED":
+      return "Цуцлагдсан";
+    default:
+      return status || "-";
+  }
+}
+
+function paymentStatusClass(status?: string | null) {
+  switch (status) {
+    case "PAID":
+      return "border-green-200 bg-green-50 text-green-700";
+    case "PENDING":
+      return "border-amber-200 bg-amber-50 text-amber-700";
+    case "FAILED":
+    case "CANCELLED":
+      return "border-red-200 bg-red-50 text-red-700";
+    case "REFUNDED":
+      return "border-slate-200 bg-slate-50 text-slate-600";
+    default:
+      return "border-slate-200 bg-slate-50 text-slate-600";
+  }
+}
+
+function paymentOutstanding(payment: NonNullable<Dispatch["request"]["payment"]>) {
+  return Math.max(
+    0,
+    Number(payment.totalAmount || 0) - Number(payment.paidAmount || 0),
+  );
+}
+
 export default function DispatchOrdersPage() {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
@@ -191,6 +243,7 @@ export default function DispatchOrdersPage() {
   const [showDetail, setShowDetail] = useState(false);
   const [showDriverForm, setShowDriverForm] = useState(false);
   const [showPadaan, setShowPadaan] = useState(false);
+  const [showInvoice, setShowInvoice] = useState(false);
   const [showDeliveredList, setShowDeliveredList] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -371,6 +424,12 @@ export default function DispatchOrdersPage() {
     setShowDetail(true);
     setShowDriverForm(false);
     setShowPadaan(false);
+    setShowInvoice(false);
+  };
+
+  const openInvoice = (d: Dispatch) => {
+    setSelectedDispatch(d);
+    setShowInvoice(true);
   };
 
   // ───── Returns ─────
@@ -738,6 +797,29 @@ export default function DispatchOrdersPage() {
                               )}
                             </div>
 
+                            {d.request.payment && (
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openInvoice(d);
+                                }}
+                                className="mt-2 flex w-full items-center gap-1.5 rounded-lg border border-blue-100 bg-blue-50 px-2 py-1.5 text-left text-[11px] font-semibold text-blue-700 transition-colors hover:border-blue-200 hover:bg-blue-100"
+                              >
+                                <FileText className="h-3.5 w-3.5 shrink-0" />
+                                <span className="min-w-0 flex-1 truncate">
+                                  {d.request.payment.invoiceNumber}
+                                </span>
+                                <span
+                                  className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] ${paymentStatusClass(
+                                    d.request.payment.status,
+                                  )}`}
+                                >
+                                  {paymentStatusLabel(d.request.payment.status)}
+                                </span>
+                              </button>
+                            )}
+
                             {/* Driver info */}
                             {d.driverName && (
                               <div className="mt-2 flex items-center gap-1.5 text-[10px] text-purple-600">
@@ -1019,6 +1101,30 @@ export default function DispatchOrdersPage() {
                           )}
                         </div>
 
+                        {d.request.payment && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setShowDeliveredList(false);
+                              openInvoice(d);
+                            }}
+                            className="mt-2 flex w-full items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-left text-xs font-semibold text-blue-700 transition-colors hover:border-blue-200 hover:bg-blue-100"
+                          >
+                            <FileText className="h-4 w-4 shrink-0" />
+                            <span className="min-w-0 flex-1 truncate">
+                              Нэхэмжлэх: {d.request.payment.invoiceNumber}
+                            </span>
+                            <span
+                              className={`shrink-0 rounded-full border px-2 py-0.5 text-[11px] ${paymentStatusClass(
+                                d.request.payment.status,
+                              )}`}
+                            >
+                              {paymentStatusLabel(d.request.payment.status)}
+                            </span>
+                          </button>
+                        )}
+
                         {/* Footer info */}
                         <div className="mt-2.5 flex items-center gap-4 text-xs text-slate-400">
                           {d.driverName && (
@@ -1060,6 +1166,7 @@ export default function DispatchOrdersPage() {
               onDeliver={() => deliverDispatch(selectedDispatch.id)}
               onCancel={() => cancelDispatch(selectedDispatch.id)}
               onPadaan={() => setShowPadaan(true)}
+              onInvoice={() => setShowInvoice(true)}
               onReturn={() => openReturnForm(selectedDispatch)}
               actionLoading={actionLoading}
             />
@@ -1138,6 +1245,24 @@ export default function DispatchOrdersPage() {
                 Илгээх
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ───── Invoice Modal ───── */}
+      {showInvoice && selectedDispatch && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setShowInvoice(false)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <InvoiceView
+              dispatch={selectedDispatch}
+              onClose={() => setShowInvoice(false)}
+            />
           </div>
         </div>
       )}
@@ -1615,6 +1740,7 @@ function DispatchDetail({
   onDeliver,
   onCancel,
   onPadaan,
+  onInvoice,
   onReturn,
   actionLoading,
 }: {
@@ -1624,6 +1750,7 @@ function DispatchDetail({
   onDeliver: () => void;
   onCancel: () => void;
   onPadaan: () => void;
+  onInvoice: () => void;
   onReturn: () => void;
   actionLoading: boolean;
 }) {
@@ -1659,13 +1786,24 @@ function DispatchDetail({
             {new Date(d.createdAt).toLocaleString("mn-MN")}
           </p>
         </div>
-        <button
-          onClick={onPadaan}
-          className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          <Printer className="h-4 w-4" />
-          Падаан
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          {d.request.payment && (
+            <button
+              onClick={onInvoice}
+              className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-100"
+            >
+              <FileText className="h-4 w-4" />
+              Нэхэмжлэх
+            </button>
+          )}
+          <button
+            onClick={onPadaan}
+            className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            <Printer className="h-4 w-4" />
+            Падаан
+          </button>
+        </div>
       </div>
 
       {/* 4-Level Progress Stepper */}
@@ -1935,6 +2073,274 @@ function DispatchDetail({
 /* ════════════════════════════════════════════
    Padaan (Waybill) Print View
    ════════════════════════════════════════════ */
+function InvoiceView({
+  dispatch: d,
+  onClose,
+}: {
+  dispatch: Dispatch;
+  onClose: () => void;
+}) {
+  const payment = d.request.payment;
+  const totalQty = d.request.items.reduce(
+    (s, i) => s + (i.approvedQuantity || i.quantity),
+    0,
+  );
+  const computedTotal = d.request.items.reduce(
+    (s, i) => s + (i.approvedQuantity || i.quantity) * Number(i.product.price),
+    0,
+  );
+  const invoiceTotal = Number(payment?.totalAmount ?? computedTotal);
+  const paidAmount = Number(payment?.paidAmount ?? 0);
+  const outstanding = payment ? paymentOutstanding(payment) : invoiceTotal;
+  const issuedAt = payment?.createdAt || d.createdAt;
+
+  const handlePrint = () => {
+    const printContent = document.getElementById(`invoice-content-${d.id}`);
+    if (!printContent) return;
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Нэхэмжлэх - ${payment?.invoiceNumber || d.dispatchNumber}</title>
+        <style>
+          * { box-sizing: border-box; }
+          body { margin: 0; padding: 30px; font-family: 'Segoe UI', Tahoma, sans-serif; color: #0f172a; }
+          .invoice-header { border-bottom: 3px double #334155; padding-bottom: 16px; margin-bottom: 20px; text-align: center; }
+          .invoice-header h1 { margin: 0; font-size: 24px; }
+          .invoice-header p { margin: 6px 0 0; color: #64748b; font-size: 13px; }
+          .invoice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+          .invoice-box { border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; }
+          .invoice-label { color: #64748b; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+          .invoice-value { margin-top: 4px; font-size: 14px; font-weight: 700; }
+          .invoice-sub { color: #64748b; font-size: 12px; margin-top: 3px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+          th, td { border: 1px solid #cbd5e1; padding: 8px 10px; font-size: 13px; }
+          th { background: #f1f5f9; text-align: left; }
+          .text-right { text-align: right; }
+          .summary { margin-top: 16px; margin-left: auto; width: 280px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+          .summary-row { display: flex; justify-content: space-between; padding: 9px 12px; border-bottom: 1px solid #e2e8f0; font-size: 13px; }
+          .summary-row:last-child { border-bottom: 0; font-weight: 800; background: #f8fafc; }
+          .footer { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 36px; }
+          .sig { border-top: 1px solid #94a3b8; padding-top: 8px; text-align: center; color: #64748b; font-size: 12px; }
+          @media print { body { padding: 18px; } }
+        </style>
+      </head>
+      <body>${printContent.innerHTML}</body>
+      </html>
+    `);
+    win.document.close();
+    win.print();
+  };
+
+  return (
+    <div className="p-6">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-800">Нэхэмжлэх</h2>
+          <p className="text-sm text-slate-500">
+            {payment?.invoiceNumber || "Нэхэмжлэх үүсээгүй"}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {payment && (
+            <button
+              onClick={handlePrint}
+              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+            >
+              <Printer className="h-4 w-4" />
+              Хэвлэх
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+          >
+            Хаах
+          </button>
+        </div>
+      </div>
+
+      {!payment ? (
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 py-12 text-center">
+          <AlertTriangle className="mb-3 h-10 w-10 text-amber-400" />
+          <p className="font-semibold text-slate-700">
+            Энэ илгээмжид нэхэмжлэх үүсээгүй байна
+          </p>
+          <p className="mt-1 text-sm text-slate-500">
+            Захиалга батлагдахад payment invoice үүссэн бол энд харагдана.
+          </p>
+        </div>
+      ) : (
+        <div
+          id={`invoice-content-${d.id}`}
+          className="rounded-lg border border-slate-200 bg-white p-6"
+        >
+          <div className="invoice-header border-b-2 border-double border-slate-300 pb-4 text-center">
+            <h1 className="text-2xl font-bold text-slate-800">НЭХЭМЖЛЭХ</h1>
+            <p className="mt-1 text-sm text-slate-500">
+              {payment.invoiceNumber} • {d.request.requestNumber} •{" "}
+              {new Date(issuedAt).toLocaleDateString("mn-MN")}
+            </p>
+          </div>
+
+          <div className="invoice-grid mt-5 grid grid-cols-2 gap-4">
+            <div className="invoice-box rounded-lg border border-slate-200 p-3">
+              <p className="invoice-label text-[11px] font-semibold uppercase text-slate-400">
+                Нэхэмжлэгч
+              </p>
+              <p className="invoice-value mt-1 text-sm font-semibold text-slate-800">
+                {d.warehouse.name}
+              </p>
+              {d.warehouse.address && (
+                <p className="invoice-sub text-xs text-slate-500">
+                  {d.warehouse.address}
+                </p>
+              )}
+            </div>
+            <div className="invoice-box rounded-lg border border-slate-200 p-3">
+              <p className="invoice-label text-[11px] font-semibold uppercase text-slate-400">
+                Худалдан авагч
+              </p>
+              <p className="invoice-value mt-1 text-sm font-semibold text-slate-800">
+                {d.request.organization.name}
+              </p>
+              {d.request.deliveryAddress && (
+                <p className="invoice-sub text-xs text-slate-500">
+                  {d.request.deliveryAddress}
+                </p>
+              )}
+            </div>
+            <div className="invoice-box rounded-lg border border-slate-200 p-3">
+              <p className="invoice-label text-[11px] font-semibold uppercase text-slate-400">
+                Төлөв
+              </p>
+              <span
+                className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${paymentStatusClass(
+                  payment.status,
+                )}`}
+              >
+                {paymentStatusLabel(payment.status)}
+              </span>
+              {payment.paidAt && (
+                <p className="invoice-sub text-xs text-slate-500">
+                  Төлсөн: {new Date(payment.paidAt).toLocaleString("mn-MN")}
+                </p>
+              )}
+              {payment.dueDate && (
+                <p className="invoice-sub text-xs text-slate-500">
+                  Төлөх хугацаа:{" "}
+                  {new Date(payment.dueDate).toLocaleDateString("mn-MN")}
+                </p>
+              )}
+            </div>
+            <div className="invoice-box rounded-lg border border-slate-200 p-3">
+              <p className="invoice-label text-[11px] font-semibold uppercase text-slate-400">
+                Илгээмж
+              </p>
+              <p className="invoice-value mt-1 text-sm font-semibold text-slate-800">
+                {d.dispatchNumber}
+              </p>
+              {payment.transactionId && (
+                <p className="invoice-sub text-xs text-slate-500">
+                  Гүйлгээ: {payment.transactionId}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <table className="mt-5 w-full border-collapse text-sm">
+            <thead>
+              <tr className="bg-slate-100">
+                <th className="border border-slate-300 px-3 py-2 text-left">
+                  №
+                </th>
+                <th className="border border-slate-300 px-3 py-2 text-left">
+                  Бүтээгдэхүүн
+                </th>
+                <th className="border border-slate-300 px-3 py-2 text-left">
+                  SKU
+                </th>
+                <th className="border border-slate-300 px-3 py-2 text-right">
+                  Тоо
+                </th>
+                <th className="border border-slate-300 px-3 py-2 text-right">
+                  Нэгж үнэ
+                </th>
+                <th className="border border-slate-300 px-3 py-2 text-right">
+                  Дүн
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.request.items.map((item, idx) => {
+                const qty = item.approvedQuantity || item.quantity;
+                return (
+                  <tr key={item.id}>
+                    <td className="border border-slate-300 px-3 py-2">
+                      {idx + 1}
+                    </td>
+                    <td className="border border-slate-300 px-3 py-2 font-medium">
+                      {item.product.name}
+                    </td>
+                    <td className="border border-slate-300 px-3 py-2 text-slate-500">
+                      {item.product.sku || "-"}
+                    </td>
+                    <td className="border border-slate-300 px-3 py-2 text-right font-bold">
+                      {qty}
+                    </td>
+                    <td className="border border-slate-300 px-3 py-2 text-right">
+                      {formatMoney(item.product.price)}
+                    </td>
+                    <td className="border border-slate-300 px-3 py-2 text-right font-medium">
+                      {formatMoney(qty * Number(item.product.price))}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+
+          <div className="summary mt-4 ml-auto w-full max-w-xs overflow-hidden rounded-lg border border-slate-200">
+            <div className="summary-row flex justify-between border-b border-slate-200 px-3 py-2 text-sm">
+              <span>Нийт тоо</span>
+              <span className="font-semibold">{totalQty} ш</span>
+            </div>
+            <div className="summary-row flex justify-between border-b border-slate-200 px-3 py-2 text-sm">
+              <span>Нэхэмжилсэн</span>
+              <span className="font-semibold">{formatMoney(invoiceTotal)}</span>
+            </div>
+            <div className="summary-row flex justify-between border-b border-slate-200 px-3 py-2 text-sm">
+              <span>Төлсөн</span>
+              <span className="font-semibold">{formatMoney(paidAmount)}</span>
+            </div>
+            <div className="summary-row flex justify-between bg-slate-50 px-3 py-2 text-sm font-bold">
+              <span>Үлдэгдэл</span>
+              <span>{formatMoney(outstanding)}</span>
+            </div>
+          </div>
+
+          {payment.note && (
+            <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+              <strong>Тэмдэглэл:</strong> {payment.note}
+            </div>
+          )}
+
+          <div className="footer mt-10 grid grid-cols-2 gap-10">
+            <div className="sig border-t border-slate-400 pt-2 text-center text-xs text-slate-500">
+              Нэхэмжлэх гаргасан
+            </div>
+            <div className="sig border-t border-slate-400 pt-2 text-center text-xs text-slate-500">
+              Хүлээн авсан
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PadaanView({
   dispatch: d,
   onClose,

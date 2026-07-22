@@ -2367,7 +2367,7 @@ router.get(
                 },
               },
               organization: {
-                select: { id: true, name: true, slug: true },
+                select: { id: true, name: true, slug: true, phone: true },
               },
               requestedBy: {
                 select: {
@@ -2376,13 +2376,14 @@ router.get(
                   profile: { select: { fullName: true, phoneNumber: true } },
                 },
               },
+              payment: true,
             },
           },
           warehouse: {
-            select: { id: true, name: true, address: true },
+            select: { id: true, name: true, address: true, phone: true },
           },
           organization: {
-            select: { id: true, name: true },
+            select: { id: true, name: true, phone: true },
           },
         },
         orderBy: { createdAt: "desc" },
