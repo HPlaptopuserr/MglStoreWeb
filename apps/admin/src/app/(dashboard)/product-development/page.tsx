@@ -45,6 +45,65 @@ import {
   type ProductShelf,
   type ShelfKind,
 } from "./product-development.model";
+
+const PRODUCT_PAGE_SIZE = 100;
+
+type ProductPageResponse = {
+  products: Product[];
+  total: number;
+  hasMore: boolean;
+};
+
+async function fetchAllProducts(): Promise<Product[]> {
+  const fetchPage = async (offset: number): Promise<ProductPageResponse> => {
+    const response = await adminFetch(
+      `${API}/products?limit=${PRODUCT_PAGE_SIZE}&offset=${offset}&meta=1`,
+    );
+    if (!response.ok) {
+      throw new Error("Барааны жагсаалт авахад алдаа гарлаа");
+    }
+
+    const payload: unknown = await response.json();
+    if (Array.isArray(payload)) {
+      return {
+        products: payload as Product[],
+        total: payload.length,
+        hasMore: false,
+      };
+    }
+
+    if (!payload || typeof payload !== "object") {
+      return { products: [], total: 0, hasMore: false };
+    }
+
+    const page = payload as Partial<ProductPageResponse>;
+    return {
+      products: Array.isArray(page.products) ? page.products : [],
+      total: Number.isFinite(page.total) ? Number(page.total) : 0,
+      hasMore: page.hasMore === true,
+    };
+  };
+
+  const firstPage = await fetchPage(0);
+  const offsets = Array.from(
+    {
+      length: Math.max(0, Math.ceil(firstPage.total / PRODUCT_PAGE_SIZE) - 1),
+    },
+    (_, index) => (index + 1) * PRODUCT_PAGE_SIZE,
+  );
+  const remainingPages = await Promise.all(offsets.map(fetchPage));
+  const productById = new Map<string, Product>();
+
+  for (const product of [
+    ...firstPage.products,
+    ...remainingPages.flatMap((page) => page.products),
+  ]) {
+    productById.set(product.id, product);
+  }
+
+  return [...productById.values()];
+}
+
 export default function ProductDevelopmentPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [shelves, setShelves] = useState<ProductShelf[]>([]);
@@ -70,7 +129,7 @@ export default function ProductDevelopmentPage() {
     let mounted = true;
     Promise.all([
       adminFetch(`${API}/site-settings/admin`).then((res) => res.json()),
-      adminFetch(`${API}/products?limit=100`).then((res) => res.json()),
+      fetchAllProducts(),
     ])
       .then(([settings, productData]) => {
         if (!mounted) return;
