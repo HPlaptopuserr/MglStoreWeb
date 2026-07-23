@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { API } from "@/lib/api";
 import { ProductDetailOverlay } from "@/components/organisms/ProductDetailOverlay";
-import { ProductCarousel } from "../../../molecules/ProductCarousel";
 import { HomeCommerceDock } from "./HomeCommerceDock";
 import { ProductShelfRow } from "./ProductShelfRow";
 import {
@@ -105,11 +104,27 @@ export const ProductGrid = () => {
   }, []);
 
   const shelves = useMemo(
-    () =>
-      configuredShelves.length > 0
+    () => {
+      const secondaryShelves =
+        configuredShelves.length > 0
         ? configuredShelves
-        : buildFallbackShelves(products),
-    [configuredShelves, products],
+          : buildFallbackShelves(products);
+
+      return featuredProducts.length > 0
+        ? [
+            {
+              id: "homepage-featured-products",
+              title: "Онцлох бүтээгдэхүүн",
+              kind: "EDITOR_PICK" as const,
+              isActive: true,
+              productIds: featuredProducts.map((product) => product.id),
+              products: featuredProducts,
+            },
+            ...secondaryShelves,
+          ]
+        : secondaryShelves;
+    },
+    [configuredShelves, featuredProducts, products],
   );
 
   return (
@@ -150,37 +165,6 @@ export const ProductGrid = () => {
                   onSelect={(id) => setSelectedId(id)}
                 />
               ))
-            )}
-
-            {!isLoading && products.length > 0 && (
-              <section className="pt-1">
-                <div className="mb-3 flex items-end justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-orange-500">
-                      Catalog
-                    </p>
-                    <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950 sm:text-2xl">
-                      {featuredProducts.length > 0
-                        ? "Онцлох бүтээгдэхүүн"
-                        : "Бүх бүтээгдэхүүн"}
-                    </h2>
-                  </div>
-                  <a
-                    href="/products"
-                    className="text-sm font-black text-orange-600"
-                  >
-                    Бүгдийг харах
-                  </a>
-                </div>
-                <ProductCarousel
-                  products={
-                    featuredProducts.length > 0
-                      ? featuredProducts
-                      : products.slice(0, 10)
-                  }
-                  onSelect={(id) => setSelectedId(id)}
-                />
-              </section>
             )}
           </div>
         </div>

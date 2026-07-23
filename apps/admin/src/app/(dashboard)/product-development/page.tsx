@@ -23,6 +23,7 @@ import { API, adminFetch } from "@/lib/api";
 import {
   AUTH_LOGIN_BANNER_KEY,
   HOMEPAGE_FEATURED_PRODUCTS_KEY,
+  HOMEPAGE_FEATURED_PRODUCTS_LIMIT,
   MARKETPLACE_SERVICES_PROMO_KEY,
   MARKETPLACE_SIDE_BANNER_KEY,
   SHELF_KIND_OPTIONS,
@@ -167,7 +168,9 @@ export default function ProductDevelopmentPage() {
       if (current.includes(productId)) {
         return current.filter((id) => id !== productId);
       }
-      return current.length >= 10 ? current : [...current, productId];
+      return current.length >= HOMEPAGE_FEATURED_PRODUCTS_LIMIT
+        ? current
+        : [...current, productId];
     });
     setSaved(false);
   };
@@ -309,7 +312,9 @@ export default function ProductDevelopmentPage() {
         {
           method: "PUT",
           body: JSON.stringify({
-            value: JSON.stringify(featuredProductIds.slice(0, 10)),
+            value: JSON.stringify(
+              featuredProductIds.slice(0, HOMEPAGE_FEATURED_PRODUCTS_LIMIT),
+            ),
           }),
         },
       );
@@ -532,11 +537,12 @@ export default function ProductDevelopmentPage() {
                     Нүүр хуудасны урд хэсэг
                   </div>
                   <h3 className="mt-3 text-lg font-black text-slate-950">
-                    Онцлох бүтээгдэхүүн
+                    Нүүр хуудасны эхний бараанууд
                   </h3>
                   <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
-                    Энд сонгосон бараа web-ийн нүүр хуудасны урд carousel-д
-                    сонгосон дарааллаараа харагдана. Хамгийн ихдээ 10 бараа
+                    Энд сонгосон бараа web-ийн нүүр хуудасны хамгийн эхний
+                    бүтээгдэхүүний мөрөнд сонгосон дарааллаараа харагдана.
+                    Хамгийн ихдээ {HOMEPAGE_FEATURED_PRODUCTS_LIMIT} бараа
                     сонгоно.
                   </p>
                 </div>
@@ -574,7 +580,9 @@ export default function ProductDevelopmentPage() {
                   const selectedIndex = featuredProductIds.indexOf(product.id);
                   const selected = selectedIndex >= 0;
                   const selectionDisabled =
-                    !selected && featuredProductIds.length >= 10;
+                    !selected &&
+                    featuredProductIds.length >=
+                      HOMEPAGE_FEATURED_PRODUCTS_LIMIT;
 
                   return (
                     <button

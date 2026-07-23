@@ -1,5 +1,6 @@
 export const SHOWCASE_KEY = "product-showcase-shelves";
 export const HOMEPAGE_FEATURED_PRODUCTS_KEY = "homepage-featured-products";
+export const HOMEPAGE_FEATURED_PRODUCTS_LIMIT = 20;
 export const MARKETPLACE_SIDE_BANNER_KEY = "marketplace-side-banner";
 export const MARKETPLACE_SERVICES_PROMO_KEY = "marketplace-services-promo";
 export const AUTH_LOGIN_BANNER_KEY = "auth-login-banner";
@@ -114,7 +115,7 @@ export function parseProductIds(raw?: string): string[] {
           .map((id) => (typeof id === "string" ? id.trim() : ""))
           .filter(Boolean),
       ),
-    ].slice(0, 10);
+    ].slice(0, HOMEPAGE_FEATURED_PRODUCTS_LIMIT);
   } catch {
     return [];
   }

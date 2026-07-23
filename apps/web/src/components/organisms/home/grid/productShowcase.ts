@@ -1,5 +1,6 @@
 export const SHOWCASE_KEY = "product-showcase-shelves";
 export const HOMEPAGE_FEATURED_PRODUCTS_KEY = "homepage-featured-products";
+export const HOMEPAGE_FEATURED_PRODUCTS_LIMIT = 20;
 export const MARKETPLACE_SIDE_BANNER_KEY = "marketplace-side-banner";
 export const MARKETPLACE_SERVICES_PROMO_KEY = "marketplace-services-promo";
 
@@ -59,7 +60,7 @@ export function resolveHomepageFeaturedProducts(
     return uniqueIds
       .map((id) => productById.get(id))
       .filter((product): product is ApiProduct => Boolean(product))
-      .slice(0, 10);
+      .slice(0, HOMEPAGE_FEATURED_PRODUCTS_LIMIT);
   } catch {
     return [];
   }
@@ -218,17 +219,7 @@ export function buildFallbackShelves(products: ApiProduct[]): ResolvedShelf[] {
   const preorder = products.filter(
     (product) => product.supplyType === "CHINA_PREORDER",
   );
-  const fresh = [...products].slice(0, 12);
-
   const shelves: ResolvedShelf[] = [
-    {
-      id: "fallback-new-arrivals",
-      title: "Шинээр нэмэгдсэн бараа",
-      kind: "NEW_ARRIVALS",
-      isActive: true,
-      productIds: fresh.map((product) => product.id),
-      products: fresh,
-    },
     {
       id: "fallback-discounted",
       title: "Хямдралтай сонголтууд",
