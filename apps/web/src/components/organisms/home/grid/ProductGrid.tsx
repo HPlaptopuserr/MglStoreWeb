@@ -103,29 +103,31 @@ export const ProductGrid = () => {
       });
   }, []);
 
-  const shelves = useMemo(
-    () => {
-      const secondaryShelves =
-        configuredShelves.length > 0
+  const shelves = useMemo(() => {
+    const featuredIds = new Set(featuredProducts.map((product) => product.id));
+    const orderedProducts = [
+      ...featuredProducts,
+      ...products.filter((product) => !featuredIds.has(product.id)),
+    ];
+    const secondaryShelves =
+      configuredShelves.length > 0
         ? configuredShelves
-          : buildFallbackShelves(products);
+        : buildFallbackShelves(products);
 
-      return featuredProducts.length > 0
-        ? [
-            {
-              id: "homepage-featured-products",
-              title: "Онцлох бүтээгдэхүүн",
-              kind: "EDITOR_PICK" as const,
-              isActive: true,
-              productIds: featuredProducts.map((product) => product.id),
-              products: featuredProducts,
-            },
-            ...secondaryShelves,
-          ]
-        : secondaryShelves;
-    },
-    [configuredShelves, featuredProducts, products],
-  );
+    return orderedProducts.length > 0
+      ? [
+          {
+            id: "homepage-products",
+            title: "Шинээр нэмэгдсэн бараа",
+            kind: "NEW_ARRIVALS" as const,
+            isActive: true,
+            productIds: orderedProducts.map((product) => product.id),
+            products: orderedProducts,
+          },
+          ...secondaryShelves,
+        ]
+      : secondaryShelves;
+  }, [configuredShelves, featuredProducts, products]);
 
   return (
     <>

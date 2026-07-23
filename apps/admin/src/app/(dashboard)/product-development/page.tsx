@@ -540,10 +540,10 @@ export default function ProductDevelopmentPage() {
                     Нүүр хуудасны эхний бараанууд
                   </h3>
                   <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
-                    Энд сонгосон бараа web-ийн нүүр хуудасны хамгийн эхний
-                    бүтээгдэхүүний мөрөнд сонгосон дарааллаараа харагдана.
-                    Хамгийн ихдээ {HOMEPAGE_FEATURED_PRODUCTS_LIMIT} бараа
-                    сонгоно.
+                    Энд сонгосон {HOMEPAGE_FEATURED_PRODUCTS_LIMIT} хүртэлх
+                    бараа web-ийн нүүр хуудасны жагсаалтын эхэнд сонгосон
+                    дарааллаараа байрлана. Бусад бүх бараа араас нь үргэлжлэн
+                    харагдана.
                   </p>
                 </div>
                 <button
