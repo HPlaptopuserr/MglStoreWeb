@@ -90,7 +90,7 @@ export const ProductCard = ({
   };
 
   return (
-    <article className="group relative flex h-full min-h-[230px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-lg hover:shadow-orange-100/60 sm:min-h-[252px]">
+    <article className="group relative isolate z-0 flex h-full min-h-[230px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-lg hover:shadow-orange-100/60 sm:min-h-[252px]">
       <Link href={href} className="relative block aspect-[4/3] w-full overflow-hidden bg-slate-50">
         {showImage ? (
           <Image

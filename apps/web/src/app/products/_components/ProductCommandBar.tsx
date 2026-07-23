@@ -45,7 +45,7 @@ export function ProductCommandBar<SortKey extends string, SupplyKey extends stri
   onToggleFilters,
 }: ProductCommandBarProps<SortKey, SupplyKey>) {
   return (
-    <div className="sticky top-[7.75rem] z-30 border-b border-slate-100 bg-white/92 py-3 backdrop-blur supports-[backdrop-filter]:bg-white/82 max-md:top-[4rem]">
+    <div className="sticky top-[7.75rem] z-40 border-b border-slate-100 bg-white/92 py-3 backdrop-blur supports-[backdrop-filter]:bg-white/82 max-md:top-[4rem]">
       <div className="container mx-auto px-4 lg:px-8">
         <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
