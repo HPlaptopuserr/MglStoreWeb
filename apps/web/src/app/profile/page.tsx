@@ -34,6 +34,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const [form, setForm] = useState<ProfileFormState | null>(null);
   const [membershipOpen, setMembershipOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const membershipConfig = useMembershipConfig();
   const accountData = useProfileAccountData(user, authFetch);
   const ordersData = useProfileOrders(user, authFetch);
@@ -41,6 +42,7 @@ export default function ProfilePage() {
   const refreshOrders = ordersData.refresh;
   const openMembership = useCallback(() => setMembershipOpen(true), []);
   const showLibrary = useCallback(() => {
+    setLibraryOpen(true);
     router.replace(ACCOUNT_ROUTES.profileLibrary);
   }, [router]);
   const showOrders = useCallback(() => {
@@ -132,6 +134,8 @@ export default function ProfilePage() {
           history={accountData.pointHistory}
           transactions={accountData.transactions}
           loading={accountData.loading}
+          open={libraryOpen}
+          onOpenChange={setLibraryOpen}
         />
       </ProfileContentGrid>
 
