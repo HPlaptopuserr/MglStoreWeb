@@ -86,6 +86,7 @@ export function MerchantSettingsSection({
 
     if (mode === "terminal") {
       loadMinuStatus();
+      loadBankAccounts();
       return;
     }
 
@@ -517,6 +518,7 @@ export function MerchantSettingsSection({
   const renderMinuSection = () => (
     <MinuTerminalMerchantCard
       status={minuStatus}
+      bankAccounts={savedBankAccounts}
       username={minuUsername}
       password={minuPassword}
       branchId={minuBranchId}
