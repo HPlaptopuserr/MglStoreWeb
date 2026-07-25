@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   ShoppingCart,
   User,
@@ -52,8 +52,6 @@ const presentationPdfUrl = "/mgl-sma-taniltsuulga.pdf";
 const HIDDEN_MOBILE_NAV_HREFS = new Set([
   "/hr",
   "/study",
-  "/franchise",
-  "/projects",
 ]);
 
 export const Header = () => {
