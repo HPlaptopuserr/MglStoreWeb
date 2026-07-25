@@ -116,9 +116,10 @@ export function MerchantSettingsSection({
       const res = await authFetch(`${API}/vendor/merchant/bank-accounts${orgQuery}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.success && Array.isArray(data.bank_accounts) && data.bank_accounts.length > 0) {
-          setSavedBankAccounts(data.bank_accounts);
-          setConnectedBankAccounts(data.bank_accounts);
+        if (data.success && Array.isArray(data.bank_accounts)) {
+          const nextAccounts = data.bank_accounts;
+          setSavedBankAccounts(nextAccounts);
+          setConnectedBankAccounts(nextAccounts.length > 0 ? nextAccounts : [{ ...DEFAULT_BANK_ACCOUNT }]);
         }
       }
     } catch {}
@@ -277,6 +278,7 @@ export function MerchantSettingsSection({
       if (data.success) {
         setMessage({ type: "success", text: "Minu Dynamic QR дэд мерчант амжилттай бүртгэгдлээ!" });
         await loadMerchantStatus();
+        await loadBankAccounts();
       } else if (data.alreadyRegistered) {
         // Auto-switch to manual tab so the user can connect with existing credentials
         setTab("manual");
@@ -319,6 +321,7 @@ export function MerchantSettingsSection({
         setMessage({ type: "success", text: data.message });
         setMerchantId(""); setMerchantKey(""); setInvoiceCode("");
         await loadMerchantStatus();
+        await loadBankAccounts();
       } else {
         setMessage({ type: "error", text: data.message || "Алдаа гарлаа" });
       }
@@ -343,6 +346,7 @@ export function MerchantSettingsSection({
       if (data.success) {
         setMessage({ type: "success", text: data.message });
         await loadMerchantStatus();
+        await loadBankAccounts();
       } else {
         setMessage({ type: "error", text: data.message || "Мэдээлэл олдсонгүй" });
       }
@@ -562,23 +566,22 @@ export function MerchantSettingsSection({
         />
 
         {/* Bank accounts section */}
-        {!merchantStatus.managedBySystem && (
-          <BankAccountsEditor
-            savedAccounts={savedBankAccounts}
-            editingAccounts={connectedBankAccounts}
-            confirmNumbers={confirmNumbers}
-            isEditing={editingBankAccounts}
-            isSubmitting={isSubmitting}
-            onStartEditing={() => {
-              setEditingBankAccounts(true);
-              setConfirmNumbers(connectedBankAccounts.map(() => ""));
-            }}
-            onAccountsChange={setConnectedBankAccounts}
-            onConfirmNumbersChange={setConfirmNumbers}
-            onSave={handleSaveConnectedBankAccounts}
-            onCancel={handleCancelConnectedBankAccountEdit}
-          />
-        )}
+        <BankAccountsEditor
+          savedAccounts={savedBankAccounts}
+          editingAccounts={connectedBankAccounts}
+          confirmNumbers={confirmNumbers}
+          isEditing={editingBankAccounts}
+          isSubmitting={isSubmitting}
+          managedBySystem={merchantStatus.managedBySystem}
+          onStartEditing={() => {
+            setEditingBankAccounts(true);
+            setConfirmNumbers(connectedBankAccounts.map(() => ""));
+          }}
+          onAccountsChange={setConnectedBankAccounts}
+          onConfirmNumbersChange={setConfirmNumbers}
+          onSave={handleSaveConnectedBankAccounts}
+          onCancel={handleCancelConnectedBankAccountEdit}
+        />
 
         <MerchantSettingsMessage message={message} />
 

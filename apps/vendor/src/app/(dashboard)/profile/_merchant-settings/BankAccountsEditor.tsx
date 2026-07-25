@@ -8,6 +8,7 @@ type BankAccountsEditorProps = {
   confirmNumbers: string[];
   isEditing: boolean;
   isSubmitting: boolean;
+  managedBySystem?: boolean;
   onStartEditing: () => void;
   onAccountsChange: (accounts: BankAccount[]) => void;
   onConfirmNumbersChange: (numbers: string[]) => void;
@@ -21,6 +22,7 @@ export function BankAccountsEditor({
   confirmNumbers,
   isEditing,
   isSubmitting,
+  managedBySystem = false,
   onStartEditing,
   onAccountsChange,
   onConfirmNumbersChange,
@@ -43,7 +45,9 @@ export function BankAccountsEditor({
 
       {!isEditing && savedAccounts.length === 0 && (
         <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-          ⚠️ Банкны данс бүртгэгдээгүй байна. QPay QR үүсгэхийн тулд данс нэмнэ үү.
+          {managedBySystem
+            ? "Minu merchantCode-д холбогдсон дансны мэдээлэл хадгалагдаагүй байна. Дансаа нэмээд дараа харах боломжтой."
+            : "Банкны данс бүртгэгдээгүй байна. QPay QR үүсгэхийн тулд данс нэмнэ үү."}
         </div>
       )}
 
