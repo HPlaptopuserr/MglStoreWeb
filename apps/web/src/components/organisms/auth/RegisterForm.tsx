@@ -28,7 +28,7 @@ type FieldProps = {
 };
 
 const fieldClassName =
-  "w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-950 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-50";
+  "w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-950 outline-none transition-all placeholder:text-slate-400 hover:border-slate-300 focus:border-emerald-500 focus:bg-white focus:ring-4 focus:ring-emerald-50";
 
 function TextField({
   id,
@@ -137,19 +137,17 @@ export function RegisterForm({
   );
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4" noValidate>
-      <div className="rounded-xl border border-emerald-100 bg-emerald-50/70 px-4 py-3">
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm">
+    <form onSubmit={onSubmit} className="space-y-3.5" noValidate>
+      <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3.5 py-2.5">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm">
             <ShieldCheck className="h-4 w-4" />
           </div>
-          <div>
-            <p className="text-sm font-bold text-emerald-950">Утасны дугаараар бүртгүүлнэ</p>
-            <p className="mt-0.5 text-xs leading-5 text-emerald-700">
-              Мэдээллээ бөглөсний дараа Verify.mn-ээр дугаараа баталгаажуулна.
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-emerald-950">Аюулгүй бүртгэл</p>
+            <p className="mt-0.5 truncate text-[11px] text-emerald-700">
+              Дараагийн алхамд утасны дугаараа Verify.mn-ээр баталгаажуулна.
             </p>
           </div>
-        </div>
       </div>
 
       <TextField
@@ -202,13 +200,13 @@ export function RegisterForm({
       <button
         type="submit"
         disabled={loading || !formIsReady}
-        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-slate-200 transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45"
+        className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-6 py-3 text-sm font-bold text-white shadow-lg shadow-slate-200 transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-45"
       >
         {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
         {loading ? "Баталгаажуулалт бэлдэж байна..." : "Үргэлжлүүлж утсаа баталгаажуулах"}
       </button>
 
-      <p className="text-center text-[11px] leading-5 text-slate-400">
+      <p className="text-center text-[10px] leading-4 text-slate-400">
         Үргэлжлүүлснээр үйлчилгээний нөхцөл болон нууцлалын бодлогыг зөвшөөрсөнд тооцно.
       </p>
     </form>

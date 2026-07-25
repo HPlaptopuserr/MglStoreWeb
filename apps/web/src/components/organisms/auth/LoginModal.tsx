@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { User, Loader2, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, ShieldCheck } from "lucide-react";
+import { User, Loader2, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, ShieldCheck, X } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { RegisterForm } from "./RegisterForm";
@@ -569,10 +569,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-label={tab === "login" ? "Нэвтрэх" : "Шинэ бүртгэл"}
-        className="relative z-10 max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
+        className="relative z-10 max-h-[calc(100dvh-1.5rem)] w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-2xl shadow-slate-950/20 sm:max-h-[calc(100dvh-2rem)]"
       >
-        <div className="grid max-h-[inherit] bg-white md:grid-cols-2">
-          <div className="flex max-h-[inherit] flex-col overflow-y-auto p-5 sm:p-8 md:justify-center">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-3 top-3 z-30 flex h-9 w-9 items-center justify-center rounded-full border border-white/30 bg-white/90 text-slate-500 shadow-sm backdrop-blur transition-all hover:scale-105 hover:bg-white hover:text-slate-950"
+          aria-label="Хаах"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
+        <div className="grid max-h-[inherit] bg-white md:grid-cols-[1.12fr_0.88fr]">
+          <div className="flex max-h-[inherit] flex-col overflow-y-auto p-5 sm:p-7 md:justify-center">
             {showForgot ? (
               <div>
                 <button
@@ -777,14 +786,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               </div>
             ) : (
               <>
-                <div className="mb-6">
-                  <div className="mb-4 flex items-center gap-2">
+                <div className="mb-4">
+                  <div className="mb-3 flex items-center gap-2">
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 shadow-sm">
                       <span className="text-sm font-bold text-white">{"//"}</span>
                     </div>
                     <span className="text-xs font-bold uppercase tracking-widest text-slate-500">MGL Store</span>
                   </div>
-                  <h2 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+                  <h2 className="text-2xl font-black tracking-tight text-slate-950">
                     {tab === "login" ? "Нэвтрэх" : "Шинэ бүртгэл"}
                   </h2>
                   <p className="mt-1.5 text-sm text-slate-500">
@@ -794,7 +803,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   </p>
                 </div>
 
-                <div className="mb-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Нэвтрэх сонголт">
+                <div className="mb-4 grid grid-cols-2 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Нэвтрэх сонголт">
                   <button
                     type="button"
                     onClick={() => handleTabChange("login")}
@@ -1016,16 +1025,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute right-4 top-4 z-[80] text-gray-500 hover:text-gray-700 md:right-8 md:top-8 md:hidden"
-        aria-label="Хаах"
-      >
-        <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
-      </button>
     </div>
   );
 };
@@ -1051,7 +1050,7 @@ function LoginMarketingPanel({ banner }: { banner?: LoginMarketingBanner | null 
   ].filter((item) => item.href);
 
   return (
-    <aside className="relative hidden flex-col justify-between overflow-hidden bg-gradient-to-br from-amber-600 via-orange-500 to-red-500 p-8 text-white md:flex">
+    <aside className="relative hidden min-h-[560px] flex-col justify-between overflow-hidden bg-gradient-to-br from-amber-600 via-orange-500 to-red-500 p-7 text-white md:flex">
       {resolved.imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={resolved.imageUrl} alt={resolved.title} className="absolute inset-0 h-full w-full object-cover" />
@@ -1064,21 +1063,21 @@ function LoginMarketingPanel({ banner }: { banner?: LoginMarketingBanner | null 
       <div className={`absolute inset-0 ${resolved.imageUrl ? "bg-gradient-to-t from-slate-950/82 via-slate-950/30 to-slate-950/15" : "bg-transparent"}`} />
 
       <div className="relative z-10">
-        <span className="inline-flex max-w-full rounded-2xl bg-white/16 px-4 py-2 text-xs font-black uppercase tracking-[0.18em] text-white/85 backdrop-blur-sm">
+        <span className="inline-flex max-w-full rounded-full bg-white/16 px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-white/85 backdrop-blur-sm">
           <span className="truncate">{resolved.eyebrow}</span>
         </span>
-        <h3 className="mt-8 text-3xl font-black leading-tight">{resolved.title}</h3>
+        <h3 className="mt-6 pr-8 text-2xl font-black leading-tight">{resolved.title}</h3>
       </div>
 
       <div className="relative z-10 text-center">
-        <p className="mx-auto max-w-md text-xl font-semibold leading-9 text-white/90">
+        <p className="mx-auto max-w-md text-base font-semibold leading-7 text-white/90">
           &ldquo;{resolved.quote}&rdquo;
         </p>
-        <p className="mt-8 text-lg font-black">{resolved.author}</p>
-        <p className="mt-1 text-sm font-semibold text-white/70">{resolved.role}</p>
+        <p className="mt-6 text-base font-black">{resolved.author}</p>
+        <p className="mt-1 text-xs font-semibold text-white/70">{resolved.role}</p>
       </div>
 
-      <div className="relative z-10 border-t border-white/20 pt-7 text-center">
+      <div className="relative z-10 border-t border-white/20 pt-5 text-center">
         <a href={resolved.href} className="text-sm font-bold text-white/85 transition hover:text-white">
           {resolved.cta}
         </a>
