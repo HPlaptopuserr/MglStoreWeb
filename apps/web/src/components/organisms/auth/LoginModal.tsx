@@ -4,7 +4,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { User, Loader2, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, ShieldCheck } from "lucide-react";
 import { API_BASE } from "@/lib/api";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
-import { VerifyMnPanel, type VerifyMnSession } from "@mgl/ui";
+import { RegisterForm } from "./RegisterForm";
+import { VerifyMnPanel, type VerifyMnSession } from "./VerifyMnPanel";
 
 type AuthTab = "login" | "register";
 type ForgotStep = "identifier" | "verifyMn" | "emailOtp" | "newPassword" | "done";
@@ -95,7 +96,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [fullName, setFullName] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [localError, setLocalError] = useState("");
   const [loginOtpChallenge, setLoginOtpChallenge] = useState<LoginResult | null>(null);
@@ -557,7 +557,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const displayError = localError || error;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-hidden overscroll-none p-4">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-hidden overscroll-none p-3 sm:p-4">
       <button
         type="button"
         onClick={onClose}
@@ -565,9 +565,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         aria-label="Нэвтрэх цонх хаах"
       />
 
-      <div className="relative z-10 w-full max-w-2xl overflow-hidden rounded-2xl shadow-2xl">
-        <div className="grid bg-white md:grid-cols-2">
-          <div className="flex flex-col justify-center p-6 sm:p-8">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={tab === "login" ? "Нэвтрэх" : "Шинэ бүртгэл"}
+        className="relative z-10 max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]"
+      >
+        <div className="grid max-h-[inherit] bg-white md:grid-cols-2">
+          <div className="flex max-h-[inherit] flex-col overflow-y-auto p-5 sm:p-8 md:justify-center">
             {showForgot ? (
               <div>
                 <button
@@ -772,24 +777,33 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               </div>
             ) : (
               <>
-                <div className="mb-8">
+                <div className="mb-6">
                   <div className="mb-4 flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-orange-600">
-                      <span className="text-sm font-bold text-white">//</span>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 shadow-sm">
+                      <span className="text-sm font-bold text-white">{"//"}</span>
                     </div>
-                    <span className="text-xs font-bold uppercase tracking-widest text-gray-600">MGL Store</span>
+                    <span className="text-xs font-bold uppercase tracking-widest text-slate-500">MGL Store</span>
                   </div>
-                  <h2 className="text-2xl font-black text-gray-900 sm:text-3xl">
+                  <h2 className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
                     {tab === "login" ? "Нэвтрэх" : "Шинэ бүртгэл"}
                   </h2>
+                  <p className="mt-1.5 text-sm text-slate-500">
+                    {tab === "login"
+                      ? "Бүртгэлтэй хаягаараа үргэлжлүүлнэ үү."
+                      : "Хэдхэн алхмаар бүртгэлээ аюулгүй үүсгээрэй."}
+                  </p>
                 </div>
 
-                <div className="mb-6 flex gap-2 border-b border-gray-200">
+                <div className="mb-6 grid grid-cols-2 rounded-xl bg-slate-100 p-1" role="tablist" aria-label="Нэвтрэх сонголт">
                   <button
                     type="button"
                     onClick={() => handleTabChange("login")}
-                    className={`px-4 pb-3 text-sm font-bold transition-colors ${
-                      tab === "login" ? "border-b-2 border-amber-500 text-amber-600" : "text-gray-600 hover:text-gray-900"
+                    role="tab"
+                    aria-selected={tab === "login"}
+                    className={`rounded-lg px-4 py-2.5 text-sm font-bold transition-all ${
+                      tab === "login"
+                        ? "bg-white text-slate-950 shadow-sm"
+                        : "text-slate-500 hover:text-slate-900"
                     }`}
                   >
                     Нэвтрэх
@@ -797,8 +811,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   <button
                     type="button"
                     onClick={() => handleTabChange("register")}
-                    className={`px-4 pb-3 text-sm font-bold transition-colors ${
-                      tab === "register" ? "border-b-2 border-amber-500 text-amber-600" : "text-gray-600 hover:text-gray-900"
+                    role="tab"
+                    aria-selected={tab === "register"}
+                    className={`rounded-lg px-4 py-2.5 text-sm font-bold transition-all ${
+                      tab === "register"
+                        ? "bg-white text-slate-950 shadow-sm"
+                        : "text-slate-500 hover:text-slate-900"
                     }`}
                   >
                     Бүртгүүлэх
@@ -976,94 +994,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     onVerify={handleRegisterVerifyComplete}
                   />
                 ) : (
-                  <form onSubmit={handleRegisterSubmit} className="space-y-4">
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                        Нэр
-                      </label>
-                      <input
-                        type="text"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        placeholder="Таны нэрийг оруулна уу"
-                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                        Утасны дугаар
-                      </label>
-                      <input
-                        type="text"
-                        value={identifier}
-                        onChange={(e) => setIdentifier(e.target.value)}
-                        placeholder="99112233"
-                        className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                        Нууц үг
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          placeholder="••••••••"
-                          className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                          aria-label={showPassword ? "Нууц үг нуух" : "Нууц үг харах"}
-                        >
-                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-gray-600">
-                        Нууц үг давтах
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showConfirmPassword ? "text" : "password"}
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          placeholder="••••••••"
-                          className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 pr-10 text-sm outline-none transition-all focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-100"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                          aria-label={showConfirmPassword ? "Нууц үг нуух" : "Нууц үг харах"}
-                        >
-                          {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
-                      </div>
-                    </div>
-
-                    {displayError && (
-                      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-                        {displayError}
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={isLoading}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 px-6 py-3.5 text-sm font-bold text-white transition-all hover:from-amber-600 hover:to-orange-700 hover:shadow-lg disabled:opacity-70"
-                    >
-                      {registerVerifyLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                      {registerVerifyLoading ? "Эхлүүлж байна..." : "Утас баталгаажуулах"}
-                    </button>
-                  </form>
+                  <RegisterForm
+                    fullName={fullName}
+                    phone={identifier}
+                    password={password}
+                    confirmPassword={confirmPassword}
+                    error={displayError}
+                    loading={registerVerifyLoading || isLoading}
+                    onFullNameChange={setFullName}
+                    onPhoneChange={setIdentifier}
+                    onPasswordChange={setPassword}
+                    onConfirmPasswordChange={setConfirmPassword}
+                    onSubmit={handleRegisterSubmit}
+                  />
                 )}
               </>
             )}
@@ -1128,7 +1071,9 @@ function LoginMarketingPanel({ banner }: { banner?: LoginMarketingBanner | null 
       </div>
 
       <div className="relative z-10 text-center">
-        <p className="mx-auto max-w-md text-xl font-semibold leading-9 text-white/90">"{resolved.quote}"</p>
+        <p className="mx-auto max-w-md text-xl font-semibold leading-9 text-white/90">
+          &ldquo;{resolved.quote}&rdquo;
+        </p>
         <p className="mt-8 text-lg font-black">{resolved.author}</p>
         <p className="mt-1 text-sm font-semibold text-white/70">{resolved.role}</p>
       </div>
