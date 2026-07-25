@@ -36,13 +36,9 @@ export type Movement = {
   } | null;
 };
 
-export type CategoryWithCount = {
-  id: string;
-  name: string;
+export type CategoryWithCount = WarehouseCategory & {
   slug: string;
   icon: string | null;
-  level: number;
-  parentId: string | null;
   _count: { products: number };
 };
 
@@ -57,3 +53,4 @@ export const REASON_MAP: Record<string, { label: string; color: string }> = {
   TRANSFER_OUT: { label: "Шилжүүлэг зарлага", color: "bg-orange-100 text-orange-700" },
   INITIAL_STOCK: { label: "Анхны нөөц", color: "bg-indigo-100 text-indigo-700" },
 };
+import type { WarehouseCategory } from "@/features/categories";

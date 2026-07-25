@@ -26,6 +26,7 @@ import type {
   Movement,
   CategoryWithCount,
 } from "@/components/dashboard";
+import { fetchWarehouseCategories } from "@/features/categories";
 
 export default function WmsDashboardPage() {
   const [warehouses, setWarehouses] = useState<WarehouseDetail[]>([]);
@@ -65,11 +66,15 @@ export default function WmsDashboardPage() {
         }
 
         // Fetch categories
-        const catRes = await wmsFetch(`${API}/business-categories`);
-        if (catRes.ok) {
-          const catData = await catRes.json();
-          setCategories(Array.isArray(catData) ? catData : []);
-        }
+        const categoryData = await fetchWarehouseCategories();
+        setCategories(
+          categoryData.map((category) => ({
+            ...category,
+            slug: category.slug ?? "",
+            icon: category.icon ?? null,
+            _count: category._count ?? { products: 0 },
+          })),
+        );
 
         // Fetch recent movements
         const mvRes = await wmsFetch(`${API}/inventory-ledger?limit=10`);

@@ -13,12 +13,12 @@ import {
   X,
   Upload,
   Image as ImageIcon,
-  FolderPlus,
   FileSpreadsheet,
 } from "lucide-react";
 import SkuGenerator from "@/components/SkuGenerator";
 import { ExcelImportModal } from "@/components/ExcelImportModal";
 import { API, wmsFetch } from "@/lib/api";
+import { WarehouseCategoryPicker } from "@/features/categories";
 
 type Product = {
   id: string;
@@ -28,13 +28,6 @@ type Product = {
   price: string;
   stock: number;
   images?: { url: string }[];
-};
-
-type Category = {
-  id: string;
-  name: string;
-  level: number;
-  children?: Category[];
 };
 
 type ReceiveItem = {
@@ -109,14 +102,6 @@ export default function ReceivePage() {
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [productError, setProductError] = useState("");
 
-  // Categories
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [categorySearch, setCategorySearch] = useState("");
-  const [showNewCategory, setShowNewCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newCategoryParentId, setNewCategoryParentId] = useState("");
-  const [creatingCategory, setCreatingCategory] = useState(false);
-
   // Image upload
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -152,22 +137,6 @@ export default function ReceivePage() {
       }
     };
     load();
-  }, []);
-
-  // Load categories
-  useEffect(() => {
-    const loadCategories = async () => {
-      try {
-        const res = await wmsFetch(`${API}/business-categories`);
-        if (res.ok) {
-          const data = await res.json();
-          setCategories(Array.isArray(data) ? data : []);
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-    loadCategories();
   }, []);
 
   // Product search with debounce
@@ -273,36 +242,6 @@ export default function ReceivePage() {
       ...prev,
       images: prev.images.filter((_, i) => i !== idx),
     }));
-  };
-
-  // ───── Create new category ─────
-  const handleCreateCategory = async () => {
-    if (!newCategoryName.trim()) return;
-    setCreatingCategory(true);
-    try {
-      const res = await wmsFetch(`${API}/warehouses/categories`, {
-        method: "POST",
-        body: JSON.stringify({
-          name: newCategoryName.trim(),
-          parentId: newCategoryParentId || null,
-        }),
-      });
-      if (res.ok) {
-        const cat = await res.json();
-        setCategories((prev) => [...prev, cat]);
-        setProductForm((prev) => ({ ...prev, businessCategoryId: cat.id }));
-        setShowNewCategory(false);
-        setNewCategoryName("");
-        setNewCategoryParentId("");
-      } else {
-        const err = await res.json();
-        alert(err.message || "Ангилал үүсгэхэд алдаа гарлаа");
-      }
-    } catch {
-      alert("Серверт холбогдож чадсангүй");
-    } finally {
-      setCreatingCategory(false);
-    }
   };
 
   // ───── Create new product via warehouse endpoint ─────
@@ -909,135 +848,12 @@ export default function ReceivePage() {
                 </div>
               </div>
 
-              {/* Category — searchable */}
-              <div>
-                <label className="mb-1.5 flex items-center justify-between text-sm font-semibold text-slate-700">
-                  <span>Ангилал</span>
-                  <button
-                    onClick={() => setShowNewCategory(!showNewCategory)}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
-                  >
-                    <FolderPlus className="h-3.5 w-3.5" />
-                    Шинэ ангилал
-                  </button>
-                </label>
-
-                {showNewCategory && (
-                  <div className="mb-3 rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
-                    <input
-                      value={newCategoryName}
-                      onChange={(e) => setNewCategoryName(e.target.value)}
-                      placeholder="Ангилалын нэр"
-                      className="h-9 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
-                    />
-                    <select
-                      value={newCategoryParentId}
-                      onChange={(e) => setNewCategoryParentId(e.target.value)}
-                      className="h-9 w-full rounded-md border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
-                    >
-                      <option value="">Эцэг ангилал (заавал биш)</option>
-                      {categories
-                        .filter((c) => c.level < 2)
-                        .map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {"—".repeat(c.level)} {c.name}
-                          </option>
-                        ))}
-                    </select>
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => {
-                          setShowNewCategory(false);
-                          setNewCategoryName("");
-                        }}
-                        className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
-                      >
-                        Болих
-                      </button>
-                      <button
-                        onClick={handleCreateCategory}
-                        disabled={creatingCategory || !newCategoryName.trim()}
-                        className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {creatingCategory && (
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                        )}
-                        Үүсгэх
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Search input for categories */}
-                <div className="relative mb-1">
-                  <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                  <input
-                    value={categorySearch}
-                    onChange={(e) => setCategorySearch(e.target.value)}
-                    placeholder="Ангилал хайх..."
-                    className="h-9 w-full rounded-lg border border-slate-300 bg-slate-50 pl-9 pr-3 text-sm outline-none focus:border-blue-500 focus:bg-white"
-                  />
-                </div>
-
-                {/* Category list */}
-                <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-50">
-                  {categories
-                    .filter(
-                      (c) =>
-                        !categorySearch ||
-                        c.name
-                          .toLowerCase()
-                          .includes(categorySearch.toLowerCase()),
-                    )
-                    .map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          setProductForm({
-                            ...productForm,
-                            businessCategoryId: c.id,
-                          });
-                          setCategorySearch("");
-                        }}
-                        className={`flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-blue-50 ${
-                          productForm.businessCategoryId === c.id
-                            ? "bg-blue-50 font-semibold text-blue-700"
-                            : "text-slate-700"
-                        }`}
-                      >
-                        <span>
-                          {"—".repeat(c.level)} {c.name}
-                        </span>
-                        {productForm.businessCategoryId === c.id && (
-                          <Check className="h-3.5 w-3.5 text-blue-600" />
-                        )}
-                      </button>
-                    ))}
-                  {categories.filter(
-                    (c) =>
-                      !categorySearch ||
-                      c.name
-                        .toLowerCase()
-                        .includes(categorySearch.toLowerCase()),
-                  ).length === 0 && (
-                    <div className="px-3 py-3 text-center text-xs text-slate-400">
-                      Ангилал олдсонгүй
-                    </div>
-                  )}
-                </div>
-                {productForm.businessCategoryId && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setProductForm({ ...productForm, businessCategoryId: "" })
-                    }
-                    className="mt-1 text-xs text-red-500 hover:text-red-600"
-                  >
-                    Ангилал цуцлах
-                  </button>
-                )}
-              </div>
+              <WarehouseCategoryPicker
+                value={productForm.businessCategoryId}
+                onChange={(businessCategoryId) =>
+                  setProductForm({ ...productForm, businessCategoryId })
+                }
+              />
 
               {/* Images */}
               <div>

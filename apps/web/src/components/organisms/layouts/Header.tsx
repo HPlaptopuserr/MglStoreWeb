@@ -694,6 +694,7 @@ export const Header = () => {
                   ? err.message
                   : "Бүртгүүлэхэд алдаа гарлаа.";
               setAuthError(msg);
+              throw err;
             } finally {
               setAuthLoading(false);
             }

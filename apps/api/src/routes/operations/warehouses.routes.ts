@@ -72,6 +72,41 @@ async function assertWarehouseMutationPermission(
   return true;
 }
 
+async function assertWarehouseCategoryPermission(
+  req: Parameters<typeof requireAuth>[0],
+  res: Parameters<typeof requireAuth>[1],
+) {
+  const actor = (
+    req as typeof req & { user?: { userId?: string; role?: string } }
+  ).user;
+
+  if (hasPlatformWarehouseAccess(actor?.role)) return true;
+
+  const operatorAssignment = actor?.userId
+    ? await prisma.warehouseSetupToken.findFirst({
+        where: {
+          userId: actor.userId,
+          usedAt: { not: null },
+          warehouse: {
+            deletedAt: null,
+            isActive: true,
+            type: ADMIN_MANAGED_WAREHOUSE,
+          },
+        },
+        select: { id: true },
+      })
+    : null;
+
+  if (!operatorAssignment) {
+    res.status(403).json({
+      message: "Агуулахын ангилал үүсгэх эрхгүй байна",
+    });
+    return false;
+  }
+
+  return true;
+}
+
 async function getImportBusinessCategoryChoices() {
   const categories = await prisma.businessCategory.findMany({
     where: { isActive: true },
@@ -1892,8 +1927,10 @@ router.post("/warehouses/:id/products", requireAuth, async (req, res) => {
 /* ─── POST /warehouses/categories ───────────────────────────────────── *
  * Quick category creation from WMS — operator creates a new category.
  * ──────────────────────────────────────────────────────────────────── */
-router.post("/warehouses/categories", async (req, res) => {
+router.post("/warehouses/categories", requireAuth, async (req, res) => {
   try {
+    if (!(await assertWarehouseCategoryPermission(req, res))) return;
+
     const { name, parentId } = req.body;
 
     if (!name || !String(name).trim()) {
@@ -1926,10 +1963,25 @@ router.post("/warehouses/categories", async (req, res) => {
       }
     }
 
+    const normalizedName = String(name).trim();
+    const duplicate = await prisma.businessCategory.findFirst({
+      where: {
+        name: { equals: normalizedName, mode: "insensitive" },
+        parentId: parentId || null,
+        isActive: true,
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      return res.status(409).json({
+        message: "Ижил түвшинд ийм нэртэй ангилал бүртгэлтэй байна",
+      });
+    }
+
     const category = await prisma.businessCategory.create({
       data: {
         slug,
-        name: String(name).trim(),
+        name: normalizedName,
         parentId: parentId || null,
         level,
         isActive: true,

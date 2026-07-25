@@ -19,6 +19,7 @@ import {
   Save,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
+import { WarehouseCategoryPicker } from "@/features/categories";
 
 type InventoryItem = {
   id: string;
@@ -49,12 +50,6 @@ type InventoryItem = {
 type WarehouseOption = {
   id: string;
   name: string;
-};
-
-type Category = {
-  id: string;
-  name: string;
-  level: number;
 };
 
 type StockStatus = "all" | "healthy" | "low" | "out";
@@ -88,7 +83,6 @@ const toDateInputValue = (value: string | null) => {
 
 export default function InventoryPage() {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>("");
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,21 +114,6 @@ export default function InventoryPage() {
       }
     };
     load();
-  }, []);
-
-  useEffect(() => {
-    const loadCategories = async () => {
-      try {
-        const res = await wmsFetch(`${API}/business-categories`);
-        if (res.ok) {
-          const data = await res.json();
-          setCategories(Array.isArray(data) ? data : []);
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-    loadCategories();
   }, []);
 
   // Load inventory when warehouse changes (with auto-retry on network error)
@@ -832,27 +811,13 @@ export default function InventoryPage() {
                     </select>
                   </div>
 
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Ангилал
-                    </label>
-                    <select
+                  <div className="sm:col-span-2">
+                    <WarehouseCategoryPicker
                       value={editForm.businessCategoryId}
-                      onChange={(e) =>
-                        setEditForm({
-                          ...editForm,
-                          businessCategoryId: e.target.value,
-                        })
+                      onChange={(businessCategoryId) =>
+                        setEditForm({ ...editForm, businessCategoryId })
                       }
-                      className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                    >
-                      <option value="">Ангилалгүй</option>
-                      {categories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {"—".repeat(category.level)} {category.name}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
 
                   <div className="sm:col-span-2">

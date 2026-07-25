@@ -1,6 +1,10 @@
 "use client";
 
-import { X, Layers } from "lucide-react";
+import { Layers, X } from "lucide-react";
+import {
+  CATEGORY_LEVEL_LABELS,
+  categoryPath,
+} from "@/features/categories";
 import type { CategoryWithCount } from "./types";
 
 export function CategoryModal({
@@ -48,27 +52,40 @@ export function CategoryModal({
             </p>
           ) : (
             <div className="space-y-1.5">
-              {categories.map((cat) => (
-                <div
-                  key={cat.id}
-                  className="flex items-center justify-between rounded-lg px-3 py-2.5 transition-colors hover:bg-slate-50"
-                  style={{ paddingLeft: `${12 + cat.level * 20}px` }}
-                >
-                  <div className="flex items-center gap-2.5">
-                    {cat.icon ? (
-                      <span className="text-base">{cat.icon}</span>
-                    ) : (
-                      <Layers className="h-4 w-4 text-slate-400" />
-                    )}
-                    <span className="text-sm font-medium text-slate-700">
-                      {cat.name}
+              {categories.map((category) => {
+                const path = categoryPath(category.id, categories);
+                const level = Math.min(category.level, 2) as 0 | 1 | 2;
+
+                return (
+                  <div
+                    key={category.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-transparent px-3 py-2.5 transition-colors hover:border-slate-100 hover:bg-slate-50"
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <span
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-sm"
+                        aria-hidden="true"
+                      >
+                        {category.icon || (
+                          <Layers className="h-4 w-4 text-slate-400" />
+                        )}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-slate-700">
+                          {category.name}
+                        </p>
+                        <p className="truncate text-[11px] text-slate-400">
+                          {CATEGORY_LEVEL_LABELS[level]} ·{" "}
+                          {path.map((item) => item.name).join(" / ")}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="inline-flex min-w-[2rem] shrink-0 items-center justify-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">
+                      {category._count.products}
                     </span>
                   </div>
-                  <span className="inline-flex min-w-[2rem] items-center justify-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">
-                    {cat._count.products}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
