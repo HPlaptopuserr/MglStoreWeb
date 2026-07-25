@@ -85,6 +85,21 @@ const MEMBERSHIP_PRICE_MATRIX: Partial<
   },
 };
 
+const PAID_MEMBERSHIP_TYPE_ORDER = [
+  AssociationMembershipType.ACTIVE,
+  AssociationMembershipType.BRANCH_COUNCIL,
+  AssociationMembershipType.GOVERNING_COUNCIL,
+] as const;
+
+type ConfiguredMembershipDuration = {
+  months?: unknown;
+  price?: unknown;
+};
+
+type ConfiguredMembershipPlan = Record<string, unknown> & {
+  durations?: ConfiguredMembershipDuration[];
+};
+
 function isPaidMembershipType(
   value: unknown,
 ): value is AssociationMembershipType {
@@ -95,11 +110,48 @@ function isPaidMembershipType(
   );
 }
 
+function normalizeConfiguredMembershipTypes(
+  config: unknown,
+): Array<ConfiguredMembershipPlan & { value: AssociationMembershipType }> {
+  const membershipTypes =
+    config &&
+    typeof config === "object" &&
+    "membershipTypes" in config &&
+    Array.isArray(config.membershipTypes)
+      ? config.membershipTypes.filter(
+          (plan): plan is ConfiguredMembershipPlan =>
+            Boolean(plan) && typeof plan === "object",
+        )
+      : [];
+
+  return membershipTypes
+    .slice(0, PAID_MEMBERSHIP_TYPE_ORDER.length)
+    .map((plan, index) => ({
+      ...plan,
+      value: PAID_MEMBERSHIP_TYPE_ORDER[index],
+    }));
+}
+
 async function resolveMembershipPrice(
   membershipType: AssociationMembershipType,
   durationMonths?: number | null,
 ) {
   const duration = Number(durationMonths);
+  const config = await getAssociationConfig();
+  const configuredPlan = normalizeConfiguredMembershipTypes(config).find(
+    (plan) => plan.value === membershipType,
+  );
+  const configuredDuration = Array.isArray(configuredPlan?.durations)
+    ? configuredPlan.durations.find(
+        (item) => Number(item?.months) === duration,
+      )
+    : null;
+  const configuredPrice = Number(configuredDuration?.price);
+
+  if (Number.isFinite(configuredPrice) && configuredPrice > 0) {
+    return Math.round(configuredPrice);
+  }
+
   return MEMBERSHIP_PRICE_MATRIX[membershipType]?.[duration] || 0;
 }
 
@@ -379,6 +431,7 @@ function publicAssociationConfig(config: any) {
 
   return {
     ...config,
+    membershipTypes: normalizeConfiguredMembershipTypes(config),
     paymentAccount: {
       bankName: String(paymentAccount.bankName || ""),
       bankCode: String(paymentAccount.bankCode || ""),
