@@ -49,10 +49,6 @@ import {
 } from "@/lib/site-banners";
 
 const presentationPdfUrl = "/mgl-sma-taniltsuulga.pdf";
-const HIDDEN_MOBILE_NAV_HREFS = new Set([
-  "/hr",
-  "/study",
-]);
 
 export const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -74,9 +70,7 @@ export const Header = () => {
   const { categories } = useBusinessCategories();
   const router = useRouter();
   const pathname = usePathname();
-  const mobileNavLinks = NAV_LINKS.filter(
-    (link) => !HIDDEN_MOBILE_NAV_HREFS.has(link.href),
-  );
+  const mobileNavLinks = NAV_LINKS;
   const isProfileRoute = pathname.startsWith("/profile");
   const isOrdersRoute = pathname.startsWith(ACCOUNT_ROUTES.orders);
   const hideBrowseNav =
