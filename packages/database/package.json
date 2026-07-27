@@ -11,8 +11,10 @@
     "db:studio": "node scripts/with-root-env.cjs prisma studio",
     "db:seed": "node scripts/with-root-env.cjs ts-node prisma/seed.ts",
     "db:seed-categories": "node scripts/with-root-env.cjs ts-node prisma/seed-categories.ts",
+    "db:identity-dry-run": "node scripts/with-root-env.cjs ts-node src/scripts/identity-link-dry-run.ts",
     "db:validate": "node scripts/with-root-env.cjs prisma validate",
-    "db:format": "node scripts/with-root-env.cjs prisma format"
+    "db:format": "node scripts/with-root-env.cjs prisma format",
+    "test": "node --test -r ts-node/register src/**/*.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
