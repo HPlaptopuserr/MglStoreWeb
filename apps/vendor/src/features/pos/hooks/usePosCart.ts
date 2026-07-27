@@ -51,6 +51,8 @@ function loadStoredPosState() {
       .filter(isCartLine)
       .map((line) => ({
         ...line,
+        priceType: line.priceType || "UNIT",
+        baseUnitPrice: line.baseUnitPrice ?? line.unitPrice,
         qty: Math.min(Math.max(1, Math.floor(line.qty)), Math.max(1, Math.floor(line.stockQty))),
         stockQty: Math.max(0, Math.floor(line.stockQty)),
         unitPrice: Math.max(0, line.unitPrice),
@@ -113,6 +115,10 @@ export function usePosCart() {
         qty: 1,
         stockQty: product.stockQty,
         unitPrice: product.price,
+        priceType: "UNIT",
+        baseUnitPrice: product.price,
+        wholesalePrice: product.wholesalePrice ?? null,
+        orderPrice: product.orderPrice ?? null,
         taxType: product.taxType || "VAT_ABLE",
         taxRate: product.taxRate ?? 0,
         cityTaxRate: product.cityTaxRate ?? 0,

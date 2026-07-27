@@ -915,6 +915,8 @@ model Product {
   barcode               String?
   unit                  String?
   price                 Decimal                     @db.Decimal(18, 2)
+  wholesalePrice        Decimal?                    @db.Decimal(18, 2)
+  orderPrice            Decimal?                    @db.Decimal(18, 2)
   costPrice             Decimal?                    @db.Decimal(18, 2)
   /// Denormalized cache. Canonical stock lives in WarehouseInventory.quantity.
   /// Updated by POS sales and inventory operations. Do not treat as source of truth
@@ -2827,6 +2829,7 @@ model PosSaleLine {
   productBarcode     String?
   qty                Int
   unitPrice          Decimal @db.Decimal(18, 2)
+  priceType          String  @default("UNIT")
   taxAmount          Decimal @db.Decimal(18, 2)
   taxType            String  @default("VAT_ABLE")
   taxRate            Decimal @default(10) @db.Decimal(5, 2)

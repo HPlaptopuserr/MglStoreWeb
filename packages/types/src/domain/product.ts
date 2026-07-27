@@ -20,6 +20,8 @@ export interface Product extends BaseEntity, SoftDelete {
   sku?: string | null;
 
   price: DecimalString;
+  wholesalePrice?: DecimalString | null;
+  orderPrice?: DecimalString | null;
   costPrice?: DecimalString | null;
 
   stock: number;

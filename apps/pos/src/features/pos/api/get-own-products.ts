@@ -9,6 +9,8 @@ type RawProduct = {
   imageUrl?: string | null;
   images?: { url: string }[];
   price: number;
+  wholesalePrice?: number | null;
+  orderPrice?: number | null;
   taxType?: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
   cityTaxRate?: number;
   classificationCode?: string | null;
@@ -63,6 +65,9 @@ export async function getOwnProducts(
       name: item.name,
       imageUrl: item.imageUrl || item.images?.[0]?.url || null,
       price: Number(item.price) || 0,
+      wholesalePrice:
+        item.wholesalePrice == null ? null : Number(item.wholesalePrice),
+      orderPrice: item.orderPrice == null ? null : Number(item.orderPrice),
       stockQty: Number(item.stock) || 0,
       taxType: item.taxType || "VAT_ABLE",
       taxRate: taxRateFromType(item.taxType || "VAT_ABLE"),

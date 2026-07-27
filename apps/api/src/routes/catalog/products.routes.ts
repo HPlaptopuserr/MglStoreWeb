@@ -2245,6 +2245,8 @@ router.post(
         barcode,
         unit,
         price,
+        wholesalePrice,
+        orderPrice,
         costPrice,
         taxType,
         cityTaxRate,
@@ -2293,6 +2295,16 @@ router.post(
       const priceNum = parseFloat(String(price));
       if (isNaN(priceNum) || priceNum < 0) {
         return res.status(400).json({ message: "Үнэ буруу байна" });
+      }
+      const parseOptionalPrice = (value: unknown) => {
+        if (value === undefined || value === null || value === "") return null;
+        const parsed = Number(value);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+      };
+      const wholesalePriceNum = parseOptionalPrice(wholesalePrice);
+      const orderPriceNum = parseOptionalPrice(orderPrice);
+      if (wholesalePriceNum === undefined || orderPriceNum === undefined) {
+        return res.status(400).json({ message: "Нэмэлт үнэ буруу байна" });
       }
 
       const costPriceNum =
@@ -2453,6 +2465,8 @@ router.post(
             barcode: masterProduct.barcode || normalizedBarcode,
             unit: masterProduct.unit || (unit ? String(unit).trim() : null),
             price: priceNum,
+            wholesalePrice: wholesalePriceNum,
+            orderPrice: orderPriceNum,
             costPrice: costPriceNum,
             taxType: normalizedTaxType,
             cityTaxRate: normalizedCityTaxRate,
@@ -2573,6 +2587,8 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       barcode,
       unit,
       price,
+      wholesalePrice,
+      orderPrice,
       costPrice,
       taxType,
       cityTaxRate,
@@ -2627,6 +2643,21 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       if (isNaN(p) || p < 0)
         return res.status(400).json({ message: "Үнэ буруу байна" });
       data.price = p;
+    }
+    for (const [field, value] of [
+      ["wholesalePrice", wholesalePrice],
+      ["orderPrice", orderPrice],
+    ] as const) {
+      if (value === undefined) continue;
+      if (value === null || value === "") {
+        data[field] = null;
+        continue;
+      }
+      const parsed = Number(value);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        return res.status(400).json({ message: "Нэмэлт үнэ буруу байна" });
+      }
+      data[field] = parsed;
     }
     if (costPrice !== undefined)
       data.costPrice = costPrice ? parseFloat(String(costPrice)) : null;

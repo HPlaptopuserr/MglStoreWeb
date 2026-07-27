@@ -23,6 +23,14 @@ export type PosAction =
   | { type: "add-line"; payload: CartLine }
   | { type: "remove-line"; payload: string }
   | { type: "set-qty"; payload: { productId: string; qty: number } }
+  | {
+      type: "set-price";
+      payload: {
+        productId: string;
+        priceType: CartLine["priceType"];
+        unitPrice: number;
+      };
+    }
   | { type: "clear-cart" }
   | { type: "set-error"; payload: string | null };
 
@@ -84,6 +92,20 @@ export function posReducer(state: PosState, action: PosAction): PosState {
             };
           })
           .filter((line) => line.qty > 0),
+      };
+    case "set-price":
+      return {
+        ...state,
+        lastError: null,
+        cart: state.cart.map((line) =>
+          line.productId === action.payload.productId
+            ? {
+                ...line,
+                priceType: action.payload.priceType,
+                unitPrice: action.payload.unitPrice,
+              }
+            : line,
+        ),
       };
     case "clear-cart":
       return { ...state, cart: [] };

@@ -75,6 +75,8 @@ export interface RegisterConfig {
 
 // ─── Cart ────────────────────────────────────────────────────────────────────
 
+export type PosPriceType = "UNIT" | "WHOLESALE" | "ORDER";
+
 export interface PosProduct {
   id: string;
   sku: string;
@@ -82,6 +84,8 @@ export interface PosProduct {
   name: string;
   imageUrl?: string | null;
   price: number;
+  wholesalePrice?: number | null;
+  orderPrice?: number | null;
   stockQty: number;
   expiryDate?: string | null;
   taxType?: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
@@ -99,6 +103,10 @@ export interface CartLine {
   name: string;
   imageUrl?: string | null;
   unitPrice: number;
+  priceType: PosPriceType;
+  baseUnitPrice: number;
+  wholesalePrice?: number | null;
+  orderPrice?: number | null;
   qty: number;
   stockQty: number;
   taxType?: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
@@ -186,6 +194,7 @@ export interface SalePayload {
     productId: string;
     qty: number;
     unitPrice: number;
+    priceType: PosPriceType;
     discountAmount: number;
     taxType?: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
     taxRate: number;
@@ -300,6 +309,7 @@ export interface ReceiptLine {
   name: string;
   qty: number;
   unitPrice: number;
+  priceType?: PosPriceType;
   taxAmount: number;
   taxType?: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
   taxRate?: number;

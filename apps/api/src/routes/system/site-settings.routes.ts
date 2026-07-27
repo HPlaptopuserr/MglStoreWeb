@@ -71,6 +71,7 @@ const VENDOR_FEATURE_KEYS = new Set([
   "supply-products-enabled",
   "preorder-products-enabled",
   "service-posts-enabled",
+  "multi-price-sales-enabled",
 ]);
 
 function activePrimeUserWhere(userId: string): Prisma.UserWhereInput {

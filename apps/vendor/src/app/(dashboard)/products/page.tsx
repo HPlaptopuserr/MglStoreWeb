@@ -41,6 +41,8 @@ const EMPTY_FORM: FormState = {
   barcode: "",
   description: "",
   price: "",
+  wholesalePrice: "",
+  orderPrice: "",
   costPrice: "",
   taxType: "VAT_ABLE",
   cityTaxRate: "0",
@@ -261,6 +263,9 @@ export default function ProductsPage() {
       barcode: p.barcode || "",
       description: p.description || "",
       price: String(p.price),
+      wholesalePrice:
+        p.wholesalePrice == null ? "" : String(p.wholesalePrice),
+      orderPrice: p.orderPrice == null ? "" : String(p.orderPrice),
       costPrice: p.costPrice != null ? String(p.costPrice) : "",
       taxType: p.taxType || "VAT_ABLE",
       cityTaxRate: p.cityTaxRate != null ? String(p.cityTaxRate) : "0",
@@ -292,7 +297,23 @@ export default function ProductsPage() {
     if (!orgId) return showToast("error", "Нэвтрэх мэдээлэл олдсонгүй");
     if (!form.name.trim()) return showToast("error", "Барааны нэр оруулна уу");
     const price = parseFloat(form.price);
-    if (isNaN(price) || price < 0) return showToast("error", "Үнэ буруу байна");
+    if (isNaN(price) || price < 0) return showToast("error", "Ширхэгийн үнэ буруу байна");
+    const wholesalePrice = form.wholesalePrice.trim()
+      ? Number(form.wholesalePrice)
+      : null;
+    const orderPrice = form.orderPrice.trim() ? Number(form.orderPrice) : null;
+    if (
+      wholesalePrice !== null &&
+      (!Number.isFinite(wholesalePrice) || wholesalePrice < 0)
+    ) {
+      return showToast("error", "Бөөний үнийг зөв оруулна уу");
+    }
+    if (
+      orderPrice !== null &&
+      (!Number.isFinite(orderPrice) || orderPrice < 0)
+    ) {
+      return showToast("error", "Захиалгын үнийг зөв оруулна уу");
+    }
     
     let costPrice: number | null = null;
     if (form.costPrice.trim() !== "") {
@@ -337,6 +358,8 @@ export default function ProductsPage() {
         barcode: form.barcode.trim() || null,
         description: form.description.trim() || null,
         price,
+        wholesalePrice,
+        orderPrice,
         costPrice,
         taxType: form.taxType,
         cityTaxRate,

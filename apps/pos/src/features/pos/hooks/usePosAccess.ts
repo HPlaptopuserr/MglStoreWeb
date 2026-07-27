@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { API, API_BASE } from "@/lib/api";
-import { isFeatureEnabled, POS_FEATURE_KEY } from "@/lib/vendor-features";
+import {
+  isFeatureEnabled,
+  MULTI_PRICE_SALES_FEATURE_KEY,
+  POS_FEATURE_KEY,
+} from "@/lib/vendor-features";
 
 type PosAccessStatus = "checking" | "enabled" | "disabled";
 
@@ -32,6 +36,7 @@ export function usePosAccess() {
   const [organizationId, setOrganizationId] = useState("");
   const [status, setStatus] = useState<PosAccessStatus>("checking");
   const [message, setMessage] = useState("POS кассын эрх шалгаж байна...");
+  const [multiPriceEnabled, setMultiPriceEnabled] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem("vendor_token");
@@ -87,6 +92,13 @@ export function usePosAccess() {
           ? ((await res.json()) as Record<string, unknown>)
           : {};
         if (cancelled) return;
+        setMultiPriceEnabled(
+          isFeatureEnabled(
+            settings,
+            MULTI_PRICE_SALES_FEATURE_KEY,
+            organizationId,
+          ),
+        );
 
         if (isFeatureEnabled(settings, POS_FEATURE_KEY, organizationId)) {
           setStatus("enabled");
@@ -116,5 +128,6 @@ export function usePosAccess() {
     posAccess: status,
     posAccessMessage: message,
     posEnabled: status === "enabled",
+    multiPriceEnabled,
   };
 }

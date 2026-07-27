@@ -335,10 +335,50 @@ export function ProductFormModal({
                         />
                       </div>
                     </div>
+                      <>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">
+                            Бөөний үнэ (₮)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium outline-none transition-all focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
+                            placeholder="Тохируулаагүй"
+                            value={form.wholesalePrice}
+                            onChange={(e) =>
+                              setForm((current) => ({
+                                ...current,
+                                wholesalePrice: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">
+                            Захиалгын үнэ (₮)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                            placeholder="Тохируулаагүй"
+                            value={form.orderPrice}
+                            onChange={(e) =>
+                              setForm((current) => ({
+                                ...current,
+                                orderPrice: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                      </>
 
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-slate-700">
-                        Зарах үнэ (₮) <span className="text-red-500">*</span>
+                        Ширхэгийн үнэ (₮) <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₮</span>

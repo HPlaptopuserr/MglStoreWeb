@@ -1123,6 +1123,9 @@ router.post("/pos/sales", async (req, res) => {
             cityTaxRate: true,
             classificationCode: true,
             taxProductCode: true,
+            price: true,
+            wholesalePrice: true,
+            orderPrice: true,
           },
         });
 
@@ -1314,12 +1317,47 @@ router.post("/pos/sales", async (req, res) => {
           });
         }
 
+        const multiPriceSetting = await tx.siteSetting.findUnique({
+          where: {
+            key: `multi-price-sales-enabled-${effectiveOrganizationId}`,
+          },
+          select: { value: true },
+        });
+        const multiPriceEnabled = ["1", "true", "on", "yes"].includes(
+          String(multiPriceSetting?.value || "").trim().toLowerCase(),
+        );
+
         const lineDetails = lines.map((line) => {
           const product = products.find(
             (item: (typeof products)[number]) => item.id === line.productId,
           );
           const discount = Number(line.discountAmount || 0);
-          const unitPrice = Number(line.unitPrice || 0);
+          const priceType =
+            line.priceType === "WHOLESALE" || line.priceType === "ORDER"
+              ? line.priceType
+              : "UNIT";
+          if (!multiPriceEnabled && priceType !== "UNIT") {
+            throw toApiError(
+              403,
+              "Олон төрлийн борлуулалтын үнэ энэ байгууллагад идэвхгүй байна",
+            );
+          }
+          const configuredPrice =
+            priceType === "WHOLESALE"
+              ? product?.wholesalePrice
+              : priceType === "ORDER"
+                ? product?.orderPrice
+                : product?.price;
+          if (configuredPrice == null) {
+            throw toApiError(400, `"${product?.name || line.productId}" бараанд сонгосон үнэ тохируулагдаагүй байна`);
+          }
+          const unitPrice = Number(configuredPrice);
+          if (!moneyMatches(Number(line.unitPrice), unitPrice)) {
+            throw toApiError(
+              409,
+              `"${product?.name || line.productId}" барааны үнэ шинэчлэгдсэн байна. Сагсаа дахин ачаална уу`,
+            );
+          }
           const qty = Number(line.qty || 0);
           const taxType = product?.taxType || "VAT_ABLE";
           const taxRate = taxType === "VAT_ABLE" ? 10 : 0;
@@ -1340,6 +1378,7 @@ router.post("/pos/sales", async (req, res) => {
             productBarcode: product?.barcode || null,
             qty,
             unitPrice,
+            priceType,
             taxAmount,
             taxType,
             taxRate,
@@ -1399,6 +1438,7 @@ router.post("/pos/sales", async (req, res) => {
                 productBarcode: ld.productBarcode,
                 qty: ld.qty,
                 unitPrice: ld.unitPrice,
+                priceType: ld.priceType,
                 taxAmount: ld.taxAmount,
                 taxType: ld.taxType,
                 taxRate: ld.taxRate,

@@ -6,6 +6,7 @@ type Props = {
   totals?: CartTotals;
   onRemove: (productId: string) => void;
   onSetQty: (productId: string, qty: number) => void;
+  onSetPrice?: (productId: string, priceType: CartLine["priceType"], unitPrice: number) => void;
   onClear?: () => void;
   className?: string;
 };
@@ -15,13 +16,14 @@ type CartLineRowProps = {
   index: number;
   onRemove: (productId: string) => void;
   onSetQty: (productId: string, qty: number) => void;
+  onSetPrice?: Props["onSetPrice"];
 };
 
 function money(value: number) {
   return `₮${value.toLocaleString()}`;
 }
 
-function PosCartLineRow({ line, index, onRemove, onSetQty }: CartLineRowProps) {
+function PosCartLineRow({ line, index, onRemove, onSetQty, onSetPrice }: CartLineRowProps) {
   const lineTotal = line.qty * line.unitPrice;
 
   return (
@@ -37,6 +39,26 @@ function PosCartLineRow({ line, index, onRemove, onSetQty }: CartLineRowProps) {
           <p className="mt-1 truncate pl-8 text-[11px] font-semibold text-[#86929a]">
             Нэгж {money(line.unitPrice)} · Нөөц {line.stockQty}
           </p>
+          {onSetPrice ? (
+            <select
+              value={line.priceType}
+              onChange={(event) => {
+                const priceType = event.target.value as CartLine["priceType"];
+                const unitPrice =
+                  priceType === "WHOLESALE"
+                    ? line.wholesalePrice
+                    : priceType === "ORDER"
+                      ? line.orderPrice
+                      : line.baseUnitPrice;
+                if (unitPrice != null) onSetPrice(line.productId, priceType, unitPrice);
+              }}
+              className="ml-8 mt-1 h-7 rounded-md border border-[#3d484f] bg-[#051424] px-2 text-[10px] font-bold text-[#d4e4fa] outline-none focus:border-[#00c2ff]"
+            >
+              <option value="UNIT">Ширхэгийн үнэ</option>
+              {line.wholesalePrice != null ? <option value="WHOLESALE">Бөөний үнэ</option> : null}
+              {line.orderPrice != null ? <option value="ORDER">Захиалгын үнэ</option> : null}
+            </select>
+          ) : null}
         </div>
         <button
           type="button"
@@ -128,7 +150,7 @@ function PosCartSummary({ lines, totals }: { lines: CartLine[]; totals?: CartTot
   );
 }
 
-export function PosCartPanel({ lines, totals, onRemove, onSetQty, onClear, className = "" }: Props) {
+export function PosCartPanel({ lines, totals, onRemove, onSetQty, onSetPrice, onClear, className = "" }: Props) {
   return (
     <section className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-[#273647] bg-[#0d1c2d] shadow-sm ${className}`}>
       <div className="flex shrink-0 items-center justify-between border-b border-[#273647] px-4 py-3">
@@ -167,6 +189,7 @@ export function PosCartPanel({ lines, totals, onRemove, onSetQty, onClear, class
                   index={index}
                   onRemove={onRemove}
                   onSetQty={onSetQty}
+                  onSetPrice={onSetPrice}
                 />
               ))}
             </div>

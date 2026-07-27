@@ -53,6 +53,7 @@ export type SaleLineInput = {
   productId: string;
   qty: number;
   unitPrice: number;
+  priceType?: "UNIT" | "WHOLESALE" | "ORDER";
   discountAmount?: number;
   taxRate?: number;
 };

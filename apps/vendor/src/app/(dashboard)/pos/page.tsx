@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { QRCodeSVG } from "qrcode.react";
 function MobileBlock() {
@@ -93,7 +93,11 @@ import {
   isCustomerDisplayThemeId,
 } from "@/features/pos";
 import { API, authFetch } from "@/lib/api";
-import { isFeatureEnabled, POS_FEATURE_KEY } from "@/lib/vendor-features";
+import {
+  isFeatureEnabled,
+  MULTI_PRICE_SALES_FEATURE_KEY,
+  POS_FEATURE_KEY,
+} from "@/lib/vendor-features";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 
 type PosView = "register" | "checkout" | "history";
@@ -278,6 +282,8 @@ function buildCreditRepaymentCartLines(credit: PosCreditRepaymentSelection): Car
       qty: 1,
       stockQty: 1,
       unitPrice: lineDue,
+      priceType: "UNIT",
+      baseUnitPrice: lineDue,
       taxRate: 0,
       discountAmount: 0,
     };
@@ -553,6 +559,7 @@ export default function PosDemoPage() {
   const router = useRouter();
   const [organizationId, setOrganizationId] = useState("");
   const [posAccess, setPosAccess] = useState<"checking" | "enabled" | "disabled">("checking");
+  const [multiPriceEnabled, setMultiPriceEnabled] = useState(false);
   const [scanBuffer, setScanBuffer] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [lastScannedCode, setLastScannedCode] = useState("");
@@ -954,6 +961,13 @@ export default function PosDemoPage() {
           ? ((await r.json()) as Record<string, unknown>)
           : {};
         if (cancelled) return;
+        setMultiPriceEnabled(
+          isFeatureEnabled(
+            settings,
+            MULTI_PRICE_SALES_FEATURE_KEY,
+            organizationId,
+          ),
+        );
         setPosAccess(
           isFeatureEnabled(settings, POS_FEATURE_KEY, organizationId)
             ? "enabled"
@@ -2086,7 +2100,6 @@ export default function PosDemoPage() {
     if (!branchIdForSale) {
       setScanStatus("not-found");
       setScanMessage("POS кассын салбар сонгогдоогүй байна. Бэлэн төлбөр дээр ч register/салбар шаардлагатай.");
-      setShowSetupPanel(true);
       return;
     }
 
@@ -2120,6 +2133,7 @@ export default function PosDemoPage() {
           productId: line.productId,
           qty: line.qty,
           unitPrice: line.unitPrice,
+          priceType: line.priceType || "UNIT",
           discountAmount: line.discountAmount,
           taxType: line.taxType,
           taxRate: line.taxRate,
@@ -2614,21 +2628,11 @@ export default function PosDemoPage() {
     if (state.cart.length === 0) return;
     if (!registerConfig?.branchId) {
       setScanStatus("not-found");
-      setScanMessage("Төлбөр авахын тулд POS кассаа эхлээд register/салбартай холбоно уу.");
-      setShowSetupPanel(true);
-      return;
-    }
-    if (!shift?.id) {
-      setScanStatus("not-found");
-      setScanMessage("Төлбөр авахын өмнө кассын ээлжээ нээнэ үү.");
-      setShowShiftPanel(true);
-      return;
-    }
-    if (shiftRegisterMismatch) {
-      setScanStatus("not-found");
       setScanMessage(
-        `Таны ээлж ${shift.registerName || "өөр POS касс"} дээр нээлттэй байна.`,
+        "Төлбөр авахын тулд POS кассаа register/салбартай холбоно уу.",
       );
+      setSetupError("");
+      setShowSetupPanel(true);
       return;
     }
 
@@ -3458,8 +3462,19 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      {showSetupPanel && (
-        <div className="rounded-2xl border border-violet-200 bg-white shadow-sm overflow-hidden">
+      {showSetupPanel && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-950/55 p-4 backdrop-blur-sm sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="POS тохируулах"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowSetupPanel(false);
+            }
+          }}
+        >
+        <div className="w-full max-w-4xl overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-2xl">
           {/* panel header */}
           <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
             <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
@@ -3596,6 +3611,8 @@ export default function PosDemoPage() {
             )}
           </div>
         </div>
+        </div>,
+        document.body,
       )}
 
       {registerConfig && !registerConfig.isActive && !showSetupPanel && (
@@ -4562,6 +4579,15 @@ export default function PosDemoPage() {
               className="min-h-[360px] flex-[1_1_360px]"
               lines={state.cart}
               totals={totals}
+              onSetPrice={
+                multiPriceEnabled
+                  ? (productId, priceType, unitPrice) =>
+                      dispatch({
+                        type: "set-price",
+                        payload: { productId, priceType, unitPrice },
+                      })
+                  : undefined
+              }
               onClear={() => {
                 dispatch({ type: "clear-cart" });
                 resetCreditRepaymentMode();

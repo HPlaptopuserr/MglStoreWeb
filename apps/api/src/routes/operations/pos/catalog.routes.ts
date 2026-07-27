@@ -210,6 +210,8 @@ router.get("/pos/products", async (req, res) => {
         barcode: true,
         name: true,
         price: true,
+        wholesalePrice: true,
+        orderPrice: true,
         taxType: true,
         cityTaxRate: true,
         classificationCode: true,
@@ -250,6 +252,9 @@ router.get("/pos/products", async (req, res) => {
           name: p.name,
           imageUrl: p.images[0]?.url ?? null,
           price: Number(p.price),
+          wholesalePrice:
+            p.wholesalePrice == null ? null : Number(p.wholesalePrice),
+          orderPrice: p.orderPrice == null ? null : Number(p.orderPrice),
           stockQty: p.stock,
           taxType: p.taxType || "VAT_ABLE",
           taxRate: p.taxType === "VAT_ABLE" ? 10 : 0,

@@ -112,14 +112,40 @@ type WarehouseInventoryItem = {
   };
 };
 
-function readWarehouseProducts(payload: unknown): WarehouseInventoryItem[] {
-  if (Array.isArray(payload)) return payload as WarehouseInventoryItem[];
-  if (typeof payload !== "object" || payload === null || !("items" in payload)) {
-    return [];
+type WarehouseProductsPage = {
+  items: WarehouseInventoryItem[];
+  total: number;
+  hasMore: boolean;
+};
+
+function readWarehouseProductsPage(
+  payload: unknown,
+  page: number,
+  limit: number,
+): WarehouseProductsPage {
+  if (Array.isArray(payload)) {
+    return {
+      items: payload as WarehouseInventoryItem[],
+      total: payload.length,
+      hasMore: false,
+    };
   }
-  return Array.isArray(payload.items)
-    ? (payload.items as WarehouseInventoryItem[])
+  if (typeof payload !== "object" || payload === null) {
+    return { items: [], total: 0, hasMore: false };
+  }
+
+  const record = payload as Record<string, unknown>;
+  const items = Array.isArray(record.items)
+    ? (record.items as WarehouseInventoryItem[])
     : [];
+  const total =
+    typeof record.total === "number" ? record.total : items.length;
+  const hasMore =
+    typeof record.hasMore === "boolean"
+      ? record.hasMore
+      : page * limit < total;
+
+  return { items, total, hasMore };
 }
 
 const PADAAN_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
@@ -555,18 +581,41 @@ export default function StockRequestsPage() {
       const params = new URLSearchParams({
         organizationId: user.organizationId,
         sort: "name",
+        limit: "100",
       });
-      const res = await authFetch(
-        `${API}/stock-requests/warehouse/${warehouse.id}/products?${params.toString()}`,
-      );
-      const payload = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(
-          payload?.message || "Агуулахын бараа татахад алдаа гарлаа",
+      const pageSize = 100;
+      const fetchedProducts: WarehouseInventoryItem[] = [];
+      const fetchedProductIds = new Set<string>();
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore) {
+        params.set("page", String(page));
+        const res = await authFetch(
+          `${API}/stock-requests/warehouse/${warehouse.id}/products?${params.toString()}`,
         );
+        const payload = await res.json().catch(() => null);
+        if (!res.ok) {
+          const message =
+            typeof payload === "object" &&
+            payload !== null &&
+            "message" in payload &&
+            typeof payload.message === "string"
+              ? payload.message
+              : "Агуулахын бараа татахад алдаа гарлаа";
+          throw new Error(message);
+        }
+
+        const result = readWarehouseProductsPage(payload, page, pageSize);
+        for (const item of result.items) {
+          if (fetchedProductIds.add(item.product.id)) {
+            fetchedProducts.push(item);
+          }
+        }
+        hasMore = result.hasMore && result.items.length > 0;
+        page += 1;
       }
 
-      const fetchedProducts = readWarehouseProducts(payload);
       setWarehouseProducts(fetchedProducts);
 
       if (autoItems && autoItems.length > 0) {
@@ -1266,7 +1315,7 @@ export default function StockRequestsPage() {
 
                   <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800 border-t pt-6 border-slate-100">
                     <Package className="h-4 w-4 text-slate-400" />
-                    Бүх бараа
+                    Бүх бараа ({warehouseProducts.length})
                   </h2>
                 </div>
               )}

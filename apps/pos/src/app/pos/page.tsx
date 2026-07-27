@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { flushSync } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -285,6 +285,8 @@ function buildCreditRepaymentCartLines(credit: PosCreditListItem): CartLine[] {
       qty: 1,
       stockQty: 1,
       unitPrice: lineDue,
+      priceType: "UNIT",
+      baseUnitPrice: lineDue,
       taxRate: 0,
       discountAmount: 0,
     };
@@ -497,7 +499,13 @@ const printReceipt = (receipt: PosReceipt) => {
 
 export default function PosDemoPage() {
   const router = useRouter();
-  const { organizationId, posAccess, posAccessMessage, posEnabled } = usePosAccess();
+  const {
+    organizationId,
+    posAccess,
+    posAccessMessage,
+    posEnabled,
+    multiPriceEnabled,
+  } = usePosAccess();
   const [scanBuffer, setScanBuffer] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [lastScannedCode, setLastScannedCode] = useState("");
@@ -1859,6 +1867,7 @@ export default function PosDemoPage() {
           productId: line.productId,
           qty: line.qty,
           unitPrice: line.unitPrice,
+          priceType: line.priceType || "UNIT",
           discountAmount: line.discountAmount,
           taxType: line.taxType,
           taxRate: line.taxRate,
@@ -2354,7 +2363,6 @@ export default function PosDemoPage() {
     if (!registerConfig?.branchId) {
       setScanStatus("not-found");
       setScanMessage("Төлбөр авахын тулд POS кассаа эхлээд register/салбартай холбоно уу.");
-      setShowSetupPanel(true);
       return;
     }
     if (!shift?.id) {
@@ -3147,26 +3155,41 @@ export default function PosDemoPage() {
         />
       )}
 
-      {showSetupPanel && (
-        <PosRegisterSetupPanel
-          registerConfig={registerConfig}
-          setupTab={setupTab}
-          setupName={setupName}
-          setupBranches={setupBranches}
-          setupBranchId={setupBranchId}
-          setupRegistering={setupRegistering}
-          setupError={setupError}
-          setupExistingId={setupExistingId}
-          onClose={() => setShowSetupPanel(false)}
-          onChangeTab={setSetupTab}
-          onClearError={() => setSetupError("")}
-          onChangeName={setSetupName}
-          onChangeBranchId={setSetupBranchId}
-          onChangeExistingId={setSetupExistingId}
-          onCreate={handleSelfRegister}
-          onConnect={handleConnectExisting}
-          onDisconnect={handleDisconnectRegister}
-        />
+      {showSetupPanel && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto overscroll-contain bg-slate-950/50 p-4 backdrop-blur-sm sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="POS тохируулах"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowSetupPanel(false);
+            }
+          }}
+        >
+          <div className="w-full max-w-4xl">
+            <PosRegisterSetupPanel
+              registerConfig={registerConfig}
+              setupTab={setupTab}
+              setupName={setupName}
+              setupBranches={setupBranches}
+              setupBranchId={setupBranchId}
+              setupRegistering={setupRegistering}
+              setupError={setupError}
+              setupExistingId={setupExistingId}
+              onClose={() => setShowSetupPanel(false)}
+              onChangeTab={setSetupTab}
+              onClearError={() => setSetupError("")}
+              onChangeName={setSetupName}
+              onChangeBranchId={setSetupBranchId}
+              onChangeExistingId={setSetupExistingId}
+              onCreate={handleSelfRegister}
+              onConnect={handleConnectExisting}
+              onDisconnect={handleDisconnectRegister}
+            />
+          </div>
+        </div>,
+        document.body,
       )}
 
       {registerConfig && !registerConfig.isActive && !showSetupPanel && (
@@ -4191,6 +4214,15 @@ export default function PosDemoPage() {
               className="min-h-[360px] flex-[1_1_360px]"
               lines={state.cart}
               totals={totals}
+              onSetPrice={
+                multiPriceEnabled
+                  ? (productId, priceType, unitPrice) =>
+                      dispatch({
+                        type: "set-price",
+                        payload: { productId, priceType, unitPrice },
+                      })
+                  : undefined
+              }
               onClear={() => {
                 dispatch({ type: "clear-cart" });
                 resetCreditRepaymentMode();

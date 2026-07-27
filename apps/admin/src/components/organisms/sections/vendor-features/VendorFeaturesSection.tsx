@@ -11,10 +11,11 @@ import {
   ScanLine,
   Store,
   Globe2,
+  Tags,
   Info,
   AlertTriangle,
 } from "lucide-react";
-import { API, adminFetch } from "@/lib/api";
+import { API, adminFetch, getApiErrorMessage } from "@/lib/api";
 import { OrgSearchDropdown } from "@/components/molecules/OrgSearchDropdown";
 
 type Org = { id: string; name: string; slug: string };
@@ -30,6 +31,15 @@ type FeatureToggle = {
 };
 
 const FEATURES = [
+  {
+    suffix: "multi-price-sales-enabled",
+    label: "Олон төрлийн борлуулалтын үнэ",
+    description:
+      "Барааг ширхэгийн, бөөний болон захиалгын үнээс сонгон борлуулна.",
+    group: "channels",
+    icon: Tags,
+    defaultEnabled: false,
+  },
   {
     suffix: "pos-enabled",
     label: "POS касс",
@@ -233,11 +243,14 @@ export function VendorFeaturesSection() {
           ),
         );
       } else {
-        setError(
+        const message =
           res.status === 401
             ? "Admin session танигдсангүй. Хуудсаа refresh хийгээд, шаардлагатай бол дахин нэвтэрнэ үү."
-            : "Тохиргоо хадгалахад алдаа гарлаа.",
-        );
+            : await getApiErrorMessage(
+                res,
+                "Тохиргоо хадгалахад алдаа гарлаа.",
+              );
+        setError(message);
         setToggles((prev) =>
           prev.map((t, i) => (i === idx ? { ...t, saving: false } : t)),
         );

@@ -1,0 +1,6 @@
+ALTER TABLE "Product"
+  ADD COLUMN "wholesalePrice" DECIMAL(18,2),
+  ADD COLUMN "orderPrice" DECIMAL(18,2);
+
+ALTER TABLE "PosSaleLine"
+  ADD COLUMN "priceType" TEXT NOT NULL DEFAULT 'UNIT';

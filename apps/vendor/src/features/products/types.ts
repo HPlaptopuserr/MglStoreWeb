@@ -19,6 +19,8 @@ export interface Product {
   barcode: string | null;
   description: string | null;
   price: number;
+  wholesalePrice: number | null;
+  orderPrice: number | null;
   costPrice: number | null;
   taxType: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
   cityTaxRate: number;
@@ -43,6 +45,8 @@ export interface FormState {
   barcode: string;
   description: string;
   price: string;
+  wholesalePrice: string;
+  orderPrice: string;
   costPrice: string;
   taxType: "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
   cityTaxRate: string;
