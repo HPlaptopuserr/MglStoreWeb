@@ -23,6 +23,8 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - name: Generate Prisma Client
+        run: pnpm --filter @mgl/database db:generate
       - name: Build shared types
         run: pnpm --filter @mgl/types build
       - name: Type-check critical workspaces
