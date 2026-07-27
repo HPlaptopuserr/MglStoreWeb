@@ -6,10 +6,13 @@ import {
   BadgePercent,
   CheckCircle2,
   Copy,
-  Search,
   Loader2,
+  Search,
+  UserPlus,
 } from "lucide-react";
 import { API } from "@/lib/api";
+
+type AdvisorTab = "lookup" | "create";
 
 type AgentCodeResult = {
   code: string;
@@ -23,6 +26,7 @@ const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100";
 
 export function AssociationAdvisorPage() {
+  const [activeTab, setActiveTab] = useState<AdvisorTab>("lookup");
   const [form, setForm] = useState({
     fullName: "",
     phone: "",
@@ -38,7 +42,7 @@ export function AssociationAdvisorPage() {
   const [lookupError, setLookupError] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const visibleAgent = foundAgent || agent;
+  const visibleAgent = activeTab === "lookup" ? foundAgent : agent;
   const membershipUrl = useMemo(() => {
     if (!visibleAgent?.code || typeof window === "undefined") return "";
     return `${window.location.origin}/profile?ref=${encodeURIComponent(visibleAgent.code)}`;
@@ -130,64 +134,66 @@ export function AssociationAdvisorPage() {
           </div>
         </div>
 
-        <section className="rounded-3xl border border-indigo-100 bg-white p-6 shadow-sm">
-          <div className="mb-4 flex items-start gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
-              <Search size={19} />
-            </span>
-            <div>
-              <h2 className="text-base font-black text-slate-950">
-                Бүртгэлтэй зөвлөхийн code хайх
-              </h2>
-              <p className="text-sm font-semibold text-slate-500">
-                Утас, имэйл эсвэл мэдэж байгаа code-оороо хайгаад өөрийн
-                гишүүнчлэлийн link-ээ авна.
-              </p>
+        <AdvisorTabs activeTab={activeTab} onChange={setActiveTab} />
+
+        {activeTab === "lookup" ? (
+          <section
+            id="advisor-lookup-panel"
+            role="tabpanel"
+            aria-labelledby="advisor-lookup-tab"
+            className="rounded-3xl border border-indigo-100 bg-white p-6 shadow-sm"
+          >
+            <div className="mb-4 flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                <Search size={19} />
+              </span>
+              <div>
+                <h2 className="text-base font-black text-slate-950">
+                  Бүртгэлтэй зөвлөхийн code хайх
+                </h2>
+                <p className="text-sm font-semibold text-slate-500">
+                  Утас, имэйл эсвэл мэдэж байгаа code-оороо хайгаад өөрийн
+                  гишүүнчлэлийн link-ээ авна.
+                </p>
+              </div>
             </div>
-          </div>
 
-          <form onSubmit={lookupAgent} className="space-y-3">
-            {lookupError && (
-              <Notice>
-                <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                {lookupError}
-              </Notice>
-            )}
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input
-                value={lookupQuery}
-                onChange={(event) => setLookupQuery(event.target.value)}
-                className={inputClass}
-                placeholder="99001234, name@example.com эсвэл AG9900"
-                required
-              />
-              <button
-                type="submit"
-                disabled={lookingUp}
-                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-black text-white transition hover:bg-indigo-700 disabled:opacity-60"
-              >
-                {lookingUp ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <Search size={16} />
-                )}
-                Хайх
-              </button>
-            </div>
-          </form>
-        </section>
-
-        {visibleAgent && (
-          <AgentCodeCard
-            agent={visibleAgent}
-            copied={copied}
-            membershipUrl={membershipUrl}
-            onCopy={copyLink}
-          />
-        )}
-
-        {!foundAgent && (
+            <form onSubmit={lookupAgent} className="space-y-3">
+              {lookupError && (
+                <Notice>
+                  <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                  {lookupError}
+                </Notice>
+              )}
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  value={lookupQuery}
+                  onChange={(event) => setLookupQuery(event.target.value)}
+                  className={inputClass}
+                  placeholder="99001234, name@example.com эсвэл AG9900"
+                  aria-label="Зөвлөхийг утас, имэйл эсвэл code-оор хайх"
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={lookingUp}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-black text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {lookingUp ? (
+                    <Loader2 size={16} className="animate-spin" />
+                  ) : (
+                    <Search size={16} />
+                  )}
+                  Хайх
+                </button>
+              </div>
+            </form>
+          </section>
+        ) : (
           <form
+            id="advisor-create-panel"
+            role="tabpanel"
+            aria-labelledby="advisor-create-tab"
             onSubmit={submit}
             className="space-y-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
           >
@@ -247,15 +253,103 @@ export function AssociationAdvisorPage() {
             <button
               type="submit"
               disabled={submitting}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-black text-white transition hover:bg-indigo-700 disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-black text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {submitting && <Loader2 size={16} className="animate-spin" />}
               Зөвлөхийн code авах
             </button>
           </form>
         )}
+
+        {visibleAgent && (
+          <AgentCodeCard
+            agent={visibleAgent}
+            copied={copied}
+            membershipUrl={membershipUrl}
+            onCopy={copyLink}
+          />
+        )}
       </div>
     </main>
+  );
+}
+
+function AdvisorTabs({
+  activeTab,
+  onChange,
+}: {
+  activeTab: AdvisorTab;
+  onChange: (tab: AdvisorTab) => void;
+}) {
+  const tabs = [
+    {
+      id: "lookup" as const,
+      label: "Бүртгэлтэй зөвлөх",
+      description: "Code хайх",
+      icon: Search,
+    },
+    {
+      id: "create" as const,
+      label: "Шинэ зөвлөх",
+      description: "Code шинээр авах",
+      icon: UserPlus,
+    },
+  ];
+
+  return (
+    <div
+      role="tablist"
+      aria-label="Зөвлөхийн үйлдэл сонгох"
+      className="grid grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-slate-100 p-1.5 shadow-sm"
+    >
+      {tabs.map((tab) => {
+        const Icon = tab.icon;
+        const isActive = activeTab === tab.id;
+
+        return (
+          <button
+            key={tab.id}
+            id={`advisor-${tab.id}-tab`}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            aria-controls={`advisor-${tab.id}-panel`}
+            tabIndex={isActive ? 0 : -1}
+            onClick={() => onChange(tab.id)}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+                return;
+              }
+              event.preventDefault();
+              const nextTab = tab.id === "lookup" ? "create" : "lookup";
+              onChange(nextTab);
+              document.getElementById(`advisor-${nextTab}-tab`)?.focus();
+            }}
+            className={`flex min-w-0 items-center justify-center gap-2 rounded-xl px-3 py-3 text-left transition sm:gap-3 ${
+              isActive
+                ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200"
+                : "text-slate-500 hover:bg-white/60 hover:text-slate-800"
+            }`}
+          >
+            <span
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                isActive ? "bg-indigo-50" : "bg-slate-200/70"
+              }`}
+            >
+              <Icon size={17} />
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-xs font-black sm:text-sm">
+                {tab.label}
+              </span>
+              <span className="hidden text-[11px] font-semibold text-slate-400 sm:block">
+                {tab.description}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
