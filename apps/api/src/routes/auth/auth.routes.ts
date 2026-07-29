@@ -191,6 +191,8 @@ type AuthOrgContext = {
   businessAttendanceEnabled?: boolean;
   businessAttendanceManualEnabled?: boolean;
   businessTasksEnabled?: boolean;
+  businessDeliveryEnabled?: boolean;
+  capabilities?: string[];
 };
 
 type AuthOrganizationSummary = {
@@ -204,6 +206,12 @@ type AuthOrganizationSummary = {
   type: string | null;
   status: string | null;
   isVerified: boolean;
+  businessOrdersEnabled: boolean;
+  businessInventoryEnabled: boolean;
+  businessAttendanceEnabled: boolean;
+  businessAttendanceManualEnabled: boolean;
+  businessTasksEnabled: boolean;
+  businessDeliveryEnabled: boolean;
 };
 
 async function listUserOrganizations(
@@ -230,6 +238,12 @@ async function listUserOrganizations(
           type: true,
           status: true,
           isVerified: true,
+          businessOrdersEnabled: true,
+          businessInventoryEnabled: true,
+          businessAttendanceEnabled: true,
+          businessAttendanceManualEnabled: true,
+          businessTasksEnabled: true,
+          businessDeliveryEnabled: true,
         },
       },
     },
@@ -246,6 +260,14 @@ async function listUserOrganizations(
     type: membership.organization.type,
     status: membership.organization.status,
     isVerified: membership.organization.isVerified,
+    businessOrdersEnabled: membership.organization.businessOrdersEnabled,
+    businessInventoryEnabled: membership.organization.businessInventoryEnabled,
+    businessAttendanceEnabled:
+      membership.organization.businessAttendanceEnabled,
+    businessAttendanceManualEnabled:
+      membership.organization.businessAttendanceManualEnabled,
+    businessTasksEnabled: membership.organization.businessTasksEnabled,
+    businessDeliveryEnabled: membership.organization.businessDeliveryEnabled,
   }));
 }
 
@@ -293,6 +315,8 @@ function toWebUserPayload(
     businessAttendanceManualEnabled:
       orgInfo?.businessAttendanceManualEnabled ?? false,
     businessTasksEnabled: orgInfo?.businessTasksEnabled ?? true,
+    businessDeliveryEnabled: orgInfo?.businessDeliveryEnabled ?? false,
+    capabilities: orgInfo?.capabilities ?? [],
     organizations,
     termsAcceptedAt: user.termsAcceptedAt || null,
     marketingConsent: Boolean(user.marketingConsent),
@@ -669,6 +693,7 @@ async function resolveVendorLoginMembership(userId: string) {
     select: {
       organizationId: true,
       role: true,
+      capabilities: true,
       organization: {
         select: {
           name: true,
@@ -677,6 +702,7 @@ async function resolveVendorLoginMembership(userId: string) {
           businessAttendanceEnabled: true,
           businessAttendanceManualEnabled: true,
           businessTasksEnabled: true,
+          businessDeliveryEnabled: true,
         },
       },
     },
@@ -695,6 +721,7 @@ async function resolveVendorLoginMembership(userId: string) {
     select: {
       organizationId: true,
       role: true,
+      capabilities: true,
       organization: {
         select: {
           name: true,
@@ -703,6 +730,7 @@ async function resolveVendorLoginMembership(userId: string) {
           businessAttendanceEnabled: true,
           businessAttendanceManualEnabled: true,
           businessTasksEnabled: true,
+          businessDeliveryEnabled: true,
         },
       },
     },
@@ -728,6 +756,9 @@ async function resolveLoginOrganization(
           membership.organization?.businessAttendanceManualEnabled ?? false,
         businessTasksEnabled:
           membership.organization?.businessTasksEnabled ?? true,
+        businessDeliveryEnabled:
+          membership.organization?.businessDeliveryEnabled ?? false,
+        capabilities: membership.capabilities,
       }
     : null;
 }
@@ -748,6 +779,7 @@ async function resolveTokenOrganization(
       select: {
         organizationId: true,
         role: true,
+        capabilities: true,
         organization: {
           select: {
             name: true,
@@ -756,6 +788,7 @@ async function resolveTokenOrganization(
             businessAttendanceEnabled: true,
             businessAttendanceManualEnabled: true,
             businessTasksEnabled: true,
+            businessDeliveryEnabled: true,
           },
         },
       },
@@ -776,6 +809,9 @@ async function resolveTokenOrganization(
           membership.organization?.businessAttendanceManualEnabled ?? false,
         businessTasksEnabled:
           membership.organization?.businessTasksEnabled ?? true,
+        businessDeliveryEnabled:
+          membership.organization?.businessDeliveryEnabled ?? false,
+        capabilities: membership.capabilities,
       };
     }
   }
@@ -811,6 +847,8 @@ function toWebAuthResponse(
       businessAttendanceManualEnabled:
         orgInfo?.businessAttendanceManualEnabled ?? false,
       businessTasksEnabled: orgInfo?.businessTasksEnabled ?? true,
+      businessDeliveryEnabled: orgInfo?.businessDeliveryEnabled ?? false,
+      capabilities: orgInfo?.capabilities ?? [],
       organizations,
     },
   };
@@ -1459,6 +1497,8 @@ router.post("/login", loginAttemptLimiter, async (req, res) => {
         businessAttendanceManualEnabled:
           orgInfo?.businessAttendanceManualEnabled ?? false,
         businessTasksEnabled: orgInfo?.businessTasksEnabled ?? true,
+        businessDeliveryEnabled: orgInfo?.businessDeliveryEnabled ?? false,
+        capabilities: orgInfo?.capabilities ?? [],
       },
     });
   } catch (error) {

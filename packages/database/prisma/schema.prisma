@@ -380,6 +380,7 @@ model Organization {
   businessAttendanceEnabled       Boolean                     @default(true)
   businessAttendanceManualEnabled Boolean                     @default(false)
   businessTasksEnabled            Boolean                     @default(true)
+  businessDeliveryEnabled         Boolean                     @default(false)
   ceoServiceEnabled               Boolean                     @default(false)
   ceoAdviceNotificationsEnabled   Boolean                     @default(true)
   ceoCalendarRemindersEnabled     Boolean                     @default(true)

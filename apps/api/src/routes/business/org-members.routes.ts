@@ -1,5 +1,5 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma, PlatformRole } from "@mgl/database";
+import { prisma, Capability, PlatformRole } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import bcrypt from "bcryptjs";
 import { Permission } from "@mgl/types";
@@ -520,10 +520,11 @@ router.patch("/org/members/:memberId/toggle", requireAuth, async (req, res) => {
 router.patch("/org/members/:memberId", requireAuth, async (req, res) => {
   const user = (req as any).user as AuthPayload;
   const { memberId } = req.params;
-  const { fullName, phone, department } = req.body as {
+  const { fullName, phone, department, capabilities } = req.body as {
     fullName?: string | null;
     phone?: string | null;
     department?: string | null;
+    capabilities?: string[];
   };
 
   try {
@@ -574,6 +575,36 @@ router.patch("/org/members/:memberId", requireAuth, async (req, res) => {
         .json({ message: "Ажилтны мэдээлэл засах эрх хүрэлцэхгүй" });
     }
 
+    if (capabilities !== undefined) {
+      if (!canManageTarget) {
+        return res.status(403).json({
+          message: "Ажилтны тусгай эрх өөрчлөх эрх хүрэлцэхгүй",
+        });
+      }
+      if (
+        !Array.isArray(capabilities) ||
+        capabilities.some(
+          (item) => !Object.values(Capability).includes(item as Capability),
+        )
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Тусгай эрхийн утга буруу байна" });
+      }
+      if (capabilities.includes(Capability.DELIVERY_DRIVER)) {
+        const organization = await prisma.organization.findUnique({
+          where: { id: targetMember.organizationId },
+          select: { businessDeliveryEnabled: true },
+        });
+        if (!organization?.businessDeliveryEnabled) {
+          return res.status(409).json({
+            message:
+              "Admin тохиргооноос хүргэлтийн ажиллагааг эхлээд идэвхжүүлнэ үү",
+          });
+        }
+      }
+    }
+
     if (fullName !== undefined && !cleanOptionalText(fullName)) {
       return res.status(400).json({ message: "Нэр хоосон байж болохгүй" });
     }
@@ -606,6 +637,13 @@ router.patch("/org/members/:memberId", requireAuth, async (req, res) => {
           await tx.organizationMember.update({
             where: { id: memberId },
             data: { department: cleanOptionalText(department) },
+          });
+        }
+
+        if (canManageTarget && capabilities !== undefined) {
+          await tx.organizationMember.update({
+            where: { id: memberId },
+            data: { capabilities: capabilities as Capability[] },
           });
         }
 

@@ -129,6 +129,7 @@ const toBusinessAppControlPayload = (organization: {
   businessAttendanceEnabled: boolean;
   businessAttendanceManualEnabled: boolean;
   businessTasksEnabled: boolean;
+  businessDeliveryEnabled: boolean;
   ceoServiceEnabled: boolean;
   ceoAdviceNotificationsEnabled: boolean;
   ceoCalendarRemindersEnabled: boolean;
@@ -163,6 +164,7 @@ const toBusinessAppControlPayload = (organization: {
     inventory: organization.businessInventoryEnabled,
     attendance: organization.businessAttendanceEnabled,
     tasks: organization.businessTasksEnabled,
+    delivery: organization.businessDeliveryEnabled,
   },
   ceoService: {
     enabled: organization.ceoServiceEnabled,
@@ -531,6 +533,7 @@ router.get(
           businessAttendanceEnabled: true,
           businessAttendanceManualEnabled: true,
           businessTasksEnabled: true,
+          businessDeliveryEnabled: true,
           ceoServiceEnabled: true,
           ceoAdviceNotificationsEnabled: true,
           ceoCalendarRemindersEnabled: true,
@@ -597,6 +600,7 @@ router.patch(
           inventory?: boolean;
           attendance?: boolean;
           tasks?: boolean;
+          delivery?: boolean;
         };
         settings?: {
           attendanceManual?: boolean;
@@ -643,6 +647,9 @@ router.patch(
         }
         if (body.features.tasks !== undefined) {
           data.businessTasksEnabled = Boolean(body.features.tasks);
+        }
+        if (body.features.delivery !== undefined) {
+          data.businessDeliveryEnabled = Boolean(body.features.delivery);
         }
       }
       if (body.settings?.attendanceManual !== undefined) {
@@ -695,6 +702,7 @@ router.patch(
           businessAttendanceEnabled: true,
           businessAttendanceManualEnabled: true,
           businessTasksEnabled: true,
+          businessDeliveryEnabled: true,
           ceoServiceEnabled: true,
           ceoAdviceNotificationsEnabled: true,
           ceoCalendarRemindersEnabled: true,

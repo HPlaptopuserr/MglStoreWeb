@@ -9,6 +9,7 @@ import {
   Package,
   ReceiptText,
   ShieldAlert,
+  Truck,
 } from "lucide-react";
 
 export type BusinessAppFeatures = {
@@ -16,6 +17,7 @@ export type BusinessAppFeatures = {
   inventory: boolean;
   attendance: boolean;
   tasks: boolean;
+  delivery: boolean;
 };
 
 export type BusinessAppSettings = {
@@ -68,6 +70,14 @@ export type AppFeatureOption = {
 
 export const FEATURE_OPTIONS: AppFeatureOption[] = [
   {
+    key: "delivery",
+    label: "Хүргэлтийн ажиллагаа",
+    shortLabel: "Delivery",
+    description:
+      "Удирдах ажилтан жолоочийн эрх оноож, хүргэлтийн ажилтны тусгай интерфейс ашиглах боломж нээнэ.",
+    icon: Truck,
+  },
+  {
     key: "tasks",
     label: "Даалгавар",
     shortLabel: "Tasks",
@@ -104,6 +114,7 @@ export const DEFAULT_FEATURES: BusinessAppFeatures = {
   inventory: true,
   attendance: true,
   tasks: true,
+  delivery: false,
 };
 
 export const DEFAULT_SETTINGS: BusinessAppSettings = {
@@ -232,6 +243,7 @@ export function normalizeBusinessAppControl(
       inventory: organization.features?.inventory ?? true,
       attendance: organization.features?.attendance ?? true,
       tasks: organization.features?.tasks ?? true,
+      delivery: organization.features?.delivery ?? false,
     },
     settings: {
       attendanceManual:
