@@ -8,12 +8,13 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { OrderDispatchAttemptStatus } from "@prisma/client";
 import {
-  DeliveryStatus,
+  DeliverySourceType,
   prisma,
   OrderStatus,
   type Prisma,
 } from "@mgl/database";
 import { isFullAdmin } from "@mgl/types";
+import { routeOrderDelivery } from "../../services/delivery-routing.service";
 
 const router: ExpressRouter = Router();
 const JWT_SECRET =
@@ -130,6 +131,75 @@ const STATUS_FLOW: Record<string, OrderStatus | null> = {
   PREPARED: OrderStatus.SHIPPING,
   // SHIPPING → COMPLETED only via delivery code confirm
 };
+
+router.post(
+  "/vendor/orders/:orderId/delivery-provider",
+  async (req: Request, res: Response) => {
+    try {
+      const user = await getVendorUser(req);
+      if (!user) return res.status(401).json({ message: "Нэвтэрнэ үү" });
+      const providerOrganizationId =
+        typeof req.body.providerOrganizationId === "string"
+          ? req.body.providerOrganizationId
+          : undefined;
+      const order = await prisma.order.findFirst({
+        where: {
+          id: req.params.orderId,
+          organizationId: user.organizationId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+      if (!order) {
+        return res.status(404).json({ message: "Захиалга олдсонгүй" });
+      }
+
+      const delivery = await prisma.$transaction(async (tx) => {
+        await routeOrderDelivery(tx, {
+          orderId: order.id,
+          sourceType: DeliverySourceType.VENDOR_ORDER,
+        });
+        if (!providerOrganizationId) {
+          return tx.delivery.findUnique({ where: { orderId: order.id } });
+        }
+        const partnership = await tx.deliveryPartnership.findFirst({
+          where: {
+            requesterOrganizationId: user.organizationId,
+            providerOrganizationId,
+            status: "ACCEPTED",
+          },
+          select: { id: true, warehouseId: true },
+        });
+        if (!partnership) {
+          throw new Error("DELIVERY_PARTNERSHIP_NOT_FOUND");
+        }
+        return tx.delivery.update({
+          where: { orderId: order.id },
+          data: {
+            sourceType: DeliverySourceType.VENDOR_ORDER,
+            providerOrganizationId,
+            partnershipId: partnership.id,
+            warehouseId: partnership.warehouseId,
+          },
+        });
+      });
+      return res.json(delivery);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message === "DELIVERY_PARTNERSHIP_NOT_FOUND"
+      ) {
+        return res.status(400).json({
+          message: "Сонгосон хүргэлтийн компанитай идэвхтэй хамтын ажиллагаа алга",
+        });
+      }
+      console.error("POST /vendor/orders/:orderId/delivery-provider error", error);
+      return res.status(500).json({
+        message: "Хүргэлтийн компанид захиалга илгээхэд алдаа гарлаа",
+      });
+    }
+  },
+);
 
 /* ══════════════════════════════════════════════════════════
    GET /vendor/orders
@@ -459,10 +529,9 @@ router.post(
           data: { branchId: attempt.branchId, status: OrderStatus.CONFIRMED },
         });
 
-        await tx.delivery.upsert({
-          where: { orderId: attempt.orderId },
-          create: { orderId: attempt.orderId, status: DeliveryStatus.WAITING },
-          update: { status: DeliveryStatus.WAITING, cancelledAt: null },
+        await routeOrderDelivery(tx, {
+          orderId: attempt.orderId,
+          sourceType: DeliverySourceType.WEBSITE_ORDER,
         });
 
         await tx.orderHistory.create({
@@ -474,6 +543,7 @@ router.post(
             note: `${attempt.branch.name} салбар захиалгыг хүлээн авлаа`,
           },
         });
+
       });
 
       return res.json({
@@ -644,6 +714,13 @@ router.patch(
                   : undefined,
           },
         });
+
+        if (nextStatus === OrderStatus.SHIPPING) {
+          await routeOrderDelivery(tx, {
+            orderId: order.id,
+            sourceType: DeliverySourceType.WEBSITE_ORDER,
+          });
+        }
       });
 
       return res.json({

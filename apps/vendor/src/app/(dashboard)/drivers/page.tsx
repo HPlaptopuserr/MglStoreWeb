@@ -48,6 +48,27 @@ type Partnership = {
   _count: { courierAssignments: number };
 };
 
+type DeliveryDriver = {
+  id: string;
+  email: string;
+  profile: { fullName: string; phoneNumber: string | null } | null;
+};
+
+type DeliveryJob = {
+  id: string;
+  sourceType: "WEBSITE_ORDER" | "VENDOR_ORDER" | "WAREHOUSE_DISPATCH";
+  status: string;
+  courierId: string | null;
+  trackingCode: string | null;
+  warehouse: { id: string; name: string } | null;
+  order: {
+    orderNumber: string;
+    shippingAddress: string;
+    phone: string;
+    customer: { profile: { fullName: string; phoneNumber: string | null } | null };
+  } | null;
+};
+
 const statusMeta = {
   PENDING: { label: "Хүлээгдэж байна", className: "bg-amber-50 text-amber-700", icon: Clock3 },
   ACCEPTED: { label: "Идэвхтэй", className: "bg-emerald-50 text-emerald-700", icon: Check },
@@ -70,6 +91,8 @@ function currentOrganizationId() {
 export default function DriversPage() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
+  const [deliveryJobs, setDeliveryJobs] = useState<DeliveryJob[]>([]);
+  const [deliveryDrivers, setDeliveryDrivers] = useState<DeliveryDriver[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -81,15 +104,21 @@ export default function DriversPage() {
     setLoading(true);
     setError("");
     try {
-      const [providerRes, partnershipRes] = await Promise.all([
+      const [providerRes, partnershipRes, jobsRes, driversRes] = await Promise.all([
         authFetch(`${API}/delivery-providers`),
         authFetch(`${API}/delivery-partnerships?organizationId=${organizationId}`),
+        authFetch(`${API}/delivery-provider/jobs`),
+        authFetch(`${API}/delivery-provider/drivers`),
       ]);
       if (!providerRes.ok || !partnershipRes.ok) {
         throw new Error("Хүргэлтийн мэдээлэл авахад алдаа гарлаа");
       }
       setProviders((await providerRes.json()) as Provider[]);
       setPartnerships((await partnershipRes.json()) as Partnership[]);
+      setDeliveryJobs(jobsRes.ok ? ((await jobsRes.json()) as DeliveryJob[]) : []);
+      setDeliveryDrivers(
+        driversRes.ok ? ((await driversRes.json()) as DeliveryDriver[]) : [],
+      );
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : "Тодорхойгүй алдаа");
     } finally {
@@ -149,6 +178,25 @@ export default function DriversPage() {
     }
   };
 
+  const assignDriver = async (jobId: string, courierId: string) => {
+    if (!courierId) return;
+    setBusyId(jobId);
+    setError("");
+    try {
+      const response = await authFetch(`${API}/delivery-provider/jobs/${jobId}/assign`, {
+        method: "PATCH",
+        body: JSON.stringify({ courierId }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { message?: string };
+      if (!response.ok) throw new Error(payload.message || "Жолооч оноож чадсангүй");
+      await load();
+    } catch (assignError) {
+      setError(assignError instanceof Error ? assignError.message : "Тодорхойгүй алдаа");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const incoming = partnerships.filter(
     (item) => item.providerOrganizationId === organizationId,
   );
@@ -187,6 +235,59 @@ export default function DriversPage() {
         <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-semibold text-rose-700">
           {error}
         </div>
+      )}
+
+      {deliveryJobs.length > 0 && (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-xl font-black text-slate-900">Ирсэн хүргэлтийн ажлууд</h2>
+            <p className="text-sm text-slate-500">
+              Website, vendor болон warehouse-аас ирсэн хүргэлтийг жолоочид онооно.
+            </p>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {deliveryJobs.map((job) => (
+              <article key={job.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-black text-blue-700">
+                      {job.sourceType === "WAREHOUSE_DISPATCH"
+                        ? "WAREHOUSE"
+                        : job.sourceType === "WEBSITE_ORDER"
+                          ? "WEBSITE"
+                          : "VENDOR"}
+                    </span>
+                    <h3 className="mt-3 font-black text-slate-900">
+                      #{job.order?.orderNumber || job.trackingCode || job.id.slice(-8)}
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {job.warehouse?.name || job.order?.shippingAddress || "Хаяггүй"}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
+                    {job.status}
+                  </span>
+                </div>
+                <label className="mt-5 block text-xs font-bold text-slate-600">
+                  Хүргэлтийн жолооч
+                  <select
+                    value={job.courierId || ""}
+                    disabled={busyId === job.id}
+                    onChange={(event) => assignDriver(job.id, event.target.value)}
+                    className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold outline-none focus:border-slate-400 disabled:opacity-50"
+                  >
+                    <option value="">Жолооч сонгох</option>
+                    {deliveryDrivers.map((driver) => (
+                      <option key={driver.id} value={driver.id}>
+                        {driver.profile?.fullName || driver.email}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </article>
+            ))}
+          </div>
+        </section>
       )}
 
       {incoming.length > 0 && (

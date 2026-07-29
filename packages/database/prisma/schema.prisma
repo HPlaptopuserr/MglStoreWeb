@@ -432,6 +432,8 @@ model Organization {
   deliveryPartnershipsRequested   DeliveryPartnership[]        @relation("DeliveryPartnershipRequester")
   deliveryPartnershipsProvided    DeliveryPartnership[]        @relation("DeliveryPartnershipProvider")
   warehouseCourierAssignments     WarehouseCourierAssignment[] @relation("CourierProviderOrganization")
+  deliveryJobsRequested           Delivery[]                   @relation("DeliveryRequesterOrganization")
+  deliveryJobsProvided            Delivery[]                   @relation("DeliveryProviderOrganization")
 
   @@index([type])
   @@index([status])
@@ -1464,21 +1466,37 @@ model PaymentAttempt {
 }
 
 model Delivery {
-  id           String         @id @default(uuid())
-  orderId      String         @unique
-  courierId    String?
-  status       DeliveryStatus @default(WAITING)
-  trackingCode String?
-  pickupTime   DateTime?
-  deliveredAt  DateTime?
-  proofImage   String?
-  updatedAt    DateTime       @updatedAt
-  cancelledAt  DateTime?
-  createdAt    DateTime       @default(now())
-  courier      User?          @relation("CourierDeliveries", fields: [courierId], references: [id])
-  order        Order          @relation(fields: [orderId], references: [id])
+  id                      String               @id @default(uuid())
+  orderId                 String?              @unique
+  stockDispatchId         String?              @unique
+  sourceType              DeliverySourceType   @default(WEBSITE_ORDER)
+  requesterOrganizationId String?
+  providerOrganizationId  String?
+  partnershipId           String?
+  warehouseId             String?
+  courierId               String?
+  status                  DeliveryStatus       @default(WAITING)
+  trackingCode            String?
+  pickupTime              DateTime?
+  deliveredAt             DateTime?
+  proofImage              String?
+  updatedAt               DateTime             @updatedAt
+  cancelledAt             DateTime?
+  createdAt               DateTime             @default(now())
+  courier                 User?                @relation("CourierDeliveries", fields: [courierId], references: [id])
+  order                   Order?               @relation(fields: [orderId], references: [id])
+  stockDispatch           StockDispatch?       @relation(fields: [stockDispatchId], references: [id])
+  requesterOrganization   Organization?        @relation("DeliveryRequesterOrganization", fields: [requesterOrganizationId], references: [id], onDelete: SetNull)
+  providerOrganization    Organization?        @relation("DeliveryProviderOrganization", fields: [providerOrganizationId], references: [id], onDelete: SetNull)
+  partnership             DeliveryPartnership? @relation(fields: [partnershipId], references: [id], onDelete: SetNull)
+  warehouse               Warehouse?           @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
 
   @@index([courierId])
+  @@index([providerOrganizationId, status])
+  @@index([requesterOrganizationId, status])
+  @@index([partnershipId])
+  @@index([warehouseId, status])
+  @@index([sourceType, status])
   @@index([status])
   @@index([createdAt])
 }
@@ -1502,6 +1520,7 @@ model DeliveryPartnership {
   requestedBy             User                         @relation("DeliveryPartnershipRequestedBy", fields: [requestedById], references: [id])
   respondedBy             User?                        @relation("DeliveryPartnershipRespondedBy", fields: [respondedById], references: [id])
   courierAssignments      WarehouseCourierAssignment[]
+  deliveries              Delivery[]
 
   @@index([requesterOrganizationId, status])
   @@index([providerOrganizationId, status])
@@ -1622,6 +1641,7 @@ model Warehouse {
   dispatchReturns      DispatchReturn[]             @relation("WarehouseReturns")
   deliveryPartnerships DeliveryPartnership[]
   courierAssignments   WarehouseCourierAssignment[]
+  deliveries           Delivery[]
 
   @@index([createdById])
   @@index([isActive])
@@ -1773,6 +1793,7 @@ model StockDispatch {
   request        WarehouseStockRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   warehouse      Warehouse             @relation("WarehouseDispatches", fields: [warehouseId], references: [id])
   returns        DispatchReturn[]
+  delivery       Delivery?
 
   @@index([warehouseId])
   @@index([organizationId])
@@ -2176,6 +2197,12 @@ enum DeliveryStatus {
   DELIVERING
   COMPLETED
   CANCELLED
+}
+
+enum DeliverySourceType {
+  WEBSITE_ORDER
+  VENDOR_ORDER
+  WAREHOUSE_DISPATCH
 }
 
 enum DeliveryPartnershipStatus {

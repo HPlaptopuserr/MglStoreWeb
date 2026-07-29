@@ -264,18 +264,39 @@ router.patch("/delivery-partnerships/:id/respond", requireAuth, async (req, res)
       return res.status(409).json({ message: "Энэ хүсэлтийг өмнө нь шийдвэрлэсэн байна" });
     }
 
-    const partnership = await prisma.deliveryPartnership.update({
-      where: { id: req.params.id },
-      data: {
-        status:
-          action === "ACCEPT"
-            ? DeliveryPartnershipStatus.ACCEPTED
-            : DeliveryPartnershipStatus.REJECTED,
-        rejectionReason: action === "REJECT" ? reason?.trim() || null : null,
-        respondedById: user.userId,
-        respondedAt: new Date(),
-      },
-      include: partnershipInclude,
+    const partnership = await prisma.$transaction(async (tx) => {
+      const updated = await tx.deliveryPartnership.update({
+        where: { id: req.params.id },
+        data: {
+          status:
+            action === "ACCEPT"
+              ? DeliveryPartnershipStatus.ACCEPTED
+              : DeliveryPartnershipStatus.REJECTED,
+          rejectionReason: action === "REJECT" ? reason?.trim() || null : null,
+          respondedById: user.userId,
+          respondedAt: new Date(),
+        },
+        include: partnershipInclude,
+      });
+      if (action === "ACCEPT") {
+        await tx.delivery.updateMany({
+          where: {
+            providerOrganizationId: null,
+            status: "WAITING",
+            ...(updated.warehouseId
+              ? { warehouseId: updated.warehouseId }
+              : {
+                  requesterOrganizationId:
+                    updated.requesterOrganizationId || undefined,
+                }),
+          },
+          data: {
+            providerOrganizationId: updated.providerOrganizationId,
+            partnershipId: updated.id,
+          },
+        });
+      }
+      return updated;
     });
     return res.json(partnership);
   } catch (error) {

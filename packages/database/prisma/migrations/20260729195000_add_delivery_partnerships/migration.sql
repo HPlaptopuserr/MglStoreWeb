@@ -1,4 +1,5 @@
 CREATE TYPE "DeliveryPartnershipStatus" AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED');
+CREATE TYPE "DeliverySourceType" AS ENUM ('WEBSITE_ORDER', 'VENDOR_ORDER', 'WAREHOUSE_DISPATCH');
 
 CREATE TABLE "DeliveryPartnership" (
     "id" TEXT NOT NULL,
@@ -48,3 +49,25 @@ ALTER TABLE "WarehouseCourierAssignment" ADD CONSTRAINT "WarehouseCourierAssignm
 ALTER TABLE "WarehouseCourierAssignment" ADD CONSTRAINT "WarehouseCourierAssignment_partnershipId_fkey" FOREIGN KEY ("partnershipId") REFERENCES "DeliveryPartnership"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "WarehouseCourierAssignment" ADD CONSTRAINT "WarehouseCourierAssignment_courierId_fkey" FOREIGN KEY ("courierId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 ALTER TABLE "WarehouseCourierAssignment" ADD CONSTRAINT "WarehouseCourierAssignment_assignedById_fkey" FOREIGN KEY ("assignedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+ALTER TABLE "Delivery" ALTER COLUMN "orderId" DROP NOT NULL;
+ALTER TABLE "Delivery"
+  ADD COLUMN "stockDispatchId" TEXT,
+  ADD COLUMN "sourceType" "DeliverySourceType" NOT NULL DEFAULT 'WEBSITE_ORDER',
+  ADD COLUMN "requesterOrganizationId" TEXT,
+  ADD COLUMN "providerOrganizationId" TEXT,
+  ADD COLUMN "partnershipId" TEXT,
+  ADD COLUMN "warehouseId" TEXT;
+
+CREATE UNIQUE INDEX "Delivery_stockDispatchId_key" ON "Delivery"("stockDispatchId");
+CREATE INDEX "Delivery_providerOrganizationId_status_idx" ON "Delivery"("providerOrganizationId", "status");
+CREATE INDEX "Delivery_requesterOrganizationId_status_idx" ON "Delivery"("requesterOrganizationId", "status");
+CREATE INDEX "Delivery_partnershipId_idx" ON "Delivery"("partnershipId");
+CREATE INDEX "Delivery_warehouseId_status_idx" ON "Delivery"("warehouseId", "status");
+CREATE INDEX "Delivery_sourceType_status_idx" ON "Delivery"("sourceType", "status");
+
+ALTER TABLE "Delivery" ADD CONSTRAINT "Delivery_stockDispatchId_fkey" FOREIGN KEY ("stockDispatchId") REFERENCES "StockDispatch"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Delivery" ADD CONSTRAINT "Delivery_requesterOrganizationId_fkey" FOREIGN KEY ("requesterOrganizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Delivery" ADD CONSTRAINT "Delivery_providerOrganizationId_fkey" FOREIGN KEY ("providerOrganizationId") REFERENCES "Organization"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Delivery" ADD CONSTRAINT "Delivery_partnershipId_fkey" FOREIGN KEY ("partnershipId") REFERENCES "DeliveryPartnership"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "Delivery" ADD CONSTRAINT "Delivery_warehouseId_fkey" FOREIGN KEY ("warehouseId") REFERENCES "Warehouse"("id") ON DELETE SET NULL ON UPDATE CASCADE;

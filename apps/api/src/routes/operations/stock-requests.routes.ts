@@ -45,6 +45,8 @@ import {
 } from "../../services/warehouse-access.service";
 import stockReturnRoutes from "./stock-returns.routes";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
+import { routeWarehouseDispatchDelivery } from "../../services/delivery-routing.service";
+import { transferStockToVendor } from "../../services/stock-transfer.service";
 
 const router: ExpressRouter = Router();
 const padaanUploadsDir = path.resolve(
@@ -346,77 +348,6 @@ const generateInvoiceNumber = async (): Promise<string> => {
   });
 
   return `INV-${yearShort}${month}${day}${String(count + 1).padStart(4, "0")}`;
-};
-
-// Helper: Transfer requested stock to Vendor's product catalog
-const transferStockToVendor = async (
-  tx: Prisma.TransactionClient,
-  request: { organizationId: string; requestNumber: string },
-  items: {
-    productId: string;
-    approvedQuantity: number | null;
-    quantity: number;
-  }[],
-) => {
-  for (const item of items) {
-    const quantity = item.approvedQuantity || item.quantity;
-    if (quantity <= 0) continue;
-
-    const sourceProduct = await tx.product.findUnique({
-      where: { id: item.productId },
-      include: { images: true },
-    });
-
-    if (!sourceProduct) continue;
-
-    let targetProduct;
-    if (sourceProduct.sku) {
-      targetProduct = await tx.product.findFirst({
-        where: {
-          organizationId: request.organizationId,
-          sku: sourceProduct.sku,
-          deletedAt: null,
-        },
-      });
-    }
-
-    if (!targetProduct) {
-      targetProduct = await tx.product.create({
-        data: {
-          organizationId: request.organizationId,
-          masterProductId: sourceProduct.masterProductId,
-          name: sourceProduct.name,
-          description: sourceProduct.description,
-          sku: sourceProduct.sku,
-          barcode: sourceProduct.barcode,
-          unit: sourceProduct.unit,
-          price: sourceProduct.price,
-          costPrice: sourceProduct.costPrice,
-          businessCategoryId: sourceProduct.businessCategoryId,
-          categoryId: sourceProduct.categoryId,
-          isActive: true,
-          stock: quantity,
-          images: {
-            create: sourceProduct.images.map((img) => ({ url: img.url })),
-          },
-        },
-      });
-    } else {
-      targetProduct = await tx.product.update({
-        where: { id: targetProduct.id },
-        data: { stock: { increment: quantity } },
-      });
-    }
-
-    await tx.inventoryLedger.create({
-      data: {
-        productId: targetProduct.id,
-        change: quantity,
-        reason: InventoryReason.TRANSFER_IN,
-        note: `Бараа таталт батлагдсан (${request.requestNumber})`,
-      },
-    });
-  }
 };
 
 // Get all stock requests (Admin sees all, Vendor sees their own)
@@ -2518,7 +2449,7 @@ router.patch(
           });
 
           // Update dispatch status → CONFIRMED
-          return tx.stockDispatch.update({
+          const confirmedDispatch = await tx.stockDispatch.update({
             where: { id },
             data: { status: "CONFIRMED" },
             include: {
@@ -2537,6 +2468,8 @@ router.patch(
               warehouse: { select: { id: true, name: true } },
             },
           });
+          await routeWarehouseDispatchDelivery(tx, id);
+          return confirmedDispatch;
         },
       );
 
