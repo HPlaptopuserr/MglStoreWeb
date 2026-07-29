@@ -2,7 +2,7 @@ import { Router, type Router as ExpressRouter } from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
-import { prisma, WarehouseType } from "@mgl/database";
+import { InventoryReason, prisma, WarehouseType } from "@mgl/database";
 import { Permission, hasPlatformPermission, isFullAdmin } from "@mgl/types";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 import {
@@ -36,6 +36,49 @@ const router: ExpressRouter = Router();
 // the actual ownership boundary used by the applications.
 const ADMIN_MANAGED_WAREHOUSE = WarehouseType.CENTRAL;
 const PARTNER_MANAGED_WAREHOUSE = WarehouseType.VENDOR_INTERNAL;
+
+type ManualDispatchItemInput = {
+  productId: string;
+  quantity: number;
+};
+
+type DispatchAddressSuggestion = {
+  address: string;
+  recipientName: string | null;
+  recipientPhone: string | null;
+  lat: number | null;
+  lng: number | null;
+  lastUsedAt: Date;
+};
+
+class InsufficientWarehouseStockError extends Error {
+  constructor(readonly productId: string) {
+    super("Агуулахын үлдэгдэл хүрэлцэхгүй байна");
+  }
+}
+
+function cleanOptionalText(value: unknown, maxLength: number): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim();
+  return cleaned ? cleaned.slice(0, maxLength) : null;
+}
+
+function parseCoordinate(
+  value: unknown,
+  minimum: number,
+  maximum: number,
+): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum
+    ? parsed
+    : null;
+}
+
+function createManualDispatchNumber(): string {
+  const timestamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+  const random = Math.floor(1000 + Math.random() * 9000);
+  return `WD-${timestamp}-${random}`;
+}
 
 async function assertWarehouseMutationPermission(
   req: Parameters<typeof requireAuth>[0],
@@ -914,6 +957,257 @@ router.post(
       console.error("add warehouse inventory error", error);
       res.status(500).json({
         message: "Агуулахийн бүртгэл нэмэхэд алдаа гарлаа",
+      });
+    }
+  },
+);
+
+// Reuse destinations from both manual dispatches and historical stock requests.
+router.get(
+  "/warehouses/:warehouseId/dispatch-addresses",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { warehouseId } = req.params;
+      if (!(await assertWarehouseMutationPermission(req, res, warehouseId))) {
+        return;
+      }
+
+      const query =
+        typeof req.query.query === "string"
+          ? req.query.query.trim().slice(0, 120)
+          : "";
+      const requestedLimit = Number(req.query.limit);
+      const limit = Number.isInteger(requestedLimit)
+        ? Math.min(20, Math.max(1, requestedLimit))
+        : 8;
+      const addressFilter = query
+        ? { contains: query, mode: "insensitive" as const }
+        : undefined;
+
+      const [manualDispatches, stockRequests] = await Promise.all([
+        prisma.warehouseManualDispatch.findMany({
+          where: {
+            warehouseId,
+            ...(addressFilter ? { address: addressFilter } : {}),
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit * 3,
+          select: {
+            address: true,
+            recipientName: true,
+            recipientPhone: true,
+            lat: true,
+            lng: true,
+            createdAt: true,
+          },
+        }),
+        prisma.warehouseStockRequest.findMany({
+          where: {
+            warehouseId,
+            deliveryAddress: {
+              not: null,
+              ...(addressFilter ?? {}),
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: limit * 3,
+          select: {
+            deliveryAddress: true,
+            deliveryPhone: true,
+            createdAt: true,
+            organization: { select: { name: true } },
+          },
+        }),
+      ]);
+
+      const suggestions = new Map<string, DispatchAddressSuggestion>();
+      for (const dispatch of manualDispatches) {
+        const key = dispatch.address.trim().toLocaleLowerCase("mn");
+        if (!suggestions.has(key)) {
+          suggestions.set(key, {
+            address: dispatch.address,
+            recipientName: dispatch.recipientName,
+            recipientPhone: dispatch.recipientPhone,
+            lat: dispatch.lat,
+            lng: dispatch.lng,
+            lastUsedAt: dispatch.createdAt,
+          });
+        }
+      }
+      for (const request of stockRequests) {
+        const address = request.deliveryAddress?.trim();
+        if (!address) continue;
+        const key = address.toLocaleLowerCase("mn");
+        if (!suggestions.has(key)) {
+          suggestions.set(key, {
+            address,
+            recipientName: request.organization.name,
+            recipientPhone: request.deliveryPhone,
+            lat: null,
+            lng: null,
+            lastUsedAt: request.createdAt,
+          });
+        }
+      }
+
+      return res.json(
+        Array.from(suggestions.values())
+          .sort(
+            (left, right) =>
+              right.lastUsedAt.getTime() - left.lastUsedAt.getTime(),
+          )
+          .slice(0, limit),
+      );
+    } catch (error) {
+      console.error("get dispatch address suggestions error", error);
+      return res.status(500).json({
+        message: "Өмнөх хүргэлтийн хаяг авахад алдаа гарлаа",
+      });
+    }
+  },
+);
+
+router.post(
+  "/warehouses/:warehouseId/manual-dispatches",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { warehouseId } = req.params;
+      if (!(await assertWarehouseMutationPermission(req, res, warehouseId))) {
+        return;
+      }
+
+      const actor = (req as typeof req & { user?: { userId?: string } }).user;
+      if (!actor?.userId) {
+        return res.status(401).json({ message: "Нэвтрэх шаардлагатай" });
+      }
+      const actorId = actor.userId;
+
+      const address = cleanOptionalText(req.body.address, 500);
+      const lat = parseCoordinate(req.body.lat, -90, 90);
+      const lng = parseCoordinate(req.body.lng, -180, 180);
+      const rawItems: unknown[] = Array.isArray(req.body.items)
+        ? req.body.items
+        : [];
+      const items: ManualDispatchItemInput[] = rawItems
+        .map((raw): ManualDispatchItemInput | null => {
+          if (!raw || typeof raw !== "object") return null;
+          const candidate = raw as Record<string, unknown>;
+          const productId =
+            typeof candidate.productId === "string"
+              ? candidate.productId.trim()
+              : "";
+          const quantity = Number(candidate.quantity);
+          return productId && Number.isInteger(quantity) && quantity > 0
+            ? { productId, quantity }
+            : null;
+        })
+        .filter((item): item is ManualDispatchItemInput => item !== null);
+
+      if (!address) {
+        return res.status(400).json({ message: "Хүргэх хаяг шаардлагатай" });
+      }
+      if (lat === null || lng === null) {
+        return res.status(400).json({
+          message: "Газрын зураг дээр хүргэх цэгээ тэмдэглэнэ үү",
+        });
+      }
+      if (items.length === 0 || items.length !== rawItems.length) {
+        return res.status(400).json({
+          message: "Гаргах бараа болон тоо ширхэг буруу байна",
+        });
+      }
+      if (new Set(items.map((item) => item.productId)).size !== items.length) {
+        return res.status(400).json({
+          message: "Нэг барааг давхар оруулах боломжгүй",
+        });
+      }
+
+      const dispatch = await prisma.$transaction(async (tx) => {
+        const warehouse = await tx.warehouse.findFirst({
+          where: {
+            id: warehouseId,
+            deletedAt: null,
+            isActive: true,
+            type: ADMIN_MANAGED_WAREHOUSE,
+          },
+          select: { id: true },
+        });
+        if (!warehouse) throw new Error("WAREHOUSE_NOT_FOUND");
+
+        const dispatchNumber = createManualDispatchNumber();
+        const created = await tx.warehouseManualDispatch.create({
+          data: {
+            dispatchNumber,
+            warehouseId,
+            recipientName: cleanOptionalText(req.body.recipientName, 160),
+            recipientPhone: cleanOptionalText(req.body.recipientPhone, 40),
+            address,
+            lat,
+            lng,
+            reason: cleanOptionalText(req.body.reason, 250),
+            note: cleanOptionalText(req.body.note, 1000),
+            createdById: actorId,
+            items: {
+              create: items.map((item) => ({
+                productId: item.productId,
+                quantity: item.quantity,
+              })),
+            },
+          },
+          include: {
+            items: {
+              include: {
+                product: { select: { id: true, name: true, sku: true } },
+              },
+            },
+          },
+        });
+
+        for (const item of items) {
+          const update = await tx.warehouseInventory.updateMany({
+            where: {
+              warehouseId,
+              productId: item.productId,
+              quantity: { gte: item.quantity },
+            },
+            data: { quantity: { decrement: item.quantity } },
+          });
+          if (update.count !== 1) {
+            throw new InsufficientWarehouseStockError(item.productId);
+          }
+          await tx.inventoryLedger.create({
+            data: {
+              productId: item.productId,
+              change: -item.quantity,
+              reason: InventoryReason.MANUAL_ADJUST,
+              note: `${dispatchNumber} · ${address}`,
+              createdById: actorId,
+              referenceId: created.id,
+              referenceType: "WAREHOUSE_MANUAL_DISPATCH",
+            },
+          });
+          await syncProductStock(tx, item.productId);
+        }
+
+        return created;
+      });
+
+      return res.status(201).json(dispatch);
+    } catch (error) {
+      if (error instanceof InsufficientWarehouseStockError) {
+        return res.status(409).json({
+          message: "Нэг буюу хэд хэдэн барааны үлдэгдэл хүрэлцэхгүй байна",
+          productId: error.productId,
+        });
+      }
+      if (error instanceof Error && error.message === "WAREHOUSE_NOT_FOUND") {
+        return res.status(404).json({ message: "Агуулах олдсонгүй" });
+      }
+      console.error("create warehouse manual dispatch error", error);
+      return res.status(500).json({
+        message: "Бараа гаргалт бүртгэхэд алдаа гарлаа",
       });
     }
   },

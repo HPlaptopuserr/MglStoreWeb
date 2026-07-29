@@ -93,6 +93,7 @@ model User {
   deliveryPartnershipRequests      DeliveryPartnership[]          @relation("DeliveryPartnershipRequestedBy")
   deliveryPartnershipResponses     DeliveryPartnership[]          @relation("DeliveryPartnershipRespondedBy")
   warehouseCourierAssignments      WarehouseCourierAssignment[]   @relation("WarehouseAssignedCourier")
+  warehouseManualDispatches        WarehouseManualDispatch[]      @relation("WarehouseManualDispatchCreatedBy")
   assignedWarehouseCouriers        WarehouseCourierAssignment[]   @relation("WarehouseCourierAssignedBy")
   deliveryDriverProfile            DeliveryDriverProfile?
 
@@ -939,7 +940,7 @@ model Category {
 }
 
 model Product {
-  id                    String                      @id @default(uuid())
+  id                    String                        @id @default(uuid())
   organizationId        String
   masterProductId       String?
   managedByWarehouseId  String?
@@ -950,53 +951,54 @@ model Product {
   sku                   String?
   barcode               String?
   unit                  String?
-  price                 Decimal                     @db.Decimal(18, 2)
-  wholesalePrice        Decimal?                    @db.Decimal(18, 2)
-  orderPrice            Decimal?                    @db.Decimal(18, 2)
-  costPrice             Decimal?                    @db.Decimal(18, 2)
+  price                 Decimal                       @db.Decimal(18, 2)
+  wholesalePrice        Decimal?                      @db.Decimal(18, 2)
+  orderPrice            Decimal?                      @db.Decimal(18, 2)
+  costPrice             Decimal?                      @db.Decimal(18, 2)
   /// Denormalized cache. Canonical stock lives in WarehouseInventory.quantity.
   /// Updated by POS sales and inventory operations. Do not treat as source of truth
   /// when warehouse management is active for this product.
-  stock                 Int                         @default(0)
-  taxType               String                      @default("VAT_ABLE")
-  cityTaxRate           Decimal                     @default(0) @db.Decimal(5, 2)
-  classificationCode    String                      @default("4711000")
+  stock                 Int                           @default(0)
+  taxType               String                        @default("VAT_ABLE")
+  cityTaxRate           Decimal                       @default(0) @db.Decimal(5, 2)
+  classificationCode    String                        @default("4711000")
   taxProductCode        String?
-  isRestaurantMenuItem  Boolean                     @default(false)
+  isRestaurantMenuItem  Boolean                       @default(false)
   menuCategory          String?
   kitchenStation        String?
   preparationMinutes    Int?
-  supplyType            ProductSupplyType           @default(IN_STOCK)
+  supplyType            ProductSupplyType             @default(IN_STOCK)
   preorderLeadTimeDays  Int?
   preorderNote          String?
-  marketplacePriority   Int                         @default(0)
-  isActive              Boolean                     @default(true)
-  reviewStatus          VendorContentReviewStatus   @default(APPROVED)
+  marketplacePriority   Int                           @default(0)
+  isActive              Boolean                       @default(true)
+  reviewStatus          VendorContentReviewStatus     @default(APPROVED)
   reviewedAt            DateTime?
   categoryId            String?
-  createdAt             DateTime                    @default(now())
-  updatedAt             DateTime                    @updatedAt
+  createdAt             DateTime                      @default(now())
+  updatedAt             DateTime                      @updatedAt
   deletedAt             DateTime?
   businessCategoryId    String?
   discounts             Discount[]
   inventoryLogs         InventoryLedger[]
   orderItems            OrderItem[]
-  businessCategory      BusinessCategory?           @relation(fields: [businessCategoryId], references: [id])
-  category              Category?                   @relation(fields: [categoryId], references: [id])
-  organization          Organization                @relation(fields: [organizationId], references: [id])
-  masterProduct         MasterProduct?              @relation(fields: [masterProductId], references: [id], onDelete: SetNull)
-  managedByWarehouse    Warehouse?                  @relation("WarehouseManagedProducts", fields: [managedByWarehouseId], references: [id], onDelete: SetNull)
+  businessCategory      BusinessCategory?             @relation(fields: [businessCategoryId], references: [id])
+  category              Category?                     @relation(fields: [categoryId], references: [id])
+  organization          Organization                  @relation(fields: [organizationId], references: [id])
+  masterProduct         MasterProduct?                @relation(fields: [masterProductId], references: [id], onDelete: SetNull)
+  managedByWarehouse    Warehouse?                    @relation("WarehouseManagedProducts", fields: [managedByWarehouseId], references: [id], onDelete: SetNull)
   images                ProductImage[]
   productRequests       ProductRequest[]
   warehouseInventories  WarehouseInventory[]
-  stockRequestItems     WarehouseStockRequestItem[] @relation("StockRequestProducts")
+  stockRequestItems     WarehouseStockRequestItem[]   @relation("StockRequestProducts")
   posSaleLines          PosSaleLine[]
-  returnItems           DispatchReturnItem[]        @relation("ReturnProducts")
+  returnItems           DispatchReturnItem[]          @relation("ReturnProducts")
   productInteractions   ProductInteraction[]
   productInterestScores ProductInterestScore[]
   restaurantTicketItems RestaurantTicketItem[]
   kitchenTicketItems    KitchenTicketItem[]
   reels                 Reel[]
+  manualDispatchItems   WarehouseManualDispatchItem[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, isActive])
@@ -1667,6 +1669,7 @@ model Warehouse {
   deliveryPartnerships DeliveryPartnership[]
   courierAssignments   WarehouseCourierAssignment[]
   deliveries           Delivery[]
+  manualDispatches     WarehouseManualDispatch[]
 
   @@index([createdById])
   @@index([isActive])
@@ -1713,6 +1716,43 @@ model WarehouseInventory {
   @@index([productId])
   @@index([quantity])
   @@index([showOnWeb])
+}
+
+/// A transactional, operator-created dispatch to an arbitrary destination.
+/// Unlike StockDispatch this does not require a vendor stock request.
+model WarehouseManualDispatch {
+  id             String                        @id @default(uuid())
+  dispatchNumber String                        @unique
+  warehouseId    String
+  recipientName  String?
+  recipientPhone String?
+  address        String
+  lat            Float
+  lng            Float
+  reason         String?
+  note           String?
+  createdById    String
+  createdAt      DateTime                      @default(now())
+  updatedAt      DateTime                      @updatedAt
+  warehouse      Warehouse                     @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  createdBy      User                          @relation("WarehouseManualDispatchCreatedBy", fields: [createdById], references: [id])
+  items          WarehouseManualDispatchItem[]
+
+  @@index([warehouseId, createdAt])
+  @@index([createdById])
+  @@index([address])
+}
+
+model WarehouseManualDispatchItem {
+  id         String                  @id @default(uuid())
+  dispatchId String
+  productId  String
+  quantity   Int
+  dispatch   WarehouseManualDispatch @relation(fields: [dispatchId], references: [id], onDelete: Cascade)
+  product    Product                 @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([dispatchId, productId])
+  @@index([productId])
 }
 
 model WarehouseStockRequest {

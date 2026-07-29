@@ -11,8 +11,11 @@ import {
   PackageMinus,
   AlertTriangle,
   Check,
+  MapPin,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
+import { DispatchDestinationSection } from "@/features/dispatch/DispatchDestinationSection";
+import type { DispatchDestination } from "@/features/dispatch/types";
 
 type InventoryItem = {
   id: string;
@@ -36,6 +39,14 @@ type DispatchItem = {
 
 type WarehouseOption = { id: string; name: string };
 
+const emptyDestination = (): DispatchDestination => ({
+  address: "",
+  recipientName: "",
+  recipientPhone: "",
+  lat: null,
+  lng: null,
+});
+
 export default function DispatchPage() {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
@@ -48,6 +59,9 @@ export default function DispatchPage() {
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [destination, setDestination] =
+    useState<DispatchDestination>(emptyDestination);
+  const [submitError, setSubmitError] = useState("");
 
   // Load warehouses
   useEffect(() => {
@@ -91,6 +105,8 @@ export default function DispatchPage() {
     };
     load();
     setItems([]);
+    setDestination(emptyDestination());
+    setSubmitError("");
   }, [selectedWarehouseId]);
 
   const filteredInventory = useMemo(() => {
@@ -136,33 +152,58 @@ export default function DispatchPage() {
 
   const hasError = items.some((i) => i.quantity > i.available);
   const totalQuantity = items.reduce((sum, i) => sum + i.quantity, 0);
+  const hasDestination =
+    destination.address.trim().length > 0 &&
+    destination.lat !== null &&
+    destination.lng !== null;
 
   const handleSubmit = async () => {
-    if (hasError || items.length === 0 || !selectedWarehouseId) return;
+    if (
+      hasError ||
+      items.length === 0 ||
+      !selectedWarehouseId ||
+      !hasDestination
+    ) {
+      return;
+    }
     setShowConfirm(false);
     setSaving(true);
     setSaved(false);
+    setSubmitError("");
 
     try {
-      for (const item of items) {
-        await wmsFetch(
-          `${API}/warehouses/${selectedWarehouseId}/inventory/${item.productId}`,
-          {
-            method: "PATCH",
-            body: JSON.stringify({
-              quantity: item.available - item.quantity,
-              note: reason
-                ? `Гаргалт: ${reason}. ${note}`
-                : note || "Бараа гаргалт",
-            }),
-          },
-        );
+      const response = await wmsFetch(
+        `${API}/warehouses/${selectedWarehouseId}/manual-dispatches`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            ...destination,
+            reason,
+            note,
+            items: items.map(({ productId, quantity }) => ({
+              productId,
+              quantity,
+            })),
+          }),
+        },
+      );
+      if (!response.ok) {
+        const payload: unknown = await response.json().catch(() => null);
+        const message =
+          payload &&
+          typeof payload === "object" &&
+          "message" in payload &&
+          typeof payload.message === "string"
+            ? payload.message
+            : "Бараа гаргалт бүртгэхэд алдаа гарлаа";
+        throw new Error(message);
       }
 
       setSaved(true);
       setItems([]);
       setReason("");
       setNote("");
+      setDestination(emptyDestination());
       // Refresh inventory
       const res = await wmsFetch(
         `${API}/warehouses/${selectedWarehouseId}/detail`,
@@ -172,9 +213,11 @@ export default function DispatchPage() {
         setInventory(data.inventories || []);
       }
       setTimeout(() => setSaved(false), 3000);
-    } catch (err) {
-      console.error("Dispatch failed:", err);
-      alert("Гаргахад алдаа гарлаа");
+    } catch (error) {
+      console.error("Dispatch failed:", error);
+      setSubmitError(
+        error instanceof Error ? error.message : "Гаргахад алдаа гарлаа",
+      );
     } finally {
       setSaving(false);
     }
@@ -235,6 +278,12 @@ export default function DispatchPage() {
               </div>
             </div>
           </div>
+
+          <DispatchDestinationSection
+            warehouseId={selectedWarehouseId}
+            value={destination}
+            onChange={setDestination}
+          />
 
           {/* Product search */}
           <div className="rounded-xl border border-slate-200 bg-white p-5">
@@ -422,9 +471,28 @@ export default function DispatchPage() {
               </div>
             )}
 
+            {!hasDestination && (
+              <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                <MapPin className="mb-0.5 mr-1 inline h-3 w-3" />
+                Хүргэх хаяг бичиж, газрын зураг дээр цэг сонгоно уу
+              </div>
+            )}
+
+            {submitError && (
+              <div
+                role="alert"
+                className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
+              >
+                <AlertTriangle className="mb-0.5 mr-1 inline h-3 w-3" />
+                {submitError}
+              </div>
+            )}
+
             <button
               onClick={() => setShowConfirm(true)}
-              disabled={saving || items.length === 0 || hasError}
+              disabled={
+                saving || items.length === 0 || hasError || !hasDestination
+              }
               className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
             >
               {saving ? (
@@ -449,7 +517,8 @@ export default function DispatchPage() {
             </h3>
             <p className="mt-2 text-sm text-slate-500">
               {items.length} төрлийн {totalQuantity} ширхэг бараа агуулахаас
-              гаргах гэж байна. Үргэлжлүүлэх үү?
+              гаргаж, <strong>{destination.address}</strong> хаяг руу илгээх гэж
+              байна. Үргэлжлүүлэх үү?
             </p>
             <div className="mt-6 flex gap-3">
               <button
