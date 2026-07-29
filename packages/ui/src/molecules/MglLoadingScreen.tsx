@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { cn } from "../lib";
 
 type MglLoadingScreenProps = {
@@ -8,7 +7,9 @@ type MglLoadingScreenProps = {
   className?: string;
 };
 
-const WALKING_DUCK_GIF = "/loaders/walking-duck.gif?v=5";
+type MglCraneLoaderProps = {
+  className?: string;
+};
 
 export function MglLoadingScreen({
   label = "Ачааллаж байна",
@@ -16,311 +17,500 @@ export function MglLoadingScreen({
 }: MglLoadingScreenProps) {
   return (
     <main
-      className={cn(
-        "grid min-h-dvh place-items-center bg-[radial-gradient(circle_at_50%_30%,#fff7ed_0%,#ffffff_38%,#f8fafc_100%)] px-6 text-slate-950",
-        className,
-      )}
+      className={cn("mgl-loading-screen", className)}
+      aria-label={label}
       aria-busy="true"
       aria-live="polite"
+      role="status"
     >
-      <section className="flex flex-col items-center gap-5 text-center">
-        <WalkingDuck />
-        <div>
-          <p className="text-[11px] font-black uppercase tracking-[0.26em] text-orange-500">
-            MGL Store
-          </p>
-          <p className="mt-2 text-base font-black text-slate-900">{label}</p>
-        </div>
-        <span className="h-1.5 w-36 overflow-hidden rounded-full bg-slate-200">
-          <span className="mgl-loader-bar block h-full w-1/2 rounded-full bg-orange-500" />
-        </span>
-      </section>
+      <MglCraneLoader />
       <style>{`
-        @keyframes mglDuckWalk {
-          0%, 100% { transform: translate3d(-9px, 0, 0) rotate(-1.4deg); }
-          25% { transform: translate3d(-3px, -1px, 0) rotate(1deg); }
-          50% { transform: translate3d(8px, 0, 0) rotate(1.4deg); }
-          75% { transform: translate3d(2px, -1px, 0) rotate(-0.8deg); }
-        }
-
-        @keyframes mglDuckBob {
-          0%, 100% { transform: translateY(0) scaleY(1); }
-          25%, 75% { transform: translateY(-7px) scaleY(1.015); }
-          50% { transform: translateY(0) scaleY(0.985); }
-        }
-
-        @keyframes mglDuckHead {
-          0%, 100% { transform: translateY(0) rotate(-2deg); }
-          25% { transform: translateY(-2px) rotate(3deg); }
-          50% { transform: translateY(1px) rotate(1deg); }
-          75% { transform: translateY(-2px) rotate(-3deg); }
-        }
-
-        @keyframes mglDuckBeak {
-          0%, 100% { transform: rotate(0deg) translateX(0); }
-          25% { transform: rotate(2deg) translateX(1px); }
-          75% { transform: rotate(-2deg) translateX(-1px); }
-        }
-
-        @keyframes mglDuckWing {
-          0%, 100% { transform: rotate(-4deg) translateY(0); }
-          25% { transform: rotate(7deg) translateY(-2px); }
-          50% { transform: rotate(0deg) translateY(1px); }
-          75% { transform: rotate(-9deg) translateY(-1px); }
-        }
-
-        @keyframes mglDuckBlink {
-          0%, 88%, 100% { transform: scaleY(1); }
-          92%, 96% { transform: scaleY(0.12); }
-        }
-
-        @keyframes mglDuckLeftLeg {
-          0%, 100% { transform: rotate(20deg) translateY(0); }
-          25% { transform: rotate(-12deg) translateY(-7px); }
-          50% { transform: rotate(-26deg) translateY(0); }
-          75% { transform: rotate(8deg) translateY(3px); }
-        }
-
-        @keyframes mglDuckRightLeg {
-          0%, 100% { transform: rotate(-26deg) translateY(0); }
-          25% { transform: rotate(8deg) translateY(3px); }
-          50% { transform: rotate(20deg) translateY(0); }
-          75% { transform: rotate(-12deg) translateY(-7px); }
-        }
-
-        @keyframes mglDuckShadow {
-          0%, 100% { transform: translateX(-5px) scaleX(0.8); opacity: 0.2; }
-          25%, 75% { transform: translateX(0) scaleX(0.94); opacity: 0.16; }
-          50% { transform: translateX(5px) scaleX(1.08); opacity: 0.28; }
-        }
-
-        @keyframes mglLoaderBar {
-          0% { transform: translateX(-110%); }
-          50% { transform: translateX(50%); }
-          100% { transform: translateX(220%); }
-        }
-
-        .mgl-duck-walk {
-          animation: mglDuckWalk 1.05s ease-in-out infinite;
-          transform-origin: center bottom;
-        }
-
-        .mgl-duck-body {
-          animation: mglDuckBob 0.52s ease-in-out infinite;
-          transform-origin: center bottom;
-        }
-
-        .mgl-duck-head {
-          animation: mglDuckHead 0.52s ease-in-out infinite;
-          transform-origin: 104px 74px;
-        }
-
-        .mgl-duck-beak {
-          animation: mglDuckBeak 0.52s ease-in-out infinite;
-          transform-origin: 118px 91px;
-        }
-
-        .mgl-duck-wing {
-          animation: mglDuckWing 0.52s ease-in-out infinite;
-          transform-origin: 72px 111px;
-        }
-
-        .mgl-duck-eye {
-          animation: mglDuckBlink 3.4s ease-in-out infinite;
-          transform-box: fill-box;
-          transform-origin: center;
-        }
-
-        .mgl-duck-left-leg {
-          animation: mglDuckLeftLeg 0.52s ease-in-out infinite;
-          transform-origin: 94px 158px;
-        }
-
-        .mgl-duck-right-leg {
-          animation: mglDuckRightLeg 0.52s ease-in-out infinite;
-          transform-origin: 116px 158px;
-        }
-
-        .mgl-duck-shadow {
-          animation: mglDuckShadow 0.52s ease-in-out infinite;
-          transform-origin: center;
-        }
-
-        .mgl-loader-bar {
-          animation: mglLoaderBar 1.15s ease-in-out infinite;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .mgl-duck-walk,
-          .mgl-duck-body,
-          .mgl-duck-head,
-          .mgl-duck-beak,
-          .mgl-duck-wing,
-          .mgl-duck-eye,
-          .mgl-duck-left-leg,
-          .mgl-duck-right-leg,
-          .mgl-duck-shadow {
-            animation: none;
-          }
-
-          .mgl-loader-bar {
-            animation: none;
-            transform: translateX(50%);
-          }
+        .mgl-loading-screen {
+          position: fixed;
+          inset: 0;
+          z-index: 2147483646;
+          display: grid;
+          min-height: 100dvh;
+          place-items: center;
+          padding: 24px;
+          color: #020617;
+          background: radial-gradient(
+            circle at 50% 43%,
+            #ffffff 0%,
+            #fbfcfe 58%,
+            #f4f7fb 100%
+          );
         }
       `}</style>
     </main>
   );
 }
 
-export function WalkingDuck() {
-  const [gifFailed, setGifFailed] = useState(false);
-
-  if (!gifFailed) {
-    return (
-      <div className="relative h-40 w-40 overflow-visible">
-        <span className="absolute bottom-6 left-1/2 h-5 w-24 -translate-x-1/2 rounded-full bg-slate-950/10 blur-md" />
-        <img
-          src={WALKING_DUCK_GIF}
-          alt="Walking duck loading animation"
-          className="relative h-full w-full object-contain drop-shadow-[0_18px_22px_rgba(15,23,42,0.16)]"
-          draggable={false}
-          onError={() => setGifFailed(true)}
-        />
-      </div>
-    );
-  }
-
+export function MglCraneLoader({ className }: MglCraneLoaderProps) {
   return (
-    <div className="mgl-duck-walk h-40 w-40 drop-shadow-[0_18px_24px_rgba(15,23,42,0.12)]">
+    <div
+      className={cn("mgl-crane-loader", className)}
+      aria-hidden="true"
+    >
       <svg
-        viewBox="0 0 220 220"
-        className="h-full w-full"
-        role="img"
-        aria-label="Walking duck loading animation"
+        viewBox="0 0 360 188"
+        className="mgl-crane-loader-svg"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
       >
-        <ellipse
-          className="mgl-duck-shadow"
-          cx="110"
-          cy="184"
-          rx="58"
-          ry="13"
-          fill="#020617"
+        <defs>
+          <linearGradient id="mgl-product-fill" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#fb923c" />
+            <stop offset="1" stopColor="#f97316" />
+          </linearGradient>
+          <linearGradient id="mgl-carton-fill" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#ffffff" />
+            <stop offset="1" stopColor="#f1f5f9" />
+          </linearGradient>
+        </defs>
+
+        <path
+          d="M32 27H328"
+          stroke="#94a3b8"
+          strokeWidth="1.5"
+          strokeDasharray="2.5 3.5"
+        />
+        <path
+          d="M32 30H328"
+          stroke="#e2e8f0"
+          strokeWidth="1"
+          strokeDasharray="1 5"
         />
 
-        <g className="mgl-duck-right-leg">
+        <g className="mgl-crane-secondary">
           <path
-            d="M115 151 C118 160 120 169 123 178"
-            fill="none"
-            stroke="#f97316"
-            strokeLinecap="round"
-            strokeWidth="8"
+            d="M272 28L280 19L288 28L280 37L272 28Z"
+            fill="#fff"
+            stroke="#334155"
+            strokeWidth="2.5"
+            strokeLinejoin="round"
           />
           <path
-            d="M122 181 C136 177 148 181 154 188 C141 195 127 194 116 187"
-            fill="#f97316"
-            stroke="#0f172a"
-            strokeLinejoin="round"
-            strokeWidth="5"
+            d="M275 24H285"
+            stroke="#334155"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+          <path
+            d="M280 37V47"
+            stroke="#64748b"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+          />
+          <path
+            d="M276 48C276 53 284 53 284 48"
+            stroke="#334155"
+            strokeWidth="2"
+            strokeLinecap="round"
           />
         </g>
 
-        <g className="mgl-duck-left-leg">
+        <g className="mgl-crane-main">
           <path
-            d="M95 151 C92 160 90 169 87 178"
-            fill="none"
-            stroke="#f97316"
-            strokeLinecap="round"
-            strokeWidth="8"
-          />
-          <path
-            d="M87 181 C72 178 61 182 54 189 C68 195 84 194 96 187"
-            fill="#f97316"
-            stroke="#0f172a"
+            d="M171 28L180 18L189 28L180 38L171 28Z"
+            fill="#fff"
+            stroke="#334155"
+            strokeWidth="2.8"
             strokeLinejoin="round"
-            strokeWidth="5"
-          />
-        </g>
-
-        <g className="mgl-duck-body">
-          <path
-            d="M67 79 C57 99 55 131 67 151 C82 178 128 181 151 159 C172 139 169 95 151 63 C132 29 91 27 73 52 C68 59 66 68 67 79Z"
-            fill="#ffffff"
-            stroke="#0f172a"
-            strokeLinejoin="round"
-            strokeWidth="7"
           />
           <path
-            d="M86 55 C72 78 70 126 88 151 C99 166 121 168 139 158"
-            fill="none"
-            opacity="0.45"
-            stroke="#e2e8f0"
+            d="M175 23H185"
+            stroke="#334155"
+            strokeWidth="3.5"
             strokeLinecap="round"
-            strokeWidth="5"
           />
           <path
-            className="mgl-duck-wing"
-            d="M70 91 C55 95 48 108 51 125 C54 145 69 155 87 160 C78 146 75 130 78 115"
-            fill="#ffffff"
-            stroke="#0f172a"
+            className="mgl-crane-cable"
+            d="M180 37V67"
+            stroke="#64748b"
+            strokeWidth="1.8"
             strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="7"
           />
-          <g className="mgl-duck-wing">
+          <g className="mgl-crane-hook">
             <path
-              d="M62 122 C52 119 47 112 46 103"
-              fill="none"
-              stroke="#0f172a"
+              d="M176 66C176 72 184 72 184 66"
+              stroke="#334155"
+              strokeWidth="2.2"
               strokeLinecap="round"
-              strokeWidth="6"
             />
-            <path
-              d="M66 145 C56 143 49 136 47 128"
-              fill="none"
-              stroke="#0f172a"
-              strokeLinecap="round"
-              strokeWidth="6"
-            />
+            <g className="mgl-product">
+              <rect
+                x="171"
+                y="74"
+                width="18"
+                height="18"
+                rx="1.5"
+                fill="url(#mgl-product-fill)"
+              />
+              <path d="M171 80H189" stroke="#fed7aa" strokeWidth="1.2" />
+              <path d="M180 74V92" stroke="#fdba74" strokeWidth="1.2" />
+            </g>
           </g>
+        </g>
 
-          <g className="mgl-duck-head">
-            <path
-              d="M83 69 C88 52 105 43 124 50 C138 55 148 68 153 83"
-              fill="none"
-              stroke="#0f172a"
-              strokeLinecap="round"
-              strokeWidth="7"
-            />
-            <g className="mgl-duck-beak">
+        <path
+          d="M24 147H336"
+          stroke="#cbd5e1"
+          strokeWidth="2"
+          strokeLinecap="round"
+        />
+        <path
+          className="mgl-conveyor-belt"
+          d="M29 151H331"
+          stroke="#64748b"
+          strokeWidth="1.6"
+          strokeDasharray="10 10"
+          strokeLinecap="round"
+        />
+        <g fill="#fff" stroke="#94a3b8" strokeWidth="1.4">
+          <circle cx="50" cy="151" r="4" />
+          <circle cx="82" cy="151" r="4" />
+          <circle cx="114" cy="151" r="4" />
+          <circle cx="146" cy="151" r="4" />
+          <circle cx="178" cy="151" r="4" />
+          <circle cx="210" cy="151" r="4" />
+          <circle cx="242" cy="151" r="4" />
+          <circle cx="274" cy="151" r="4" />
+          <circle cx="306" cy="151" r="4" />
+        </g>
+
+        <g className="mgl-carton-flow">
+          <g className="mgl-carton-bounce">
+            <g className="mgl-carton-open-flaps">
               <path
-                d="M114 88 C136 71 162 67 176 77 C166 92 143 103 119 99 Z"
-                fill="#fde047"
-                stroke="#0f172a"
+                d="M154 113L145 100H171L180 113H154Z"
+                fill="#fff"
+                stroke="#334155"
+                strokeWidth="2.5"
                 strokeLinejoin="round"
-                strokeWidth="5"
               />
               <path
-                d="M119 94 C139 91 159 84 173 77"
-                fill="none"
-                stroke="#0f172a"
-                strokeLinecap="round"
-                strokeWidth="4"
-              />
-              <path
-                d="M128 89 C139 82 151 78 164 77"
-                fill="none"
-                opacity="0.55"
-                stroke="#ffffff"
-                strokeLinecap="round"
-                strokeWidth="3"
+                d="M180 113L189 100H215L206 113H180Z"
+                fill="#f8fafc"
+                stroke="#334155"
+                strokeWidth="2.5"
+                strokeLinejoin="round"
               />
             </g>
-            <circle className="mgl-duck-eye" cx="98" cy="75" r="6" fill="#020617" />
-            <circle className="mgl-duck-eye" cx="130" cy="63" r="4" fill="#020617" />
+
+            <path
+              className="mgl-carton-closed-top"
+              d="M154 113L164 105H208L198 113H154Z"
+              fill="#fff"
+              stroke="#334155"
+              strokeWidth="2.5"
+              strokeLinejoin="round"
+            />
+
+            <path
+              d="M154 113H198V146H154V113Z"
+              fill="url(#mgl-carton-fill)"
+              stroke="#334155"
+              strokeWidth="2.8"
+              strokeLinejoin="round"
+            />
+            <path
+              className="mgl-carton-open-side"
+              d="M198 113L208 120V143L198 146V113Z"
+              fill="#e2e8f0"
+              stroke="#334155"
+              strokeWidth="2.8"
+              strokeLinejoin="round"
+            />
+            <path
+              className="mgl-carton-closed-side"
+              d="M198 113L208 105V138L198 146V113Z"
+              fill="#e2e8f0"
+              stroke="#334155"
+              strokeWidth="2.8"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M160 121H192"
+              stroke="#e2e8f0"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+            <g className="mgl-shipping-label">
+              <rect x="165" y="124" width="21" height="12" rx="1" fill="#f97316" />
+              <path d="M169 128H182M169 132H178" stroke="#fff" strokeWidth="1.2" />
+            </g>
           </g>
         </g>
       </svg>
+
+      <span className="mgl-crane-loader-word">Loading</span>
+
+      <style>{`
+        .mgl-crane-loader {
+          --mgl-pack-cycle: 1.25s;
+          display: flex;
+          width: 100%;
+          max-width: 352px;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        .mgl-crane-loader-svg {
+          display: block;
+          width: 100%;
+          height: auto;
+          overflow: visible;
+        }
+
+        .mgl-crane-loader-word {
+          margin-top: -2px;
+          color: #334155;
+          font-size: 10px;
+          font-weight: 900;
+          letter-spacing: 0.46em;
+          line-height: 1.25;
+          text-transform: uppercase;
+        }
+
+        @keyframes mglCartonFlow {
+          0% {
+            opacity: 0;
+            transform: translateX(-132px);
+          }
+          4% {
+            opacity: 1;
+            transform: translateX(-132px);
+          }
+          20%, 61% {
+            opacity: 1;
+            transform: translateX(0);
+          }
+          84% {
+            opacity: 1;
+            transform: translateX(132px);
+          }
+          90% {
+            opacity: 0;
+            transform: translateX(164px);
+          }
+          91% {
+            opacity: 0;
+            transform: translateX(-132px);
+          }
+          96%, 100% {
+            opacity: 1;
+            transform: translateX(-132px);
+          }
+        }
+
+        @keyframes mglCartonBounce {
+          0%, 17%, 23%, 49%, 61%, 66%, 72%, 78%, 84%, 100% {
+            transform: translateY(0) scaleY(1);
+          }
+          20% {
+            transform: translateY(-3px) scaleY(1);
+          }
+          55% {
+            transform: translateY(3px) scaleY(0.94);
+          }
+          69%, 81% {
+            transform: translateY(-2px) scaleY(1);
+          }
+        }
+
+        @keyframes mglCraneLift {
+          0%, 23%, 49%, 100% {
+            transform: translateY(0);
+          }
+          34%, 41% {
+            transform: translateY(35px);
+          }
+        }
+
+        @keyframes mglCraneCable {
+          0%, 23%, 49%, 100% {
+            transform: scaleY(1);
+          }
+          34%, 41% {
+            transform: scaleY(2.18);
+          }
+        }
+
+        @keyframes mglProductVisibility {
+          0%, 40% {
+            opacity: 1;
+            transform: scale(1);
+          }
+          44%, 92% {
+            opacity: 0;
+            transform: scale(0.72);
+          }
+          95%, 100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        @keyframes mglFlapsClose {
+          0%, 47% {
+            transform: scaleY(1);
+          }
+          56%, 90% {
+            transform: scaleY(0.05);
+          }
+          92%, 100% {
+            transform: scaleY(1);
+          }
+        }
+
+        @keyframes mglClosedTop {
+          0%, 51% {
+            opacity: 0;
+          }
+          58%, 90% {
+            opacity: 1;
+          }
+          92%, 100% {
+            opacity: 0;
+          }
+        }
+
+        @keyframes mglOpenSide {
+          0%, 51% {
+            opacity: 1;
+          }
+          58%, 90% {
+            opacity: 0;
+          }
+          92%, 100% {
+            opacity: 1;
+          }
+        }
+
+        @keyframes mglShippingLabel {
+          0%, 55% {
+            opacity: 0;
+            transform: scale(0.7);
+          }
+          61%, 90% {
+            opacity: 1;
+            transform: scale(1);
+          }
+          92%, 100% {
+            opacity: 0;
+            transform: scale(0.7);
+          }
+        }
+
+        @keyframes mglCraneSecondary {
+          0%, 100% {
+            transform: translateX(0);
+          }
+          50% {
+            transform: translateX(-20px);
+          }
+        }
+
+        @keyframes mglConveyor {
+          to {
+            stroke-dashoffset: -40;
+          }
+        }
+
+        .mgl-carton-flow,
+        .mgl-carton-bounce,
+        .mgl-crane-hook,
+        .mgl-crane-cable,
+        .mgl-product,
+        .mgl-carton-open-flaps,
+        .mgl-carton-closed-top,
+        .mgl-carton-open-side,
+        .mgl-carton-closed-side,
+        .mgl-shipping-label,
+        .mgl-crane-secondary {
+          transform-box: fill-box;
+        }
+
+        .mgl-carton-flow {
+          animation: mglCartonFlow var(--mgl-pack-cycle) cubic-bezier(0.65, 0, 0.35, 1) infinite;
+        }
+
+        .mgl-carton-bounce {
+          animation: mglCartonBounce var(--mgl-pack-cycle) ease-in-out infinite;
+          transform-origin: center bottom;
+        }
+
+        .mgl-crane-hook {
+          animation: mglCraneLift var(--mgl-pack-cycle) cubic-bezier(0.65, 0, 0.35, 1) infinite;
+        }
+
+        .mgl-crane-cable {
+          animation: mglCraneCable var(--mgl-pack-cycle) cubic-bezier(0.65, 0, 0.35, 1) infinite;
+          transform-origin: center top;
+        }
+
+        .mgl-product {
+          animation: mglProductVisibility var(--mgl-pack-cycle) ease-in-out infinite;
+          transform-origin: center;
+        }
+
+        .mgl-carton-open-flaps {
+          animation: mglFlapsClose var(--mgl-pack-cycle) cubic-bezier(0.65, 0, 0.35, 1) infinite;
+          transform-origin: center bottom;
+        }
+
+        .mgl-carton-closed-top {
+          animation: mglClosedTop var(--mgl-pack-cycle) ease-in-out infinite;
+        }
+
+        .mgl-carton-open-side {
+          animation: mglOpenSide var(--mgl-pack-cycle) ease-in-out infinite;
+        }
+
+        .mgl-carton-closed-side {
+          animation: mglClosedTop var(--mgl-pack-cycle) ease-in-out infinite;
+        }
+
+        .mgl-shipping-label {
+          animation: mglShippingLabel var(--mgl-pack-cycle) ease-in-out infinite;
+          transform-origin: center;
+        }
+
+        .mgl-crane-secondary {
+          animation: mglCraneSecondary 2.1s ease-in-out infinite;
+        }
+
+        .mgl-conveyor-belt {
+          animation: mglConveyor 0.7s linear infinite;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .mgl-carton-flow {
+            animation: none;
+            transform: translateX(0);
+          }
+
+          .mgl-carton-bounce,
+          .mgl-crane-hook,
+          .mgl-crane-cable,
+          .mgl-product,
+          .mgl-carton-open-flaps,
+          .mgl-carton-closed-top,
+          .mgl-carton-open-side,
+          .mgl-carton-closed-side,
+          .mgl-shipping-label,
+          .mgl-crane-secondary,
+          .mgl-conveyor-belt {
+            animation: none;
+          }
+        }
+      `}</style>
     </div>
   );
 }
+
+/**
+ * Kept as an alias so existing consumers migrate without a breaking UI package change.
+ */
+export const WalkingDuck = MglCraneLoader;
