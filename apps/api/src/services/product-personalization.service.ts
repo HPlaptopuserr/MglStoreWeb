@@ -1,5 +1,5 @@
 import { prisma } from "@mgl/database";
-import { ProductInteractionType } from "@prisma/client";
+import { Prisma, ProductInteractionType } from "@prisma/client";
 import {
   buildProductDiscoveryText,
   normalizeDiscoveryText,
@@ -198,25 +198,63 @@ export async function recordProductInteraction(input: InteractionInput) {
       })
     : null;
 
-  const businessCategoryId =
-    input.businessCategoryId || product?.businessCategoryId || null;
-  const organizationId =
-    input.organizationId || product?.organizationId || null;
+  const candidateBusinessCategoryId =
+    product?.businessCategoryId || input.businessCategoryId || null;
+  const candidateOrganizationId =
+    product?.organizationId || input.organizationId || null;
+  const [validBusinessCategory, validOrganization] = await Promise.all([
+    candidateBusinessCategoryId
+      ? prisma.businessCategory.findUnique({
+          where: { id: candidateBusinessCategoryId },
+          select: { id: true },
+        })
+      : null,
+    candidateOrganizationId
+      ? prisma.organization.findFirst({
+          where: { id: candidateOrganizationId, deletedAt: null },
+          select: { id: true },
+        })
+      : null,
+  ]);
+  const businessCategoryId = validBusinessCategory?.id || null;
+  const organizationId = validOrganization?.id || null;
 
-  await prisma.productInteraction.create({
-    data: {
-      userId,
-      visitorId,
-      type: input.type,
-      weight,
-      productId: product?.id || null,
-      businessCategoryId,
-      organizationId,
-      searchQuery: searchQuery || null,
-      source: input.source?.slice(0, 80) || null,
-      metadata: metadataToJson(input.metadata),
-    },
-  });
+  const eventData = {
+    userId,
+    visitorId,
+    type: input.type,
+    weight,
+    productId: product?.id || null,
+    businessCategoryId,
+    organizationId,
+    searchQuery: searchQuery || null,
+    source: input.source?.slice(0, 80) || null,
+    metadata: metadataToJson(input.metadata),
+  };
+
+  try {
+    await prisma.productInteraction.create({ data: eventData });
+  } catch (error) {
+    if (
+      !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+      error.code !== "P2003"
+    ) {
+      throw error;
+    }
+
+    // Analytics must remain best-effort when a referenced entity is removed
+    // between validation and insertion.
+    await prisma.productInteraction.create({
+      data: {
+        visitorId,
+        type: input.type,
+        weight,
+        searchQuery: searchQuery || null,
+        source: input.source?.slice(0, 80) || null,
+        metadata: metadataToJson(input.metadata),
+      },
+    });
+  }
 
   const updates: Array<Promise<unknown>> = [];
   if (product?.id) {
@@ -275,7 +313,7 @@ export async function recordProductInteraction(input: InteractionInput) {
     );
   }
 
-  await Promise.all(updates);
+  await Promise.allSettled(updates);
   return { ok: true };
 }
 

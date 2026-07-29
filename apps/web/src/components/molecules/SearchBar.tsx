@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Search,
   ChevronDown,
@@ -52,7 +52,6 @@ interface SearchBarProps {
 export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [searchContext, setSearchContext] = useState("Бүгд");
   const [searchQuery, setSearchQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -159,7 +158,9 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
     e?.preventDefault();
     if (!trimmedSearchQuery) return;
     const params = new URLSearchParams(
-      pathname.startsWith("/products") ? searchParams.toString() : "",
+      pathname.startsWith("/products") && typeof window !== "undefined"
+        ? window.location.search
+        : "",
     );
     params.set("search", trimmedSearchQuery);
     params.delete("category");
