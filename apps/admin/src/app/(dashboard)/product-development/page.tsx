@@ -47,6 +47,8 @@ import {
 } from "./product-development.model";
 
 const PRODUCT_PAGE_SIZE = 100;
+const WEB_PRODUCTS_FEATURE_PREFIX = "web-products-enabled-";
+const TRUE_SETTING_VALUES = new Set(["1", "true", "on", "yes"]);
 
 type ProductPageResponse = {
   products: Product[];
@@ -54,10 +56,19 @@ type ProductPageResponse = {
   hasMore: boolean;
 };
 
+function isOrganizationWebEnabled(
+  settings: Record<string, unknown>,
+  organizationId?: string,
+) {
+  if (!organizationId) return false;
+  const value = settings[`${WEB_PRODUCTS_FEATURE_PREFIX}${organizationId}`];
+  return TRUE_SETTING_VALUES.has(String(value ?? "").trim().toLowerCase());
+}
+
 async function fetchAllProducts(): Promise<Product[]> {
   const fetchPage = async (offset: number): Promise<ProductPageResponse> => {
     const response = await adminFetch(
-      `${API}/products?limit=${PRODUCT_PAGE_SIZE}&offset=${offset}&meta=1`,
+      `${API}/products?limit=${PRODUCT_PAGE_SIZE}&offset=${offset}&meta=1&webEligibleOnly=1`,
     );
     if (!response.ok) {
       throw new Error("Барааны жагсаалт авахад алдаа гарлаа");
@@ -133,10 +144,31 @@ export default function ProductDevelopmentPage() {
     ])
       .then(([settings, productData]) => {
         if (!mounted) return;
+        const settingsRecord =
+          settings && typeof settings === "object"
+            ? (settings as Record<string, unknown>)
+            : {};
+        const eligibleProducts = productData.filter((product) =>
+          isOrganizationWebEnabled(settingsRecord, product.organization?.id),
+        );
+        const eligibleProductIds = new Set(
+          eligibleProducts.map((product) => product.id),
+        );
         const parsedShelves = parseShelves(settings?.[SHOWCASE_KEY]);
-        setShelves(parsedShelves.length ? parsedShelves : [createShelf()]);
+        setShelves(
+          parsedShelves.length
+            ? parsedShelves.map((shelf) => ({
+                ...shelf,
+                productIds: shelf.productIds.filter((id) =>
+                  eligibleProductIds.has(id),
+                ),
+              }))
+            : [createShelf()],
+        );
         setFeaturedProductIds(
-          parseProductIds(settings?.[HOMEPAGE_FEATURED_PRODUCTS_KEY]),
+          parseProductIds(settings?.[HOMEPAGE_FEATURED_PRODUCTS_KEY]).filter(
+            (id) => eligibleProductIds.has(id),
+          ),
         );
         setSideBanner(parseSideBanner(settings?.[MARKETPLACE_SIDE_BANNER_KEY]));
         setServicesPromo(
@@ -145,7 +177,7 @@ export default function ProductDevelopmentPage() {
         setAuthLoginBanner(
           parseAuthLoginBanner(settings?.[AUTH_LOGIN_BANNER_KEY]),
         );
-        setProducts(Array.isArray(productData) ? productData : []);
+        setProducts(eligibleProducts);
       })
       .catch((err) => {
         if (!mounted) return;
@@ -351,10 +383,13 @@ export default function ProductDevelopmentPage() {
     setSaving(true);
     setSaved(false);
     setError("");
+    const eligibleProductIds = new Set(products.map((product) => product.id));
     const payload = shelves.map((shelf) => ({
       ...shelf,
       title: shelf.title.trim(),
-      productIds: shelf.productIds.filter(Boolean),
+      productIds: shelf.productIds.filter((id) =>
+        eligibleProductIds.has(id),
+      ),
     }));
 
     try {
@@ -372,7 +407,9 @@ export default function ProductDevelopmentPage() {
           method: "PUT",
           body: JSON.stringify({
             value: JSON.stringify(
-              featuredProductIds.slice(0, HOMEPAGE_FEATURED_PRODUCTS_LIMIT),
+              featuredProductIds
+                .filter((id) => eligibleProductIds.has(id))
+                .slice(0, HOMEPAGE_FEATURED_PRODUCTS_LIMIT),
             ),
           }),
         },

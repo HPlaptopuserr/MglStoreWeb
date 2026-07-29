@@ -1870,7 +1870,7 @@ router.post("/web/login", loginAttemptLimiter, async (req, res) => {
       return res.status(401).json({ message: "Нууц үг буруу байна" });
     }
 
-    if (!isPhone) {
+    if (!isPhone && !user.emailVerified) {
       if (!isSmtpConfigured()) {
         return res
           .status(500)

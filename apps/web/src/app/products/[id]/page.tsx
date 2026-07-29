@@ -15,6 +15,9 @@ import {
   ProductDetailShell,
   type ProductDetailProduct,
 } from "./_components/ProductDetailShell";
+import { ProductMaintenanceState } from "@/components/organisms/commerce/ProductMaintenanceState";
+
+const WEB_PRODUCTS_SETTING_KEY = "web-products-enabled";
 
 function useCountdown(target?: string | null) {
   const [time, setTime] = useState({ d: 0, h: 0, m: 0, s: 0 });
@@ -52,6 +55,9 @@ export default function ProductDetailPage({
   const { user, authFetch } = useAuth();
   const [product, setProduct] = useState<ProductDetailProduct | null>(null);
   const [loading, setLoading] = useState(true);
+  const [webProductsEnabled, setWebProductsEnabled] = useState<boolean | null>(
+    null,
+  );
   const [activeImg, setActiveImg] = useState(0);
   const [wishlisted, setWishlisted] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
@@ -64,10 +70,29 @@ export default function ProductDetailPage({
 
   useEffect(() => {
     setLoading(true);
-    authFetch(`${API}/products/${id}`)
-      .then((response) => (response.ok ? response.json() : null))
-      .then((data) => setProduct(data))
-      .catch(() => setProduct(null))
+    Promise.all([
+      authFetch(`${API}/products/${id}`).then((response) =>
+        response.ok ? response.json() : null,
+      ),
+      fetch(`${API}/site-settings`, { cache: "no-store" }).then(
+        async (response) => {
+          if (!response.ok) return true;
+          const settings = (await response.json()) as Record<string, string>;
+          const raw = settings[WEB_PRODUCTS_SETTING_KEY];
+          return raw === undefined || raw === null || raw === ""
+            ? true
+            : raw === "1" || raw === "true" || raw === "on";
+        },
+      ),
+    ])
+      .then(([data, enabled]) => {
+        setProduct(data);
+        setWebProductsEnabled(enabled);
+      })
+      .catch(() => {
+        setProduct(null);
+        setWebProductsEnabled(true);
+      })
       .finally(() => setLoading(false));
   }, [authFetch, id]);
 
@@ -193,6 +218,10 @@ export default function ProductDetailPage({
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-950 border-t-transparent" />
       </div>
     );
+  }
+
+  if (webProductsEnabled === false) {
+    return <ProductMaintenanceState onRetry={() => window.location.reload()} />;
   }
 
   if (!product) {

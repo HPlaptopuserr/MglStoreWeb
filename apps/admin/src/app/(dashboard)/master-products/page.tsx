@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
 import {
   Bot,
   Download,
+  Globe2,
   Loader2,
   PackageSearch,
   Search,
@@ -192,6 +194,30 @@ export default function MasterProductsPage() {
         />
         <Stat label="Хугацаа" value="90 хоног" icon={<Bot size={19} />} />
       </div>
+
+      <section className="flex flex-col gap-4 rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 to-cyan-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm">
+            <Globe2 size={19} aria-hidden="true" />
+          </div>
+          <div>
+            <h2 className="font-black text-slate-950">
+              Онлайн худалдаанд оролцох байгууллагууд
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm font-semibold leading-5 text-slate-600">
+              Нэгдсэн санд бүртгэх нь website-д автоматаар нийтлэхгүй.
+              Байгууллага тус бүрийн “Онлайн шоп / Хүнсний дэлгүүр” сувгийг
+              нээсний дараа зөвхөн идэвхтэй, батлагдсан бараа харагдана.
+            </p>
+          </div>
+        </div>
+        <Link
+          href="/sections/vendor-features"
+          className="inline-flex h-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-bold text-white transition-colors hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+        >
+          Байгууллагын суваг тохируулах
+        </Link>
+      </section>
 
       {(data?.unlinkedProductCount ?? 0) > 0 && (
         <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between">

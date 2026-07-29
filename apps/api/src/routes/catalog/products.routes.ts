@@ -691,6 +691,7 @@ router.get("/products", optionalAuth, async (req, res) => {
     const rawOffset = parseInt(String(req.query.offset || ""), 10);
     const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
     const includeMeta = isTruthyQueryValue(req.query.meta);
+    const webEligibleOnly = isTruthyQueryValue(req.query.webEligibleOnly);
     const canBypassAllVisibility = canBypassAllWebProductsVisibility(req);
     const canBypassRequestedOrg = requestedOrganizationId
       ? await canBypassWebProductsVisibility(req, requestedOrganizationId)
@@ -759,7 +760,7 @@ router.get("/products", optionalAuth, async (req, res) => {
       return res.json([]);
     }
 
-    if (!canBypassAllVisibility) {
+    if (!canBypassAllVisibility || webEligibleOnly) {
       if (!canBypassRequestedOrg) {
         const visibleOrganizationIds =
           await getWebProductsEnabledOrganizationIds();

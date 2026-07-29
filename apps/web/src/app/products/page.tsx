@@ -20,10 +20,12 @@ import {
   type ProductSearchSuggestion,
 } from "./_components/ProductResultsGrid";
 import { ProductSearchHero } from "./_components/ProductSearchHero";
+import { ProductMaintenanceState } from "@/components/organisms/commerce/ProductMaintenanceState";
 
 const PRODUCTS_PER_PAGE = 16;
 const MARKETPLACE_SIDE_BANNER_KEY = "marketplace-side-banner";
 const MARKETPLACE_SERVICES_PROMO_KEY = "marketplace-services-promo";
+const WEB_PRODUCTS_SETTING_KEY = "web-products-enabled";
 
 type SortKey = "newest" | "price_asc" | "price_desc" | "discount" | "name_asc";
 type StockKey = "all" | "in_stock" | "low_stock" | "sold_out";
@@ -87,17 +89,29 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 const STOCK_OPTIONS: { key: StockKey; label: string; description: string }[] = [
   { key: "all", label: "Бүх төлөв", description: "Нөөц харгалзахгүй" },
   { key: "in_stock", label: "Нөөцтэй", description: "Зөвхөн авах боломжтой" },
-  { key: "low_stock", label: "Цөөн үлдсэн", description: "5 болон түүнээс бага" },
+  {
+    key: "low_stock",
+    label: "Цөөн үлдсэн",
+    description: "5 болон түүнээс бага",
+  },
   { key: "sold_out", label: "Дууссан", description: "Нөөцгүй бараа" },
 ];
 
-const SUPPLY_OPTIONS: { key: SupplyKey; label: string; description: string }[] = [
-  { key: "all", label: "Бүх бараа", description: "Каталог бүхэлдээ" },
-  { key: "stock", label: "Бэлэн бараа", description: "Нөөцтэй бараанууд" },
-  { key: "preorder", label: "Захиалгаар", description: "Урьдчилсан захиалгатай бараа" },
-];
+const SUPPLY_OPTIONS: { key: SupplyKey; label: string; description: string }[] =
+  [
+    { key: "all", label: "Бүх бараа", description: "Каталог бүхэлдээ" },
+    { key: "stock", label: "Бэлэн бараа", description: "Нөөцтэй бараанууд" },
+    {
+      key: "preorder",
+      label: "Захиалгаар",
+      description: "Урьдчилсан захиалгатай бараа",
+    },
+  ];
 
-const SEARCH_INTENT_SUGGESTIONS: Array<{ triggers: string[]; terms: string[] }> = [
+const SEARCH_INTENT_SUGGESTIONS: Array<{
+  triggers: string[];
+  terms: string[];
+}> = [
   {
     triggers: ["хоол", "хүнс", "идэх", "уух", "гал тогоо", "cooking", "food"],
     terms: ["Хоол хүнс", "хүнс", "супермаркет", "мини маркет"],
@@ -131,9 +145,11 @@ function buildProductsUrl(
   const query = search.trim();
   if (query) params.set("search", query);
   if (supplyType !== "all") params.set("type", supplyType);
-  if (options.sort && options.sort !== "newest") params.set("sort", options.sort);
+  if (options.sort && options.sort !== "newest")
+    params.set("sort", options.sort);
   if (options.discountOnly) params.set("discount", "1");
-  if (options.page && options.page > 1) params.set("page", String(options.page));
+  if (options.page && options.page > 1)
+    params.set("page", String(options.page));
   const qs = params.toString();
   return qs ? `/products?${qs}` : "/products";
 }
@@ -165,10 +181,14 @@ function buildSearchSuggestions({
   };
 
   for (const category of categories) {
-    const categoryText = normalizeSearchText(`${category.name} ${category.slug || ""}`);
+    const categoryText = normalizeSearchText(
+      `${category.name} ${category.slug || ""}`,
+    );
     if (
       categoryText.includes(normalizedQuery) ||
-      normalizedQuery.split(" ").some((token) => token.length > 1 && categoryText.includes(token))
+      normalizedQuery
+        .split(" ")
+        .some((token) => token.length > 1 && categoryText.includes(token))
     ) {
       add({
         type: "category",
@@ -180,10 +200,16 @@ function buildSearchSuggestions({
   }
 
   for (const intent of SEARCH_INTENT_SUGGESTIONS) {
-    if (intent.triggers.some((trigger) => normalizedQuery.includes(normalizeSearchText(trigger)))) {
+    if (
+      intent.triggers.some((trigger) =>
+        normalizedQuery.includes(normalizeSearchText(trigger)),
+      )
+    ) {
       for (const term of intent.terms) {
         const matchedCategory = categories.find((category) =>
-          normalizeSearchText(category.name).includes(normalizeSearchText(term)),
+          normalizeSearchText(category.name).includes(
+            normalizeSearchText(term),
+          ),
         );
         if (matchedCategory) {
           add({
@@ -278,7 +304,9 @@ function parseServicesPromo(raw?: string): MarketplaceServicesPromo | null {
   }
 }
 
-function resolveProjectBanners(projects: unknown[]): MarketplaceProjectBanner[] {
+function resolveProjectBanners(
+  projects: unknown[],
+): MarketplaceProjectBanner[] {
   const banners: MarketplaceProjectBanner[] = [];
 
   for (const project of projects) {
@@ -332,14 +360,27 @@ function ProductsContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const categoryParam = searchParams.get("category");
-  const searchParam = (searchParams.get("search") ?? searchParams.get("q") ?? "").trim();
+  const searchParam = (
+    searchParams.get("search") ??
+    searchParams.get("q") ??
+    ""
+  ).trim();
   const typeParam = searchParams.get("type");
   const sortParam = searchParams.get("sort");
   const discountParam = searchParams.get("discount");
-  const pageParam = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+  const pageParam = Math.max(
+    1,
+    parseInt(searchParams.get("page") || "1", 10) || 1,
+  );
   const supplyParam: SupplyKey =
-    typeParam === "preorder" ? "preorder" : typeParam === "stock" ? "stock" : "all";
-  const initialSortKey: SortKey = SORT_OPTIONS.some((option) => option.key === sortParam)
+    typeParam === "preorder"
+      ? "preorder"
+      : typeParam === "stock"
+        ? "stock"
+        : "all";
+  const initialSortKey: SortKey = SORT_OPTIONS.some(
+    (option) => option.key === sortParam,
+  )
     ? (sortParam as SortKey)
     : "newest";
   const initialDiscountOnly = discountParam === "1" || discountParam === "true";
@@ -347,11 +388,21 @@ function ProductsContent() {
 
   const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([]);
-  const [sideBanner, setSideBanner] = useState<MarketplaceSideBanner | null>(null);
-  const [servicesPromo, setServicesPromo] = useState<MarketplaceServicesPromo | null>(null);
-  const [projectBanners, setProjectBanners] = useState<MarketplaceProjectBanner[]>([]);
+  const [sideBanner, setSideBanner] = useState<MarketplaceSideBanner | null>(
+    null,
+  );
+  const [servicesPromo, setServicesPromo] =
+    useState<MarketplaceServicesPromo | null>(null);
+  const [projectBanners, setProjectBanners] = useState<
+    MarketplaceProjectBanner[]
+  >([]);
   const [productsLoading, setProductsLoading] = useState(true);
-  const [activeCategory, setActiveCategory] = useState<string | null>(categoryParam);
+  const [webProductsEnabled, setWebProductsEnabled] = useState<boolean | null>(
+    null,
+  );
+  const [activeCategory, setActiveCategory] = useState<string | null>(
+    categoryParam,
+  );
   const [currentPage, setCurrentPage] = useState(pageParam);
   const [totalProductCount, setTotalProductCount] = useState(0);
 
@@ -370,14 +421,19 @@ function ProductsContent() {
 
   const resolvedCategoryParam = useMemo(() => {
     if (!categoryParam) return null;
-    const category = apiCategories.find((c) => c.id === categoryParam || c.slug === categoryParam);
+    const category = apiCategories.find(
+      (c) => c.id === categoryParam || c.slug === categoryParam,
+    );
     return category?.id ?? categoryParam;
   }, [apiCategories, categoryParam]);
 
   // Close filter panel on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
+      if (
+        filterPanelRef.current &&
+        !filterPanelRef.current.contains(e.target as Node)
+      ) {
         setFilterPanelOpen(false);
       }
     };
@@ -388,22 +444,48 @@ function ProductsContent() {
   useEffect(() => {
     const loadChromeData = async () => {
       try {
-        const [categoryRes, settingsRes, projectRes] = await Promise.all([
-          fetch(`${API}/business-categories?hasProducts=1`),
-          fetch(`${API}/site-settings/marketplace-chrome`),
-          fetch(`${API}/site-settings/projects`),
-        ]);
+        const [categoryRes, settingsRes, projectRes, siteSettingsRes] =
+          await Promise.all([
+            fetch(`${API}/business-categories?hasProducts=1`),
+            fetch(`${API}/site-settings/marketplace-chrome`),
+            fetch(`${API}/site-settings/projects`),
+            fetch(`${API}/site-settings`, { cache: "no-store" }),
+          ]);
         if (categoryRes.ok) setApiCategories(await categoryRes.json());
         if (settingsRes.ok) {
           const settings = await settingsRes.json();
-          setSideBanner(parseSideBanner(settings?.[MARKETPLACE_SIDE_BANNER_KEY]));
-          setServicesPromo(parseServicesPromo(settings?.[MARKETPLACE_SERVICES_PROMO_KEY]));
+          setSideBanner(
+            parseSideBanner(settings?.[MARKETPLACE_SIDE_BANNER_KEY]),
+          );
+          setServicesPromo(
+            parseServicesPromo(settings?.[MARKETPLACE_SERVICES_PROMO_KEY]),
+          );
         }
         if (projectRes.ok) {
           const data = await projectRes.json();
-          setProjectBanners(resolveProjectBanners(Array.isArray(data?.projects) ? data.projects : []));
+          setProjectBanners(
+            resolveProjectBanners(
+              Array.isArray(data?.projects) ? data.projects : [],
+            ),
+          );
         }
-      } catch {}
+        if (siteSettingsRes.ok) {
+          const settings = (await siteSettingsRes.json()) as Record<
+            string,
+            string
+          >;
+          const raw = settings[WEB_PRODUCTS_SETTING_KEY];
+          setWebProductsEnabled(
+            raw === undefined || raw === null || raw === ""
+              ? true
+              : raw === "1" || raw === "true" || raw === "on",
+          );
+        } else {
+          setWebProductsEnabled(true);
+        }
+      } catch {
+        setWebProductsEnabled(true);
+      }
     };
     loadChromeData();
   }, []);
@@ -416,7 +498,8 @@ function ProductsContent() {
       try {
         const params = new URLSearchParams();
         if (activeCategory) params.set("businessCategoryId", activeCategory);
-        if (selectedOrganization) params.set("organizationId", selectedOrganization);
+        if (selectedOrganization)
+          params.set("organizationId", selectedOrganization);
         if (debouncedSearch) params.set("search", debouncedSearch);
         if (supplyFilter !== "all") params.set("type", supplyFilter);
         if (sortKey !== "newest") params.set("sort", sortKey);
@@ -433,19 +516,39 @@ function ProductsContent() {
         const res = await authFetch(url);
         if (!res.ok) return;
         const data = (await res.json()) as ProductsApiResponse;
-        const products = Array.isArray(data) ? data : Array.isArray(data.products) ? data.products : [];
-        const total = Array.isArray(data) ? data.length : data.total ?? products.length;
+        const products = Array.isArray(data)
+          ? data
+          : Array.isArray(data.products)
+            ? data.products
+            : [];
+        const total = Array.isArray(data)
+          ? data.length
+          : (data.total ?? products.length);
         if (cancelled) return;
         setApiProducts(products);
         setTotalProductCount(total);
-      } catch {}
-      finally { setProductsLoading(false); }
+      } catch {
+      } finally {
+        setProductsLoading(false);
+      }
     };
     loadProducts();
     return () => {
       cancelled = true;
     };
-  }, [activeCategory, authFetch, currentPage, debouncedSearch, discountOnly, priceMax, priceMin, selectedOrganization, sortKey, stockFilter, supplyFilter]);
+  }, [
+    activeCategory,
+    authFetch,
+    currentPage,
+    debouncedSearch,
+    discountOnly,
+    priceMax,
+    priceMin,
+    selectedOrganization,
+    sortKey,
+    stockFilter,
+    supplyFilter,
+  ]);
 
   useEffect(() => {
     if (!activeCategory) return;
@@ -474,7 +577,14 @@ function ProductsContent() {
     setSortKey(initialSortKey);
     setDiscountOnly(initialDiscountOnly);
     setCurrentPage(pageParam);
-  }, [resolvedCategoryParam, searchParam, supplyParam, initialSortKey, initialDiscountOnly, pageParam]);
+  }, [
+    resolvedCategoryParam,
+    searchParam,
+    supplyParam,
+    initialSortKey,
+    initialDiscountOnly,
+    pageParam,
+  ]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -487,7 +597,10 @@ function ProductsContent() {
     setActiveCategory(catId);
     setCurrentPage(1);
     router.push(
-      buildProductsUrl(catId, searchQuery, supplyFilter, { sort: sortKey, discountOnly }),
+      buildProductsUrl(catId, searchQuery, supplyFilter, {
+        sort: sortKey,
+        discountOnly,
+      }),
       { scroll: false },
     );
   };
@@ -577,11 +690,16 @@ function ProductsContent() {
     sortKey !== "newest",
   ].filter(Boolean).length;
 
-  const supplyCounts = useMemo(() => ({
-    all: totalProductCount,
-    stock: apiProducts.filter((p) => p.supplyType !== "CHINA_PREORDER").length,
-    preorder: apiProducts.filter((p) => p.supplyType === "CHINA_PREORDER").length,
-  }), [apiProducts, totalProductCount]);
+  const supplyCounts = useMemo(
+    () => ({
+      all: totalProductCount,
+      stock: apiProducts.filter((p) => p.supplyType !== "CHINA_PREORDER")
+        .length,
+      preorder: apiProducts.filter((p) => p.supplyType === "CHINA_PREORDER")
+        .length,
+    }),
+    [apiProducts, totalProductCount],
+  );
 
   const availableOrganizations = useMemo(() => {
     const byId = new Map<string, { id: string; name: string; count: number }>();
@@ -596,12 +714,17 @@ function ProductsContent() {
       });
     }
 
-    return [...byId.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+    return [...byId.values()].sort(
+      (a, b) => b.count - a.count || a.name.localeCompare(b.name),
+    );
   }, [apiProducts]);
 
   const processedProducts = apiProducts;
 
-  const totalPages = Math.max(1, Math.ceil(totalProductCount / PRODUCTS_PER_PAGE));
+  const totalPages = Math.max(
+    1,
+    Math.ceil(totalProductCount / PRODUCTS_PER_PAGE),
+  );
 
   const displayProducts = processedProducts;
 
@@ -619,8 +742,12 @@ function ProductsContent() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const activeOrganizationName = availableOrganizations.find((org) => org.id === selectedOrganization)?.name;
-  const activeSupplyName = SUPPLY_OPTIONS.find((option) => option.key === supplyFilter)?.label;
+  const activeOrganizationName = availableOrganizations.find(
+    (org) => org.id === selectedOrganization,
+  )?.name;
+  const activeSupplyName = SUPPLY_OPTIONS.find(
+    (option) => option.key === supplyFilter,
+  )?.label;
   const searchSuggestions = useMemo(
     () =>
       buildSearchSuggestions({
@@ -661,6 +788,10 @@ function ProductsContent() {
   const minPrice = prices.length ? Math.min(...prices) : 0;
   const maxPrice = prices.length ? Math.max(...prices) : 0;
 
+  if (webProductsEnabled === false) {
+    return <ProductMaintenanceState onRetry={() => window.location.reload()} />;
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <ProductSearchHero
@@ -693,11 +824,16 @@ function ProductsContent() {
         onToggleFilters={() => setFilterPanelOpen((value) => !value)}
       />
 
-      <div className="container relative mx-auto px-4 lg:px-8" ref={filterPanelRef}>
+      <div
+        className="container relative mx-auto px-4 lg:px-8"
+        ref={filterPanelRef}
+      >
         {filterPanelOpen && (
           <div className="absolute right-4 top-2 z-50 max-h-[75vh] w-[min(92vw,28rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <span className="text-xs font-black uppercase tracking-wider text-slate-950">Шүүлт & Эрэмбэ</span>
+              <span className="text-xs font-black uppercase tracking-wider text-slate-950">
+                Шүүлт & Эрэмбэ
+              </span>
               <button
                 type="button"
                 onClick={clearFilters}
@@ -709,7 +845,9 @@ function ProductsContent() {
 
             <div className="space-y-5 p-4">
               <div>
-                <p className="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">Дэлгүүр</p>
+                <p className="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                  Дэлгүүр
+                </p>
                 <select
                   value={selectedOrganization}
                   onChange={(event) => {
@@ -728,7 +866,9 @@ function ProductsContent() {
               </div>
 
               <div>
-                <p className="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">Нөөц</p>
+                <p className="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                  Нөөц
+                </p>
                 <div className="grid grid-cols-2 gap-2">
                   {STOCK_OPTIONS.map((option) => (
                     <button
@@ -745,12 +885,18 @@ function ProductsContent() {
                       }`}
                     >
                       <span className="flex items-center gap-1.5 text-xs font-black">
-                        {stockFilter === option.key && <Check className="h-3.5 w-3.5" />}
+                        {stockFilter === option.key && (
+                          <Check className="h-3.5 w-3.5" />
+                        )}
                         {option.label}
                       </span>
-                      <span className={`mt-1 block text-[11px] ${
-                        stockFilter === option.key ? "text-white/70" : "text-slate-400"
-                      }`}>
+                      <span
+                        className={`mt-1 block text-[11px] ${
+                          stockFilter === option.key
+                            ? "text-white/70"
+                            : "text-slate-400"
+                        }`}
+                      >
                         {option.description}
                       </span>
                     </button>
@@ -761,7 +907,9 @@ function ProductsContent() {
               <div className="border-t border-slate-100" />
 
               <div>
-                <p className="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">Үнийн хязгаар</p>
+                <p className="mb-2 text-[11px] font-black uppercase tracking-wider text-slate-500">
+                  Үнийн хязгаар
+                </p>
                 {maxPrice > 0 && (
                   <p className="mb-2 text-[11px] font-semibold text-slate-400">
                     ₮{minPrice.toLocaleString()} - ₮{maxPrice.toLocaleString()}
@@ -809,24 +957,49 @@ function ProductsContent() {
 
         {activeFilterCount > 0 && (
           <div className="flex flex-wrap items-center gap-2 py-3">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">Идэвхтэй:</span>
+            <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+              Идэвхтэй:
+            </span>
             {sortKey !== "newest" && (
-              <FilterChip label={SORT_OPTIONS.find((option) => option.key === sortKey)?.label} onClear={() => handleSortChange("newest")} />
+              <FilterChip
+                label={
+                  SORT_OPTIONS.find((option) => option.key === sortKey)?.label
+                }
+                onClear={() => handleSortChange("newest")}
+              />
             )}
             {discountOnly && (
               <FilterChip label="Хямдралтай" onClear={handleDiscountToggle} />
             )}
             {(priceMin !== "" || priceMax !== "") && (
-              <FilterChip label={`₮${priceMin || "0"} - ₮${priceMax || "∞"}`} onClear={() => { setPriceMin(""); setPriceMax(""); }} />
+              <FilterChip
+                label={`₮${priceMin || "0"} - ₮${priceMax || "∞"}`}
+                onClear={() => {
+                  setPriceMin("");
+                  setPriceMax("");
+                }}
+              />
             )}
             {selectedOrganization && (
-              <FilterChip label={activeOrganizationName} onClear={() => setSelectedOrganization("")} />
+              <FilterChip
+                label={activeOrganizationName}
+                onClear={() => setSelectedOrganization("")}
+              />
             )}
             {stockFilter !== "all" && (
-              <FilterChip label={STOCK_OPTIONS.find((option) => option.key === stockFilter)?.label} onClear={() => setStockFilter("all")} />
+              <FilterChip
+                label={
+                  STOCK_OPTIONS.find((option) => option.key === stockFilter)
+                    ?.label
+                }
+                onClear={() => setStockFilter("all")}
+              />
             )}
             {supplyFilter !== "all" && (
-              <FilterChip label={activeSupplyName} onClear={() => handleSupplyClick("all")} />
+              <FilterChip
+                label={activeSupplyName}
+                onClear={() => handleSupplyClick("all")}
+              />
             )}
             {searchQuery && (
               <FilterChip
@@ -845,32 +1018,38 @@ function ProductsContent() {
                 }}
               />
             )}
-            <button type="button" onClick={clearFilters} className="text-[11px] font-bold text-slate-400 underline hover:text-slate-950">
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="text-[11px] font-bold text-slate-400 underline hover:text-slate-950"
+            >
               Бүгдийг арилгах
             </button>
           </div>
         )}
 
-        {!productsLoading && processedProducts.length === 0 && searchSuggestions.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 py-3">
-            <span className="text-[11px] font-black uppercase tracking-wider text-orange-500">
-              Санал:
-            </span>
-            {searchSuggestions.map((suggestion) => (
-              <button
-                key={`${suggestion.type}-${suggestion.value}`}
-                type="button"
-                onClick={() => handleSearchSuggestionClick(suggestion)}
-                className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full bg-white px-3 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-200 transition active:scale-95 hover:text-orange-600 hover:ring-orange-200"
-              >
-                <span className="truncate">{suggestion.label}</span>
-                <span className="text-[10px] text-slate-400">
-                  {suggestion.type === "category" ? "ангилал" : "хайлт"}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
+        {!productsLoading &&
+          processedProducts.length === 0 &&
+          searchSuggestions.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 py-3">
+              <span className="text-[11px] font-black uppercase tracking-wider text-orange-500">
+                Санал:
+              </span>
+              {searchSuggestions.map((suggestion) => (
+                <button
+                  key={`${suggestion.type}-${suggestion.value}`}
+                  type="button"
+                  onClick={() => handleSearchSuggestionClick(suggestion)}
+                  className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-full bg-white px-3 text-xs font-black text-slate-700 shadow-sm ring-1 ring-slate-200 transition active:scale-95 hover:text-orange-600 hover:ring-orange-200"
+                >
+                  <span className="truncate">{suggestion.label}</span>
+                  <span className="text-[10px] text-slate-400">
+                    {suggestion.type === "category" ? "ангилал" : "хайлт"}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
       </div>
 
       <div className="container mx-auto px-4 pb-12 pt-4 lg:px-8">
@@ -894,7 +1073,13 @@ function ProductsContent() {
   );
 }
 
-function FilterChip({ label, onClear }: { label?: string; onClear: () => void }) {
+function FilterChip({
+  label,
+  onClear,
+}: {
+  label?: string;
+  onClear: () => void;
+}) {
   if (!label) return null;
 
   return (

@@ -60,7 +60,7 @@ const FEATURES = [
   },
   {
     suffix: "web-products-enabled",
-    label: "Web дэлгүүрт бараа нийтлэх",
+    label: "Онлайн шоп / Хүнсний дэлгүүр",
     description: "Өөрийн барааг public web болон store каталогт харуулна.",
     group: "channels",
     icon: Store,
@@ -159,6 +159,8 @@ export function VendorFeaturesSection() {
   const organizationWebProductsEnabled =
     toggles.find((toggle) => toggle.key === "web-products-enabled")?.enabled ??
     false;
+  const webChannelIsLive =
+    globalProductsEnabled && organizationWebProductsEnabled;
 
   useEffect(() => {
     adminFetch(`${API}/partners?minimal=true`)
@@ -446,6 +448,47 @@ export function VendorFeaturesSection() {
             </div>
           </div>
         )}
+
+      {selectedOrgId && !loadingFeatures && (
+        <div
+          className={`rounded-2xl border px-4 py-4 ${
+            webChannelIsLive
+              ? "border-emerald-200 bg-emerald-50"
+              : "border-slate-200 bg-slate-50"
+          }`}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-start gap-3">
+            <Globe2
+              size={18}
+              className={`mt-0.5 shrink-0 ${
+                webChannelIsLive ? "text-emerald-600" : "text-slate-400"
+              }`}
+            />
+            <div>
+              <p
+                className={`text-sm font-black ${
+                  webChannelIsLive ? "text-emerald-950" : "text-slate-800"
+                }`}
+              >
+                {webChannelIsLive
+                  ? "Онлайн худалдааны суваг идэвхтэй"
+                  : "Зөвхөн дотоод барааны сан ашиглана"}
+              </p>
+              <p
+                className={`mt-1 text-xs font-semibold leading-5 ${
+                  webChannelIsLive ? "text-emerald-700" : "text-slate-500"
+                }`}
+              >
+                {webChannelIsLive
+                  ? "ACTIVE, APPROVED төлөвтэй бараанууд website болон store каталогт харагдана. Идэвхгүй эсвэл хяналтаар батлагдаагүй бараа нийтлэгдэхгүй."
+                  : "Бараа, үлдэгдэл, POS болон нэгдсэн сангийн бүртгэл хэвийн ажиллана. Харин public website дээр энэ байгууллагын бараа харагдахгүй."}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* feature toggles */}
       {selectedOrgId && (

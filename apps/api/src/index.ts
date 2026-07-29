@@ -189,30 +189,4 @@ const port = process.env.PORT || 4000;
 
 app.listen(Number(port), "0.0.0.0", () => {
   console.log(`[api] Application is running on: http://0.0.0.0:${port}`);
-  if (!isProduction) {
-    prisma.organization
-      .findMany({
-        where: { deletedAt: null, status: "ACTIVE" },
-        select: { id: true, name: true },
-      })
-      .then(async (orgs) => {
-        for (const org of orgs) {
-          const key = `web-products-enabled-${org.id}`;
-          await prisma.siteSetting.upsert({
-            where: { key },
-            update: {},
-            create: { key, value: "true" },
-          });
-        }
-        console.log(
-          `[api] [dev-init] Ensured web-products-enabled setting for ${orgs.length} active organizations.`,
-        );
-      })
-      .catch((err) => {
-        console.error(
-          "[api] [dev-init] Failed to auto-enable web products in dev:",
-          err,
-        );
-      });
-  }
 });
