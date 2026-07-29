@@ -6,6 +6,7 @@ import {
   prisma,
 } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
+import { sendPushToUsers } from "../../services/push-notification.service";
 import { hasWarehouseAccess } from "../../services/warehouse-access.service";
 
 const router: ExpressRouter = Router();
@@ -28,6 +29,27 @@ async function canManageOrganization(user: AuthPayload, organizationId: string) 
     select: { id: true },
   });
   return Boolean(membership);
+}
+
+async function organizationManagerIds(organizationId: string) {
+  const members = await prisma.organizationMember.findMany({
+    where: {
+      organizationId,
+      isActive: true,
+      deletedAt: null,
+      role: { in: [OrgRole.OWNER, OrgRole.ADMIN] },
+    },
+    select: { userId: true },
+  });
+  return members.map((member) => member.userId);
+}
+
+async function notifyUsers(input: Parameters<typeof sendPushToUsers>[0]) {
+  try {
+    await sendPushToUsers(input);
+  } catch (error) {
+    console.error("Delivery partnership push notification error", error);
+  }
 }
 
 async function canRequestForScope(
@@ -235,6 +257,22 @@ router.post("/delivery-partnerships", requireAuth, async (req, res) => {
       },
       include: partnershipInclude,
     });
+    const managerIds = await organizationManagerIds(providerOrganizationId);
+    const requesterName =
+      partnership.warehouse?.name ||
+      partnership.requesterOrganization?.name ||
+      "Байгууллага";
+    await notifyUsers({
+      userIds: managerIds,
+      title: "Хүргэлтийн хамтын ажиллагааны хүсэлт",
+      body: `${requesterName} хүргэлтийн үйлчилгээ авах хүсэлт илгээлээ.`,
+      data: {
+        type: "delivery_partnership_request",
+        partnershipId: partnership.id,
+        providerOrganizationId,
+        sourceType: partnership.warehouseId ? "WAREHOUSE" : "VENDOR",
+      },
+    });
     return res.status(201).json(partnership);
   } catch (error) {
     console.error("POST /delivery-partnerships error", error);
@@ -297,6 +335,63 @@ router.patch("/delivery-partnerships/:id/respond", requireAuth, async (req, res)
         });
       }
       return updated;
+    });
+    let requesterManagerIds: string[] = [];
+    if (partnership.requesterOrganizationId) {
+      requesterManagerIds = await organizationManagerIds(
+        partnership.requesterOrganizationId,
+      );
+    } else if (partnership.warehouse?.id) {
+      const warehouse = await prisma.warehouse.findUnique({
+        where: { id: partnership.warehouse.id },
+        select: {
+          createdById: true,
+          organizations: {
+            select: {
+              organization: {
+                select: {
+                  members: {
+                    where: {
+                      isActive: true,
+                      deletedAt: null,
+                      role: { in: [OrgRole.OWNER, OrgRole.ADMIN] },
+                    },
+                    select: { userId: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      requesterManagerIds = [
+        ...(warehouse?.createdById ? [warehouse.createdById] : []),
+        ...(warehouse?.organizations.flatMap((item) =>
+          item.organization.members.map((member) => member.userId),
+        ) ?? []),
+      ];
+    }
+    const requesterIds = Array.from(
+      new Set([
+        ...requesterManagerIds,
+        partnership.requestedBy.id,
+      ]),
+    );
+    await notifyUsers({
+      userIds: requesterIds,
+      title:
+        action === "ACCEPT"
+          ? "Хүргэлтийн хүсэлт зөвшөөрөгдлөө"
+          : "Хүргэлтийн хүсэлт татгалзагдлаа",
+      body:
+        action === "ACCEPT"
+          ? `${partnership.providerOrganization.name} хамтын ажиллагааны хүсэлтийг зөвшөөрлөө.`
+          : `${partnership.providerOrganization.name} хүсэлтийг татгалзлаа.`,
+      data: {
+        type: "delivery_partnership_response",
+        partnershipId: partnership.id,
+        status: partnership.status,
+      },
     });
     return res.json(partnership);
   } catch (error) {

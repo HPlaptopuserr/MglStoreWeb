@@ -5,6 +5,9 @@ import {
   type Response,
   type Router as ExpressRouter,
 } from "express";
+import fs from "fs";
+import path from "path";
+import multer from "multer";
 import {
   Capability,
   DeliveryStatus,
@@ -19,6 +22,35 @@ import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import { transferStockToVendor } from "../../services/stock-transfer.service";
 
 const router: ExpressRouter = Router();
+const driverDocumentsDir = path.resolve(
+  __dirname,
+  "../../../uploads/delivery-drivers",
+);
+fs.mkdirSync(driverDocumentsDir, { recursive: true });
+
+const driverDocumentUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) =>
+      callback(null, driverDocumentsDir),
+    filename: (req, file, callback) => {
+      const userId = String((req as DeliveryRequest).user?.userId || "driver")
+        .replace(/[^a-zA-Z0-9_-]/g, "");
+      const extension = path.extname(file.originalname).toLowerCase();
+      callback(null, `${userId}-${Date.now()}${extension}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => {
+    const allowed = new Set([
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ]);
+    if (allowed.has(file.mimetype)) callback(null, true);
+    else callback(new Error("PDF, JPG, PNG эсвэл WEBP файл сонгоно уу"));
+  },
+});
 type DeliveryRequest = Request & {
   user: AuthPayload;
   deliveryOrganizationId?: string;
@@ -311,6 +343,132 @@ const requireDeliveryDriver = async (req: any, res: any, next: any) => {
   req.deliveryOrganizationId = membership.organizationId;
   return next();
 };
+
+router.get(
+  "/delivery-driver/documents/:fileName",
+  requireAuth,
+  requireDeliveryDriver,
+  (req, res) => {
+    const fileName = path.basename(req.params.fileName);
+    return res.sendFile(path.join(driverDocumentsDir, fileName));
+  },
+);
+
+router.get(
+  "/delivery-driver/profile",
+  requireAuth,
+  requireDeliveryDriver,
+  async (req, res) => {
+    try {
+      const userId = (req as DeliveryRequest).user.userId;
+      const profile = await prisma.deliveryDriverProfile.findUnique({
+        where: { userId },
+      });
+      return res.json(profile ?? { userId });
+    } catch (error) {
+      console.error("GET /delivery-driver/profile error", error);
+      return res
+        .status(500)
+        .json({ message: "Жолоочийн мэдээлэл авахад алдаа гарлаа" });
+    }
+  },
+);
+
+router.put(
+  "/delivery-driver/profile",
+  requireAuth,
+  requireDeliveryDriver,
+  async (req, res) => {
+    try {
+      const userId = (req as DeliveryRequest).user.userId;
+      const stringValue = (value: unknown) =>
+        typeof value === "string" && value.trim().length > 0
+          ? value.trim()
+          : null;
+      const expiryValue = stringValue(req.body.insuranceExpiresAt);
+      const insuranceExpiresAt = expiryValue ? new Date(expiryValue) : null;
+      const hasExpiry = Object.prototype.hasOwnProperty.call(
+        req.body,
+        "insuranceExpiresAt",
+      );
+      if (
+        hasExpiry &&
+        insuranceExpiresAt &&
+        Number.isNaN(insuranceExpiresAt.getTime())
+      ) {
+        return res
+          .status(400)
+          .json({ message: "Даатгалын дуусах огноо буруу байна" });
+      }
+      const optionalString = (field: string) =>
+        Object.prototype.hasOwnProperty.call(req.body, field)
+          ? { [field]: stringValue(req.body[field]) }
+          : {};
+      const data = {
+        ...optionalString("nationalId"),
+        ...optionalString("emergencyContactName"),
+        ...optionalString("emergencyContactPhone"),
+        ...optionalString("vehicleMake"),
+        ...optionalString("vehicleModel"),
+        ...optionalString("vehiclePlateNumber"),
+        ...optionalString("vehicleCategory"),
+        ...optionalString("driverLicenseNumber"),
+        ...optionalString("insuranceProvider"),
+        ...optionalString("insurancePolicyNumber"),
+        ...(hasExpiry ? { insuranceExpiresAt } : {}),
+      };
+      const profile = await prisma.deliveryDriverProfile.upsert({
+        where: { userId },
+        create: { userId, ...data },
+        update: data,
+      });
+      return res.json(profile);
+    } catch (error) {
+      console.error("PUT /delivery-driver/profile error", error);
+      return res
+        .status(500)
+        .json({ message: "Жолоочийн мэдээлэл хадгалахад алдаа гарлаа" });
+    }
+  },
+);
+
+router.post(
+  "/delivery-driver/profile/document",
+  requireAuth,
+  requireDeliveryDriver,
+  driverDocumentUpload.single("document"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ message: "Файл сонгоно уу" });
+      }
+      const kind = typeof req.body.kind === "string" ? req.body.kind : "";
+      const fieldByKind = {
+        driverLicense: "driverLicenseDocumentUrl",
+        vehicle: "vehicleDocumentUrl",
+        insurance: "insuranceDocumentUrl",
+      } as const;
+      const field = fieldByKind[kind as keyof typeof fieldByKind];
+      if (!field) {
+        fs.unlink(req.file.path, () => undefined);
+        return res.status(400).json({ message: "Файлын төрөл буруу байна" });
+      }
+      const userId = (req as DeliveryRequest).user.userId;
+      const documentUrl = `/api/delivery-driver/documents/${req.file.filename}`;
+      const profile = await prisma.deliveryDriverProfile.upsert({
+        where: { userId },
+        create: { userId, [field]: documentUrl },
+        update: { [field]: documentUrl },
+      });
+      return res.json({ documentUrl, profile });
+    } catch (error) {
+      console.error("POST /delivery-driver/profile/document error", error);
+      return res
+        .status(500)
+        .json({ message: "Баримт файл хадгалахад алдаа гарлаа" });
+    }
+  },
+);
 
 // ── GET /deliveries — courier's assigned delivery jobs
 router.get(
