@@ -30,6 +30,116 @@ type ProductLabelPrintDialogProps = {
 
 const LABELS_PER_PAGE = 6;
 const MAX_QTY = 999;
+const CODE128_B_START = 104;
+const CODE128_PATTERNS = [
+  "212222",
+  "222122",
+  "222221",
+  "121223",
+  "121322",
+  "131222",
+  "122213",
+  "122312",
+  "132212",
+  "221213",
+  "221312",
+  "231212",
+  "112232",
+  "122132",
+  "122231",
+  "113222",
+  "123122",
+  "123221",
+  "223211",
+  "221132",
+  "221231",
+  "213212",
+  "223112",
+  "312131",
+  "311222",
+  "321122",
+  "321221",
+  "312212",
+  "322112",
+  "322211",
+  "212123",
+  "212321",
+  "232121",
+  "111323",
+  "131123",
+  "131321",
+  "112313",
+  "132113",
+  "132311",
+  "211313",
+  "231113",
+  "231311",
+  "112133",
+  "112331",
+  "132131",
+  "113123",
+  "113321",
+  "133121",
+  "313121",
+  "211331",
+  "231131",
+  "213113",
+  "213311",
+  "213131",
+  "311123",
+  "311321",
+  "331121",
+  "312113",
+  "312311",
+  "332111",
+  "314111",
+  "221411",
+  "431111",
+  "111224",
+  "111422",
+  "121124",
+  "121421",
+  "141122",
+  "141221",
+  "112214",
+  "112412",
+  "122114",
+  "122411",
+  "142112",
+  "142211",
+  "241211",
+  "221114",
+  "413111",
+  "241112",
+  "134111",
+  "111242",
+  "121142",
+  "121241",
+  "114212",
+  "124112",
+  "124211",
+  "411212",
+  "421112",
+  "421211",
+  "212141",
+  "214121",
+  "412121",
+  "111143",
+  "111341",
+  "131141",
+  "114113",
+  "114311",
+  "411113",
+  "411311",
+  "113141",
+  "114131",
+  "311141",
+  "411131",
+  "211412",
+  "211214",
+  "211232",
+  "2331112",
+] as const;
 const MGL_LABEL_LOGO_SVG = `
   <svg viewBox="0 0 125 41" role="img" aria-label="MGL" xmlns="http://www.w3.org/2000/svg">
     <path fill="#ffffff" d="M5.5 31.5V9.4c0-2 1.6-3.5 3.7-3.5h3.5c1.2 0 2.2.4 3 1.3l12.7 12.1L41.1 7.2c.9-.9 1.9-1.3 3.1-1.3h3.5c2.1 0 3.7 1.5 3.7 3.5v22.1h-9.2V18.9L31.5 29.2c-.9.9-1.9 1.3-3.1 1.3s-2.2-.4-3.1-1.3L14.7 18.9v12.6H5.5Z"/>
@@ -215,7 +325,7 @@ export function ProductLabelPrintDialog({
                             {product.name}
                           </p>
                           <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
-                            SKU {product.sku || "-"} · {formatLabelPrice(product.price)}
+                            Barcode {product.barcode || "-"} · {formatLabelPrice(product.price)}
                           </p>
                         </div>
                         <span
@@ -392,7 +502,7 @@ function LabelPreviewCard({ label }: { label: ProductLabelValue | null }) {
         </div>
         <div className="mt-1 grid grid-cols-2 gap-1">
           <div className="flex h-6 items-center justify-center rounded-[4px] border-2 border-[#002b52] px-1">
-            <span className="truncate text-[8px] font-black text-slate-900">{label?.code ?? ""}</span>
+            {label?.code ? <BarcodePreview value={label.code} /> : null}
           </div>
           <div className="flex h-6 items-center justify-center rounded-[4px] border-2 border-[#002b52] px-1">
             <span className="truncate text-[10px] font-black text-slate-900">
@@ -401,6 +511,32 @@ function LabelPreviewCard({ label }: { label: ProductLabelValue | null }) {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function BarcodePreview({ value }: { value: string }) {
+  const barcode = createCode128Barcode(value);
+  if (!barcode) {
+    return <span className="truncate text-[8px] font-black text-slate-900">{value}</span>;
+  }
+
+  return (
+    <div className="flex w-full flex-col items-center justify-center">
+      <svg
+        viewBox={`0 0 ${barcode.width} 50`}
+        preserveAspectRatio="none"
+        aria-label={`Barcode ${value}`}
+        role="img"
+        className="h-2.5 w-full"
+      >
+        {barcode.bars.map((bar, index) => (
+          <rect key={`${bar.x}-${index}`} x={bar.x} y="0" width={bar.width} height="50" fill="#111111" />
+        ))}
+      </svg>
+      <span className="mt-0.5 max-w-full truncate text-[7px] font-black leading-none text-slate-900">
+        {value}
+      </span>
     </div>
   );
 }
@@ -437,7 +573,7 @@ function createDraft(product: ProductLabelProduct): ProductLabelDraft {
   return {
     productId: product.id,
     name: product.name,
-    code: product.barcode || product.sku || product.id,
+    code: product.barcode || "",
     priceText: formatLabelPrice(product.price),
     qty: 1,
   };
@@ -589,6 +725,30 @@ function printProductLabels(labels: ProductLabelValue[]) {
             height: 14.5mm;
             padding: 0 2mm;
           }
+          .barcode-box {
+            flex-direction: column;
+            gap: 0.9mm;
+          }
+          .barcode-svg {
+            display: block;
+            width: 100%;
+            height: 7.3mm;
+          }
+          .barcode-svg rect {
+            fill: #111111;
+          }
+          .barcode-text {
+            display: block;
+            max-width: 100%;
+            overflow: hidden;
+            color: #111111;
+            font-size: 3.1mm;
+            font-weight: 900;
+            line-height: 1;
+            text-align: center;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
           .code-value,
           .price-value {
             max-width: 100%;
@@ -617,6 +777,7 @@ function printProductLabels(labels: ProductLabelValue[]) {
               print-color-adjust: exact !important;
               -webkit-print-color-adjust: exact !important;
             }
+            .barcode-svg rect { fill: #111111 !important; }
           }
         </style>
       </head>
@@ -666,12 +827,68 @@ function renderPrintLabel(label: ProductLabelValue | null) {
           <div class="field-title">ҮНЭ:</div>
         </div>
         <div class="small-boxes">
-          <div class="small-box"><span class="code-value">${escapeHtml(label?.code ?? "")}</span></div>
+          <div class="small-box barcode-box">${renderBarcodeMarkup(label?.code ?? "")}</div>
           <div class="small-box"><span class="price-value">${escapeHtml(label?.priceText ?? "")}</span></div>
         </div>
       </div>
     </article>
   `;
+}
+
+function renderBarcodeMarkup(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return "";
+
+  const barcode = createCode128Barcode(normalized);
+  if (!barcode) {
+    return `<span class="code-value">${escapeHtml(normalized)}</span>`;
+  }
+
+  const rects = barcode.bars
+    .map((bar) => `<rect x="${bar.x}" y="0" width="${bar.width}" height="50"></rect>`)
+    .join("");
+
+  return `
+    <svg class="barcode-svg" viewBox="0 0 ${barcode.width} 50" preserveAspectRatio="none" role="img" aria-label="Barcode ${escapeHtml(normalized)}">
+      ${rects}
+    </svg>
+    <span class="barcode-text">${escapeHtml(normalized)}</span>
+  `;
+}
+
+function createCode128Barcode(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return null;
+
+  const values: number[] = [CODE128_B_START];
+  for (const char of normalized) {
+    const code = char.charCodeAt(0);
+    if (code < 32 || code > 127) return null;
+    values.push(code - 32);
+  }
+
+  const checksum =
+    values.reduce((sum, value, index) => (index === 0 ? value : sum + value * index), 0) % 103;
+  values.push(checksum, 106);
+
+  const quietZone = 10;
+  const bars: Array<{ x: number; width: number }> = [];
+  let x = quietZone;
+
+  values.forEach((codeValue) => {
+    const pattern = CODE128_PATTERNS[codeValue];
+    if (!pattern) return;
+
+    Array.from(pattern).forEach((moduleWidth, index) => {
+      const width = Number(moduleWidth);
+      if (index % 2 === 0) {
+        bars.push({ x, width });
+      }
+      x += width;
+    });
+  });
+
+  return { bars, width: x + quietZone };
 }
 
 function escapeHtml(value: string) {
