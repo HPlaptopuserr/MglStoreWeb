@@ -33,6 +33,7 @@ import {
   stockRequestsRoutes,
   warehousesRoutes,
   deliveriesRoutes,
+  deliveryPartnershipsRoutes,
   dashboardRoutes,
   siteSettingsRoutes,
   teamRoutes,
@@ -150,6 +151,7 @@ app.use("/api", posRoutes);
 app.use("/api", serviceRequestsRoutes);
 app.use("/api", warehousesRoutes);
 app.use("/api", deliveriesRoutes);
+app.use("/api", deliveryPartnershipsRoutes);
 app.use("/api", stockRequestsRoutes);
 app.use("/api", vendorSetupRoutes);
 app.use("/api", warehouseSetupRoutes);

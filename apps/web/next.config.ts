@@ -17,7 +17,23 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async headers() {
+    return [
+      {
+        source: "/mgl-water/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+    ];
+  },
   images: {
+    formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 2_592_000,
+    qualities: [72, 75],
     remotePatterns: [
       {
         protocol: "https",

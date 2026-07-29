@@ -11,6 +11,7 @@ import {
   PackageMinus,
   ScrollText,
   Settings,
+  Truck,
 } from "lucide-react";
 import { AppSidebar, type AppSidebarGroup } from "@mgl/ui";
 
@@ -58,6 +59,12 @@ const WMS_NAV_GROUPS: AppSidebarGroup[] = [
             icon: PackageCheck,
           },
         ],
+      },
+      {
+        id: "delivery-network",
+        label: "Хүргэлтийн сүлжээ",
+        href: "/delivery",
+        icon: Truck,
       },
       {
         id: "dispatch-menu",

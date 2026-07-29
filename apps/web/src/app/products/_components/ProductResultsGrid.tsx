@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState } from "react";
 import {
   ChevronLeft,
@@ -48,6 +49,25 @@ export type ProductSearchSuggestion = {
   value: string;
   description?: string;
 };
+
+function getCatalogImageSource(url: string): {
+  src: string;
+  preOptimized: boolean;
+} {
+  try {
+    const pathname = url.startsWith("http") ? new URL(url).pathname : url;
+    const match = pathname.match(/^\/mgl-water\/([^/]+)\.jpg$/i);
+    if (match) {
+      return {
+        src: `/mgl-water/thumbs/${match[1]}.webp`,
+        preOptimized: true,
+      };
+    }
+  } catch {
+    // Invalid external URLs are passed through and handled by next/image.
+  }
+  return { src: url, preOptimized: false };
+}
 
 export function ProductResultsGrid({
   products,
@@ -152,11 +172,12 @@ export function ProductResultsGrid({
     <>
       <div className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
         <div className="grid gap-3 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-          {products.map((product) => (
+          {products.map((product, index) => (
             <CatalogProductCard
               key={product.id}
               product={product}
               isMember={isMember}
+              priority={index < 6}
             />
           ))}
         </div>
@@ -290,9 +311,11 @@ function buildPageItems(
 export function CatalogProductCard({
   product,
   isMember,
+  priority = false,
 }: {
   product: ProductResult;
   isMember: boolean;
+  priority?: boolean;
 }) {
   const pricing = resolveMemberPricing(
     product.price,
@@ -302,6 +325,9 @@ export function CatalogProductCard({
   const { price, originalPrice, label: memberLabel } = pricing;
   const isPreorder = product.supplyType === "CHINA_PREORDER";
   const discountPercent = product.discounts?.[0]?.percent;
+  const catalogImage = product.images?.[0]?.url
+    ? getCatalogImageSource(product.images[0].url)
+    : null;
 
   return (
     <article className="group relative min-w-0">
@@ -310,12 +336,15 @@ export function CatalogProductCard({
         className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
       >
         <div className="relative aspect-square overflow-hidden rounded-2xl bg-slate-100">
-          {product.images?.[0]?.url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={product.images[0].url}
+          {catalogImage ? (
+            <Image
+              src={catalogImage.src}
               alt={product.name}
-              loading="lazy"
+              fill
+              sizes="(max-width: 420px) 100vw, (max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 20vw"
+              quality={72}
+              unoptimized={catalogImage.preOptimized}
+              priority={priority}
               className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.035]"
             />
           ) : (

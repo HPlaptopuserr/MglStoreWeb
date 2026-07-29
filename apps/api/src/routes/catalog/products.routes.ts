@@ -1,8 +1,11 @@
-import { Router, type Router as ExpressRouter } from "express";
+import {
+  Router,
+  type Response,
+  type Router as ExpressRouter,
+} from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import crypto from "crypto";
-import path from "path";
 import JSZip from "jszip";
 import { InventoryReason, WarehouseType, prisma } from "@mgl/database";
 import type { PrismaClient } from "@prisma/client";
@@ -12,7 +15,6 @@ import {
   requireOrgPermission,
   assertOrgPermission,
 } from "../../services/permission.service";
-import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 import {
   areWebProductsGloballyEnabled,
   canBypassAllWebProductsVisibility,
@@ -53,8 +55,93 @@ import {
   buildBusinessCategoryChoices,
   resolveBusinessCategoryIdFromChoices,
 } from "../../lib/excel-import";
+import { TtlCache } from "../../lib/ttl-cache";
 
 const router: ExpressRouter = Router();
+const productListCache = new TtlCache<unknown>(250, 45_000);
+type RecommendationSignals = {
+  purchasedQuantityByProductId: Map<string, number>;
+  recentInteractionsByProductId: Map<string, number>;
+};
+const recommendationSignalCache = new TtlCache<
+  Promise<RecommendationSignals>
+>(100, 5 * 60_000);
+
+function getRecommendationSignals(
+  productIds: string[],
+): Promise<RecommendationSignals> {
+  const cacheKey = crypto
+    .createHash("sha1")
+    .update([...productIds].sort().join(","))
+    .digest("hex");
+  const cached = recommendationSignalCache.get(cacheKey);
+  if (cached) return cached;
+
+  const pending = Promise.all([
+    prisma.orderItem.groupBy({
+      by: ["productId"],
+      where: {
+        productId: { in: productIds },
+        order: { deletedAt: null, status: { not: "CANCELLED" } },
+      },
+      _sum: { quantity: true },
+    }),
+    prisma.productInteraction.groupBy({
+      by: ["productId"],
+      where: {
+        productId: { in: productIds },
+        createdAt: { gte: new Date(Date.now() - 30 * 86_400_000) },
+      },
+      _count: { _all: true },
+    }),
+  ]).then(([purchases, interactions]) => ({
+    purchasedQuantityByProductId: new Map(
+      purchases.map((item) => [item.productId, item._sum.quantity || 0]),
+    ),
+    recentInteractionsByProductId: new Map(
+      interactions.map((item) => [
+        item.productId || "",
+        item._count._all,
+      ]),
+    ),
+  }));
+
+  recommendationSignalCache.set(cacheKey, pending);
+  return pending;
+}
+
+function getProductListCacheKey(req: Parameters<typeof optionalAuth>[0]) {
+  const identity =
+    (req as typeof req & { user?: { userId?: string } }).user?.userId ||
+    String(req.query.visitorId || "guest");
+  return `${identity}:${req.originalUrl}`;
+}
+
+function setProductCacheHeaders(
+  res: Response,
+  isPersonalized: boolean,
+) {
+  res.setHeader("Vary", "Authorization, Cookie");
+  res.setHeader(
+    "Cache-Control",
+    isPersonalized
+      ? "private, max-age=30, stale-while-revalidate=30"
+      : "public, max-age=30, s-maxage=45, stale-while-revalidate=60",
+  );
+}
+
+router.use("/products", (req, res, next) => {
+  const isTrackingEvent = req.path === "/events";
+  if (req.method !== "GET" && !isTrackingEvent) {
+    res.once("finish", () => {
+      if (res.statusCode >= 200 && res.statusCode < 400) {
+        productListCache.clear();
+        recommendationSignalCache.clear();
+      }
+    });
+  }
+  next();
+});
 
 function canAccessMasterCatalogAdmin(req: Parameters<typeof requireAuth>[0]) {
   const role = (req as typeof req & { user?: { role?: string } }).user?.role;
@@ -755,6 +842,17 @@ router.get("/products", optionalAuth, async (req, res) => {
     const priceMin = Number(req.query.priceMin);
     const priceMax = Number(req.query.priceMax);
     const visitorId = String(req.query.visitorId || "").trim();
+    const isPersonalized = Boolean(
+      visitorId ||
+        (req as typeof req & { user?: { userId?: string } }).user?.userId,
+    );
+    const productCacheKey = getProductListCacheKey(req);
+    const cachedProducts = productListCache.get(productCacheKey);
+    if (cachedProducts !== undefined) {
+      setProductCacheHeaders(res, isPersonalized);
+      res.setHeader("X-MGL-Cache", "HIT");
+      return res.json(cachedProducts);
+    }
     const includeExpiredInventory = isTruthyQueryValue(
       req.query.includeExpiredInventory,
     );
@@ -913,7 +1011,7 @@ router.get("/products", optionalAuth, async (req, res) => {
     });
 
     const productIds = products.map((product) => product.id);
-    const [inventoryExpiries, purchasedProducts, recentProductInteractions] =
+    const [inventoryExpiries, recommendationSignals, interestProfile] =
       productIds.length
         ? await Promise.all([
             prisma.warehouseInventory.findMany({
@@ -931,42 +1029,32 @@ router.get("/products", optionalAuth, async (req, res) => {
               },
             }),
             useRecommendationRanking
-              ? prisma.orderItem.groupBy({
-                  by: ["productId"],
-                  where: {
-                    productId: { in: productIds },
-                    order: { deletedAt: null, status: { not: "CANCELLED" } },
-                  },
-                  _sum: { quantity: true },
-                })
-              : Promise.resolve([]),
-            useRecommendationRanking
-              ? prisma.productInteraction.groupBy({
-                  by: ["productId"],
-                  where: {
-                    productId: { in: productIds },
-                    createdAt: {
-                      gte: new Date(Date.now() - 30 * 86_400_000),
-                    },
-                  },
-                  _count: { _all: true },
-                })
-              : Promise.resolve([]),
+              ? getRecommendationSignals(productIds)
+              : Promise.resolve({
+                  purchasedQuantityByProductId: new Map<string, number>(),
+                  recentInteractionsByProductId: new Map<string, number>(),
+                }),
+            getSafeProductInterestProfile({
+              userId: (req as any).user?.userId,
+              visitorId,
+            }),
           ])
-        : [[], [], []];
+        : [
+            [],
+            {
+              purchasedQuantityByProductId: new Map<string, number>(),
+              recentInteractionsByProductId: new Map<string, number>(),
+            },
+            await getSafeProductInterestProfile({
+              userId: (req as any).user?.userId,
+              visitorId,
+            }),
+          ];
 
-    const purchasedQuantityByProductId = new Map(
-      purchasedProducts.map((item) => [
-        item.productId,
-        item._sum.quantity || 0,
-      ]),
-    );
-    const recentInteractionsByProductId = new Map(
-      recentProductInteractions.map((item) => [
-        item.productId || "",
-        item._count._all,
-      ]),
-    );
+    const {
+      purchasedQuantityByProductId,
+      recentInteractionsByProductId,
+    } = recommendationSignals;
 
     const expiryByProductId = new Map<string, Date>();
     for (const item of inventoryExpiries) {
@@ -974,11 +1062,6 @@ router.get("/products", optionalAuth, async (req, res) => {
         expiryByProductId.set(item.productId, item.expiryDate);
       }
     }
-
-    const interestProfile = await getSafeProductInterestProfile({
-      userId: (req as any).user?.userId,
-      visitorId,
-    });
 
     let response = products
       .map((product) => {
@@ -1041,7 +1124,7 @@ router.get("/products", optionalAuth, async (req, res) => {
 
     if (includeMeta) {
       const totalCount = await totalCountPromise;
-      return res.json({
+      const payload = {
         products: response,
         total: totalCount ?? response.length,
         limit,
@@ -1050,9 +1133,16 @@ router.get("/products", optionalAuth, async (req, res) => {
           limit > 0
             ? offset + response.length < (totalCount ?? response.length)
             : false,
-      });
+      };
+      productListCache.set(productCacheKey, payload);
+      setProductCacheHeaders(res, isPersonalized);
+      res.setHeader("X-MGL-Cache", "MISS");
+      return res.json(payload);
     }
 
+    productListCache.set(productCacheKey, response);
+    setProductCacheHeaders(res, isPersonalized);
+    res.setHeader("X-MGL-Cache", "MISS");
     return res.json(response);
   } catch (error) {
     console.error("get products error", error);
@@ -3036,40 +3126,15 @@ router.post(
         });
       }
 
-      const ext = path.extname(req.file.originalname).toLowerCase() || ".jpg";
-      const fileName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
-      const filePath = `products/${fileName}`;
-
-      console.log(
-        "upload-image: uploading",
-        filePath,
-        "size:",
-        req.file.size,
-        "type:",
-        req.file.mimetype,
-      );
-
-      const { error } = await getSupabase()
-        .storage.from(PRODUCT_IMAGES_BUCKET)
-        .upload(filePath, req.file.buffer, {
-          contentType: req.file.mimetype,
-          upsert: false,
-        });
-
-      if (error) {
-        console.error("supabase upload error", error);
+      const optimizedUrl = await uploadBufferToSupabase(req.file.buffer);
+      if (!optimizedUrl) {
         return res.status(500).json({
-          message: "Зураг upload хийхэд алдаа гарлаа",
-          error: error.message,
+          message: "Зураг боловсруулах эсвэл upload хийхэд алдаа гарлаа",
         });
       }
 
-      const { data: publicUrlData } = getSupabase()
-        .storage.from(PRODUCT_IMAGES_BUCKET)
-        .getPublicUrl(filePath);
-
-      console.log("upload-image: success", publicUrlData.publicUrl);
-      return res.json({ url: publicUrlData.publicUrl });
+      console.log("upload-image: optimized WebP success", optimizedUrl);
+      return res.json({ url: optimizedUrl, optimized: true });
     } catch (error) {
       console.error("upload image error", error);
       return res.status(500).json({

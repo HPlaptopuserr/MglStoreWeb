@@ -9,6 +9,7 @@ export {
   OrderStatus,
   OrderDispatchAttemptStatus,
   DeliveryStatus,
+  DeliveryPartnershipStatus,
   ReturnStatus,
   PaymentStatus,
   PaymentMethod,

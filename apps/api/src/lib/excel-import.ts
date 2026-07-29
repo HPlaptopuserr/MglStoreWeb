@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
 import crypto from "crypto";
+import sharp from "sharp";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "./supabase";
 
 export const EXCEL_ROW_INDEX_KEY = "__excelRowIndex";
@@ -285,13 +286,25 @@ export async function uploadBufferToSupabase(
   buf: Buffer,
 ): Promise<string | null> {
   try {
-    const mime = getImageMimeType(buf);
-    const ext = getImageExt(mime);
-    const fileName = `products/${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
+    const optimized = await sharp(buf, { animated: false })
+      .rotate()
+      .resize({
+        width: 1200,
+        height: 1200,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .webp({ quality: 82, effort: 4 })
+      .toBuffer();
+    const fileName = `products/${Date.now()}-${crypto.randomBytes(8).toString("hex")}.webp`;
 
     const { error } = await getSupabase()
       .storage.from(PRODUCT_IMAGES_BUCKET)
-      .upload(fileName, buf, { contentType: mime, upsert: false });
+      .upload(fileName, optimized, {
+        contentType: "image/webp",
+        cacheControl: "31536000",
+        upsert: false,
+      });
 
     if (error) {
       console.error("supabase upload error", error);

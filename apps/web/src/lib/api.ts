@@ -3,11 +3,12 @@ const directApiBase =
   "http://localhost:4000";
 
 const browserProxyApiBase =
-  process.env.NEXT_PUBLIC_API_PROXY_BASE?.replace(/\/$/, "") ||
-  "/api-proxy";
+  process.env.NEXT_PUBLIC_API_PROXY_BASE?.replace(/\/$/, "");
 
 export const API_BASE =
-  typeof window !== "undefined" && process.env.NODE_ENV === "production"
+  typeof window !== "undefined" &&
+  process.env.NODE_ENV === "production" &&
+  browserProxyApiBase
     ? browserProxyApiBase
     : directApiBase;
 

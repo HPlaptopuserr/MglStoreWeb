@@ -32,6 +32,7 @@ export {
   stockRequestsRoutes,
   warehousesRoutes,
   deliveriesRoutes,
+  deliveryPartnershipsRoutes,
 } from "./operations";
 
 export {
