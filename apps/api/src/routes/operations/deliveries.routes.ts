@@ -19,6 +19,7 @@ import {
   type Prisma,
 } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
+import { notifyAssignedOrderDelivery } from "../../services/delivery-routing.service";
 import { transferStockToVendor } from "../../services/stock-transfer.service";
 
 const router: ExpressRouter = Router();
@@ -30,11 +31,11 @@ fs.mkdirSync(driverDocumentsDir, { recursive: true });
 
 const driverDocumentUpload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, callback) =>
-      callback(null, driverDocumentsDir),
+    destination: (_req, _file, callback) => callback(null, driverDocumentsDir),
     filename: (req, file, callback) => {
-      const userId = String((req as DeliveryRequest).user?.userId || "driver")
-        .replace(/[^a-zA-Z0-9_-]/g, "");
+      const userId = String(
+        (req as DeliveryRequest).user?.userId || "driver",
+      ).replace(/[^a-zA-Z0-9_-]/g, "");
       const extension = path.extname(file.originalname).toLowerCase();
       callback(null, `${userId}-${Date.now()}${extension}`);
     },
@@ -51,6 +52,31 @@ const driverDocumentUpload = multer({
     else callback(new Error("PDF, JPG, PNG эсвэл WEBP файл сонгоно уу"));
   },
 });
+const deliveryProofsDir = path.resolve(
+  __dirname,
+  "../../../uploads/delivery-proofs",
+);
+fs.mkdirSync(deliveryProofsDir, { recursive: true });
+const deliveryProofUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => callback(null, deliveryProofsDir),
+    filename: (req, file, callback) => {
+      const userId = String(
+        (req as DeliveryRequest).user?.userId || "driver",
+      ).replace(/[^a-zA-Z0-9_-]/g, "");
+      const extension = path.extname(file.originalname).toLowerCase() || ".jpg";
+      callback(null, `${userId}-${Date.now()}${extension}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, callback) => {
+    if (["image/jpeg", "image/png", "image/webp"].includes(file.mimetype)) {
+      callback(null, true);
+    } else {
+      callback(new Error("JPG, PNG эсвэл WEBP зураг сонгоно уу"));
+    }
+  },
+});
 type DeliveryRequest = Request & {
   user: AuthPayload;
   deliveryOrganizationId?: string;
@@ -64,8 +90,12 @@ const deliveryRelations = {
   warehouse: { select: { id: true, name: true, address: true, phone: true } },
   stockDispatch: {
     include: {
-      warehouse: { select: { id: true, name: true, address: true, phone: true } },
-      organization: { select: { id: true, name: true, phone: true, address: true } },
+      warehouse: {
+        select: { id: true, name: true, address: true, phone: true },
+      },
+      organization: {
+        select: { id: true, name: true, phone: true, address: true },
+      },
       request: {
         include: {
           items: {
@@ -307,6 +337,15 @@ router.patch(
         data: { courierId },
         include: deliveryRelations,
       });
+      await notifyAssignedOrderDelivery({
+        courierId,
+        deliveryId: updated.id,
+        orderNumber:
+          updated.order?.orderNumber ??
+          updated.stockDispatch?.dispatchNumber ??
+          updated.trackingCode ??
+          updated.id,
+      });
       return res.json(normalizeDelivery(updated));
     } catch (error) {
       console.error("PATCH /delivery-provider/jobs/:id/assign error", error);
@@ -317,14 +356,17 @@ router.patch(
   },
 );
 
-const requireDeliveryDriver = async (req: any, res: any, next: any) => {
-  const user = req.user as AuthPayload;
+const requireDeliveryDriver = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  const authenticated = req as DeliveryRequest;
+  const user = authenticated.user;
   const membership = await prisma.organizationMember.findFirst({
     where: {
       userId: user.userId,
-      ...(user.organizationId
-        ? { organizationId: user.organizationId }
-        : {}),
+      ...(user.organizationId ? { organizationId: user.organizationId } : {}),
       isActive: true,
       deletedAt: null,
       capabilities: { has: Capability.DELIVERY_DRIVER },
@@ -340,7 +382,7 @@ const requireDeliveryDriver = async (req: any, res: any, next: any) => {
       message: "Хүргэлтийн ажилтны эрх идэвхгүй байна",
     });
   }
-  req.deliveryOrganizationId = membership.organizationId;
+  authenticated.deliveryOrganizationId = membership.organizationId;
   return next();
 };
 
@@ -353,6 +395,12 @@ router.get(
     return res.sendFile(path.join(driverDocumentsDir, fileName));
   },
 );
+
+router.get("/delivery-proofs/:fileName", requireAuth, (req, res) => {
+  return res.sendFile(
+    path.join(deliveryProofsDir, path.basename(req.params.fileName)),
+  );
+});
 
 router.get(
   "/delivery-driver/profile",
@@ -477,7 +525,7 @@ router.get(
   requireDeliveryDriver,
   async (req, res) => {
     try {
-      const courierId = (req as any).user.userId;
+      const courierId = (req as DeliveryRequest).user.userId;
       const deliveries = await prisma.delivery.findMany({
         where: {
           courierId,
@@ -508,7 +556,7 @@ router.get(
       const delivery = await prisma.delivery.findFirst({
         where: {
           id: req.params.id,
-          courierId: (req as any).user.userId,
+          courierId: (req as DeliveryRequest).user.userId,
         },
         include: deliveryRelations,
       });
@@ -528,14 +576,52 @@ router.get(
   },
 );
 
+router.post(
+  "/deliveries/:id/proof",
+  requireAuth,
+  requireDeliveryDriver,
+  deliveryProofUpload.single("proof"),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res
+          .status(400)
+          .json({ message: "Баталгаажуулах зураг шаардлагатай" });
+      }
+      const delivery = await prisma.delivery.findFirst({
+        where: {
+          id: req.params.id,
+          courierId: (req as DeliveryRequest).user.userId,
+          status: DeliveryStatus.DELIVERING,
+        },
+        select: { id: true },
+      });
+      if (!delivery) {
+        fs.unlink(req.file.path, () => undefined);
+        return res.status(409).json({
+          message: "Зөвхөн хүргэж буй ажлын баталгаажуулах зураг оруулна",
+        });
+      }
+      const proofImage = `/api/delivery-proofs/${req.file.filename}`;
+      await prisma.delivery.update({
+        where: { id: delivery.id },
+        data: { proofImage },
+      });
+      return res.json({ proofImage });
+    } catch (error) {
+      console.error("POST /deliveries/:id/proof error", error);
+      return res
+        .status(500)
+        .json({ message: "Баталгаажуулах зураг хадгалахад алдаа гарлаа" });
+    }
+  },
+);
+
 // ── POST/PATCH /deliveries/:id/status — update delivery status
 const updateStatusHandler = async (req: Request, res: Response) => {
   try {
     const authenticated = req as DeliveryRequest;
-    const status =
-      typeof req.body.status === "string" ? req.body.status : "";
-    const proofImage =
-      typeof req.body.proofImage === "string" ? req.body.proofImage : undefined;
+    const status = typeof req.body.status === "string" ? req.body.status : "";
     const deliveryId = req.params.id;
     const courierId = authenticated.user.userId;
 
@@ -581,10 +667,14 @@ const updateStatusHandler = async (req: Request, res: Response) => {
     }
 
     if (status === "COMPLETED") {
-      updateData.deliveredAt = new Date();
-      if (proofImage) {
-        updateData.proofImage = proofImage;
+      const completedProof = delivery.proofImage;
+      if (!completedProof) {
+        return res.status(400).json({
+          message: "Барааг хүлээлгэн өгсөн зураг оруулсны дараа дуусгана уу",
+        });
       }
+      updateData.deliveredAt = new Date();
+      updateData.proofImage = completedProof;
     }
 
     let orderStatus: OrderStatus = OrderStatus.SHIPPING;
@@ -678,7 +768,7 @@ router.post(
   async (req, res) => {
     try {
       const { lat, lng } = req.body;
-      const userId = (req as any).user.userId;
+      const userId = (req as DeliveryRequest).user.userId;
 
       if (typeof lat !== "number" || typeof lng !== "number") {
         res.status(400).json({ message: "Буруу координат" });

@@ -24,7 +24,10 @@ import {
 } from "@/components/organisms/checkout/DeliveryDispatchRadar";
 import { LoginModal } from "@/components/organisms/auth/LoginModal";
 import { QPayModal } from "@/components/organisms/checkout/QPayModal";
+import { MinimumOrderModal } from "@/components/organisms/checkout/MinimumOrderModal";
 import { trackMetaCommerceEvent } from "@/lib/meta-events";
+
+const MINIMUM_ORDER_AMOUNT = 50_000;
 
 interface DeepLink {
   name: string;
@@ -186,6 +189,7 @@ export default function CheckoutPage() {
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("idle");
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [cancellingOrder, setCancellingOrder] = useState(false);
+  const [minimumOrderModalOpen, setMinimumOrderModalOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
   const didPrefillPhone = useRef(false);
   const didTrackCheckout = useRef(false);
@@ -302,17 +306,20 @@ export default function CheckoutPage() {
   };
 
   const handleCheckout = async () => {
-    if (!user) {
-      setAuthOpen(true);
-      return;
-    }
-
     if (deliverySession?.canPay) {
       await createPayment(deliverySession);
       return;
     }
 
     if (items.length === 0) return;
+    if (total < MINIMUM_ORDER_AMOUNT) {
+      setMinimumOrderModalOpen(true);
+      return;
+    }
+    if (!user) {
+      setAuthOpen(true);
+      return;
+    }
 
     if (!phone.trim()) {
       setError("Захиалга баталгаажуулах утасны дугаараа оруулна уу.");
@@ -341,6 +348,10 @@ export default function CheckoutPage() {
       return;
     }
     if (items.length === 0) return;
+    if (total < MINIMUM_ORDER_AMOUNT) {
+      setMinimumOrderModalOpen(true);
+      return;
+    }
     if (!phone.trim()) {
       setError("Захиалга баталгаажуулах утасны дугаараа оруулна уу.");
       return;
@@ -372,6 +383,10 @@ export default function CheckoutPage() {
 
       const data = await res.json();
       if (!res.ok) {
+        if (data.code === "MINIMUM_ORDER_AMOUNT") {
+          setMinimumOrderModalOpen(true);
+          return;
+        }
         setError(data.message || "Захиалга үүсгэхэд алдаа гарлаа");
         return;
       }
@@ -387,6 +402,11 @@ export default function CheckoutPage() {
   const startDeliveryRadar = async () => {
     if (!user) {
       setAuthOpen(true);
+      return;
+    }
+    if (total < MINIMUM_ORDER_AMOUNT) {
+      setCheckoutStep("idle");
+      setMinimumOrderModalOpen(true);
       return;
     }
 
@@ -442,6 +462,10 @@ export default function CheckoutPage() {
         } else if (data.code === "CUSTOMER_LOCATION_REQUIRED") {
           setError(data.message || "Байршлын координат шаардлагатай.");
           setCheckoutStep("confirm-location");
+        } else if (data.code === "MINIMUM_ORDER_AMOUNT") {
+          setMinimumOrderModalOpen(true);
+          setCheckoutStep("idle");
+          setError("");
         } else {
           setError(data.message || "Захиалга үүсгэхэд алдаа гарлаа");
           setCheckoutStep("confirm-location");
@@ -883,6 +907,16 @@ export default function CheckoutPage() {
           onClose={() => setCheckoutResult(null)}
         />
       )}
+      <MinimumOrderModal
+        open={minimumOrderModalOpen}
+        currentAmount={total}
+        minimumAmount={MINIMUM_ORDER_AMOUNT}
+        onClose={() => setMinimumOrderModalOpen(false)}
+        onContinueShopping={() => {
+          setMinimumOrderModalOpen(false);
+          router.push("/products");
+        }}
+      />
     </div>
   );
 }

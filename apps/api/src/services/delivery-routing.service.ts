@@ -1,9 +1,11 @@
 import {
+  Capability,
   DeliveryPartnershipStatus,
   DeliverySourceType,
   DeliveryStatus,
   type Prisma,
 } from "@mgl/database";
+import { sendPushToUsers } from "./push-notification.service";
 
 type DatabaseClient = Prisma.TransactionClient;
 
@@ -55,6 +57,63 @@ async function selectLeastLoadedPartnership(
   )[0];
 }
 
+async function selectLeastLoadedCourier(
+  tx: DatabaseClient,
+  providerOrganizationId: string,
+  warehouseId: string | null,
+) {
+  const members = await tx.organizationMember.findMany({
+    where: {
+      organizationId: providerOrganizationId,
+      isActive: true,
+      deletedAt: null,
+      capabilities: { has: Capability.DELIVERY_DRIVER },
+      ...(warehouseId
+        ? {
+            user: {
+              warehouseCourierAssignments: {
+                some: {
+                  warehouseId,
+                  providerOrganizationId,
+                  isActive: true,
+                },
+              },
+            },
+          }
+        : {}),
+    },
+    select: { userId: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (members.length === 0) return null;
+
+  const userIds = members.map((member) => member.userId);
+  const activeCounts = await tx.delivery.groupBy({
+    by: ["courierId"],
+    where: {
+      courierId: { in: userIds },
+      status: {
+        in: [
+          DeliveryStatus.WAITING,
+          DeliveryStatus.PICKING,
+          DeliveryStatus.DELIVERING,
+        ],
+      },
+    },
+    _count: { _all: true },
+  });
+  const countByCourier = new Map(
+    activeCounts.map((item) => [item.courierId, item._count._all]),
+  );
+
+  return members.reduce((selected, candidate) =>
+    (countByCourier.get(candidate.userId) ?? 0) <
+    (countByCourier.get(selected.userId) ?? 0)
+      ? candidate
+      : selected,
+  ).userId;
+}
+
 export async function routeOrderDelivery(
   tx: DatabaseClient,
   input: {
@@ -75,6 +134,21 @@ export async function routeOrderDelivery(
   const partnership = await selectLeastLoadedPartnership(tx, {
     requesterOrganizationId: order.organizationId,
   });
+  const existing = await tx.delivery.findUnique({
+    where: { orderId: order.id },
+    select: { courierId: true, providerOrganizationId: true },
+  });
+  const courierId =
+    existing?.providerOrganizationId === partnership?.providerOrganizationId &&
+    existing.courierId
+      ? existing.courierId
+      : partnership
+        ? await selectLeastLoadedCourier(
+            tx,
+            partnership.providerOrganizationId,
+            partnership.warehouseId,
+          )
+        : null;
 
   return tx.delivery.upsert({
     where: { orderId: order.id },
@@ -85,6 +159,7 @@ export async function routeOrderDelivery(
       providerOrganizationId: partnership?.providerOrganizationId,
       partnershipId: partnership?.id,
       warehouseId: partnership?.warehouseId,
+      courierId,
       status: DeliveryStatus.WAITING,
       trackingCode: trackingCode("ORD", order.orderNumber),
     },
@@ -94,10 +169,34 @@ export async function routeOrderDelivery(
       providerOrganizationId: partnership?.providerOrganizationId,
       partnershipId: partnership?.id,
       warehouseId: partnership?.warehouseId,
+      courierId,
       status: DeliveryStatus.WAITING,
       cancelledAt: null,
     },
   });
+}
+
+export async function notifyAssignedOrderDelivery(input: {
+  courierId: string | null;
+  deliveryId: string;
+  orderNumber: string;
+}) {
+  if (!input.courierId) return 0;
+  try {
+    return await sendPushToUsers({
+      userIds: [input.courierId],
+      title: "Шинэ хүргэлтийн ажил",
+      body: `#${input.orderNumber} онлайн захиалга танд оноогдлоо.`,
+      data: {
+        type: "delivery_assigned",
+        deliveryId: input.deliveryId,
+        orderNumber: input.orderNumber,
+      },
+    });
+  } catch (error) {
+    console.error("Delivery assignment push notification error", error);
+    return 0;
+  }
 }
 
 export async function routeWarehouseDispatchDelivery(

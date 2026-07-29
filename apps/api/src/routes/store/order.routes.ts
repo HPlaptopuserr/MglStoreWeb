@@ -14,7 +14,10 @@ import {
   type Prisma,
 } from "@mgl/database";
 import { isFullAdmin } from "@mgl/types";
-import { routeOrderDelivery } from "../../services/delivery-routing.service";
+import {
+  notifyAssignedOrderDelivery,
+  routeOrderDelivery,
+} from "../../services/delivery-routing.service";
 
 const router: ExpressRouter = Router();
 const JWT_SECRET =
@@ -497,7 +500,7 @@ router.post(
           .json({ message: "Зөвхөн идэвхтэй radar хүсэлтийг авах боломжтой" });
       }
 
-      await prisma.$transaction(async (tx) => {
+      const assignedDelivery = await prisma.$transaction(async (tx) => {
         await tx.orderDispatchAttempt.update({
           where: { id: attempt.id },
           data: {
@@ -529,7 +532,7 @@ router.post(
           data: { branchId: attempt.branchId, status: OrderStatus.CONFIRMED },
         });
 
-        await routeOrderDelivery(tx, {
+        const delivery = await routeOrderDelivery(tx, {
           orderId: attempt.orderId,
           sourceType: DeliverySourceType.WEBSITE_ORDER,
         });
@@ -544,6 +547,12 @@ router.post(
           },
         });
 
+        return delivery;
+      });
+      await notifyAssignedOrderDelivery({
+        courierId: assignedDelivery.courierId,
+        deliveryId: assignedDelivery.id,
+        orderNumber: attempt.order.orderNumber,
       });
 
       return res.json({

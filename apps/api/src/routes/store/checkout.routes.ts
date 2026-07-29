@@ -111,6 +111,7 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
 const STORE_CHECKOUT_ACCOUNT_REF =
   process.env.STORE_CHECKOUT_PAYMENT_ACCOUNT_REF?.trim() || "9999";
+const STORE_MINIMUM_ORDER_AMOUNT = 50_000;
 
 type StorePaymentAccount = {
   id?: string;
@@ -802,6 +803,16 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     const normalizedCustomerLat = toNumberOrNull(customerLat);
     const normalizedCustomerLng = toNumberOrNull(customerLng);
     const total = subtotal; // no delivery fee for now
+
+    if (total < STORE_MINIMUM_ORDER_AMOUNT) {
+      return res.status(400).json({
+        code: "MINIMUM_ORDER_AMOUNT",
+        message: `Захиалгын доод дүн ${STORE_MINIMUM_ORDER_AMOUNT.toLocaleString()}₮ байна.`,
+        minimumAmount: STORE_MINIMUM_ORDER_AMOUNT,
+        currentAmount: total,
+        remainingAmount: STORE_MINIMUM_ORDER_AMOUNT - total,
+      });
+    }
 
     if (
       !isPreorderOnlyOrder &&

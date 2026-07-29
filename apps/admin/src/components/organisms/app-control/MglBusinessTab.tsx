@@ -90,7 +90,18 @@ export function MglBusinessTab() {
         `${API}/admin/organizations/app-controls`,
       );
       if (!response.ok) {
-        throw new Error("Байгууллагын app control татахад алдаа гарлаа");
+        const payload: unknown = await response.json().catch(() => null);
+        const serverMessage =
+          payload &&
+          typeof payload === "object" &&
+          "message" in payload &&
+          typeof payload.message === "string"
+            ? payload.message
+            : null;
+        throw new Error(
+          serverMessage ??
+            `Байгууллагын app control татахад алдаа гарлаа (${response.status})`,
+        );
       }
 
       const organizations = (
