@@ -34,9 +34,10 @@ import {
   CheckCircle2,
   Heart,
   Play,
+  QrCode,
   Video,
 } from "lucide-react";
-import { getServicePostCategories } from "@mgl/ui";
+import { getServicePostCategories, QrGenerator } from "@mgl/ui";
 import { getInvestorTierLabel } from "@mgl/types";
 import { resolveApiAssetUrl } from "@/lib/api";
 import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
@@ -47,6 +48,10 @@ type ProductItem = OrganizationDetailData["products"][number] & {
 };
 
 type ContentFilter = "all" | "products" | "services" | "reels";
+
+const STOREFRONT_CONTAINER_CLASS =
+  "mx-auto w-full max-w-[1440px] px-3 sm:px-6 lg:px-8";
+const STOREFRONT_PAGE_SIZE = 20;
 
 function formatPrice(price: number | undefined) {
   if (typeof price !== "number" || Number.isNaN(price)) return "—";
@@ -1070,7 +1075,57 @@ function Sidebar({ data }: { data: OrganizationDetailData }) {
   );
 }
 
+function StoreHeaderPopover({
+  label,
+  icon,
+  align = "left",
+  children,
+}: {
+  label: string;
+  icon: React.ReactNode;
+  align?: "left" | "center";
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="group relative">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-bold text-slate-500 transition hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400 [&::-webkit-details-marker]:hidden">
+        {icon}
+        <span>{label}</span>
+        <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" />
+      </summary>
+      <div
+        className={`absolute top-[calc(100%+0.5rem)] z-30 w-72 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_18px_50px_rgba(15,23,42,0.16)] ${
+          align === "center" ? "left-1/2 -translate-x-1/2" : "left-0"
+        }`}
+      >
+        {children}
+      </div>
+    </details>
+  );
+}
+
 function StorefrontHeader({ data }: { data: OrganizationDetailData }) {
+  const storeUrl = `https://mglstore.mn/o/${encodeURIComponent(
+    data.slug || data.id,
+  )}`;
+  const trustChips = [
+    {
+      label: data.isVerified
+        ? "Баталгаажсан байгууллага"
+        : "Байгууллагын мэдээлэл",
+      emphasized: true,
+    },
+    {
+      label: `${data.products.length} барааны сонголт`,
+      emphasized: false,
+    },
+    {
+      label: `${data.stats.soldCount.toLocaleString("mn-MN")} борлуулалт`,
+      emphasized: false,
+    },
+    { label: `${data.stats.customers} хэрэглэгч`, emphasized: false },
+  ];
+
   return (
     <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -1085,10 +1140,76 @@ function StorefrontHeader({ data }: { data: OrganizationDetailData }) {
           />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <h1 className="truncate text-xl font-black text-slate-950 sm:text-2xl">
               {data.name}
             </h1>
+            <StoreHeaderPopover
+              label="Үнэлгээ, баталгаажуулалт"
+              icon={<ShieldCheck className="h-3.5 w-3.5 text-blue-500" />}
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div>
+                  <p className="text-xs font-bold text-slate-400">
+                    Дэлгүүрийн нийт үнэлгээ
+                  </p>
+                  <p className="mt-1 text-2xl font-black text-slate-950">
+                    {data.rating.toFixed(1)}
+                    <span className="text-sm text-slate-400">/10</span>
+                  </p>
+                </div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                  <ShieldCheck className="h-6 w-6" />
+                </div>
+              </div>
+              <dl className="mt-3 grid gap-2.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <dt className="font-bold text-slate-500">Баталгаажуулалт</dt>
+                  <dd className="font-black text-emerald-600">
+                    {data.isVerified ? "Баталгаатай" : "Хүлээгдэж буй"}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="font-bold text-slate-500">Үнэлгээ</dt>
+                  <dd className="font-black text-slate-900">
+                    {data.reviewCount} хэрэглэгч
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="font-bold text-slate-500">Борлуулалт</dt>
+                  <dd className="font-black text-slate-900">
+                    {data.stats.soldCount.toLocaleString("mn-MN")}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="font-bold text-slate-500">Төлөв</dt>
+                  <dd
+                    className={`font-black ${
+                      data.isOpen ? "text-emerald-600" : "text-slate-500"
+                    }`}
+                  >
+                    {data.isOpen ? "Нээлттэй" : "Хаалттай"}
+                  </dd>
+                </div>
+              </dl>
+            </StoreHeaderPopover>
+            <StoreHeaderPopover
+              label="QR-аар дэлгүүр нээх"
+              align="center"
+              icon={<QrCode className="h-3.5 w-3.5 text-orange-500" />}
+            >
+              <div className="flex flex-col items-center text-center">
+                <div className="rounded-2xl border border-slate-100 bg-white p-2 shadow-sm">
+                  <QrGenerator value={storeUrl} size={156} level="M" />
+                </div>
+                <p className="mt-3 text-sm font-black text-slate-900">
+                  Утсаараа QR уншуулна уу
+                </p>
+                <p className="mt-1 text-xs font-semibold leading-5 text-slate-400">
+                  {data.name} дэлгүүрийг утсан дээрээ шууд нээнэ.
+                </p>
+              </div>
+            </StoreHeaderPopover>
             {data.isVerified && (
               <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[10px] font-black text-blue-600">
                 <ShieldCheck className="h-3 w-3" />
@@ -1115,6 +1236,15 @@ function StorefrontHeader({ data }: { data: OrganizationDetailData }) {
             <span>
               {data.stats.soldCount.toLocaleString("mn-MN")} зарагдсан
             </span>
+            {data.info.hours.length > 0 && (
+              <span
+                className="inline-flex items-center gap-1 text-slate-600"
+                title={data.info.hours.join(" · ")}
+              >
+                <Clock className="h-3.5 w-3.5 text-emerald-500" />
+                {data.info.hours[0]}
+              </span>
+            )}
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             {data.categories.map((category) => (
@@ -1137,11 +1267,21 @@ function StorefrontHeader({ data }: { data: OrganizationDetailData }) {
               Холбогдох
             </a>
           )}
-          <button className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 text-xs font-black text-white transition hover:bg-orange-600">
-            <ShoppingBag className="h-4 w-4" />
-            Захиалах
-          </button>
         </div>
+      </div>
+      <div className="mt-4 flex gap-2 overflow-x-auto border-t border-slate-100 pt-3">
+        {trustChips.map((chip) => (
+          <span
+            key={chip.label}
+            className={`shrink-0 rounded-lg px-3 py-2 text-[11px] font-bold ${
+              chip.emphasized
+                ? "bg-orange-50 text-orange-700"
+                : "bg-slate-50 text-slate-500"
+            }`}
+          >
+            {chip.label}
+          </span>
+        ))}
       </div>
     </section>
   );
@@ -1157,7 +1297,9 @@ function StoreWebsiteNav({
   return (
     <>
       <div className="border-b border-slate-100 bg-white">
-        <div className="mx-auto flex h-8 max-w-[1500px] items-center justify-between px-4 text-[10px] font-bold text-slate-500 lg:px-8">
+        <div
+          className={`${STOREFRONT_CONTAINER_CLASS} flex h-8 items-center justify-between text-[10px] font-bold text-slate-500`}
+        >
           <div className="flex items-center gap-4">
             <Link href="/">MGL Store</Link>
             <span>Монгол</span>
@@ -1177,15 +1319,17 @@ function StoreWebsiteNav({
       </div>
 
       <div className="border-b border-slate-100 bg-slate-50">
-        <div className="mx-auto flex h-20 max-w-[1500px] items-center gap-5 px-4 lg:px-8">
+        <div
+          className={`${STOREFRONT_CONTAINER_CLASS} flex h-20 items-center gap-5`}
+        >
           <Link href="/" className="shrink-0">
             <Image
-              src="/logo.png"
+              src="/logo-storefront.webp"
               alt="MGL Store"
-              width={150}
+              width={126}
               height={56}
               priority
-              className="h-auto w-28 object-contain sm:w-36"
+              className="h-auto w-24 object-contain sm:w-28"
             />
           </Link>
           <label className="relative ml-auto w-full max-w-xl">
@@ -1221,6 +1365,8 @@ function StorefrontProductWidget({ product }: { product: ProductItem }) {
           src={product.image}
           alt={product.title}
           fill
+          sizes="(min-width: 1280px) 200px, (min-width: 640px) 30vw, 46vw"
+          quality={72}
           className="object-cover transition duration-300 group-hover:scale-[1.025]"
           referrerPolicy="no-referrer"
         />
@@ -1243,6 +1389,8 @@ function StorefrontProductWidget({ product }: { product: ProductItem }) {
               src={thumbnail}
               alt=""
               fill
+              sizes="28px"
+              quality={72}
               className="object-cover"
               referrerPolicy="no-referrer"
             />
@@ -1290,6 +1438,10 @@ function StorefrontCatalog({
 }) {
   const [category, setCategory] = useState("all");
   const [sort, setSort] = useState<"default" | "newest" | "price">("default");
+  const [pagination, setPagination] = useState({
+    filterKey: "",
+    count: STOREFRONT_PAGE_SIZE,
+  });
   const categories = useMemo(
     () => [
       ...new Set(
@@ -1316,6 +1468,15 @@ function StorefrontCatalog({
       return 0;
     });
   }, [category, products, search, sort]);
+  const filterKey = `${category}:${sort}:${search.trim().toLocaleLowerCase("mn-MN")}`;
+  const visibleCount =
+    pagination.filterKey === filterKey
+      ? pagination.count
+      : STOREFRONT_PAGE_SIZE;
+  const renderedProducts = useMemo(
+    () => visibleProducts.slice(0, visibleCount),
+    [visibleCount, visibleProducts],
+  );
 
   return (
     <section className="mt-4 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)]">
@@ -1391,9 +1552,28 @@ function StorefrontCatalog({
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 xl:grid-cols-5">
-            {visibleProducts.map((product) => (
+            {renderedProducts.map((product) => (
               <StorefrontProductWidget key={product.id} product={product} />
             ))}
+          </div>
+        )}
+        {renderedProducts.length < visibleProducts.length && (
+          <div className="mt-6 flex flex-col items-center gap-2 border-t border-slate-100 pt-5">
+            <p className="text-xs font-bold text-slate-400">
+              {renderedProducts.length}/{visibleProducts.length} бараа
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setPagination({
+                  filterKey,
+                  count: visibleCount + STOREFRONT_PAGE_SIZE,
+                })
+              }
+              className="h-11 rounded-xl border border-slate-200 bg-white px-6 text-sm font-black text-slate-700 transition hover:border-orange-300 hover:text-orange-600"
+            >
+              Дараагийн бараануудыг харах
+            </button>
           </div>
         )}
       </div>
@@ -1418,7 +1598,9 @@ function StickyStoreHeader({
       transition={{ duration: 0.2 }}
       className="fixed inset-x-0 top-0 z-[90] border-b border-slate-200 bg-white/98 shadow-sm backdrop-blur"
     >
-      <div className="mx-auto flex h-[76px] max-w-[1500px] items-center gap-3 px-4 lg:px-8">
+      <div
+        className={`${STOREFRONT_CONTAINER_CLASS} flex h-[76px] items-center gap-3`}
+      >
         <Link
           href={`/o/${encodeURIComponent(data.slug || data.id)}`}
           className="flex min-w-0 items-center gap-3"
@@ -1503,7 +1685,7 @@ export default function BusinessProfileClient({
         )}
       </AnimatePresence>
       <StoreWebsiteNav search={storeSearch} onSearchChange={setStoreSearch} />
-      <div className="mx-auto w-full max-w-[1440px] px-3 py-4 sm:px-6 lg:px-8">
+      <div className={`${STOREFRONT_CONTAINER_CLASS} py-4`}>
         <div ref={headerSentinelRef}>
           <StorefrontHeader data={data} />
         </div>
@@ -1514,38 +1696,23 @@ export default function BusinessProfileClient({
         />
       </div>
 
-      {/* Mobile sticky CTA */}
-      <div className="fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-xl border-t border-slate-200/80 px-4 pt-3 pb-5 z-50 lg:hidden shadow-[0_-4px_24px_rgba(0,0,0,0.06)]">
-        <div className="flex gap-3 max-w-lg mx-auto">
-          {data.products.length > 0 ? (
-            <button className="flex-1 bg-orange-500 active:scale-[0.98] text-white font-bold py-3.5 px-5 rounded-2xl shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 text-[15px]">
-              <ShoppingBag className="w-5 h-5" />
-              Захиалах
-            </button>
-          ) : data.info.phone ? (
+      {/* Mobile sticky contact */}
+      {data.info.phone && (
+        <div className="fixed bottom-0 left-0 z-50 w-full border-t border-slate-200/80 bg-white/95 px-4 pb-5 pt-3 shadow-[0_-4px_24px_rgba(0,0,0,0.06)] backdrop-blur-xl lg:hidden">
+          <div className="mx-auto flex max-w-lg gap-3">
             <a
               href={`tel:${data.info.phone}`}
-              className="flex-1 bg-orange-500 active:scale-[0.98] text-white font-bold py-3.5 px-5 rounded-2xl shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 text-[15px]"
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-orange-500 px-5 py-3.5 text-[15px] font-bold text-white shadow-md shadow-orange-500/20 active:scale-[0.98]"
             >
               <Phone className="w-5 h-5" />
               Холбогдох
             </a>
-          ) : (
-            <button className="flex-1 bg-orange-500 active:scale-[0.98] text-white font-bold py-3.5 px-5 rounded-2xl shadow-md shadow-orange-500/20 flex items-center justify-center gap-2 text-[15px]">
-              <Phone className="w-5 h-5" />
-              Холбогдох
-            </button>
-          )}
-          <button className="w-14 h-14 bg-slate-100 text-slate-600 rounded-2xl flex items-center justify-center shrink-0 hover:bg-slate-200 transition-colors active:scale-[0.98]">
-            <MessageCircle className="w-5 h-5" />
-          </button>
+          </div>
+          <p className="mt-2 text-center text-[11px] font-medium text-slate-400">
+            5 мин дотор хариу өгнө
+          </p>
         </div>
-        <p className="text-center text-[11px] text-slate-400 font-medium mt-2">
-          {data.products.length > 0
-            ? "Өнөөдөр захиалбал хүргэнэ"
-            : "5 мин дотор хариу өгнө"}
-        </p>
-      </div>
+      )}
     </div>
   );
 }

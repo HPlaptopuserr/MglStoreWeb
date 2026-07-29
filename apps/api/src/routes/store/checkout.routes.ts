@@ -7,11 +7,13 @@ import {
 import jwt from "jsonwebtoken";
 import { OrderDispatchAttemptStatus } from "@prisma/client";
 import {
+  DeliverySourceType,
   prisma,
   OrderStatus,
   PaymentStatus,
   PaymentMethod,
   InventoryReason,
+  type Prisma,
 } from "@mgl/database";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import {
@@ -26,6 +28,10 @@ import {
   checkSystemQrPayment,
   createSystemQrInvoice,
 } from "../../services/systemqr";
+import {
+  notifyAssignedOrderDelivery,
+  routeOrderDelivery,
+} from "../../services/delivery-routing.service";
 
 const router: ExpressRouter = Router();
 const JWT_SECRET =
@@ -584,20 +590,38 @@ async function seedOrderDispatchRadar(
   });
 }
 
-async function markOrderPaidAndStartDispatch(
-  order: {
-    id: string;
-    customerId: string;
-    organizationId: string;
-    status?: string;
-    customerLat?: number | null;
-    customerLng?: number | null;
-  },
+type CheckoutOrderPaymentContext = {
+  id: string;
+  orderNumber: string;
+  customerId: string;
+  organizationId: string;
+  status?: string;
+  customerLat?: number | null;
+  customerLng?: number | null;
+};
+
+async function confirmPaidOrderAndCreateDelivery(
+  order: CheckoutOrderPaymentContext,
   paymentId: string,
   rawPayload: unknown,
   note: string,
 ) {
-  await prisma.$transaction(async (tx) => {
+  const assignment = await prisma.$transaction(async (tx) => {
+    const claimed = await tx.order.updateMany({
+      where: {
+        id: order.id,
+        paymentStatus: { not: PaymentStatus.PAID },
+      },
+      data: {
+        paymentStatus: PaymentStatus.PAID,
+        status: OrderStatus.CONFIRMED,
+      },
+    });
+
+    // QPay callback and browser polling can arrive together. Only the request
+    // that atomically claims the unpaid order may deduct stock and create work.
+    if (claimed.count === 0) return null;
+
     await tx.paymentAttempt.update({
       where: { id: paymentId },
       data: {
@@ -609,14 +633,6 @@ async function markOrderPaidAndStartDispatch(
 
     await decrementOrderStock(tx, order.id, order.customerId);
 
-    await tx.order.update({
-      where: { id: order.id },
-      data: {
-        paymentStatus: PaymentStatus.PAID,
-        status: OrderStatus.CONFIRMED,
-      },
-    });
-
     await tx.orderHistory.create({
       data: {
         orderId: order.id,
@@ -627,11 +643,28 @@ async function markOrderPaidAndStartDispatch(
         note,
       },
     });
+
+    const delivery = await routeOrderDelivery(tx, {
+      orderId: order.id,
+      sourceType: DeliverySourceType.WEBSITE_ORDER,
+    });
+
+    return {
+      courierId: delivery.courierId,
+      deliveryId: delivery.id,
+    };
   });
+
+  if (assignment) {
+    await notifyAssignedOrderDelivery({
+      ...assignment,
+      orderNumber: order.orderNumber,
+    });
+  }
 }
 
 async function decrementOrderStock(
-  tx: any,
+  tx: Prisma.TransactionClient,
   orderId: string,
   customerId: string,
 ) {
@@ -1259,7 +1292,7 @@ router.post(
         });
       }
 
-      await markOrderPaidAndStartDispatch(
+      await confirmPaidOrderAndCreateDelivery(
         order,
         payment.id,
         paymentCheck.payload,
@@ -1346,7 +1379,7 @@ router.get(
         return res.json({ status: "PENDING" });
       }
 
-      await markOrderPaidAndStartDispatch(
+      await confirmPaidOrderAndCreateDelivery(
         order,
         payment.id,
         paymentCheck.payload,
@@ -1383,6 +1416,7 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
         customerLat: true,
         customerLng: true,
         paymentStatus: true,
+        orderNumber: true,
         payments: {
           where: { method: PaymentMethod.QPAY },
           select: {
@@ -1419,7 +1453,7 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
       return res.json({ message: "not yet paid" });
     }
 
-    await markOrderPaidAndStartDispatch(
+    await confirmPaidOrderAndCreateDelivery(
       order,
       payment.id,
       paymentCheck.payload,

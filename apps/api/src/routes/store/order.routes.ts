@@ -14,10 +14,7 @@ import {
   type Prisma,
 } from "@mgl/database";
 import { isFullAdmin } from "@mgl/types";
-import {
-  notifyAssignedOrderDelivery,
-  routeOrderDelivery,
-} from "../../services/delivery-routing.service";
+import { routeOrderDelivery } from "../../services/delivery-routing.service";
 
 const router: ExpressRouter = Router();
 const JWT_SECRET =
@@ -379,7 +376,6 @@ router.get("/vendor/order-dispatches", async (req: Request, res: Response) => {
         },
         order: {
           deletedAt: null,
-          paymentStatus: "PAID",
           branchId: null,
         },
       },
@@ -504,7 +500,7 @@ router.post(
           .json({ message: "Зөвхөн идэвхтэй radar хүсэлтийг авах боломжтой" });
       }
 
-      const assignedDelivery = await prisma.$transaction(async (tx) => {
+      await prisma.$transaction(async (tx) => {
         await tx.orderDispatchAttempt.update({
           where: { id: attempt.id },
           data: {
@@ -536,11 +532,6 @@ router.post(
           data: { branchId: attempt.branchId, status: OrderStatus.CONFIRMED },
         });
 
-        const delivery = await routeOrderDelivery(tx, {
-          orderId: attempt.orderId,
-          sourceType: DeliverySourceType.WEBSITE_ORDER,
-        });
-
         await tx.orderHistory.create({
           data: {
             orderId: attempt.orderId,
@@ -550,13 +541,6 @@ router.post(
             note: `${attempt.branch.name} салбар захиалгыг хүлээн авлаа`,
           },
         });
-
-        return delivery;
-      });
-      await notifyAssignedOrderDelivery({
-        courierId: assignedDelivery.courierId,
-        deliveryId: assignedDelivery.id,
-        orderNumber: attempt.order.orderNumber,
       });
 
       return res.json({

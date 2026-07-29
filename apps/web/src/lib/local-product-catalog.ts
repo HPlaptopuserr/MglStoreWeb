@@ -372,7 +372,12 @@ export const localCatalogProducts: LocalCatalogProduct[] =
           categoryIndex * 100 + productIndex * 10 + variantIndex + 1;
         const categoryId = `local-category-${category.slug}`;
         const isPreorder = variantIndex === 8;
-        const organization = localCatalogOrganizations[categoryIndex];
+        // Keep every demo store at 100 products while spreading its catalog
+        // across three neighboring categories (40/30/30 products).
+        const organizationIndex =
+          (categoryIndex + (productIndex % 3)) %
+          localCatalogOrganizations.length;
+        const organization = localCatalogOrganizations[organizationIndex];
 
         return {
           id: `local-product-${String(sequence).padStart(4, "0")}`,

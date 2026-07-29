@@ -19,9 +19,47 @@ import { ProductMaintenanceState } from "@/components/organisms/commerce/Product
 import {
   findLocalCatalogProduct,
   LOCAL_MOCK_CATALOG_ENABLED,
+  queryLocalCatalog,
+  type LocalCatalogProduct,
 } from "@/lib/local-product-catalog";
 
 const WEB_PRODUCTS_SETTING_KEY = "web-products-enabled";
+const LOCAL_DISCOUNT_VALID_UNTIL = "2027-12-31T23:59:59.000Z";
+
+function toProductDetailProduct(
+  product: LocalCatalogProduct,
+): ProductDetailProduct {
+  return {
+    ...product,
+    discounts: product.discounts.map((discount) => ({
+      ...discount,
+      validUntil: LOCAL_DISCOUNT_VALID_UNTIL,
+    })),
+  };
+}
+
+function getLocalProductRecommendations(product: LocalCatalogProduct) {
+  const relatedProducts = queryLocalCatalog({
+    businessCategoryId: product.businessCategoryId,
+    limit: 8,
+    sort: "newest",
+  }).products;
+  const vendorProducts = queryLocalCatalog({
+    organizationId: product.organization.id,
+    limit: 8,
+    sort: "newest",
+  }).products;
+  const normalize = (items: LocalCatalogProduct[]) =>
+    items
+      .filter((item) => item.id !== product.id)
+      .slice(0, 4)
+      .map(toProductDetailProduct);
+
+  return {
+    relatedProducts: normalize(relatedProducts),
+    vendorProducts: normalize(vendorProducts),
+  };
+}
 
 function useCountdown(target?: string | null) {
   const [time, setTime] = useState({ d: 0, h: 0, m: 0, s: 0 });
@@ -79,13 +117,7 @@ export default function ProductDetailPage({
       : null;
     if (localProduct) {
       Promise.resolve().then(() => {
-        setProduct({
-          ...localProduct,
-          discounts: localProduct.discounts.map((discount) => ({
-            ...discount,
-            validUntil: "2027-12-31T23:59:59.000Z",
-          })),
-        });
+        setProduct(toProductDetailProduct(localProduct));
         setWebProductsEnabled(true);
         setLoading(false);
       });
@@ -132,6 +164,16 @@ export default function ProductDetailPage({
     if (!product) return;
 
     const loadRecommendations = async () => {
+      const localProduct = LOCAL_MOCK_CATALOG_ENABLED
+        ? findLocalCatalogProduct(product.id)
+        : null;
+      if (localProduct) {
+        const recommendations = getLocalProductRecommendations(localProduct);
+        setRelatedProducts(recommendations.relatedProducts);
+        setVendorProducts(recommendations.vendorProducts);
+        return;
+      }
+
       const params = appendProductVisitorId(
         new URLSearchParams({ limit: "8" }),
       );

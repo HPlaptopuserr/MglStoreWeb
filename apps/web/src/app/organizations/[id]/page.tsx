@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { API } from "@/lib/api";
@@ -295,7 +296,7 @@ function getLocalOrganizationDetail(
   };
 }
 
-async function fetchOrganization(
+const fetchOrganization = cache(async function fetchOrganization(
   slugOrId: string,
   fallbackId?: string,
 ): Promise<OrganizationDetailData | null> {
@@ -305,7 +306,7 @@ async function fetchOrganization(
   try {
     // Use dedicated endpoint for single partner
     let res = await fetch(`${API}/partners/${encodeURIComponent(slugOrId)}`, {
-      cache: "no-store",
+      next: { revalidate: 60 },
     });
 
     if (
@@ -315,7 +316,7 @@ async function fetchOrganization(
       fallbackId !== slugOrId
     ) {
       res = await fetch(`${API}/partners/${encodeURIComponent(fallbackId)}`, {
-        cache: "no-store",
+        next: { revalidate: 60 },
       });
     }
 
@@ -331,39 +332,7 @@ async function fetchOrganization(
     console.error("Failed to fetch organization:", error);
     return null;
   }
-}
-
-async function fetchServicePosts(
-  organizationId: string,
-): Promise<ServicePost[]> {
-  try {
-    const res = await fetch(
-      `${API}/service-posts?organizationId=${encodeURIComponent(organizationId)}&activeOnly=true`,
-      { cache: "no-store" },
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
-
-async function fetchOrganizationReels(
-  organizationId: string,
-): Promise<OrganizationReel[]> {
-  try {
-    const res = await fetch(
-      `${API}/reels?organizationId=${encodeURIComponent(organizationId)}&limit=8`,
-      { cache: "no-store" },
-    );
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data?.items) ? data.items : [];
-  } catch {
-    return [];
-  }
-}
+});
 
 function socialImageUrl(image?: string) {
   if (!image) return FALLBACK_SOCIAL_LOGO;
@@ -441,13 +410,6 @@ export async function renderOrganizationDetailPage({
   if (!organization) {
     notFound();
   }
-
-  const [servicePosts, reels] = await Promise.all([
-    fetchServicePosts(organization.id),
-    fetchOrganizationReels(organization.id),
-  ]);
-  organization.servicePosts = servicePosts;
-  organization.reels = reels;
 
   return <BusinessProfileClient data={organization} />;
 }

@@ -9,8 +9,31 @@ import { sendPushToUsers } from "./push-notification.service";
 
 type DatabaseClient = Prisma.TransactionClient;
 
+const ACTIVE_DELIVERY_STATUSES = [
+  DeliveryStatus.WAITING,
+  DeliveryStatus.PICKING,
+  DeliveryStatus.DELIVERING,
+] as const;
+
+function pickLeastLoaded<T>(
+  candidates: T[],
+  getId: (candidate: T) => string,
+  activeCountById: ReadonlyMap<string | null, number>,
+) {
+  if (candidates.length === 0) return null;
+  return candidates.reduce((selected, candidate) =>
+    (activeCountById.get(getId(candidate)) ?? 0) <
+    (activeCountById.get(getId(selected)) ?? 0)
+      ? candidate
+      : selected,
+  );
+}
+
 function trackingCode(prefix: string, reference: string) {
-  const suffix = reference.replace(/[^A-Za-z0-9]/g, "").slice(-8).toUpperCase();
+  const suffix = reference
+    .replace(/[^A-Za-z0-9]/g, "")
+    .slice(-8)
+    .toUpperCase();
   return `${prefix}-${suffix}-${Date.now().toString().slice(-5)}`;
 }
 
@@ -36,13 +59,7 @@ async function selectLeastLoadedPartnership(
         select: {
           deliveries: {
             where: {
-              status: {
-                in: [
-                  DeliveryStatus.WAITING,
-                  DeliveryStatus.PICKING,
-                  DeliveryStatus.DELIVERING,
-                ],
-              },
+              status: { in: [...ACTIVE_DELIVERY_STATUSES] },
             },
           },
         },
@@ -51,10 +68,11 @@ async function selectLeastLoadedPartnership(
     orderBy: { respondedAt: "asc" },
   });
 
-  return partnerships.sort(
-    (left, right) =>
-      left._count.deliveries - right._count.deliveries,
-  )[0];
+  return (
+    partnerships.sort(
+      (left, right) => left._count.deliveries - right._count.deliveries,
+    )[0] ?? null
+  );
 }
 
 async function selectLeastLoadedCourier(
@@ -92,13 +110,7 @@ async function selectLeastLoadedCourier(
     by: ["courierId"],
     where: {
       courierId: { in: userIds },
-      status: {
-        in: [
-          DeliveryStatus.WAITING,
-          DeliveryStatus.PICKING,
-          DeliveryStatus.DELIVERING,
-        ],
-      },
+      status: { in: [...ACTIVE_DELIVERY_STATUSES] },
     },
     _count: { _all: true },
   });
@@ -106,19 +118,46 @@ async function selectLeastLoadedCourier(
     activeCounts.map((item) => [item.courierId, item._count._all]),
   );
 
-  return members.reduce((selected, candidate) =>
-    (countByCourier.get(candidate.userId) ?? 0) <
-    (countByCourier.get(selected.userId) ?? 0)
-      ? candidate
-      : selected,
-  ).userId;
+  return pickLeastLoaded(members, (member) => member.userId, countByCourier)
+    ?.userId;
+}
+
+async function selectLeastLoadedWebsiteProvider(tx: DatabaseClient) {
+  const providers = await tx.organization.findMany({
+    where: {
+      businessDeliveryEnabled: true,
+      status: "ACTIVE",
+      deletedAt: null,
+    },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (providers.length === 0) return null;
+
+  const providerIds = providers.map((provider) => provider.id);
+  const activeCounts = await tx.delivery.groupBy({
+    by: ["providerOrganizationId"],
+    where: {
+      providerOrganizationId: { in: providerIds },
+      status: { in: [...ACTIVE_DELIVERY_STATUSES] },
+    },
+    _count: { _all: true },
+  });
+  const countByProvider = new Map(
+    activeCounts.map((item) => [item.providerOrganizationId, item._count._all]),
+  );
+
+  return pickLeastLoaded(providers, (provider) => provider.id, countByProvider)
+    ?.id;
 }
 
 export async function routeOrderDelivery(
   tx: DatabaseClient,
   input: {
     orderId: string;
-    sourceType: typeof DeliverySourceType.WEBSITE_ORDER | typeof DeliverySourceType.VENDOR_ORDER;
+    sourceType:
+      | typeof DeliverySourceType.WEBSITE_ORDER
+      | typeof DeliverySourceType.VENDOR_ORDER;
   },
 ) {
   const order = await tx.order.findUnique({
@@ -136,17 +175,31 @@ export async function routeOrderDelivery(
   });
   const existing = await tx.delivery.findUnique({
     where: { orderId: order.id },
-    select: { courierId: true, providerOrganizationId: true },
+    select: {
+      courierId: true,
+      providerOrganizationId: true,
+      status: true,
+    },
   });
+  const fallbackProviderId =
+    input.sourceType === DeliverySourceType.WEBSITE_ORDER &&
+    !partnership &&
+    !existing?.providerOrganizationId
+      ? await selectLeastLoadedWebsiteProvider(tx)
+      : null;
+  const providerOrganizationId =
+    partnership?.providerOrganizationId ??
+    existing?.providerOrganizationId ??
+    fallbackProviderId;
   const courierId =
-    existing?.providerOrganizationId === partnership?.providerOrganizationId &&
+    existing?.providerOrganizationId === providerOrganizationId &&
     existing.courierId
       ? existing.courierId
-      : partnership
+      : providerOrganizationId
         ? await selectLeastLoadedCourier(
             tx,
-            partnership.providerOrganizationId,
-            partnership.warehouseId,
+            providerOrganizationId,
+            partnership?.warehouseId ?? null,
           )
         : null;
 
@@ -156,7 +209,7 @@ export async function routeOrderDelivery(
       orderId: order.id,
       sourceType: input.sourceType,
       requesterOrganizationId: order.organizationId,
-      providerOrganizationId: partnership?.providerOrganizationId,
+      providerOrganizationId,
       partnershipId: partnership?.id,
       warehouseId: partnership?.warehouseId,
       courierId,
@@ -166,11 +219,14 @@ export async function routeOrderDelivery(
     update: {
       sourceType: input.sourceType,
       requesterOrganizationId: order.organizationId,
-      providerOrganizationId: partnership?.providerOrganizationId,
+      providerOrganizationId,
       partnershipId: partnership?.id,
       warehouseId: partnership?.warehouseId,
       courierId,
-      status: DeliveryStatus.WAITING,
+      status:
+        existing?.status === DeliveryStatus.CANCELLED
+          ? DeliveryStatus.WAITING
+          : existing?.status,
       cancelledAt: null,
     },
   });

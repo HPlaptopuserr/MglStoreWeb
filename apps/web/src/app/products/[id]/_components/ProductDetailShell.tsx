@@ -192,8 +192,8 @@ export function ProductDetailShell({
       </div>
 
       <main className="mx-auto w-full max-w-[1500px] px-4 py-5 lg:px-8">
-        <section className="grid gap-5 bg-white lg:grid-cols-[72px_minmax(0,680px)_minmax(420px,1fr)] lg:gap-7">
-          <div className="hidden gap-3 lg:flex lg:flex-col">
+        <section className="grid gap-5 bg-white lg:h-[min(760px,calc(100svh-11rem))] lg:grid-cols-[72px_minmax(0,680px)_minmax(420px,1fr)] lg:items-stretch lg:gap-7">
+          <div className="hidden gap-3 overflow-y-auto py-1 lg:flex lg:h-full lg:min-h-0 lg:flex-col">
             {images.slice(0, 7).map((image, index) => (
               <button
                 key={image.id}
@@ -443,11 +443,8 @@ function ProductImageStage({
   discountLabel?: string;
 }) {
   return (
-    <div className="min-w-0">
-      <div
-        className="relative overflow-hidden rounded-xl bg-slate-50"
-        style={{ aspectRatio: "1 / 1" }}
-      >
+    <div className="min-w-0 lg:h-full lg:min-h-0">
+      <div className="relative aspect-square overflow-hidden rounded-xl bg-slate-50 lg:h-full lg:aspect-auto">
         {images.length > 0 ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -530,10 +527,10 @@ function ProductCommercePanel({
       : Math.max(1, product.stock);
 
   return (
-    <div className="flex min-w-0 flex-col">
+    <div className="flex min-w-0 flex-col lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pr-1">
       <Link
         href={organizationPath(product.organization)}
-        className="mb-4 flex items-center justify-between gap-3 border-b border-slate-100 pb-4 transition hover:text-orange-600"
+        className="mb-3 flex items-center justify-between gap-3 border-b border-slate-100 pb-3 transition hover:text-orange-600"
       >
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-slate-100">
@@ -613,7 +610,7 @@ function ProductCommercePanel({
         <span>{isPreorder ? "Захиалгаар" : "Бэлэн бараа"}</span>
       </div>
 
-      <div className="mt-5 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 p-4 text-white">
+      <div className="mt-4 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 p-4 text-white">
         <div className="flex flex-wrap items-end gap-2">
           <span className="text-4xl font-black leading-none">
             {formatPrice(discountedPrice)}
@@ -631,7 +628,7 @@ function ProductCommercePanel({
         )}
       </div>
 
-      <div className="mt-4 grid gap-2 text-sm font-bold text-slate-600">
+      <div className="mt-3 grid gap-2 text-sm font-bold text-slate-600">
         <Benefit
           icon={Truck}
           text={
@@ -660,7 +657,7 @@ function ProductCommercePanel({
         </div>
       )}
 
-      <div className="mt-auto pt-5">
+      <div className="mt-auto pt-3">
         <div className="mb-3 flex items-center justify-between border-y border-slate-100 py-3">
           <span className="text-xs font-black text-slate-500">Тоо ширхэг</span>
           <div className="flex items-center rounded-xl border border-slate-200">
