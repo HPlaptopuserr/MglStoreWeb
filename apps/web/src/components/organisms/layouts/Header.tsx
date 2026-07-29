@@ -73,8 +73,12 @@ export const Header = () => {
   const mobileNavLinks = NAV_LINKS;
   const isProfileRoute = pathname.startsWith("/profile");
   const isOrdersRoute = pathname.startsWith(ACCOUNT_ROUTES.orders);
+  const isProductsRoute = pathname.startsWith("/products");
   const hideBrowseNav =
-    pathname.startsWith("/study") || isProfileRoute || isOrdersRoute;
+    pathname.startsWith("/study") ||
+    isProductsRoute ||
+    isProfileRoute ||
+    isOrdersRoute;
   const hideSearch =
     pathname === "/mgl-store" || isProfileRoute || isOrdersRoute;
 
@@ -126,7 +130,12 @@ export const Header = () => {
     setMobileMenuOpen(false);
     setMobileSearchOpen(false);
     setMobileSearch("");
-    router.push(`/products?search=${encodeURIComponent(query)}`);
+    const nextUrl = `/products?search=${encodeURIComponent(query)}`;
+    if (pathname.startsWith("/products")) {
+      router.replace(nextUrl, { scroll: false });
+    } else {
+      router.push(nextUrl);
+    }
   };
 
   const closeMobile = () => setMobileMenuOpen(false);
@@ -281,7 +290,11 @@ export const Header = () => {
 
               <button
                 type="button"
-                onClick={user ? () => router.push(ACCOUNT_ROUTES.profile) : openAuthModal}
+                onClick={
+                  user
+                    ? () => router.push(ACCOUNT_ROUTES.profile)
+                    : openAuthModal
+                }
                 aria-label={user ? "Профайл цэс" : "Нэвтрэх"}
                 className={`relative hidden h-9 w-9 items-center justify-center rounded-xl transition-colors active:bg-gray-100 min-[360px]:flex sm:hidden ${
                   user

@@ -43,7 +43,11 @@ type InteractionInput = {
   metadata?: unknown;
 };
 
-type InterestField = "productId" | "businessCategoryId" | "organizationId" | "keyword";
+type InterestField =
+  | "productId"
+  | "businessCategoryId"
+  | "organizationId"
+  | "keyword";
 
 const INTERACTION_WEIGHTS: Record<ProductInteractionType, number> = {
   VIEW: 1,
@@ -68,7 +72,8 @@ function sanitizeVisitorId(value?: string | null) {
 
 function normalizeKeyword(value: string) {
   const normalized = normalizeDiscoveryText(value);
-  if (!normalized || normalized.length < 2 || normalized.length > 48) return null;
+  if (!normalized || normalized.length < 2 || normalized.length > 48)
+    return null;
   return normalized;
 }
 
@@ -83,7 +88,11 @@ function decayedScore(score: number, lastEventAt: Date, now = new Date()) {
   return score * Math.pow(0.5, ageDays / HALF_LIFE_DAYS);
 }
 
-function addScore(map: Map<string, number>, key: string | null | undefined, score: number) {
+function addScore(
+  map: Map<string, number>,
+  key: string | null | undefined,
+  score: number,
+) {
   if (!key || score <= 0) return;
   map.set(key, (map.get(key) || 0) + score);
 }
@@ -135,7 +144,10 @@ async function incrementInterestScore({
   });
 }
 
-function productKeywords(product: InterestProduct | null, searchQuery?: string | null) {
+function productKeywords(
+  product: InterestProduct | null,
+  searchQuery?: string | null,
+) {
   const tokens = new Set<string>();
   if (searchQuery) {
     for (const token of tokenizeDiscoveryText(searchQuery)) {
@@ -144,7 +156,9 @@ function productKeywords(product: InterestProduct | null, searchQuery?: string |
     }
   }
   if (product) {
-    for (const token of tokenizeDiscoveryText(buildProductDiscoveryText(product))) {
+    for (const token of tokenizeDiscoveryText(
+      buildProductDiscoveryText(product),
+    )) {
       const keyword = normalizeKeyword(token);
       if (keyword) tokens.add(keyword);
       if (tokens.size >= 12) break;
@@ -186,7 +200,8 @@ export async function recordProductInteraction(input: InteractionInput) {
 
   const businessCategoryId =
     input.businessCategoryId || product?.businessCategoryId || null;
-  const organizationId = input.organizationId || product?.organizationId || null;
+  const organizationId =
+    input.organizationId || product?.organizationId || null;
 
   await prisma.productInteraction.create({
     data: {
@@ -283,24 +298,54 @@ export async function getProductInterestProfile({
   }
 
   const since = new Date(Date.now() - PROFILE_LOOKBACK_DAYS * 86_400_000);
-  const scores = await prisma.productInterestScore.findMany({
-    where: {
-      lastEventAt: { gte: since },
-      OR: [
-        ...(userId ? [{ userId }] : []),
-        ...(sanitizedVisitorId ? [{ visitorId: sanitizedVisitorId }] : []),
-      ],
-    },
-    orderBy: { score: "desc" },
-    take: 160,
-  });
+  const [scores, purchaseHistory] = await Promise.all([
+    prisma.productInterestScore.findMany({
+      where: {
+        lastEventAt: { gte: since },
+        OR: [
+          ...(userId ? [{ userId }] : []),
+          ...(sanitizedVisitorId ? [{ visitorId: sanitizedVisitorId }] : []),
+        ],
+      },
+      orderBy: { score: "desc" },
+      take: 160,
+    }),
+    userId
+      ? prisma.orderItem.findMany({
+          where: {
+            order: {
+              customerId: userId,
+              deletedAt: null,
+              status: { not: "CANCELLED" },
+              createdAt: { gte: since },
+            },
+          },
+          select: {
+            quantity: true,
+            order: { select: { createdAt: true } },
+            product: {
+              select: {
+                id: true,
+                businessCategoryId: true,
+                organizationId: true,
+                businessCategory: {
+                  select: { parentId: true },
+                },
+              },
+            },
+          },
+          orderBy: { order: { createdAt: "desc" } },
+          take: 80,
+        })
+      : Promise.resolve([]),
+  ]);
 
   const profile: ProductInterestProfile = {
     productScores: new Map(),
     categoryScores: new Map(),
     organizationScores: new Map(),
     keywordScores: new Map(),
-    hasSignals: scores.length > 0,
+    hasSignals: scores.length > 0 || purchaseHistory.length > 0,
   };
 
   for (const item of scores) {
@@ -309,6 +354,29 @@ export async function getProductInterestProfile({
     addScore(profile.categoryScores, item.businessCategoryId, score);
     addScore(profile.organizationScores, item.organizationId, score);
     addScore(profile.keywordScores, item.keyword, score);
+  }
+
+  for (const item of purchaseHistory) {
+    const purchaseScore = decayedScore(
+      INTERACTION_WEIGHTS.PURCHASE * Math.min(4, Math.max(1, item.quantity)),
+      item.order.createdAt,
+    );
+    addScore(profile.productScores, item.product.id, purchaseScore * 1.2);
+    addScore(
+      profile.categoryScores,
+      item.product.businessCategoryId,
+      purchaseScore * 2,
+    );
+    addScore(
+      profile.categoryScores,
+      item.product.businessCategory?.parentId,
+      purchaseScore * 0.8,
+    );
+    addScore(
+      profile.organizationScores,
+      item.product.organizationId,
+      purchaseScore,
+    );
   }
 
   return profile;
@@ -322,13 +390,21 @@ export function scoreProductForInterest(
 
   let score = 0;
   score += (profile.productScores.get(product.id) || 0) * 3;
-  score += (profile.categoryScores.get(product.businessCategoryId || "") || 0) * 2.4;
-  score += (profile.organizationScores.get(product.organizationId || product.organization?.id || "") || 0) * 1.4;
+  score +=
+    (profile.categoryScores.get(product.businessCategoryId || "") || 0) * 2.4;
+  score +=
+    (profile.organizationScores.get(
+      product.organizationId || product.organization?.id || "",
+    ) || 0) * 1.4;
   if (product.businessCategory?.parent?.id) {
-    score += (profile.categoryScores.get(product.businessCategory.parent.id) || 0) * 1.1;
+    score +=
+      (profile.categoryScores.get(product.businessCategory.parent.id) || 0) *
+      1.1;
   }
 
-  const tokens = new Set(tokenizeDiscoveryText(buildProductDiscoveryText(product)));
+  const tokens = new Set(
+    tokenizeDiscoveryText(buildProductDiscoveryText(product)),
+  );
   for (const [keyword, keywordScore] of profile.keywordScores) {
     if (tokens.has(keyword)) score += Math.min(18, keywordScore * 0.45);
   }

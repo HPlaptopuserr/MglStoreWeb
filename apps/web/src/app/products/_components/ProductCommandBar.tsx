@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Grid2X2, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, Grid2X2, SlidersHorizontal, Store } from "lucide-react";
 
 type SortOption<T extends string> = {
   key: T;
@@ -13,7 +13,10 @@ type SupplyOption<T extends string> = {
   description: string;
 };
 
-type ProductCommandBarProps<SortKey extends string, SupplyKey extends string> = {
+type ProductCommandBarProps<
+  SortKey extends string,
+  SupplyKey extends string,
+> = {
   total: number;
   activeFilterCount: number;
   sortOptions: SortOption<SortKey>[];
@@ -27,9 +30,14 @@ type ProductCommandBarProps<SortKey extends string, SupplyKey extends string> = 
   onSupplyClick: (key: SupplyKey) => void;
   onDiscountToggle: () => void;
   onToggleFilters: () => void;
+  viewMode: "products" | "stores";
+  onViewModeChange: (mode: "products" | "stores") => void;
 };
 
-export function ProductCommandBar<SortKey extends string, SupplyKey extends string>({
+export function ProductCommandBar<
+  SortKey extends string,
+  SupplyKey extends string,
+>({
   total,
   activeFilterCount,
   sortOptions,
@@ -43,32 +51,99 @@ export function ProductCommandBar<SortKey extends string, SupplyKey extends stri
   onSupplyClick,
   onDiscountToggle,
   onToggleFilters,
+  viewMode,
+  onViewModeChange,
 }: ProductCommandBarProps<SortKey, SupplyKey>) {
   return (
-    <div className="sticky top-[7.75rem] z-40 border-b border-slate-100 bg-white/92 py-3 backdrop-blur supports-[backdrop-filter]:bg-white/82 max-md:top-[4rem]">
+    <div className="relative z-30 border-b border-slate-100 bg-white">
       <div className="container mx-auto px-4 lg:px-8">
-        <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
-            {supplyOptions.map((option) => {
-              const active = supplyFilter === option.key;
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  onClick={() => onSupplyClick(option.key)}
-                  className={`flex h-9 shrink-0 items-center gap-2 rounded-xl border px-3 text-sm font-black transition sm:h-10 sm:px-4 ${
-                    active
-                      ? "border-orange-500 bg-orange-500 text-white shadow-md shadow-orange-100"
-                      : "border-slate-200 bg-slate-50 text-slate-700 hover:border-orange-200 hover:bg-white hover:text-orange-600"
-                  }`}
-                >
-                  {option.label}
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] ${active ? "bg-white/20" : "bg-slate-100 text-slate-400"}`}>
-                    {supplyCounts[option.key]}
-                  </span>
-                </button>
-              );
-            })}
+        <div className="flex items-center gap-7 overflow-x-auto border-b border-slate-100 py-3 scrollbar-hide">
+          <button
+            type="button"
+            onClick={() => {
+              onViewModeChange("products");
+              onSupplyClick(supplyOptions[0].key);
+            }}
+            className={`relative h-9 shrink-0 text-sm font-black transition ${
+              viewMode === "products" && supplyFilter === supplyOptions[0].key
+                ? "text-orange-600 after:absolute after:inset-x-0 after:-bottom-3 after:h-0.5 after:bg-orange-500"
+                : "text-slate-600 hover:text-slate-950"
+            }`}
+          >
+            Бүх бараа
+          </button>
+          {supplyOptions.slice(1).map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              onClick={() => {
+                onViewModeChange("products");
+                onSupplyClick(option.key);
+              }}
+              className={`relative h-9 shrink-0 text-sm font-black transition ${
+                viewMode === "products" && supplyFilter === option.key
+                  ? "text-orange-600 after:absolute after:inset-x-0 after:-bottom-3 after:h-0.5 after:bg-orange-500"
+                  : "text-slate-600 hover:text-slate-950"
+              }`}
+            >
+              {option.label}
+              <span className="ml-1.5 text-[10px] text-slate-400">
+                {supplyCounts[option.key]}
+              </span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => onViewModeChange("stores")}
+            className={`relative inline-flex h-9 shrink-0 items-center gap-2 text-sm font-black transition ${
+              viewMode === "stores"
+                ? "text-orange-600 after:absolute after:inset-x-0 after:-bottom-3 after:h-0.5 after:bg-orange-500"
+                : "text-slate-600 hover:text-orange-600"
+            }`}
+          >
+            <Store className="h-4 w-4" />
+            Дэлгүүрүүд
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewModeChange("stores")}
+            className={`relative h-9 shrink-0 text-sm font-black transition ${
+              viewMode === "stores"
+                ? "text-orange-600 after:absolute after:inset-x-0 after:-bottom-3 after:h-0.5 after:bg-orange-500"
+                : "text-slate-600 hover:text-orange-600"
+            }`}
+          >
+            Байгууллагууд
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-2 py-3 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            <button
+              type="button"
+              onClick={() => onSortChange(sortOptions[0].key)}
+              className={`h-9 shrink-0 rounded-xl border px-4 text-sm font-black transition ${
+                sortKey === sortOptions[0].key
+                  ? "border-orange-500 bg-orange-50 text-orange-600"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-orange-200"
+              }`}
+            >
+              Ерөнхий
+            </button>
+            <button
+              type="button"
+              onClick={() => onSortChange(sortOptions[1].key)}
+              className="h-9 shrink-0 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-600 transition hover:border-orange-200 hover:text-orange-600"
+            >
+              Шинэ
+            </button>
+            <button
+              type="button"
+              onClick={onToggleFilters}
+              className="h-9 shrink-0 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-600 transition hover:border-orange-200 hover:text-orange-600"
+            >
+              Нөөц
+            </button>
             <button
               type="button"
               onClick={onDiscountToggle}
@@ -80,9 +155,17 @@ export function ProductCommandBar<SortKey extends string, SupplyKey extends stri
             >
               Хямдрал
             </button>
+            <button
+              type="button"
+              onClick={onToggleFilters}
+              className="inline-flex h-9 shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-600 transition hover:border-orange-200 hover:text-orange-600"
+            >
+              Үнэ
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
           </div>
 
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex shrink-0 items-center justify-between gap-2">
             <div className="hidden items-center gap-2 text-xs font-bold text-slate-400 sm:flex">
               <Grid2X2 className="h-4 w-4" />
               {total} үр дүн
@@ -93,7 +176,9 @@ export function ProductCommandBar<SortKey extends string, SupplyKey extends stri
                 <span className="sr-only">Эрэмбэлэх</span>
                 <select
                   value={sortKey}
-                  onChange={(event) => onSortChange(event.target.value as SortKey)}
+                  onChange={(event) =>
+                    onSortChange(event.target.value as SortKey)
+                  }
                   className="h-9 appearance-none rounded-xl border border-slate-200 bg-slate-50 pl-3 pr-8 text-sm font-black text-slate-700 outline-none transition hover:border-orange-200 hover:bg-white focus:border-orange-400 sm:h-10 sm:pl-4 sm:pr-9"
                 >
                   {sortOptions.map((option) => (

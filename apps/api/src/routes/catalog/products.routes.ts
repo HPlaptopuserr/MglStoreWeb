@@ -360,6 +360,78 @@ const getExpirySortValue = (value?: Date | string | null) => {
   return Number.isFinite(time) ? time : Number.POSITIVE_INFINITY;
 };
 
+function deterministicRecommendationNoise(seed: string, productId: string) {
+  const digest = crypto
+    .createHash("sha256")
+    .update(`${seed}:${productId}`)
+    .digest();
+  return digest.readUInt32BE(0) / 0xffffffff;
+}
+
+function productRecommendationScore(
+  product: {
+    id: string;
+    marketplacePriority?: number | null;
+    createdAt: Date | string;
+    stock?: number | null;
+    supplyType?: string | null;
+    interestScore?: number;
+    discounts?: Array<{ percent: number }>;
+    organization?: {
+      rating?: number | null;
+      reviewCount?: number | null;
+    } | null;
+  },
+  signals: { purchasedQuantity: number; recentInteractions: number },
+  seed: string,
+) {
+  const ageDays = Math.max(
+    0,
+    (Date.now() - new Date(product.createdAt).getTime()) / 86_400_000,
+  );
+  const priorityScore = Math.min(
+    40,
+    Math.log1p(product.marketplacePriority || 0) * 6,
+  );
+  const interestScore = Math.min(
+    45,
+    Math.log1p(Math.max(0, product.interestScore || 0)) * 9,
+  );
+  const purchaseScore = Math.min(
+    18,
+    Math.log1p(signals.purchasedQuantity) * 5.5,
+  );
+  const trendingScore = Math.min(
+    16,
+    Math.log1p(signals.recentInteractions) * 5,
+  );
+  const freshnessScore = Math.max(0, 12 * (1 - ageDays / 45));
+  const discountScore = Math.min(
+    10,
+    Math.max(0, product.discounts?.[0]?.percent || 0) / 5,
+  );
+  const rating = product.organization?.rating ?? 5;
+  const ratingScore =
+    Math.max(0, rating - 3.5) * 4 +
+    Math.min(3, Math.log1p(product.organization?.reviewCount || 0) * 0.45);
+  const availabilityScore =
+    product.supplyType === "CHINA_PREORDER" || (product.stock || 0) > 0 ? 2 : 0;
+  const explorationScore =
+    deterministicRecommendationNoise(seed, product.id) * 7;
+
+  return (
+    priorityScore +
+    interestScore +
+    purchaseScore +
+    trendingScore +
+    freshnessScore +
+    discountScore +
+    ratingScore +
+    availabilityScore +
+    explorationScore
+  );
+}
+
 function normalizeMarketplacePriority(value: unknown, fallback = 0) {
   if (value === undefined || value === null || value === "") return fallback;
   const parsed = Number(value);
@@ -674,6 +746,10 @@ router.get("/products", optionalAuth, async (req, res) => {
       req.query.type || req.query.supplyType || "",
     ).trim();
     const sort = String(req.query.sort || "newest").trim();
+    const recommendationSeed =
+      String(req.query.recommendationSeed || "")
+        .trim()
+        .slice(0, 128) || new Date().toISOString().slice(0, 10);
     const stockFilter = String(req.query.stock || "").trim();
     const discountOnly = isTruthyQueryValue(req.query.discount);
     const priceMin = Number(req.query.priceMin);
@@ -777,14 +853,18 @@ router.get("/products", optionalAuth, async (req, res) => {
     const totalCountPromise = includeMeta
       ? prisma.product.count({ where })
       : null;
-    const useDatabasePagination = limit > 0 && !search;
+    const useRecommendationRanking = sort === "recommended" && !search;
+    const useDatabasePagination =
+      limit > 0 && !search && !useRecommendationRanking;
     const productCandidateLimit =
       limit > 0
         ? useDatabasePagination
           ? limit
           : search
             ? Math.min(Math.max(offset + limit, limit * 3), 240)
-            : offset + limit
+            : useRecommendationRanking
+              ? Math.min(Math.max(offset + limit * 6, 120), 600)
+              : offset + limit
         : 0;
 
     const products = await prisma.product.findMany({
@@ -815,7 +895,15 @@ router.get("/products", optionalAuth, async (req, res) => {
             parent: { select: { id: true, name: true, slug: true } },
           },
         },
-        organization: { select: { id: true, name: true, logoUrl: true } },
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            rating: true,
+            reviewCount: true,
+          },
+        },
         discounts: {
           where: { isActive: true, validUntil: { gte: new Date() } },
           select: { percent: true, validUntil: true },
@@ -825,22 +913,60 @@ router.get("/products", optionalAuth, async (req, res) => {
     });
 
     const productIds = products.map((product) => product.id);
-    const inventoryExpiries = productIds.length
-      ? await prisma.warehouseInventory.findMany({
-          where: {
-            productId: { in: productIds },
-            quantity: { gt: 0 },
-            expiryDate: getInventoryExpiryFilter(includeExpiredInventory),
-          },
-          select: {
-            productId: true,
-            expiryDate: true,
-          },
-          orderBy: {
-            expiryDate: "asc",
-          },
-        })
-      : [];
+    const [inventoryExpiries, purchasedProducts, recentProductInteractions] =
+      productIds.length
+        ? await Promise.all([
+            prisma.warehouseInventory.findMany({
+              where: {
+                productId: { in: productIds },
+                quantity: { gt: 0 },
+                expiryDate: getInventoryExpiryFilter(includeExpiredInventory),
+              },
+              select: {
+                productId: true,
+                expiryDate: true,
+              },
+              orderBy: {
+                expiryDate: "asc",
+              },
+            }),
+            useRecommendationRanking
+              ? prisma.orderItem.groupBy({
+                  by: ["productId"],
+                  where: {
+                    productId: { in: productIds },
+                    order: { deletedAt: null, status: { not: "CANCELLED" } },
+                  },
+                  _sum: { quantity: true },
+                })
+              : Promise.resolve([]),
+            useRecommendationRanking
+              ? prisma.productInteraction.groupBy({
+                  by: ["productId"],
+                  where: {
+                    productId: { in: productIds },
+                    createdAt: {
+                      gte: new Date(Date.now() - 30 * 86_400_000),
+                    },
+                  },
+                  _count: { _all: true },
+                })
+              : Promise.resolve([]),
+          ])
+        : [[], [], []];
+
+    const purchasedQuantityByProductId = new Map(
+      purchasedProducts.map((item) => [
+        item.productId,
+        item._sum.quantity || 0,
+      ]),
+    );
+    const recentInteractionsByProductId = new Map(
+      recentProductInteractions.map((item) => [
+        item.productId || "",
+        item._count._all,
+      ]),
+    );
 
     const expiryByProductId = new Map<string, Date>();
     for (const item of inventoryExpiries) {
@@ -869,6 +995,26 @@ router.get("/products", optionalAuth, async (req, res) => {
       })
       .filter((product) => !search || product.searchScore > 0)
       .sort((a, b) => {
+        if (useRecommendationRanking) {
+          const scoreA = productRecommendationScore(
+            a,
+            {
+              purchasedQuantity: purchasedQuantityByProductId.get(a.id) || 0,
+              recentInteractions: recentInteractionsByProductId.get(a.id) || 0,
+            },
+            recommendationSeed,
+          );
+          const scoreB = productRecommendationScore(
+            b,
+            {
+              purchasedQuantity: purchasedQuantityByProductId.get(b.id) || 0,
+              recentInteractions: recentInteractionsByProductId.get(b.id) || 0,
+            },
+            recommendationSeed,
+          );
+          if (scoreB !== scoreA) return scoreB - scoreA;
+          return a.id.localeCompare(b.id);
+        }
         if (!search) return 0;
         const priorityDiff =
           (b.marketplacePriority || 0) - (a.marketplacePriority || 0);

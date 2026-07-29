@@ -38,7 +38,13 @@ const helpLinks = [
   { label: "Түгээмэл асуулт", href: "#" },
 ];
 
-export const Footer = () => {
+export const Footer = ({
+  variant = "default",
+}: {
+  variant?: "default" | "catalog";
+}) => {
+  if (variant === "catalog") return <CatalogFooter />;
+
   return (
     <footer className="w-full font-sans">
       {/* ── Trust Badges ── */}
@@ -92,7 +98,7 @@ export const Footer = () => {
       </div>
 
       {/* ── Newsletter CTA ── */}
-{/*       <div className="bg-gray-900">
+      {/*       <div className="bg-gray-900">
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
           <div className="flex flex-col items-center gap-6 text-center md:flex-row md:justify-between md:text-left">
             <div className="max-w-lg">
@@ -167,7 +173,6 @@ export const Footer = () => {
                   </Link>
                 ))}
               </div>
-
             </div>
 
             <div>
@@ -260,7 +265,6 @@ export const Footer = () => {
                 ))}
               </ul>
 
-
               <div className="mt-6 space-y-2.5">
                 <a
                   href="tel:+97677001234"
@@ -291,7 +295,10 @@ export const Footer = () => {
               хамгаалагдсан.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-gray-500 sm:gap-6">
-              <Link href="/privacy-policy" className="transition-colors hover:text-gray-300">
+              <Link
+                href="/privacy-policy"
+                className="transition-colors hover:text-gray-300"
+              >
                 Нууцлалын бодлого
               </Link>
               <Link href="#" className="transition-colors hover:text-gray-300">
@@ -307,3 +314,63 @@ export const Footer = () => {
     </footer>
   );
 };
+
+function CatalogFooter() {
+  const groups = [
+    {
+      title: "Худалдан авалт",
+      links: ["Захиалга хийх", "Төлбөрийн нөхцөл", "Хүргэлтийн мэдээлэл"],
+    },
+    {
+      title: "Шинэ хэрэглэгч",
+      links: ["Бүртгэл үүсгэх", "Дэлгүүр хэсэх", "Тусламж авах"],
+    },
+    {
+      title: "Түнш байгууллага",
+      links: ["Дэлгүүр нээх", "Бараа нийтлэх", "Бизнес үйлчилгээ"],
+    },
+    {
+      title: "MGL Store",
+      links: ["Бидний тухай", "Холбоо барих", "Нууцлалын бодлого"],
+    },
+  ];
+
+  return (
+    <footer className="border-t border-slate-200 bg-white">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+          {groups.map((group) => (
+            <section key={group.title}>
+              <h2 className="text-sm font-black text-slate-800">
+                {group.title}
+              </h2>
+              <ul className="mt-4 space-y-2.5">
+                {group.links.map((label) => (
+                  <li key={label}>
+                    <span className="text-sm font-medium text-slate-400">
+                      {label}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+        <div className="mt-10 flex flex-col gap-4 border-t border-slate-100 pt-6 text-xs font-medium text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap gap-x-5 gap-y-2">
+            <Link href="/privacy-policy" className="hover:text-orange-600">
+              Нууцлалын бодлого
+            </Link>
+            <Link href="/company/partnership" className="hover:text-orange-600">
+              Хамтран ажиллах
+            </Link>
+            <Link href="/company/team" className="hover:text-orange-600">
+              Баг хамт олон
+            </Link>
+          </div>
+          <p>© 2026 MGL Store. Бүх эрх хуулиар хамгаалагдсан.</p>
+        </div>
+      </div>
+    </footer>
+  );
+}

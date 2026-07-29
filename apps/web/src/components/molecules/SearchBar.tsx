@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Search,
   ChevronDown,
@@ -51,6 +51,8 @@ interface SearchBarProps {
 
 export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [searchContext, setSearchContext] = useState("Бүгд");
   const [searchQuery, setSearchQuery] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -75,13 +77,25 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
         if (catRes.ok) {
           const cats = (await catRes.json()) as SearchCategoryResponse[];
           setApiCategories(
-            cats.map((category) => ({ id: category.id, name: category.name, icon: category.icon })),
+            cats.map((category) => ({
+              id: category.id,
+              name: category.name,
+              icon: category.icon,
+            })),
           );
         }
         if (partRes.ok) {
-          const raw = (await partRes.json()) as SearchPartnerResponse[] | { data?: SearchPartnerResponse[] };
-          const parts = Array.isArray(raw) ? raw : raw.data ?? [];
-          setApiBrands(parts.map((partner) => ({ id: partner.id, name: partner.name, slug: partner.slug })));
+          const raw = (await partRes.json()) as
+            | SearchPartnerResponse[]
+            | { data?: SearchPartnerResponse[] };
+          const parts = Array.isArray(raw) ? raw : (raw.data ?? []);
+          setApiBrands(
+            parts.map((partner) => ({
+              id: partner.id,
+              name: partner.name,
+              slug: partner.slug,
+            })),
+          );
         }
       } catch {
         setApiCategories([]);
@@ -144,9 +158,18 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
   const handleSearchSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!trimmedSearchQuery) return;
-    const params = new URLSearchParams();
+    const params = new URLSearchParams(
+      pathname.startsWith("/products") ? searchParams.toString() : "",
+    );
     params.set("search", trimmedSearchQuery);
-    router.push(`/products?${params.toString()}`);
+    params.delete("category");
+    params.delete("page");
+    const nextUrl = `/products?${params.toString()}`;
+    if (pathname.startsWith("/products")) {
+      router.replace(nextUrl, { scroll: false });
+    } else {
+      router.push(nextUrl);
+    }
     closeSearch();
   };
 
@@ -189,13 +212,21 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
           </span>
           <ChevronDown
             size={14}
-            className={isDark ? "text-[#64748B] group-hover:text-[#06B6D4]" : "text-slate-400 group-hover:text-orange-500"}
+            className={
+              isDark
+                ? "text-[#64748B] group-hover:text-[#06B6D4]"
+                : "text-slate-400 group-hover:text-orange-500"
+            }
           />
         </div>
-        <div className={`flex-1 px-4 text-sm ${isDark ? "text-[#64748B]" : "text-slate-400"}`}>
+        <div
+          className={`flex-1 px-4 text-sm ${isDark ? "text-[#64748B]" : "text-slate-400"}`}
+        >
           Хайх утгаа оруулна уу...
         </div>
-        <div className={`flex h-full items-center justify-center px-6 ${isDark ? "text-[#F8FAFC]" : "text-black"}`}>
+        <div
+          className={`flex h-full items-center justify-center px-6 ${isDark ? "text-[#F8FAFC]" : "text-black"}`}
+        >
           <Search size={20} strokeWidth={3} />
         </div>
       </div>
@@ -368,7 +399,8 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
                           >
                             <div className="w-8 h-8 rounded-lg bg-white border border-slate-200 flex items-center justify-center group-hover:border-orange-200 overflow-hidden">
                               {cat.icon ? (
-                                cat.icon.startsWith("data:image") || cat.icon.startsWith("http") ? (
+                                cat.icon.startsWith("data:image") ||
+                                cat.icon.startsWith("http") ? (
                                   <img
                                     src={cat.icon}
                                     alt={cat.name}
@@ -438,7 +470,10 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
               </span>
             </div>
             <div
-              onClick={() => { router.push("/organizations"); closeSearch(); }}
+              onClick={() => {
+                router.push("/organizations");
+                closeSearch();
+              }}
               className="text-[10px] text-orange-500 font-black flex items-center gap-1 cursor-pointer hover:underline"
             >
               БҮХ БРЭНДҮҮД <ArrowRight size={10} strokeWidth={3} />

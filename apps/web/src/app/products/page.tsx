@@ -2,20 +2,16 @@
 
 import React, { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Check } from "lucide-react";
+import { Building2, Check, Store } from "lucide-react";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import {
   appendProductVisitorId,
   trackProductInteraction,
 } from "@/lib/product-interest";
-import type {
-  MarketplaceProjectBanner,
-  MarketplaceServicesPromo,
-  MarketplaceSideBanner,
-} from "@/components/organisms/commerce/MarketplaceBoard";
 import { ProductCommandBar } from "./_components/ProductCommandBar";
 import {
+  CatalogProductCard,
   ProductResultsGrid,
   type ProductSearchSuggestion,
 } from "./_components/ProductResultsGrid";
@@ -23,11 +19,15 @@ import { ProductSearchHero } from "./_components/ProductSearchHero";
 import { ProductMaintenanceState } from "@/components/organisms/commerce/ProductMaintenanceState";
 
 const PRODUCTS_PER_PAGE = 16;
-const MARKETPLACE_SIDE_BANNER_KEY = "marketplace-side-banner";
-const MARKETPLACE_SERVICES_PROMO_KEY = "marketplace-services-promo";
 const WEB_PRODUCTS_SETTING_KEY = "web-products-enabled";
 
-type SortKey = "newest" | "price_asc" | "price_desc" | "discount" | "name_asc";
+type SortKey =
+  | "recommended"
+  | "newest"
+  | "price_asc"
+  | "price_desc"
+  | "discount"
+  | "name_asc";
 type StockKey = "all" | "in_stock" | "low_stock" | "sold_out";
 type SupplyKey = "all" | "stock" | "preorder";
 
@@ -79,6 +79,7 @@ type ProductsApiResponse =
     };
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "recommended", label: "Ерөнхий" },
   { key: "newest", label: "Шинэ эхэнд" },
   { key: "price_asc", label: "Үнэ: багаас их" },
   { key: "price_desc", label: "Үнэ: ихээс бага" },
@@ -145,7 +146,7 @@ function buildProductsUrl(
   const query = search.trim();
   if (query) params.set("search", query);
   if (supplyType !== "all") params.set("type", supplyType);
-  if (options.sort && options.sort !== "newest")
+  if (options.sort && options.sort !== "recommended")
     params.set("sort", options.sort);
   if (options.discountOnly) params.set("discount", "1");
   if (options.page && options.page > 1)
@@ -268,79 +269,6 @@ function buildSearchSuggestions({
   return [...suggestions.values()].slice(0, 5);
 }
 
-function parseSideBanner(raw?: string): MarketplaceSideBanner | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    return {
-      isActive: parsed.isActive !== false,
-      imageUrl: String(parsed.imageUrl || ""),
-      eyebrow: String(parsed.eyebrow || ""),
-      title: String(parsed.title || ""),
-      subtitle: String(parsed.subtitle || ""),
-      cta: String(parsed.cta || ""),
-      href: String(parsed.href || ""),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function parseServicesPromo(raw?: string): MarketplaceServicesPromo | null {
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return null;
-    return {
-      imageUrl: String(parsed.imageUrl || ""),
-      eyebrow: String(parsed.eyebrow || ""),
-      title: String(parsed.title || ""),
-      subtitle: String(parsed.subtitle || ""),
-      cta: String(parsed.cta || ""),
-    };
-  } catch {
-    return null;
-  }
-}
-
-function resolveProjectBanners(
-  projects: unknown[],
-): MarketplaceProjectBanner[] {
-  const banners: MarketplaceProjectBanner[] = [];
-
-  for (const project of projects) {
-    if (!project || typeof project !== "object") continue;
-    const item = project as {
-      id?: unknown;
-      title?: unknown;
-      summary?: unknown;
-      imageUrl?: unknown;
-      imageUrls?: unknown;
-      isActive?: unknown;
-    };
-    if (item.isActive === false) continue;
-
-    const imageUrls = Array.isArray(item.imageUrls) ? item.imageUrls : [];
-    const image = [...imageUrls, item.imageUrl]
-      .map((value) => (typeof value === "string" ? value.trim() : ""))
-      .find(Boolean);
-
-    if (!image) continue;
-
-    banners.push({
-      id: String(item.id || image),
-      title: String(item.title || "MGL Store төсөл"),
-      summary: typeof item.summary === "string" ? item.summary : undefined,
-      imageUrl: image,
-    });
-
-    if (banners.length >= 4) break;
-  }
-
-  return banners;
-}
-
 export default function ProductsPage() {
   return (
     <Suspense
@@ -382,20 +310,12 @@ function ProductsContent() {
     (option) => option.key === sortParam,
   )
     ? (sortParam as SortKey)
-    : "newest";
+    : "recommended";
   const initialDiscountOnly = discountParam === "1" || discountParam === "true";
   const isMember = Boolean(user?.membership?.active || user?.isPrime);
 
   const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
   const [apiProducts, setApiProducts] = useState<ApiProduct[]>([]);
-  const [sideBanner, setSideBanner] = useState<MarketplaceSideBanner | null>(
-    null,
-  );
-  const [servicesPromo, setServicesPromo] =
-    useState<MarketplaceServicesPromo | null>(null);
-  const [projectBanners, setProjectBanners] = useState<
-    MarketplaceProjectBanner[]
-  >([]);
   const [productsLoading, setProductsLoading] = useState(true);
   const [webProductsEnabled, setWebProductsEnabled] = useState<boolean | null>(
     null,
@@ -416,6 +336,11 @@ function ProductsContent() {
   const [stockFilter, setStockFilter] = useState<StockKey>("all");
   const [supplyFilter, setSupplyFilter] = useState<SupplyKey>(supplyParam);
   const [searchQuery, setSearchQuery] = useState(searchParam);
+  const [recommendationSeed] = useState(
+    () =>
+      `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+  );
+  const [viewMode, setViewMode] = useState<"products" | "stores">("products");
   const [debouncedSearch, setDebouncedSearch] = useState(searchParam);
   const filterPanelRef = useRef<HTMLDivElement>(null);
 
@@ -444,31 +369,11 @@ function ProductsContent() {
   useEffect(() => {
     const loadChromeData = async () => {
       try {
-        const [categoryRes, settingsRes, projectRes, siteSettingsRes] =
-          await Promise.all([
-            fetch(`${API}/business-categories?hasProducts=1`),
-            fetch(`${API}/site-settings/marketplace-chrome`),
-            fetch(`${API}/site-settings/projects`),
-            fetch(`${API}/site-settings`, { cache: "no-store" }),
-          ]);
+        const [categoryRes, siteSettingsRes] = await Promise.all([
+          fetch(`${API}/business-categories?hasProducts=1`),
+          fetch(`${API}/site-settings`, { cache: "no-store" }),
+        ]);
         if (categoryRes.ok) setApiCategories(await categoryRes.json());
-        if (settingsRes.ok) {
-          const settings = await settingsRes.json();
-          setSideBanner(
-            parseSideBanner(settings?.[MARKETPLACE_SIDE_BANNER_KEY]),
-          );
-          setServicesPromo(
-            parseServicesPromo(settings?.[MARKETPLACE_SERVICES_PROMO_KEY]),
-          );
-        }
-        if (projectRes.ok) {
-          const data = await projectRes.json();
-          setProjectBanners(
-            resolveProjectBanners(
-              Array.isArray(data?.projects) ? data.projects : [],
-            ),
-          );
-        }
         if (siteSettingsRes.ok) {
           const settings = (await siteSettingsRes.json()) as Record<
             string,
@@ -502,7 +407,10 @@ function ProductsContent() {
           params.set("organizationId", selectedOrganization);
         if (debouncedSearch) params.set("search", debouncedSearch);
         if (supplyFilter !== "all") params.set("type", supplyFilter);
-        if (sortKey !== "newest") params.set("sort", sortKey);
+        params.set("sort", sortKey);
+        if (sortKey === "recommended") {
+          params.set("recommendationSeed", recommendationSeed);
+        }
         if (discountOnly) params.set("discount", "1");
         if (priceMin) params.set("priceMin", priceMin);
         if (priceMax) params.set("priceMax", priceMax);
@@ -544,6 +452,7 @@ function ProductsContent() {
     discountOnly,
     priceMax,
     priceMin,
+    recommendationSeed,
     selectedOrganization,
     sortKey,
     stockFilter,
@@ -674,7 +583,7 @@ function ProductsContent() {
     setSupplyFilter("all");
     setSearchQuery("");
     setDebouncedSearch("");
-    setSortKey("newest");
+    setSortKey("recommended");
     setCurrentPage(1);
     router.replace(buildProductsUrl(activeCategory, ""), { scroll: false });
   };
@@ -687,7 +596,7 @@ function ProductsContent() {
     stockFilter !== "all",
     supplyFilter !== "all",
     searchQuery !== "",
-    sortKey !== "newest",
+    sortKey !== "recommended",
   ].filter(Boolean).length;
 
   const supplyCounts = useMemo(
@@ -799,13 +708,9 @@ function ProductsContent() {
         activeCategory={activeCategory}
         searchQuery={searchQuery}
         total={totalProductCount}
-        products={apiProducts}
         onCategoryClick={handleCategoryClick}
-        sideBanner={sideBanner}
-        servicesPromo={servicesPromo}
-        projectBanners={projectBanners}
         onSearchSubmit={submitHeroSearch}
-        showSearch
+        showSearch={false}
       />
 
       <ProductCommandBar
@@ -822,6 +727,8 @@ function ProductsContent() {
         onSupplyClick={handleSupplyClick}
         onDiscountToggle={handleDiscountToggle}
         onToggleFilters={() => setFilterPanelOpen((value) => !value)}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
       />
 
       <div
@@ -960,12 +867,12 @@ function ProductsContent() {
             <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
               Идэвхтэй:
             </span>
-            {sortKey !== "newest" && (
+            {sortKey !== "recommended" && (
               <FilterChip
                 label={
                   SORT_OPTIONS.find((option) => option.key === sortKey)?.label
                 }
-                onClear={() => handleSortChange("newest")}
+                onClear={() => handleSortChange("recommended")}
               />
             )}
             {discountOnly && (
@@ -1052,23 +959,154 @@ function ProductsContent() {
           )}
       </div>
 
-      <div className="container mx-auto px-4 pb-12 pt-4 lg:px-8">
-        <ProductResultsGrid
-          products={displayProducts}
-          loading={productsLoading}
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalProducts={totalProductCount}
-          pageSize={PRODUCTS_PER_PAGE}
-          hasActiveFilters={activeFilterCount > 0}
-          isMember={isMember}
-          searchQuery={searchQuery}
-          suggestions={searchSuggestions}
-          onClearFilters={clearFilters}
-          onSuggestionClick={handleSearchSuggestionClick}
-          onPageChange={goToPage}
-        />
+      <div className="container mx-auto px-4 pb-12 pt-5 lg:px-8">
+        {viewMode === "stores" ? (
+          <OrganizationProductGrid
+            products={displayProducts}
+            loading={productsLoading}
+            isMember={isMember}
+          />
+        ) : (
+          <ProductResultsGrid
+            products={displayProducts}
+            loading={productsLoading}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalProducts={totalProductCount}
+            pageSize={PRODUCTS_PER_PAGE}
+            hasActiveFilters={activeFilterCount > 0}
+            isMember={isMember}
+            searchQuery={searchQuery}
+            suggestions={searchSuggestions}
+            onClearFilters={clearFilters}
+            onSuggestionClick={handleSearchSuggestionClick}
+            onPageChange={goToPage}
+          />
+        )}
       </div>
+    </div>
+  );
+}
+
+function OrganizationProductGrid({
+  products,
+  loading,
+  isMember,
+}: {
+  products: ApiProduct[];
+  loading: boolean;
+  isMember: boolean;
+}) {
+  const organizations = useMemo(() => {
+    const grouped = new Map<
+      string,
+      {
+        organization: NonNullable<ApiProduct["organization"]>;
+        products: ApiProduct[];
+      }
+    >();
+
+    products.forEach((product) => {
+      if (!product.organization) return;
+      const existing = grouped.get(product.organization.id);
+      if (existing) {
+        existing.products.push(product);
+        return;
+      }
+      grouped.set(product.organization.id, {
+        organization: product.organization,
+        products: [product],
+      });
+    });
+
+    return [...grouped.values()];
+  }, [products]);
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <div
+            key={index}
+            className="h-72 animate-pulse rounded-3xl bg-slate-50"
+          />
+        ))}
+      </div>
+    );
+  }
+
+  if (organizations.length === 0) {
+    return (
+      <div className="rounded-3xl border border-dashed border-slate-200 py-20 text-center">
+        <Building2 className="mx-auto h-10 w-10 text-slate-300" />
+        <p className="mt-4 text-sm font-black text-slate-600">
+          Бараа нийтэлсэн байгууллага олдсонгүй
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-slate-100 border-y border-slate-100">
+      {organizations.map(({ organization, products: organizationProducts }) => (
+        <section
+          key={organization.id}
+          className="grid gap-6 py-8 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-8"
+        >
+          <div className="lg:sticky lg:top-56 lg:self-start">
+            <div className="flex items-center gap-3">
+              {organization.logoUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={organization.logoUrl}
+                  alt=""
+                  className="h-14 w-14 rounded-2xl border border-slate-100 object-cover"
+                />
+              ) : (
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
+                  <Store className="h-6 w-6" aria-hidden="true" />
+                </span>
+              )}
+              <div className="min-w-0">
+                <h2 className="truncate text-lg font-black text-slate-950">
+                  {organization.name}
+                </h2>
+                <p className="mt-1 text-xs font-bold text-slate-400">
+                  {organizationProducts.length} бүтээгдэхүүн
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {[
+                ...new Set(
+                  organizationProducts
+                    .map((product) => product.businessCategory?.name)
+                    .filter((name): name is string => Boolean(name)),
+                ),
+              ]
+                .slice(0, 3)
+                .map((category) => (
+                  <span
+                    key={category}
+                    className="rounded-lg bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-500"
+                  >
+                    {category}
+                  </span>
+                ))}
+            </div>
+          </div>
+
+          <div className="grid gap-x-4 gap-y-7 min-[420px]:grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
+            {organizationProducts.slice(0, 5).map((product) => (
+              <CatalogProductCard
+                key={product.id}
+                product={product}
+                isMember={isMember}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
     </div>
   );
 }

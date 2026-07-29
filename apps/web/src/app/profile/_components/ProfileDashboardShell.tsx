@@ -8,10 +8,13 @@ import {
   Coins,
   FileArchive,
   FileText,
+  Heart,
+  Home,
   Settings,
   ShieldCheck,
   Truck,
   UserRound,
+  WalletCards,
 } from "lucide-react";
 import { ACCOUNT_ROUTES, PROFILE_SETTING_LINKS } from "@/lib/account-routes";
 import type { AccountContract, AccountPurchase, ProfileOrder } from "./types";
@@ -42,9 +45,75 @@ export function ProfileDashboardShell({
   children,
 }: ProfileDashboardShellProps) {
   return (
-    <main className="min-h-screen bg-[#eef2f7] px-3 pb-28 pt-4 text-slate-950 md:px-6 md:pb-8 md:pt-8">
-      <div className="mx-auto max-w-7xl space-y-4 md:space-y-6">{children}</div>
+    <main className="min-h-screen bg-[#f5f5f5] px-3 pb-28 pt-4 text-slate-950 md:px-6 md:pb-8 md:pt-8">
+      <div className="mx-auto grid max-w-7xl items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+        <ProfileNavigation />
+        <div className="min-w-0 space-y-4 md:space-y-6">{children}</div>
+      </div>
     </main>
+  );
+}
+
+const profileNavItems = [
+  { label: "Миний профайл", href: ACCOUNT_ROUTES.profile, icon: Home },
+  { label: "Миний захиалга", href: ACCOUNT_ROUTES.orders, icon: Truck },
+  {
+    label: "Хадгалсан зүйлс",
+    href: ACCOUNT_ROUTES.profileLibrary,
+    icon: Heart,
+  },
+  {
+    label: "Миний сан",
+    href: ACCOUNT_ROUTES.profileLibrary,
+    icon: FileArchive,
+  },
+  {
+    label: "Гишүүнчлэл",
+    href: ACCOUNT_ROUTES.profileLibrary,
+    icon: WalletCards,
+  },
+  {
+    label: "Профайл тохиргоо",
+    href: ACCOUNT_ROUTES.profileSettings,
+    icon: Settings,
+  },
+] as const;
+
+function ProfileNavigation() {
+  return (
+    <aside className="sticky top-[9rem] hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:block">
+      <div className="border-b border-slate-100 px-3 pb-3 pt-1">
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-orange-500">
+          My MGL Store
+        </p>
+        <h2 className="mt-1 text-lg font-black text-slate-950">Миний хэсэг</h2>
+      </div>
+      <nav aria-label="Хэрэглэгчийн цэс" className="mt-2 space-y-1">
+        {profileNavItems.map((item, index) => {
+          const Icon = item.icon;
+          return (
+            <Link
+              key={`${item.label}-${index}`}
+              href={item.href}
+              className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-bold transition ${
+                index === 0
+                  ? "bg-orange-50 text-orange-700"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+              }`}
+            >
+              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+      <Link
+        href="/products"
+        className="mt-3 flex min-h-11 items-center justify-center rounded-xl bg-slate-950 px-3 text-sm font-black text-white transition hover:bg-orange-500"
+      >
+        Дэлгүүр хэсэх
+      </Link>
+    </aside>
   );
 }
 
@@ -114,7 +183,8 @@ export function ProfileStatsGrid({
     {
       label: "Захиалга",
       value: `${ordersCount} захиалга`,
-      meta: openOrdersCount > 0 ? `${openOrdersCount} нээлттэй` : "Идэвхтэй алга",
+      meta:
+        openOrdersCount > 0 ? `${openOrdersCount} нээлттэй` : "Идэвхтэй алга",
       icon: Truck,
       className: "bg-indigo-50 text-indigo-600 ring-indigo-100",
       onClick: onOrdersClick,
@@ -237,9 +307,7 @@ function SettingsPanel({ compact = false }: { compact?: boolean }) {
   }
 
   return (
-    <section
-      className="rounded-[18px] border border-orange-100 bg-white p-3 shadow-[0_12px_34px_rgba(15,23,42,0.07)] xl:block"
-    >
+    <section className="rounded-[18px] border border-orange-100 bg-white p-3 shadow-[0_12px_34px_rgba(15,23,42,0.07)] xl:block">
       <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-orange-50 text-orange-600 ring-1 ring-orange-100">
