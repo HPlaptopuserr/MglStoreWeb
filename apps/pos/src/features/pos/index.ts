@@ -18,6 +18,7 @@ export * from "./components/PosCartPanel";
 export * from "./components/PosPaymentPanel";
 export * from "./components/PosCheckoutView";
 export * from "./components/PosCustomerDisplay";
+export * from "./components/ProductLabelPrintDialog";
 export * from "./components/ShiftOpenDialog";
 export * from "./components/ReceiptPreview";
 export * from "./components/MobileBlock";

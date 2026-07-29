@@ -20,7 +20,9 @@ import {
   Crown,
   Lock,
   AlertTriangle,
+  Printer,
 } from "lucide-react";
+import { ProductLabelPrintDialog } from "@mgl/ui";
 import { API, authFetch } from "@/lib/api";
 import {
   isFeatureEnabled,
@@ -105,6 +107,7 @@ export default function ProductsPage() {
   const [preorderFeatureLoaded, setPreorderFeatureLoaded] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [labelPrintOpen, setLabelPrintOpen] = useState(false);
 
   const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null);
 
@@ -547,6 +550,19 @@ export default function ProductsPage() {
             />
           </div>
           <button
+            type="button"
+            onClick={() => setLabelPrintOpen(true)}
+            disabled={visibleProducts.length === 0}
+            className={`flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+              visibleProducts.length > 0
+                ? "bg-slate-900 text-white shadow-slate-500/20 hover:bg-slate-800"
+                : "cursor-not-allowed bg-slate-300 text-white shadow-none"
+            }`}
+          >
+            <Printer size={16} />
+            Шошго хэвлэх
+          </button>
+          <button
             onClick={() => canAddProduct && setImportOpen(true)}
             disabled={!canAddProduct}
             title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
@@ -623,6 +639,13 @@ export default function ProductsPage() {
           onSuccess={fetchProducts}
         />
       )}
+
+      <ProductLabelPrintDialog
+        open={labelPrintOpen}
+        products={visibleProducts}
+        initialSearch={searchQuery}
+        onClose={() => setLabelPrintOpen(false)}
+      />
 
       {/* Add/Edit Form Modal */}
       {formOpen && (

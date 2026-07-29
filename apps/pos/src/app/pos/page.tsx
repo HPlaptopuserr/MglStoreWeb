@@ -32,6 +32,7 @@ import {
   type CheckoutPaymentEntry,
   type CheckoutLoyaltyState,
   type CheckoutLoyaltyRedeemSession,
+  ProductLabelPrintDialog,
   ReceiptPreview,
   usePosCart,
   useCreateSale,
@@ -514,6 +515,7 @@ export default function PosDemoPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [paymentEntries, setPaymentEntries] = useState<CheckoutPaymentEntry[]>([]);
   const [listMode, setListMode] = useState<PosListMode>("products");
+  const [showProductLabelPrint, setShowProductLabelPrint] = useState(false);
   const [creditSales, setCreditSales] = useState<PosCreditListItem[]>([]);
   const [creditSalesLoading, setCreditSalesLoading] = useState(false);
   const [creditSalesError, setCreditSalesError] = useState("");
@@ -2988,6 +2990,12 @@ export default function PosDemoPage() {
   return (
     <>
       <MobileBlock />
+      <ProductLabelPrintDialog
+        open={showProductLabelPrint}
+        products={products}
+        initialSearch={searchInput}
+        onClose={() => setShowProductLabelPrint(false)}
+      />
       {pendingEbarimtSale && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-2xl">
@@ -3937,6 +3945,16 @@ export default function PosDemoPage() {
                 <Filter size={15} />
                 Шүүлтүүр
               </button>
+              {listMode === "products" && (
+                <button
+                  type="button"
+                  onClick={() => setShowProductLabelPrint(true)}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#3d484f] bg-[#122131] px-2.5 text-xs font-bold text-[#bcc8d1] hover:bg-[#1c2b3c]"
+                >
+                  <Printer size={15} />
+                  Шошго
+                </button>
+              )}
               <button
                 type="button"
                 onClick={listMode === "products" ? reloadProducts : () => void reloadCreditSales()}
