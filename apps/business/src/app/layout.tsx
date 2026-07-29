@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { MglAppBootLoader } from "@mgl/ui";
 import "./globals.css";
 
 const SITE_URL = "https://business.mglstore.mn";
@@ -31,7 +32,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="mn">
-      <body>{children}</body>
+      <body suppressHydrationWarning>
+        <MglAppBootLoader label="MGL Business ачааллаж байна" />
+        {children}
+      </body>
     </html>
   );
 }

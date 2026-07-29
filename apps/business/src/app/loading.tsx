@@ -1,5 +1,5 @@
 import { MglLoadingScreen } from "@mgl/ui";
 
 export default function Loading() {
-  return <MglLoadingScreen label="POS касс ачааллаж байна" />;
+  return <MglLoadingScreen label="MGL Business ачааллаж байна" />;
 }

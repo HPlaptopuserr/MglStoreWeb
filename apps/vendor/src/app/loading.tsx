@@ -1,3 +1,5 @@
+import { MglLoadingScreen } from "@mgl/ui";
+
 export default function Loading() {
-  return null;
+  return <MglLoadingScreen label="Vendor portal ачааллаж байна" />;
 }

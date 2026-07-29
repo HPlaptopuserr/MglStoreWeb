@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { cn } from "../lib";
-import { WalkingDuck } from "./MglLoadingScreen";
+import { MglCraneLoader } from "./MglLoadingScreen";
 
 type MglAppBootLoaderProps = {
   label?: string;
@@ -104,38 +104,21 @@ async function waitForAppReady({
 
 export function MglAppBootLoader({
   label = "Ачааллаж байна",
-  minimumVisibleMs = 320,
+  minimumVisibleMs = 1350,
   maxWaitMs = 2500,
   criticalImageWaitMs = 700,
   className,
 }: MglAppBootLoaderProps) {
   const pathname = usePathname();
   const [visible, setVisible] = useState(true);
-  const [progress, setProgress] = useState(0);
   const loadIdRef = useRef(0);
 
   useEffect(() => {
     const loadId = loadIdRef.current + 1;
     loadIdRef.current = loadId;
-    let animationFrame = 0;
-    let progressTimeout = 0;
     let cancelled = false;
 
     setVisible(true);
-    setProgress(8);
-
-    const tick = () => {
-      setProgress((current) => {
-        if (current >= 92) return current;
-        const increment = current < 45 ? 7 : current < 75 ? 4 : 2;
-        return Math.min(92, current + increment);
-      });
-      progressTimeout = window.setTimeout(() => {
-        animationFrame = window.requestAnimationFrame(tick);
-      }, 140);
-    };
-
-    animationFrame = window.requestAnimationFrame(tick);
 
     const complete = async () => {
       await waitForAppReady({
@@ -144,9 +127,6 @@ export function MglAppBootLoader({
         criticalImageWaitMs,
       });
       if (cancelled || loadIdRef.current !== loadId) return;
-      window.clearTimeout(progressTimeout);
-      window.cancelAnimationFrame(animationFrame);
-      setProgress(100);
       window.setTimeout(() => {
         if (!cancelled && loadIdRef.current === loadId) setVisible(false);
       }, 180);
@@ -156,8 +136,6 @@ export function MglAppBootLoader({
 
     return () => {
       cancelled = true;
-      window.cancelAnimationFrame(animationFrame);
-      window.clearTimeout(progressTimeout);
     };
   }, [criticalImageWaitMs, maxWaitMs, minimumVisibleMs, pathname]);
 
@@ -165,21 +143,32 @@ export function MglAppBootLoader({
 
   return (
     <div
-      className={cn(
-        "fixed inset-0 grid place-items-center bg-white px-6 text-slate-950 transition-opacity duration-200",
-        className,
-      )}
-      style={{ zIndex: 2147483647 }}
+      className={cn("mgl-app-boot-loader", className)}
       aria-label={label}
       aria-live="polite"
       aria-busy="true"
     >
-      <div className="flex flex-col items-center gap-2">
-        <WalkingDuck />
-        <span className="tabular-nums text-sm font-black tracking-[0.18em] text-slate-700">
-          {progress}%
-        </span>
-      </div>
+      <MglCraneLoader />
+      <style>{`
+        .mgl-app-boot-loader {
+          position: fixed;
+          inset: 0;
+          z-index: 2147483647;
+          display: grid;
+          min-height: 100dvh;
+          place-items: center;
+          padding: 24px;
+          color: #020617;
+          background: radial-gradient(
+            circle at 50% 43%,
+            #ffffff 0%,
+            #fbfcfe 58%,
+            #f4f7fb 100%
+          );
+          transition: opacity 200ms ease;
+        }
+
+      `}</style>
     </div>
   );
 }
