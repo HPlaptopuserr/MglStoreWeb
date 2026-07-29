@@ -1105,18 +1105,35 @@ router.get("/products", optionalAuth, async (req, res) => {
       where,
       orderBy:
         sort === "price_asc"
-          ? [{ marketplacePriority: "desc" }, { price: "asc" }]
+          ? [
+              { images: { _count: "desc" } },
+              { marketplacePriority: "desc" },
+              { price: "asc" },
+            ]
           : sort === "price_desc"
-            ? [{ marketplacePriority: "desc" }, { price: "desc" }]
+            ? [
+                { images: { _count: "desc" } },
+                { marketplacePriority: "desc" },
+                { price: "desc" },
+              ]
             : sort === "name_asc"
-              ? [{ marketplacePriority: "desc" }, { name: "asc" }]
+              ? [
+                  { images: { _count: "desc" } },
+                  { marketplacePriority: "desc" },
+                  { name: "asc" },
+                ]
               : sort === "discount"
                 ? [
+                    { images: { _count: "desc" } },
                     { marketplacePriority: "desc" },
                     { discounts: { _count: "desc" } },
                     { createdAt: "desc" },
                   ]
-                : [{ marketplacePriority: "desc" }, { createdAt: "desc" }],
+                : [
+                    { images: { _count: "desc" } },
+                    { marketplacePriority: "desc" },
+                    { createdAt: "desc" },
+                  ],
       ...(useDatabasePagination ? { skip: offset } : {}),
       ...(productCandidateLimit > 0 ? { take: productCandidateLimit } : {}),
       include: {
@@ -1213,6 +1230,12 @@ router.get("/products", optionalAuth, async (req, res) => {
       })
       .filter((product) => !search || product.searchScore > 0)
       .sort((a, b) => {
+        const aIsCatalogReady = a.images.length > 0 && Number(a.price) >= 100;
+        const bIsCatalogReady = b.images.length > 0 && Number(b.price) >= 100;
+        if (aIsCatalogReady !== bIsCatalogReady) {
+          return bIsCatalogReady ? 1 : -1;
+        }
+
         if (useRecommendationRanking) {
           const scoreA = productRecommendationScore(
             a,

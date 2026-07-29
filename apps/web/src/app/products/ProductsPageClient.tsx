@@ -202,6 +202,24 @@ function normalizeSearchText(value: string) {
     .trim();
 }
 
+function prioritizeCatalogReadyProducts(products: ApiProduct[]) {
+  return products
+    .map((product, originalIndex) => ({ product, originalIndex }))
+    .sort((left, right) => {
+      const leftHasImage = Boolean(left.product.images?.[0]?.url?.trim());
+      const rightHasImage = Boolean(right.product.images?.[0]?.url?.trim());
+      const leftIsCatalogReady = leftHasImage && left.product.price >= 100;
+      const rightIsCatalogReady = rightHasImage && right.product.price >= 100;
+      if (leftIsCatalogReady !== rightIsCatalogReady) {
+        return rightIsCatalogReady ? 1 : -1;
+      }
+
+      // Preserve the selected server-side sort inside each readiness group.
+      return left.originalIndex - right.originalIndex;
+    })
+    .map(({ product }) => product);
+}
+
 function buildSearchSuggestions({
   query,
   categories,
@@ -834,9 +852,10 @@ function ProductsContent({
     );
   }, [apiProducts]);
 
-  const processedProducts = apiProducts;
-
-  const displayProducts = processedProducts;
+  const displayProducts = useMemo(
+    () => prioritizeCatalogReadyProducts(apiProducts),
+    [apiProducts],
+  );
 
   const activeOrganizationName = availableOrganizations.find(
     (org) => org.id === selectedOrganization,
@@ -1127,7 +1146,7 @@ function ProductsContent({
         )}
 
         {!productsLoading &&
-          processedProducts.length === 0 &&
+          displayProducts.length === 0 &&
           searchSuggestions.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 py-3">
               <span className="text-[11px] font-black uppercase tracking-wider text-orange-500">
