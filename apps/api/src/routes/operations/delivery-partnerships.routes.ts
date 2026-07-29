@@ -280,6 +280,74 @@ router.post("/delivery-partnerships", requireAuth, async (req, res) => {
   }
 });
 
+router.patch("/delivery-partnerships/:id/cancel", requireAuth, async (req, res) => {
+  try {
+    const user = actor(req);
+    const existing = await prisma.deliveryPartnership.findUnique({
+      where: { id: req.params.id },
+      include: partnershipInclude,
+    });
+    if (!existing) {
+      return res.status(404).json({ message: "Хүсэлт олдсонгүй" });
+    }
+    if (
+      !(await canRequestForScope(
+        user,
+        existing.requesterOrganizationId,
+        existing.warehouseId || undefined,
+      ))
+    ) {
+      return res.status(403).json({ message: "Хүсэлт цуцлах эрхгүй байна" });
+    }
+    if (existing.status !== DeliveryPartnershipStatus.PENDING) {
+      return res.status(409).json({
+        message: "Зөвхөн хариу хүлээж буй хүсэлтийг цуцлах боломжтой",
+      });
+    }
+
+    const cancellation = await prisma.deliveryPartnership.updateMany({
+      where: {
+        id: existing.id,
+        status: DeliveryPartnershipStatus.PENDING,
+      },
+      data: {
+        status: DeliveryPartnershipStatus.CANCELLED,
+        rejectionReason: "REQUESTER_CANCELLED",
+        respondedById: user.userId,
+        respondedAt: new Date(),
+      },
+    });
+    if (cancellation.count === 0) {
+      return res.status(409).json({
+        message: "Хүсэлтийн төлөв өөрчлөгдсөн тул цуцлах боломжгүй байна",
+      });
+    }
+    const cancelled = await prisma.deliveryPartnership.findUniqueOrThrow({
+      where: { id: existing.id },
+      include: partnershipInclude,
+    });
+    const requesterName =
+      cancelled.warehouse?.name ||
+      cancelled.requesterOrganization?.name ||
+      "Байгууллага";
+    await notifyUsers({
+      userIds: await organizationManagerIds(cancelled.providerOrganizationId),
+      title: "Хүргэлтийн хүсэлт цуцлагдлаа",
+      body: `${requesterName} хамтын ажиллагааны хүсэлтээ цуцаллаа.`,
+      data: {
+        type: "delivery_partnership_cancelled",
+        partnershipId: cancelled.id,
+      },
+    });
+    return res.json(cancelled);
+  } catch (error) {
+    console.error("PATCH /delivery-partnerships/:id/cancel error", error);
+    return res
+      .status(500)
+      .json({ message: "Хамтын ажиллагааны хүсэлт цуцлахад алдаа гарлаа" });
+  }
+});
+
 router.patch("/delivery-partnerships/:id/respond", requireAuth, async (req, res) => {
   try {
     const user = actor(req);

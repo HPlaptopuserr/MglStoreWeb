@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Check,
-  Clock3,
+  AlertTriangle,
   Loader2,
   Send,
   Truck,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 
@@ -64,6 +65,10 @@ export default function DeliveryNetworkPage() {
   const [couriersByPartnership, setCouriersByPartnership] = useState<Record<string, Courier[]>>({});
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<{
+    partnershipId: string;
+    providerName: string;
+  } | null>(null);
   const [error, setError] = useState("");
 
   const selectedWarehouse = useMemo(
@@ -171,6 +176,32 @@ export default function DeliveryNetworkPage() {
     }
   };
 
+  const cancelPartnership = async () => {
+    if (!cancelTarget) return;
+    setBusyId(cancelTarget.partnershipId);
+    setError("");
+    try {
+      const response = await wmsFetch(
+        `${API}/delivery-partnerships/${cancelTarget.partnershipId}/cancel`,
+        { method: "PATCH" },
+      );
+      const payload = (await response.json().catch(() => ({}))) as {
+        message?: string;
+      };
+      if (!response.ok) {
+        throw new Error(payload.message || "Хүсэлт цуцалж чадсангүй");
+      }
+      setCancelTarget(null);
+      await loadScope();
+    } catch (cancelError) {
+      setError(
+        cancelError instanceof Error ? cancelError.message : "Тодорхойгүй алдаа",
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const linkedProviderIds = new Set(
     partnerships
       .filter((item) => item.status === "PENDING" || item.status === "ACCEPTED")
@@ -257,7 +288,12 @@ export default function DeliveryNetworkPage() {
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {providers.map((provider) => {
                 const requested = linkedProviderIds.has(provider.id);
-                const pending = partnerships.some((item) => item.providerOrganizationId === provider.id && item.status === "PENDING");
+                const pendingPartnership = partnerships.find(
+                  (item) =>
+                    item.providerOrganizationId === provider.id &&
+                    item.status === "PENDING",
+                );
+                const pending = Boolean(pendingPartnership);
                 return (
                   <article key={provider.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex items-start justify-between gap-3">
@@ -266,16 +302,82 @@ export default function DeliveryNetworkPage() {
                     </div>
                     <h3 className="mt-4 font-black text-slate-900">{provider.name}</h3>
                     <p className="mt-1 flex items-center gap-1 text-xs text-slate-500"><Users className="h-3.5 w-3.5" /> {provider._count.members} жолооч</p>
-                    <button onClick={() => requestPartnership(provider.id)} disabled={requested || busyId === provider.id} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-600 disabled:bg-slate-100 disabled:text-slate-500">
-                      {pending ? <Clock3 className="h-4 w-4" /> : requested ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-                      {pending ? "Хариу хүлээж байна" : requested ? "Холбогдсон" : "Хүсэлт илгээх"}
-                    </button>
+                    {pending && pendingPartnership ? (
+                      <button
+                        onClick={() =>
+                          setCancelTarget({
+                            partnershipId: pendingPartnership.id,
+                            providerName: provider.name,
+                          })
+                        }
+                        disabled={busyId === pendingPartnership.id}
+                        className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {busyId === pendingPartnership.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <X className="h-4 w-4" />
+                        )}
+                        Хүсэлт цуцлах
+                      </button>
+                    ) : (
+                      <button onClick={() => requestPartnership(provider.id)} disabled={requested || busyId === provider.id} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-600 disabled:bg-slate-100 disabled:text-slate-500">
+                        {requested ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                        {requested ? "Холбогдсон" : "Хүсэлт илгээх"}
+                      </button>
+                    )}
                   </article>
                 );
               })}
             </div>
           </section>
         </>
+      )}
+      {cancelTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="cancel-partnership-title"
+        >
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
+              <AlertTriangle className="h-6 w-6" />
+            </div>
+            <h2
+              id="cancel-partnership-title"
+              className="mt-5 text-xl font-black text-slate-950"
+            >
+              Хүсэлтийг цуцлах уу?
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              <strong>{cancelTarget.providerName}</strong> компанид илгээсэн
+              хамтын ажиллагааны хүсэлт цуцлагдана. Дараа нь дахин хүсэлт
+              илгээх боломжтой.
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setCancelTarget(null)}
+                disabled={busyId === cancelTarget.partnershipId}
+                className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Болих
+              </button>
+              <button
+                type="button"
+                onClick={() => void cancelPartnership()}
+                disabled={busyId === cancelTarget.partnershipId}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-rose-700 disabled:cursor-wait disabled:opacity-60"
+              >
+                {busyId === cancelTarget.partnershipId && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                Хүсэлт цуцлах
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
