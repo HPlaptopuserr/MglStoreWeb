@@ -11,6 +11,7 @@ import {
   Check,
 } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
+import type { CartItem } from "@/lib/cart";
 import { useAuth, type AuthAddress, type AuthUser } from "@/lib/auth-context";
 import { API } from "@/lib/api";
 import { ACCOUNT_ROUTES } from "@/lib/account-routes";
@@ -28,6 +29,21 @@ import { MinimumOrderModal } from "@/components/organisms/checkout/MinimumOrderM
 import { trackMetaCommerceEvent } from "@/lib/meta-events";
 
 const MINIMUM_ORDER_AMOUNT = 50_000;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const toCheckoutLine = (item: CartItem) => ({
+  productId: item.id,
+  qty: item.quantity,
+  ...(item.id.startsWith("local-product-")
+    ? {
+        devProduct: {
+          name: item.name,
+          price: item.price,
+          supplyType: item.supplyType ?? "IN_STOCK",
+        },
+      }
+    : {}),
+});
 
 interface DeepLink {
   name: string;
@@ -181,6 +197,7 @@ export default function CheckoutPage() {
     null,
   );
   const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
   const [secondaryPhone, setSecondaryPhone] = useState("");
   const [orderNote, setOrderNote] = useState("");
   const [deliveryUnavailable, setDeliveryUnavailable] = useState(false);
@@ -192,6 +209,7 @@ export default function CheckoutPage() {
   const [minimumOrderModalOpen, setMinimumOrderModalOpen] = useState(false);
   const [now, setNow] = useState(Date.now());
   const didPrefillPhone = useRef(false);
+  const didPrefillEmail = useRef(false);
   const didTrackCheckout = useRef(false);
   const addresses = user?.addresses?.length
     ? user.addresses
@@ -217,10 +235,21 @@ export default function CheckoutPage() {
   useEffect(() => {
     const activeDispatch = getActiveCheckoutDispatch();
     if (!activeDispatch) return;
+    const isDifferentCart =
+      items.length > 0 &&
+      typeof activeDispatch.subtotal === "number" &&
+      activeDispatch.subtotal !== total;
+    if (isDifferentCart) {
+      setActiveCheckoutDispatch(null);
+      setDeliverySession(null);
+      setDeliveryUnavailable(false);
+      setCheckoutStep("idle");
+      return;
+    }
     setDeliverySession(activeDispatch);
     setDeliveryUnavailable(activeDispatch.status === "NO_BRANCH_AVAILABLE");
     setCheckoutStep(activeDispatch.canPay ? "ready-to-pay" : "radar");
-  }, []);
+  }, [items.length, total]);
 
   useEffect(() => {
     if (!selectedAddressId && selectedAddress?.id) {
@@ -234,6 +263,13 @@ export default function CheckoutPage() {
       didPrefillPhone.current = true;
     }
   }, [user?.phone]);
+
+  useEffect(() => {
+    if (!didPrefillEmail.current && user?.email) {
+      setEmail(user.email);
+      didPrefillEmail.current = true;
+    }
+  }, [user?.email]);
 
   useEffect(() => {
     if (didTrackCheckout.current || items.length === 0) return;
@@ -325,6 +361,10 @@ export default function CheckoutPage() {
       setError("Захиалга баталгаажуулах утасны дугаараа оруулна уу.");
       return;
     }
+    if (email.trim() && !EMAIL_PATTERN.test(email.trim())) {
+      setError("Имэйл хаягаа зөв форматаар оруулна уу.");
+      return;
+    }
     if (!orderNote.trim()) {
       setError("Захиалгын нэмэлт мэдээллээ оруулна уу.");
       return;
@@ -356,6 +396,10 @@ export default function CheckoutPage() {
       setError("Захиалга баталгаажуулах утасны дугаараа оруулна уу.");
       return;
     }
+    if (email.trim() && !EMAIL_PATTERN.test(email.trim())) {
+      setError("Имэйл хаягаа зөв форматаар оруулна уу.");
+      return;
+    }
     if (!orderNote.trim()) {
       setError("Захиалгын нэмэлт мэдээллээ оруулна уу.");
       return;
@@ -369,8 +413,9 @@ export default function CheckoutPage() {
       const res = await authFetch(`${API}/store/checkout`, {
         method: "POST",
         body: JSON.stringify({
-          lines: items.map((i) => ({ productId: i.id, qty: i.quantity })),
+          lines: items.map(toCheckoutLine),
           phone: phone.trim(),
+          email: email.trim() || undefined,
           secondaryPhone: secondaryPhone.trim() || undefined,
           note: orderNote.trim(),
         }),
@@ -420,6 +465,11 @@ export default function CheckoutPage() {
       setCheckoutStep("idle");
       return;
     }
+    if (email.trim() && !EMAIL_PATTERN.test(email.trim())) {
+      setError("Имэйл хаягаа зөв форматаар оруулна уу.");
+      setCheckoutStep("idle");
+      return;
+    }
     if (!orderNote.trim()) {
       setError("Захиалгын нэмэлт мэдээллээ оруулна уу.");
       setCheckoutStep("idle");
@@ -436,8 +486,9 @@ export default function CheckoutPage() {
       const res = await authFetch(`${API}/store/checkout`, {
         method: "POST",
         body: JSON.stringify({
-          lines: items.map((i) => ({ productId: i.id, qty: i.quantity })),
+          lines: items.map(toCheckoutLine),
           phone: phone.trim(),
+          email: email.trim() || undefined,
           secondaryPhone: secondaryPhone.trim() || undefined,
           note: orderNote.trim() || undefined,
           shippingAddress: address.fullAddress,
@@ -569,30 +620,33 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <button
-        onClick={() => router.back()}
-        className="mb-6 flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors"
-      >
-        <ArrowLeft size={16} />
-        Буцах
-      </button>
+    <div className="container mx-auto px-4 py-3 sm:py-4">
+      <div className="mb-3 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => router.back()}
+          aria-label="Буцах"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-500 transition hover:border-gray-300 hover:text-gray-900"
+        >
+          <ArrowLeft size={17} />
+        </button>
+        <h1 className="text-xl font-black text-gray-900 sm:text-2xl">
+          Захиалга баталгаажуулах
+        </h1>
+      </div>
 
-      <h1 className="mb-8 text-2xl font-black text-gray-900">
-        Захиалга баталгаажуулах
-      </h1>
-
-      <div className="grid gap-8 lg:grid-cols-3">
+      <div className="grid items-start gap-4 lg:grid-cols-3">
         {/* Order summary */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-lg font-bold text-gray-900">
+        <div className="space-y-3 lg:col-span-2">
+          {items.length > 0 && (
+          <div className="rounded-2xl border border-gray-200 bg-white p-4">
+            <h2 className="mb-2 text-base font-bold text-gray-900">
               Сагсны бараа
             </h2>
             <div className="divide-y divide-gray-100">
               {items.map((item) => (
-                <div key={item.id} className="flex items-center gap-4 py-4">
-                  <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
+                <div key={item.id} className="flex items-center gap-3 py-2">
+                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
                     {item.image ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -621,16 +675,17 @@ export default function CheckoutPage() {
               ))}
             </div>
           </div>
+          )}
 
           {/* Order information */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-6">
-            <h2 className="mb-4 text-lg font-bold text-gray-900">
+          <div className="rounded-2xl border border-gray-200 bg-white p-4">
+            <h2 className="mb-3 text-base font-bold text-gray-900">
               Захиалгын мэдээлэл
             </h2>
-            <div className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-3">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 <div>
-                  <label className="mb-2 block text-sm font-bold text-gray-700">
+                  <label className="mb-1 block text-xs font-bold text-gray-700">
                     Утасны дугаар <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -642,15 +697,30 @@ export default function CheckoutPage() {
                     }}
                     required
                     placeholder="99112233"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
                   />
-                  <p className="mt-2 text-xs font-semibold text-gray-400">
-                    Салбар захиалгыг энэ дугаараар баталгаажуулна.
-                  </p>
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-bold text-gray-700">
+                  <label className="mb-1 block text-xs font-bold text-gray-700">
+                    Имэйл хаяг
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (error) setError("");
+                    }}
+                    autoComplete="email"
+                    inputMode="email"
+                    placeholder="name@example.com"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-xs font-bold text-gray-700">
                     Нэмэлт дугаар
                   </label>
                   <input
@@ -658,16 +728,13 @@ export default function CheckoutPage() {
                     value={secondaryPhone}
                     onChange={(e) => setSecondaryPhone(e.target.value)}
                     placeholder="Байвал оруулна уу"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
                   />
-                  <p className="mt-2 text-xs font-semibold text-gray-400">
-                    Үндсэн дугаар холбогдохгүй үед ашиглана.
-                  </p>
                 </div>
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-bold text-gray-700">
+                <label className="mb-1 block text-xs font-bold text-gray-700">
                   Нэмэлт мэдээлэл
                 </label>
                 <textarea
@@ -676,14 +743,11 @@ export default function CheckoutPage() {
                     setOrderNote(e.target.value);
                     if (error) setError("");
                   }}
-                  rows={3}
+                  rows={2}
                   required
                   placeholder="Жишээ: Орцны код, хүргэлтийн цаг, авах хүний нэр..."
-                  className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
+                  className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
                 />
-                <p className="mt-2 text-xs font-semibold text-gray-400">
-                  Хүргэлтэд хэрэгтэй нэмэлт тайлбарыг энд үлдээнэ.
-                </p>
               </div>
             </div>
           </div>
@@ -691,8 +755,8 @@ export default function CheckoutPage() {
 
         {/* Payment sidebar */}
         <div className="min-w-0">
-          <div className="sticky top-36 min-w-0 space-y-4 rounded-2xl border border-gray-200 bg-white p-6">
-            <h2 className="text-lg font-bold text-gray-900">
+          <div className="sticky top-32 min-w-0 space-y-3 rounded-2xl border border-gray-200 bg-white p-4">
+            <h2 className="text-base font-bold text-gray-900">
               Төлбөрийн мэдээлэл
             </h2>
 
@@ -754,14 +818,6 @@ export default function CheckoutPage() {
                   onEdit={() => router.push(ACCOUNT_ROUTES.profileAddress)}
                 />
               )}
-
-            {deliveryUnavailable && deliverySession && (
-              <div className="flex gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-5 text-amber-800">
-                <MapPin size={16} className="mt-0.5 shrink-0" />
-                Хүргэлт баталгаажаагүй тул энэ захиалга салбар дээрээс авах
-                горимд шилжлээ.
-              </div>
-            )}
 
             <div className="space-y-2 text-sm">
               <div className="flex justify-between text-gray-500">

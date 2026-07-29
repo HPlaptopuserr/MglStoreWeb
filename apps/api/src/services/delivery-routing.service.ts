@@ -80,7 +80,7 @@ async function selectLeastLoadedCourier(
   providerOrganizationId: string,
   warehouseId: string | null,
 ) {
-  const members = await tx.organizationMember.findMany({
+  let members = await tx.organizationMember.findMany({
     where: {
       organizationId: providerOrganizationId,
       isActive: true,
@@ -103,6 +103,18 @@ async function selectLeastLoadedCourier(
     select: { userId: true },
     orderBy: { createdAt: "asc" },
   });
+  if (members.length === 0 && process.env.MGL_LOCAL_DEV === "true") {
+    members = await tx.organizationMember.findMany({
+      where: {
+        organizationId: providerOrganizationId,
+        isActive: true,
+        deletedAt: null,
+        user: { isActive: true, deletedAt: null },
+      },
+      select: { userId: true },
+      orderBy: { createdAt: "asc" },
+    });
+  }
   if (members.length === 0) return null;
 
   const userIds = members.map((member) => member.userId);
@@ -123,7 +135,7 @@ async function selectLeastLoadedCourier(
 }
 
 async function selectLeastLoadedWebsiteProvider(tx: DatabaseClient) {
-  const providers = await tx.organization.findMany({
+  let providers = await tx.organization.findMany({
     where: {
       businessDeliveryEnabled: true,
       status: "ACTIVE",
@@ -132,6 +144,23 @@ async function selectLeastLoadedWebsiteProvider(tx: DatabaseClient) {
     select: { id: true },
     orderBy: { createdAt: "asc" },
   });
+  if (providers.length === 0 && process.env.MGL_LOCAL_DEV === "true") {
+    providers = await tx.organization.findMany({
+      where: {
+        status: "ACTIVE",
+        deletedAt: null,
+        members: {
+          some: {
+            isActive: true,
+            deletedAt: null,
+            user: { isActive: true, deletedAt: null },
+          },
+        },
+      },
+      select: { id: true },
+      orderBy: { createdAt: "asc" },
+    });
+  }
   if (providers.length === 0) return null;
 
   const providerIds = providers.map((provider) => provider.id);

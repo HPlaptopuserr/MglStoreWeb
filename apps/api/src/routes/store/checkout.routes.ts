@@ -180,7 +180,7 @@ async function getStoreCheckoutPaymentAccount() {
   }
 }
 
-async function advanceExpiredDispatchAttempts(orderId: string) {
+async function autoAssignExpiredCheckout(orderId: string) {
   await prisma.$transaction(async (tx) => {
     const expired = await tx.orderDispatchAttempt.findMany({
       where: {
@@ -188,10 +188,64 @@ async function advanceExpiredDispatchAttempts(orderId: string) {
         status: OrderDispatchAttemptStatus.PENDING,
         expiresAt: { lt: new Date() },
       },
-      select: { id: true },
+      orderBy: [{ distanceKm: "asc" }, { requestedAt: "asc" }],
+      select: {
+        id: true,
+        branchId: true,
+        order: {
+          select: {
+            branchId: true,
+            status: true,
+          },
+        },
+        branch: { select: { name: true } },
+      },
     });
 
-    if (expired.length === 0) return;
+    if (expired.length === 0) {
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        select: {
+          branchId: true,
+          status: true,
+          createdAt: true,
+          delivery: { select: { courierId: true } },
+          _count: { select: { dispatchAttempts: true } },
+        },
+      });
+      const fallbackAt =
+        order?.createdAt.getTime() ?? Number.POSITIVE_INFINITY;
+      if (
+        !order ||
+        order.branchId ||
+        order._count.dispatchAttempts > 0 ||
+        fallbackAt + DISPATCH_WINDOW_SECONDS * 1000 > Date.now() ||
+        order.delivery?.courierId
+      ) {
+        return null;
+      }
+
+      const delivery = await routeOrderDelivery(tx, {
+        orderId,
+        sourceType: DeliverySourceType.WEBSITE_ORDER,
+      });
+      if (!delivery.courierId) return null;
+
+      await tx.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.CONFIRMED },
+      });
+      await tx.orderHistory.create({
+        data: {
+          orderId,
+          fromStatus: order.status as OrderStatus,
+          toStatus: OrderStatus.CONFIRMED,
+          note: "Салбарын radar хоосон байсан тул 10 секундийн дараа хүргэлтийн компанийн ажилтанд автоматаар оноосон",
+        },
+      });
+
+      return;
+    }
 
     await tx.orderDispatchAttempt.updateMany({
       where: { id: { in: expired.map((attempt) => attempt.id) } },
@@ -201,30 +255,60 @@ async function advanceExpiredDispatchAttempts(orderId: string) {
       },
     });
 
-    const hasActiveAttempt = await tx.orderDispatchAttempt.count({
-      where: { orderId, status: OrderDispatchAttemptStatus.PENDING },
-    });
-    if (hasActiveAttempt > 0) return;
+    const fallbackAttempt = expired[0];
+    if (!fallbackAttempt || fallbackAttempt.order.branchId) return null;
 
-    const next = await tx.orderDispatchAttempt.findFirst({
-      where: { orderId, status: OrderDispatchAttemptStatus.QUEUED },
-      orderBy: { sequence: "asc" },
-      select: { sequence: true },
+    const claimed = await tx.order.updateMany({
+      where: { id: orderId, branchId: null },
+      data: {
+        branchId: fallbackAttempt.branchId,
+        status: OrderStatus.CONFIRMED,
+      },
     });
-    if (!next) return;
+    if (claimed.count === 0) return null;
+
+    await tx.orderDispatchAttempt.update({
+      where: { id: fallbackAttempt.id },
+      data: {
+        status: OrderDispatchAttemptStatus.ACCEPTED,
+        respondedAt: new Date(),
+        note: "10 секундэд хариу ирээгүй тул систем автоматаар оноосон",
+      },
+    });
 
     await tx.orderDispatchAttempt.updateMany({
       where: {
         orderId,
-        status: OrderDispatchAttemptStatus.QUEUED,
-        sequence: next.sequence,
+        id: { not: fallbackAttempt.id },
+        status: {
+          in: [
+            OrderDispatchAttemptStatus.PENDING,
+            OrderDispatchAttemptStatus.QUEUED,
+          ],
+        },
       },
       data: {
-        status: OrderDispatchAttemptStatus.PENDING,
-        requestedAt: new Date(),
-        expiresAt: new Date(Date.now() + DISPATCH_WINDOW_SECONDS * 1000),
+        status: OrderDispatchAttemptStatus.CANCELLED,
+        respondedAt: new Date(),
+        note: "Хүргэлтийн fallback assignment үүссэн",
       },
     });
+
+    await tx.orderHistory.create({
+      data: {
+        orderId,
+        fromStatus: fallbackAttempt.order.status as OrderStatus,
+        toStatus: OrderStatus.CONFIRMED,
+        note: `${fallbackAttempt.branch.name} салбарыг 10 секундийн дараа автоматаар сонгож, хүргэлтийн ажилтанд шилжүүлсэн`,
+      },
+    });
+
+    await routeOrderDelivery(tx, {
+      orderId,
+      sourceType: DeliverySourceType.WEBSITE_ORDER,
+    });
+
+    return;
   });
 }
 
@@ -232,7 +316,7 @@ async function getCheckoutDispatchSnapshot(
   orderId: string,
   customerId: string,
 ) {
-  await advanceExpiredDispatchAttempts(orderId);
+  await autoAssignExpiredCheckout(orderId);
 
   const order = await prisma.order.findUnique({
     where: { id: orderId },
@@ -247,6 +331,12 @@ async function getCheckoutDispatchSnapshot(
       customerLng: true,
       branchId: true,
       paymentStatus: true,
+      delivery: {
+        select: {
+          courierId: true,
+          providerOrganizationId: true,
+        },
+      },
       branch: {
         select: { id: true, name: true, address: true, lat: true, lng: true },
       },
@@ -261,6 +351,7 @@ async function getCheckoutDispatchSnapshot(
           requestedAt: true,
           expiresAt: true,
           respondedAt: true,
+          note: true,
           branch: {
             select: {
               id: true,
@@ -283,7 +374,8 @@ async function getCheckoutDispatchSnapshot(
   const queuedCount = order.dispatchAttempts.filter(
     (attempt) => attempt.status === OrderDispatchAttemptStatus.QUEUED,
   ).length;
-  const hasAccepted = Boolean(order.branchId);
+  const hasAssignedDelivery = Boolean(order.delivery?.courierId);
+  const hasAccepted = Boolean(order.branchId || hasAssignedDelivery);
   const activeZone = activeAttempt?.sequence || null;
 
   return {
@@ -301,6 +393,7 @@ async function getCheckoutDispatchSnapshot(
             ? "NO_BRANCH_AVAILABLE"
             : "NOT_STARTED",
     canPay: hasAccepted && order.paymentStatus !== PaymentStatus.PAID,
+    autoAssignedDelivery: hasAssignedDelivery,
     acceptedBranch: order.branch,
     customerLocation: {
       address: order.shippingAddress,
@@ -323,6 +416,7 @@ async function getCheckoutDispatchSnapshot(
       requestedAt: attempt.requestedAt.toISOString(),
       expiresAt: attempt.expiresAt?.toISOString() || null,
       respondedAt: attempt.respondedAt?.toISOString() || null,
+      note: attempt.note,
       branch: attempt.branch,
     })),
   };
@@ -657,7 +751,8 @@ async function confirmPaidOrderAndCreateDelivery(
 
   if (assignment) {
     await notifyAssignedOrderDelivery({
-      ...assignment,
+      courierId: assignment.courierId,
+      deliveryId: assignment.deliveryId,
       orderNumber: order.orderNumber,
     });
   }
@@ -724,7 +819,15 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       customerLat,
       customerLng,
     } = req.body as {
-      lines?: { productId: string; qty: number }[];
+      lines?: {
+        productId: string;
+        qty: number;
+        devProduct?: {
+          name?: string;
+          price?: number;
+          supplyType?: "IN_STOCK" | "CHINA_PREORDER";
+        };
+      }[];
       phone?: string;
       email?: string;
       secondaryPhone?: string;
@@ -765,7 +868,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
 
     // Validate all products exist and are active
     const productIds = lines.map((l) => l.productId);
-    const products = await prisma.product.findMany({
+    let products = await prisma.product.findMany({
       where: { id: { in: productIds }, deletedAt: null, isActive: true },
       select: {
         id: true,
@@ -782,6 +885,94 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         },
       },
     });
+
+    const foundProductIds = new Set(products.map((product) => product.id));
+    const missingLines = lines.filter(
+      (line) => !foundProductIds.has(line.productId),
+    );
+    const canMaterializeDevProducts =
+      process.env.MGL_LOCAL_DEV === "true" &&
+      missingLines.length > 0 &&
+      missingLines.every(
+        (line) =>
+          line.productId.startsWith("local-product-") &&
+          line.devProduct?.name?.trim() &&
+          Number.isFinite(Number(line.devProduct.price)) &&
+          Number(line.devProduct.price) >= 0,
+      );
+
+    if (canMaterializeDevProducts) {
+      const testOrganization = await prisma.organization.findFirst({
+        where: {
+          status: "ACTIVE",
+          deletedAt: null,
+        },
+        orderBy: { createdAt: "asc" },
+        select: { id: true },
+      });
+      if (!testOrganization) {
+        return res.status(409).json({
+          code: "DEV_TEST_ORGANIZATION_REQUIRED",
+          message:
+            "Тест захиалга үүсгэх идэвхтэй байгууллага database-д алга байна.",
+        });
+      }
+
+      await prisma.$transaction(
+        missingLines.map((line) =>
+          prisma.product.upsert({
+            where: { id: line.productId },
+            create: {
+              id: line.productId,
+              organizationId: testOrganization.id,
+              name: line.devProduct!.name!.trim().slice(0, 200),
+              description: "Local development checkout test product",
+              sku: `DEV-${line.productId}`.slice(0, 100),
+              price: Number(line.devProduct!.price),
+              stock: 10_000,
+              supplyType:
+                line.devProduct?.supplyType === "CHINA_PREORDER"
+                  ? "CHINA_PREORDER"
+                  : "IN_STOCK",
+              isActive: true,
+              reviewStatus: "APPROVED",
+            },
+            update: {
+              organizationId: testOrganization.id,
+              name: line.devProduct!.name!.trim().slice(0, 200),
+              price: Number(line.devProduct!.price),
+              stock: 10_000,
+              supplyType:
+                line.devProduct?.supplyType === "CHINA_PREORDER"
+                  ? "CHINA_PREORDER"
+                  : "IN_STOCK",
+              isActive: true,
+              deletedAt: null,
+              reviewStatus: "APPROVED",
+            },
+            select: { id: true },
+          }),
+        ),
+      );
+
+      products = await prisma.product.findMany({
+        where: { id: { in: productIds }, deletedAt: null, isActive: true },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          price: true,
+          stock: true,
+          supplyType: true,
+          organizationId: true,
+          discounts: {
+            where: { isActive: true, validUntil: { gte: new Date() } },
+            select: { percent: true },
+            take: 1,
+          },
+        },
+      });
+    }
 
     if (products.length !== productIds.length) {
       return res
@@ -1102,6 +1293,12 @@ router.post(
             orderBy: { createdAt: "desc" },
             take: 1,
           },
+          delivery: {
+            select: {
+              courierId: true,
+              providerOrganizationId: true,
+            },
+          },
         },
       });
 
@@ -1113,7 +1310,11 @@ router.post(
       const isPreorderOnlyOrder = order.items.every(
         (item) => item.product?.supplyType === "CHINA_PREORDER",
       );
-      if (!order.branchId && !isPreorderOnlyOrder) {
+      if (
+        !order.branchId &&
+        !order.delivery?.courierId &&
+        !isPreorderOnlyOrder
+      ) {
         return res.status(409).json({
           message: "Салбар захиалгыг баталгаажуулсны дараа төлбөр төлнө.",
         });

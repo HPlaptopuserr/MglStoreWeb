@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { X, CheckCircle2, Loader2, QrCode, Smartphone } from "lucide-react";
+import {
+  X,
+  BellRing,
+  CheckCircle2,
+  Loader2,
+  QrCode,
+  Smartphone,
+} from "lucide-react";
 import { QrGenerator } from "@mgl/ui";
 import { useAuth } from "@/lib/auth-context";
 import { API } from "@/lib/api";
@@ -52,7 +59,7 @@ export function QPayModal({
       if (data.status === "PAID") {
         if (pollRef.current) clearInterval(pollRef.current);
         setConfirmed(true);
-        setTimeout(onSuccess, 2000);
+        setTimeout(onSuccess, 3500);
         return true;
       }
     } catch {
@@ -150,6 +157,21 @@ export function QPayModal({
                 <p className="mt-2 text-sm text-white/70">
                   Захиалга #{orderNumber} баталгаажлаа.
                 </p>
+              </div>
+              <div className="flex max-w-sm items-start gap-3 rounded-2xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-3 text-left">
+                <BellRing
+                  size={20}
+                  className="mt-0.5 shrink-0 text-emerald-300"
+                />
+                <div>
+                  <p className="text-sm font-black text-emerald-100">
+                    Холбогдох ажилтанд мэдээлэл илгээгдлээ
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-white/60">
+                    Хүргэлтийн ажилтан захиалгын мэдээллийг notification-оор
+                    хүлээн авсан.
+                  </p>
+                </div>
               </div>
               <p className="text-xs text-white/50">
                 Захиалгын хуудас руу шилжиж байна...

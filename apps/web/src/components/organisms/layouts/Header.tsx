@@ -74,13 +74,18 @@ export const Header = () => {
   const isProfileRoute = pathname.startsWith("/profile");
   const isOrdersRoute = pathname.startsWith(ACCOUNT_ROUTES.orders);
   const isProductsRoute = pathname.startsWith("/products");
+  const isCheckoutRoute = pathname === "/checkout";
   const hideBrowseNav =
     pathname.startsWith("/study") ||
     isProductsRoute ||
     isProfileRoute ||
-    isOrdersRoute;
+    isOrdersRoute ||
+    isCheckoutRoute;
   const hideSearch =
-    pathname === "/mgl-store" || isProfileRoute || isOrdersRoute;
+    pathname === "/mgl-store" ||
+    isProfileRoute ||
+    isOrdersRoute ||
+    isCheckoutRoute;
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -166,7 +171,11 @@ export const Header = () => {
     <>
       <header className="fixed left-0 right-0 top-0 z-50 flex max-w-full flex-col bg-white/95 shadow-sm backdrop-blur-md">
         <div className="border-b border-slate-100">
-          <div className="container mx-auto flex h-14 min-w-0 items-center justify-between gap-1.5 px-2.5 md:h-16 md:gap-6 md:px-4">
+          <div
+            className={`container mx-auto flex min-w-0 items-center justify-between gap-1.5 px-2.5 md:gap-6 md:px-4 ${
+              isCheckoutRoute ? "h-12 md:h-14" : "h-14 md:h-16"
+            }`}
+          >
             <button
               type="button"
               onClick={() => setMobileMenuOpen((v) => !v)}
@@ -187,11 +196,21 @@ export const Header = () => {
                   alt="MglStore Logo"
                   width={140}
                   height={52}
-                  className="h-auto w-[96px] object-contain min-[360px]:w-[112px] sm:w-[140px] md:w-[160px]"
+                  className={`h-auto object-contain ${
+                    isCheckoutRoute
+                      ? "w-[88px] min-[360px]:w-[96px] md:w-[120px]"
+                      : "w-[96px] min-[360px]:w-[112px] sm:w-[140px] md:w-[160px]"
+                  }`}
                   priority
                 />
               </Link>
-              <div className="hidden items-center gap-8 sm:flex py-3">
+              <div
+                className={
+                  isCheckoutRoute
+                    ? "hidden"
+                    : "hidden items-center gap-8 py-3 sm:flex"
+                }
+              >
                 <div className="h-8 w-px bg-gradient-to-b from-transparent via-amber-400 to-transparent" />
                 <a
                   href={presentationPdfUrl}

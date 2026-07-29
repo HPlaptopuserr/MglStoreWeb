@@ -15,6 +15,7 @@ export type DeliveryDispatchAttempt = {
   sequence: number;
   distanceKm: number | null;
   expiresAt: string | null;
+  note?: string | null;
   branch: {
     id: string;
     name: string;
@@ -31,6 +32,7 @@ export type DeliverySession = {
   total?: number;
   status: "ACCEPTED" | "SEARCHING" | "QUEUED" | "NO_BRANCH_AVAILABLE" | "NOT_STARTED";
   canPay: boolean;
+  autoAssignedDelivery?: boolean;
   customerLocation?: {
     address: string;
     lat: number | null;
@@ -104,24 +106,51 @@ export function DeliveryDispatchRadar({
   const completedCount = session.attempts.filter((attempt) =>
     ["ACCEPTED", "DECLINED", "EXPIRED", "CANCELLED"].includes(attempt.status),
   ).length;
+  const wasAutoAssigned = session.attempts.some(
+    (attempt) =>
+      attempt.status === "ACCEPTED" &&
+      attempt.note?.includes("систем автоматаар оноосон"),
+  ) || session.autoAssignedDelivery === true;
 
   const title = session.canPay
-    ? "Хүргэлт авах салбар олдлоо"
+    ? wasAutoAssigned
+      ? "Хүргэлтийн ажилтан автоматаар оноогдлоо"
+      : "Хүргэлт авах салбар олдлоо"
     : isFinishedWithoutBranch
       ? "5 салбарын хайлт дууслаа"
       : "Хүргэлтийн хүсэлт илгээж байна";
 
   const description = session.canPay
-    ? `${session.acceptedBranch?.name ?? "Салбар"} захиалгыг хүлээн авлаа. Одоо төлбөрөө үргэлжлүүлж болно.`
+    ? wasAutoAssigned
+      ? session.acceptedBranch
+        ? `10 секундэд салбар хариу өгөөгүй тул ${session.acceptedBranch.name}-ыг сонгож, бүртгэлтэй хүргэлтийн компанийн ажилтанд захиалгыг автоматаар оноолоо. Одоо төлбөрөө үргэлжлүүлнэ үү.`
+        : "10 секундэд салбарын хариу ирээгүй тул захиалгыг бүртгэлтэй хүргэлтийн компанийн ажилтанд автоматаар оноолоо. Одоо төлбөрөө үргэлжлүүлнэ үү."
+      : `${session.acceptedBranch?.name ?? "Салбар"} захиалгыг хүлээн авлаа. Одоо төлбөрөө үргэлжлүүлж болно.`
     : isFinishedWithoutBranch
       ? "Хамгийн ойр салбарууд руу хүсэлт явуулсан ч хүргэлт авах боломжтой салбар олдсонгүй."
       : activeAttempt
-        ? `${formatZoneLabel(activeAttempt.sequence, radiusZones)} бүсийн ${activeZoneAttempts.length} салбар руу notification зэрэг илгээгдсэн. 10 секундэд хэн ч авахгүй бол дараагийн бүс рүү шилжинэ.`
+        ? `${formatZoneLabel(activeAttempt.sequence, radiusZones)} бүсийн ${activeZoneAttempts.length} салбар руу notification зэрэг илгээгдсэн. 10 секундэд хэн ч авахгүй бол хүргэлтийн компанийн ажилтанд автоматаар онооно.`
         : "Хэрэглэгчийн координат дээр үндэслэн radius бүсүүдээр салбаруудыг зэрэг шалгаж байна.";
+
+  if (isFinishedWithoutBranch) {
+    return (
+      <section className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-amber-900">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-amber-600 shadow-sm">
+          <MapPin size={18} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-black">Хүргэлт баталгаажаагүй</p>
+          <p className="mt-0.5 text-xs leading-4 text-amber-800">
+            Энэ захиалга салбараас авах горимд шилжлээ.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white text-sm shadow-sm">
-      <div className="relative h-40 overflow-hidden bg-slate-950">
+      <div className="relative h-28 overflow-hidden bg-slate-950">
         <div className="absolute inset-0 opacity-40 [background-image:linear-gradient(90deg,rgba(255,255,255,.12)_1px,transparent_1px),linear-gradient(rgba(255,255,255,.12)_1px,transparent_1px)] [background-size:24px_24px]" />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(249,115,22,.24),transparent_36%),radial-gradient(circle_at_80%_20%,rgba(34,197,94,.20),transparent_28%)]" />
 
@@ -165,33 +194,33 @@ export function DeliveryDispatchRadar({
           );
         })}
 
-        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent px-3 pb-3 pt-10 text-white">
+        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent px-3 pb-2 pt-8 text-white">
           <div className="min-w-0">
             <p className="text-[10px] font-black uppercase tracking-wide text-white/55 sm:text-[11px]">
               Dispatch radar
             </p>
-            <h3 className="mt-1 pr-20 text-sm font-black leading-5">
+            <h3 className="mt-0.5 pr-20 text-sm font-black leading-4">
               {title}
             </h3>
           </div>
           {remainingSeconds !== null && !session.canPay && !isFinishedWithoutBranch && (
-            <div className="absolute bottom-3 right-3 shrink-0 rounded-2xl bg-white px-3 py-2 text-center text-slate-950">
-              <p className="text-base font-black tabular-nums sm:text-lg">{remainingSeconds}</p>
+            <div className="absolute bottom-2 right-3 shrink-0 rounded-xl bg-white px-2.5 py-1.5 text-center text-slate-950">
+              <p className="text-base font-black tabular-nums">{remainingSeconds}</p>
               <p className="text-[10px] font-bold text-slate-500">сек</p>
             </div>
           )}
         </div>
       </div>
 
-      <div className="min-w-0 space-y-3 p-3 sm:space-y-4 sm:p-4">
-        <p className="break-words text-sm leading-5 text-slate-600">{description}</p>
+      <div className="min-w-0 space-y-2 p-3">
+        <p className="break-words text-xs leading-4 text-slate-600">{description}</p>
 
         {session.customerLocation && (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
             <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
               Хүргүүлэх байршил
             </p>
-            <p className="mt-1 text-xs font-bold leading-5 text-slate-700">
+            <p className="mt-0.5 truncate text-xs font-bold text-slate-700">
               {session.customerLocation.address}
             </p>
           </div>
@@ -209,7 +238,7 @@ export function DeliveryDispatchRadar({
             return (
               <div
                 key={radiusKm}
-                className={`rounded-xl px-2 py-2 text-center ring-1 ${
+                className={`rounded-lg px-1.5 py-1.5 text-center ring-1 ${
                   isActive
                     ? "bg-orange-500 text-white ring-orange-500"
                     : isDone
@@ -219,22 +248,22 @@ export function DeliveryDispatchRadar({
               >
                 <p className="text-[10px] font-black sm:text-[10px]">{zone}-р бүс</p>
                 <p className="mt-0.5 text-[11px] font-bold">{formatZoneLabel(zone, radiusZones)}</p>
-                <p className="mt-1 text-[10px] font-semibold opacity-80">{zoneAttempts.length} дэлгүүр</p>
+                <p className="mt-0.5 text-[10px] font-semibold opacity-80">{zoneAttempts.length} дэлгүүр</p>
               </div>
             );
           })}
         </div>
 
         <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-          <div className="rounded-xl bg-slate-50 px-3 py-2">
+          <div className="rounded-lg bg-slate-50 px-3 py-1.5">
             <p className="text-[10px] font-bold text-slate-400">Шалгах</p>
             <p className="text-sm font-black text-slate-950">{session.attempts.length}</p>
           </div>
-          <div className="rounded-xl bg-slate-50 px-3 py-2">
+          <div className="rounded-lg bg-slate-50 px-3 py-1.5">
             <p className="text-[10px] font-bold text-slate-400">Дууссан</p>
             <p className="text-sm font-black text-slate-950">{completedCount}</p>
           </div>
-          <div className="rounded-xl bg-slate-50 px-3 py-2">
+          <div className="rounded-lg bg-slate-50 px-3 py-1.5">
             <p className="text-[10px] font-bold text-slate-400">Төлөв</p>
             <p className="truncate text-sm font-black text-slate-950">
               {session.canPay ? "OK" : isFinishedWithoutBranch ? "Pickup" : "Live"}
@@ -242,30 +271,6 @@ export function DeliveryDispatchRadar({
           </div>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-            <div className="min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                Салбарын хайлт
-              </p>
-              <p className="mt-1 truncate text-sm font-black text-slate-950">
-                {activeZone
-                  ? `${formatZoneLabel(activeZone, radiusZones)} бүс шалгагдаж байна`
-                  : "Бүсүүд бэлтгэгдэж байна"}
-              </p>
-            </div>
-            <span className="w-fit rounded-full bg-white px-3 py-1 text-xs font-black text-slate-600 ring-1 ring-slate-200">
-              {activeZoneAttempts.length || session.attempts.length} салбар
-            </span>
-          </div>
-        </div>
-
-        {isFinishedWithoutBranch && (
-          <div className="flex gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-bold leading-5 text-amber-800">
-            <MapPin size={15} className="mt-0.5 shrink-0" />
-            Хүргэлт баталгаажаагүй тул хэрэглэгч салбар дээрээс өөрөө авах горимд шилжинэ.
-          </div>
-        )}
       </div>
     </section>
   );

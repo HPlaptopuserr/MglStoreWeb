@@ -17,6 +17,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isReelsRoute = pathname?.startsWith("/reels");
   const isMglStoreRoute = pathname === "/mgl-store";
   const isProductsRoute = pathname?.startsWith("/products");
+  const isCheckoutRoute = pathname === "/checkout";
   const isOrganizationStorefrontRoute =
     /^\/(?:o|organizations)\/[^/]+\/?$/.test(pathname || "");
   const isPaidAccessDetailRoute = /^\/(projects|franchise)\/[^/]+/.test(
@@ -27,7 +28,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     isPaidAccessDetailRoute ||
     isReelsRoute ||
     isOrganizationStorefrontRoute;
-  const hideGlobalFooter = hideGlobalShell || isProfileRoute;
+  const hideGlobalFooter =
+    hideGlobalShell || isProfileRoute || isCheckoutRoute;
 
   return (
     <AuthProvider>
@@ -38,6 +40,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           className={
             hideGlobalShell
               ? "grow"
+              : isCheckoutRoute
+                ? "grow pt-12 md:pt-14"
               : isProfileRoute || isOrdersRoute
                 ? "grow pt-16 pb-20 md:pt-16 md:pb-0"
                 : isProductsRoute
