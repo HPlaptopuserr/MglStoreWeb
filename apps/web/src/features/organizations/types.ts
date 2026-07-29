@@ -12,6 +12,9 @@ export interface ApiPartner {
   investorTier?: "TOP" | "STRATEGIC" | "INVESTOR" | null;
   investorLevel?: string | null;
   investmentAmount?: number | null;
+  rating?: number;
+  reviewCount?: number;
+  soldCount?: number;
 }
 
 export interface Investor {
@@ -37,6 +40,8 @@ export interface OrganizationStore {
   isOpen: boolean;
   category: string;
   rating: number;
+  reviewCount: number;
+  soldCount: number;
   deliveryTime: string;
   products: string[];
   categorySlugs: string[];

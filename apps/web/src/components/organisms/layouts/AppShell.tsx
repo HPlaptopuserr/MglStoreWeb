@@ -17,11 +17,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isReelsRoute = pathname?.startsWith("/reels");
   const isMglStoreRoute = pathname === "/mgl-store";
   const isProductsRoute = pathname?.startsWith("/products");
+  const isOrganizationStorefrontRoute =
+    /^\/(?:o|organizations)\/[^/]+\/?$/.test(pathname || "");
   const isPaidAccessDetailRoute = /^\/(projects|franchise)\/[^/]+/.test(
     pathname || "",
   );
   const hideGlobalShell =
-    isContractRoute || isPaidAccessDetailRoute || isReelsRoute;
+    isContractRoute ||
+    isPaidAccessDetailRoute ||
+    isReelsRoute ||
+    isOrganizationStorefrontRoute;
   const hideGlobalFooter = hideGlobalShell || isProfileRoute;
 
   return (

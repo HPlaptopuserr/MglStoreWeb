@@ -314,6 +314,9 @@ export function PartnerContentManager({
       sku: product.sku || "",
       barcode: product.barcode || "",
       description: product.description || "",
+      specifications: Array.isArray(product.specifications)
+        ? product.specifications
+        : [],
       price: String(product.price ?? ""),
       costPrice: product.costPrice != null ? String(product.costPrice) : "",
       stock: String(product.stock ?? 0),
@@ -388,6 +391,12 @@ export function PartnerContentManager({
         sku: productForm.sku.trim() || null,
         barcode: productForm.barcode.trim() || null,
         description: productForm.description.trim() || null,
+        specifications: productForm.specifications
+          .map((item) => ({
+            label: item.label.trim(),
+            value: item.value.trim(),
+          }))
+          .filter((item) => item.label && item.value),
         price,
         costPrice,
         stock,
@@ -1185,6 +1194,96 @@ export function PartnerContentManager({
                     }))
                   }
                 />
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <FieldLabel>Дэлгэрэнгүй үзүүлэлт</FieldLabel>
+                    <p className="mt-1 text-xs font-medium text-slate-500">
+                      Материал, өнгө, хэмжээ, гарал үүсэл зэрэг мэдээллийг
+                      оруулна.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setProductForm((current) => ({
+                        ...current,
+                        specifications: [
+                          ...current.specifications,
+                          { label: "", value: "" },
+                        ],
+                      }))
+                    }
+                    className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-xs font-bold text-white transition hover:bg-orange-600"
+                  >
+                    <Plus size={14} />
+                    Мөр нэмэх
+                  </button>
+                </div>
+
+                {productForm.specifications.length === 0 ? (
+                  <div className="mt-3 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-5 text-center text-xs font-semibold text-slate-400">
+                    Үзүүлэлт нэмээгүй байна
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {productForm.specifications.map((specification, index) => (
+                      <div
+                        key={index}
+                        className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)_36px] gap-2"
+                      >
+                        <TextInput
+                          value={specification.label}
+                          placeholder="Жишээ: Материал"
+                          aria-label={`Үзүүлэлтийн нэр ${index + 1}`}
+                          onChange={(event) =>
+                            setProductForm((current) => ({
+                              ...current,
+                              specifications: current.specifications.map(
+                                (item, itemIndex) =>
+                                  itemIndex === index
+                                    ? { ...item, label: event.target.value }
+                                    : item,
+                              ),
+                            }))
+                          }
+                        />
+                        <TextInput
+                          value={specification.value}
+                          placeholder="Жишээ: 100% хөвөн"
+                          aria-label={`Үзүүлэлтийн утга ${index + 1}`}
+                          onChange={(event) =>
+                            setProductForm((current) => ({
+                              ...current,
+                              specifications: current.specifications.map(
+                                (item, itemIndex) =>
+                                  itemIndex === index
+                                    ? { ...item, value: event.target.value }
+                                    : item,
+                              ),
+                            }))
+                          }
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Үзүүлэлт ${index + 1} устгах`}
+                          onClick={() =>
+                            setProductForm((current) => ({
+                              ...current,
+                              specifications: current.specifications.filter(
+                                (_, itemIndex) => itemIndex !== index,
+                              ),
+                            }))
+                          }
+                          className="flex h-10 w-9 items-center justify-center rounded-lg border border-red-100 bg-white text-red-500 transition hover:bg-red-50"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-3">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">

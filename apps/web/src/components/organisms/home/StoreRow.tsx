@@ -123,6 +123,7 @@ export const StoreRow = ({ company }: StoreRowProps) => {
               className="min-w-[240px] md:min-w-[260px] snap-start"
             >
               <ProductCard
+                href={`/products/${encodeURIComponent(product.id)}`}
                 image={product.image}
                 price={product.price}
                 originalPrice={product.originalPrice}

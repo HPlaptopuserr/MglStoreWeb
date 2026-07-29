@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { API } from "@/lib/api";
-import { ProductDetailOverlay } from "@/components/organisms/ProductDetailOverlay";
 import { HomeCommerceDock } from "./HomeCommerceDock";
 import { ProductShelfRow } from "./ProductShelfRow";
+import { AllProductsGrid } from "./AllProductsGrid";
 import {
   buildFallbackShelves,
   HOMEPAGE_FEATURED_PRODUCTS_KEY,
@@ -23,6 +23,10 @@ import {
   type MarketplaceProjectBannerConfig,
   type ResolvedShelf,
 } from "./productShowcase";
+import {
+  LOCAL_MOCK_CATALOG_ENABLED,
+  localCatalogProducts,
+} from "@/lib/local-product-catalog";
 
 type HomeReelPreview = {
   id: string;
@@ -34,7 +38,9 @@ type HomeReelPreview = {
 };
 
 export const ProductGrid = () => {
-  const [products, setProducts] = useState<ApiProduct[]>([]);
+  const [products, setProducts] = useState<ApiProduct[]>(
+    LOCAL_MOCK_CATALOG_ENABLED ? localCatalogProducts : [],
+  );
   const [reels, setReels] = useState<HomeReelPreview[]>([]);
   const [configuredShelves, setConfiguredShelves] = useState<ResolvedShelf[]>(
     [],
@@ -47,10 +53,11 @@ export const ProductGrid = () => {
   const [projectBanners, setProjectBanners] = useState<
     MarketplaceProjectBannerConfig[]
   >([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!LOCAL_MOCK_CATALOG_ENABLED);
 
   useEffect(() => {
+    if (LOCAL_MOCK_CATALOG_ENABLED) return;
+
     Promise.all([
       fetch(`${API}/products?limit=100`).then((res) =>
         res.ok ? res.json() : [],
@@ -154,29 +161,21 @@ export const ProductGrid = () => {
                   ))}
                 </div>
               </>
-            ) : shelves.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm font-semibold text-slate-500">
-                Одоогоор бүтээгдэхүүн олдсонгүй
-              </div>
             ) : (
-              shelves.map((shelf) => (
-                <ProductShelfRow
-                  key={shelf.id}
-                  title={shelf.title}
-                  products={shelf.products}
-                  onSelect={(id) => setSelectedId(id)}
-                />
-              ))
+              <>
+                {shelves.length > 0 &&
+                  shelves.map((shelf) => (
+                    <ProductShelfRow
+                      key={shelf.id}
+                      title={shelf.title}
+                      products={shelf.products}
+                    />
+                  ))}
+                <AllProductsGrid />
+              </>
             )}
           </div>
         </div>
-
-        {selectedId && (
-          <ProductDetailOverlay
-            productId={selectedId}
-            onClose={() => setSelectedId(null)}
-          />
-        )}
       </section>
     </>
   );

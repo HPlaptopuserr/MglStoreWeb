@@ -125,8 +125,17 @@ type StorePaymentAccount = {
 
 function accountMatchesStoreCheckoutRef(account: StorePaymentAccount) {
   const ref = STORE_CHECKOUT_ACCOUNT_REF.toLowerCase();
-  return [account.id, account.label, account.merchantCode, account.accountNumber]
-    .map((value) => String(value || "").trim().toLowerCase())
+  return [
+    account.id,
+    account.label,
+    account.merchantCode,
+    account.accountNumber,
+  ]
+    .map((value) =>
+      String(value || "")
+        .trim()
+        .toLowerCase(),
+    )
     .some((value) => value === ref || value.includes(ref));
 }
 
@@ -142,16 +151,23 @@ async function getStoreCheckoutPaymentAccount() {
     if (!Array.isArray(parsed)) return null;
     return (
       parsed
-        .map((account): StorePaymentAccount => ({
-          id: String(account?.id || "").trim(),
-          label: String(account?.label || "").trim(),
-          merchantName: String(account?.merchantName || "").trim(),
-          merchantCode: String(account?.merchantCode || "").trim(),
-          username: String(account?.username || account?.merchantCode || "").trim(),
-          password: String(account?.password || "").trim(),
-          accountNumber: String(account?.accountNumber || "").trim(),
-        }))
-        .find((account) => account.merchantCode && accountMatchesStoreCheckoutRef(account)) || null
+        .map(
+          (account): StorePaymentAccount => ({
+            id: String(account?.id || "").trim(),
+            label: String(account?.label || "").trim(),
+            merchantName: String(account?.merchantName || "").trim(),
+            merchantCode: String(account?.merchantCode || "").trim(),
+            username: String(
+              account?.username || account?.merchantCode || "",
+            ).trim(),
+            password: String(account?.password || "").trim(),
+            accountNumber: String(account?.accountNumber || "").trim(),
+          }),
+        )
+        .find(
+          (account) =>
+            account.merchantCode && accountMatchesStoreCheckoutRef(account),
+        ) || null
     );
   } catch {
     return null;
@@ -429,8 +445,10 @@ async function checkStorePayment(params: {
 
     const check = await checkSystemQrPayment(
       { merchantCode, invoiceNumber: params.providerRef },
-      String(adminAccount?.username || resolved?.username || "").trim() || undefined,
-      String(adminAccount?.password || resolved?.password || "").trim() || undefined,
+      String(adminAccount?.username || resolved?.username || "").trim() ||
+        undefined,
+      String(adminAccount?.password || resolved?.password || "").trim() ||
+        undefined,
     );
 
     return {
@@ -689,17 +707,16 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
 
     const normalizedPhone = phone?.trim();
     if (!normalizedPhone) {
-      return res
-        .status(400)
-        .json({
-          message: "Захиалга баталгаажуулах утасны дугаар шаардлагатай.",
-        });
+      return res.status(400).json({
+        message: "Захиалга баталгаажуулах утасны дугаар шаардлагатай.",
+      });
     }
     const normalizedEmail = email?.trim().toLowerCase();
     const normalizedNote = note?.trim();
     const normalizedSecondaryPhone = secondaryPhone?.trim();
     const noteAlreadyIncludesEmail = Boolean(
-      normalizedEmail && normalizedNote?.toLowerCase().includes(normalizedEmail),
+      normalizedEmail &&
+      normalizedNote?.toLowerCase().includes(normalizedEmail),
     );
     const orderNote = [
       normalizedEmail && !noteAlreadyIncludesEmail
@@ -765,11 +782,9 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       const qty = Math.max(1, Math.floor(Number(line.qty) || 1));
       const isPreorder = product.supplyType === "CHINA_PREORDER";
       if (!isPreorder && product.stock < qty) {
-        return res
-          .status(400)
-          .json({
-            message: `${product.name} барааны нөөц хүрэлцэхгүй (${product.stock} ширхэг)`,
-          });
+        return res.status(400).json({
+          message: `${product.name} барааны нөөц хүрэлцэхгүй (${product.stock} ширхэг)`,
+        });
       }
       const basePrice = Number(product.price);
       const price = applyMemberDiscount(
@@ -793,11 +808,9 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     // All products must belong to one organization
     const orgIds = [...new Set(products.map((p) => p.organizationId))];
     if (orgIds.length !== 1) {
-      return res
-        .status(400)
-        .json({
-          message: "Нэг захиалгад зөвхөн нэг дэлгүүрийн бараа байх ёстой",
-        });
+      return res.status(400).json({
+        message: "Нэг захиалгад зөвхөн нэг дэлгүүрийн бараа байх ёстой",
+      });
     }
 
     const normalizedCustomerLat = toNumberOrNull(customerLat);
@@ -836,7 +849,8 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
           paymentStatus: PaymentStatus.PENDING,
           paymentMethod: PaymentMethod.QPAY,
           shippingAddress:
-            shippingAddress || (isPreorderOnlyOrder ? "Урьдчилсан захиалга" : ""),
+            shippingAddress ||
+            (isPreorderOnlyOrder ? "Урьдчилсан захиалга" : ""),
           phone: normalizedPhone,
           note: orderNote || null,
           customerLat: normalizedCustomerLat,
@@ -968,11 +982,9 @@ router.post(
         return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
       }
       if (order.paymentStatus === PaymentStatus.PAID) {
-        return res
-          .status(409)
-          .json({
-            message: "Төлбөр төлөгдсөн захиалгыг эндээс цуцлах боломжгүй.",
-          });
+        return res.status(409).json({
+          message: "Төлбөр төлөгдсөн захиалгыг эндээс цуцлах боломжгүй.",
+        });
       }
       if (order.status === OrderStatus.CANCELLED) {
         return res.json({
@@ -1069,11 +1081,9 @@ router.post(
         (item) => item.product?.supplyType === "CHINA_PREORDER",
       );
       if (!order.branchId && !isPreorderOnlyOrder) {
-        return res
-          .status(409)
-          .json({
-            message: "Салбар захиалгыг баталгаажуулсны дараа төлбөр төлнө.",
-          });
+        return res.status(409).json({
+          message: "Салбар захиалгыг баталгаажуулсны дараа төлбөр төлнө.",
+        });
       }
       if (order.paymentStatus === PaymentStatus.PAID) {
         return res
@@ -1127,11 +1137,9 @@ router.post(
       } catch (err) {
         console.error("Store payment invoice creation failed:", err);
         if (err instanceof Error && err.message === "QPAY_NOT_CONFIGURED") {
-          return res
-            .status(400)
-            .json({
-              message: "Дэлгүүр MinuPOS төлбөрийн тохиргоо холбоогүй байна.",
-            });
+          return res.status(400).json({
+            message: "Дэлгүүр MinuPOS төлбөрийн тохиргоо холбоогүй байна.",
+          });
         }
         return res
           .status(502)
@@ -1231,7 +1239,9 @@ router.post(
       // Check payment via invoiceId.
       const payment = order.payments[0];
       if (!payment?.providerRef) {
-        return res.status(400).json({ message: "Төлбөрийн нэхэмжлэх олдсонгүй" });
+        return res
+          .status(400)
+          .json({ message: "Төлбөрийн нэхэмжлэх олдсонгүй" });
       }
 
       const paymentCheck = await checkStorePayment({
@@ -1441,10 +1451,13 @@ router.get("/store/orders", async (req: Request, res: Response) => {
       include: {
         items: {
           select: {
+            id: true,
+            productId: true,
             productName: true,
             quantity: true,
             price: true,
             subtotal: true,
+            review: { select: { score: true } },
           },
         },
         payments: {
@@ -1537,11 +1550,17 @@ router.get("/store/orders", async (req: Request, res: Response) => {
           createdAt: payment.createdAt.toISOString(),
         })),
         items: o.items.map((i) => ({
+          id: i.id,
+          productId: i.productId,
           name: i.productName,
           qty: i.quantity,
           price: Number(i.price),
           subtotal: Number(i.subtotal),
+          reviewScore: i.review?.score ?? null,
         })),
+        requiresReview:
+          o.status === OrderStatus.COMPLETED &&
+          o.items.some((item) => !item.review),
       })),
     });
   } catch (error) {
@@ -1551,6 +1570,134 @@ router.get("/store/orders", async (req: Request, res: Response) => {
       .json({ message: "Захиалгын жагсаалт авахад алдаа гарлаа" });
   }
 });
+
+/* ══════════════════════════════════════════════════════════
+   POST /store/orders/:orderId/reviews
+   One order-level score is copied to every line item.
+   ══════════════════════════════════════════════════════════ */
+router.post(
+  "/store/orders/:orderId/reviews",
+  async (req: Request, res: Response) => {
+    try {
+      const customer = await getCustomer(req);
+      if (!customer || !customer.isActive || customer.deletedAt) {
+        return res.status(401).json({ message: "Нэвтэрнэ үү" });
+      }
+
+      const score = Number(req.body?.score);
+      const comment =
+        typeof req.body?.comment === "string"
+          ? req.body.comment.trim().slice(0, 500) || null
+          : null;
+      if (!Number.isInteger(score) || score < 1 || score > 10) {
+        return res
+          .status(400)
+          .json({ message: "Захиалгад 1-10 бүхэл оноо өгнө үү" });
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const order = await tx.order.findFirst({
+          where: {
+            id: req.params.orderId,
+            customerId: customer.id,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            status: true,
+            organizationId: true,
+            items: {
+              select: {
+                id: true,
+                productId: true,
+                review: { select: { id: true } },
+              },
+            },
+          },
+        });
+        if (!order)
+          return { status: 404 as const, message: "Захиалга олдсонгүй" };
+        if (order.status !== OrderStatus.COMPLETED) {
+          return {
+            status: 400 as const,
+            message: "Зөвхөн хүлээн авсан захиалгыг үнэлнэ",
+          };
+        }
+        if (order.items.some((item) => item.review)) {
+          return {
+            status: 409 as const,
+            message: "Энэ захиалгын үнэлгээ аль хэдийн бүртгэгдсэн",
+          };
+        }
+
+        if (order.items.length === 0) {
+          return {
+            status: 400 as const,
+            message: "Үнэлэх бараа олдсонгүй",
+          };
+        }
+
+        await tx.productReview.createMany({
+          data: order.items.map((item) => ({
+            orderId: order.id,
+            orderItemId: item.id,
+            productId: item.productId,
+            organizationId: order.organizationId,
+            customerId: customer.id,
+            score,
+            comment,
+          })),
+        });
+
+        const productIds = [
+          ...new Set(order.items.map((item) => item.productId)),
+        ];
+        for (const productId of productIds) {
+          const aggregate = await tx.productReview.aggregate({
+            where: { productId },
+            _avg: { score: true },
+            _count: { _all: true },
+          });
+          await tx.product.update({
+            where: { id: productId },
+            data: {
+              rating: aggregate._avg.score ?? 0,
+              reviewCount: aggregate._count._all,
+            },
+          });
+        }
+
+        const organizationAggregate = await tx.productReview.aggregate({
+          where: { organizationId: order.organizationId },
+          _avg: { score: true },
+          _count: { _all: true },
+        });
+        await tx.organization.update({
+          where: { id: order.organizationId },
+          data: {
+            rating: organizationAggregate._avg.score ?? 0,
+            reviewCount: organizationAggregate._count._all,
+          },
+        });
+
+        return { status: 201 as const, reviewCount: order.items.length };
+      });
+
+      if ("message" in result) {
+        return res.status(result.status).json({ message: result.message });
+      }
+      return res.status(result.status).json({
+        message: "Үнэлгээ хадгалагдлаа",
+        reviewCount: result.reviewCount,
+      });
+    } catch (error) {
+      console.error("store order review error", error);
+      return res
+        .status(500)
+        .json({ message: "Үнэлгээ хадгалахад алдаа гарлаа" });
+    }
+  },
+);
 
 /* ══════════════════════════════════════════════════════════
    GET /store/orders/track?orderNumber=ORD-XXXXXXXX-XXXXXX

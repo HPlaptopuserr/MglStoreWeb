@@ -12,19 +12,26 @@ function parseCategorySlugs(raw?: string) {
 
 export function mapPartnerToStore(partner: ApiPartner): OrganizationStore {
   const parsedSlugs = parseCategorySlugs(partner.businessCategory);
-  const fallbackType = partner.type ? normalizeCategoryKey(partner.type) : "business";
+  const fallbackType = partner.type
+    ? normalizeCategoryKey(partner.type)
+    : "business";
   const categorySlugs = parsedSlugs.length > 0 ? parsedSlugs : [fallbackType];
   const localArea = getLocalAreaFromText(partner.address);
   return {
     id: partner.id,
     name: partner.name,
     slug: partner.slug,
-    logo: partner.logoUrl || `https://picsum.photos/100/100?random=${partner.id}`,
-    banner: partner.bannerUrl || `https://picsum.photos/1200/400?random=${partner.id}`,
+    logo:
+      partner.logoUrl || `https://picsum.photos/100/100?random=${partner.id}`,
+    banner:
+      partner.bannerUrl ||
+      `https://picsum.photos/1200/400?random=${partner.id}`,
     isOpen: true,
     category: categorySlugs[0],
     categorySlugs,
-    rating: 5,
+    rating: partner.rating ?? 0,
+    reviewCount: partner.reviewCount ?? 0,
+    soldCount: partner.soldCount ?? 0,
     deliveryTime: "N/A",
     products: [],
     address: partner.address,

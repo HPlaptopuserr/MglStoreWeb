@@ -16,6 +16,10 @@ import {
   type ProductDetailProduct,
 } from "./_components/ProductDetailShell";
 import { ProductMaintenanceState } from "@/components/organisms/commerce/ProductMaintenanceState";
+import {
+  findLocalCatalogProduct,
+  LOCAL_MOCK_CATALOG_ENABLED,
+} from "@/lib/local-product-catalog";
 
 const WEB_PRODUCTS_SETTING_KEY = "web-products-enabled";
 
@@ -70,6 +74,24 @@ export default function ProductDetailPage({
 
   useEffect(() => {
     setLoading(true);
+    const localProduct = LOCAL_MOCK_CATALOG_ENABLED
+      ? findLocalCatalogProduct(id)
+      : null;
+    if (localProduct) {
+      Promise.resolve().then(() => {
+        setProduct({
+          ...localProduct,
+          discounts: localProduct.discounts.map((discount) => ({
+            ...discount,
+            validUntil: "2027-12-31T23:59:59.000Z",
+          })),
+        });
+        setWebProductsEnabled(true);
+        setLoading(false);
+      });
+      return;
+    }
+
     Promise.all([
       authFetch(`${API}/products/${id}`).then((response) =>
         response.ok ? response.json() : null,
@@ -254,7 +276,7 @@ export default function ProductDetailPage({
       vendorProducts={vendorProducts}
       relatedProducts={relatedProducts}
       isMember={isMember}
-      onAddToCart={() => {
+      onAddToCart={(quantity) => {
         if (isOutOfStock) return;
         addToCart({
           id: product.id,
@@ -264,7 +286,7 @@ export default function ProductDetailPage({
           memberDiscountPercent: pricing.active ? pricing.percent : null,
           supplyType: product.supplyType,
           image: images[0]?.url,
-          quantity: 1,
+          quantity,
         });
         trackMetaCommerceEvent("AddToCart", {
           content_ids: [product.id],
@@ -272,7 +294,7 @@ export default function ProductDetailPage({
           content_type: "product",
           currency: "MNT",
           value: discountedPrice,
-          num_items: 1,
+          num_items: quantity,
         });
       }}
       onToggleWishlist={toggleWishlist}

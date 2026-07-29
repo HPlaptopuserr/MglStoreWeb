@@ -9,22 +9,22 @@ import type { CarouselProduct } from "./product-carousel.types";
 interface Props {
   product: CarouselProduct;
   idx: number;
-  onClick: () => void;
 }
 
-export const ProductCarouselItem = ({ product, idx, onClick }: Props) => {
+export const ProductCarouselItem = ({ product, idx }: Props) => {
   const { user } = useAuth();
   const mainImage = resolveApiAssetUrl(product.images?.[0]?.url);
   const isMember = Boolean(user?.membership?.active || user?.isPrime);
-  const pricing = resolveMemberPricing(product.price, product.discounts, isMember);
+  const pricing = resolveMemberPricing(
+    product.price,
+    product.discounts,
+    isMember,
+  );
 
   return (
-    <div
-      onClick={onClick}
-      className="min-w-0 cursor-pointer"
-    >
+    <div className="min-w-0">
       <ProductCard
-        href={`/products/${product.id}`}
+        href={`/products/${encodeURIComponent(product.id)}`}
         image={mainImage}
         price={pricing.price}
         name={product.name}

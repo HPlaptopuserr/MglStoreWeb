@@ -1,8 +1,19 @@
 "use client";
 
 import React, { Suspense, useState, useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Building2, Check, Store } from "lucide-react";
+import {
+  Building2,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  LoaderCircle,
+  ShoppingBag,
+  Star,
+  Store,
+  Users,
+} from "lucide-react";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -17,8 +28,14 @@ import {
 } from "./_components/ProductResultsGrid";
 import { ProductSearchHero } from "./_components/ProductSearchHero";
 import { ProductMaintenanceState } from "@/components/organisms/commerce/ProductMaintenanceState";
+import {
+  LOCAL_MOCK_CATALOG_ENABLED,
+  localCatalogOrganizations,
+  queryLocalCatalog,
+} from "@/lib/local-product-catalog";
 
-const PRODUCTS_PER_PAGE = 16;
+const PRODUCTS_PER_PAGE = 30;
+const ORGANIZATION_PRODUCTS_BATCH_SIZE = 15;
 const WEB_PRODUCTS_SETTING_KEY = "web-products-enabled";
 
 type SortKey =
@@ -55,7 +72,16 @@ export interface ApiProduct {
   preorderNote?: string | null;
   marketplacePriority?: number;
   images: { id: string; url: string }[];
-  organization: { id: string; name: string; logoUrl?: string | null } | null;
+  organization: {
+    id: string;
+    name: string;
+    logoUrl?: string | null;
+    rating?: number | null;
+    reviewCount?: number | null;
+    soldCount?: number | null;
+    customerCount?: string | null;
+    productCount?: number;
+  } | null;
   discounts: { percent: number }[];
   businessCategoryId: string | null;
   businessCategory: {
@@ -77,6 +103,13 @@ type ProductsApiResponse =
       limit?: number;
       offset?: number;
     };
+
+type OrganizationCatalogResponse = {
+  organizations?: Array<{
+    organization: NonNullable<ApiProduct["organization"]>;
+    products: ApiProduct[];
+  }>;
+};
 
 export interface ProductsPageInitialData {
   categories: ApiCategory[];
@@ -147,7 +180,7 @@ function buildProductsUrl(
   categoryId: string | null,
   search: string,
   supplyType: SupplyKey = "all",
-  options: { sort?: SortKey; discountOnly?: boolean; page?: number } = {},
+  options: { sort?: SortKey; discountOnly?: boolean } = {},
 ) {
   const params = new URLSearchParams();
   if (categoryId) params.set("category", categoryId);
@@ -157,8 +190,6 @@ function buildProductsUrl(
   if (options.sort && options.sort !== "recommended")
     params.set("sort", options.sort);
   if (options.discountOnly) params.set("discount", "1");
-  if (options.page && options.page > 1)
-    params.set("page", String(options.page));
   const qs = params.toString();
   return qs ? `/products?${qs}` : "/products";
 }
@@ -312,10 +343,6 @@ function ProductsContent({
   const typeParam = searchParams.get("type");
   const sortParam = searchParams.get("sort");
   const discountParam = searchParams.get("discount");
-  const pageParam = Math.max(
-    1,
-    parseInt(searchParams.get("page") || "1", 10) || 1,
-  );
   const supplyParam: SupplyKey =
     typeParam === "preorder"
       ? "preorder"
@@ -337,13 +364,18 @@ function ProductsContent({
     initialData?.products ?? [],
   );
   const [productsLoading, setProductsLoading] = useState(!initialData);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [productsLoadError, setProductsLoadError] = useState<string | null>(
+    null,
+  );
   const [webProductsEnabled, setWebProductsEnabled] = useState<boolean | null>(
     initialData?.webProductsEnabled ?? null,
   );
   const [activeCategory, setActiveCategory] = useState<string | null>(
     categoryParam,
   );
-  const [currentPage, setCurrentPage] = useState(pageParam);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [totalProductCount, setTotalProductCount] = useState(
     initialData?.total ?? 0,
   );
@@ -364,8 +396,18 @@ function ProductsContent({
       `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
   );
   const [viewMode, setViewMode] = useState<"products" | "stores">("products");
+  const [organizationProducts, setOrganizationProducts] = useState<
+    ApiProduct[]
+  >([]);
+  const [organizationProductsLoading, setOrganizationProductsLoading] =
+    useState(false);
+  const [organizationProductsError, setOrganizationProductsError] = useState<
+    string | null
+  >(null);
+  const [organizationProductsRetry, setOrganizationProductsRetry] = useState(0);
   const [debouncedSearch, setDebouncedSearch] = useState(searchParam);
   const filterPanelRef = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
   const skipInitialProductFetchRef = useRef(Boolean(initialData));
 
   const resolvedCategoryParam = useMemo(() => {
@@ -428,8 +470,38 @@ function ProductsContent({
     let cancelled = false;
 
     const loadProducts = async () => {
-      setProductsLoading(true);
+      const isFirstBatch = currentPage === 1;
+      setProductsLoadError(null);
+      if (isFirstBatch) setProductsLoading(true);
+      else setLoadingMore(true);
       try {
+        if (LOCAL_MOCK_CATALOG_ENABLED) {
+          const data = queryLocalCatalog({
+            businessCategoryId: activeCategory,
+            organizationId: selectedOrganization,
+            search: debouncedSearch,
+            type: supplyFilter,
+            sort: sortKey,
+            discountOnly,
+            priceMin: priceMin ? Number(priceMin) : undefined,
+            priceMax: priceMax ? Number(priceMax) : undefined,
+            stock: stockFilter,
+            limit: PRODUCTS_PER_PAGE,
+            offset: (currentPage - 1) * PRODUCTS_PER_PAGE,
+          });
+          if (cancelled) return;
+          setApiProducts((current) => {
+            if (isFirstBatch) return data.products;
+            const byId = new Map(
+              current.map((product) => [product.id, product]),
+            );
+            data.products.forEach((product) => byId.set(product.id, product));
+            return [...byId.values()];
+          });
+          setTotalProductCount(data.total);
+          return;
+        }
+
         const params = new URLSearchParams();
         if (activeCategory) params.set("businessCategoryId", activeCategory);
         if (selectedOrganization)
@@ -451,7 +523,9 @@ function ProductsContent({
         const query = params.toString();
         const url = `${API}/products?${query}`;
         const res = await authFetch(url);
-        if (!res.ok) return;
+        if (!res.ok) {
+          throw new Error(`Products request failed with ${res.status}`);
+        }
         const data = (await res.json()) as ProductsApiResponse;
         const products = Array.isArray(data)
           ? data
@@ -462,11 +536,24 @@ function ProductsContent({
           ? data.length
           : (data.total ?? products.length);
         if (cancelled) return;
-        setApiProducts(products);
+        setApiProducts((current) => {
+          if (isFirstBatch) return products;
+          const byId = new Map(current.map((product) => [product.id, product]));
+          products.forEach((product) => byId.set(product.id, product));
+          return [...byId.values()];
+        });
         setTotalProductCount(total);
       } catch {
+        if (!cancelled) {
+          setProductsLoadError(
+            "Бараануудыг ачаалж чадсангүй. Интернэт холболтоо шалгаад дахин оролдоно уу.",
+          );
+        }
       } finally {
-        setProductsLoading(false);
+        if (!cancelled) {
+          setProductsLoading(false);
+          setLoadingMore(false);
+        }
       }
     };
     loadProducts();
@@ -482,6 +569,7 @@ function ProductsContent({
     priceMax,
     priceMin,
     recommendationSeed,
+    retryNonce,
     selectedOrganization,
     sortKey,
     stockFilter,
@@ -514,15 +602,114 @@ function ProductsContent({
     setSupplyFilter(supplyParam);
     setSortKey(initialSortKey);
     setDiscountOnly(initialDiscountOnly);
-    setCurrentPage(pageParam);
+    setCurrentPage(1);
   }, [
     resolvedCategoryParam,
     searchParam,
     supplyParam,
     initialSortKey,
     initialDiscountOnly,
-    pageParam,
   ]);
+
+  const hasMoreProducts = apiProducts.length < totalProductCount;
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (
+      viewMode !== "products" ||
+      !target ||
+      productsLoading ||
+      loadingMore ||
+      productsLoadError ||
+      !hasMoreProducts
+    ) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setCurrentPage((page) => page + 1);
+        }
+      },
+      { rootMargin: "600px 0px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [
+    hasMoreProducts,
+    loadingMore,
+    productsLoadError,
+    productsLoading,
+    viewMode,
+  ]);
+
+  useEffect(() => {
+    if (viewMode !== "stores") return;
+    let cancelled = false;
+
+    const loadOrganizationCatalog = async () => {
+      setOrganizationProducts([]);
+      setOrganizationProductsError(null);
+      setOrganizationProductsLoading(true);
+
+      try {
+        if (LOCAL_MOCK_CATALOG_ENABLED) {
+          const products = localCatalogOrganizations.flatMap((organization) => {
+            const batch = queryLocalCatalog({
+              organizationId: organization.id,
+              sort: "newest",
+              limit: ORGANIZATION_PRODUCTS_BATCH_SIZE,
+              offset: 0,
+            });
+            return batch.products.map((product) => ({
+              ...product,
+              organization: {
+                ...product.organization,
+                productCount: batch.total,
+              },
+            }));
+          });
+          if (cancelled) return;
+          setOrganizationProducts(products);
+          return;
+        }
+
+        const params = new URLSearchParams({
+          limit: String(ORGANIZATION_PRODUCTS_BATCH_SIZE),
+        });
+        appendProductVisitorId(params);
+        const response = await authFetch(
+          `${API}/products/organization-catalog?${params.toString()}`,
+        );
+        if (!response.ok) {
+          throw new Error(
+            `Organization catalog failed with ${response.status}`,
+          );
+        }
+        const payload = (await response.json()) as OrganizationCatalogResponse;
+        const products = (payload.organizations ?? []).flatMap((row) =>
+          row.products.map((product) => ({
+            ...product,
+            organization: row.organization,
+          })),
+        );
+        if (!cancelled) setOrganizationProducts(products);
+      } catch {
+        if (!cancelled) {
+          setOrganizationProductsError(
+            "Online shop байгууллагуудын барааг бүрэн ачаалж чадсангүй.",
+          );
+        }
+      } finally {
+        if (!cancelled) setOrganizationProductsLoading(false);
+      }
+    };
+
+    loadOrganizationCatalog();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch, organizationProductsRetry, viewMode]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -575,16 +762,6 @@ function ProductsContent({
       buildProductsUrl(activeCategory, searchQuery, supplyFilter, {
         sort: sortKey,
         discountOnly: nextDiscountOnly,
-      }),
-      { scroll: false },
-    );
-  };
-
-  const submitSearch = () => {
-    router.replace(
-      buildProductsUrl(activeCategory, searchQuery, supplyFilter, {
-        sort: sortKey,
-        discountOnly,
       }),
       { scroll: false },
     );
@@ -659,26 +836,7 @@ function ProductsContent({
 
   const processedProducts = apiProducts;
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(totalProductCount / PRODUCTS_PER_PAGE),
-  );
-
   const displayProducts = processedProducts;
-
-  const goToPage = (p: number) => {
-    const nextPage = Math.min(totalPages, Math.max(1, p));
-    setCurrentPage(nextPage);
-    router.push(
-      buildProductsUrl(activeCategory, searchQuery, supplyFilter, {
-        sort: sortKey,
-        discountOnly,
-        page: nextPage,
-      }),
-      { scroll: false },
-    );
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
 
   const activeOrganizationName = availableOrganizations.find(
     (org) => org.id === selectedOrganization,
@@ -743,7 +901,11 @@ function ProductsContent({
       />
 
       <ProductCommandBar
-        total={totalProductCount}
+        total={
+          viewMode === "stores"
+            ? organizationProducts.length
+            : totalProductCount
+        }
         activeFilterCount={activeFilterCount}
         sortOptions={SORT_OPTIONS}
         sortKey={sortKey}
@@ -991,26 +1153,56 @@ function ProductsContent({
       <div className="container mx-auto px-4 pb-12 pt-5 lg:px-8">
         {viewMode === "stores" ? (
           <OrganizationProductGrid
-            products={displayProducts}
-            loading={productsLoading}
+            products={organizationProducts}
+            loading={organizationProductsLoading}
+            error={organizationProductsError}
             isMember={isMember}
+            onRetry={() => setOrganizationProductsRetry((value) => value + 1)}
           />
         ) : (
           <ProductResultsGrid
             products={displayProducts}
             loading={productsLoading}
-            currentPage={currentPage}
-            totalPages={totalPages}
-            totalProducts={totalProductCount}
-            pageSize={PRODUCTS_PER_PAGE}
             hasActiveFilters={activeFilterCount > 0}
             isMember={isMember}
             searchQuery={searchQuery}
             suggestions={searchSuggestions}
             onClearFilters={clearFilters}
             onSuggestionClick={handleSearchSuggestionClick}
-            onPageChange={goToPage}
           />
+        )}
+        {viewMode === "products" && (
+          <div
+            ref={loadMoreRef}
+            className="flex min-h-24 items-center justify-center py-6"
+            aria-live="polite"
+          >
+            {loadingMore ? (
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
+                <LoaderCircle className="h-5 w-5 animate-spin text-orange-500" />
+                Дараагийн 30 барааг ачаалж байна…
+              </div>
+            ) : productsLoadError ? (
+              <div className="flex flex-col items-center gap-3 text-center">
+                <p className="text-sm font-semibold text-rose-600">
+                  {productsLoadError}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setRetryNonce((value) => value + 1)}
+                  className="h-10 rounded-xl bg-slate-950 px-5 text-xs font-black text-white transition hover:bg-orange-500"
+                >
+                  Дахин оролдох
+                </button>
+              </div>
+            ) : hasMoreProducts ? (
+              <span className="sr-only">Дараагийн бараануудыг ачаалах цэг</span>
+            ) : displayProducts.length > 0 ? (
+              <p className="text-xs font-bold text-slate-400">
+                {totalProductCount.toLocaleString()} барааг бүгдийг үзүүллээ
+              </p>
+            ) : null}
+          </div>
         )}
       </div>
     </div>
@@ -1020,11 +1212,15 @@ function ProductsContent({
 function OrganizationProductGrid({
   products,
   loading,
+  error,
   isMember,
+  onRetry,
 }: {
   products: ApiProduct[];
   loading: boolean;
+  error: string | null;
   isMember: boolean;
+  onRetry: () => void;
 }) {
   const organizations = useMemo(() => {
     const grouped = new Map<
@@ -1048,7 +1244,11 @@ function OrganizationProductGrid({
       });
     });
 
-    return [...grouped.values()];
+    return [...grouped.values()].sort(
+      (left, right) =>
+        right.products.length - left.products.length ||
+        left.organization.name.localeCompare(right.organization.name),
+    );
   }, [products]);
 
   if (loading) {
@@ -1060,6 +1260,21 @@ function OrganizationProductGrid({
             className="h-72 animate-pulse rounded-3xl bg-slate-50"
           />
         ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-3xl border border-rose-100 bg-rose-50 px-5 py-14 text-center">
+        <p className="text-sm font-bold text-rose-700">{error}</p>
+        <button
+          type="button"
+          onClick={onRetry}
+          className="mt-4 h-10 rounded-xl bg-slate-950 px-5 text-xs font-black text-white transition hover:bg-orange-500"
+        >
+          Дахин оролдох
+        </button>
       </div>
     );
   }
@@ -1076,67 +1291,262 @@ function OrganizationProductGrid({
   }
 
   return (
-    <div className="divide-y divide-slate-100 border-y border-slate-100">
-      {organizations.map(({ organization, products: organizationProducts }) => (
-        <section
-          key={organization.id}
-          className="grid gap-6 py-8 lg:grid-cols-[15rem_minmax(0,1fr)] lg:gap-8"
+    <div>
+      <div className="mb-5 flex flex-col gap-1 rounded-2xl border border-orange-100 bg-orange-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-lg font-black text-slate-950">
+            Online shop байгууллагууд
+          </h2>
+          <p className="mt-1 text-xs font-semibold text-slate-500">
+            Ангиллын шүүлтээс үл хамааран бүх public барааг байгууллагаар
+            харуулж байна.
+          </p>
+        </div>
+        <p className="mt-2 shrink-0 text-sm font-black text-orange-600 sm:mt-0">
+          {organizations.length} байгууллага ·{" "}
+          {products.length.toLocaleString()} бараа
+        </p>
+      </div>
+      <div className="divide-y divide-slate-100 border-y border-slate-100">
+        {organizations.map(
+          ({ organization, products: organizationProducts }) => (
+            <OrganizationProductRow
+              key={organization.id}
+              organization={organization}
+              products={organizationProducts}
+              isMember={isMember}
+            />
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OrganizationProductRow({
+  organization,
+  products: initialProducts,
+  isMember,
+}: {
+  organization: NonNullable<ApiProduct["organization"]>;
+  products: ApiProduct[];
+  isMember: boolean;
+}) {
+  const { authFetch } = useAuth();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const loadingMoreRef = useRef(false);
+  const [products, setProducts] = useState(initialProducts);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const totalProducts = organization.productCount ?? initialProducts.length;
+  const hasMore = products.length < totalProducts;
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(
+    initialProducts.length > 4 || hasMore,
+  );
+
+  useEffect(() => {
+    setProducts(initialProducts);
+  }, [initialProducts]);
+
+  const loadMoreProducts = async () => {
+    if (loadingMoreRef.current || !hasMore) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      let nextProducts: ApiProduct[] = [];
+      if (LOCAL_MOCK_CATALOG_ENABLED) {
+        nextProducts = queryLocalCatalog({
+          organizationId: organization.id,
+          sort: "newest",
+          limit: ORGANIZATION_PRODUCTS_BATCH_SIZE,
+          offset: products.length,
+        }).products;
+      } else {
+        const params = new URLSearchParams({
+          organizationId: organization.id,
+          limit: String(ORGANIZATION_PRODUCTS_BATCH_SIZE),
+          offset: String(products.length),
+          meta: "1",
+          sort: "newest",
+        });
+        appendProductVisitorId(params);
+        const response = await authFetch(
+          `${API}/products?${params.toString()}`,
+        );
+        if (!response.ok) return;
+        const payload = (await response.json()) as ProductsApiResponse;
+        nextProducts = Array.isArray(payload)
+          ? payload
+          : Array.isArray(payload.products)
+            ? payload.products
+            : [];
+      }
+      setProducts((current) => {
+        const unique = new Map(
+          [...current, ...nextProducts].map((product) => [product.id, product]),
+        );
+        return [...unique.values()];
+      });
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  };
+
+  const syncScrollButtons = () => {
+    const node = scrollRef.current;
+    if (!node) return;
+    setCanScrollLeft(node.scrollLeft > 8);
+    setCanScrollRight(
+      node.scrollLeft + node.clientWidth < node.scrollWidth - 8 || hasMore,
+    );
+    if (
+      node.scrollLeft + node.clientWidth >= node.scrollWidth - 420 &&
+      hasMore &&
+      !loadingMore
+    ) {
+      void loadMoreProducts();
+    }
+  };
+
+  const scrollProducts = async (direction: "left" | "right") => {
+    const node = scrollRef.current;
+    if (!node) return;
+    if (
+      direction === "right" &&
+      node.scrollLeft + node.clientWidth >= node.scrollWidth - 420
+    ) {
+      await loadMoreProducts();
+    }
+    node.scrollBy({
+      left:
+        direction === "left"
+          ? -Math.round(node.clientWidth * 0.86)
+          : Math.round(node.clientWidth * 0.86),
+      behavior: "smooth",
+    });
+    window.setTimeout(syncScrollButtons, 250);
+  };
+
+  const categories = [
+    ...new Set(
+      products
+        .map((product) => product.businessCategory?.name)
+        .filter((name): name is string => Boolean(name)),
+    ),
+  ].slice(0, 3);
+
+  return (
+    <section className="grid gap-4 py-5 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-6">
+      <div className="lg:sticky lg:top-56 lg:self-start">
+        <Link
+          href={`/o/${organization.id}`}
+          className="group block rounded-2xl outline-none transition focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+          aria-label={`${organization.name} байгууллагын profile руу орох`}
         >
-          <div className="lg:sticky lg:top-56 lg:self-start">
-            <div className="flex items-center gap-3">
-              {organization.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={organization.logoUrl}
-                  alt=""
-                  className="h-14 w-14 rounded-2xl border border-slate-100 object-cover"
-                />
-              ) : (
-                <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
-                  <Store className="h-6 w-6" aria-hidden="true" />
-                </span>
-              )}
-              <div className="min-w-0">
-                <h2 className="truncate text-lg font-black text-slate-950">
-                  {organization.name}
-                </h2>
-                <p className="mt-1 text-xs font-bold text-slate-400">
-                  {organizationProducts.length} бүтээгдэхүүн
-                </p>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {[
-                ...new Set(
-                  organizationProducts
-                    .map((product) => product.businessCategory?.name)
-                    .filter((name): name is string => Boolean(name)),
-                ),
-              ]
-                .slice(0, 3)
-                .map((category) => (
-                  <span
-                    key={category}
-                    className="rounded-lg bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-500"
-                  >
-                    {category}
-                  </span>
-                ))}
+          <div className="flex items-center gap-3">
+            {organization.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={organization.logoUrl}
+                alt=""
+                className="h-11 w-11 rounded-xl border border-slate-100 object-cover"
+              />
+            ) : (
+              <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-orange-600">
+                <Store className="h-5 w-5" aria-hidden="true" />
+              </span>
+            )}
+            <div className="min-w-0">
+              <h2 className="truncate text-base font-black text-slate-950">
+                {organization.name}
+              </h2>
+              <p className="mt-1 text-xs font-bold text-slate-400">
+                {totalProducts} бүтээгдэхүүн
+              </p>
             </div>
           </div>
-
-          <div className="grid gap-x-4 gap-y-7 min-[420px]:grid-cols-2 sm:grid-cols-3 xl:grid-cols-5">
-            {organizationProducts.slice(0, 5).map((product) => (
-              <CatalogProductCard
-                key={product.id}
-                product={product}
-                isMember={isMember}
+          <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5 text-[10px] font-black text-slate-500">
+            <span className="inline-flex items-center gap-1 text-amber-600">
+              <Star className="h-3 w-3 fill-current" aria-hidden="true" />
+              {(organization.rating ?? 0).toFixed(1)}/10
+            </span>
+            <span>{organization.reviewCount ?? 0} үнэлгээ</span>
+            <span className="inline-flex items-center gap-1">
+              <Users className="h-3 w-3 text-blue-500" aria-hidden="true" />
+              {Number(organization.customerCount ?? 0).toLocaleString(
+                "mn-MN",
+              )}{" "}
+              хэрэглэгч
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <ShoppingBag
+                className="h-3 w-3 text-orange-500"
+                aria-hidden="true"
               />
+              {(organization.soldCount ?? 0).toLocaleString("mn-MN")} зарагдсан
+            </span>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {categories.map((category) => (
+              <span
+                key={category}
+                className="rounded-md bg-slate-50 px-2 py-1 text-[10px] font-bold text-slate-500"
+              >
+                {category}
+              </span>
             ))}
           </div>
-        </section>
-      ))}
-    </div>
+          <span className="mt-3 inline-flex items-center text-[10px] font-black text-orange-600 opacity-0 transition group-hover:opacity-100">
+            Дэлгүүрийн profile үзэх →
+          </span>
+        </Link>
+      </div>
+
+      <div className="min-w-0">
+        <div className="mb-2 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => scrollProducts("left")}
+            disabled={!canScrollLeft}
+            aria-label={`${organization.name} өмнөх бараанууд`}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-orange-200 hover:text-orange-600 disabled:opacity-30"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollProducts("right")}
+            disabled={!canScrollRight}
+            aria-label={`${organization.name} дараагийн бараанууд`}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-orange-200 hover:text-orange-600 disabled:opacity-30"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+        <div
+          ref={scrollRef}
+          onScroll={syncScrollButtons}
+          className="grid auto-cols-[minmax(160px,68vw)] grid-flow-col gap-3 overflow-x-auto pb-3 sm:auto-cols-[175px] xl:auto-cols-[185px]"
+          style={{ scrollbarWidth: "thin" }}
+        >
+          {products.map((product) => (
+            <CatalogProductCard
+              key={product.id}
+              product={product}
+              isMember={isMember}
+              compact
+            />
+          ))}
+          {loadingMore && (
+            <div className="flex min-h-48 w-44 items-center justify-center rounded-xl bg-slate-50 text-orange-500">
+              <LoaderCircle className="h-6 w-6 animate-spin" />
+              <span className="sr-only">Дараагийн 15 барааг татаж байна</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

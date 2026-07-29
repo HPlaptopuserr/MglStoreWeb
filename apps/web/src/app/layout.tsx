@@ -76,7 +76,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="mn">
       <body
-        className="bg-white antialiased min-h-screen flex flex-col"
+        className="min-h-screen flex flex-col bg-white"
         suppressHydrationWarning
       >
         <MglAppBootLoader label="Дэлгүүрийг ачааллаж байна" />

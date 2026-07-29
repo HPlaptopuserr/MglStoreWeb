@@ -193,10 +193,14 @@ router.post(
         error.message === "DELIVERY_PARTNERSHIP_NOT_FOUND"
       ) {
         return res.status(400).json({
-          message: "Сонгосон хүргэлтийн компанитай идэвхтэй хамтын ажиллагаа алга",
+          message:
+            "Сонгосон хүргэлтийн компанитай идэвхтэй хамтын ажиллагаа алга",
         });
       }
-      console.error("POST /vendor/orders/:orderId/delivery-provider error", error);
+      console.error(
+        "POST /vendor/orders/:orderId/delivery-provider error",
+        error,
+      );
       return res.status(500).json({
         message: "Хүргэлтийн компанид захиалга илгээхэд алдаа гарлаа",
       });
@@ -793,6 +797,7 @@ router.post(
           customerId: true,
           status: true,
           deliveryCode: true,
+          items: { select: { productId: true, quantity: true } },
         },
       });
 
@@ -831,6 +836,33 @@ router.post(
             toStatus: OrderStatus.COMPLETED,
             changedById: decoded.userId!,
             note: "Хүргэлт баталгаажсан (кодоор)",
+          },
+        });
+
+        for (const item of order.items) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { soldCount: { increment: item.quantity } },
+          });
+        }
+        const uniqueCustomers = await tx.order.groupBy({
+          by: ["customerId"],
+          where: {
+            organizationId: order.organizationId,
+            status: OrderStatus.COMPLETED,
+            deletedAt: null,
+          },
+        });
+        await tx.organization.update({
+          where: { id: order.organizationId },
+          data: {
+            soldCount: {
+              increment: order.items.reduce(
+                (total, item) => total + item.quantity,
+                0,
+              ),
+            },
+            customerCount: String(uniqueCustomers.length),
           },
         });
       });

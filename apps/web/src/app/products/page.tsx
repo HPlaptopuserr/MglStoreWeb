@@ -4,8 +4,13 @@ import ProductsPageClient, {
   type ApiProduct,
   type ProductsPageInitialData,
 } from "./ProductsPageClient";
+import {
+  LOCAL_MOCK_CATALOG_ENABLED,
+  localCatalogCategories,
+  queryLocalCatalog,
+} from "@/lib/local-product-catalog";
 
-const PRODUCTS_PER_PAGE = 16;
+const PRODUCTS_PER_PAGE = 30;
 const WEB_PRODUCTS_SETTING_KEY = "web-products-enabled";
 
 type SearchParams = Record<string, string | string[] | undefined>;
@@ -28,11 +33,30 @@ async function getInitialData(
   searchParams: SearchParams,
 ): Promise<ProductsPageInitialData | undefined> {
   const recommendationSeed = new Date().toISOString().slice(0, 10);
-  const page = Math.max(1, Number(firstValue(searchParams.page)) || 1);
+  if (LOCAL_MOCK_CATALOG_ENABLED) {
+    const result = queryLocalCatalog({
+      businessCategoryId: firstValue(searchParams.category),
+      search: firstValue(searchParams.search) || firstValue(searchParams.q),
+      type: firstValue(searchParams.type),
+      sort: firstValue(searchParams.sort) || "recommended",
+      discountOnly: ["1", "true"].includes(firstValue(searchParams.discount)),
+      limit: PRODUCTS_PER_PAGE,
+      offset: 0,
+    });
+
+    return {
+      categories: localCatalogCategories,
+      products: result.products,
+      total: result.total,
+      webProductsEnabled: true,
+      recommendationSeed,
+    };
+  }
+
   const query = new URLSearchParams({
     sort: firstValue(searchParams.sort) || "recommended",
     limit: String(PRODUCTS_PER_PAGE),
-    offset: String((page - 1) * PRODUCTS_PER_PAGE),
+    offset: "0",
     meta: "1",
     recommendationSeed,
   });

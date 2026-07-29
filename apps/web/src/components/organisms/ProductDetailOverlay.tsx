@@ -27,6 +27,10 @@ import { useAuth } from "@/lib/auth-context";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { resolveMemberPricing } from "@/lib/member-pricing";
 import { organizationPath } from "@/lib/organization-links";
+import {
+  findLocalCatalogProduct,
+  LOCAL_MOCK_CATALOG_ENABLED,
+} from "@/lib/local-product-catalog";
 
 interface ProductImage {
   id: string;
@@ -126,6 +130,23 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
   useLockBodyScroll();
 
   useEffect(() => {
+    const localProduct = LOCAL_MOCK_CATALOG_ENABLED
+      ? findLocalCatalogProduct(productId)
+      : null;
+    if (localProduct) {
+      Promise.resolve().then(() => {
+        setProduct({
+          ...localProduct,
+          discounts: localProduct.discounts.map((discount) => ({
+            ...discount,
+            validUntil: "2027-12-31T23:59:59.000Z",
+          })),
+        });
+        setLoading(false);
+      });
+      return;
+    }
+
     fetch(`${API}/products/${productId}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {

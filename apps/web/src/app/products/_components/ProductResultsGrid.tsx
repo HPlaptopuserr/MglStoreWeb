@@ -2,27 +2,28 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Heart,
-  ImageIcon,
-  Search,
-  Sparkles,
-  Store,
-} from "lucide-react";
+import { Heart, ImageIcon, Search, Sparkles, Store } from "lucide-react";
 import { resolveMemberPricing } from "@/lib/member-pricing";
 
 export type ProductResult = {
   id: string;
   name: string;
   price: number;
-  stock?: number;
+  stock?: number | null;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays?: number | null;
+  rating?: number | null;
+  reviewCount?: number | null;
+  soldCount?: number | null;
   images: { id: string; url: string }[];
-  organization: { id: string; name: string; logoUrl?: string | null } | null;
+  organization: {
+    id: string;
+    name: string;
+    logoUrl?: string | null;
+    rating?: number | null;
+    reviewCount?: number | null;
+    soldCount?: number | null;
+  } | null;
   discounts: { percent: number }[];
   businessCategory: { id: string; name: string; slug?: string } | null;
 };
@@ -30,17 +31,12 @@ export type ProductResult = {
 type ProductResultsGridProps = {
   products: ProductResult[];
   loading: boolean;
-  currentPage: number;
-  totalPages: number;
-  totalProducts: number;
-  pageSize: number;
   hasActiveFilters: boolean;
   isMember: boolean;
   searchQuery: string;
   suggestions?: ProductSearchSuggestion[];
   onClearFilters: () => void;
   onSuggestionClick?: (suggestion: ProductSearchSuggestion) => void;
-  onPageChange: (page: number) => void;
 };
 
 export type ProductSearchSuggestion = {
@@ -72,23 +68,17 @@ function getCatalogImageSource(url: string): {
 export function ProductResultsGrid({
   products,
   loading,
-  currentPage,
-  totalPages,
-  totalProducts,
-  pageSize,
   hasActiveFilters,
   isMember,
   searchQuery,
   suggestions = [],
   onClearFilters,
   onSuggestionClick,
-  onPageChange,
 }: ProductResultsGridProps) {
-  const [jumpPage, setJumpPage] = useState("");
   if (loading) {
     return (
       <div className="grid gap-3 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-        {Array.from({ length: 15 }).map((_, index) => (
+        {Array.from({ length: 30 }).map((_, index) => (
           <div
             key={index}
             className="h-[260px] animate-pulse rounded-xl border border-slate-100 bg-slate-50"
@@ -182,140 +172,20 @@ export function ProductResultsGrid({
           ))}
         </div>
       </div>
-
-      {totalPages > 1 && (
-        <nav
-          aria-label="Бүтээгдэхүүний хуудас"
-          className="mt-12 flex flex-wrap items-center justify-center gap-2 border-t border-slate-100 pt-8"
-        >
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-              disabled={currentPage === 1}
-              className="inline-flex h-10 items-center gap-1 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 transition hover:border-orange-300 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-35"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              <span className="hidden sm:inline">Өмнөх</span>
-            </button>
-            {buildPageItems(currentPage, totalPages).map((page, index) =>
-              page === "ellipsis" ? (
-                <span
-                  key={`ellipsis-${index}`}
-                  className="flex h-10 w-8 items-center justify-center text-sm font-bold text-slate-300"
-                >
-                  …
-                </span>
-              ) : (
-                <button
-                  key={page}
-                  type="button"
-                  onClick={() => onPageChange(page)}
-                  aria-current={page === currentPage ? "page" : undefined}
-                  className={`flex h-10 min-w-10 items-center justify-center rounded-lg border px-2 text-sm font-black transition ${
-                    page === currentPage
-                      ? "border-orange-500 bg-orange-500 text-white shadow-sm"
-                      : "border-slate-200 bg-white text-slate-600 hover:border-orange-300 hover:text-orange-600"
-                  }`}
-                >
-                  {page}
-                </button>
-              ),
-            )}
-            <button
-              type="button"
-              onClick={() =>
-                onPageChange(Math.min(totalPages, currentPage + 1))
-              }
-              disabled={currentPage === totalPages}
-              className="inline-flex h-10 items-center gap-1 rounded-lg border border-slate-200 px-3 text-sm font-bold text-slate-600 transition hover:border-orange-300 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-35"
-            >
-              <span className="hidden sm:inline">Дараах</span>
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-
-          <span className="ml-2 text-xs font-bold text-slate-400">
-            {currentPage}/{totalPages}
-          </span>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const page = Number(jumpPage);
-              if (Number.isInteger(page) && page >= 1 && page <= totalPages) {
-                onPageChange(page);
-                setJumpPage("");
-              }
-            }}
-            className="ml-2 hidden items-center gap-2 sm:flex"
-          >
-            <span className="text-xs font-bold text-slate-400">Хуудас</span>
-            <input
-              value={jumpPage}
-              onChange={(event) => setJumpPage(event.target.value)}
-              inputMode="numeric"
-              aria-label="Очих хуудасны дугаар"
-              className="h-10 w-14 rounded-lg border border-slate-200 text-center text-sm font-bold outline-none focus:border-orange-400"
-            />
-            <button
-              type="submit"
-              className="h-10 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-600 transition hover:border-orange-300 hover:text-orange-600"
-            >
-              Очих
-            </button>
-          </form>
-          <p className="w-full text-center text-xs font-bold text-slate-400">
-            {(currentPage - 1) * pageSize + 1}–
-            {Math.min(currentPage * pageSize, totalProducts)} /{" "}
-            {totalProducts.toLocaleString()} бараа
-          </p>
-        </nav>
-      )}
     </>
   );
-}
-
-function buildPageItems(
-  currentPage: number,
-  totalPages: number,
-): Array<number | "ellipsis"> {
-  if (totalPages <= 9) {
-    return Array.from({ length: totalPages }, (_, index) => index + 1);
-  }
-
-  const pages = new Set([
-    1,
-    2,
-    currentPage - 2,
-    currentPage - 1,
-    currentPage,
-    currentPage + 1,
-    currentPage + 2,
-    totalPages - 1,
-    totalPages,
-  ]);
-  const validPages = [...pages]
-    .filter((page) => page >= 1 && page <= totalPages)
-    .sort((a, b) => a - b);
-  const items: Array<number | "ellipsis"> = [];
-
-  validPages.forEach((page, index) => {
-    const previous = validPages[index - 1];
-    if (previous && page - previous > 1) items.push("ellipsis");
-    items.push(page);
-  });
-
-  return items;
 }
 
 export function CatalogProductCard({
   product,
   isMember,
   priority = false,
+  compact = false,
 }: {
   product: ProductResult;
   isMember: boolean;
   priority?: boolean;
+  compact?: boolean;
 }) {
   const pricing = resolveMemberPricing(
     product.price,
@@ -335,13 +205,21 @@ export function CatalogProductCard({
         href={`/products/${product.id}`}
         className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
       >
-        <div className="relative aspect-square overflow-hidden rounded-2xl bg-slate-100">
+        <div
+          className={`relative overflow-hidden bg-slate-100 ${
+            compact ? "aspect-[4/3] rounded-xl" : "aspect-square rounded-2xl"
+          }`}
+        >
           {catalogImage ? (
             <Image
               src={catalogImage.src}
               alt={product.name}
               fill
-              sizes="(max-width: 420px) 100vw, (max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 20vw"
+              sizes={
+                compact
+                  ? "(max-width: 640px) 45vw, 180px"
+                  : "(max-width: 420px) 100vw, (max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 20vw"
+              }
               quality={72}
               unoptimized={catalogImage.preOptimized}
               priority={priority}
@@ -369,12 +247,22 @@ export function CatalogProductCard({
           </span>
         </div>
 
-        <div className="px-1 pb-2 pt-3">
-          <h3 className="line-clamp-2 min-h-10 text-sm font-bold leading-5 text-slate-900 transition group-hover:text-orange-600">
+        <div className={compact ? "px-0.5 pb-1 pt-2" : "px-1 pb-2 pt-3"}>
+          <h3
+            className={`font-bold text-slate-900 transition group-hover:text-orange-600 ${
+              compact
+                ? "line-clamp-1 text-xs leading-4"
+                : "line-clamp-2 min-h-10 text-sm leading-5"
+            }`}
+          >
             {product.name}
           </h3>
-          <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className="text-xl font-black tracking-tight text-orange-600">
+          <div
+            className={`${compact ? "mt-1.5" : "mt-2"} flex flex-wrap items-baseline gap-x-2 gap-y-1`}
+          >
+            <span
+              className={`${compact ? "text-base" : "text-xl"} font-black tracking-tight text-orange-600`}
+            >
               ₮{price.toLocaleString("mn-MN")}
             </span>
             {originalPrice && originalPrice > price && (
@@ -383,26 +271,42 @@ export function CatalogProductCard({
               </span>
             )}
           </div>
-          <div className="mt-1.5 flex flex-wrap gap-1.5">
-            {memberLabel && (
-              <span className="rounded-md bg-orange-50 px-1.5 py-0.5 text-[10px] font-black text-orange-600">
-                {memberLabel}
+          {!compact && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {memberLabel && (
+                <span className="rounded-md bg-orange-50 px-1.5 py-0.5 text-[10px] font-black text-orange-600">
+                  {memberLabel}
+                </span>
+              )}
+              <span className="rounded-md bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-400">
+                {isPreorder
+                  ? `${product.preorderLeadTimeDays ?? 14} хоног`
+                  : (product.stock ?? 0) > 0
+                    ? "Бэлэн"
+                    : "Нөөцгүй"}
               </span>
-            )}
-            <span className="rounded-md bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-400">
-              {isPreorder
-                ? `${product.preorderLeadTimeDays ?? 14} хоног`
-                : (product.stock ?? 0) > 0
-                  ? "Бэлэн"
-                  : "Нөөцгүй"}
+            </div>
+          )}
+          <div
+            className={`${compact ? "mt-1" : "mt-2"} flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-black text-slate-500`}
+          >
+            <span className="text-amber-500">
+              ★ {(product.rating ?? 0).toFixed(1)}/10
             </span>
+            {!compact && <span>{product.reviewCount ?? 0} үнэлгээ</span>}
+            <span>{product.soldCount ?? 0} зарагдсан</span>
           </div>
-          <div className="mt-2 flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-slate-400">
-            <Store className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            <span className="truncate">
-              {product.organization?.name || "MGL Store"}
-            </span>
-          </div>
+          {!compact && (
+            <div className="mt-2 flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-slate-400">
+              <Store className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              <span className="truncate">
+                {product.organization?.name || "MGL Store"}
+              </span>
+              <span className="ml-auto shrink-0 text-amber-500">
+                ★ {(product.organization?.rating ?? 0).toFixed(1)}
+              </span>
+            </div>
+          )}
         </div>
       </Link>
     </article>

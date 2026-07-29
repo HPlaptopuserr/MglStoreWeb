@@ -18,15 +18,19 @@ import {
   ReceiptText,
   RefreshCw,
   Search,
+  Star,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { API } from "@/lib/api";
 
 interface OrderItem {
+  id: string;
+  productId: string;
   name: string;
   qty: number;
   price: number;
   subtotal: number;
+  reviewScore?: number | null;
 }
 
 interface Order {
@@ -42,6 +46,7 @@ interface Order {
   deliveryCode: string | null;
   createdAt: string;
   items: OrderItem[];
+  requiresReview?: boolean;
   payments?: OrderPayment[];
 }
 
@@ -438,6 +443,111 @@ function formatDate(iso: string) {
   return `${month}, ${time}`;
 }
 
+function OrderRatingForm({
+  order,
+  onSubmit,
+}: {
+  order: Order;
+  onSubmit: (score: number, comment: string) => Promise<void>;
+}) {
+  const [score, setScore] = useState<number | null>(null);
+  const [comment, setComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    if (!score || submitting) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      await onSubmit(score, comment);
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Үнэлгээ хадгалахад алдаа гарлаа",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <section className="mx-4 my-3 rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+          <Star size={18} fill="currentColor" aria-hidden="true" />
+        </span>
+        <div>
+          <h3 className="text-sm font-black text-gray-900">
+            Захиалгаа нэг удаа үнэлнэ үү
+          </h3>
+          <p className="mt-0.5 text-[11px] font-semibold text-gray-500">
+            Сонгосон оноо захиалгын {order.items.length} бараа тус бүрд ижил
+            оноогоор бүртгэгдэнэ.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <span className="text-xs font-black text-gray-800">
+            1 муу · 10 маш сайн
+          </span>
+          <span className="shrink-0 text-xs font-black text-amber-600">
+            {score ? `${score}/10` : "Оноо сонгоно уу"}
+          </span>
+        </div>
+        <div
+          className="grid grid-cols-10 gap-1"
+          role="radiogroup"
+          aria-label="Захиалгын үнэлгээ"
+        >
+          {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+            <button
+              key={value}
+              type="button"
+              role="radio"
+              aria-checked={score === value}
+              onClick={() => setScore(value)}
+              className={`aspect-square rounded-lg text-[11px] font-black transition ${
+                score === value
+                  ? "bg-amber-500 text-white shadow-sm"
+                  : "bg-white text-gray-500 ring-1 ring-amber-100 hover:bg-amber-100"
+              }`}
+            >
+              {value}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <textarea
+        value={comment}
+        maxLength={500}
+        onChange={(event) => setComment(event.target.value)}
+        placeholder="Нэмэлт сэтгэгдэл (заавал биш)"
+        className="mt-4 min-h-20 w-full resize-y rounded-xl border border-amber-100 bg-white p-3 text-xs font-semibold outline-none transition focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+      />
+      {error && <p className="mt-2 text-xs font-bold text-red-600">{error}</p>}
+      <button
+        type="button"
+        disabled={!score || submitting}
+        onClick={submit}
+        className="mt-3 flex h-11 w-full items-center justify-center rounded-xl bg-gray-950 text-xs font-black text-white transition hover:bg-amber-500 disabled:cursor-not-allowed disabled:bg-gray-300"
+      >
+        {submitting ? (
+          <Loader2 size={16} className="animate-spin" />
+        ) : score ? (
+          "Үнэлгээг хадгалах"
+        ) : (
+          "1–10 онооноос сонгоно уу"
+        )}
+      </button>
+    </section>
+  );
+}
+
 /* ── Main page ───────────────────────────────────────── */
 export default function OrdersPage() {
   const router = useRouter();
@@ -482,6 +592,25 @@ export default function OrdersPage() {
       setLoading(false);
     }
   }, [authFetch, router]);
+
+  const submitRatings = useCallback(
+    async (orderId: string, score: number, comment: string) => {
+      const response = await authFetch(
+        `${API}/store/orders/${orderId}/reviews`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ score, comment }),
+        },
+      );
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.message || "Үнэлгээ хадгалахад алдаа гарлаа");
+      }
+      await fetchOrders();
+    },
+    [authFetch, fetchOrders],
+  );
 
   useEffect(() => {
     if (authLoading) return;
@@ -633,6 +762,15 @@ export default function OrdersPage() {
                 {/* Delivery code — when SHIPPING */}
                 {order.status === "SHIPPING" && order.deliveryCode && (
                   <DeliveryCodeCard code={order.deliveryCode} />
+                )}
+
+                {order.requiresReview && (
+                  <OrderRatingForm
+                    order={order}
+                    onSubmit={(score, comment) =>
+                      submitRatings(order.id, score, comment)
+                    }
+                  />
                 )}
 
                 {/* Items list */}

@@ -45,7 +45,12 @@ export const FeaturedStoreCard = ({
       <div className="relative z-10 flex flex-1 flex-col bg-white px-4 pb-4 pt-3">
         {/* Logo */}
         <div className="-mt-9 mb-3">
-          <InvestorRingWrapper investmentAmount={company.isInvestor ? company.investmentAmount : null} rounded="full">
+          <InvestorRingWrapper
+            investmentAmount={
+              company.isInvestor ? company.investmentAmount : null
+            }
+            rounded="full"
+          >
             <div className="h-16 w-16 overflow-hidden rounded-full bg-white p-1 shadow-md ring-1 ring-slate-100">
               <div className="relative h-full w-full overflow-hidden rounded-full bg-slate-100">
                 <Image
@@ -66,14 +71,18 @@ export const FeaturedStoreCard = ({
           <div className="mt-0.5 flex shrink-0 items-center gap-1 rounded-md bg-orange-50 px-2 py-1">
             <Star size={12} className="fill-orange-400 text-orange-400" />
             <span className="text-xs font-bold text-orange-700">
-              {company.rating ? Number(company.rating).toFixed(1) : "5.0"}
+              {Number(company.rating || 0).toFixed(1)}/10
             </span>
           </div>
         </div>
 
-        <p className="mb-4 truncate text-xs font-medium capitalize text-slate-500">
-          {company.category ?? "Дэлгүүр"}
-        </p>
+        <div className="mb-4 flex items-center gap-2 text-[10px] font-bold text-slate-500">
+          <span className="truncate capitalize">
+            {company.category ?? "Дэлгүүр"}
+          </span>
+          <span>· {company.reviewCount ?? 0} үнэлгээ</span>
+          <span>· {company.soldCount ?? 0} зарагдсан</span>
+        </div>
 
         <div className="mb-4 grid grid-cols-2 gap-2">
           <div className="flex min-w-0 items-center gap-1.5 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-600">
@@ -83,7 +92,9 @@ export const FeaturedStoreCard = ({
 
           <div className="flex min-w-0 items-center gap-1.5 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-600">
             <ShoppingBag size={12} className="shrink-0 text-slate-400" />
-            <span className="truncate">{company.products?.length ?? 0} бараа</span>
+            <span className="truncate">
+              {company.products?.length ?? 0} бараа
+            </span>
           </div>
         </div>
 

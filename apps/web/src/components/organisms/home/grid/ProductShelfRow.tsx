@@ -9,10 +9,9 @@ import type { ApiProduct } from "./productShowcase";
 interface ProductShelfRowProps {
   title: string;
   products: ApiProduct[];
-  onSelect: (id: string) => void;
 }
 
-export function ProductShelfRow({ title, products, onSelect }: ProductShelfRowProps) {
+export function ProductShelfRow({ title, products }: ProductShelfRowProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canLeft, setCanLeft] = useState(false);
   const [canRight, setCanRight] = useState(products.length > 4);
@@ -28,7 +27,10 @@ export function ProductShelfRow({ title, products, onSelect }: ProductShelfRowPr
     const node = scrollRef.current;
     if (!node) return;
     node.scrollBy({
-      left: direction === "left" ? -Math.round(node.clientWidth * 0.86) : Math.round(node.clientWidth * 0.86),
+      left:
+        direction === "left"
+          ? -Math.round(node.clientWidth * 0.86)
+          : Math.round(node.clientWidth * 0.86),
       behavior: "smooth",
     });
     window.setTimeout(checkScroll, 240);
@@ -81,12 +83,7 @@ export function ProductShelfRow({ title, products, onSelect }: ProductShelfRowPr
         style={{ scrollbarWidth: "none" }}
       >
         {products.map((product, idx) => (
-          <ProductCarouselItem
-            key={product.id}
-            product={product}
-            idx={idx}
-            onClick={() => onSelect(product.id)}
-          />
+          <ProductCarouselItem key={product.id} product={product} idx={idx} />
         ))}
       </div>
     </section>

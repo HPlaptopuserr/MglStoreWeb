@@ -83,6 +83,7 @@ model User {
   contracts                        Contract[]
   productInteractions              ProductInteraction[]
   productInterestScores            ProductInterestScore[]
+  productReviews                   ProductReview[]
   authoredReels                    Reel[]                         @relation("ReelAuthor")
   reviewedReels                    Reel[]                         @relation("ReelReviewedBy")
   reelInteractions                 ReelInteraction[]
@@ -376,8 +377,9 @@ model Organization {
   description                     String?
   openingHours                    String[]                     @default([])
   operatingYears                  Int                          @default(1)
-  rating                          Float                        @default(5)
+  rating                          Float                        @default(0)
   reviewCount                     Int                          @default(0)
+  soldCount                       Int                          @default(0)
   shortDescription                String?
   deletedBy                       String?
   deletionReason                  String?
@@ -449,6 +451,7 @@ model Organization {
   contracts                       Contract[]
   productInteractions             ProductInteraction[]
   productInterestScores           ProductInterestScore[]
+  productReviews                  ProductReview[]
   reels                           Reel[]
   reelInteractions                ReelInteraction[]
   upgradePlans                    OrgUpgradePlan[]
@@ -948,6 +951,7 @@ model Product {
   reviewedById          String?
   name                  String
   description           String?
+  specifications        Json?
   sku                   String?
   barcode               String?
   unit                  String?
@@ -971,6 +975,9 @@ model Product {
   preorderLeadTimeDays  Int?
   preorderNote          String?
   marketplacePriority   Int                           @default(0)
+  rating                Float                         @default(0)
+  reviewCount           Int                           @default(0)
+  soldCount             Int                           @default(0)
   isActive              Boolean                       @default(true)
   reviewStatus          VendorContentReviewStatus     @default(APPROVED)
   reviewedAt            DateTime?
@@ -982,6 +989,7 @@ model Product {
   discounts             Discount[]
   inventoryLogs         InventoryLedger[]
   orderItems            OrderItem[]
+  reviews               ProductReview[]
   businessCategory      BusinessCategory?             @relation(fields: [businessCategoryId], references: [id])
   category              Category?                     @relation(fields: [categoryId], references: [id])
   organization          Organization                  @relation(fields: [organizationId], references: [id])
@@ -1401,6 +1409,7 @@ model Order {
   history            OrderHistory[]
   dispatchAttempts   OrderDispatchAttempt[]
   items              OrderItem[]
+  reviews            ProductReview[]
   payments           PaymentAttempt[]
   returnRequest      ReturnRequest?
 
@@ -1439,19 +1448,44 @@ model OrderDispatchAttempt {
 }
 
 model OrderItem {
-  id          String  @id @default(uuid())
+  id          String         @id @default(uuid())
   orderId     String
   productId   String
   quantity    Int
-  price       Decimal @db.Decimal(18, 2)
-  subtotal    Decimal @db.Decimal(18, 2)
+  price       Decimal        @db.Decimal(18, 2)
+  subtotal    Decimal        @db.Decimal(18, 2)
   productName String
   productSku  String?
-  order       Order   @relation(fields: [orderId], references: [id])
-  product     Product @relation(fields: [productId], references: [id])
+  order       Order          @relation(fields: [orderId], references: [id])
+  product     Product        @relation(fields: [productId], references: [id])
+  review      ProductReview?
 
   @@index([orderId])
   @@index([productId])
+}
+
+model ProductReview {
+  id             String       @id @default(uuid())
+  orderId        String
+  orderItemId    String       @unique
+  productId      String
+  organizationId String
+  customerId     String
+  score          Int
+  comment        String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  order          Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem      OrderItem    @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer       User         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([productId, createdAt])
+  @@index([organizationId, createdAt])
+  @@index([customerId, createdAt])
+  @@index([orderId])
+  @@index([score])
 }
 
 model OrderHistory {

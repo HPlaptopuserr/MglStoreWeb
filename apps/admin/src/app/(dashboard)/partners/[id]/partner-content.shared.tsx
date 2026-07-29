@@ -46,6 +46,7 @@ export type Product = {
   sku: string | null;
   barcode: string | null;
   description: string | null;
+  specifications?: ProductSpecification[] | null;
   price: number | string;
   costPrice: number | string | null;
   stock: number;
@@ -89,11 +90,17 @@ export type ProfileForm = {
   businessCategory: string;
 };
 
+export type ProductSpecification = {
+  label: string;
+  value: string;
+};
+
 export type ProductForm = {
   name: string;
   sku: string;
   barcode: string;
   description: string;
+  specifications: ProductSpecification[];
   price: string;
   costPrice: string;
   stock: string;
@@ -123,6 +130,7 @@ export const EMPTY_PRODUCT_FORM: ProductForm = {
   sku: "",
   barcode: "",
   description: "",
+  specifications: [],
   price: "",
   costPrice: "",
   stock: "0",

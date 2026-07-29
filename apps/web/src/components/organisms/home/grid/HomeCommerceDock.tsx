@@ -10,6 +10,7 @@ import {
 import { API } from "@/lib/api";
 import type { ApiProduct } from "./productShowcase";
 import type { MarketplaceSideBannerConfig } from "./productShowcase";
+import { LOCAL_MOCK_CATALOG_ENABLED } from "@/lib/local-product-catalog";
 
 type ApiCategory = {
   id: string;
@@ -55,6 +56,8 @@ export function HomeCommerceDock({
   const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
 
   useEffect(() => {
+    if (LOCAL_MOCK_CATALOG_ENABLED) return;
+
     let mounted = true;
 
     fetch(`${API}/business-categories?level=0&hasProducts=1`)
@@ -108,7 +111,7 @@ export function HomeCommerceDock({
       .filter((category) => category.name)
       .slice(0, 6);
 
-    if (fromApi.length) return fromApi;
+    if (fromApi.length && !LOCAL_MOCK_CATALOG_ENABLED) return fromApi;
     const fromProducts = Array.from(productCategoryCounts.values()).slice(0, 6);
     return fromProducts.length ? fromProducts : FALLBACK_CATEGORIES;
   }, [apiCategories, productCategoryCounts]);

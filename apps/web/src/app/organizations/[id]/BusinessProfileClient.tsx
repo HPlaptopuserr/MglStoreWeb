@@ -1,11 +1,15 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import type { OrganizationDetailData, OrganizationReel, ServicePost } from "./page";
+import type {
+  OrganizationDetailData,
+  OrganizationReel,
+  ServicePost,
+} from "./page";
 import {
   Star,
   MapPin,
@@ -36,7 +40,6 @@ import { getServicePostCategories } from "@mgl/ui";
 import { getInvestorTierLabel } from "@mgl/types";
 import { resolveApiAssetUrl } from "@/lib/api";
 import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
-import { ProductDetailOverlay } from "@/components/organisms/ProductDetailOverlay";
 import { ServiceDetailOverlay } from "@/app/services/_components/ServiceDetailOverlay";
 
 type ProductItem = OrganizationDetailData["products"][number] & {
@@ -191,7 +194,10 @@ function HeroSection({ data }: { data: OrganizationDetailData }) {
         >
           <div className="flex items-start gap-4 sm:gap-6">
             {/* Logo */}
-            <InvestorRingWrapper investmentAmount={data.investor?.investmentAmount} rounded="xl">
+            <InvestorRingWrapper
+              investmentAmount={data.investor?.investmentAmount}
+              rounded="xl"
+            >
               <div className="relative w-20 h-20 sm:w-24 sm:h-24 rounded-[1.25rem] overflow-hidden bg-slate-50 shadow-lg">
                 <Image
                   src={data.logo}
@@ -225,7 +231,8 @@ function HeroSection({ data }: { data: OrganizationDetailData }) {
                 {data.investor?.isInvestor && (
                   <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 text-[10px] font-bold px-2.5 py-1 rounded-full border border-amber-200">
                     <Crown className="w-3 h-3" />
-                    {data.investor.level || getInvestorTierLabel(data.investor.tier)}
+                    {data.investor.level ||
+                      getInvestorTierLabel(data.investor.tier)}
                   </span>
                 )}
                 {data.categories.map((cat, i) => (
@@ -275,7 +282,13 @@ function HeroSection({ data }: { data: OrganizationDetailData }) {
 }
 
 /* ─── Stats strip ───────────────────────────────────────────── */
-function StatsStrip({ stats, isVerified }: { stats: OrganizationDetailData["stats"]; isVerified: boolean }) {
+function StatsStrip({
+  stats,
+  isVerified,
+}: {
+  stats: OrganizationDetailData["stats"];
+  isVerified: boolean;
+}) {
   const items = [
     {
       icon: <ShieldCheck className="w-5 h-5 text-blue-500" />,
@@ -309,7 +322,9 @@ function StatsStrip({ stats, isVerified }: { stats: OrganizationDetailData["stat
           key={i}
           className="bg-white rounded-2xl border border-slate-100 p-3 sm:p-4 flex flex-col items-center gap-2 shadow-sm text-center"
         >
-          <div className={`w-9 h-9 rounded-xl ${item.bg} flex items-center justify-center`}>
+          <div
+            className={`w-9 h-9 rounded-xl ${item.bg} flex items-center justify-center`}
+          >
             {item.icon}
           </div>
           <div>
@@ -352,7 +367,11 @@ function AboutSection({ text }: { text: string }) {
           className="mt-3 flex items-center gap-1 text-orange-500 text-sm font-semibold hover:text-orange-600 transition-colors"
         >
           {expanded ? "Хураах" : "Дэлгэрэнгүй"}
-          {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          {expanded ? (
+            <ChevronUp className="w-4 h-4" />
+          ) : (
+            <ChevronDown className="w-4 h-4" />
+          )}
         </button>
       )}
     </motion.div>
@@ -372,7 +391,9 @@ function InfoCards({ info }: { info: OrganizationDetailData["info"] }) {
       icon: <Truck className="w-5 h-5" />,
       color: "text-blue-500 bg-blue-50",
       title: "Хүргэлт",
-      content: [info.delivery.text, info.delivery.price].filter(Boolean).join(" — "),
+      content: [info.delivery.text, info.delivery.price]
+        .filter(Boolean)
+        .join(" — "),
     },
     info.location && {
       icon: <MapPin className="w-5 h-5" />,
@@ -380,7 +401,12 @@ function InfoCards({ info }: { info: OrganizationDetailData["info"] }) {
       title: "Хаяг",
       content: info.location,
     },
-  ].filter(Boolean) as { icon: React.ReactNode; color: string; title: string; content: string }[];
+  ].filter(Boolean) as {
+    icon: React.ReactNode;
+    color: string;
+    title: string;
+    content: string;
+  }[];
 
   if (!cards.length) return null;
 
@@ -396,7 +422,9 @@ function InfoCards({ info }: { info: OrganizationDetailData["info"] }) {
           key={i}
           className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-start gap-3 hover:shadow-md transition-shadow"
         >
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${card.color}`}>
+          <div
+            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${card.color}`}
+          >
             {card.icon}
           </div>
           <div className="min-w-0">
@@ -423,7 +451,8 @@ function ContentSummary({
   active: ContentFilter;
   onChange: (filter: ContentFilter) => void;
 }) {
-  const total = data.products.length + data.servicePosts.length + data.reels.length;
+  const total =
+    data.products.length + data.servicePosts.length + data.reels.length;
   const items = [
     {
       key: "all" as const,
@@ -478,20 +507,26 @@ function ContentSummary({
               : "bg-slate-50/80 hover:bg-white hover:shadow-md"
           }`}
         >
-          <div className={`hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:flex ${
-            active === item.key ? item.activeColor : item.color
-          }`}>
+          <div
+            className={`hidden h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:flex ${
+              active === item.key ? item.activeColor : item.color
+            }`}
+          >
             {item.icon}
           </div>
           <div className="min-w-0">
-            <p className={`text-base font-extrabold leading-none ${
-              active === item.key ? "text-white" : "text-slate-900"
-            }`}>
+            <p
+              className={`text-base font-extrabold leading-none ${
+                active === item.key ? "text-white" : "text-slate-900"
+              }`}
+            >
               {item.value}
             </p>
-            <p className={`mt-1 truncate text-[11px] font-bold ${
-              active === item.key ? "text-white/70" : "text-slate-400"
-            }`}>
+            <p
+              className={`mt-1 truncate text-[11px] font-bold ${
+                active === item.key ? "text-white/70" : "text-slate-400"
+              }`}
+            >
               {item.label}
             </p>
           </div>
@@ -586,7 +621,10 @@ function ServicesSection({ posts }: { posts: ServicePost[] }) {
       </div>
 
       {selectedId && (
-        <ServiceDetailOverlay postId={selectedId} onClose={() => setSelectedId(null)} />
+        <ServiceDetailOverlay
+          postId={selectedId}
+          onClose={() => setSelectedId(null)}
+        />
       )}
     </motion.div>
   );
@@ -635,8 +673,9 @@ function UnifiedContentSection({
   data: OrganizationDetailData;
   hasOtherContent?: boolean;
 }) {
-  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(
+    null,
+  );
 
   const items = useMemo(() => {
     const products = (data.products as ProductItem[]).map((product) => ({
@@ -659,7 +698,7 @@ function UnifiedContentSection({
     }));
 
     return [...products, ...services, ...reels].sort(
-      (a, b) => getItemTime(b.createdAt) - getItemTime(a.createdAt)
+      (a, b) => getItemTime(b.createdAt) - getItemTime(a.createdAt),
     );
   }, [data.products, data.servicePosts, data.reels]);
 
@@ -694,10 +733,9 @@ function UnifiedContentSection({
             const product = item.product;
             const image = resolveApiAssetUrl(product.image);
             return (
-              <button
+              <Link
                 key={`product-${item.id}`}
-                type="button"
-                onClick={() => setSelectedProductId(product.id)}
+                href={`/products/${encodeURIComponent(product.id)}`}
                 className="group overflow-hidden rounded-2xl border border-slate-100 bg-white text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg"
               >
                 <div className="relative aspect-[4/3] overflow-hidden bg-orange-50">
@@ -720,7 +758,7 @@ function UnifiedContentSection({
                     {formatPrice(product.price)}
                   </p>
                 </div>
-              </button>
+              </Link>
             );
           }
 
@@ -783,12 +821,6 @@ function UnifiedContentSection({
         })}
       </div>
 
-      {selectedProductId && (
-        <ProductDetailOverlay
-          productId={selectedProductId}
-          onClose={() => setSelectedProductId(null)}
-        />
-      )}
       {selectedServiceId && (
         <ServiceDetailOverlay
           postId={selectedServiceId}
@@ -808,11 +840,13 @@ function ProductsSection({
   hasOtherContent?: boolean;
 }) {
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const filtered = useMemo(
-    () => products.filter((p) => p.title.toLowerCase().includes(search.toLowerCase())),
-    [products, search]
+    () =>
+      products.filter((p) =>
+        p.title.toLowerCase().includes(search.toLowerCase()),
+      ),
+    [products, search],
   );
 
   return (
@@ -854,7 +888,9 @@ function ProductsSection({
               </div>
               <div>
                 <h3 className="text-base font-bold text-slate-900 mb-1">
-                  {products.length === 0 ? "Бүтээгдэхүүн хараахан нэмэгдээгүй" : "Хайлтад тохирохгүй"}
+                  {products.length === 0
+                    ? "Бүтээгдэхүүн хараахан нэмэгдээгүй"
+                    : "Хайлтад тохирохгүй"}
                 </h3>
                 <p className="text-sm text-slate-400 max-w-md leading-relaxed">
                   {products.length === 0
@@ -879,7 +915,9 @@ function ProductsSection({
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {filtered.map((product) => {
             const isPreorder = product.supplyType === "CHINA_PREORDER";
-            const available = isPreorder || (typeof product.stock === "number" ? product.stock > 0 : true);
+            const available =
+              isPreorder ||
+              (typeof product.stock === "number" ? product.stock > 0 : true);
             const preorderLabel = product.preorderLeadTimeDays
               ? `${product.preorderLeadTimeDays} хоног`
               : "Захиалгаар";
@@ -888,67 +926,66 @@ function ProductsSection({
                 key={product.id}
                 whileHover={{ y: -2 }}
                 whileTap={{ scale: 0.97 }}
-                onClick={() => setSelectedId(product.id)}
-                className="group cursor-pointer text-left bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg transition-all"
+                className="group bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm hover:shadow-lg transition-all"
               >
-                <div className="relative w-full aspect-square bg-slate-50 overflow-hidden">
-                  <Image
-                    src={product.image}
-                    alt={product.title}
-                    fill
-                    className="object-cover group-hover:scale-105 transition-transform duration-500"
-                    referrerPolicy="no-referrer"
-                  />
-                  {isPreorder && (
-                    <span className="absolute left-2.5 top-2.5 z-10 rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
-                      {preorderLabel}
-                    </span>
-                  )}
-                  {!available && (
-                    <div className="absolute inset-0 bg-white/70 backdrop-blur-[2px] flex items-center justify-center">
-                      <span className="bg-slate-800 text-white text-[10px] font-bold px-3 py-1.5 rounded-full">
-                        Дууссан
+                <Link
+                  href={`/products/${encodeURIComponent(product.id)}`}
+                  className="block cursor-pointer text-left"
+                >
+                  <div className="relative w-full aspect-square bg-slate-50 overflow-hidden">
+                    <Image
+                      src={product.image}
+                      alt={product.title}
+                      fill
+                      className="object-cover group-hover:scale-105 transition-transform duration-500"
+                      referrerPolicy="no-referrer"
+                    />
+                    {isPreorder && (
+                      <span className="absolute left-2.5 top-2.5 z-10 rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-bold text-white shadow-sm">
+                        {preorderLabel}
+                      </span>
+                    )}
+                    {!available && (
+                      <div className="absolute inset-0 bg-white/70 backdrop-blur-[2px] flex items-center justify-center">
+                        <span className="bg-slate-800 text-white text-[10px] font-bold px-3 py-1.5 rounded-full">
+                          Дууссан
+                        </span>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                      <Eye className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
+                    </div>
+                  </div>
+                  <div className="p-3">
+                    {product.category && (
+                      <p className="text-[10px] font-semibold text-slate-400 mb-1 uppercase tracking-wide">
+                        {product.category}
+                      </p>
+                    )}
+                    <h3 className="text-xs font-bold text-slate-900 line-clamp-2 leading-snug mb-2">
+                      {product.title}
+                    </h3>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-extrabold text-orange-500">
+                        {formatPrice(product.price)}
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                          available
+                            ? "bg-orange-50 text-orange-500 hover:bg-orange-500 hover:text-white"
+                            : "bg-slate-100 text-slate-300 cursor-not-allowed"
+                        }`}
+                      >
+                        <ShoppingCart className="w-3.5 h-3.5" />
                       </span>
                     </div>
-                  )}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                    <Eye className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity drop-shadow" />
                   </div>
-                </div>
-                <div className="p-3">
-                  {product.category && (
-                    <p className="text-[10px] font-semibold text-slate-400 mb-1 uppercase tracking-wide">
-                      {product.category}
-                    </p>
-                  )}
-                  <h3 className="text-xs font-bold text-slate-900 line-clamp-2 leading-snug mb-2">
-                    {product.title}
-                  </h3>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-extrabold text-orange-500">
-                      {formatPrice(product.price)}
-                    </span>
-                    <button
-                      disabled={!available}
-                      onClick={(e) => e.stopPropagation()}
-                      className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-                        available
-                          ? "bg-orange-50 text-orange-500 hover:bg-orange-500 hover:text-white"
-                          : "bg-slate-100 text-slate-300 cursor-not-allowed"
-                      }`}
-                    >
-                      <ShoppingCart className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
+                </Link>
               </motion.div>
             );
           })}
         </div>
-      )}
-
-      {selectedId && (
-        <ProductDetailOverlay productId={selectedId} onClose={() => setSelectedId(null)} />
       )}
     </motion.div>
   );
@@ -1005,7 +1042,9 @@ function Sidebar({ data }: { data: OrganizationDetailData }) {
         <div className="flex items-center gap-2 pt-1">
           <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
           <p className="text-xs text-slate-500 font-medium">
-            {hasProducts ? "Өнөөдөр захиалбал хүргэнэ" : "5 мин дотор хариу өгнө"}
+            {hasProducts
+              ? "Өнөөдөр захиалбал хүргэнэ"
+              : "5 мин дотор хариу өгнө"}
           </p>
         </div>
       </div>
@@ -1031,87 +1070,448 @@ function Sidebar({ data }: { data: OrganizationDetailData }) {
   );
 }
 
+function StorefrontHeader({ data }: { data: OrganizationDetailData }) {
+  return (
+    <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:p-5">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-slate-100 ring-1 ring-slate-100">
+          <Image
+            src={data.logo}
+            alt={data.name}
+            fill
+            priority
+            className="object-cover"
+            referrerPolicy="no-referrer"
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="truncate text-xl font-black text-slate-950 sm:text-2xl">
+              {data.name}
+            </h1>
+            {data.isVerified && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-[10px] font-black text-blue-600">
+                <ShieldCheck className="h-3 w-3" />
+                Баталгаат
+              </span>
+            )}
+            {data.isOpen && (
+              <span className="rounded-md bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-600">
+                Нээлттэй
+              </span>
+            )}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-bold text-slate-500">
+            <span className="inline-flex items-center gap-1 text-amber-600">
+              <Star className="h-3.5 w-3.5 fill-current" />
+              {data.rating.toFixed(1)}/10
+            </span>
+            <span>{data.reviewCount} үнэлгээ</span>
+            <span className="inline-flex items-center gap-1">
+              <Users className="h-3.5 w-3.5 text-blue-500" />
+              {data.stats.customers} хэрэглэгч
+            </span>
+            <span>{data.products.length} бараа</span>
+            <span>
+              {data.stats.soldCount.toLocaleString("mn-MN")} зарагдсан
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {data.categories.map((category) => (
+              <span
+                key={category}
+                className="rounded-md bg-orange-50 px-2 py-1 text-[10px] font-black text-orange-700"
+              >
+                {category}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="flex shrink-0 gap-2">
+          {data.info.phone && (
+            <a
+              href={`tel:${data.info.phone}`}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-black text-slate-700 transition hover:border-orange-200 hover:text-orange-600"
+            >
+              <Phone className="h-4 w-4" />
+              Холбогдох
+            </a>
+          )}
+          <button className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 text-xs font-black text-white transition hover:bg-orange-600">
+            <ShoppingBag className="h-4 w-4" />
+            Захиалах
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function StoreWebsiteNav({
+  search,
+  onSearchChange,
+}: {
+  search: string;
+  onSearchChange: (value: string) => void;
+}) {
+  return (
+    <>
+      <div className="border-b border-slate-100 bg-white">
+        <div className="mx-auto flex h-8 max-w-[1500px] items-center justify-between px-4 text-[10px] font-bold text-slate-500 lg:px-8">
+          <div className="flex items-center gap-4">
+            <Link href="/">MGL Store</Link>
+            <span>Монгол</span>
+          </div>
+          <nav className="flex items-center gap-4">
+            <Link href="/">Нүүр</Link>
+            <Link href="/orders">Захиалга</Link>
+            <Link href="/profile" className="hidden sm:inline">
+              Миний бүртгэл
+            </Link>
+            <Link href="/checkout" className="inline-flex items-center gap-1">
+              <ShoppingCart className="h-3 w-3 text-orange-500" />
+              Сагс
+            </Link>
+          </nav>
+        </div>
+      </div>
+
+      <div className="border-b border-slate-100 bg-slate-50">
+        <div className="mx-auto flex h-20 max-w-[1500px] items-center gap-5 px-4 lg:px-8">
+          <Link href="/" className="shrink-0">
+            <Image
+              src="/logo.png"
+              alt="MGL Store"
+              width={150}
+              height={56}
+              priority
+              className="h-auto w-28 object-contain sm:w-36"
+            />
+          </Link>
+          <label className="relative ml-auto w-full max-w-xl">
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Дэлгүүрээс бараа хайх..."
+              className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-24 text-sm font-semibold outline-none transition focus:border-orange-400"
+            />
+            <span className="absolute right-1.5 top-1.5 flex h-8 items-center rounded-lg bg-orange-500 px-4 text-[11px] font-black text-white">
+              Хайх
+            </span>
+          </label>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function StorefrontProductWidget({ product }: { product: ProductItem }) {
+  const thumbnails = (
+    product.images?.length ? product.images : [product.image]
+  ).slice(0, 4);
+
+  return (
+    <Link
+      href={`/products/${encodeURIComponent(product.id)}`}
+      className="group min-w-0 text-left"
+    >
+      <div className="relative aspect-square overflow-hidden rounded-xl bg-slate-100">
+        <Image
+          src={product.image}
+          alt={product.title}
+          fill
+          className="object-cover transition duration-300 group-hover:scale-[1.025]"
+          referrerPolicy="no-referrer"
+        />
+        {product.supplyType === "CHINA_PREORDER" && (
+          <span className="absolute left-2 top-2 rounded-md bg-emerald-500 px-2 py-1 text-[9px] font-black text-white">
+            Захиалгаар
+          </span>
+        )}
+      </div>
+
+      <div className="mt-1.5 flex h-7 items-center gap-1">
+        {thumbnails.map((thumbnail, index) => (
+          <span
+            key={`${thumbnail}-${index}`}
+            className={`relative h-7 w-7 overflow-hidden rounded-md bg-slate-100 ${
+              index === 0 ? "ring-1 ring-orange-400" : ""
+            }`}
+          >
+            <Image
+              src={thumbnail}
+              alt=""
+              fill
+              className="object-cover"
+              referrerPolicy="no-referrer"
+            />
+          </span>
+        ))}
+        {product.images && product.images.length > 4 && (
+          <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-[10px] font-black text-slate-400">
+            +{product.images.length - 4}
+          </span>
+        )}
+      </div>
+
+      <h3 className="mt-2 line-clamp-2 min-h-10 text-[13px] font-bold leading-5 text-slate-900 transition group-hover:text-orange-600">
+        {product.title}
+      </h3>
+      {product.originalPrice && product.originalPrice > product.price && (
+        <p className="mt-1 text-[10px] font-bold text-orange-500">
+          Хямдарсан ·{" "}
+          {(product.originalPrice - product.price).toLocaleString("mn-MN")}₮
+          хэмнэлт
+        </p>
+      )}
+      <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+        <span className="text-amber-500">
+          ★ {(product.rating ?? 0).toFixed(1)}
+        </span>
+        <span>{product.reviews ?? 0} үнэлгээ</span>
+        <span>{product.soldCount ?? 0} зарагдсан</span>
+      </div>
+      <p className="mt-1 text-lg font-black tracking-tight text-orange-600">
+        {formatPrice(product.price)}
+      </p>
+    </Link>
+  );
+}
+
+function StorefrontCatalog({
+  products,
+  search,
+  onSearchChange,
+}: {
+  products: ProductItem[];
+  search: string;
+  onSearchChange: (value: string) => void;
+}) {
+  const [category, setCategory] = useState("all");
+  const [sort, setSort] = useState<"default" | "newest" | "price">("default");
+  const categories = useMemo(
+    () => [
+      ...new Set(
+        products
+          .map((product) => product.category)
+          .filter((value): value is string => Boolean(value)),
+      ),
+    ],
+    [products],
+  );
+  const visibleProducts = useMemo(() => {
+    const normalizedSearch = search.trim().toLocaleLowerCase("mn-MN");
+    const next = products.filter(
+      (product) =>
+        (category === "all" || product.category === category) &&
+        (!normalizedSearch ||
+          product.title.toLocaleLowerCase("mn-MN").includes(normalizedSearch)),
+    );
+    return [...next].sort((left, right) => {
+      if (sort === "price") return left.price - right.price;
+      if (sort === "newest") {
+        return getItemTime(right.createdAt) - getItemTime(left.createdAt);
+      }
+      return 0;
+    });
+  }, [category, products, search, sort]);
+
+  return (
+    <section className="mt-4 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)]">
+      <aside className="h-fit rounded-2xl border border-slate-100 bg-white p-2 shadow-sm lg:sticky lg:top-24">
+        <button
+          type="button"
+          onClick={() => setCategory("all")}
+          className={`flex h-11 w-full items-center rounded-xl px-3 text-left text-xs font-black transition ${
+            category === "all"
+              ? "bg-orange-50 text-orange-600"
+              : "text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          Бүх бараа
+          <span className="ml-auto text-[10px] text-slate-400">
+            {products.length}
+          </span>
+        </button>
+        {categories.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => setCategory(item)}
+            className={`flex h-10 w-full items-center rounded-xl px-3 text-left text-xs font-bold transition ${
+              category === item
+                ? "bg-orange-50 text-orange-600"
+                : "text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            <span className="truncate">{item}</span>
+          </button>
+        ))}
+      </aside>
+
+      <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:p-4">
+        <div className="mb-4 flex flex-col gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex gap-1.5">
+            {(
+              [
+                ["default", "Ерөнхий"],
+                ["newest", "Шинэ"],
+                ["price", "Үнэ"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setSort(value)}
+                className={`h-9 rounded-lg px-3 text-xs font-black transition ${
+                  sort === value
+                    ? "bg-orange-50 text-orange-600"
+                    : "bg-slate-50 text-slate-500 hover:text-slate-900"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <label className="relative block">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Бараа хайх..."
+              className="h-9 w-full rounded-lg border border-slate-200 pl-9 pr-3 text-xs font-semibold outline-none focus:border-orange-400 sm:w-52"
+            />
+          </label>
+        </div>
+
+        {visibleProducts.length === 0 ? (
+          <div className="py-20 text-center text-sm font-bold text-slate-400">
+            Тохирох бараа олдсонгүй
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 xl:grid-cols-5">
+            {visibleProducts.map((product) => (
+              <StorefrontProductWidget key={product.id} product={product} />
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function StickyStoreHeader({
+  data,
+  search,
+  onSearchChange,
+}: {
+  data: OrganizationDetailData;
+  search: string;
+  onSearchChange: (value: string) => void;
+}) {
+  return (
+    <motion.header
+      initial={{ y: -76, opacity: 0 }}
+      animate={{ y: 0, opacity: 1 }}
+      exit={{ y: -76, opacity: 0 }}
+      transition={{ duration: 0.2 }}
+      className="fixed inset-x-0 top-0 z-[90] border-b border-slate-200 bg-white/98 shadow-sm backdrop-blur"
+    >
+      <div className="mx-auto flex h-[76px] max-w-[1500px] items-center gap-3 px-4 lg:px-8">
+        <Link
+          href={`/o/${encodeURIComponent(data.slug || data.id)}`}
+          className="flex min-w-0 items-center gap-3"
+        >
+          <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-slate-100">
+            <Image
+              src={data.logo}
+              alt=""
+              fill
+              className="object-cover"
+              referrerPolicy="no-referrer"
+            />
+          </div>
+          <div className="min-w-0">
+            <p className="max-w-48 truncate text-sm font-black text-slate-950">
+              {data.name}
+            </p>
+            <p className="mt-0.5 flex items-center gap-2 text-[10px] font-bold text-slate-400">
+              <span className="text-amber-500">
+                ★ {data.rating.toFixed(1)}/10
+              </span>
+              <span>{data.stats.customers} хэрэглэгч</span>
+            </p>
+          </div>
+        </Link>
+
+        <label className="relative ml-auto hidden w-full max-w-xl sm:block">
+          <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={`${data.name}-с бараа хайх...`}
+            className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-11 pr-24 text-sm font-semibold outline-none transition focus:border-orange-400 focus:bg-white"
+          />
+          <span className="absolute right-1.5 top-1.5 flex h-8 items-center rounded-lg bg-orange-500 px-4 text-[11px] font-black text-white">
+            Хайх
+          </span>
+        </label>
+
+        <a
+          href={data.info.phone ? `tel:${data.info.phone}` : "#"}
+          className="hidden h-10 shrink-0 items-center gap-2 rounded-xl border border-slate-200 px-4 text-xs font-black text-slate-700 transition hover:text-orange-600 md:inline-flex"
+        >
+          <MessageCircle className="h-4 w-4" />
+          Холбогдох
+        </a>
+      </div>
+    </motion.header>
+  );
+}
+
 /* ─── Root ──────────────────────────────────────────────────── */
 export default function BusinessProfileClient({
   data,
 }: {
   data: OrganizationDetailData;
 }) {
-  const hasOtherContent = data.servicePosts.length > 0 || data.reels.length > 0;
-  const [activeContent, setActiveContent] = useState<ContentFilter>("all");
+  const headerSentinelRef = useRef<HTMLDivElement>(null);
+  const [showStickyHeader, setShowStickyHeader] = useState(false);
+  const [storeSearch, setStoreSearch] = useState("");
+
+  useEffect(() => {
+    const target = headerSentinelRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setShowStickyHeader(!entry.isIntersecting),
+      { threshold: 0, rootMargin: "-16px 0px 0px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, []);
 
   return (
-    <div className="min-h-screen bg-[#F8F8F6] pb-28 lg:pb-10">
-      <div className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
-        {/* Hero */}
-        <HeroSection data={data} />
-
-        <div className="mt-5 flex flex-col lg:flex-row gap-6 lg:gap-10">
-          {/* Main column */}
-          <div className="flex-1 min-w-0 space-y-5">
-            <StatsStrip stats={data.stats} isVerified={data.isVerified} />
-
-            {/* Investor banner */}
-            {data.investor?.isInvestor && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="rounded-2xl bg-gradient-to-r from-amber-50 to-yellow-50 border border-amber-200/60 p-4 flex items-center gap-3"
-              >
-                <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center shrink-0">
-                  <Crown className="w-5 h-5 text-amber-600" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-900">
-                    MGL Store-д хөрөнгө оруулсан{data.investor.level ? ` · ${data.investor.level}` : ""}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Энэ байгууллага нь MGL Store платформд хөрөнгө оруулсан итгэлт түнш.
-                  </p>
-                </div>
-              </motion.div>
-            )}
-
-            <AboutSection text={data.description} />
-            <InfoCards info={data.info} />
-            <ContentSummary
-              data={data}
-              active={activeContent}
-              onChange={setActiveContent}
-            />
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={activeContent}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.18 }}
-              >
-                {activeContent === "all" && (
-                  <UnifiedContentSection
-                    data={data}
-                    hasOtherContent={hasOtherContent}
-                  />
-                )}
-                {activeContent === "services" && (
-                  <ServicesSection posts={data.servicePosts} />
-                )}
-                {activeContent === "reels" && <ReelsSection reels={data.reels} />}
-                {activeContent === "products" && (
-                  <ProductsSection
-                    products={data.products as ProductItem[]}
-                    hasOtherContent={hasOtherContent}
-                  />
-                )}
-              </motion.div>
-            </AnimatePresence>
-          </div>
-
-          {/* Sidebar – desktop only */}
-          <div className="w-full lg:w-[300px] xl:w-[320px] shrink-0 hidden lg:block">
-            <Sidebar data={data} />
-          </div>
+    <div className="min-h-screen bg-slate-50 pb-24 lg:pb-10">
+      <AnimatePresence>
+        {showStickyHeader && (
+          <StickyStoreHeader
+            data={data}
+            search={storeSearch}
+            onSearchChange={setStoreSearch}
+          />
+        )}
+      </AnimatePresence>
+      <StoreWebsiteNav search={storeSearch} onSearchChange={setStoreSearch} />
+      <div className="mx-auto w-full max-w-[1440px] px-3 py-4 sm:px-6 lg:px-8">
+        <div ref={headerSentinelRef}>
+          <StorefrontHeader data={data} />
         </div>
+        <StorefrontCatalog
+          products={data.products as ProductItem[]}
+          search={storeSearch}
+          onSearchChange={setStoreSearch}
+        />
       </div>
 
       {/* Mobile sticky CTA */}
@@ -1141,7 +1541,9 @@ export default function BusinessProfileClient({
           </button>
         </div>
         <p className="text-center text-[11px] text-slate-400 font-medium mt-2">
-          {data.products.length > 0 ? "Өнөөдөр захиалбал хүргэнэ" : "5 мин дотор хариу өгнө"}
+          {data.products.length > 0
+            ? "Өнөөдөр захиалбал хүргэнэ"
+            : "5 мин дотор хариу өгнө"}
         </p>
       </div>
     </div>

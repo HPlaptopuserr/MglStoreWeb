@@ -1,48 +1,52 @@
 import type { ID } from "../primitives";
 
 export interface ProductCardItem {
-    id: ID;
-    title: string;
-    price: number;
+  id: ID;
+  title: string;
+  price: number;
 
-    originalPrice?: number;
-    image: string;
+  originalPrice?: number;
+  image: string;
 
-    category?: string;
+  category?: string;
 
-    tag?: string;
+  tag?: string;
 
-    tags?: string[];
+  tags?: string[];
 
-    rating?: number;
-    reviews?: number;
-    stock?: number;
+  rating?: number;
+  reviewCount?: number;
+  soldCount?: number;
+  reviews?: number;
+  stock?: number;
 
-    colorCount?: number;
-    isPrime?: boolean;
+  colorCount?: number;
+  isPrime?: boolean;
 }
 
 export interface CompanyCard {
-    id: ID;
-    name: string;
-    slug: string;
+  id: ID;
+  name: string;
+  slug: string;
 
-    logo: string;
-    banner: string;
-    description?: string;
+  logo: string;
+  banner: string;
+  description?: string;
 
-    distance?: string;
-    deliveryTime?: string;
-    address?: string;
-    openingHours?: string;
-    isOpen?: boolean;
-    rating?: number;
+  distance?: string;
+  deliveryTime?: string;
+  address?: string;
+  openingHours?: string;
+  isOpen?: boolean;
+  rating?: number;
+  reviewCount?: number;
+  soldCount?: number;
 
-    category?: string;
-    categories?: string[];
+  category?: string;
+  categories?: string[];
 
-    products: ProductCardItem[];
+  products: ProductCardItem[];
 
-    isInvestor?: boolean;
-    investmentAmount?: number;
+  isInvestor?: boolean;
+  investmentAmount?: number;
 }

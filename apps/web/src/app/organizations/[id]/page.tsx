@@ -1,6 +1,11 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { API } from "@/lib/api";
+import {
+  LOCAL_MOCK_CATALOG_ENABLED,
+  localCatalogOrganizations,
+  queryLocalCatalog,
+} from "@/lib/local-product-catalog";
 import BusinessProfileClient from "./BusinessProfileClient";
 
 const SITE_URL = "https://mglstore.mn";
@@ -27,6 +32,7 @@ interface BackendProduct {
   tag?: string;
   rating?: number;
   reviews?: number;
+  soldCount?: number;
   stock?: number;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays?: number | null;
@@ -51,6 +57,7 @@ interface BackendPartner {
   deliveryPrice?: string;
   rating?: number;
   reviewCount?: number;
+  soldCount?: number;
   customers?: string;
   years?: number;
   products?: BackendProduct[];
@@ -107,6 +114,7 @@ export interface OrganizationDetailData {
   stats: {
     customers: string;
     years: number;
+    soldCount: number;
   };
   info: {
     hours: string[];
@@ -120,6 +128,7 @@ export interface OrganizationDetailData {
   products: {
     id: string;
     image: string;
+    images?: string[];
     title: string;
     price: number;
     originalPrice?: number;
@@ -128,6 +137,7 @@ export interface OrganizationDetailData {
     rating?: number;
     reviews?: number;
     stock?: number;
+    soldCount?: number;
     supplyType?: "IN_STOCK" | "CHINA_PREORDER";
     preorderLeadTimeDays?: number | null;
     createdAt?: string;
@@ -151,7 +161,7 @@ function normalizeHours(value?: string[] | string): string[] {
 }
 
 function mapPartnerToDetailData(
-  partner: BackendPartner
+  partner: BackendPartner,
 ): OrganizationDetailData {
   const category = partner.businessCategory || partner.type || "Бизнес";
 
@@ -176,7 +186,7 @@ function mapPartnerToDetailData(
           investmentAmount: partner.investmentAmount ?? null,
         }
       : undefined,
-    rating: partner.rating ?? 5,
+    rating: partner.rating ?? 0,
     reviewCount: partner.reviewCount ?? 0,
     shortDescription:
       partner.shortDescription ||
@@ -185,8 +195,9 @@ function mapPartnerToDetailData(
       partner.description ||
       "Байгууллагын дэлгэрэнгүй танилцуулга удахгүй нэмэгдэх болно.",
     stats: {
-      customers: partner.customers || "100+",
+      customers: partner.customers || "0",
       years: partner.years ?? 1,
+      soldCount: partner.soldCount ?? 0,
     },
     info: {
       hours: normalizeHours(partner.openingHours),
@@ -207,13 +218,15 @@ function mapPartnerToDetailData(
             product.image ||
             product.images?.[0] ||
             `https://picsum.photos/seed/product-${product.id}/600/600`,
+          images: product.images,
           title: product.title || product.name || "Нэргүй бүтээгдэхүүн",
           price: product.price ?? 0,
           originalPrice: product.originalPrice,
           category: product.category,
           tag: product.tag,
-          rating: product.rating ?? 5,
+          rating: product.rating ?? 0,
           reviews: product.reviews ?? 0,
+          soldCount: product.soldCount ?? 0,
           stock: product.stock,
           supplyType: product.supplyType,
           preorderLeadTimeDays: product.preorderLeadTimeDays,
@@ -225,17 +238,82 @@ function mapPartnerToDetailData(
   };
 }
 
+function getLocalOrganizationDetail(
+  organizationId: string,
+): OrganizationDetailData | null {
+  if (!LOCAL_MOCK_CATALOG_ENABLED) return null;
+  const organization = localCatalogOrganizations.find(
+    (item) => item.id === organizationId,
+  );
+  if (!organization) return null;
+
+  const result = queryLocalCatalog({
+    organizationId,
+    sort: "newest",
+    limit: 100,
+    offset: 0,
+  });
+  const categories = [
+    ...new Set(result.products.map((product) => product.businessCategory.name)),
+  ];
+
+  return {
+    id: organization.id,
+    name: organization.name,
+    slug: organization.id,
+    logo: `https://picsum.photos/seed/logo-${organization.id}/400/400`,
+    coverImage: `https://picsum.photos/seed/banner-${organization.id}/1600/500`,
+    isOpen: true,
+    isVerified: true,
+    categories,
+    rating: 0,
+    reviewCount: 0,
+    shortDescription: `${organization.name} online shop`,
+    description: `${organization.name} байгууллагын local хөгжүүлэлтийн дэлгүүр.`,
+    stats: { customers: "0", years: 1, soldCount: 0 },
+    info: {
+      hours: ["Даваа–Ням 09:00–22:00"],
+      location: "Улаанбаатар",
+    },
+    products: result.products.map((product) => ({
+      id: product.id,
+      image: product.images[0]?.url || "",
+      images: product.images.map((image) => image.url),
+      title: product.name,
+      price: product.price,
+      category: product.businessCategory.name,
+      rating: 0,
+      reviews: 0,
+      soldCount: 0,
+      stock: product.stock,
+      supplyType: product.supplyType,
+      preorderLeadTimeDays: product.preorderLeadTimeDays,
+      createdAt: product.createdAt,
+    })),
+    servicePosts: [],
+    reels: [],
+  };
+}
+
 async function fetchOrganization(
   slugOrId: string,
-  fallbackId?: string
+  fallbackId?: string,
 ): Promise<OrganizationDetailData | null> {
+  const localOrganization = getLocalOrganizationDetail(slugOrId);
+  if (localOrganization) return localOrganization;
+
   try {
     // Use dedicated endpoint for single partner
     let res = await fetch(`${API}/partners/${encodeURIComponent(slugOrId)}`, {
       cache: "no-store",
     });
 
-    if (!res.ok && res.status === 404 && fallbackId && fallbackId !== slugOrId) {
+    if (
+      !res.ok &&
+      res.status === 404 &&
+      fallbackId &&
+      fallbackId !== slugOrId
+    ) {
       res = await fetch(`${API}/partners/${encodeURIComponent(fallbackId)}`, {
         cache: "no-store",
       });
@@ -255,11 +333,13 @@ async function fetchOrganization(
   }
 }
 
-async function fetchServicePosts(organizationId: string): Promise<ServicePost[]> {
+async function fetchServicePosts(
+  organizationId: string,
+): Promise<ServicePost[]> {
   try {
     const res = await fetch(
       `${API}/service-posts?organizationId=${encodeURIComponent(organizationId)}&activeOnly=true`,
-      { cache: "no-store" }
+      { cache: "no-store" },
     );
     if (!res.ok) return [];
     const data = await res.json();
@@ -270,12 +350,12 @@ async function fetchServicePosts(organizationId: string): Promise<ServicePost[]>
 }
 
 async function fetchOrganizationReels(
-  organizationId: string
+  organizationId: string,
 ): Promise<OrganizationReel[]> {
   try {
     const res = await fetch(
       `${API}/reels?organizationId=${encodeURIComponent(organizationId)}&limit=8`,
-      { cache: "no-store" }
+      { cache: "no-store" },
     );
     if (!res.ok) return [];
     const data = await res.json();
@@ -298,7 +378,10 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { id } = await params;
   const query = searchParams ? await searchParams : undefined;
-  const organization = await fetchOrganization(id, query?.oid?.trim() || undefined);
+  const organization = await fetchOrganization(
+    id,
+    query?.oid?.trim() || undefined,
+  );
 
   if (!organization) {
     return {
@@ -346,7 +429,10 @@ export async function generateMetadata({
   };
 }
 
-export async function renderOrganizationDetailPage({ params, searchParams }: PageProps) {
+export async function renderOrganizationDetailPage({
+  params,
+  searchParams,
+}: PageProps) {
   const { id } = await params;
   const query = searchParams ? await searchParams : undefined;
   const fallbackId = query?.oid?.trim();

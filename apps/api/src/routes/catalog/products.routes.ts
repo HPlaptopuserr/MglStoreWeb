@@ -1,8 +1,4 @@
-import {
-  Router,
-  type Response,
-  type Router as ExpressRouter,
-} from "express";
+import { Router, type Response, type Router as ExpressRouter } from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import crypto from "crypto";
@@ -63,9 +59,10 @@ type RecommendationSignals = {
   purchasedQuantityByProductId: Map<string, number>;
   recentInteractionsByProductId: Map<string, number>;
 };
-const recommendationSignalCache = new TtlCache<
-  Promise<RecommendationSignals>
->(100, 5 * 60_000);
+const recommendationSignalCache = new TtlCache<Promise<RecommendationSignals>>(
+  100,
+  5 * 60_000,
+);
 
 function getRecommendationSignals(
   productIds: string[],
@@ -99,10 +96,7 @@ function getRecommendationSignals(
       purchases.map((item) => [item.productId, item._sum.quantity || 0]),
     ),
     recentInteractionsByProductId: new Map(
-      interactions.map((item) => [
-        item.productId || "",
-        item._count._all,
-      ]),
+      interactions.map((item) => [item.productId || "", item._count._all]),
     ),
   }));
 
@@ -117,10 +111,7 @@ function getProductListCacheKey(req: Parameters<typeof optionalAuth>[0]) {
   return `${identity}:${req.originalUrl}`;
 }
 
-function setProductCacheHeaders(
-  res: Response,
-  isPersonalized: boolean,
-) {
+function setProductCacheHeaders(res: Response, isPersonalized: boolean) {
   res.setHeader("Vary", "Authorization, Cookie");
   res.setHeader(
     "Cache-Control",
@@ -528,6 +519,40 @@ function normalizeMarketplacePriority(value: unknown, fallback = 0) {
   return parsed;
 }
 
+type ProductSpecificationInput = {
+  label: string;
+  value: string;
+};
+
+function normalizeProductSpecifications(
+  value: unknown,
+): ProductSpecificationInput[] | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return [];
+  if (!Array.isArray(value) || value.length > 40) return undefined;
+
+  const normalized: ProductSpecificationInput[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") return undefined;
+    const record = item as Record<string, unknown>;
+    const label = typeof record.label === "string" ? record.label.trim() : "";
+    const detailValue =
+      typeof record.value === "string" ? record.value.trim() : "";
+    if (!label && !detailValue) continue;
+    if (
+      !label ||
+      !detailValue ||
+      label.length > 80 ||
+      detailValue.length > 500
+    ) {
+      return undefined;
+    }
+    normalized.push({ label, value: detailValue });
+  }
+
+  return normalized;
+}
+
 const getStartOfToday = () => {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -820,6 +845,117 @@ async function resolveBusinessCategoryFilter(categoryIdOrSlug: string) {
   return [...ids];
 }
 
+/* ─── GET /products/organization-catalog ────────────────────────────── */
+router.get("/products/organization-catalog", optionalAuth, async (req, res) => {
+  try {
+    const limit = Math.min(
+      30,
+      Math.max(1, Number.parseInt(String(req.query.limit || "15"), 10) || 15),
+    );
+    if (!(await areWebProductsGloballyEnabled())) {
+      return res.json({ organizations: [] });
+    }
+
+    const visibleOrganizationIds = await getWebProductsEnabledOrganizationIds();
+    const organizations = await prisma.organization.findMany({
+      where: {
+        id: { in: visibleOrganizationIds },
+        status: "ACTIVE",
+        deletedAt: null,
+        products: {
+          some: {
+            isActive: true,
+            reviewStatus: "APPROVED",
+            deletedAt: null,
+          },
+        },
+      },
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        logoUrl: true,
+        rating: true,
+        reviewCount: true,
+        soldCount: true,
+        customerCount: true,
+        _count: {
+          select: {
+            products: {
+              where: {
+                isActive: true,
+                reviewStatus: "APPROVED",
+                deletedAt: null,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const rows = await Promise.all(
+      organizations.map(async (organization) => {
+        const products = await prisma.product.findMany({
+          where: {
+            organizationId: organization.id,
+            isActive: true,
+            reviewStatus: "APPROVED",
+            deletedAt: null,
+          },
+          orderBy: [{ marketplacePriority: "desc" }, { createdAt: "desc" }],
+          take: limit,
+          include: {
+            images: { select: { id: true, url: true }, take: 1 },
+            businessCategory: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                parent: { select: { id: true, name: true, slug: true } },
+              },
+            },
+            organization: {
+              select: {
+                id: true,
+                name: true,
+                logoUrl: true,
+                rating: true,
+                reviewCount: true,
+                soldCount: true,
+              },
+            },
+            discounts: {
+              where: { isActive: true, validUntil: { gte: new Date() } },
+              select: { percent: true, validUntil: true },
+              take: 1,
+            },
+          },
+        });
+        return {
+          organization: {
+            id: organization.id,
+            name: organization.name,
+            logoUrl: organization.logoUrl,
+            rating: organization.rating,
+            reviewCount: organization.reviewCount,
+            soldCount: organization.soldCount,
+            customerCount: organization.customerCount,
+            productCount: organization._count.products,
+          },
+          products,
+        };
+      }),
+    );
+
+    return res.json({ organizations: rows });
+  } catch (error) {
+    console.error("organization product catalog error", error);
+    return res
+      .status(500)
+      .json({ message: "Байгууллагын бараануудыг авахад алдаа гарлаа" });
+  }
+});
+
 /* ─── GET /products ─────────────────────────────────────────────────── */
 router.get("/products", optionalAuth, async (req, res) => {
   try {
@@ -844,7 +980,7 @@ router.get("/products", optionalAuth, async (req, res) => {
     const visitorId = String(req.query.visitorId || "").trim();
     const isPersonalized = Boolean(
       visitorId ||
-        (req as typeof req & { user?: { userId?: string } }).user?.userId,
+      (req as typeof req & { user?: { userId?: string } }).user?.userId,
     );
     const productCacheKey = getProductListCacheKey(req);
     const cachedProducts = productListCache.get(productCacheKey);
@@ -1000,6 +1136,7 @@ router.get("/products", optionalAuth, async (req, res) => {
             logoUrl: true,
             rating: true,
             reviewCount: true,
+            soldCount: true,
           },
         },
         discounts: {
@@ -1051,10 +1188,8 @@ router.get("/products", optionalAuth, async (req, res) => {
             }),
           ];
 
-    const {
-      purchasedQuantityByProductId,
-      recentInteractionsByProductId,
-    } = recommendationSignals;
+    const { purchasedQuantityByProductId, recentInteractionsByProductId } =
+      recommendationSignals;
 
     const expiryByProductId = new Map<string, Date>();
     for (const item of inventoryExpiries) {
@@ -2478,6 +2613,7 @@ router.post(
         masterProductId,
         name,
         description,
+        specifications,
         sku,
         barcode,
         unit,
@@ -2622,6 +2758,17 @@ router.post(
             "Marketplace дараалал 0-1,000,000 хооронд бүхэл тоо байх ёстой",
         });
       }
+      const normalizedSpecifications =
+        normalizeProductSpecifications(specifications);
+      if (
+        specifications !== undefined &&
+        normalizedSpecifications === undefined
+      ) {
+        return res.status(400).json({
+          message:
+            "Үзүүлэлт хамгийн ихдээ 40 мөр, нэр 80, утга 500 тэмдэгт байна",
+        });
+      }
 
       const normalizedSku = sku ? String(sku).trim() : null;
       const normalizedBarcode = barcode ? String(barcode).trim() : null;
@@ -2698,6 +2845,7 @@ router.post(
             submittedById: actorId,
             name: masterProduct.canonicalName,
             description: description ? String(description).trim() : null,
+            specifications: normalizedSpecifications,
             sku: normalizedSku,
             barcode: masterProduct.barcode || normalizedBarcode,
             unit: masterProduct.unit || (unit ? String(unit).trim() : null),
@@ -2820,6 +2968,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     const {
       name,
       description,
+      specifications,
       sku,
       barcode,
       unit,
@@ -2871,6 +3020,17 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (name !== undefined) data.name = String(name).trim();
     if (description !== undefined)
       data.description = description ? String(description).trim() : null;
+    if (specifications !== undefined) {
+      const normalizedSpecifications =
+        normalizeProductSpecifications(specifications);
+      if (normalizedSpecifications === undefined) {
+        return res.status(400).json({
+          message:
+            "Үзүүлэлт хамгийн ихдээ 40 мөр, нэр 80, утга 500 тэмдэгт байна",
+        });
+      }
+      data.specifications = normalizedSpecifications;
+    }
     if (sku !== undefined) data.sku = sku ? String(sku).trim() : null;
     if (barcode !== undefined)
       data.barcode = barcode ? String(barcode).trim() : null;
