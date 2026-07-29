@@ -24,14 +24,6 @@ export const franchiseSlideDeck = [
     src: "/mgl-store/franchise-slides/slide-02.webp",
   },
   {
-    title: "6S стандарт гэж юу вэ?",
-    src: "/mgl-store/franchise-slides/slide-03.webp",
-  },
-  {
-    title: "6S хэрэгжсэн дэлгүүр хэрэглэгчид ингэж харагдана",
-    src: "/mgl-store/franchise-slides/slide-04.webp",
-  },
-  {
     title: "51м² стандарт дэлгүүрийн бүтэц",
     src: "/mgl-store/franchise-slides/slide-05.webp",
   },
@@ -76,12 +68,12 @@ export const presentationHighlights = [
 ];
 
 export const sixSStandards = [
-  { title: "Ангилах", icon: SearchCheck },
-  { title: "Байрлуулах", icon: LayoutGrid },
-  { title: "Цэвэрлэх", icon: Sparkles },
-  { title: "Стандартчилах", icon: BadgeCheck },
-  { title: "Хэвшүүлэх", icon: Repeat2 },
-  { title: "Аюулгүй болгох", icon: ShieldCheck },
+  { title: "Ариун Цэврийн өрөө", icon: SearchCheck },
+  { title: "Хаягжилт", icon: LayoutGrid },
+  { title: "Coffee Zone", icon: Sparkles },
+  { title: "Сургалт", icon: BadgeCheck },
+  { title: "Стандарт", icon: Repeat2 },
+  { title: "Маркетинг", icon: ShieldCheck },
 ];
 
 export const standardSections = [

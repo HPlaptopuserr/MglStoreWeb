@@ -75,7 +75,8 @@ export const Header = () => {
   const isOrdersRoute = pathname.startsWith(ACCOUNT_ROUTES.orders);
   const hideBrowseNav =
     pathname.startsWith("/study") || isProfileRoute || isOrdersRoute;
-  const hideSearch = isProfileRoute || isOrdersRoute;
+  const hideSearch =
+    pathname === "/mgl-store" || isProfileRoute || isOrdersRoute;
 
   useEffect(() => {
     setMobileMenuOpen(false);
