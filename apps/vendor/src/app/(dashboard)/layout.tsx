@@ -10,6 +10,7 @@ import {
   PREORDER_PRODUCTS_FEATURE_KEY,
   SERVICE_POSTS_FEATURE_KEY,
   SUPPLY_PRODUCTS_FEATURE_KEY,
+  CONTRACT_ARCHIVE_FEATURE_KEY,
 } from "@/lib/vendor-features";
 
 const API_URL =
@@ -33,6 +34,7 @@ export default function VendorDashboardLayout({
   const [showSupplyProducts, setShowSupplyProducts] = useState(false);
   const [showPreorderProducts, setShowPreorderProducts] = useState(false);
   const [showServicePosts, setShowServicePosts] = useState(true);
+  const [showContractArchive, setShowContractArchive] = useState(false);
   const [organizations, setOrganizations] = useState<VendorOrganization[]>([]);
   const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
   const [isSwitchingOrganization, setIsSwitchingOrganization] = useState(false);
@@ -108,6 +110,9 @@ export default function VendorDashboardLayout({
         setShowServicePosts(
           isFeatureEnabled(settings, SERVICE_POSTS_FEATURE_KEY, me.organizationId, true),
         );
+        setShowContractArchive(
+          isFeatureEnabled(settings, CONTRACT_ARCHIVE_FEATURE_KEY, me.organizationId),
+        );
         setIsReady(true);
       } catch {
         clearSession();
@@ -169,6 +174,7 @@ export default function VendorDashboardLayout({
       showSupplyProducts={showSupplyProducts}
       showPreorderProducts={showPreorderProducts}
       showServicePosts={showServicePosts}
+      showContractArchive={showContractArchive}
       notificationComponent={
         <>
           {organizations.length > 1 && (

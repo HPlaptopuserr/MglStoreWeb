@@ -1,6 +1,13 @@
-import { Router, type Router as ExpressRouter } from "express";
+import {
+  Router,
+  type NextFunction,
+  type Request,
+  type Response,
+  type Router as ExpressRouter,
+} from "express";
 import { requireAuth } from "../../middleware/auth";
 import { prisma } from "@mgl/database";
+import { isAdminRole } from "@mgl/types";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import {
   createSystemQrInvoice,
@@ -10,9 +17,12 @@ import {
   resetSystemQrSubMerchantPassword,
 } from "../../services/systemqr";
 import multer from "multer";
-import path from "path";
-import crypto from "crypto";
-import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
+import express from "express";
+import {
+  ContractStorageConfigurationError,
+  LOCAL_CONTRACT_UPLOADS_DIR,
+  storeScannedContractFile,
+} from "../../services/contract-archive-storage.service";
 
 const router: ExpressRouter = Router();
 
@@ -25,6 +35,54 @@ const requiredMinuBankFields = [
 ] as const;
 
 const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
+const CONTRACT_ARCHIVE_FEATURE_KEY = "contract-archive-enabled";
+router.use(
+  "/contracts/uploads",
+  express.static(LOCAL_CONTRACT_UPLOADS_DIR, {
+    fallthrough: false,
+    maxAge: process.env.NODE_ENV === "production" ? "1d" : 0,
+  }),
+);
+
+type AuthenticatedRequest = Request & {
+  user?: {
+    id?: string;
+    userId?: string;
+    organizationId?: string | null;
+    role?: string;
+  };
+  userId?: string;
+};
+
+const isEnabledSetting = (value?: string | null) =>
+  ["1", "true", "on", "yes"].includes(String(value ?? "").trim().toLowerCase());
+
+async function requireVendorContractArchive(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  const organizationId = req.user?.organizationId;
+  if (!organizationId) {
+    res.status(403).json({ success: false, error: "Байгууллага сонгогдоогүй байна" });
+    return;
+  }
+
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: `${CONTRACT_ARCHIVE_FEATURE_KEY}-${organizationId}` },
+    select: { value: true },
+  });
+
+  if (!isEnabledSetting(setting?.value)) {
+    res.status(403).json({
+      success: false,
+      error: "Гэрээний архивын эрх энэ байгууллагад идэвхгүй байна",
+    });
+    return;
+  }
+
+  next();
+}
 
 const isSystemQrAuthError = (message: string) =>
   /SystemQR Login Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403/i.test(message);
@@ -882,6 +940,108 @@ router.get("/contracts/:id", async (req, res) => {
 // ──────────────────────────────────────────────────────────────────────────────
 // GET /api/contracts/submissions/all  —  List ALL submissions across templates (admin)
 // ──────────────────────────────────────────────────────────────────────────────
+router.get(
+  "/contracts/vendor/archive",
+  requireAuth,
+  requireVendorContractArchive,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const organizationId = req.user?.organizationId;
+      if (!organizationId) {
+        return res.status(403).json({ success: false, error: "Байгууллага сонгогдоогүй байна" });
+      }
+
+      const submissions = await prisma.contract.findMany({
+        where: {
+          isTemplate: false,
+          organizationId,
+        },
+        orderBy: { createdAt: "desc" },
+        include: {
+          template: {
+            select: { id: true, headerData: true, feePlan: true },
+          },
+        },
+      });
+
+      const result = submissions.map((submission) => {
+        const member = (submission.memberData ?? {}) as Record<string, unknown>;
+        const header = (submission.headerData ??
+          submission.template?.headerData ??
+          {}) as Record<string, unknown>;
+        const feePlans = Array.isArray(header.feePlans)
+          ? (header.feePlans as Array<Record<string, unknown>>)
+          : [];
+        const selectedPlan = feePlans.find(
+          (plan) => plan.key === submission.feePlan,
+        );
+        const months =
+          typeof selectedPlan?.months === "number" ? selectedPlan.months : null;
+        const expiresAt =
+          typeof member.expiresAt === "string" && member.expiresAt
+            ? new Date(member.expiresAt)
+            : submission.signedAt && months
+              ? new Date(
+                  new Date(submission.signedAt).setMonth(
+                    new Date(submission.signedAt).getMonth() + months,
+                  ),
+                )
+              : null;
+
+        return {
+          id: submission.id,
+          templateId: submission.templateId,
+          org: typeof member.name === "string" ? member.name : "Тодорхойгүй",
+          register: typeof member.register === "string" ? member.register : null,
+          phone: typeof member.phone === "string" ? member.phone : null,
+          email: typeof member.email === "string" ? member.email : null,
+          director: typeof member.director === "string" ? member.director : null,
+          position: typeof member.position === "string" ? member.position : null,
+          contractNumber:
+            typeof member.contractNumber === "string" ? member.contractNumber : null,
+          contractName:
+            typeof member.contractName === "string"
+              ? member.contractName
+              : typeof header.contractTitle === "string"
+                ? header.contractTitle
+                : null,
+          status: submission.status,
+          feePlan: submission.feePlan,
+          feePlanLabel:
+            typeof selectedPlan?.label === "string"
+              ? selectedPlan.label
+              : submission.feePlan,
+          signedAt: submission.signedAt,
+          expiresAt,
+          createdAt: submission.createdAt,
+          pdfUrl: submission.pdfUrl,
+          customFields: Array.isArray(member.customFields)
+            ? member.customFields.flatMap((field) => {
+                if (!field || typeof field !== "object") return [];
+                const entry = field as Record<string, unknown>;
+                return typeof entry.id === "string" &&
+                  typeof entry.label === "string" &&
+                  typeof entry.value === "string"
+                  ? [{
+                      id: entry.id,
+                      label: entry.label,
+                      value: entry.value,
+                      type: entry.type === "date" ? "date" : "text",
+                    }]
+                  : [];
+              })
+            : [],
+        };
+      });
+
+      return res.json({ success: true, submissions: result });
+    } catch (error) {
+      console.error("vendor contract archive error", error);
+      return res.status(500).json({ success: false, error: "Гэрээний архив авахад алдаа гарлаа" });
+    }
+  },
+);
+
 router.get("/contracts/submissions/all", requireAuth, async (_req, res) => {
   try {
     const submissions = await prisma.contract.findMany({
@@ -1329,10 +1489,22 @@ const scannedUpload = multer({
 router.post(
   "/contracts/scanned/register",
   requireAuth,
+  async (req: AuthenticatedRequest, res, next) => {
+    if (!req.user?.role || !isAdminRole(req.user.role)) {
+      await requireVendorContractArchive(req, res, next);
+      return;
+    }
+    next();
+  },
   scannedUpload.single("file"),
   async (req, res) => {
     try {
-      const userId = ((req as any).user?.userId || (req as any).user?.id || (req as any).userId) as string | undefined;
+      const authRequest = req as AuthenticatedRequest;
+      const userId =
+        authRequest.user?.userId ||
+        authRequest.user?.id ||
+        authRequest.userId;
+      const organizationId = authRequest.user?.organizationId || null;
       if (!userId) {
         return res.status(401).json({ success: false, error: "Хэрэглэгч тодорхойгүй байна" });
       }
@@ -1355,35 +1527,44 @@ router.post(
         expiresAt,
         contractNumber,
         contractName,
+        customFields,
       } = req.body;
 
       if (!org) {
         return res.status(400).json({ success: false, error: "Байгууллагын нэр шаардлагатай" });
       }
 
-      // Upload file to Supabase
-      const ext = path.extname(req.file.originalname).toLowerCase() || ".pdf";
-      const fileName = `contracts/${Date.now()}-${crypto.randomBytes(8).toString("hex")}${ext}`;
-      
-      const { error: uploadError } = await getSupabase().storage
-        .from(PRODUCT_IMAGES_BUCKET)
-        .upload(fileName, req.file.buffer, {
-          contentType: req.file.mimetype,
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error("Scanned contract upload error:", uploadError);
-        return res.status(500).json({ success: false, error: "Файл сервер рүү хуулахад алдаа гарлаа" });
-      }
-
-      const { data: publicUrlData } = getSupabase().storage
-        .from(PRODUCT_IMAGES_BUCKET)
-        .getPublicUrl(fileName);
-
-      const pdfUrl = publicUrlData.publicUrl;
+      const pdfUrl = await storeScannedContractFile(req, req.file);
 
       // Prepare memberData JSON
+      let parsedCustomFields: Array<{
+        id: string;
+        label: string;
+        value: string;
+        type: "text" | "date";
+      }> = [];
+      if (typeof customFields === "string" && customFields.trim()) {
+        try {
+          const parsed: unknown = JSON.parse(customFields);
+          if (Array.isArray(parsed)) {
+            parsedCustomFields = parsed.flatMap((field) => {
+              if (!field || typeof field !== "object") return [];
+              const entry = field as Record<string, unknown>;
+              const id = String(entry.id || "").trim();
+              const label = String(entry.label || "").trim().slice(0, 80);
+              const value = String(entry.value || "").trim().slice(0, 500);
+              const type = entry.type === "date" ? "date" : "text";
+              return id && label && value ? [{ id, label, value, type }] : [];
+            });
+          }
+        } catch {
+          return res.status(400).json({
+            success: false,
+            error: "Нэмэлт талбарын мэдээлэл буруу байна",
+          });
+        }
+      }
+
       const memberData = {
         name: org,
         register: register || null,
@@ -1394,6 +1575,7 @@ router.post(
         contractNumber: contractNumber || null,
         contractName: contractName || null,
         expiresAt: expiresAt || null,
+        customFields: parsedCustomFields,
       };
 
       // Let's see if we have duration
@@ -1423,6 +1605,7 @@ router.post(
       const submission = await prisma.contract.create({
         data: {
           userId,
+          organizationId,
           templateId: templateId || null,
           isTemplate: false,
           feePlan: effectiveFeePlan,
@@ -1464,9 +1647,13 @@ router.post(
           pdfUrl: submission.pdfUrl,
         },
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Scanned contract registration error:", err);
-      return res.status(500).json({ success: false, error: err.message || "Гэрээ бүртгэхэд алдаа гарлаа" });
+      const message =
+        err instanceof ContractStorageConfigurationError
+          ? "Гэрээний файл хадгалах storage тохируулагдаагүй байна"
+          : "Гэрээ бүртгэхэд алдаа гарлаа. Дахин оролдоно уу.";
+      return res.status(500).json({ success: false, error: message });
     }
   }
 );

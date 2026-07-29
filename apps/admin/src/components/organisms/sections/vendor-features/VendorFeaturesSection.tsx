@@ -14,6 +14,7 @@ import {
   Tags,
   Info,
   AlertTriangle,
+  Archive,
 } from "lucide-react";
 import { API, adminFetch, getApiErrorMessage } from "@/lib/api";
 import { OrgSearchDropdown } from "@/components/molecules/OrgSearchDropdown";
@@ -31,6 +32,15 @@ type FeatureToggle = {
 };
 
 const FEATURES = [
+  {
+    suffix: "contract-archive-enabled",
+    label: "Гэрээний архив",
+    description:
+      "Vendor өөрийн байгууллагын гэрээний мэдээлэл, скан файл, хугацааг бүртгэж хянана.",
+    group: "operations",
+    icon: Archive,
+    defaultEnabled: false,
+  },
   {
     suffix: "multi-price-sales-enabled",
     label: "Олон төрлийн борлуулалтын үнэ",
@@ -83,6 +93,11 @@ const FEATURES = [
 ] as const;
 
 const FEATURE_GROUPS = [
+  {
+    key: "operations",
+    eyebrow: "Үйл ажиллагааны хяналт",
+    title: "Vendor дээр ашиглах удирдлагын хэрэгслүүд",
+  },
   {
     key: "channels",
     eyebrow: "Борлуулалтын сувгууд",

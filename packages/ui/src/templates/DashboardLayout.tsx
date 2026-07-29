@@ -19,6 +19,7 @@ export interface DashboardLayoutProps extends Partial<SidebarProps> {
   showSupplyProducts?: boolean;
   showPreorderProducts?: boolean;
   showServicePosts?: boolean;
+  showContractArchive?: boolean;
   notificationComponent?: ReactNode;
 }
 
@@ -34,6 +35,7 @@ export function DashboardLayout({
   showSupplyProducts,
   showPreorderProducts,
   showServicePosts,
+  showContractArchive,
   notificationComponent,
   ...sidebarProps
 }: DashboardLayoutProps) {
@@ -67,6 +69,7 @@ export function DashboardLayout({
           showSupplyProducts={showSupplyProducts}
           showPreorderProducts={showPreorderProducts}
           showServicePosts={showServicePosts}
+          showContractArchive={showContractArchive}
           mobileOpen={mobileMenuOpen}
           onMobileClose={() => setMobileMenuOpen(false)}
         />

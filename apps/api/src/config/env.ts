@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import path from "path";
 
-// Load environment variables before any route or middleware module reads them.
+// Load the workspace root environment before route modules initialize.
 dotenv.config({ path: path.resolve(__dirname, "../../../../.env") });
 dotenv.config();

@@ -17,6 +17,7 @@ import {
   ShoppingCart,
   Truck,
   Users,
+  Archive,
 } from "lucide-react";
 import {
   AppSidebar,
@@ -30,6 +31,7 @@ type VendorNavItem = Omit<AppSidebarItem, "children"> & {
   preorderOnly?: boolean;
   serviceOnly?: boolean;
   supplyOnly?: boolean;
+  contractArchiveOnly?: boolean;
 };
 
 const VENDOR_NAV_GROUPS: Array<
@@ -135,6 +137,13 @@ const VENDOR_NAV_GROUPS: Array<
         icon: ClipboardList,
         children: [
           {
+            id: "contract-archive",
+            label: "Гэрээний архив",
+            href: "/contracts",
+            icon: Archive,
+            contractArchiveOnly: true,
+          },
+          {
             id: "drivers",
             label: "Түгээгчийн мэдээлэл",
             href: "/drivers",
@@ -186,6 +195,7 @@ export interface VendorSidebarProps {
   showSupplyProducts?: boolean;
   showPreorderProducts?: boolean;
   showServicePosts?: boolean;
+  showContractArchive?: boolean;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
 }
@@ -198,12 +208,14 @@ function shouldShowItem(
     | "showPreorderProducts"
     | "showServicePosts"
     | "showSupplyProducts"
+    | "showContractArchive"
   >,
 ) {
   if (item.posOnly) return Boolean(flags.showPos);
   if (item.preorderOnly) return Boolean(flags.showPreorderProducts);
   if (item.serviceOnly) return Boolean(flags.showServicePosts);
   if (item.supplyOnly) return Boolean(flags.showSupplyProducts);
+  if (item.contractArchiveOnly) return Boolean(flags.showContractArchive);
   return true;
 }
 
@@ -218,6 +230,7 @@ function mapVendorItem(
     | "showPreorderProducts"
     | "showServicePosts"
     | "showSupplyProducts"
+    | "showContractArchive"
   >,
 ): VendorNavItem | null {
   const children = item.children
@@ -272,6 +285,7 @@ export function VendorSidebar({
   showSupplyProducts = false,
   showPreorderProducts = false,
   showServicePosts = false,
+  showContractArchive = false,
   mobileOpen = false,
   onMobileClose,
 }: VendorSidebarProps) {
@@ -308,6 +322,7 @@ export function VendorSidebar({
               showPos,
               showPreorderProducts,
               showServicePosts,
+              showContractArchive,
               showSupplyProducts,
             }),
           )
@@ -319,6 +334,7 @@ export function VendorSidebar({
       showPos,
       showPreorderProducts,
       showServicePosts,
+      showContractArchive,
       showSupplyProducts,
     ],
   );
