@@ -15,6 +15,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const isProfileRoute = pathname?.startsWith("/profile");
   const isOrdersRoute = pathname?.startsWith("/orders");
   const isReelsRoute = pathname?.startsWith("/reels");
+  const isMglStoreRoute = pathname === "/mgl-store";
   const isPaidAccessDetailRoute = /^\/(projects|franchise)\/[^/]+/.test(
     pathname || "",
   );
@@ -33,6 +34,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               ? "grow"
               : isProfileRoute || isOrdersRoute
                 ? "grow pt-16 pb-20 md:pt-16 md:pb-0"
+                : isMglStoreRoute
+                  ? "grow pt-14 pb-20 md:pt-32 md:pb-0"
                 : "grow pt-40 pb-20 md:pt-32 md:pb-0"
           }
         >
