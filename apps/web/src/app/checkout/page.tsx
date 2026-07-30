@@ -9,6 +9,7 @@ import {
   AlertCircle,
   MapPin,
   Check,
+  XCircle,
 } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
 import type { CartItem } from "@/lib/cart";
@@ -763,22 +764,19 @@ export default function CheckoutPage() {
             {deliverySession && (
               <div className="space-y-3">
                 <DeliveryDispatchRadar session={deliverySession} now={now} />
-                {!deliverySession.canPay &&
-                  deliverySession.status !== "NO_BRANCH_AVAILABLE" && (
-                    <button
-                      type="button"
-                      onClick={cancelDeliverySearch}
-                      disabled={cancellingOrder}
-                      className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-60"
-                    >
-                      {cancellingOrder ? (
-                        <Loader2 size={17} className="animate-spin" />
-                      ) : (
-                        <ArrowLeft size={17} />
-                      )}
-                      {cancellingOrder ? "Цуцалж байна..." : "Захиалга цуцлах"}
-                    </button>
+                <button
+                  type="button"
+                  onClick={cancelDeliverySearch}
+                  disabled={cancellingOrder}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-black text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {cancellingOrder ? (
+                    <Loader2 size={17} className="animate-spin" />
+                  ) : (
+                    <XCircle size={17} />
                   )}
+                  {cancellingOrder ? "Цуцалж байна..." : "Захиалга цуцлах"}
+                </button>
               </div>
             )}
 

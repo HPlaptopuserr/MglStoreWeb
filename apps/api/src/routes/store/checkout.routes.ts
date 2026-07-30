@@ -8,6 +8,7 @@ import jwt from "jsonwebtoken";
 import { OrderDispatchAttemptStatus } from "@prisma/client";
 import {
   DeliverySourceType,
+  DeliveryStatus,
   prisma,
   OrderStatus,
   PaymentStatus,
@@ -1238,6 +1239,16 @@ router.post(
           where: { id: orderId },
           data: {
             status: OrderStatus.CANCELLED,
+          },
+        }),
+        prisma.delivery.updateMany({
+          where: {
+            orderId,
+            status: { not: DeliveryStatus.COMPLETED },
+          },
+          data: {
+            status: DeliveryStatus.CANCELLED,
+            cancelledAt: new Date(),
           },
         }),
         prisma.orderHistory.create({

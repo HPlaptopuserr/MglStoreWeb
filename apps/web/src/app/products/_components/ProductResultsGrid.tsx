@@ -77,7 +77,7 @@ export function ProductResultsGrid({
 }: ProductResultsGridProps) {
   if (loading) {
     return (
-      <div className="grid gap-3 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5">
         {Array.from({ length: 30 }).map((_, index) => (
           <div
             key={index}
@@ -161,7 +161,7 @@ export function ProductResultsGrid({
   return (
     <>
       <div className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
-        <div className="grid gap-3 min-[420px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
           {products.map((product, index) => (
             <CatalogProductCard
               key={product.id}
@@ -218,7 +218,7 @@ export function CatalogProductCard({
               sizes={
                 compact
                   ? "(max-width: 640px) 45vw, 180px"
-                  : "(max-width: 420px) 100vw, (max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 20vw"
+                  : "(max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1280px) 25vw, 20vw"
               }
               quality={72}
               unoptimized={catalogImage.preOptimized}
@@ -247,12 +247,16 @@ export function CatalogProductCard({
           </span>
         </div>
 
-        <div className={compact ? "px-0.5 pb-1 pt-2" : "px-1 pb-2 pt-3"}>
+        <div
+          className={
+            compact ? "px-0.5 pb-1 pt-2" : "px-0.5 pb-1.5 pt-2 sm:px-1 sm:pb-2 sm:pt-3"
+          }
+        >
           <h3
             className={`font-bold text-slate-900 transition group-hover:text-orange-600 ${
               compact
                 ? "line-clamp-1 text-xs leading-4"
-                : "line-clamp-2 min-h-10 text-sm leading-5"
+                : "line-clamp-2 min-h-8 text-xs leading-4 sm:min-h-10 sm:text-sm sm:leading-5"
             }`}
           >
             {product.name}
@@ -261,7 +265,7 @@ export function CatalogProductCard({
             className={`${compact ? "mt-1.5" : "mt-2"} flex flex-wrap items-baseline gap-x-2 gap-y-1`}
           >
             <span
-              className={`${compact ? "text-base" : "text-xl"} font-black tracking-tight text-orange-600`}
+              className={`${compact ? "text-base" : "text-base sm:text-xl"} font-black tracking-tight text-orange-600`}
             >
               ₮{price.toLocaleString("mn-MN")}
             </span>
@@ -297,7 +301,7 @@ export function CatalogProductCard({
             <span>{product.soldCount ?? 0} зарагдсан</span>
           </div>
           {!compact && (
-            <div className="mt-2 flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-slate-400">
+            <div className="mt-2 hidden min-w-0 items-center gap-1.5 text-[11px] font-bold text-slate-400 sm:flex">
               <Store className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
               <span className="truncate">
                 {product.organization?.name || "MGL Store"}
