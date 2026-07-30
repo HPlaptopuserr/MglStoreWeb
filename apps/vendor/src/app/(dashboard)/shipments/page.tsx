@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Package,
   Warehouse as WarehouseIcon,
@@ -33,6 +33,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { API, API_BASE, authFetch } from "@/lib/api";
+import { useInfiniteScroll } from "@mgl/ui";
 import { StockSuggestionBanner } from "@/components/organisms/StockSuggestionBanner";
 import { RequestFilter } from "@/components/organisms/RequestFilter";
 
@@ -118,6 +119,8 @@ type WarehouseProductsPage = {
   hasMore: boolean;
 };
 
+const WAREHOUSE_PRODUCTS_PAGE_SIZE = 30;
+
 function readWarehouseProductsPage(
   payload: unknown,
   page: number,
@@ -177,6 +180,14 @@ type Warehouse = {
   city: string;
   district: string;
   phone: string | null;
+};
+
+type SuggestedStockItem = {
+  quantity: number;
+  alertThreshold: number;
+  product: {
+    id: string;
+  };
 };
 
 type StockRequestItem = {
@@ -403,7 +414,11 @@ export default function StockRequestsPage() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [productsLoading, setProductsLoading] = useState(false);
+  const [productsLoadingMore, setProductsLoadingMore] = useState(false);
   const [productsError, setProductsError] = useState<string | null>(null);
+  const [productsPage, setProductsPage] = useState(1);
+  const [productsTotal, setProductsTotal] = useState(0);
+  const [productsHasMore, setProductsHasMore] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [productSearch, setProductSearch] = useState("");
@@ -432,6 +447,8 @@ export default function StockRequestsPage() {
   const [markingPaymentPaid, setMarkingPaymentPaid] = useState(false);
 
   const [filteredRequests, setFilteredRequests] = useState<StockRequest[]>([]);
+  const productsRequestRef = useRef<AbortController | null>(null);
+  const skipNextProductsFilterEffectRef = useRef(false);
 
   const [user, setUser] = useState<{
     id: string;
@@ -564,35 +581,49 @@ export default function StockRequestsPage() {
     }
   }, [outstandingPayments, viewMode]);
 
-  const enterWarehouse = async (warehouse: Warehouse, autoItems?: any[]) => {
-    if ((outstandingPayments?.count ?? 0) > 0) {
-      setViewMode("payments");
-      return;
-    }
-
-    setSelectedWarehouse(warehouse);
-    setProductsLoading(true);
-    setProductsError(null);
-    setViewMode("browse");
-    try {
+  const loadWarehouseProducts = useCallback(
+    async ({
+      warehouse,
+      page,
+      search,
+      category,
+      append,
+      productIds,
+    }: {
+      warehouse: Warehouse;
+      page: number;
+      search: string;
+      category: string | null;
+      append: boolean;
+      productIds?: string[];
+    }) => {
       if (!user?.organizationId) {
-        throw new Error("Байгууллагын мэдээлэл олдсонгүй");
+        setProductsError("Байгууллагын мэдээлэл олдсонгүй");
+        return;
       }
-      const params = new URLSearchParams({
-        organizationId: user.organizationId,
-        sort: "name",
-        limit: "100",
-      });
-      const pageSize = 100;
-      const fetchedProducts: WarehouseInventoryItem[] = [];
-      const fetchedProductIds = new Set<string>();
-      let page = 1;
-      let hasMore = true;
 
-      while (hasMore) {
-        params.set("page", String(page));
+      productsRequestRef.current?.abort();
+      const controller = new AbortController();
+      productsRequestRef.current = controller;
+      append ? setProductsLoadingMore(true) : setProductsLoading(true);
+      setProductsError(null);
+
+      try {
+        const params = new URLSearchParams({
+          organizationId: user.organizationId,
+          sort: "name",
+          mode: "catalog",
+          limit: String(WAREHOUSE_PRODUCTS_PAGE_SIZE),
+          page: String(page),
+        });
+        const normalizedSearch = search.trim();
+        if (normalizedSearch) params.set("search", normalizedSearch);
+        if (category) params.set("category", category);
+        if (productIds?.length) params.set("productIds", productIds.join(","));
+
         const res = await authFetch(
           `${API}/stock-requests/warehouse/${warehouse.id}/products?${params.toString()}`,
+          { signal: controller.signal },
         );
         const payload = await res.json().catch(() => null);
         if (!res.ok) {
@@ -606,71 +637,142 @@ export default function StockRequestsPage() {
           throw new Error(message);
         }
 
-        const result = readWarehouseProductsPage(payload, page, pageSize);
-        for (const item of result.items) {
-          if (fetchedProductIds.add(item.product.id)) {
-            fetchedProducts.push(item);
-          }
-        }
-        hasMore = result.hasMore && result.items.length > 0;
-        page += 1;
-      }
-
-      setWarehouseProducts(fetchedProducts);
-
-      if (autoItems && autoItems.length > 0) {
-        const newCartItems: CartItem[] = [];
-        for (const suggested of autoItems) {
-          const matched = fetchedProducts.find(
-            (p: any) => p.product.id === suggested.product.id,
-          );
-          if (matched) {
-            const requestQty = Math.max(
-              5,
-              (suggested.alertThreshold || 0) * 2 - (suggested.quantity || 0),
-            );
-            newCartItems.push({
-              productId: matched.product.id,
-              quantity: requestQty,
-              name: matched.product.name,
-              sku: matched.product.sku,
-              price: matched.product.price,
-              available: matched.quantity,
-              image: matched.product.images[0]?.url || null,
-            });
-          }
-        }
-        if (newCartItems.length > 0) {
-          setCart(newCartItems);
-          setViewMode("cart");
+        const result = readWarehouseProductsPage(
+          payload,
+          page,
+          WAREHOUSE_PRODUCTS_PAGE_SIZE,
+        );
+        setWarehouseProducts((current) => {
+          if (!append) return result.items;
+          const knownIds = new Set(current.map((item) => item.product.id));
+          return [
+            ...current,
+            ...result.items.filter((item) => !knownIds.has(item.product.id)),
+          ];
+        });
+        setProductsPage(page);
+        setProductsTotal(result.total);
+        setProductsHasMore(result.hasMore);
+        return result;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("Failed to fetch warehouse products:", error);
+        if (!append) setWarehouseProducts([]);
+        setProductsError(
+          error instanceof Error
+            ? error.message
+            : "Агуулахын бараа татахад алдаа гарлаа",
+        );
+        return null;
+      } finally {
+        if (productsRequestRef.current === controller) {
+          setProductsLoading(false);
+          setProductsLoadingMore(false);
         }
       }
-    } catch (error) {
-      console.error("Failed to fetch warehouse products:", error);
-      setWarehouseProducts([]);
-      setProductsError(
-        error instanceof Error
-          ? error.message
-          : "Агуулахын бараа татахад алдаа гарлаа",
+    },
+    [user?.organizationId],
+  );
+
+  const enterWarehouse = async (
+    warehouse: Warehouse,
+    autoItems?: SuggestedStockItem[],
+  ) => {
+    if ((outstandingPayments?.count ?? 0) > 0) {
+      setViewMode("payments");
+      return;
+    }
+
+    setSelectedWarehouse(warehouse);
+    skipNextProductsFilterEffectRef.current = true;
+    setProductsLoading(true);
+    setProductsError(null);
+    setProductSearch("");
+    setSelectedCategory(null);
+    setViewMode("browse");
+    const result = await loadWarehouseProducts({
+      warehouse,
+      page: 1,
+      search: "",
+      category: null,
+      append: false,
+      productIds: autoItems?.map((item) => item.product.id),
+    });
+
+    if (autoItems?.length && result) {
+      const suggestionByProductId = new Map(
+        autoItems.map((item) => [item.product.id, item]),
       );
-    } finally {
-      setProductsLoading(false);
+      const suggestedCart = result.items.flatMap((item): CartItem[] => {
+        const suggestion = suggestionByProductId.get(item.product.id);
+        if (!suggestion) return [];
+        return [
+          {
+            productId: item.product.id,
+            quantity: Math.max(
+              5,
+              suggestion.alertThreshold * 2 - suggestion.quantity,
+            ),
+            name: item.product.name,
+            sku: item.product.sku,
+            price: item.product.price,
+            available: item.quantity,
+            image: item.product.images[0]?.url || null,
+          },
+        ];
+      });
+      if (suggestedCart.length) {
+        setCart(suggestedCart);
+        setViewMode("cart");
+      }
     }
   };
 
-  const enterWarehouseById = (warehouseId: string, autoItems?: any[]) => {
+  const enterWarehouseById = (
+    warehouseId: string,
+    autoItems?: SuggestedStockItem[],
+  ) => {
     const warehouse = warehouses.find((w) => w.id === warehouseId);
     if (warehouse) enterWarehouse(warehouse, autoItems);
   };
 
   const exitWarehouse = () => {
+    productsRequestRef.current?.abort();
     setSelectedWarehouse(null);
     setWarehouseProducts([]);
     setProductsError(null);
     setProductSearch("");
     setSelectedCategory(null);
+    setProductsPage(1);
+    setProductsTotal(0);
+    setProductsHasMore(false);
     setViewMode("warehouses");
   };
+
+  useEffect(() => {
+    if (viewMode !== "browse" || !selectedWarehouse) return;
+    if (skipNextProductsFilterEffectRef.current) {
+      skipNextProductsFilterEffectRef.current = false;
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void loadWarehouseProducts({
+        warehouse: selectedWarehouse,
+        page: 1,
+        search: productSearch,
+        category: selectedCategory,
+        append: false,
+      });
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    loadWarehouseProducts,
+    productSearch,
+    selectedCategory,
+    selectedWarehouse,
+    viewMode,
+  ]);
 
   const addToCart = (item: WarehouseInventoryItem) => {
     const existing = cart.find((c) => c.productId === item.product.id);
@@ -924,19 +1026,27 @@ export default function StockRequestsPage() {
     ),
   ) as string[];
 
-  const filteredProducts = (
-    Array.isArray(warehouseProducts) ? warehouseProducts : []
-  ).filter((item) => {
-    const matchesSearch =
-      item.product.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-      item.product.sku?.toLowerCase().includes(productSearch.toLowerCase());
-
-    const itemCategory =
-      item.product.category?.name || item.product.businessCategory?.name;
-    const matchesCategory =
-      !selectedCategory || itemCategory === selectedCategory;
-
-    return matchesSearch && matchesCategory;
+  const filteredProducts = Array.isArray(warehouseProducts)
+    ? warehouseProducts
+    : [];
+  const productsLoadMoreRef = useInfiniteScroll({
+    enabled:
+      viewMode === "browse" &&
+      Boolean(selectedWarehouse) &&
+      !productsLoading &&
+      !productsLoadingMore &&
+      !productsError &&
+      productsHasMore,
+    onLoadMore: () => {
+      if (!selectedWarehouse) return;
+      void loadWarehouseProducts({
+        warehouse: selectedWarehouse,
+        page: productsPage + 1,
+        search: productSearch,
+        category: selectedCategory,
+        append: true,
+      });
+    },
   });
 
   const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -1214,7 +1324,7 @@ export default function StockRequestsPage() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                placeholder="Бараа хайх..."
+                placeholder="Нэр, SKU, баркодоор хайх..."
                 value={productSearch}
                 onChange={(e) => setProductSearch(e.target.value)}
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-[#FFAD02] focus:bg-white focus:outline-none"
@@ -1315,13 +1425,33 @@ export default function StockRequestsPage() {
 
                   <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800 border-t pt-6 border-slate-100">
                     <Package className="h-4 w-4 text-slate-400" />
-                    Бүх бараа ({warehouseProducts.length})
+                    Бүх бараа ({productsTotal})
                   </h2>
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                 {filteredProducts.map((item) => renderProductCard(item, false))}
+              </div>
+              <div
+                ref={productsLoadMoreRef}
+                className="flex min-h-24 items-center justify-center py-6"
+                aria-live="polite"
+              >
+                {productsLoadingMore ? (
+                  <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
+                    <Loader2 className="h-5 w-5 animate-spin text-[#FFAD02]" />
+                    Дараагийн 30 барааг ачаалж байна…
+                  </div>
+                ) : productsHasMore ? (
+                  <span className="sr-only">
+                    Дараагийн бараануудыг ачаалах цэг
+                  </span>
+                ) : filteredProducts.length > 0 ? (
+                  <p className="text-xs font-bold text-slate-400">
+                    {productsTotal.toLocaleString()} барааг бүгдийг үзүүллээ
+                  </p>
+                ) : null}
               </div>
             </div>
           )}

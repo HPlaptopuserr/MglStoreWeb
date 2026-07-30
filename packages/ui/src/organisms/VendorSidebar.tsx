@@ -157,7 +157,7 @@ const VENDOR_NAV_GROUPS: Array<
           },
           {
             id: "central-warehouse-orders",
-            label: "Төв агуулахын захиалга",
+            label: "Бараа таталт",
             href: "/shipments",
             icon: Truck,
             tone: "warning",

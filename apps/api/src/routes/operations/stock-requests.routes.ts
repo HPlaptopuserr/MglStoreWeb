@@ -1261,64 +1261,118 @@ router.get(
       }
 
       const search = (req.query.search as string | undefined)?.trim();
+      const searchTerms = search
+        ? [...new Set(search.split(/\s+/).filter(Boolean))].slice(0, 6)
+        : [];
       const category = (req.query.category as string | undefined)?.trim();
+      const requestedProductIds = [
+        ...new Set(
+          ((req.query.productIds as string | undefined) || "")
+            .split(",")
+            .map((id) => id.trim())
+            .filter(Boolean),
+        ),
+      ].slice(0, 100);
       const sort = (req.query.sort as string | undefined) || "name";
+      const mode = (req.query.mode as string | undefined) || "insights";
       const lowStockOnly = req.query.lowStock === "true";
       const page = Math.max(1, Number(req.query.page) || 1);
       const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 40));
 
-      const inventory = await prisma.warehouseInventory.findMany({
-        where: {
-          warehouseId,
-          quantity: { gt: 0 },
-          product: {
-            deletedAt: null,
-            isActive: true,
-            ...(search
-              ? {
+      const inventoryWhere: Prisma.WarehouseInventoryWhereInput = {
+        warehouseId,
+        ...(requestedProductIds.length
+          ? { productId: { in: requestedProductIds } }
+          : {}),
+        quantity: { gt: 0 },
+        product: {
+          deletedAt: null,
+          isActive: true,
+          ...(searchTerms.length
+            ? {
+                AND: searchTerms.map((term) => ({
                   OR: [
-                    { name: { contains: search, mode: "insensitive" } },
-                    { sku: { contains: search, mode: "insensitive" } },
-                    { barcode: { contains: search, mode: "insensitive" } },
+                    { name: { contains: term, mode: "insensitive" as const } },
+                    { sku: { contains: term, mode: "insensitive" as const } },
+                    {
+                      barcode: {
+                        contains: term,
+                        mode: "insensitive" as const,
+                      },
+                    },
                   ],
-                }
-              : {}),
-            ...(category
-              ? {
-                  OR: [
-                    { category: { name: category } },
-                    { businessCategory: { name: category } },
-                  ],
-                }
-              : {}),
+                })),
+              }
+            : {}),
+          ...(category
+            ? {
+                OR: [
+                  { category: { name: category } },
+                  { businessCategory: { name: category } },
+                ],
+              }
+            : {}),
+        },
+      };
+      const productSelect = {
+        id: true,
+        masterProductId: true,
+        name: true,
+        sku: true,
+        barcode: true,
+        price: true,
+        images: {
+          take: 1,
+          select: { url: true },
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
           },
         },
-        include: {
-          product: {
+        businessCategory: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      } satisfies Prisma.ProductSelect;
+
+      // Catalog browsing does not need the expensive 90-day procurement
+      // analytics. Paginate in the database instead of loading and enriching
+      // the warehouse's complete inventory for every infinite-scroll batch.
+      if (mode === "catalog" && sort === "name" && !lowStockOnly && !search) {
+        const offset = (page - 1) * limit;
+        const [total, items] = await Promise.all([
+          prisma.warehouseInventory.count({ where: inventoryWhere }),
+          prisma.warehouseInventory.findMany({
+            where: inventoryWhere,
             select: {
               id: true,
-              masterProductId: true,
-              name: true,
-              sku: true,
-              barcode: true,
-              price: true,
-              images: {
-                take: 1,
-                select: { url: true },
-              },
-              category: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-              businessCategory: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
+              productId: true,
+              quantity: true,
+              minQuantity: true,
+              location: true,
+              product: { select: productSelect },
             },
+            orderBy: [{ product: { name: "asc" } }, { id: "asc" }],
+            skip: offset,
+            take: limit,
+          }),
+        ]);
+        return res.json({
+          items,
+          total,
+          hasMore: offset + items.length < total,
+        });
+      }
+
+      const inventory = await prisma.warehouseInventory.findMany({
+        where: inventoryWhere,
+        include: {
+          product: {
+            select: productSelect,
           },
         },
       });
@@ -1654,6 +1708,22 @@ router.get(
       }
 
       filtered.sort((a, b) => {
+        if (search) {
+          const query = search.toLocaleLowerCase("mn-MN");
+          const rank = (item: (typeof filtered)[number]) => {
+            const name = item.product.name.toLocaleLowerCase("mn-MN");
+            const sku = item.product.sku?.toLocaleLowerCase("mn-MN") || "";
+            const barcode =
+              item.product.barcode?.toLocaleLowerCase("mn-MN") || "";
+            if (sku === query || barcode === query) return 0;
+            if (name === query) return 1;
+            if (name.startsWith(query)) return 2;
+            if (sku.startsWith(query) || barcode.startsWith(query)) return 3;
+            return 4;
+          };
+          const rankDifference = rank(a) - rank(b);
+          if (rankDifference !== 0) return rankDifference;
+        }
         if (sort === "topSelling") {
           return b.systemSoldQuantity90d - a.systemSoldQuantity90d;
         }

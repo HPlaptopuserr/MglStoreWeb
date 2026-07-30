@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { LoaderCircle } from "lucide-react";
+import { useInfiniteScroll } from "@mgl/ui";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { CatalogProductCard } from "@/app/products/_components/ProductResultsGrid";
@@ -28,7 +29,6 @@ export function AllProductsGrid() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryNonce, setRetryNonce] = useState(0);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   const hasMore = products.length < total;
   const isMember = Boolean(user?.membership?.active || user?.isPrime);
@@ -105,21 +105,10 @@ export function AllProductsGrid() {
     };
   }, [offset, retryNonce]);
 
-  useEffect(() => {
-    const target = loadMoreRef.current;
-    if (!target || loading || loadingMore || error || !hasMore) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setOffset((current) => current + BATCH_SIZE);
-        }
-      },
-      { rootMargin: "600px 0px" },
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [error, hasMore, loading, loadingMore]);
+  const loadMoreRef = useInfiniteScroll({
+    enabled: !loading && !loadingMore && !error && hasMore,
+    onLoadMore: () => setOffset((current) => current + BATCH_SIZE),
+  });
 
   return (
     <section aria-labelledby="all-products-title" className="pt-2">

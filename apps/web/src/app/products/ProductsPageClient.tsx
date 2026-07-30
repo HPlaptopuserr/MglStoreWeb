@@ -14,6 +14,7 @@ import {
   Store,
   Users,
 } from "lucide-react";
+import { useInfiniteScroll } from "@mgl/ui";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import {
@@ -425,7 +426,6 @@ function ProductsContent({
   const [organizationProductsRetry, setOrganizationProductsRetry] = useState(0);
   const [debouncedSearch, setDebouncedSearch] = useState(searchParam);
   const filterPanelRef = useRef<HTMLDivElement>(null);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
   const skipInitialProductFetchRef = useRef(Boolean(initialData));
 
   const resolvedCategoryParam = useMemo(() => {
@@ -631,35 +631,15 @@ function ProductsContent({
 
   const hasMoreProducts = apiProducts.length < totalProductCount;
 
-  useEffect(() => {
-    const target = loadMoreRef.current;
-    if (
-      viewMode !== "products" ||
-      !target ||
-      productsLoading ||
-      loadingMore ||
-      productsLoadError ||
-      !hasMoreProducts
-    ) {
-      return;
-    }
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setCurrentPage((page) => page + 1);
-        }
-      },
-      { rootMargin: "600px 0px" },
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [
-    hasMoreProducts,
-    loadingMore,
-    productsLoadError,
-    productsLoading,
-    viewMode,
-  ]);
+  const loadMoreRef = useInfiniteScroll({
+    enabled:
+      viewMode === "products" &&
+      !productsLoading &&
+      !loadingMore &&
+      !productsLoadError &&
+      hasMoreProducts,
+    onLoadMore: () => setCurrentPage((page) => page + 1),
+  });
 
   useEffect(() => {
     if (viewMode !== "stores") return;
