@@ -162,7 +162,7 @@ export function AllProductsGrid() {
         {loadingMore ? (
           <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
             <LoaderCircle className="h-5 w-5 animate-spin text-orange-500" />
-            Дараагийн 30 барааг ачаалж байна…
+            Бараа ачаалж байна…
           </div>
         ) : error ? (
           <div className="flex flex-col items-center gap-3 text-center">

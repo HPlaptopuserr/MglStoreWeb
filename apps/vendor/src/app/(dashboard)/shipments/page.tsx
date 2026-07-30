@@ -1441,7 +1441,7 @@ export default function StockRequestsPage() {
                 {productsLoadingMore ? (
                   <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
                     <Loader2 className="h-5 w-5 animate-spin text-[#FFAD02]" />
-                    Дараагийн 30 барааг ачаалж байна…
+                    Бараа ачаалж байна…
                   </div>
                 ) : productsHasMore ? (
                   <span className="sr-only">
