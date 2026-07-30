@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BenefitsSection } from "./sections/BenefitsSection";
+import { FeaturedStoresSection } from "./sections/FeaturedStoresSection";
 import { HeroSection } from "./sections/HeroSection";
 import { PresentationSection } from "./sections/PresentationSection";
 import { StandardsSection } from "./sections/StandardsSection";
@@ -48,6 +49,7 @@ export function MglStoreLanding() {
         onNext={goToNext}
         onSelect={setActiveSlideIndex}
       />
+      <FeaturedStoresSection />
       <BenefitsSection />
     </main>
   );
