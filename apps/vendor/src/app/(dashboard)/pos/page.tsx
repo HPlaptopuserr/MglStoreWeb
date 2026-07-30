@@ -3013,10 +3013,15 @@ export default function PosDemoPage() {
   );
 
   const shiftHistoryPanel = (
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-bold text-slate-900">Өдрийн хаалтын түүх</h3>
+          <h3
+            id="vendor-pos-shift-history-title"
+            className="text-sm font-bold text-slate-900"
+          >
+            Өдрийн хаалтын түүх
+          </h3>
           <p className="text-[11px] text-slate-500">
             {selectedShiftHistoryRange.description} дүн, зөрүү болон баримтууд
           </p>
@@ -3048,6 +3053,14 @@ export default function PosDemoPage() {
           >
             Шинэчлэх
           </button>
+          <button
+            type="button"
+            onClick={() => setShowShiftHistoryPanel(false)}
+            aria-label="Өдрийн хаалтын түүхийг хаах"
+            className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
@@ -3057,8 +3070,8 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      <div className="mt-3 grid min-h-0 grid-cols-[minmax(260px,0.85fr)_minmax(360px,1.15fr)] gap-3">
-        <div className="max-h-[420px] space-y-2 overflow-y-auto overscroll-contain pr-1">
+      <div className="mt-3 grid min-h-0 flex-1 grid-cols-[minmax(260px,0.85fr)_minmax(360px,1.15fr)] gap-3 overflow-hidden">
+        <div className="min-h-0 space-y-2 overflow-y-auto overscroll-contain pr-1">
           {shiftHistoryLoading && shiftHistory.length === 0 ? (
             <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -3125,7 +3138,7 @@ export default function PosDemoPage() {
           )}
         </div>
 
-        <div className="min-h-[300px] rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <div className="min-h-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3">
           {selectedShiftHistory ? (
             <div className="flex h-full flex-col gap-3">
               <div className="grid grid-cols-2 gap-2">
@@ -3841,7 +3854,18 @@ export default function PosDemoPage() {
 
       {showCashDrawerPanel && registerConfig?.isActive && cashDrawerPanel}
 
-      {showShiftHistoryPanel && registerConfig?.isActive && shiftHistoryPanel}
+      {showShiftHistoryPanel && registerConfig?.isActive && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-hidden bg-slate-950/45 p-4 backdrop-blur-sm sm:p-6">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="vendor-pos-shift-history-title"
+            className="h-[calc(100dvh-2rem)] max-h-[780px] w-full max-w-[1400px] sm:h-[calc(100dvh-3rem)]"
+          >
+            {shiftHistoryPanel}
+          </div>
+        </div>
+      )}
 
       {view === "checkout" && registerConfig?.isActive !== false && (
         <PosCheckoutView
