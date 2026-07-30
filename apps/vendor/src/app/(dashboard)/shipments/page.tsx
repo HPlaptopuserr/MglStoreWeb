@@ -1406,7 +1406,11 @@ export default function StockRequestsPage() {
 
         {/* Products Grid */}
         <div className="p-4">
-          {!productSearch && !selectedCategory && user?.organizationId && (
+          {!productSearch &&
+            !selectedCategory &&
+            !productsLoading &&
+            !productsError &&
+            user?.organizationId && (
             <div className="mb-6">
               <WarehouseRecommendations
                 organizationId={user.organizationId}

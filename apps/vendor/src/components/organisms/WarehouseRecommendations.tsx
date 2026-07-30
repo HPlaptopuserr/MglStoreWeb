@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { History, Loader2, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
+import { History, RefreshCw, Sparkles, TrendingUp } from "lucide-react";
 import { API, API_BASE, authFetch } from "@/lib/api";
 
 export interface RecommendedWarehouseItem {
@@ -113,25 +113,7 @@ export function WarehouseRecommendations({
   }, [load]);
 
   if (loading) {
-    return (
-      <section
-        aria-label="Санал болгох бараа ачаалж байна"
-        className="rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-white p-4"
-      >
-        <div className="mb-3 flex items-center gap-2 text-sm font-black text-indigo-900">
-          <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
-          Танд тохирох барааг тооцоолж байна…
-        </div>
-        <div className="flex gap-3 overflow-hidden">
-          {Array.from({ length: 4 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-32 w-52 shrink-0 animate-pulse rounded-xl bg-white"
-            />
-          ))}
-        </div>
-      </section>
-    );
+    return null;
   }
 
   if (error) {
