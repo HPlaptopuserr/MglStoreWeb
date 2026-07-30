@@ -6,6 +6,7 @@ import {
   regenerateWarehouseSetupToken,
   searchPersonalAccounts,
   assignPersonalAccountToWarehouse,
+  removeWarehouseOperatorAssignment,
 } from "../../services/warehouse-setup.service";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 import { Permission } from "@mgl/types";
@@ -57,6 +58,28 @@ router.post(
       return res
         .status(500)
         .json({ message: "Personal account онооход алдаа гарлаа" });
+    }
+  },
+);
+
+router.delete(
+  "/warehouse-setup/warehouses/:warehouseId/operators/:userId",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_WAREHOUSES),
+  async (req, res) => {
+    try {
+      const { warehouseId, userId } = req.params;
+      const result = await removeWarehouseOperatorAssignment({
+        userId,
+        warehouseId,
+      });
+      return res.status(result.success ? 200 : 404).json(result);
+    } catch (error) {
+      console.error("remove warehouse operator assignment error", error);
+      return res.status(500).json({
+        success: false,
+        message: "Ажилтны агуулах хариуцах эрхийг цуцлахад алдаа гарлаа",
+      });
     }
   },
 );

@@ -141,6 +141,36 @@ export async function assignPersonalAccountToWarehouse(params: {
   };
 }
 
+export async function removeWarehouseOperatorAssignment(params: {
+  userId: string;
+  warehouseId: string;
+}): Promise<{ success: boolean; message: string }> {
+  const { userId, warehouseId } = params;
+
+  const warehouse = await prisma.warehouse.findFirst({
+    where: { id: warehouseId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!warehouse) {
+    return { success: false, message: "Агуулах олдсонгүй" };
+  }
+
+  const deleted = await prisma.warehouseSetupToken.deleteMany({
+    where: { userId, warehouseId },
+  });
+  if (deleted.count === 0) {
+    return {
+      success: false,
+      message: "Энэ ажилтан тухайн агуулахад хуваарилагдаагүй байна",
+    };
+  }
+
+  return {
+    success: true,
+    message: "Ажилтны агуулах хариуцах эрхийг амжилттай цуцаллаа",
+  };
+}
+
 /**
  * Register warehouse operator — admin creates user with random 8-digit ID
  * and generates a password setup link (5 minute expiry)

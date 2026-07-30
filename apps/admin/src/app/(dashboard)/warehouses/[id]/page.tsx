@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, MapPin, Warehouse } from "lucide-react";
-import { API, adminFetch } from "@/lib/api";
+import { API, adminFetch, getApiErrorMessage } from "@/lib/api";
 import { ResponsibleEmployeesSection } from "@/components/warehouse/ResponsibleEmployeesSection";
 import { WarehouseInventorySummary } from "@/components/warehouse/WarehouseInventorySummary";
 import { WarehouseOperatorRegistrationModal } from "@/components/warehouse/WarehouseOperatorRegistrationModal";
@@ -11,7 +11,10 @@ import {
   WarehouseInfo,
   WarehouseStats,
 } from "@/components/warehouse/WarehouseOverview";
-import type { WarehouseDetail } from "@/components/warehouse/types";
+import type {
+  ResponsibleEmployee,
+  WarehouseDetail,
+} from "@/components/warehouse/types";
 
 export default function WarehouseDetailPage() {
   const params = useParams<{ id: string }>();
@@ -38,6 +41,25 @@ export default function WarehouseDetailPage() {
   useEffect(() => {
     void fetchWarehouse();
   }, [fetchWarehouse]);
+
+  const removeResponsibleEmployee = useCallback(
+    async (employee: ResponsibleEmployee) => {
+      const response = await adminFetch(
+        `${API}/warehouse-setup/warehouses/${params.id}/operators/${employee.id}`,
+        { method: "DELETE" },
+      );
+      if (!response.ok) {
+        throw new Error(
+          await getApiErrorMessage(
+            response,
+            "Ажилтны агуулах хариуцах эрхийг цуцалж чадсангүй",
+          ),
+        );
+      }
+      await fetchWarehouse();
+    },
+    [fetchWarehouse, params.id],
+  );
 
   if (isLoading) {
     return (
@@ -126,6 +148,7 @@ export default function WarehouseDetailPage() {
       <ResponsibleEmployeesSection
         employees={warehouse.responsibleEmployees}
         onAdd={() => setShowOperatorModal(true)}
+        onRemove={removeResponsibleEmployee}
       />
       <WarehouseInventorySummary
         summary={warehouse.summary}

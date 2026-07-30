@@ -1,17 +1,28 @@
 "use client";
 
+import { useState } from "react";
 import {
+  AlertTriangle,
   CheckCircle2,
   Clock3,
   Hash,
+  Loader2,
   Mail,
   Phone,
+  Trash2,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
 import type { ResponsibleEmployee } from "./types";
 
-function EmployeeCard({ employee }: { employee: ResponsibleEmployee }) {
+function EmployeeCard({
+  employee,
+  onRemove,
+}: {
+  employee: ResponsibleEmployee;
+  onRemove: () => void;
+}) {
   return (
     <article className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 transition duration-200 hover:-translate-y-0.5 hover:border-[#5B4CFF]/30 hover:bg-white hover:shadow-md">
       <div className="flex items-start gap-3">
@@ -56,6 +67,15 @@ function EmployeeCard({ employee }: { employee: ResponsibleEmployee }) {
             )}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`${employee.fullName}-г агуулахаас хасах`}
+          title="Агуулахаас хасах"
+          className="shrink-0 rounded-lg p-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-200"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
       </div>
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-slate-200 pt-3 text-xs text-slate-500">
         <span className="flex items-center gap-1.5">
@@ -82,10 +102,41 @@ function EmployeeCard({ employee }: { employee: ResponsibleEmployee }) {
 export function ResponsibleEmployeesSection({
   employees,
   onAdd,
+  onRemove,
 }: {
   employees: ResponsibleEmployee[];
   onAdd: () => void;
+  onRemove: (employee: ResponsibleEmployee) => Promise<void>;
 }) {
+  const [employeeToRemove, setEmployeeToRemove] =
+    useState<ResponsibleEmployee | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
+  const [removeError, setRemoveError] = useState("");
+
+  const closeRemoveDialog = () => {
+    if (isRemoving) return;
+    setEmployeeToRemove(null);
+    setRemoveError("");
+  };
+
+  const confirmRemove = async () => {
+    if (!employeeToRemove || isRemoving) return;
+    setIsRemoving(true);
+    setRemoveError("");
+    try {
+      await onRemove(employeeToRemove);
+      setEmployeeToRemove(null);
+    } catch (error) {
+      setRemoveError(
+        error instanceof Error
+          ? error.message
+          : "Ажилтны эрхийг цуцалж чадсангүй",
+      );
+    } finally {
+      setIsRemoving(false);
+    }
+  };
+
   return (
     <section className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -115,7 +166,14 @@ export function ResponsibleEmployeesSection({
       {employees.length ? (
         <div className="grid gap-4 lg:grid-cols-2">
           {employees.map((employee) => (
-            <EmployeeCard key={employee.id} employee={employee} />
+            <EmployeeCard
+              key={employee.id}
+              employee={employee}
+              onRemove={() => {
+                setRemoveError("");
+                setEmployeeToRemove(employee);
+              }}
+            />
           ))}
         </div>
       ) : (
@@ -127,6 +185,86 @@ export function ResponsibleEmployeesSection({
           <p className="mt-1 text-sm text-slate-400">
             Ажилтан нэмэх товчоор personal account сонгоно уу.
           </p>
+        </div>
+      )}
+
+      {employeeToRemove && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="remove-warehouse-employee-title"
+        >
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <h4
+                    id="remove-warehouse-employee-title"
+                    className="text-lg font-bold text-slate-900"
+                  >
+                    Ажилтны эрхийг цуцлах уу?
+                  </h4>
+                  <p className="mt-1 truncate text-sm font-medium text-slate-700">
+                    {employeeToRemove.fullName}
+                  </p>
+                  <p className="truncate text-xs text-slate-500">
+                    {employeeToRemove.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeRemoveDialog}
+                disabled={isRemoving}
+                aria-label="Хаах"
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="mt-5 rounded-xl bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-800">
+              Энэ ажилтан тухайн агуулахын WMS системд хандах эрхгүй болно.
+              Хэрэглэгчийн үндсэн account устахгүй.
+            </p>
+
+            {removeError && (
+              <p
+                role="alert"
+                className="mt-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
+                {removeError}
+              </p>
+            )}
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={closeRemoveDialog}
+                disabled={isRemoving}
+                className="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                Болих
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmRemove()}
+                disabled={isRemoving}
+                className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isRemoving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                {isRemoving ? "Хасаж байна..." : "Эрхийг цуцлах"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </section>
