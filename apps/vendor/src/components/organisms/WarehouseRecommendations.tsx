@@ -5,26 +5,44 @@ import { History, Loader2, RefreshCw, Sparkles, TrendingUp } from "lucide-react"
 import { API, API_BASE, authFetch } from "@/lib/api";
 
 export interface RecommendedWarehouseItem {
-  id: string;
-  quantity: number;
-  minQuantity: number;
-  organizationStock: number;
-  reorderPoint: number;
-  soldQuantity90d: number;
-  previouslyRequestedQuantity: number;
-  recommendationReason:
-    | "SALES_REPLENISHMENT"
-    | "TOP_SELLING"
-    | "PREVIOUSLY_ORDERED";
-  product: {
-    id: string;
-    name: string;
-    sku: string | null;
-    price: string;
-    images: { url: string }[];
-    category: { id: string; name: string } | null;
-    businessCategory?: { id: string; name: string } | null;
+  score: number;
+  confidence: number;
+  suggestedQuantity: number;
+  reason: "STOCK_REPLENISHMENT" | "REPEAT_PURCHASE" | "NETWORK_TRENDING";
+  explanation: string;
+  candidate: {
+    inventoryId: string;
+    productId: string;
+    features: {
+      availableStock: number;
+      organizationStock: number;
+      personalRequestedQuantity90d: number;
+      personalRequestCount90d: number;
+      networkRequestedQuantity90d: number;
+      networkRequestCount90d: number;
+      networkOrganizationCount90d: number;
+    };
+    product: {
+      id: string;
+      name: string;
+      sku: string | null;
+      price: string;
+      images: { url: string }[];
+      category: { id: string; name: string } | null;
+      businessCategory: { id: string; name: string } | null;
+    };
   };
+}
+
+interface RecommendationEngine {
+  strategy: string;
+  version: string;
+}
+
+interface RecommendationResponse {
+  engine?: RecommendationEngine;
+  generatedAt?: string;
+  items?: RecommendedWarehouseItem[];
 }
 
 interface WarehouseRecommendationsProps {
@@ -33,37 +51,22 @@ interface WarehouseRecommendationsProps {
   onAdd: (item: RecommendedWarehouseItem, quantity: number) => void;
 }
 
-interface RecommendationResponse {
-  items?: RecommendedWarehouseItem[];
+function getProduct(item: RecommendedWarehouseItem) {
+  return item.candidate.product;
 }
 
+function getReasonIcon(reason: RecommendedWarehouseItem["reason"]) {
+  return reason === "NETWORK_TRENDING" ? TrendingUp : History;
+}
+
+/*
+ * The UI consumes the strategy-neutral API contract. It intentionally does
+ * not know whether the score came from rules, an ML model, or an AI service.
+ */
 function resolveImageUrl(url?: string) {
   if (!url) return "";
   if (/^(https?:|data:|blob:)/i.test(url)) return url;
   return url.startsWith("/") ? `${API_BASE}${url}` : url;
-}
-
-function getSuggestedQuantity(item: RecommendedWarehouseItem) {
-  const monthlySales = Math.ceil(item.soldQuantity90d / 3);
-  const monthlyRequests = Math.ceil(item.previouslyRequestedQuantity / 3);
-  const stockShortfall = Math.max(
-    0,
-    item.reorderPoint - item.organizationStock,
-  );
-  return Math.min(
-    item.quantity,
-    Math.max(1, monthlySales, monthlyRequests, stockShortfall),
-  );
-}
-
-function getReason(item: RecommendedWarehouseItem) {
-  if (item.recommendationReason === "SALES_REPLENISHMENT") {
-    return `90 хоногт ${item.soldQuantity90d} зарагдсан, үлдэгдэл нөхөх`;
-  }
-  if (item.recommendationReason === "PREVIOUSLY_ORDERED") {
-    return `Өмнө нь ${item.previouslyRequestedQuantity} ширхэг захиалсан`;
-  }
-  return `90 хоногт ${item.soldQuantity90d} ширхэг зарагдсан`;
 }
 
 export function WarehouseRecommendations({
@@ -82,12 +85,10 @@ export function WarehouseRecommendations({
       try {
         const params = new URLSearchParams({
           organizationId,
-          sort: "recommended",
-          page: "1",
           limit: "8",
         });
         const response = await authFetch(
-          `${API}/stock-requests/warehouse/${warehouseId}/products?${params.toString()}`,
+          `${API}/stock-requests/warehouse/${warehouseId}/recommendations?${params.toString()}`,
           { signal },
         );
         if (!response.ok) throw new Error("Recommendation request failed");
@@ -172,11 +173,13 @@ export function WarehouseRecommendations({
 
       <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
         {items.map((item) => {
-          const suggestedQuantity = getSuggestedQuantity(item);
-          const imageUrl = resolveImageUrl(item.product.images[0]?.url);
+          const product = getProduct(item);
+          const suggestedQuantity = item.suggestedQuantity;
+          const imageUrl = resolveImageUrl(product.images[0]?.url);
+          const ReasonIcon = getReasonIcon(item.reason);
           return (
             <article
-              key={item.id}
+              key={item.candidate.inventoryId}
               className="flex w-64 shrink-0 flex-col rounded-2xl border border-white bg-white p-3 shadow-sm"
             >
               <div className="flex gap-3">
@@ -193,7 +196,7 @@ export function WarehouseRecommendations({
                 </div>
                 <div className="min-w-0 flex-1">
                   <h3 className="line-clamp-2 text-xs font-bold text-slate-900">
-                    {item.product.name}
+                    {product.name}
                   </h3>
                   <p className="mt-1 text-[11px] font-semibold text-indigo-600">
                     {suggestedQuantity} ширхэг санал болгож байна
@@ -201,8 +204,8 @@ export function WarehouseRecommendations({
                 </div>
               </div>
               <p className="mt-3 flex min-h-8 items-start gap-1.5 text-[11px] leading-4 text-slate-500">
-                <History className="mt-0.5 h-3 w-3 shrink-0" />
-                {getReason(item)}
+                <ReasonIcon className="mt-0.5 h-3 w-3 shrink-0" />
+                {item.explanation}
               </p>
               <button
                 type="button"

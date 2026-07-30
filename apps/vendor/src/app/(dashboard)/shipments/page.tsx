@@ -818,25 +818,27 @@ export default function StockRequestsPage() {
     quantity: number,
   ) => {
     setCart((current) => {
+      const product = item.candidate.product;
+      const availableStock = item.candidate.features.availableStock;
       const existing = current.find(
-        (cartItem) => cartItem.productId === item.product.id,
+        (cartItem) => cartItem.productId === product.id,
       );
       const safeQuantity = Math.min(
-        item.quantity,
+        availableStock,
         Math.max(1, existing ? existing.quantity + quantity : quantity),
       );
       const nextItem: CartItem = {
-        productId: item.product.id,
+        productId: product.id,
         quantity: safeQuantity,
-        name: item.product.name,
-        sku: item.product.sku,
-        price: item.product.price,
-        available: item.quantity,
-        image: item.product.images[0]?.url || null,
+        name: product.name,
+        sku: product.sku,
+        price: product.price,
+        available: availableStock,
+        image: product.images[0]?.url || null,
       };
       return existing
         ? current.map((cartItem) =>
-            cartItem.productId === item.product.id ? nextItem : cartItem,
+            cartItem.productId === product.id ? nextItem : cartItem,
           )
         : [...current, nextItem];
     });

@@ -1,5 +1,5 @@
 export { prisma } from "./client";
-export type { Prisma } from "@prisma/client";
+export { Prisma } from "@prisma/client";
 export {
   PlatformRole,
   OrgRole,

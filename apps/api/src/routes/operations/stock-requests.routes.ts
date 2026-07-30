@@ -47,6 +47,7 @@ import stockReturnRoutes from "./stock-returns.routes";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 import { routeWarehouseDispatchDelivery } from "../../services/delivery-routing.service";
 import { transferStockToVendor } from "../../services/stock-transfer.service";
+import { recommendationService } from "../../services/recommendations/recommendation.service";
 
 const router: ExpressRouter = Router();
 const padaanUploadsDir = path.resolve(
@@ -1774,6 +1775,70 @@ router.get(
       console.error("get warehouse products error", error);
       res.status(500).json({
         message: "Агуулахын бараануудыг авахад алдаа гарлаа",
+      });
+    }
+  },
+);
+
+// Personalized + privacy-safe network product recommendations.
+// The API contract is strategy-agnostic so an ML strategy can replace the
+// deterministic implementation without changing consumers.
+router.get(
+  "/stock-requests/warehouse/:warehouseId/recommendations",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const warehouseId = req.params.warehouseId as string;
+      const organizationId =
+        (req.query.organizationId as string | undefined) ||
+        getActor(req)?.organizationId;
+      if (!organizationId) {
+        return res.status(400).json({ message: "organizationId шаардлагатай" });
+      }
+      const permissions = await assertOrgPermission(
+        req,
+        res,
+        organizationId,
+        Permission.REQUEST_STOCK,
+      );
+      if (!permissions) return;
+
+      const assignment = await prisma.warehouseOrganization.findUnique({
+        where: {
+          warehouseId_organizationId: { warehouseId, organizationId },
+        },
+        select: {
+          warehouse: {
+            select: { type: true, isActive: true, deletedAt: true },
+          },
+        },
+      });
+      if (
+        !assignment ||
+        assignment.warehouse.type !== WarehouseType.CENTRAL ||
+        !assignment.warehouse.isActive ||
+        assignment.warehouse.deletedAt
+      ) {
+        return res.status(403).json({
+          message: "Энэ төв агуулахаас санал авах эрхгүй байна",
+        });
+      }
+
+      const limit = Math.min(
+        12,
+        Math.max(1, Number(req.query.limit) || 8),
+      );
+      return res.json(
+        await recommendationService.recommend({
+          organizationId,
+          warehouseId,
+          limit,
+        }),
+      );
+    } catch (error) {
+      console.error("warehouse recommendations error", error);
+      return res.status(500).json({
+        message: "Санал болгох барааг тооцоолоход алдаа гарлаа",
       });
     }
   },
