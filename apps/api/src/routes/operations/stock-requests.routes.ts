@@ -1279,6 +1279,19 @@ router.get(
       const page = Math.max(1, Number(req.query.page) || 1);
       const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 40));
 
+      const [catalogCategoryIds, businessCategoryIds] = category
+        ? await Promise.all([
+            prisma.category.findMany({
+              where: { name: category },
+              select: { id: true },
+            }),
+            prisma.businessCategory.findMany({
+              where: { name: category, isActive: true },
+              select: { id: true },
+            }),
+          ])
+        : [[], []];
+
       const inventoryWhere: Prisma.WarehouseInventoryWhereInput = {
         warehouseId,
         ...(requestedProductIds.length
@@ -1307,8 +1320,16 @@ router.get(
           ...(category
             ? {
                 OR: [
-                  { category: { name: category } },
-                  { businessCategory: { name: category } },
+                  {
+                    categoryId: {
+                      in: catalogCategoryIds.map((item) => item.id),
+                    },
+                  },
+                  {
+                    businessCategoryId: {
+                      in: businessCategoryIds.map((item) => item.id),
+                    },
+                  },
                 ],
               }
             : {}),

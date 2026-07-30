@@ -422,6 +422,7 @@ export default function StockRequestsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [productSearch, setProductSearch] = useState("");
+  const [debouncedProductSearch, setDebouncedProductSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [deliveryAddress, setDeliveryAddress] = useState("");
@@ -688,6 +689,7 @@ export default function StockRequestsPage() {
     setProductsLoading(true);
     setProductsError(null);
     setProductSearch("");
+    setDebouncedProductSearch("");
     setSelectedCategory(null);
     setViewMode("browse");
     const result = await loadWarehouseProducts({
@@ -742,6 +744,7 @@ export default function StockRequestsPage() {
     setWarehouseProducts([]);
     setProductsError(null);
     setProductSearch("");
+    setDebouncedProductSearch("");
     setSelectedCategory(null);
     setProductsPage(1);
     setProductsTotal(0);
@@ -750,25 +753,29 @@ export default function StockRequestsPage() {
   };
 
   useEffect(() => {
+    const timer = window.setTimeout(
+      () => setDebouncedProductSearch(productSearch),
+      300,
+    );
+    return () => window.clearTimeout(timer);
+  }, [productSearch]);
+
+  useEffect(() => {
     if (viewMode !== "browse" || !selectedWarehouse) return;
     if (skipNextProductsFilterEffectRef.current) {
       skipNextProductsFilterEffectRef.current = false;
       return;
     }
-    const timer = window.setTimeout(() => {
-      void loadWarehouseProducts({
-        warehouse: selectedWarehouse,
-        page: 1,
-        search: productSearch,
-        category: selectedCategory,
-        append: false,
-      });
-    }, 300);
-
-    return () => window.clearTimeout(timer);
+    void loadWarehouseProducts({
+      warehouse: selectedWarehouse,
+      page: 1,
+      search: debouncedProductSearch,
+      category: selectedCategory,
+      append: false,
+    });
   }, [
+    debouncedProductSearch,
     loadWarehouseProducts,
-    productSearch,
     selectedCategory,
     selectedWarehouse,
     viewMode,
@@ -1042,7 +1049,7 @@ export default function StockRequestsPage() {
       void loadWarehouseProducts({
         warehouse: selectedWarehouse,
         page: productsPage + 1,
-        search: productSearch,
+        search: debouncedProductSearch,
         category: selectedCategory,
         append: true,
       });
@@ -1365,8 +1372,22 @@ export default function StockRequestsPage() {
         {/* Products Grid */}
         <div className="p-4">
           {productsLoading ? (
-            <div className="flex h-64 items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-[#FFAD02]" />
+            <div
+              className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
+              aria-label="Бараа ачаалж байна"
+              aria-busy="true"
+            >
+              {Array.from({ length: 12 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="overflow-hidden rounded-2xl border border-slate-100 bg-white p-3"
+                >
+                  <div className="aspect-square animate-pulse rounded-xl bg-slate-100" />
+                  <div className="mt-3 h-3 w-4/5 animate-pulse rounded bg-slate-100" />
+                  <div className="mt-2 h-3 w-2/5 animate-pulse rounded bg-slate-100" />
+                  <div className="mt-4 h-9 animate-pulse rounded-xl bg-slate-100" />
+                </div>
+              ))}
             </div>
           ) : productsError ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-red-200 bg-red-50 py-16 text-center">
