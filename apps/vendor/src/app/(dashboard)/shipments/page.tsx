@@ -36,6 +36,10 @@ import { API, API_BASE, authFetch } from "@/lib/api";
 import { useInfiniteScroll } from "@mgl/ui";
 import { StockSuggestionBanner } from "@/components/organisms/StockSuggestionBanner";
 import { RequestFilter } from "@/components/organisms/RequestFilter";
+import {
+  WarehouseRecommendations,
+  type RecommendedWarehouseItem,
+} from "@/components/organisms/WarehouseRecommendations";
 
 type StockRequestStatus =
   | "PENDING"
@@ -809,6 +813,35 @@ export default function StockRequestsPage() {
     }
   };
 
+  const addRecommendationToCart = (
+    item: RecommendedWarehouseItem,
+    quantity: number,
+  ) => {
+    setCart((current) => {
+      const existing = current.find(
+        (cartItem) => cartItem.productId === item.product.id,
+      );
+      const safeQuantity = Math.min(
+        item.quantity,
+        Math.max(1, existing ? existing.quantity + quantity : quantity),
+      );
+      const nextItem: CartItem = {
+        productId: item.product.id,
+        quantity: safeQuantity,
+        name: item.product.name,
+        sku: item.product.sku,
+        price: item.product.price,
+        available: item.quantity,
+        image: item.product.images[0]?.url || null,
+      };
+      return existing
+        ? current.map((cartItem) =>
+            cartItem.productId === item.product.id ? nextItem : cartItem,
+          )
+        : [...current, nextItem];
+    });
+  };
+
   const updateCartQuantity = (productId: string, quantity: number) => {
     if (quantity <= 0) {
       setCart(cart.filter((c) => c.productId !== productId));
@@ -1371,6 +1404,15 @@ export default function StockRequestsPage() {
 
         {/* Products Grid */}
         <div className="p-4">
+          {!productSearch && !selectedCategory && user?.organizationId && (
+            <div className="mb-6">
+              <WarehouseRecommendations
+                organizationId={user.organizationId}
+                warehouseId={selectedWarehouse.id}
+                onAdd={addRecommendationToCart}
+              />
+            </div>
+          )}
           {productsLoading ? (
             <div
               className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
