@@ -44,6 +44,7 @@ type InventoryItem = {
     preorderLeadTimeDays: number | null;
     preorderNote: string | null;
     isActive: boolean;
+    images: { id: string; url: string }[];
   };
 };
 
@@ -533,8 +534,25 @@ export default function InventoryPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 font-medium text-slate-900">
-                        {item.product.name}
+                      <td className="min-w-60 px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-slate-50">
+                            <Package className="h-5 w-5 text-slate-300" />
+                            {item.product.images[0]?.url && (
+                              <img
+                                src={item.product.images[0].url}
+                                alt={item.product.name}
+                                className="absolute inset-0 h-full w-full object-cover"
+                                onError={(event) => {
+                                  event.currentTarget.style.display = "none";
+                                }}
+                              />
+                            )}
+                          </div>
+                          <span className="font-medium text-slate-900">
+                            {item.product.name}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-slate-500">
                         {item.product.sku || "—"}
