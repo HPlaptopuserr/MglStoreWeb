@@ -10,6 +10,10 @@ import { sendPushToUsers } from "../../services/push-notification.service";
 import { hasWarehouseAccess } from "../../services/warehouse-access.service";
 
 const router: ExpressRouter = Router();
+const ORGANIZATION_LEADERSHIP_ROLES: OrgRole[] = [
+  OrgRole.OWNER,
+  OrgRole.ADMIN,
+];
 
 type AuthenticatedRequest = Request & { user: AuthPayload };
 
@@ -24,20 +28,20 @@ async function canManageOrganization(user: AuthPayload, organizationId: string) 
       organizationId,
       isActive: true,
       deletedAt: null,
-      role: { in: [OrgRole.OWNER, OrgRole.ADMIN] },
+      role: { in: ORGANIZATION_LEADERSHIP_ROLES },
     },
     select: { id: true },
   });
   return Boolean(membership);
 }
 
-async function organizationManagerIds(organizationId: string) {
+async function organizationLeadershipIds(organizationId: string) {
   const members = await prisma.organizationMember.findMany({
     where: {
       organizationId,
       isActive: true,
       deletedAt: null,
-      role: { in: [OrgRole.OWNER, OrgRole.ADMIN] },
+      role: { in: ORGANIZATION_LEADERSHIP_ROLES },
     },
     select: { userId: true },
   });
@@ -46,9 +50,10 @@ async function organizationManagerIds(organizationId: string) {
 
 async function notifyUsers(input: Parameters<typeof sendPushToUsers>[0]) {
   try {
-    await sendPushToUsers(input);
+    return await sendPushToUsers(input);
   } catch (error) {
     console.error("Delivery partnership push notification error", error);
+    return 0;
   }
 }
 
@@ -257,12 +262,12 @@ router.post("/delivery-partnerships", requireAuth, async (req, res) => {
       },
       include: partnershipInclude,
     });
-    const managerIds = await organizationManagerIds(providerOrganizationId);
+    const managerIds = await organizationLeadershipIds(providerOrganizationId);
     const requesterName =
       partnership.warehouse?.name ||
       partnership.requesterOrganization?.name ||
       "Байгууллага";
-    await notifyUsers({
+    const pushDeliveryCount = await notifyUsers({
       userIds: managerIds,
       title: "Хүргэлтийн хамтын ажиллагааны хүсэлт",
       body: `${requesterName} хүргэлтийн үйлчилгээ авах хүсэлт илгээлээ.`,
@@ -273,6 +278,8 @@ router.post("/delivery-partnerships", requireAuth, async (req, res) => {
         sourceType: partnership.warehouseId ? "WAREHOUSE" : "VENDOR",
       },
     });
+    res.setHeader("X-MGL-Push-Recipients", String(managerIds.length));
+    res.setHeader("X-MGL-Push-Delivered", String(pushDeliveryCount));
     return res.status(201).json(partnership);
   } catch (error) {
     console.error("POST /delivery-partnerships error", error);
@@ -331,7 +338,7 @@ router.patch("/delivery-partnerships/:id/cancel", requireAuth, async (req, res) 
       cancelled.requesterOrganization?.name ||
       "Байгууллага";
     await notifyUsers({
-      userIds: await organizationManagerIds(cancelled.providerOrganizationId),
+      userIds: await organizationLeadershipIds(cancelled.providerOrganizationId),
       title: "Хүргэлтийн хүсэлт цуцлагдлаа",
       body: `${requesterName} хамтын ажиллагааны хүсэлтээ цуцаллаа.`,
       data: {
@@ -406,7 +413,7 @@ router.patch("/delivery-partnerships/:id/respond", requireAuth, async (req, res)
     });
     let requesterManagerIds: string[] = [];
     if (partnership.requesterOrganizationId) {
-      requesterManagerIds = await organizationManagerIds(
+      requesterManagerIds = await organizationLeadershipIds(
         partnership.requesterOrganizationId,
       );
     } else if (partnership.warehouse?.id) {
@@ -422,7 +429,7 @@ router.patch("/delivery-partnerships/:id/respond", requireAuth, async (req, res)
                     where: {
                       isActive: true,
                       deletedAt: null,
-                      role: { in: [OrgRole.OWNER, OrgRole.ADMIN] },
+                      role: { in: ORGANIZATION_LEADERSHIP_ROLES },
                     },
                     select: { userId: true },
                   },

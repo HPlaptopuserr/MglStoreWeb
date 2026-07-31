@@ -15,6 +15,14 @@ export type FranchiseProject = {
   responsiblePeople?: ProjectResponsiblePerson[];
   tags?: string[];
   isActive?: boolean;
+  hasPurchased?: boolean;
+};
+
+export type FranchiseMembershipAccess = {
+  eligible: boolean;
+  totalCredits: number;
+  usedCredits: number;
+  remainingCredits: number;
 };
 
 export type ProjectResponsiblePerson = {

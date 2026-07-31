@@ -69,6 +69,7 @@ export default function DeliveryNetworkPage() {
     partnershipId: string;
     providerName: string;
   } | null>(null);
+  const [requestTarget, setRequestTarget] = useState<Provider | null>(null);
   const [error, setError] = useState("");
 
   const selectedWarehouse = useMemo(
@@ -136,7 +137,9 @@ export default function DeliveryNetworkPage() {
     setWarehouseId(nextWarehouseId);
   };
 
-  const requestPartnership = async (providerOrganizationId: string) => {
+  const requestPartnership = async () => {
+    if (!requestTarget) return;
+    const providerOrganizationId = requestTarget.id;
     setBusyId(providerOrganizationId);
     setError("");
     try {
@@ -150,6 +153,7 @@ export default function DeliveryNetworkPage() {
       });
       const payload = (await response.json().catch(() => ({}))) as { message?: string };
       if (!response.ok) throw new Error(payload.message || "Хүсэлт илгээж чадсангүй");
+      setRequestTarget(null);
       await loadScope();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Тодорхойгүй алдаа");
@@ -321,7 +325,7 @@ export default function DeliveryNetworkPage() {
                         Хүсэлт цуцлах
                       </button>
                     ) : (
-                      <button onClick={() => requestPartnership(provider.id)} disabled={requested || busyId === provider.id} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-600 disabled:bg-slate-100 disabled:text-slate-500">
+                      <button onClick={() => setRequestTarget(provider)} disabled={requested || busyId === provider.id} className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-blue-600 disabled:bg-slate-100 disabled:text-slate-500">
                         {requested ? <Check className="h-4 w-4" /> : <Send className="h-4 w-4" />}
                         {requested ? "Холбогдсон" : "Хүсэлт илгээх"}
                       </button>
@@ -332,6 +336,55 @@ export default function DeliveryNetworkPage() {
             </div>
           </section>
         </>
+      )}
+      {requestTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="request-partnership-title"
+        >
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+              <Send className="h-6 w-6" />
+            </div>
+            <h2
+              id="request-partnership-title"
+              className="mt-5 text-xl font-black text-slate-950"
+            >
+              Хүсэлт илгээхдээ итгэлтэй байна уу?
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              <strong>{selectedWarehouse?.name || "Сонгосон агуулах"}</strong>
+              -аас <strong>{requestTarget.name}</strong> компанид хүргэлтийн
+              хамтын ажиллагааны хүсэлт илгээнэ. Компанийн удирдлагад device
+              мэдэгдэл очно.
+            </p>
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setRequestTarget(null)}
+                disabled={busyId === requestTarget.id}
+                className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Болих
+              </button>
+              <button
+                type="button"
+                onClick={() => void requestPartnership()}
+                disabled={busyId === requestTarget.id}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60"
+              >
+                {busyId === requestTarget.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                Тийм, хүсэлт илгээх
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       {cancelTarget && (
         <div

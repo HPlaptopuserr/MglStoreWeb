@@ -9,6 +9,7 @@ import {
   Package,
   PackageCheck,
   PackageMinus,
+  ShoppingBag,
   ScrollText,
   Settings,
   Truck,
@@ -59,6 +60,12 @@ const WMS_NAV_GROUPS: AppSidebarGroup[] = [
             icon: PackageCheck,
           },
         ],
+      },
+      {
+        id: "online-orders",
+        label: "Онлайн захиалга",
+        href: "/online-orders",
+        icon: ShoppingBag,
       },
       {
         id: "delivery-network",

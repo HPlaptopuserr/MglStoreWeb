@@ -21,7 +21,8 @@ import {
   requireAuth,
   type AuthPayload,
 } from "../../middleware/auth";
-import { isSmtpConfigured, sendSmtpMail } from "../../lib/smtp";
+import { emailService } from "../../services/email/email.service";
+import { authEmailTemplates } from "../../services/email/templates/auth-email.templates";
 import { recordOrganizationActivity } from "../../services/organization-activity.service";
 
 const router: ExpressRouter = Router();
@@ -458,28 +459,16 @@ function maskEmail(email: string) {
 }
 
 async function sendWebLoginOtpEmail(email: string, code: string) {
-  await sendSmtpMail({
+  await emailService.send({
     to: email,
-    subject: "MGL Store нэвтрэх баталгаажуулах код",
-    text: [
-      `Таны MGL Store нэвтрэх баталгаажуулах код: ${code}`,
-      "",
-      "Энэ код 10 минут хүчинтэй.",
-      "Хэрэв та нэвтрэх гэж оролдоогүй бол энэ имэйлийг үл тооно уу.",
-    ].join("\n"),
+    template: authEmailTemplates.loginOtp(code),
   });
 }
 
 async function sendPasswordResetOtpEmail(email: string, code: string) {
-  await sendSmtpMail({
+  await emailService.send({
     to: email,
-    subject: "MGL Store нууц үг сэргээх код",
-    text: [
-      `Таны MGL Store нууц үг сэргээх код: ${code}`,
-      "",
-      "Энэ код 10 минут хүчинтэй.",
-      "Хэрэв та нууц үг сэргээх хүсэлт илгээгээгүй бол энэ имэйлийг үл тооно уу.",
-    ].join("\n"),
+    template: authEmailTemplates.passwordResetOtp(code),
   });
 }
 
@@ -1025,7 +1014,7 @@ router.post(
       }
 
       if (!normalized.isPhone) {
-        if (!isSmtpConfigured()) {
+        if (!emailService.isConfigured()) {
           return res
             .status(500)
             .json({ message: "SMTP тохиргоо хийгдээгүй байна" });
@@ -1220,7 +1209,7 @@ router.post(
       }
 
       if (!normalized.isPhone) {
-        if (!isSmtpConfigured()) {
+        if (!emailService.isConfigured()) {
           return res
             .status(500)
             .json({ message: "SMTP тохиргоо хийгдээгүй байна" });
@@ -1510,6 +1499,10 @@ router.post("/login", loginAttemptLimiter, async (req, res) => {
 router.post("/refresh", async (req, res) => {
   const refreshToken =
     typeof req.body?.refreshToken === "string" ? req.body.refreshToken : "";
+  const requestedOrganizationId =
+    typeof req.body?.organizationId === "string"
+      ? req.body.organizationId.trim()
+      : "";
   if (!refreshToken) {
     return res.status(401).json({ message: "Refresh token шаардлагатай" });
   }
@@ -1529,7 +1522,17 @@ router.post("/refresh", async (req, res) => {
       return res.status(401).json({ message: "Session хугацаа дууссан" });
     }
 
-    const orgInfo = await resolveLoginOrganization(session.userId);
+    const orgInfo = requestedOrganizationId
+      ? await resolveTokenOrganization(session.userId, requestedOrganizationId)
+      : await resolveLoginOrganization(session.userId);
+    if (
+      requestedOrganizationId &&
+      orgInfo?.organizationId !== requestedOrganizationId
+    ) {
+      return res.status(403).json({
+        message: "Сонгосон байгууллагын идэвхтэй эрх олдсонгүй",
+      });
+    }
     const accessToken = jwt.sign(
       {
         userId: session.user.id,
@@ -1911,7 +1914,7 @@ router.post("/web/login", loginAttemptLimiter, async (req, res) => {
     }
 
     if (!isPhone && !user.emailVerified) {
-      if (!isSmtpConfigured()) {
+      if (!emailService.isConfigured()) {
         return res
           .status(500)
           .json({ message: "SMTP тохиргоо хийгдээгүй байна" });
@@ -1979,7 +1982,7 @@ router.post("/forgot-password", passwordRecoveryLimiter, async (req, res) => {
         return res.status(404).json({ message: "Бүртгэлгүй хэрэглэгч байна" });
       }
 
-      if (!isSmtpConfigured()) {
+      if (!emailService.isConfigured()) {
         return res
           .status(500)
           .json({ message: "SMTP тохиргоо хийгдээгүй байна" });

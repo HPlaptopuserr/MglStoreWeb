@@ -40,6 +40,7 @@ import {
   WarehouseRecommendations,
   type RecommendedWarehouseItem,
 } from "@/components/organisms/WarehouseRecommendations";
+import { DeliveryLocationSelector } from "@/features/shipments";
 
 type StockRequestStatus =
   | "PENDING"
@@ -440,6 +441,7 @@ export default function StockRequestsPage() {
   const [savingPadaan, setSavingPadaan] = useState(false);
   const padaanFileInputRef = useRef<HTMLInputElement>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showOrderSuccessModal, setShowOrderSuccessModal] = useState(false);
 
   // Payment history states
   const [paymentHistory, setPaymentHistory] = useState<Payment[]>([]);
@@ -874,6 +876,10 @@ export default function StockRequestsPage() {
       alert("Бараа сонгоно уу");
       return;
     }
+    if (!deliveryAddress.trim()) {
+      alert("Хүргүүлэх байршлаа сонгох эсвэл хаягаа оруулна уу");
+      return;
+    }
     setIsSubmitting(true);
     try {
       const response = await authFetch(`${API}/stock-requests`, {
@@ -883,9 +889,9 @@ export default function StockRequestsPage() {
           organizationId: user?.organizationId,
           warehouseId: selectedWarehouse.id,
           requestedById: user?.id,
-          deliveryAddress: deliveryAddress || null,
-          deliveryPhone: deliveryPhone || null,
-          note: note || null,
+          deliveryAddress: deliveryAddress.trim(),
+          deliveryPhone: deliveryPhone.trim() || null,
+          note: note.trim() || null,
           items: cart.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
@@ -905,11 +911,7 @@ export default function StockRequestsPage() {
         }
         throw new Error(responseBody.message || "Failed");
       }
-      clearCart();
-      exitWarehouse();
-      fetchData();
-      setViewMode("requests");
-      alert("Захиалга амжилттай илгээгдлээ. Админ зөвшөөрснөөр идэвхжинэ.");
+      setShowOrderSuccessModal(true);
     } catch (error: unknown) {
       alert(
         error instanceof Error
@@ -919,6 +921,14 @@ export default function StockRequestsPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const finishSuccessfulOrder = () => {
+    setShowOrderSuccessModal(false);
+    clearCart();
+    exitWarehouse();
+    void fetchData();
+    setViewMode("requests");
   };
 
   const handleCancel = async (requestId: string) => {
@@ -1092,6 +1102,10 @@ export default function StockRequestsPage() {
   });
 
   const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const totalCartAmount = cart.reduce(
+    (sum, item) => sum + Number(item.price) * item.quantity,
+    0,
+  );
   const pendingRequestCount = requests.filter(
     (request) => request.status === "PENDING",
   ).length;
@@ -1553,26 +1567,33 @@ export default function StockRequestsPage() {
   // ===================== CART VIEW =====================
   if (viewMode === "cart") {
     return (
-      <div className="min-h-screen bg-slate-50 pb-32">
+      <div className="min-h-screen bg-slate-50 pb-24">
         {/* Header */}
-        <div className="sticky top-0 z-20 bg-white border-b border-slate-100 shadow-sm">
-          <div className="flex items-center gap-3 px-4 py-4">
+        <div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
+          <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3">
             <button
               onClick={() => setViewMode("browse")}
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              aria-label="Барааны жагсаалт руу буцах"
+              className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
             >
               <ArrowLeft className="h-5 w-5" />
             </button>
-            <div>
-              <h1 className="font-bold text-slate-900">Сагс</h1>
-              <p className="text-xs text-slate-500">
-                {selectedWarehouse?.name}
+            <div className="min-w-0 flex-1">
+              <h1 className="font-bold text-slate-900">Бараа таталтын захиалга</h1>
+              <p className="truncate text-xs text-slate-500">
+                Нийлүүлэгч агуулах: {selectedWarehouse?.name}
+              </p>
+            </div>
+            <div className="hidden text-right sm:block">
+              <p className="text-xs text-slate-500">Нийт тоо хэмжээ</p>
+              <p className="text-sm font-bold text-slate-900">
+                {totalCartItems.toLocaleString()} ширхэг
               </p>
             </div>
           </div>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="mx-auto max-w-7xl p-4">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white py-16">
               <div className="mb-4 rounded-full bg-slate-100 p-4">
@@ -1589,144 +1610,194 @@ export default function StockRequestsPage() {
               </button>
             </div>
           ) : (
-            <>
-              {/* Cart Items */}
-              <div className="space-y-3">
-                {cart.map((item) => (
-                  <div
-                    key={item.productId}
-                    className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4"
-                  >
-                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-slate-100">
-                      {item.image ? (
-                        <img
-                          src={item.image}
-                          alt={item.name}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <Package className="h-6 w-6 text-slate-300" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <h3 className="truncate font-semibold text-slate-800">
-                        {item.name}
-                      </h3>
-                      <p className="text-xs text-slate-400">
-                        {item.sku || "-"}
-                      </p>
-                      <p className="mt-1 text-sm font-bold text-[#FFAD02]">
-                        {Number(item.price).toLocaleString()}₮
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() =>
-                          updateCartQuantity(item.productId, item.quantity - 1)
-                        }
-                        className="rounded-lg bg-slate-100 p-1.5 text-slate-600 hover:bg-slate-200"
-                      >
-                        <Minus className="h-4 w-4" />
-                      </button>
-                      <span className="w-8 text-center font-semibold">
-                        {item.quantity}
-                      </span>
-                      <button
-                        onClick={() => {
-                          if (item.quantity < item.available) {
-                            updateCartQuantity(
-                              item.productId,
-                              item.quantity + 1,
-                            );
-                          }
-                        }}
-                        disabled={item.quantity >= item.available}
-                        className="rounded-lg bg-slate-100 p-1.5 text-slate-600 hover:bg-slate-200 disabled:opacity-50"
-                      >
-                        <Plus className="h-4 w-4" />
-                      </button>
-                    </div>
+            <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.65fr)_minmax(320px,0.8fr)]">
+              <section
+                className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+                aria-labelledby="order-items-title"
+              >
+                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                  <div>
+                    <h2
+                      id="order-items-title"
+                      className="text-sm font-bold text-slate-900"
+                    >
+                      Захиалгын бараа
+                    </h2>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {cart.length} нэр төрөл
+                    </p>
                   </div>
-                ))}
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode("browse")}
+                    className="text-xs font-semibold text-[#B86E00] hover:text-[#8F5600]"
+                  >
+                    + Бараа нэмэх
+                  </button>
+                </div>
 
-              {/* Delivery Info */}
-              <div className="rounded-2xl border border-slate-100 bg-white p-4 space-y-4">
-                <h3 className="font-semibold text-slate-800">
-                  Хүргэлтийн мэдээлэл
-                </h3>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                    Хаяг
-                  </label>
-                  <input
-                    type="text"
-                    value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
-                    placeholder="Хүргүүлэх хаяг..."
-                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-[#FFAD02] focus:outline-none"
-                  />
+                <div className="hidden grid-cols-[minmax(0,1fr)_120px_128px_120px] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:grid">
+                  <span>Барааны мэдээлэл</span>
+                  <span className="text-right">Нэгж үнэ</span>
+                  <span className="text-center">Тоо хэмжээ</span>
+                  <span className="text-right">Дүн</span>
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                    Утас
-                  </label>
-                  <input
-                    type="text"
-                    value={deliveryPhone}
-                    onChange={(e) => setDeliveryPhone(e.target.value)}
-                    placeholder="Холбоо барих утас..."
-                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-[#FFAD02] focus:outline-none"
-                  />
+
+                <div className="divide-y divide-slate-100">
+                  {cart.map((item) => (
+                    <div
+                      key={item.productId}
+                      className="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,1fr)_120px_128px_120px] md:items-center"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-slate-100 bg-slate-50">
+                          {item.image ? (
+                            <img
+                              src={item.image}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center">
+                              <Package className="h-5 w-5 text-slate-300" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="truncate text-sm font-semibold text-slate-800">
+                            {item.name}
+                          </h3>
+                          <p className="mt-0.5 text-xs text-slate-400">
+                            SKU: {item.sku || "—"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="hidden text-right text-sm text-slate-600 md:block">
+                        {Number(item.price).toLocaleString()}₮
+                      </div>
+                      <div className="flex items-center justify-between md:justify-center">
+                        <span className="text-xs text-slate-500 md:hidden">
+                          Тоо хэмжээ
+                        </span>
+                        <div className="inline-flex items-center rounded-lg border border-slate-200 bg-white">
+                          <button
+                            type="button"
+                            aria-label={`${item.name}-ийн тоог хасах`}
+                            onClick={() =>
+                              updateCartQuantity(
+                                item.productId,
+                                item.quantity - 1,
+                              )
+                            }
+                            className="p-1.5 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
+                          >
+                            <Minus className="h-3.5 w-3.5" />
+                          </button>
+                          <span className="w-9 border-x border-slate-200 py-1 text-center text-sm font-semibold text-slate-800">
+                            {item.quantity}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label={`${item.name}-ийн тоог нэмэх`}
+                            onClick={() => {
+                              if (item.quantity < item.available) {
+                                updateCartQuantity(
+                                  item.productId,
+                                  item.quantity + 1,
+                                );
+                              }
+                            }}
+                            disabled={item.quantity >= item.available}
+                            className="p-1.5 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between text-sm font-semibold text-slate-900 md:block md:text-right">
+                        <span className="text-xs font-normal text-slate-500 md:hidden">
+                          Дүн
+                        </span>
+                        <span>
+                          {(
+                            Number(item.price) * item.quantity
+                          ).toLocaleString()}
+                          ₮
+                        </span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                    Тэмдэглэл
+
+                <div className="grid gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3 text-sm sm:grid-cols-2">
+                  <div className="flex justify-between sm:justify-start sm:gap-3">
+                    <span className="text-slate-500">Нийт тоо:</span>
+                    <span className="font-semibold text-slate-800">
+                      {totalCartItems.toLocaleString()} ширхэг
+                    </span>
+                  </div>
+                  <div className="flex justify-between sm:justify-end sm:gap-3">
+                    <span className="text-slate-500">Тооцоолсон дүн:</span>
+                    <span className="font-bold text-slate-900">
+                      {totalCartAmount.toLocaleString()}₮
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              <aside className="space-y-4 lg:sticky lg:top-20">
+                {user?.organizationId && (
+                  <DeliveryLocationSelector
+                    organizationId={user.organizationId}
+                    address={deliveryAddress}
+                    phone={deliveryPhone}
+                    onAddressChange={setDeliveryAddress}
+                    onPhoneChange={setDeliveryPhone}
+                  />
+                )}
+
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                    Захиалгын тэмдэглэл
                   </label>
                   <textarea
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    placeholder="Нэмэлт тэмдэглэл..."
+                    placeholder="Шаардлагатай нэмэлт мэдээлэл..."
                     rows={2}
-                    className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-sm focus:border-[#FFAD02] focus:outline-none resize-none"
+                    className="w-full resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm transition-colors focus:border-[#FFAD02] focus:outline-none focus:ring-2 focus:ring-amber-100"
                   />
                 </div>
-              </div>
-
-              {/* Summary */}
-              <div className="rounded-2xl bg-slate-800 p-4 text-white">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-400">Нийт бараа</span>
-                  <span className="font-bold">{totalCartItems} ширхэг</span>
-                </div>
-                <div className="mt-2 flex items-center justify-between">
-                  <span className="text-slate-400">Төрөл</span>
-                  <span className="font-bold">{cart.length}</span>
-                </div>
-              </div>
-            </>
+              </aside>
+            </div>
           )}
         </div>
 
         {/* Submit Button */}
         {cart.length > 0 && (
-          <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white p-3 md:left-64">
-            <button
-              onClick={() => setShowConfirmModal(true)}
-              disabled={isSubmitting}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#FFAD02] py-3 text-sm font-bold text-white shadow-md shadow-[#FFAD02]/20 disabled:opacity-50"
-            >
-              {isSubmitting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <span>Захиалга илгээх</span>
-                  <ChevronRight className="h-4 w-4" />
-                </>
-              )}
-            </button>
+          <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white/95 px-4 py-2.5 shadow-[0_-4px_18px_rgba(15,23,42,0.06)] backdrop-blur md:left-64">
+            <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+              <div className="hidden sm:block">
+                <p className="text-xs text-slate-500">Тооцоолсон нийт дүн</p>
+                <p className="text-base font-bold text-slate-900">
+                  {totalCartAmount.toLocaleString()}₮
+                </p>
+              </div>
+              <button
+                onClick={() => setShowConfirmModal(true)}
+                disabled={isSubmitting}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#FFAD02] px-8 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-[#E69B00] disabled:opacity-50 sm:w-auto"
+              >
+                {isSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <span>Захиалга баталгаажуулах</span>
+                    <ChevronRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         )}
 
@@ -1771,6 +1842,68 @@ export default function StockRequestsPage() {
             </div>
           </div>
         )}
+
+        {showOrderSuccessModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-[2px]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="order-success-title"
+          >
+            <div className="w-full max-w-md overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+              <div className="border-b border-slate-100 px-6 pb-5 pt-6">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-50 ring-4 ring-emerald-50/60">
+                    <CheckCircle className="h-6 w-6 text-emerald-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+                      Хүсэлт хүлээн авлаа
+                    </p>
+                    <h2
+                      id="order-success-title"
+                      className="mt-1 text-lg font-bold text-slate-900"
+                    >
+                      Захиалга амжилттай илгээгдлээ
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      Таны бараа таталтын захиалга хяналтын шатанд шилжлээ.
+                      Нийлүүлэгч баталгаажуулсны дараа захиалга идэвхжинэ.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 divide-x divide-slate-100 bg-slate-50 px-2 py-3">
+                <div className="px-4">
+                  <p className="text-xs text-slate-500">Нийт тоо хэмжээ</p>
+                  <p className="mt-1 text-sm font-bold text-slate-900">
+                    {totalCartItems.toLocaleString()} ширхэг
+                  </p>
+                </div>
+                <div className="px-4">
+                  <p className="text-xs text-slate-500">Төлөв</p>
+                  <p className="mt-1 inline-flex items-center gap-1.5 text-sm font-semibold text-amber-700">
+                    <Clock className="h-3.5 w-3.5" />
+                    Хүлээгдэж байна
+                  </p>
+                </div>
+              </div>
+
+              <div className="px-6 py-4">
+                <button
+                  type="button"
+                  autoFocus
+                  onClick={finishSuccessfulOrder}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
+                >
+                  Захиалгын жагсаалт харах
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1789,14 +1922,14 @@ export default function StockRequestsPage() {
       );
 
     return (
-      <div className="space-y-6 p-2">
-        <div>
+      <div className="space-y-4 p-2">
+        <div className="flex items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-black tracking-tight text-slate-900">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900">
               Төлбөрийн түүх
             </h1>
-            <p className="text-sm text-slate-500">
-              Бараа таталтын захиалгуудын нэхэмжлэх
+            <p className="mt-1 text-sm text-slate-500">
+              Бараа таталтын захиалгын нэхэмжлэх, төлбөрийн мэдээлэл
             </p>
           </div>
         </div>
@@ -1804,56 +1937,56 @@ export default function StockRequestsPage() {
         {workflowNav("payments")}
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          <div className="rounded-2xl border border-slate-100 bg-white p-4">
+        <div className="grid overflow-hidden rounded-xl border border-slate-200 bg-white sm:grid-cols-3 sm:divide-x sm:divide-slate-200">
+          <div className="border-b border-slate-100 px-4 py-3 sm:border-b-0">
             <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-amber-50 p-2.5">
-                <Clock className="h-5 w-5 text-amber-600" />
+              <div className="rounded-lg bg-slate-100 p-2">
+                <Clock className="h-4 w-4 text-slate-600" />
               </div>
               <div>
-                <p className="text-xl font-bold text-slate-900">
+                <p className="text-lg font-bold text-slate-900">
                   {unpaidCount}
                 </p>
-                <p className="text-xs text-slate-500">Төлөгдөөгүй</p>
+                <p className="text-xs text-slate-500">Хүлээгдэж буй</p>
               </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-slate-100 bg-white p-4">
+          <div className="border-b border-slate-100 px-4 py-3 sm:border-b-0">
             <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-green-50 p-2.5">
-                <CheckCircle className="h-5 w-5 text-green-600" />
+              <div className="rounded-lg bg-slate-100 p-2">
+                <CheckCircle className="h-4 w-4 text-slate-600" />
               </div>
               <div>
-                <p className="text-xl font-bold text-slate-900">{paidCount}</p>
-                <p className="text-xs text-slate-500">Төлөгдсөн</p>
+                <p className="text-lg font-bold text-slate-900">{paidCount}</p>
+                <p className="text-xs text-slate-500">Амжилттай төлөгдсөн</p>
               </div>
             </div>
           </div>
-          <div className="col-span-2 md:col-span-1 rounded-2xl border border-red-100 bg-red-50 p-4">
+          <div className="px-4 py-3">
             <div className="flex items-center gap-3">
-              <div className="rounded-xl bg-red-100 p-2.5">
-                <Receipt className="h-5 w-5 text-red-600" />
+              <div className="rounded-lg bg-slate-900 p-2">
+                <Receipt className="h-4 w-4 text-white" />
               </div>
               <div>
-                <p className="text-xl font-bold text-red-700">
+                <p className="text-lg font-bold text-slate-900">
                   {totalUnpaid.toLocaleString()}₮
                 </p>
-                <p className="text-xs text-red-600">Нийт төлөгдөөгүй дүн</p>
+                <p className="text-xs text-slate-500">Төлөгдөөгүй нийт дүн</p>
               </div>
             </div>
           </div>
         </div>
 
         {unpaidCount > 0 && (
-          <div className="flex items-start gap-3 rounded-2xl bg-amber-50 border border-amber-100 p-4">
-            <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 px-4 py-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
             <div>
-              <p className="text-sm font-semibold text-amber-800">
-                Анхааруулга
+              <p className="text-sm font-semibold text-slate-800">
+                Төлбөр хүлээгдэж байна
               </p>
-              <p className="text-sm text-amber-700 mt-0.5">
-                Төлөгдөөгүй нэхэмжлэх байгаа тул шинэ захиалга нээгдэхгүй.
-                Эхлээд өмнөх төлбөрөө төлнө үү.
+              <p className="mt-0.5 text-xs leading-5 text-slate-600">
+                Шинэ захиалга үүсгэхийн өмнө хугацаа хэтрээгүй нэхэмжлэхүүдийг
+                төлж барагдуулна уу.
               </p>
             </div>
           </div>
@@ -1876,102 +2009,97 @@ export default function StockRequestsPage() {
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {paymentHistory.map((payment) => (
-              <div
-                key={payment.id}
-                onClick={() => openPaymentDetail(payment.id)}
-                className={`rounded-2xl border bg-white p-5 cursor-pointer hover:shadow-md transition-shadow ${
-                  payment.status === "PENDING" || payment.status === "FAILED"
-                    ? "border-amber-200"
-                    : "border-slate-100"
-                }`}
-              >
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="flex items-start gap-4">
-                    <div
-                      className={`rounded-xl p-3 ${
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="hidden grid-cols-[minmax(0,1.25fr)_minmax(150px,0.8fr)_150px_180px_32px] gap-4 border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:grid">
+              <span>Нэхэмжлэх</span>
+              <span>Захиалга</span>
+              <span>Төлөв</span>
+              <span className="text-right">Дүн / хугацаа</span>
+              <span />
+            </div>
+            <div className="divide-y divide-slate-100">
+              {paymentHistory.map((payment) => (
+                <button
+                  key={payment.id}
+                  type="button"
+                  onClick={() => openPaymentDetail(payment.id)}
+                  className="grid w-full gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50 md:grid-cols-[minmax(0,1.25fr)_minmax(150px,0.8fr)_150px_180px_32px] md:items-center md:gap-4"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-slate-900">
+                      {payment.invoiceNumber}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {new Date(payment.createdAt).toLocaleDateString("mn-MN")}
+                    </p>
+                  </div>
+                  <div className="flex justify-between md:block">
+                    <span className="text-xs text-slate-500 md:hidden">
+                      Захиалга
+                    </span>
+                    <span className="text-sm font-medium text-slate-700">
+                      {payment.request?.requestNumber || "—"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between md:block">
+                    <span className="text-xs text-slate-500 md:hidden">
+                      Төлөв
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold ${
                         payment.status === "PAID"
-                          ? "bg-green-50"
+                          ? "bg-emerald-50 text-emerald-700"
                           : payment.status === "PENDING"
-                            ? "bg-amber-50"
-                            : "bg-red-50"
+                            ? "bg-amber-50 text-amber-700"
+                            : "bg-rose-50 text-rose-700"
                       }`}
                     >
-                      <Receipt
-                        className={`h-6 w-6 ${
+                      <span
+                        className={`h-1.5 w-1.5 rounded-full ${
                           payment.status === "PAID"
-                            ? "text-green-600"
+                            ? "bg-emerald-500"
                             : payment.status === "PENDING"
-                              ? "text-amber-600"
-                              : "text-red-600"
+                              ? "bg-amber-500"
+                              : "bg-rose-500"
                         }`}
                       />
-                    </div>
+                      {payment.status === "PAID"
+                        ? "Төлөгдсөн"
+                        : payment.status === "PENDING"
+                          ? "Төлөгдөөгүй"
+                          : "Алдаатай"}
+                    </span>
+                  </div>
+                  <div className="flex items-end justify-between md:block md:text-right">
+                    <span className="text-xs text-slate-500 md:hidden">Дүн</span>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-slate-900">
-                          {payment.invoiceNumber}
-                        </h3>
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
-                            payment.status === "PAID"
-                              ? "bg-green-100 text-green-700"
-                              : payment.status === "PENDING"
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-red-100 text-red-700"
+                      <p className="text-sm font-bold text-slate-900">
+                        {Number(payment.totalAmount).toLocaleString()}₮
+                      </p>
+                      {payment.dueDate && payment.status === "PENDING" && (
+                        <p
+                          className={`mt-0.5 text-xs ${
+                            new Date(payment.dueDate) < new Date()
+                              ? "font-medium text-rose-600"
+                              : "text-slate-500"
                           }`}
                         >
-                          {payment.status === "PAID" && (
-                            <CheckCircle className="h-3 w-3" />
-                          )}
-                          {payment.status === "PENDING" && (
-                            <Clock className="h-3 w-3" />
-                          )}
-                          {payment.status === "PAID"
-                            ? "Төлөгдсөн"
-                            : payment.status === "PENDING"
-                              ? "Төлөгдөөгүй"
-                              : "Алдаатай"}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-sm text-slate-600">
-                        Захиалга: {payment.request?.requestNumber || "-"}
-                      </p>
-                      <p className="text-sm text-slate-500">
-                        {new Date(payment.createdAt).toLocaleDateString(
-                          "mn-MN",
-                        )}
-                      </p>
+                          Хугацаа:{" "}
+                          {new Date(payment.dueDate).toLocaleDateString("mn-MN")}
+                        </p>
+                      )}
+                      {payment.paidAt && (
+                        <p className="mt-0.5 text-xs text-slate-500">
+                          Төлсөн:{" "}
+                          {new Date(payment.paidAt).toLocaleDateString("mn-MN")}
+                        </p>
+                      )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-slate-900">
-                      {Number(payment.totalAmount).toLocaleString()}₮
-                    </p>
-                    {payment.dueDate && payment.status === "PENDING" && (
-                      <p
-                        className={`text-sm ${
-                          new Date(payment.dueDate) < new Date()
-                            ? "text-red-600 font-medium"
-                            : "text-slate-500"
-                        }`}
-                      >
-                        Хугацаа:{" "}
-                        {new Date(payment.dueDate).toLocaleDateString("mn-MN")}
-                      </p>
-                    )}
-                    {payment.paidAt && (
-                      <p className="text-sm text-green-600">
-                        Төлсөн:{" "}
-                        {new Date(payment.paidAt).toLocaleDateString("mn-MN")}
-                      </p>
-                    )}
-                  </div>
-                  <ChevronRight className="h-5 w-5 text-slate-300 shrink-0" />
-                </div>
-              </div>
-            ))}
+                  <ChevronRight className="hidden h-4 w-4 text-slate-300 md:block" />
+                </button>
+              ))}
+            </div>
           </div>
         )}
 

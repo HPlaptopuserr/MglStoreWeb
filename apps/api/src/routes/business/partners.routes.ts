@@ -23,7 +23,8 @@ import {
   type AuthPayload,
 } from "../../middleware/auth";
 import { getSupabase, ORG_IMAGES_BUCKET } from "../../lib/supabase";
-import { sendSmtpMail } from "../../lib/smtp";
+import { emailService } from "../../services/email/email.service";
+import { vendorEmailTemplates } from "../../services/email/templates/vendor-email.templates";
 import { shouldExposeOrgProductsOnWeb } from "../../services/product-visibility.service";
 import { syncOwnerPersonalMembershipFromActiveOrgPlan } from "../../services/owner-membership-sync.service";
 import { sendPushToUsers } from "../../services/push-notification.service";
@@ -465,21 +466,9 @@ async function sendVendorPhoneConfirmationEmail(input: {
   phone: string | null;
   confirmUrl: string;
 }) {
-  await sendSmtpMail({
+  await emailService.send({
     to: input.email,
-    subject: "MGL Store vendor login утас баталгаажуулах",
-    text: [
-      `Сайн байна уу${input.fullName ? `, ${input.fullName}` : ""}.`,
-      "",
-      `${input.organizationName || "Таны байгууллага"}-ийн vendor login утсыг ${
-        input.phone || "хоосон"
-      } болгож өөрчлөх хүсэлт admin-аас ирлээ.`,
-      "",
-      "Та өөрөө зөвшөөрч байвал доорх холбоосоор баталгаажуулна уу:",
-      input.confirmUrl,
-      "",
-      "Энэ холбоос 24 цаг хүчинтэй. Хэрэв та энэ өөрчлөлтийг зөвшөөрөөгүй бол энэ имэйлийг үл тооно уу.",
-    ].join("\n"),
+    template: vendorEmailTemplates.phoneConfirmation(input),
   });
 }
 

@@ -21,21 +21,27 @@ import {
   getResponsiblePeople,
   sortMglStoreFranchiseFirst,
   type FranchiseProject,
+  type FranchiseMembershipAccess,
 } from "./_lib/franchise";
 
 export default function FranchisePage() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, authFetch } = useAuth();
   const [projects, setProjects] = useState<FranchiseProject[]>([]);
   const [loading, setLoading] = useState(true);
-  const hasMemberAccess = Boolean(user?.membership?.active || user?.isPrime);
+  const [membershipAccess, setMembershipAccess] =
+    useState<FranchiseMembershipAccess | null>(null);
 
   useEffect(() => {
     const fetchProjects = async () => {
       try {
-        const res = await fetch(`${API}/site-settings/franchise`, {
-          cache: "no-store",
-        });
+        const res = await (user
+          ? authFetch(`${API}/site-settings/franchise`, {
+              cache: "no-store",
+            })
+          : fetch(`${API}/site-settings/franchise`, {
+              cache: "no-store",
+            }));
         if (!res.ok) return;
         const data = await res.json();
         const parsed = Array.isArray(data.projects) ? data.projects : [];
@@ -46,6 +52,7 @@ export default function FranchisePage() {
             ),
           ),
         );
+        setMembershipAccess(data.membershipAccess || null);
       } catch (error) {
         console.error("Failed to fetch franchise", error);
       } finally {
@@ -53,7 +60,7 @@ export default function FranchisePage() {
       }
     };
     fetchProjects();
-  }, []);
+  }, [authFetch, user]);
 
   const openFranchiseDetailPage = (projectId: string, invoiceId?: string) => {
     const query = invoiceId
@@ -63,7 +70,7 @@ export default function FranchisePage() {
   };
 
   const openProject = (project: FranchiseProject) => {
-    if (project.price && project.price > 0 && hasMemberAccess) {
+    if (project.hasPurchased) {
       openFranchiseDetailPage(project.id);
       return;
     }
@@ -107,6 +114,12 @@ export default function FranchisePage() {
           <div className="w-fit rounded-xl border border-orange-200/20 bg-white/[0.04] px-5 py-4 text-sm font-black text-orange-100 shadow-[0_18px_45px_rgba(0,0,0,0.24)]">
             {loading ? "Ачаалж байна" : `${projects.length} бэлэн байна`}
           </div>
+          {membershipAccess?.eligible && (
+            <div className="w-fit rounded-xl border border-cyan-200/25 bg-cyan-200/10 px-5 py-4 text-sm font-black text-cyan-100">
+              Нээх эрх: {membershipAccess.remainingCredits}/
+              {membershipAccess.totalCredits}
+            </div>
+          )}
         </section>
 
         {loading ? (
@@ -254,7 +267,11 @@ export default function FranchisePage() {
                         onClick={() => openProject(project)}
                         className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-orange-300 px-5 text-sm font-black text-black transition hover:brightness-110 disabled:opacity-60"
                       >
-                        {isFree ? "Дэлгэрэнгүй үзэх" : "3 хуудас preview үзэх"}
+                        {isFree
+                          ? "Дэлгэрэнгүй үзэх"
+                          : project.hasPurchased
+                            ? "Нээсэн төслөө үзэх"
+                            : "3 хуудас preview үзэх"}
                         <ArrowRight className="h-4 w-4" />
                       </button>
                       {contractHref && (

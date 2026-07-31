@@ -19,9 +19,17 @@ import {
   RefreshCw,
   Search,
   Star,
+  Store,
+  MapPin,
+  ImageIcon,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
-import { API } from "@/lib/api";
+import { API, resolveApiAssetUrl } from "@/lib/api";
+import {
+  getOrderDateQuery,
+  OrderDateFilter,
+  type OrderDateRange,
+} from "@/components/orders/OrderDateFilter";
 
 interface OrderItem {
   id: string;
@@ -31,6 +39,10 @@ interface OrderItem {
   price: number;
   subtotal: number;
   reviewScore?: number | null;
+  description?: string | null;
+  sku?: string | null;
+  unit?: string | null;
+  imageUrl?: string | null;
 }
 
 interface Order {
@@ -46,6 +58,12 @@ interface Order {
   deliveryCode: string | null;
   createdAt: string;
   items: OrderItem[];
+  organizationName: string;
+  branch?: {
+    id: string;
+    name: string;
+    address?: string | null;
+  } | null;
   requiresReview?: boolean;
   payments?: OrderPayment[];
 }
@@ -63,11 +81,18 @@ interface OrderPayment {
 /* ── Status config ───────────────────────────────────── */
 const STATUS_STEPS = [
   "CONFIRMED",
+  "PREPARING",
   "PREPARED",
   "SHIPPING",
   "COMPLETED",
 ] as const;
-const STEP_LABELS = ["Баталгаажсан", "Бэлтгэсэн", "Хүргэлтэнд", "Хүлээн авсан"];
+const STEP_LABELS = [
+  "Баталгаажсан",
+  "Бэлтгэж байна",
+  "Бэлтгэсэн",
+  "Хүргэлтэнд",
+  "Хүлээн авсан",
+];
 
 const STATUS_CONFIG: Record<
   string,
@@ -84,6 +109,12 @@ const STATUS_CONFIG: Record<
     color: "text-blue-600",
     bg: "bg-blue-50 border-blue-200",
     icon: CheckCircle2,
+  },
+  PREPARING: {
+    label: "Бэлтгэж байна",
+    color: "text-orange-600",
+    bg: "bg-orange-50 border-orange-200",
+    icon: ChefHat,
   },
   PREPARED: {
     label: "Бэлтгэгдсэн",
@@ -557,6 +588,7 @@ export default function OrdersPage() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderFilter>("ALL");
+  const [dateRange, setDateRange] = useState<OrderDateRange>("TODAY");
   const filteredOrders = orders.filter((order) => {
     const matchesStatus =
       statusFilter === "ALL" || order.status === statusFilter;
@@ -575,7 +607,9 @@ export default function OrdersPage() {
     setLoading(true);
     setError("");
     try {
-      const res = await authFetch(`${API}/store/orders`);
+      const res = await authFetch(
+        `${API}/store/orders${getOrderDateQuery(dateRange)}`,
+      );
       if (res.status === 401) {
         router.push("/");
         return;
@@ -591,7 +625,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [authFetch, router]);
+  }, [authFetch, dateRange, router]);
 
   const submitRatings = useCallback(
     async (orderId: string, score: number, comment: string) => {
@@ -639,7 +673,13 @@ export default function OrdersPage() {
             Миний захиалгууд
           </h1>
           <p className="text-xs text-gray-400 mt-0.5">
-            {orders.length > 0 ? `${orders.length} захиалга` : ""}
+            {orders.length > 0
+              ? `${orders.length} захиалга · ${
+                  dateRange === "TODAY" ? "Өнөөдөр" : "Сонгосон хугацаа"
+                }`
+              : dateRange === "TODAY"
+                ? "Өнөөдрийн захиалга"
+                : ""}
           </p>
         </div>
         {orders.length > 0 && (
@@ -658,7 +698,7 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {orders.length === 0 ? (
+      {orders.length === 0 && dateRange === "ALL" ? (
         <div className="flex flex-col items-center justify-center gap-5 py-16">
           <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-gray-50">
             <Package size={36} className="text-gray-300" />
@@ -716,6 +756,7 @@ export default function OrdersPage() {
                 </button>
               ))}
             </div>
+            <OrderDateFilter value={dateRange} onChange={setDateRange} />
           </section>
 
           {filteredOrders.length === 0 ? (
@@ -724,7 +765,7 @@ export default function OrdersPage() {
                 Энэ шүүлтэд тохирох захиалга алга
               </p>
               <p className="mt-1 text-xs font-semibold text-gray-400">
-                Хайх үгээ эсвэл төлөв filter-ээ өөрчлөөд үзнэ үү.
+                Хайлт, төлөв эсвэл хугацааны шүүлтүүрээ өөрчлөөд үзнэ үү.
               </p>
             </div>
           ) : null}
@@ -759,6 +800,43 @@ export default function OrdersPage() {
                 {/* Status stepper */}
                 <StatusStepper status={order.status} />
 
+                <section className="mx-4 mb-3 rounded-2xl border border-amber-100 bg-amber-50/60 p-3">
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-white">
+                      <Store size={17} aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                        Захиалга гарах дэлгүүр
+                      </p>
+                      <p className="mt-0.5 text-sm font-black text-gray-900">
+                        {order.organizationName}
+                      </p>
+                      {order.branch ? (
+                        <>
+                          <p className="mt-1 text-xs font-bold text-gray-700">
+                            {order.branch.name}
+                          </p>
+                          {order.branch.address && (
+                            <p className="mt-1 flex items-start gap-1 text-[11px] font-medium leading-relaxed text-gray-500">
+                              <MapPin
+                                size={12}
+                                className="mt-0.5 shrink-0 text-amber-600"
+                                aria-hidden="true"
+                              />
+                              {order.branch.address}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="mt-1 text-[11px] font-semibold text-amber-700">
+                          Салбар захиалгыг хүлээн авахыг хүлээж байна
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </section>
+
                 {/* Delivery code — when SHIPPING */}
                 {order.status === "SHIPPING" && order.deliveryCode && (
                   <DeliveryCodeCard code={order.deliveryCode} />
@@ -777,19 +855,43 @@ export default function OrdersPage() {
                 <div className="px-4 py-3 space-y-2">
                   {order.items.map((item, idx) => (
                     <div
-                      key={idx}
-                      className="flex items-center justify-between"
+                      key={item.id || idx}
+                      className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/60 p-2.5"
                     >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-[10px] font-bold text-gray-400">
-                          ×{item.qty}
-                        </div>
-                        <span className="text-sm text-gray-700 truncate">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-gray-100 bg-white">
+                        {item.imageUrl ? (
+                          <img
+                            src={resolveApiAssetUrl(item.imageUrl)}
+                            alt={item.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <ImageIcon
+                            size={20}
+                            className="text-gray-300"
+                            aria-hidden="true"
+                          />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-bold text-gray-800">
                           {item.name}
-                        </span>
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-semibold text-gray-500">
+                          <span>
+                            {item.qty} {item.unit || "ш"} ×{" "}
+                            {formatMnt(item.price)}
+                          </span>
+                          {item.sku && <span>SKU: {item.sku}</span>}
+                        </div>
+                        {item.description && (
+                          <p className="mt-1 line-clamp-2 text-[10px] leading-relaxed text-gray-400">
+                            {item.description}
+                          </p>
+                        )}
                       </div>
                       <span className="text-sm font-semibold text-gray-900 tabular-nums shrink-0 ml-3">
-                        ₮{item.subtotal.toLocaleString()}
+                        {formatMnt(item.subtotal)}
                       </span>
                     </div>
                   ))}

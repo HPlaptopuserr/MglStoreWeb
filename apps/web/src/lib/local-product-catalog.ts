@@ -1,5 +1,6 @@
 export const LOCAL_MOCK_CATALOG_ENABLED =
-  process.env.NODE_ENV === "development";
+  process.env.NODE_ENV === "development" &&
+  process.env.NEXT_PUBLIC_LOCAL_MOCK_CATALOG === "true";
 
 export type LocalCatalogCategory = {
   id: string;

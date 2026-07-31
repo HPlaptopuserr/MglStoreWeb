@@ -6,6 +6,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { prisma } from "@mgl/database";
 import contractRoutes from "./routes/contract/contract.routes";
+import { cancelExpiredStoreCheckouts } from "./services/store-checkout-expiration.service";
 import {
   authRoutes,
   associationRoutes,
@@ -192,3 +193,10 @@ const port = process.env.PORT || 4000;
 app.listen(Number(port), "0.0.0.0", () => {
   console.log(`[api] Application is running on: http://0.0.0.0:${port}`);
 });
+
+const checkoutExpirationTimer = setInterval(() => {
+  void cancelExpiredStoreCheckouts().catch((error: unknown) => {
+    console.error("[api] Store checkout expiration failed", error);
+  });
+}, 30_000);
+checkoutExpirationTimer.unref();

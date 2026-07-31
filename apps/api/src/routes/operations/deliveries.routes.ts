@@ -14,13 +14,16 @@ import {
   DispatchStatus,
   OrderStatus,
   OrgRole,
+  PaymentStatus,
   StockRequestStatus,
   prisma,
   type Prisma,
 } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import { notifyAssignedOrderDelivery } from "../../services/delivery-routing.service";
+import { notifyCustomerOrderStage } from "../../services/order-notification.service";
 import { transferStockToVendor } from "../../services/stock-transfer.service";
+import { completeOrderFulfillment } from "../../services/order-completion.service";
 
 const router: ExpressRouter = Router();
 const driverDocumentsDir = path.resolve(
@@ -107,6 +110,9 @@ const deliveryRelations = {
   },
   order: {
     include: {
+      branch: {
+        select: { id: true, name: true, address: true, lat: true, lng: true },
+      },
       customer: {
         select: {
           email: true,
@@ -124,20 +130,34 @@ type DeliveryWithRelations = Prisma.DeliveryGetPayload<{
 
 function normalizeDelivery(delivery: DeliveryWithRelations) {
   if (delivery.order) {
+    const pickup = delivery.order.branch;
     return {
       ...delivery,
+      pickupName:
+        pickup?.name ||
+        delivery.warehouse?.name ||
+        delivery.requesterOrganization?.name ||
+        "Бараа авах цэг",
       pickupAddress:
+        pickup?.address ||
         delivery.warehouse?.address ||
         delivery.requesterOrganization?.address ||
         delivery.requesterOrganization?.name ||
         "",
+      pickupPhone: delivery.requesterOrganization?.phone || "",
+      pickupLatitude: pickup?.lat ?? null,
+      pickupLongitude: pickup?.lng ?? null,
+      deliveryLatitude: delivery.order.customerLat,
+      deliveryLongitude: delivery.order.customerLng,
     };
   }
   const dispatch = delivery.stockDispatch;
   if (!dispatch) return delivery;
   return {
     ...delivery,
+    pickupName: dispatch.warehouse.name,
     pickupAddress: dispatch.warehouse.address,
+    pickupPhone: dispatch.warehouse.phone || "",
     orderId: delivery.stockDispatchId,
     order: {
       id: dispatch.id,
@@ -157,6 +177,29 @@ function normalizeDelivery(delivery: DeliveryWithRelations) {
       },
       items: dispatch.request.items.map((item) => ({
         productName: item.product.name,
+        product: { name: item.product.name },
+      })),
+    },
+  };
+}
+
+function normalizeCourierDelivery(delivery: DeliveryWithRelations) {
+  const normalized = normalizeDelivery(delivery);
+  if (!normalized.order) return normalized;
+  const order = normalized.order;
+  return {
+    ...normalized,
+    order: {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      shippingAddress: order.shippingAddress,
+      phone: order.phone,
+      customerLat: order.customerLat,
+      customerLng: order.customerLng,
+      customer: order.customer,
+      items: order.items.map((item) => ({
+        productName: item.productName,
+        quantity: "quantity" in item ? item.quantity : null,
         product: { name: item.product.name },
       })),
     },
@@ -245,7 +288,10 @@ router.get(
     try {
       const organizationId = (req as DeliveryRequest).deliveryOrganizationId!;
       const deliveries = await prisma.delivery.findMany({
-        where: { providerOrganizationId: organizationId },
+        where: {
+          providerOrganizationId: organizationId,
+          OR: [{ orderId: null }, { readyAt: { not: null } }],
+        },
         include: {
           ...deliveryRelations,
           courier: {
@@ -292,6 +338,7 @@ router.patch(
           where: {
             id: req.params.id,
             providerOrganizationId: organizationId,
+            OR: [{ orderId: null }, { readyAt: { not: null } }],
           },
           select: { id: true, warehouseId: true },
         }),
@@ -366,7 +413,6 @@ const requireDeliveryDriver = async (
   const membership = await prisma.organizationMember.findFirst({
     where: {
       userId: user.userId,
-      ...(user.organizationId ? { organizationId: user.organizationId } : {}),
       isActive: true,
       deletedAt: null,
       capabilities: { has: Capability.DELIVERY_DRIVER },
@@ -529,6 +575,13 @@ router.get(
       const deliveries = await prisma.delivery.findMany({
         where: {
           courierId,
+          OR: [
+            { orderId: null },
+            {
+              readyAt: { not: null },
+              order: { paymentStatus: PaymentStatus.PAID },
+            },
+          ],
         },
         include: deliveryRelations,
         orderBy: {
@@ -536,7 +589,7 @@ router.get(
         },
       });
 
-      res.json(deliveries.map(normalizeDelivery));
+      res.json(deliveries.map(normalizeCourierDelivery));
     } catch (error) {
       console.error("GET /deliveries error", error);
       res
@@ -557,6 +610,13 @@ router.get(
         where: {
           id: req.params.id,
           courierId: (req as DeliveryRequest).user.userId,
+          OR: [
+            { orderId: null },
+            {
+              readyAt: { not: null },
+              order: { paymentStatus: PaymentStatus.PAID },
+            },
+          ],
         },
         include: deliveryRelations,
       });
@@ -566,7 +626,7 @@ router.get(
         return;
       }
 
-      res.json(normalizeDelivery(delivery));
+      res.json(normalizeCourierDelivery(delivery));
     } catch (error) {
       console.error("GET /deliveries/:id error", error);
       res
@@ -593,6 +653,13 @@ router.post(
           id: req.params.id,
           courierId: (req as DeliveryRequest).user.userId,
           status: DeliveryStatus.DELIVERING,
+          OR: [
+            { orderId: null },
+            {
+              readyAt: { not: null },
+              order: { paymentStatus: PaymentStatus.PAID },
+            },
+          ],
         },
         select: { id: true },
       });
@@ -626,7 +693,17 @@ const updateStatusHandler = async (req: Request, res: Response) => {
     const courierId = authenticated.user.userId;
 
     const delivery = await prisma.delivery.findFirst({
-      where: { id: deliveryId, courierId },
+      where: {
+        id: deliveryId,
+        courierId,
+        OR: [
+          { orderId: null },
+          {
+            readyAt: { not: null },
+            order: { paymentStatus: PaymentStatus.PAID },
+          },
+        ],
+      },
     });
 
     if (!delivery) {
@@ -692,10 +769,18 @@ const updateStatusHandler = async (req: Request, res: Response) => {
         data: updateData,
       });
       if (delivery.orderId) {
-        await tx.order.update({
-          where: { id: delivery.orderId },
-          data: { status: orderStatus },
-        });
+        if (status === "COMPLETED") {
+          await completeOrderFulfillment(tx, {
+            orderId: delivery.orderId,
+            changedById: courierId,
+            note: "Хүргэгч хүлээлгэн өгсөн зургаар хүргэлтийг баталгаажуулсан",
+          });
+        } else {
+          await tx.order.update({
+            where: { id: delivery.orderId },
+            data: { status: orderStatus },
+          });
+        }
       } else if (delivery.stockDispatchId && status === "DELIVERING") {
         await tx.stockDispatch.update({
           where: { id: delivery.stockDispatchId },
@@ -737,6 +822,30 @@ const updateStatusHandler = async (req: Request, res: Response) => {
       }
       return nextDelivery;
     });
+
+    if (delivery.orderId && status === "PICKING") {
+      await notifyCustomerOrderStage(
+        delivery.orderId,
+        "COURIER_ACCEPTED",
+        { email: true },
+      ).catch((error: unknown) => {
+        console.error("Courier accepted notification failed", error);
+      });
+    } else if (delivery.orderId && status === "DELIVERING") {
+      await notifyCustomerOrderStage(
+        delivery.orderId,
+        "OUT_FOR_DELIVERY",
+        { email: true },
+      ).catch((error: unknown) => {
+        console.error("Out for delivery notification failed", error);
+      });
+    } else if (delivery.orderId && status === "COMPLETED") {
+      await notifyCustomerOrderStage(delivery.orderId, "DELIVERED", {
+        email: true,
+      }).catch((error: unknown) => {
+        console.error("Delivered order notification failed", error);
+      });
+    }
 
     res.json(updated);
   } catch (error) {

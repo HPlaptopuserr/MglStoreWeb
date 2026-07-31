@@ -45,7 +45,11 @@ import {
 } from "../../services/warehouse-access.service";
 import stockReturnRoutes from "./stock-returns.routes";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
-import { routeWarehouseDispatchDelivery } from "../../services/delivery-routing.service";
+import {
+  notifyAssignedOrderDelivery,
+  routeWarehouseDispatchDelivery,
+} from "../../services/delivery-routing.service";
+import { parseDeliveryPackageDetails } from "../../services/delivery-package.service";
 import { transferStockToVendor } from "../../services/stock-transfer.service";
 import { recommendationService } from "../../services/recommendations/recommendation.service";
 
@@ -2580,6 +2584,14 @@ router.patch(
           message: "Зөвхөн хүлээгдэж буй илгээмжийг баталгаажуулах боломжтой",
         });
       }
+      const packageResult = parseDeliveryPackageDetails(req.body);
+      if (packageResult.error || !packageResult.data) {
+        return res.status(400).json({
+          code: "DELIVERY_PACKAGE_DETAILS_REQUIRED",
+          message:
+            "Хайрцгийн тоо, нийт жин, урт, өргөн, өндөр болон оворын ангиллыг бүрэн оруулна уу.",
+        });
+      }
 
       const updated = await prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
@@ -2624,7 +2636,16 @@ router.patch(
               warehouse: { select: { id: true, name: true } },
             },
           });
-          await routeWarehouseDispatchDelivery(tx, id);
+          const delivery = await routeWarehouseDispatchDelivery(tx, id);
+          await tx.delivery.update({
+            where: { id: delivery.id },
+            data: {
+              ...packageResult.data,
+              handlingInstructions:
+                packageResult.data.handlingInstructions || null,
+              readyAt: new Date(),
+            },
+          });
           return confirmedDispatch;
         },
       );
@@ -2646,12 +2667,15 @@ router.patch(
   async (req, res) => {
     try {
       const { id } = req.params;
-      const { driverId, driverName, driverPhone, vehicleNumber, note } =
-        req.body;
+      const { partnershipId, courierId, note } = req.body as {
+        partnershipId?: string;
+        courierId?: string;
+        note?: string;
+      };
 
-      if (!driverName || !driverPhone) {
+      if (!partnershipId || !courierId) {
         return res.status(400).json({
-          message: "Жолоочийн нэр, утасны дугаар шаардлагатай",
+          message: "Хүргэлтийн компани болон хүргэгч сонгоно уу",
         });
       }
 
@@ -2671,37 +2695,119 @@ router.patch(
         });
       }
 
-      const updated = await prisma.stockDispatch.update({
-        where: { id },
-        data: {
-          status: "DISPATCHED",
-          driverId: driverId || null,
-          driverName,
-          driverPhone,
-          vehicleNumber: vehicleNumber || null,
-          note: note || dispatch.note,
-          dispatchedAt: new Date(),
+      const partnership = await prisma.deliveryPartnership.findFirst({
+        where: {
+          id: partnershipId,
+          warehouseId: dispatch.warehouseId,
+          status: "ACCEPTED",
+          courierAssignments: { some: { courierId, isActive: true } },
         },
-        include: {
-          request: {
-            include: {
-              items: {
-                include: {
-                  product: { select: { id: true, name: true, sku: true } },
+        select: {
+          id: true,
+          warehouseId: true,
+          providerOrganizationId: true,
+          courierAssignments: {
+            where: { courierId, isActive: true },
+            take: 1,
+            select: {
+              courier: {
+                select: {
+                  id: true,
+                  email: true,
+                  profile: {
+                    select: { fullName: true, phoneNumber: true },
+                  },
+                  deliveryDriverProfile: {
+                    select: { vehiclePlateNumber: true },
+                  },
                 },
               },
-              organization: { select: { id: true, name: true } },
             },
           },
-          warehouse: { select: { id: true, name: true } },
         },
       });
 
-      res.json(updated);
+      const courier = partnership?.courierAssignments[0]?.courier;
+      if (!partnership || !courier) {
+        return res.status(400).json({
+          message:
+            "Сонгосон хүргэлтийн компани эсвэл хүргэгч энэ агуулахад идэвхгүй байна",
+        });
+      }
+
+      const driverName = courier.profile?.fullName?.trim() || courier.email;
+      const driverPhone = courier.profile?.phoneNumber?.trim();
+      if (!driverPhone) {
+        return res.status(400).json({
+          message: "Сонгосон хүргэгчийн утасны дугаар бүртгэгдээгүй байна",
+        });
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const delivery = await tx.delivery.findUnique({
+          where: { stockDispatchId: id },
+          select: { id: true },
+        });
+        if (!delivery) {
+          throw new Error(
+            "Хүргэлтийн ажил үүсээгүй байна. Илгээмжийг дахин баталгаажуулна уу",
+          );
+        }
+
+        const updatedDispatch = await tx.stockDispatch.update({
+          where: { id },
+          data: {
+            status: "DISPATCHED",
+            driverId: courier.id,
+            driverName,
+            driverPhone,
+            vehicleNumber:
+              courier.deliveryDriverProfile?.vehiclePlateNumber || null,
+            note: note || dispatch.note,
+            dispatchedAt: new Date(),
+          },
+          include: {
+            request: {
+              include: {
+                items: {
+                  include: {
+                    product: { select: { id: true, name: true, sku: true } },
+                  },
+                },
+                organization: { select: { id: true, name: true } },
+              },
+            },
+            warehouse: { select: { id: true, name: true } },
+          },
+        });
+
+        await tx.delivery.update({
+          where: { id: delivery.id },
+          data: {
+            partnershipId: partnership.id,
+            providerOrganizationId: partnership.providerOrganizationId,
+            warehouseId: partnership.warehouseId,
+            courierId: courier.id,
+          },
+        });
+
+        return { deliveryId: delivery.id, dispatch: updatedDispatch };
+      });
+
+      await notifyAssignedOrderDelivery({
+        courierId: courier.id,
+        deliveryId: result.deliveryId,
+        orderNumber: dispatch.dispatchNumber,
+      });
+
+      res.json(result.dispatch);
     } catch (error) {
       console.error("dispatch error", error);
       res.status(500).json({
-        message: "Илгээмж илгээхэд алдаа гарлаа",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Илгээмж илгээхэд алдаа гарлаа",
       });
     }
   },
@@ -2711,6 +2817,11 @@ router.patch(
 router.patch(
   "/stock-requests/dispatches/:id/deliver",
   requireAuth,
+  (_req, res) =>
+    res.status(403).json({
+      message:
+        "Хүргэлтийг зөвхөн томилогдсон хүргэлтийн ажилтан баримттайгаар баталгаажуулна",
+    }),
   async (req, res) => {
     try {
       const { id } = req.params;

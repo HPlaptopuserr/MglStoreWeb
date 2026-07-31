@@ -47,8 +47,12 @@ export function QPayModal({
   const [confirmed, setConfirmed] = useState(false);
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState("");
-  const [countdown, setCountdown] = useState(300);
+  const [countdown, setCountdown] = useState(600);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isLocalDevelopment =
+    process.env.NODE_ENV === "development" &&
+    typeof window !== "undefined" &&
+    ["localhost", "127.0.0.1"].includes(window.location.hostname);
 
   const checkPayment = useCallback(async () => {
     try {
@@ -61,6 +65,11 @@ export function QPayModal({
         setConfirmed(true);
         setTimeout(onSuccess, 3500);
         return true;
+      }
+      if (data.status === "CANCELLED") {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setCountdown(0);
+        setError("Төлбөрийн хугацаа дууссан тул захиалга цуцлагдлаа.");
       }
     } catch {
       // Retry on the next poll.
@@ -105,6 +114,31 @@ export function QPayModal({
       );
     }
     setChecking(false);
+  };
+
+  const handleDevConfirm = async () => {
+    setChecking(true);
+    setError("");
+    try {
+      const res = await authFetch(
+        `${API}/store/checkout/${orderId}/dev-confirm`,
+        { method: "POST" },
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.message || "Dev төлбөр баталгаажуулахад алдаа гарлаа.");
+        return;
+      }
+      if (data.status === "PAID") {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setConfirmed(true);
+        setTimeout(onSuccess, 1500);
+      }
+    } catch {
+      setError("Dev төлбөр баталгаажуулах үед сүлжээний алдаа гарлаа.");
+    } finally {
+      setChecking(false);
+    }
   };
 
   const minutes = Math.floor(countdown / 60);
@@ -265,6 +299,21 @@ export function QPayModal({
                   </>
                 )}
               </button>
+
+              {isLocalDevelopment && (
+                <button
+                  onClick={handleDevConfirm}
+                  disabled={checking || countdown === 0}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300/50 bg-amber-400/15 py-3.5 text-sm font-black text-amber-100 transition-colors hover:bg-amber-400/25 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {checking ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : (
+                    <CheckCircle2 size={18} />
+                  )}
+                  DEV: Төлбөр төлөх
+                </button>
+              )}
 
               <p className="text-center text-xs text-white/45">
                 Төлбөр төлөгдсөний дараа төлөв автоматаар шалгагдана.

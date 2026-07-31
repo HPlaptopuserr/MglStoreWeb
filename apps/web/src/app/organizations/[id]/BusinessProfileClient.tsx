@@ -36,8 +36,13 @@ import {
   Play,
   QrCode,
   Video,
+  LoaderCircle,
 } from "lucide-react";
-import { getServicePostCategories, QrGenerator } from "@mgl/ui";
+import {
+  getServicePostCategories,
+  QrGenerator,
+  useInfiniteScroll,
+} from "@mgl/ui";
 import { getInvestorTierLabel } from "@mgl/types";
 import { resolveApiAssetUrl } from "@/lib/api";
 import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
@@ -1442,6 +1447,7 @@ function StorefrontCatalog({
     filterKey: "",
     count: STOREFRONT_PAGE_SIZE,
   });
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const categories = useMemo(
     () => [
       ...new Set(
@@ -1477,6 +1483,24 @@ function StorefrontCatalog({
     () => visibleProducts.slice(0, visibleCount),
     [visibleCount, visibleProducts],
   );
+  const hasMoreProducts = renderedProducts.length < visibleProducts.length;
+  const renderedProductCount = renderedProducts.length;
+
+  useEffect(() => {
+    setIsLoadingMore(false);
+  }, [renderedProductCount]);
+
+  const loadMoreRef = useInfiniteScroll({
+    enabled: hasMoreProducts && !isLoadingMore,
+    onLoadMore: () => {
+      setIsLoadingMore(true);
+      setPagination({
+        filterKey,
+        count: visibleCount + STOREFRONT_PAGE_SIZE,
+      });
+    },
+    rootMargin: "500px 0px",
+  });
 
   return (
     <section className="mt-4 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)]">
@@ -1557,23 +1581,22 @@ function StorefrontCatalog({
             ))}
           </div>
         )}
-        {renderedProducts.length < visibleProducts.length && (
-          <div className="mt-6 flex flex-col items-center gap-2 border-t border-slate-100 pt-5">
+        {hasMoreProducts && (
+          <div
+            ref={loadMoreRef}
+            className="mt-6 flex min-h-20 flex-col items-center justify-center gap-2 border-t border-slate-100 pt-5"
+            aria-live="polite"
+          >
             <p className="text-xs font-bold text-slate-400">
               {renderedProducts.length}/{visibleProducts.length} бараа
             </p>
-            <button
-              type="button"
-              onClick={() =>
-                setPagination({
-                  filterKey,
-                  count: visibleCount + STOREFRONT_PAGE_SIZE,
-                })
-              }
-              className="h-11 rounded-xl border border-slate-200 bg-white px-6 text-sm font-black text-slate-700 transition hover:border-orange-300 hover:text-orange-600"
-            >
-              Дараагийн бараануудыг харах
-            </button>
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+              <LoaderCircle
+                className="h-4 w-4 animate-spin text-orange-500"
+                aria-hidden="true"
+              />
+              Дараагийн бараануудыг ачаалж байна…
+            </div>
           </div>
         )}
       </div>

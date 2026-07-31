@@ -18,6 +18,10 @@ import {
   Filter,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
+import {
+  DeliveryPackageDialog,
+  type DeliveryPackageDetails,
+} from "@mgl/ui";
 
 interface OrderItem {
   name: string;
@@ -75,6 +79,12 @@ const STATUS_CONFIG: Record<
     bg: "bg-purple-50 border-purple-200",
     icon: ChefHat,
   },
+  PREPARING: {
+    label: "Бэлтгэж байна",
+    color: "text-orange-700",
+    bg: "bg-orange-50 border-orange-200",
+    icon: ChefHat,
+  },
   SHIPPING: {
     label: "Хүргэлтэнд гарсан",
     color: "text-indigo-700",
@@ -96,7 +106,14 @@ const STATUS_CONFIG: Record<
 };
 
 const NEXT_ACTION: Record<string, { label: string; color: string }> = {
-  CONFIRMED: { label: "Бэлтгэсэн", color: "bg-purple-600 hover:bg-purple-700" },
+  CONFIRMED: {
+    label: "Бэлтгэж эхлэх",
+    color: "bg-orange-600 hover:bg-orange-700",
+  },
+  PREPARING: {
+    label: "Бэлтгэж дууссан",
+    color: "bg-purple-600 hover:bg-purple-700",
+  },
   PREPARED: {
     label: "Хүргэлтэнд гаргах",
     color: "bg-indigo-600 hover:bg-indigo-700",
@@ -106,6 +123,7 @@ const NEXT_ACTION: Record<string, { label: string; color: string }> = {
 const FILTER_TABS = [
   { key: "", label: "Бүгд" },
   { key: "CONFIRMED", label: "Шинэ" },
+  { key: "PREPARING", label: "Бэлтгэж байна" },
   { key: "PREPARED", label: "Бэлтгэгдсэн" },
   { key: "SHIPPING", label: "Хүргэлтэнд" },
   { key: "COMPLETED", label: "Хүлээн авсан" },
@@ -206,6 +224,7 @@ export default function VendorOrdersPage() {
   const [filter, setFilter] = useState("");
   const [viewFilter, setViewFilter] = useState<ViewFilter>("all");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [packageOrder, setPackageOrder] = useState<VendorOrder | null>(null);
   const [deliverOrderId, setDeliverOrderId] = useState<string | null>(null);
   const [deliverCode, setDeliverCode] = useState("");
   const [deliverError, setDeliverError] = useState("");
@@ -269,11 +288,15 @@ export default function VendorOrdersPage() {
     fetchOrders();
   }, [fetchOrders, router]);
 
-  const handleAdvanceStatus = async (orderId: string) => {
+  const handleAdvanceStatus = async (
+    orderId: string,
+    packageDetails?: DeliveryPackageDetails,
+  ) => {
     setActionLoading(orderId);
     try {
       const res = await authFetch(`${API}/vendor/orders/${orderId}/status`, {
         method: "PATCH",
+        body: packageDetails ? JSON.stringify(packageDetails) : undefined,
       });
       const data = await res.json();
       if (!res.ok) {
@@ -281,6 +304,7 @@ export default function VendorOrdersPage() {
         setActionLoading(null);
         return;
       }
+      setPackageOrder(null);
       await fetchOrders();
     } catch {
       alert("Сүлжээний алдаа");
@@ -474,7 +498,7 @@ export default function VendorOrdersPage() {
 
             return (
               <div key={order.id} className="space-y-3">
-                <div
+    <div
                   className={`overflow-hidden rounded-2xl border shadow-sm sm:hidden ${cfg.bg}`}
                 >
                   <div className="space-y-3 bg-white p-4">
@@ -612,7 +636,11 @@ export default function VendorOrdersPage() {
                     <div className="grid gap-2">
                       {nextAction && (
                         <button
-                          onClick={() => handleAdvanceStatus(order.id)}
+                          onClick={() =>
+                            order.status === "PREPARED"
+                              ? setPackageOrder(order)
+                              : void handleAdvanceStatus(order.id)
+                          }
                           disabled={actionLoading === order.id}
                           className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white transition-colors disabled:opacity-50 ${nextAction.color}`}
                         >
@@ -866,7 +894,11 @@ export default function VendorOrdersPage() {
                     <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:flex-wrap">
                       {nextAction && (
                         <button
-                          onClick={() => handleAdvanceStatus(order.id)}
+                          onClick={() =>
+                            order.status === "PREPARED"
+                              ? setPackageOrder(order)
+                              : void handleAdvanceStatus(order.id)
+                          }
                           disabled={actionLoading === order.id}
                           className={`flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition-colors disabled:opacity-50 sm:w-auto ${nextAction.color}`}
                         >
@@ -899,6 +931,18 @@ export default function VendorOrdersPage() {
             );
           })}
         </div>
+      )}
+      {packageOrder && (
+        <DeliveryPackageDialog
+          orderNumber={packageOrder.orderNumber}
+          submitting={actionLoading === packageOrder.id}
+          onClose={() => {
+            if (!actionLoading) setPackageOrder(null);
+          }}
+          onSubmit={(details) =>
+            handleAdvanceStatus(packageOrder.id, details)
+          }
+        />
       )}
     </div>
   );

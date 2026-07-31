@@ -20,10 +20,20 @@ type UserPush = {
   data: Record<string, string>;
 };
 
+let missingFirebaseConfigurationLogged = false;
+
 function initializeFirebase(): boolean {
   if (getApps().length > 0) return true;
   const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
-  if (!raw) return false;
+  if (!raw) {
+    if (!missingFirebaseConfigurationLogged) {
+      console.warn(
+        "[push] FIREBASE_SERVICE_ACCOUNT_JSON тохируулаагүй тул device push алгасагдлаа",
+      );
+      missingFirebaseConfigurationLogged = true;
+    }
+    return false;
+  }
   try {
     initializeApp({ credential: cert(JSON.parse(raw)) });
     return true;

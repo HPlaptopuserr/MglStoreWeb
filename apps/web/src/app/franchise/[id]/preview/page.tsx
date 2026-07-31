@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
+  Coins,
   ExternalLink,
   Loader2,
   LockKeyhole,
@@ -27,6 +28,7 @@ import {
   formatMnt,
   getResponsiblePeople,
   type FranchiseProject,
+  type FranchiseMembershipAccess,
 } from "../../_lib/franchise";
 
 export default function FranchisePreviewPage() {
@@ -39,7 +41,9 @@ export default function FranchisePreviewPage() {
   const [error, setError] = useState("");
   const [paymentSession, setPaymentSession] =
     useState<PaidAccessPaymentSession | null>(null);
-  const hasMemberAccess = Boolean(user?.membership?.active || user?.isPrime);
+  const [membershipAccess, setMembershipAccess] =
+    useState<FranchiseMembershipAccess | null>(null);
+  const [mPointBalance, setMPointBalance] = useState(0);
 
   const projectId = Array.isArray(params.id) ? params.id[0] : params.id;
 
@@ -54,9 +58,13 @@ export default function FranchisePreviewPage() {
       try {
         setLoading(true);
         setError("");
-        const res = await fetch(`${API}/site-settings/franchise`, {
-          cache: "no-store",
-        });
+        const res = user
+          ? await authFetch(`${API}/site-settings/franchise`, {
+              cache: "no-store",
+            })
+          : await fetch(`${API}/site-settings/franchise`, {
+              cache: "no-store",
+            });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data.success) {
           throw new Error(
@@ -69,6 +77,8 @@ export default function FranchisePreviewPage() {
         );
         if (!match) throw new Error("Franchise олдсонгүй");
         setProject(match as FranchiseProject);
+        setMembershipAccess(data.membershipAccess || null);
+        setMPointBalance(Number(data.mPointBalance || 0));
       } catch (fetchError) {
         console.error(fetchError);
         setError(
@@ -82,7 +92,7 @@ export default function FranchisePreviewPage() {
     };
 
     fetchProject();
-  }, [projectId]);
+  }, [authFetch, projectId, user]);
 
   const openDetail = (invoiceId?: string) => {
     if (!project) return;
@@ -95,7 +105,7 @@ export default function FranchisePreviewPage() {
   const unlockProject = async () => {
     if (!project) return;
 
-    if (project.price && project.price > 0 && hasMemberAccess) {
+    if (project.hasPurchased) {
       openDetail();
       return;
     }
@@ -107,6 +117,20 @@ export default function FranchisePreviewPage() {
 
     try {
       setOpening(true);
+      if (membershipAccess?.eligible && membershipAccess.remainingCredits > 0) {
+        const unlockResponse = await authFetch(
+          `${API}/site-settings/franchise/${project.id}/membership-unlock`,
+          { method: "POST" },
+        );
+        const unlockData = await unlockResponse.json().catch(() => ({}));
+        if (!unlockResponse.ok || !unlockData.success) {
+          throw new Error(
+            unlockData.message || "Гишүүнчлэлийн эрхээр нээж чадсангүй",
+          );
+        }
+        openDetail();
+        return;
+      }
       const res = await authFetch(`${API}/site-settings/franchise/systemqr`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -135,6 +159,36 @@ export default function FranchisePreviewPage() {
         unlockError instanceof Error
           ? unlockError.message
           : "Төлбөрийн QR үүсгэхэд алдаа гарлаа",
+      );
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  const unlockWithMPoint = async () => {
+    if (!project) return;
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    try {
+      setOpening(true);
+      const response = await authFetch(
+        `${API}/site-settings/franchise/${project.id}/m-point-unlock`,
+        { method: "POST" },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "M Point-оор нээж чадсангүй");
+      }
+      setMPointBalance(Number(data.pointBalance || 0));
+      openDetail();
+    } catch (unlockError) {
+      alert(
+        unlockError instanceof Error
+          ? unlockError.message
+          : "M Point-оор нээж чадсангүй",
       );
     } finally {
       setOpening(false);
@@ -192,7 +246,7 @@ export default function FranchisePreviewPage() {
               )}
               <ProjectPdfPreview
                 project={project}
-                hasFullAccess={hasMemberAccess}
+                hasFullAccess={Boolean(project.hasPurchased)}
               />
             </div>
 
@@ -264,17 +318,35 @@ export default function FranchisePreviewPage() {
                 >
                   {opening ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : hasMemberAccess ? (
+                  ) : project.hasPurchased ||
+                    (membershipAccess?.remainingCredits || 0) > 0 ? (
                     <ExternalLink className="h-4 w-4" />
                   ) : (
                     <LockKeyhole className="h-4 w-4" />
                   )}
                   {opening
                     ? "Нээж байна..."
-                    : hasMemberAccess
-                      ? "Бүтнээр нээх"
-                      : "Төлж бүтнээр нээх"}
+                    : project.hasPurchased
+                      ? "Нээсэн төслөө үзэх"
+                      : (membershipAccess?.remainingCredits || 0) > 0
+                        ? "1 эрхээр бүтнээр нээх"
+                        : "Төлж бүтнээр нээх"}
                 </button>
+                {!project.hasPurchased && Number(project.price || 0) > 0 && (
+                  <button
+                    type="button"
+                    onClick={unlockWithMPoint}
+                    disabled={
+                      opening || mPointBalance < Number(project.price || 0)
+                    }
+                    className="mt-3 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-amber-200/30 bg-amber-200/10 px-5 text-sm font-black text-amber-100 transition hover:border-amber-200/60 hover:bg-amber-200/20 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Coins className="h-4 w-4" />
+                    {mPointBalance >= Number(project.price || 0)
+                      ? `${Number(project.price || 0).toLocaleString("mn-MN")} M Point-оор нээх`
+                      : `M Point хүрэлцэхгүй (${mPointBalance.toLocaleString("mn-MN")} M)`}
+                  </button>
+                )}
               </div>
 
               <button

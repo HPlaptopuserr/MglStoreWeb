@@ -1,8 +1,16 @@
 import { Router, type Router as ExpressRouter } from "express";
+import crypto from "crypto";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import JSZip from "jszip";
-import { InventoryReason, prisma, WarehouseType } from "@mgl/database";
+import {
+  DeliverySourceType,
+  InventoryReason,
+  OrderStatus,
+  PaymentStatus,
+  prisma,
+  WarehouseType,
+} from "@mgl/database";
 import { Permission, hasPlatformPermission, isFullAdmin } from "@mgl/types";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 import {
@@ -29,6 +37,12 @@ import {
   resolveMasterProduct,
 } from "../../services/master-product.service";
 import { getWarehouseAdminSummary } from "../../services/warehouse-admin-summary.service";
+import {
+  notifyAssignedOrderDelivery,
+  routeOrderDelivery,
+} from "../../services/delivery-routing.service";
+import { parseDeliveryPackageDetails } from "../../services/delivery-package.service";
+import { notifyCustomerOrderStage } from "../../services/order-notification.service";
 
 const router: ExpressRouter = Router();
 
@@ -36,6 +50,16 @@ const router: ExpressRouter = Router();
 // the actual ownership boundary used by the applications.
 const ADMIN_MANAGED_WAREHOUSE = WarehouseType.CENTRAL;
 const PARTNER_MANAGED_WAREHOUSE = WarehouseType.VENDOR_INTERNAL;
+
+const ONLINE_ORDER_STATUS_FLOW: Partial<Record<OrderStatus, OrderStatus>> = {
+  [OrderStatus.CONFIRMED]: OrderStatus.PREPARING,
+  [OrderStatus.PREPARING]: OrderStatus.PREPARED,
+  [OrderStatus.PREPARED]: OrderStatus.SHIPPING,
+};
+
+function createDeliveryCode(): string {
+  return String(crypto.randomInt(100000, 999999));
+}
 
 type ManualDispatchItemInput = {
   productId: string;
@@ -113,6 +137,33 @@ async function assertWarehouseMutationPermission(
     return false;
   }
   return true;
+}
+
+async function getAccessibleWarehouseIds(
+  req: Parameters<typeof requireAuth>[0],
+): Promise<string[]> {
+  const actor = (
+    req as typeof req & { user?: { userId?: string; role?: string } }
+  ).user;
+  if (!actor?.userId) return [];
+
+  const where = {
+    deletedAt: null,
+    isActive: true,
+    type: ADMIN_MANAGED_WAREHOUSE,
+    ...(!hasPlatformWarehouseAccess(actor.role)
+      ? {
+          setupTokens: {
+            some: { userId: actor.userId, usedAt: { not: null } },
+          },
+        }
+      : {}),
+  };
+  const warehouses = await prisma.warehouse.findMany({
+    where,
+    select: { id: true },
+  });
+  return warehouses.map((warehouse) => warehouse.id);
 }
 
 async function assertWarehouseCategoryPermission(
@@ -247,6 +298,698 @@ router.get("/warehouses", requireAuth, async (req, res) => {
     res.status(500).json({
       message: "Агуулахуудыг авахад алдаа гарлаа",
     });
+  }
+});
+
+router.get("/warehouse-online-orders", requireAuth, async (req, res) => {
+  try {
+    const warehouseIds = await getAccessibleWarehouseIds(req);
+    if (warehouseIds.length === 0) {
+      return res.status(403).json({ message: "Агуулахын эрх олдсонгүй" });
+    }
+
+    const status =
+      typeof req.query.status === "string" ? req.query.status : undefined;
+    const search =
+      typeof req.query.search === "string" ? req.query.search.trim() : "";
+    const take = Math.min(Math.max(Number(req.query.limit) || 50, 1), 100);
+
+    const orders = await prisma.order.findMany({
+      where: {
+        deletedAt: null,
+        paymentStatus: { in: [PaymentStatus.PENDING, PaymentStatus.PAID] },
+        ...(status &&
+        Object.values(OrderStatus).includes(status as OrderStatus)
+          ? { status: status as OrderStatus }
+          : {
+              status: {
+                in: [
+                  OrderStatus.PENDING,
+                  OrderStatus.CONFIRMED,
+                  OrderStatus.PREPARING,
+                  OrderStatus.PREPARED,
+                  OrderStatus.SHIPPING,
+                  OrderStatus.COMPLETED,
+                ],
+              },
+            }),
+        ...(search
+          ? {
+              OR: [
+                { orderNumber: { contains: search, mode: "insensitive" } },
+                { phone: { contains: search } },
+                {
+                  items: {
+                    some: {
+                      productName: { contains: search, mode: "insensitive" },
+                    },
+                  },
+                },
+              ],
+            }
+          : {}),
+        items: {
+          some: {
+            product: { managedByWarehouseId: { in: warehouseIds } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take,
+      include: {
+        organization: { select: { id: true, name: true } },
+        branch: { select: { id: true, name: true, address: true } },
+        payments: {
+          where: { status: "PAID" },
+          orderBy: { paidAt: "desc" },
+          take: 1,
+          select: {
+            method: true,
+            status: true,
+            amount: true,
+            providerRef: true,
+            paidAt: true,
+          },
+        },
+        customer: {
+          select: {
+            id: true,
+            email: true,
+            profile: { select: { fullName: true, phoneNumber: true } },
+          },
+        },
+        delivery: {
+          select: {
+            id: true,
+            status: true,
+            packageCount: true,
+            totalWeightKg: true,
+            packageLengthCm: true,
+            packageWidthCm: true,
+            packageHeightCm: true,
+            sizeCategory: true,
+            isFragile: true,
+            handlingInstructions: true,
+            readyAt: true,
+            partnershipId: true,
+            providerOrganization: { select: { id: true, name: true } },
+            courier: {
+              select: {
+                id: true,
+                email: true,
+                profile: {
+                  select: { fullName: true, phoneNumber: true },
+                },
+              },
+            },
+          },
+        },
+        items: {
+          select: {
+            id: true,
+            productName: true,
+            quantity: true,
+            price: true,
+            subtotal: true,
+            product: {
+              select: {
+                id: true,
+                sku: true,
+                barcode: true,
+                unit: true,
+                managedByWarehouseId: true,
+                images: { select: { url: true }, take: 1 },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const visibleOrders = orders
+      .map((order) => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        isOrderRequest:
+          order.status === OrderStatus.PENDING &&
+          order.paymentStatus === PaymentStatus.PENDING,
+        paymentMethod: order.paymentMethod,
+        subtotal: Number(order.subtotal),
+        discountAmount: Number(order.discountAmount),
+        deliveryFee: Number(order.deliveryFee),
+        total: Number(order.total),
+        phone: order.phone,
+        shippingAddress: order.shippingAddress,
+        note: order.note,
+        createdAt: order.createdAt.toISOString(),
+        customerLocation:
+          order.customerLat !== null && order.customerLng !== null
+            ? { lat: order.customerLat, lng: order.customerLng }
+            : null,
+        payment: order.payments[0]
+          ? {
+              ...order.payments[0],
+              amount: Number(order.payments[0].amount),
+              paidAt: order.payments[0].paidAt?.toISOString() || null,
+            }
+          : null,
+        organization: order.organization,
+        branch: order.branch,
+        customer: {
+          id: order.customer.id,
+          name: order.customer.profile?.fullName || order.customer.email,
+          email: order.customer.email,
+          phone: order.customer.profile?.phoneNumber || order.phone,
+        },
+        delivery: order.delivery
+          ? {
+              ...order.delivery,
+              totalWeightKg: order.delivery.totalWeightKg
+                ? Number(order.delivery.totalWeightKg)
+                : null,
+              packageLengthCm: order.delivery.packageLengthCm
+                ? Number(order.delivery.packageLengthCm)
+                : null,
+              packageWidthCm: order.delivery.packageWidthCm
+                ? Number(order.delivery.packageWidthCm)
+                : null,
+              packageHeightCm: order.delivery.packageHeightCm
+                ? Number(order.delivery.packageHeightCm)
+                : null,
+              readyAt: order.delivery.readyAt?.toISOString() || null,
+            }
+          : null,
+        items: order.items
+          .filter((item) =>
+            warehouseIds.includes(item.product.managedByWarehouseId || ""),
+          )
+          .map((item) => ({
+            id: item.id,
+            productId: item.product.id,
+            name: item.productName,
+            sku: item.product.sku,
+            barcode: item.product.barcode,
+            unit: item.product.unit,
+            imageUrl: item.product.images[0]?.url || null,
+            quantity: item.quantity,
+            price: Number(item.price),
+            subtotal: Number(item.subtotal),
+          })),
+      }))
+      .filter((order) => order.items.length > 0);
+
+    return res.json({ orders: visibleOrders, total: visibleOrders.length });
+  } catch (error) {
+    console.error("warehouse online orders error", error);
+    return res
+      .status(500)
+      .json({ message: "Онлайн захиалга авахад алдаа гарлаа" });
+  }
+});
+
+router.patch(
+  "/warehouse-online-orders/:orderId/status",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const actor = (
+        req as typeof req & { user?: { userId?: string; role?: string } }
+      ).user;
+      if (!actor?.userId) {
+        return res.status(403).json({ message: "Агуулахын эрх олдсонгүй" });
+      }
+      const warehouseIds = await getAccessibleWarehouseIds(req);
+      const order = await prisma.order.findFirst({
+        where: {
+          id: req.params.orderId,
+          deletedAt: null,
+          paymentStatus: "PAID",
+          items: {
+            some: {
+              product: { managedByWarehouseId: { in: warehouseIds } },
+            },
+          },
+        },
+        select: {
+          id: true,
+          orderNumber: true,
+          status: true,
+        },
+      });
+      if (!order) {
+        return res.status(404).json({ message: "Захиалга олдсонгүй" });
+      }
+
+      const nextStatus = ONLINE_ORDER_STATUS_FLOW[order.status];
+      if (!nextStatus) {
+        return res.status(409).json({
+          message: `"${order.status}" төлвөөс агуулах шилжүүлэх боломжгүй`,
+        });
+      }
+
+      const parsedPackage =
+        nextStatus === OrderStatus.SHIPPING
+          ? parseDeliveryPackageDetails(req.body)
+          : null;
+      if (parsedPackage?.error) {
+        return res.status(400).json({
+          code: "DELIVERY_PACKAGE_DETAILS_REQUIRED",
+          message:
+            "Хайрцгийн тоо, жин, урт, өргөн, өндөр болон оворын ангиллыг бүрэн оруулна уу.",
+        });
+      }
+      const deliveryCode =
+        nextStatus === OrderStatus.SHIPPING ? createDeliveryCode() : undefined;
+
+      const assignment = await prisma.$transaction(async (tx) => {
+        await tx.order.update({
+          where: { id: order.id },
+          data: { status: nextStatus, ...(deliveryCode ? { deliveryCode } : {}) },
+        });
+        await tx.orderHistory.create({
+          data: {
+            orderId: order.id,
+            fromStatus: order.status,
+            toStatus: nextStatus,
+            changedById: actor.userId!,
+            note:
+              nextStatus === OrderStatus.PREPARING
+                ? "Агуулах барааг бэлтгэж эхэлсэн"
+                : nextStatus === OrderStatus.PREPARED
+                  ? "Агуулах барааг бэлтгэж дууссан"
+                  : "Агуулах багцын мэдээллийг баталж хүргэлтэд шилжүүлсэн",
+          },
+        });
+        if (nextStatus !== OrderStatus.SHIPPING) return null;
+
+        const delivery = await routeOrderDelivery(tx, {
+          orderId: order.id,
+          sourceType: DeliverySourceType.WEBSITE_ORDER,
+        });
+        const updated = await tx.delivery.update({
+          where: { id: delivery.id },
+          data: {
+            ...parsedPackage?.data,
+            handlingInstructions:
+              parsedPackage?.data?.handlingInstructions || null,
+            readyAt: new Date(),
+          },
+          select: { id: true, courierId: true },
+        });
+        return updated;
+      });
+
+      if (assignment) {
+        await notifyAssignedOrderDelivery({
+          courierId: assignment.courierId,
+          deliveryId: assignment.id,
+          orderNumber: order.orderNumber,
+        });
+      }
+      if (nextStatus === OrderStatus.PREPARING) {
+        await notifyCustomerOrderStage(order.id, "PREPARING", {
+          email: true,
+        }).catch((error: unknown) => {
+          console.error("Warehouse preparing notification failed", error);
+        });
+      }
+
+      return res.json({
+        orderId: order.id,
+        previousStatus: order.status,
+        newStatus: nextStatus,
+      });
+    } catch (error) {
+      console.error("warehouse online order status error", error);
+      return res
+        .status(500)
+        .json({ message: "Захиалгын төлөв шинэчлэхэд алдаа гарлаа" });
+    }
+  },
+);
+
+router.get(
+  "/warehouse-delivery-assignment-options",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const warehouseIds = await getAccessibleWarehouseIds(req);
+      if (warehouseIds.length === 0) {
+        return res.status(403).json({ message: "Агуулахын эрх олдсонгүй" });
+      }
+      const partnerships = await prisma.deliveryPartnership.findMany({
+        where: {
+          warehouseId: { in: warehouseIds },
+          status: "ACCEPTED",
+        },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          warehouseId: true,
+          providerOrganization: { select: { id: true, name: true } },
+          courierAssignments: {
+            where: {
+              isActive: true,
+              courier: { isActive: true, deletedAt: null },
+            },
+            orderBy: { createdAt: "asc" },
+            select: {
+              courier: {
+                select: {
+                  id: true,
+                  email: true,
+                  profile: {
+                    select: { fullName: true, phoneNumber: true },
+                  },
+                  deliveryDriverProfile: {
+                    select: { vehiclePlateNumber: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      return res.json({
+        partnerships: partnerships.map((partnership) => ({
+          id: partnership.id,
+          warehouseId: partnership.warehouseId,
+          provider: partnership.providerOrganization,
+          couriers: partnership.courierAssignments.map(
+            (assignment) => assignment.courier,
+          ),
+        })),
+      });
+    } catch (error) {
+      console.error("warehouse delivery assignment options error", error);
+      return res
+        .status(500)
+        .json({ message: "Хүргэлтийн сонголт авахад алдаа гарлаа" });
+    }
+  },
+);
+
+router.patch(
+  "/warehouse-online-orders/:orderId/assignment",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const warehouseIds = await getAccessibleWarehouseIds(req);
+      const partnershipId =
+        typeof req.body.partnershipId === "string"
+          ? req.body.partnershipId
+          : "";
+      const courierId =
+        typeof req.body.courierId === "string" ? req.body.courierId : "";
+      if (!partnershipId || !courierId) {
+        return res
+          .status(400)
+          .json({ message: "Хүргэлтийн компани болон хүргэгч сонгоно уу" });
+      }
+
+      const [delivery, partnership] = await Promise.all([
+        prisma.delivery.findFirst({
+          where: {
+            orderId: req.params.orderId,
+            sourceType: DeliverySourceType.WEBSITE_ORDER,
+            readyAt: { not: null },
+            order: {
+              items: {
+                some: {
+                  product: { managedByWarehouseId: { in: warehouseIds } },
+                },
+              },
+            },
+          },
+          select: { id: true, order: { select: { orderNumber: true } } },
+        }),
+        prisma.deliveryPartnership.findFirst({
+          where: {
+            id: partnershipId,
+            warehouseId: { in: warehouseIds },
+            status: "ACCEPTED",
+          },
+          select: {
+            id: true,
+            warehouseId: true,
+            providerOrganizationId: true,
+            courierAssignments: {
+              where: { courierId, isActive: true },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        }),
+      ]);
+      if (!delivery) {
+        return res.status(409).json({
+          message:
+            "Багцын мэдээллийг баталж хүргэлтийн ажил үүсгэсний дараа хуваарилна.",
+        });
+      }
+      if (!partnership || partnership.courierAssignments.length === 0) {
+        return res.status(400).json({
+          message:
+            "Сонгосон компани эсвэл хүргэгч энэ агуулахад идэвхтэй бүртгэлгүй байна",
+        });
+      }
+
+      const updated = await prisma.delivery.update({
+        where: { id: delivery.id },
+        data: {
+          partnershipId: partnership.id,
+          providerOrganizationId: partnership.providerOrganizationId,
+          warehouseId: partnership.warehouseId,
+          courierId,
+        },
+        select: {
+          id: true,
+          providerOrganization: { select: { id: true, name: true } },
+          courier: {
+            select: {
+              id: true,
+              email: true,
+              profile: { select: { fullName: true, phoneNumber: true } },
+            },
+          },
+        },
+      });
+      await notifyAssignedOrderDelivery({
+        courierId,
+        deliveryId: updated.id,
+        orderNumber: delivery.order?.orderNumber || req.params.orderId,
+      });
+      return res.json(updated);
+    } catch (error) {
+      console.error("warehouse online order assignment error", error);
+      return res
+        .status(500)
+        .json({ message: "Хүргэлт хуваарилахад алдаа гарлаа" });
+    }
+  },
+);
+
+router.get("/warehouse-notifications", requireAuth, async (req, res) => {
+  try {
+    const actor = (
+      req as typeof req & { user?: { userId?: string; role?: string } }
+    ).user;
+    if (!actor?.userId) {
+      return res.status(403).json({ message: "Агуулахын эрх олдсонгүй" });
+    }
+
+    const warehouseWhere: any = {
+      deletedAt: null,
+      isActive: true,
+      type: ADMIN_MANAGED_WAREHOUSE,
+    };
+    if (!hasPlatformWarehouseAccess(actor.role)) {
+      warehouseWhere.setupTokens = {
+        some: { userId: actor.userId, usedAt: { not: null } },
+      };
+    }
+
+    const warehouses = await prisma.warehouse.findMany({
+      where: warehouseWhere,
+      select: { id: true },
+      take: 25,
+    });
+    const warehouseIds = warehouses.map((warehouse) => warehouse.id);
+    if (warehouseIds.length === 0) {
+      return res.json({ notifications: [], generatedAt: new Date().toISOString() });
+    }
+
+    const expiryLimit = new Date();
+    expiryLimit.setDate(expiryLimit.getDate() + 7);
+
+    const [inventoryCandidates, pendingRequests, expiringInventory, paidOrders] =
+      await Promise.all([
+        prisma.warehouseInventory.findMany({
+          where: {
+            warehouseId: { in: warehouseIds },
+            OR: [{ quantity: 0 }, { minQuantity: { gt: 0 } }],
+          },
+          orderBy: [{ quantity: "asc" }, { updatedAt: "desc" }],
+          take: 100,
+          select: {
+            id: true,
+            quantity: true,
+            minQuantity: true,
+            updatedAt: true,
+            warehouse: { select: { name: true } },
+            product: { select: { name: true, sku: true } },
+          },
+        }),
+        prisma.warehouseStockRequest.findMany({
+          where: {
+            warehouseId: { in: warehouseIds },
+            status: "PENDING",
+          },
+          orderBy: { requestedAt: "desc" },
+          take: 10,
+          select: {
+            id: true,
+            requestNumber: true,
+            requestedAt: true,
+            organization: { select: { name: true } },
+          },
+        }),
+        prisma.warehouseInventory.findMany({
+          where: {
+            warehouseId: { in: warehouseIds },
+            quantity: { gt: 0 },
+            expiryDate: { gte: new Date(), lte: expiryLimit },
+          },
+          orderBy: { expiryDate: "asc" },
+          take: 10,
+          select: {
+            id: true,
+            expiryDate: true,
+            warehouse: { select: { name: true } },
+            product: { select: { name: true, sku: true } },
+          },
+        }),
+        prisma.order.findMany({
+          where: {
+            deletedAt: null,
+            paymentStatus: "PAID",
+            status: OrderStatus.CONFIRMED,
+            items: {
+              some: {
+                product: { managedByWarehouseId: { in: warehouseIds } },
+              },
+            },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 10,
+          select: {
+            id: true,
+            orderNumber: true,
+            createdAt: true,
+            items: {
+              where: {
+                product: { managedByWarehouseId: { in: warehouseIds } },
+              },
+              select: { quantity: true },
+            },
+            payments: {
+              where: { status: "PAID" },
+              orderBy: { paidAt: "desc" },
+              take: 1,
+              select: { paidAt: true },
+            },
+          },
+        }),
+      ]);
+
+    const stockNotifications = inventoryCandidates
+      .filter(
+        (item) =>
+          item.quantity === 0 ||
+          (item.minQuantity > 0 && item.quantity <= item.minQuantity),
+      )
+      .slice(0, 10)
+      .map((item) => ({
+        id: `stock:${item.id}:${item.quantity}`,
+        type: item.quantity === 0 ? "OUT_OF_STOCK" : "LOW_STOCK",
+        severity: item.quantity === 0 ? "critical" : "warning",
+        title:
+          item.quantity === 0
+            ? "Барааны нөөц дууссан"
+            : "Барааны нөөц багассан",
+        message:
+          item.quantity === 0
+            ? `${item.product.name} — үлдэгдэл дууссан`
+            : `${item.product.name} — ${item.quantity}/${item.minQuantity} үлдэгдэл`,
+        detail: `${item.warehouse.name}${item.product.sku ? ` · ${item.product.sku}` : ""}`,
+        href: "/inventory?status=low",
+        occurredAt: item.updatedAt.toISOString(),
+      }));
+
+    const requestNotifications = pendingRequests.map((request) => ({
+      id: `request:${request.id}`,
+      type: "STOCK_REQUEST",
+      severity: "info",
+      title: "Шинэ барааны хүсэлт",
+      message: `${request.organization.name} · ${request.requestNumber}`,
+      detail: "Хянаж шийдвэрлэх шаардлагатай",
+      href: "/dispatch-orders",
+      occurredAt: request.requestedAt.toISOString(),
+    }));
+
+    const expiryNotifications = expiringInventory.map((item) => ({
+      id: `expiry:${item.id}:${item.expiryDate?.toISOString()}`,
+      type: "EXPIRING",
+      severity: "warning",
+      title: "Хугацаа дуусах гэж байна",
+      message: item.product.name,
+      detail: `${item.warehouse.name}${item.product.sku ? ` · ${item.product.sku}` : ""}`,
+      href: "/inventory?status=expiring",
+      occurredAt: item.expiryDate?.toISOString() || new Date().toISOString(),
+    }));
+
+    const orderNotifications = paidOrders.map((order) => {
+      const itemCount = order.items.reduce(
+        (total, item) => total + item.quantity,
+        0,
+      );
+      return {
+        id: `online-order:${order.id}`,
+        type: "ONLINE_ORDER",
+        severity: "info",
+        title: "Шинэ онлайн захиалга",
+        message: `${order.orderNumber} · ${itemCount} ширхэг бараа`,
+        detail: "Төлбөр баталгаажсан · Бэлтгэх шаардлагатай",
+        href: "/online-orders",
+        occurredAt: (
+          order.payments[0]?.paidAt || order.createdAt
+        ).toISOString(),
+      };
+    });
+
+    const notifications = [
+      ...orderNotifications,
+      ...stockNotifications,
+      ...requestNotifications,
+      ...expiryNotifications,
+    ]
+      .sort(
+        (left, right) =>
+          new Date(right.occurredAt).getTime() -
+          new Date(left.occurredAt).getTime(),
+      )
+      .slice(0, 20);
+
+    res.setHeader("Cache-Control", "private, max-age=15");
+    return res.json({
+      notifications,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("warehouse notifications error", error);
+    return res.status(500).json({ message: "Мэдэгдэл авахад алдаа гарлаа" });
   }
 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   Smartphone,
   Building2,
@@ -21,10 +21,33 @@ import {
   MapPin,
   Navigation,
 } from "lucide-react";
-import Image from "next/image";
 import { API, adminFetch } from "@/lib/api";
 
 const MAX_BANNERS = 6;
+const MAX_WIDE_BANNERS = 8;
+
+type StoreBanner = {
+  url: string;
+  caption: string;
+  promotionType: PromotionType;
+};
+
+type PromotionType = "all" | "1+1" | "3+1" | "2+1";
+
+type WideBanner = {
+  url: string;
+  link: string;
+};
+
+const PROMOTION_TYPES: ReadonlyArray<{
+  value: PromotionType;
+  label: string;
+}> = [
+  { value: "all", label: "Ердийн" },
+  { value: "1+1", label: "1+1" },
+  { value: "3+1", label: "3+1" },
+  { value: "2+1", label: "2+1" },
+];
 
 type BusinessCategory = {
   id: string;
@@ -53,15 +76,6 @@ type StoreBranchLocation = {
   };
 };
 
-type StoreProduct = {
-  id: string;
-  name: string;
-  price: number;
-  images?: { id?: string; url: string }[];
-  organization?: { id: string; name: string } | null;
-  businessCategory?: { id: string; name: string } | null;
-};
-
 /* ── icon helper: data URI / URL → <img>, otherwise emoji/text ── */
 function CatIcon({ icon, size = 20 }: { icon: string | null; size?: number }) {
   if (!icon) return <Package size={size} className="text-slate-400" />;
@@ -82,12 +96,10 @@ function CatIcon({ icon, size = 20 }: { icon: string | null; size?: number }) {
 }
 
 export function MglStoreTab() {
-  const [banners, setBanners] = useState<string[]>([]);
+  const [banners, setBanners] = useState<StoreBanner[]>([]);
+  const [wideBanners, setWideBanners] = useState<WideBanner[]>([]);
   const [allCategories, setAllCategories] = useState<BusinessCategory[]>([]);
-  const [allProducts, setAllProducts] = useState<StoreProduct[]>([]);
   const [selectedCatIds, setSelectedCatIds] = useState<string[]>([]);
-  const [featuredProductIds, setFeaturedProductIds] = useState<string[]>([]);
-  const [productSearch, setProductSearch] = useState("");
   const [showLocations, setShowLocations] = useState(true);
   const [branchLocations, setBranchLocations] = useState<StoreBranchLocation[]>(
     [],
@@ -96,37 +108,64 @@ export function MglStoreTab() {
   const [branchLoading, setBranchLoading] = useState(true);
   const [branchError, setBranchError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
+  const [uploadingWideBanner, setUploadingWideBanner] = useState(false);
+  const [bannerError, setBannerError] = useState("");
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [previewBannerIdx, setPreviewBannerIdx] = useState(0);
   const [expandedParents, setExpandedParents] = useState<Set<string>>(
     new Set(),
   );
   const fileRef = useRef<HTMLInputElement>(null);
+  const wideBannerFileRef = useRef<HTMLInputElement>(null);
 
   /* ── load ALL categories (flat) ── */
   useEffect(() => {
     Promise.all([
-      adminFetch(`${API}/site-settings`).then((r) => (r.ok ? r.json() : {})),
+      adminFetch(`${API}/site-settings/admin`, {
+        cache: "no-store",
+      }).then((r) => (r.ok ? r.json() : {})),
       fetch(`${API}/business-categories`).then((r) => (r.ok ? r.json() : [])),
-      adminFetch(`${API}/products?limit=100`).then((r) =>
-        r.ok ? r.json() : [],
-      ),
     ])
       .then(
-        ([
-          settings,
-          cats,
-          products,
-        ]: [
-          Record<string, string>,
-          BusinessCategory[],
-          StoreProduct[] | { products?: StoreProduct[]; data?: StoreProduct[] },
-        ]) => {
+        ([settings, cats]: [Record<string, string>, BusinessCategory[]]) => {
           if (settings["app-promo-banners"]) {
             try {
               const p = JSON.parse(settings["app-promo-banners"]);
-              if (Array.isArray(p)) setBanners(p);
+              if (Array.isArray(p)) {
+                setBanners(
+                  p
+                    .map((item): StoreBanner | null => {
+                      if (typeof item === "string") {
+                        return {
+                          url: item,
+                          caption: "",
+                          promotionType: "all",
+                        };
+                      }
+                      if (
+                        item &&
+                        typeof item === "object" &&
+                        typeof item.url === "string"
+                      ) {
+                        return {
+                          url: item.url,
+                          caption:
+                            typeof item.caption === "string"
+                              ? item.caption
+                              : "",
+                          promotionType: PROMOTION_TYPES.some(
+                            (type) => type.value === item.promotionType,
+                          )
+                            ? (item.promotionType as PromotionType)
+                            : "all",
+                        };
+                      }
+                      return null;
+                    })
+                    .filter((item): item is StoreBanner => item !== null),
+                );
+              }
             } catch {}
           }
           if (settings["app-home-categories"]) {
@@ -135,10 +174,37 @@ export function MglStoreTab() {
               if (Array.isArray(p)) setSelectedCatIds(p);
             } catch {}
           }
-          if (settings["app-featured-products"]) {
+          if (settings["app-wide-banners"]) {
             try {
-              const p = JSON.parse(settings["app-featured-products"]);
-              if (Array.isArray(p)) setFeaturedProductIds(p);
+              const parsed: unknown = JSON.parse(
+                settings["app-wide-banners"],
+              );
+              if (Array.isArray(parsed)) {
+                setWideBanners(
+                  parsed
+                    .map((item): WideBanner | null => {
+                      if (typeof item === "string") {
+                        return { url: item, link: "" };
+                      }
+                      if (
+                        item &&
+                        typeof item === "object" &&
+                        "url" in item &&
+                        typeof item.url === "string"
+                      ) {
+                        return {
+                          url: item.url,
+                          link:
+                            "link" in item && typeof item.link === "string"
+                              ? item.link
+                              : "",
+                        };
+                      }
+                      return null;
+                    })
+                    .filter((item): item is WideBanner => item !== null),
+                );
+              }
             } catch {}
           }
           const showLocationsRaw =
@@ -150,15 +216,6 @@ export function MglStoreTab() {
             ),
           );
           setAllCategories(cats);
-          setAllProducts(
-            Array.isArray(products)
-              ? products
-              : Array.isArray(products.products)
-                ? products.products
-                : Array.isArray(products.data)
-                  ? products.data
-                  : [],
-          );
         },
       )
       .catch(() => {})
@@ -195,18 +252,62 @@ export function MglStoreTab() {
     });
 
   /* ── banner ── */
-  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || banners.length >= MAX_BANNERS) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      setBanners((p) => [...p, ev.target?.result as string]);
-    };
-    reader.readAsDataURL(file);
     e.target.value = "";
+    if (!file || banners.length >= MAX_BANNERS || uploadingBanner) return;
+
+    setUploadingBanner(true);
+    setBannerError("");
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const response = await adminFetch(`${API}/site-settings/banner-upload`, {
+        method: "POST",
+        body: formData,
+      });
+      const body = (await response.json().catch(() => null)) as {
+        url?: string;
+        message?: string;
+      } | null;
+      if (!response.ok || !body?.url) {
+        throw new Error(body?.message || "Banner upload хийхэд алдаа гарлаа");
+      }
+      setBanners((current) =>
+        current.length < MAX_BANNERS
+          ? [
+              ...current,
+              { url: body.url!, caption: "", promotionType: "all" },
+            ]
+          : current,
+      );
+    } catch (error) {
+      setBannerError(
+        error instanceof Error
+          ? error.message
+          : "Banner upload хийхэд алдаа гарлаа",
+      );
+    } finally {
+      setUploadingBanner(false);
+    }
   };
   const removeBanner = (i: number) =>
     setBanners((p) => p.filter((_, k) => k !== i));
+  const updateBannerCaption = (i: number, caption: string) =>
+    setBanners((current) =>
+      current.map((banner, index) =>
+        index === i ? { ...banner, caption } : banner,
+      ),
+    );
+  const updateBannerPromotionType = (
+    i: number,
+    promotionType: PromotionType,
+  ) =>
+    setBanners((current) =>
+      current.map((banner, index) =>
+        index === i ? { ...banner, promotionType } : banner,
+      ),
+    );
   const swapBanners = (i: number, j: number) => {
     if (j < 0 || j >= banners.length) return;
     setBanners((p) => {
@@ -215,6 +316,56 @@ export function MglStoreTab() {
       return n;
     });
   };
+
+  const handleWideBannerFile = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (
+      !file ||
+      wideBanners.length >= MAX_WIDE_BANNERS ||
+      uploadingWideBanner
+    ) {
+      return;
+    }
+    setUploadingWideBanner(true);
+    setBannerError("");
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const response = await adminFetch(`${API}/site-settings/banner-upload`, {
+        method: "POST",
+        body: formData,
+      });
+      const body = (await response.json().catch(() => null)) as {
+        url?: string;
+        message?: string;
+      } | null;
+      if (!response.ok || !body?.url) {
+        throw new Error(body?.message || "Өргөн banner upload амжилтгүй");
+      }
+      setWideBanners((current) => [
+        ...current,
+        { url: body.url!, link: "" },
+      ]);
+    } catch (error) {
+      setBannerError(
+        error instanceof Error ? error.message : "Өргөн banner upload амжилтгүй",
+      );
+    } finally {
+      setUploadingWideBanner(false);
+    }
+  };
+
+  const moveWideBanner = (index: number, direction: -1 | 1) =>
+    setWideBanners((current) => {
+      const target = index + direction;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
 
   /* ── category ── */
   const toggleCat = (id: string) =>
@@ -232,23 +383,9 @@ export function MglStoreTab() {
     });
   };
 
-  const toggleFeaturedProduct = (id: string) =>
-    setFeaturedProductIds((p) =>
-      p.includes(id) ? p.filter((productId) => productId !== id) : [...p, id],
-    );
-  const moveFeaturedProduct = (id: string, dir: -1 | 1) => {
-    setFeaturedProductIds((p) => {
-      const i = p.indexOf(id);
-      const t = i + dir;
-      if (t < 0 || t >= p.length) return p;
-      const n = [...p];
-      [n[i], n[t]] = [n[t], n[i]];
-      return n;
-    });
-  };
-
   /* ── save ── */
   const handleSave = useCallback(async () => {
+    if (uploadingBanner || uploadingWideBanner) return;
     setSaving(true);
     try {
       const response = await adminFetch(`${API}/site-settings`, {
@@ -256,8 +393,8 @@ export function MglStoreTab() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           "app-promo-banners": JSON.stringify(banners),
+          "app-wide-banners": JSON.stringify(wideBanners),
           "app-home-categories": JSON.stringify(selectedCatIds),
-          "app-featured-products": JSON.stringify(featuredProductIds),
           "app-show-branch-locations": showLocations ? "true" : "false",
         }),
       });
@@ -271,29 +408,18 @@ export function MglStoreTab() {
       alert(error instanceof Error ? error.message : "Хадгалахад алдаа гарлаа");
     }
     setSaving(false);
-  }, [banners, featuredProductIds, selectedCatIds, showLocations]);
+  }, [
+    banners,
+    wideBanners,
+    selectedCatIds,
+    showLocations,
+    uploadingBanner,
+    uploadingWideBanner,
+  ]);
 
   const selectedCats = selectedCatIds
     .map((id) => allCategories.find((c) => c.id === id))
     .filter(Boolean) as BusinessCategory[];
-  const selectedFeaturedProducts = featuredProductIds
-    .map((id) => allProducts.find((p) => p.id === id))
-    .filter(Boolean) as StoreProduct[];
-  const normalizedProductSearch = productSearch.trim().toLowerCase();
-  const filteredProducts = useMemo(() => {
-    if (!normalizedProductSearch) return allProducts;
-    return allProducts.filter((product) => {
-      const haystack = [
-        product.name,
-        product.organization?.name,
-        product.businessCategory?.name,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(normalizedProductSearch);
-    });
-  }, [allProducts, normalizedProductSearch]);
   const normalizedBranchSearch = branchSearch.trim().toLowerCase();
   const filteredBranchLocations = branchLocations.filter((branch) => {
     if (!normalizedBranchSearch) return true;
@@ -308,14 +434,6 @@ export function MglStoreTab() {
       .toLowerCase();
     return haystack.includes(normalizedBranchSearch);
   });
-
-  const nextBanner = () =>
-    setPreviewBannerIdx((i) => (i + 1) % Math.max(banners.length, 1));
-  const prevBanner = () =>
-    setPreviewBannerIdx(
-      (i) =>
-        (i - 1 + Math.max(banners.length, 1)) % Math.max(banners.length, 1),
-    );
 
   if (loading) {
     return (
@@ -346,7 +464,7 @@ export function MglStoreTab() {
           </div>
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || uploadingBanner || uploadingWideBanner}
             className={`inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-lg transition-all disabled:opacity-60 ${
               saved
                 ? "bg-emerald-500 shadow-emerald-200/50"
@@ -372,7 +490,8 @@ export function MglStoreTab() {
                 Промо баннерууд
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Нүүр хуудасны слайдер. Ихдээ {MAX_BANNERS} зураг.
+                Нүүрэнд 2 багана × 3 мөрөөр харагдана. Ихдээ {MAX_BANNERS}{" "}
+                зураг.
               </p>
             </div>
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500">
@@ -381,62 +500,116 @@ export function MglStoreTab() {
           </div>
 
           <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
-            {banners.map((url, i) => (
+            {banners.map((banner, i) => (
               <div
                 key={i}
-                className="relative rounded-xl overflow-hidden border border-slate-200 group aspect-[2/1] shadow-sm hover:shadow-md transition-all bg-slate-100"
+                className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md"
               >
-                <Image
-                  src={url}
-                  alt={`Banner ${i + 1}`}
-                  fill
-                  className="object-cover"
-                  unoptimized={url.startsWith("data:")}
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                {/* controls */}
-                <div className="absolute inset-x-0 bottom-0 flex items-center justify-between px-2 pb-2 pt-6 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                  <div className="flex gap-1">
+                <div className="group relative aspect-square overflow-hidden bg-slate-100">
+                  <span className="absolute left-2 top-2 z-10 flex h-6 min-w-6 items-center justify-center rounded-lg bg-slate-950/75 px-1.5 text-[11px] font-black text-white shadow-sm">
+                    {i + 1}
+                  </span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={banner.url}
+                    alt={`Banner ${i + 1}`}
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/20 opacity-0 transition-opacity group-hover:opacity-100" />
+                  <div className="absolute inset-x-0 bottom-0 flex items-center justify-between p-2 opacity-0 transition-opacity group-hover:opacity-100">
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => swapBanners(i, i - 1)}
+                        disabled={i === 0}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 text-slate-700 shadow-sm transition-colors hover:bg-white disabled:opacity-30"
+                      >
+                        <ChevronLeft size={14} />
+                      </button>
+                      <button
+                        onClick={() => swapBanners(i, i + 1)}
+                        disabled={i === banners.length - 1}
+                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-white/90 text-slate-700 shadow-sm transition-colors hover:bg-white disabled:opacity-30"
+                      >
+                        <ChevronRight size={14} />
+                      </button>
+                    </div>
                     <button
-                      onClick={() => swapBanners(i, i - 1)}
-                      disabled={i === 0}
-                      className="h-7 w-7 rounded-lg bg-white/90 text-slate-700 flex items-center justify-center disabled:opacity-30 hover:bg-white transition-colors shadow-sm"
+                      onClick={() => removeBanner(i)}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-red-500 text-white shadow-sm transition-colors hover:bg-red-600"
                     >
-                      <ChevronLeft size={14} />
-                    </button>
-                    <button
-                      onClick={() => swapBanners(i, i + 1)}
-                      disabled={i === banners.length - 1}
-                      className="h-7 w-7 rounded-lg bg-white/90 text-slate-700 flex items-center justify-center disabled:opacity-30 hover:bg-white transition-colors shadow-sm"
-                    >
-                      <ChevronRight size={14} />
+                      <Trash2 size={13} />
                     </button>
                   </div>
-                  <span className="text-[10px] font-bold text-white/80">
-                    {i + 1}/{banners.length}
-                  </span>
-                  <button
-                    onClick={() => removeBanner(i)}
-                    className="h-7 w-7 rounded-lg bg-red-500 text-white flex items-center justify-center hover:bg-red-600 transition-colors shadow-sm"
+                </div>
+                <div className="p-3">
+                  <label
+                    htmlFor={`banner-promotion-${i}`}
+                    className="mb-1.5 block text-[11px] font-bold text-slate-600"
                   >
-                    <Trash2 size={13} />
-                  </button>
+                    Урамшууллын төрөл
+                  </label>
+                  <select
+                    id={`banner-promotion-${i}`}
+                    value={banner.promotionType}
+                    onChange={(event) =>
+                      updateBannerPromotionType(
+                        i,
+                        event.target.value as PromotionType,
+                      )
+                    }
+                    className="mb-3 h-9 w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 text-xs font-semibold text-slate-700 outline-none transition focus:border-violet-400 focus:bg-white focus:ring-2 focus:ring-violet-100"
+                  >
+                    {PROMOTION_TYPES.map((type) => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
+                  </select>
+                  <label
+                    htmlFor={`banner-caption-${i}`}
+                    className="mb-1.5 block text-[11px] font-bold text-slate-600"
+                  >
+                    Banner тайлбар
+                  </label>
+                  <textarea
+                    id={`banner-caption-${i}`}
+                    value={banner.caption}
+                    onChange={(event) =>
+                      updateBannerCaption(i, event.target.value.slice(0, 120))
+                    }
+                    rows={2}
+                    maxLength={120}
+                    placeholder="Жишээ: 1+1 урамшуулал 08/31 хүртэл"
+                    className="w-full resize-none rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs text-slate-700 outline-none transition focus:border-violet-400 focus:bg-white focus:ring-2 focus:ring-violet-100"
+                  />
+                  <p className="mt-1 text-right text-[10px] text-slate-400">
+                    {banner.caption.length}/120
+                  </p>
                 </div>
               </div>
             ))}
 
             {banners.length < MAX_BANNERS && (
-              <div
+              <button
+                type="button"
                 onClick={() => fileRef.current?.click()}
-                className="flex flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/80 cursor-pointer hover:border-violet-400 hover:bg-violet-50/40 transition-all aspect-[2/1] group"
+                disabled={uploadingBanner}
+                className="group flex aspect-square flex-col items-center justify-center gap-2.5 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/80 transition-all hover:border-violet-400 hover:bg-violet-50/40 disabled:cursor-wait disabled:opacity-60"
               >
                 <div className="h-10 w-10 rounded-full bg-white shadow-sm flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <ImagePlus size={18} className="text-violet-500" />
+                  {uploadingBanner ? (
+                    <Loader2
+                      size={18}
+                      className="animate-spin text-violet-500"
+                    />
+                  ) : (
+                    <ImagePlus size={18} className="text-violet-500" />
+                  )}
                 </div>
                 <span className="text-[11px] font-semibold text-slate-400 group-hover:text-violet-600 transition-colors">
-                  Баннер нэмэх
+                  {uploadingBanner ? "Upload хийж байна..." : "Баннер нэмэх"}
                 </span>
-              </div>
+              </button>
             )}
           </div>
           <input
@@ -446,6 +619,19 @@ export function MglStoreTab() {
             className="hidden"
             onChange={handleFile}
           />
+          {bannerError && (
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">
+              <span>{bannerError}</span>
+              <button
+                type="button"
+                onClick={() => setBannerError("")}
+                className="shrink-0 rounded-md p-1 hover:bg-red-100"
+                aria-label="Алдааг хаах"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          )}
 
           {banners.length > 0 && (
             <button
@@ -455,6 +641,124 @@ export function MglStoreTab() {
               <Trash2 size={12} /> Бүгдийг устгах
             </button>
           )}
+        </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">
+                Ангиллын доорх өргөн banner
+              </h3>
+              <p className="mt-0.5 text-xs text-slate-400">
+                App дээр зүүн, баруун swipe хийдэг carousel хэлбэрээр харагдана.
+              </p>
+            </div>
+            <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-500">
+              {wideBanners.length}/{MAX_WIDE_BANNERS}
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            {wideBanners.map((banner, index) => (
+              <div
+                key={`${banner.url}-${index}`}
+                className="overflow-hidden rounded-xl bg-slate-50"
+              >
+                <div className="relative aspect-[2.6/1] overflow-hidden bg-slate-100">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={banner.url}
+                    alt={`Өргөн banner ${index + 1}`}
+                    className="h-full w-full object-cover"
+                  />
+                  <span className="absolute left-2 top-2 rounded-lg bg-slate-950/75 px-2 py-1 text-[10px] font-black text-white">
+                    {index + 1}
+                  </span>
+                  <div className="absolute bottom-2 right-2 flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => moveWideBanner(index, -1)}
+                      disabled={index === 0}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/95 text-slate-700 shadow disabled:opacity-35"
+                      aria-label="Урагшлуулах"
+                    >
+                      <ArrowUp size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveWideBanner(index, 1)}
+                      disabled={index === wideBanners.length - 1}
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/95 text-slate-700 shadow disabled:opacity-35"
+                      aria-label="Хойшлуулах"
+                    >
+                      <ArrowDown size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWideBanners((current) =>
+                          current.filter((_, itemIndex) => itemIndex !== index),
+                        )
+                      }
+                      className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500 text-white shadow"
+                      aria-label="Устгах"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+                <div className="p-3">
+                  <label
+                    htmlFor={`wide-banner-link-${index}`}
+                    className="mb-1.5 block text-[11px] font-bold text-slate-600"
+                  >
+                    Холбоос
+                  </label>
+                  <input
+                    id={`wide-banner-link-${index}`}
+                    type="text"
+                    value={banner.link}
+                    onChange={(event) =>
+                      setWideBanners((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...item, link: event.target.value }
+                            : item,
+                        ),
+                      )
+                    }
+                    placeholder="https://... эсвэл /catalog"
+                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                  />
+                </div>
+              </div>
+            ))}
+
+            {wideBanners.length < MAX_WIDE_BANNERS && (
+              <button
+                type="button"
+                onClick={() => wideBannerFileRef.current?.click()}
+                disabled={uploadingWideBanner}
+                className="flex h-24 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 transition hover:border-violet-400 hover:text-violet-600 disabled:opacity-60"
+              >
+                {uploadingWideBanner ? (
+                  <Loader2 size={17} className="animate-spin" />
+                ) : (
+                  <ImagePlus size={17} />
+                )}
+                {uploadingWideBanner
+                  ? "Upload хийж байна..."
+                  : "Өргөн banner нэмэх"}
+              </button>
+            )}
+          </div>
+          <input
+            ref={wideBannerFileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleWideBannerFile}
+          />
         </section>
 
         {/* ── CATEGORIES ── */}
@@ -688,147 +992,6 @@ export function MglStoreTab() {
           )}
         </section>
 
-        {/* ── FEATURED PRODUCTS ── */}
-        <section className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">
-                Онцлох бүтээгдэхүүн
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Shop нүүрний жижиг бүтээгдэхүүний мөрөнд харагдах барааг сонгоно.
-              </p>
-            </div>
-            <span className="rounded-full bg-orange-50 px-2.5 py-1 text-[11px] font-bold text-orange-600">
-              {featuredProductIds.length} сонгосон
-            </span>
-          </div>
-
-          <div className="mb-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-            <Search size={14} className="text-slate-400" />
-            <input
-              value={productSearch}
-              onChange={(e) => setProductSearch(e.target.value)}
-              placeholder="Бараа, байгууллага, ангиллаар хайх"
-              className="min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
-            />
-            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-slate-500">
-              {filteredProducts.length}/{allProducts.length}
-            </span>
-          </div>
-
-          <div className="grid max-h-80 gap-2 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-3 md:grid-cols-2">
-            {filteredProducts.length === 0 ? (
-              <div className="col-span-full rounded-xl border border-dashed border-slate-200 bg-white px-3 py-8 text-center text-sm text-slate-400">
-                Бүтээгдэхүүн олдсонгүй
-              </div>
-            ) : (
-              filteredProducts.map((product) => {
-                const selected = featuredProductIds.includes(product.id);
-                const imageUrl = product.images?.[0]?.url;
-                return (
-                  <button
-                    key={product.id}
-                    type="button"
-                    onClick={() => toggleFeaturedProduct(product.id)}
-                    className={`flex items-center gap-3 rounded-xl border bg-white p-2 text-left transition ${
-                      selected
-                        ? "border-orange-300 ring-2 ring-orange-100"
-                        : "border-slate-100 hover:border-slate-200"
-                    }`}
-                  >
-                    <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100">
-                      {imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={imageUrl}
-                          alt={product.name}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <Package size={22} className="text-slate-300" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-slate-800">
-                        {product.name}
-                      </p>
-                      <p className="truncate text-xs font-semibold text-slate-400">
-                        {product.organization?.name || "MGL Store"} · ₮
-                        {Number(product.price || 0).toLocaleString()}
-                      </p>
-                    </div>
-                    {selected && (
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white">
-                        <Check size={14} />
-                      </span>
-                    )}
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          {selectedFeaturedProducts.length > 0 && (
-            <div className="mt-5">
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Харагдах дараалал
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setFeaturedProductIds([])}
-                  className="text-xs font-bold text-slate-400 hover:text-red-500"
-                >
-                  Цэвэрлэх
-                </button>
-              </div>
-              <div className="space-y-1.5">
-                {selectedFeaturedProducts.map((product, i) => (
-                  <div
-                    key={product.id}
-                    className="flex items-center gap-3 rounded-xl border border-slate-150 bg-slate-50/50 px-3 py-2 group hover:bg-white hover:border-slate-200 transition-all"
-                  >
-                    <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-orange-100 text-[11px] font-bold text-orange-600">
-                      {i + 1}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold text-slate-700">
-                        {product.name}
-                      </span>
-                      <span className="text-[10px] text-slate-400">
-                        {product.organization?.name || "MGL Store"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => moveFeaturedProduct(product.id, -1)}
-                        disabled={i === 0}
-                        className="h-6 w-6 rounded-md bg-slate-100 flex items-center justify-center disabled:opacity-30 hover:bg-slate-200 transition-colors"
-                      >
-                        <ArrowUp size={12} className="text-slate-600" />
-                      </button>
-                      <button
-                        onClick={() => moveFeaturedProduct(product.id, 1)}
-                        disabled={i === selectedFeaturedProducts.length - 1}
-                        className="h-6 w-6 rounded-md bg-slate-100 flex items-center justify-center disabled:opacity-30 hover:bg-slate-200 transition-colors"
-                      >
-                        <ArrowDown size={12} className="text-slate-600" />
-                      </button>
-                      <button
-                        onClick={() => toggleFeaturedProduct(product.id)}
-                        className="h-6 w-6 rounded-md bg-red-50 flex items-center justify-center hover:bg-red-100 transition-colors ml-1"
-                      >
-                        <X size={12} className="text-red-500" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-
         {/* ── BRANCH LOCATIONS ── */}
         <section className="rounded-2xl border border-slate-200 bg-white p-5">
           <div className="mb-4 flex items-start justify-between gap-4">
@@ -960,74 +1123,37 @@ export function MglStoreTab() {
                     </div>
                   </div>
 
-                  {/* Greeting */}
-                  <div className="px-4 pt-3 pb-2 bg-gradient-to-b from-amber-50 to-white">
-                    <p className="text-[9px] text-slate-400">
-                      Сайн байна уу? 👋
-                    </p>
-                    <p className="text-[11px] font-bold text-slate-800">
-                      MGL Store-д тавтай морил
-                    </p>
-                  </div>
-
-                  {/* Banner */}
-                  <div className="px-3 pb-2.5">
+                  {/* Banner grid */}
+                  <div className="grid grid-cols-2 gap-2 px-3 py-3">
                     {banners.length > 0 ? (
-                      <div className="relative rounded-2xl overflow-hidden aspect-[2/1] bg-slate-100 shadow-sm">
-                        <Image
-                          src={banners[previewBannerIdx % banners.length] || ""}
-                          alt=""
-                          fill
-                          className="object-cover"
-                          unoptimized
-                        />
-                        {banners.length > 1 && (
-                          <>
-                            <button
-                              onClick={prevBanner}
-                              className="absolute left-1.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-black/30 backdrop-blur-sm text-white flex items-center justify-center"
-                            >
-                              <ChevronLeft size={11} />
-                            </button>
-                            <button
-                              onClick={nextBanner}
-                              className="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-black/30 backdrop-blur-sm text-white flex items-center justify-center"
-                            >
-                              <ChevronRight size={11} />
-                            </button>
-                            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1">
-                              {banners.map((_, idx) => (
-                                <div
-                                  key={idx}
-                                  className={`h-1 rounded-full transition-all ${
-                                    idx === previewBannerIdx % banners.length
-                                      ? "w-3 bg-white"
-                                      : "w-1 bg-white/40"
-                                  }`}
-                                />
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
+                      banners.map((banner, index) => (
+                        <div
+                          key={index}
+                          className="overflow-hidden rounded-xl bg-white shadow-sm"
+                        >
+                          <div className="relative aspect-square overflow-hidden bg-slate-100">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={banner.url}
+                              alt={`Banner ${index + 1}`}
+                              className="absolute inset-0 h-full w-full object-cover"
+                            />
+                          </div>
+                          {banner.caption && (
+                            <p className="line-clamp-2 px-2 py-1.5 text-[7px] font-bold leading-tight text-slate-600">
+                              {banner.caption}
+                            </p>
+                          )}
+                        </div>
+                      ))
                     ) : (
-                      <div className="rounded-2xl bg-gradient-to-br from-slate-100 to-slate-50 aspect-[2/1] flex flex-col items-center justify-center gap-1 border border-dashed border-slate-200">
+                      <div className="col-span-2 rounded-2xl bg-gradient-to-br from-slate-100 to-slate-50 aspect-[2/1] flex flex-col items-center justify-center gap-1 border border-dashed border-slate-200">
                         <ImagePlus size={16} className="text-slate-300" />
                         <span className="text-[9px] text-slate-300 font-medium">
                           Баннер нэмнэ үү
                         </span>
                       </div>
                     )}
-                  </div>
-
-                  {/* Search */}
-                  <div className="px-3 pb-2.5">
-                    <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2">
-                      <Search size={10} className="text-slate-300" />
-                      <span className="text-[9px] text-slate-300">
-                        Бараа хайх...
-                      </span>
-                    </div>
                   </div>
 
                   {/* Categories */}

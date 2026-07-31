@@ -9,7 +9,7 @@ import express, {
   type Router as ExpressRouter,
 } from "express";
 import multer from "multer";
-import { prisma, PosQPayStatus, type Prisma } from "@mgl/database";
+import { prisma, PosQPayStatus, Prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
 import {
   optionalAuth,
@@ -65,6 +65,7 @@ const SITE_STUDY_SETTINGS_KEY = "site-study-settings";
 const MGLBUSINESS_STATUS_KEY = "mglbusiness-status";
 const MGLBUSINESS_DEFAULT_STATUS = "maintenance";
 const FREE_PDF_PREVIEW_PAGE_COUNT = 3;
+const MEMBERSHIP_FRANCHISE_CREDIT_PRICE = 30_000;
 const VENDOR_FEATURE_KEYS = new Set([
   "pos-enabled",
   "web-products-enabled",
@@ -1016,11 +1017,13 @@ async function ensurePaidProjectAccess({
   if (price <= 0) return true;
 
   if (userId) {
-    const primeUser = await prisma.user.findFirst({
-      where: activePrimeUserWhere(userId),
-      select: { id: true },
-    });
-    if (primeUser) return true;
+    if (kind !== "FRANCHISE_ACCESS") {
+      const primeUser = await prisma.user.findFirst({
+        where: activePrimeUserWhere(userId),
+        select: { id: true },
+      });
+      if (primeUser) return true;
+    }
 
     const purchase = await findPaidAccessPurchaseForProject({
       userId,
@@ -1049,6 +1052,241 @@ async function ensurePaidProjectAccess({
     });
   }
   return canUnlock;
+}
+
+type MembershipFranchiseAccess = {
+  eligible: boolean;
+  totalCredits: number;
+  usedCredits: number;
+  remainingCredits: number;
+};
+
+function isMembershipCreditPurchase(metadata: Prisma.JsonValue | null) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return false;
+  }
+  return metadata.accessSource === "MEMBERSHIP_CREDIT";
+}
+
+async function getMembershipFranchiseAccess(
+  userId: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma,
+): Promise<MembershipFranchiseAccess> {
+  const user = await client.user.findFirst({
+    where: activePrimeUserWhere(userId),
+    select: { id: true },
+  });
+  if (!user) {
+    return {
+      eligible: false,
+      totalCredits: 0,
+      usedCredits: 0,
+      remainingCredits: 0,
+    };
+  }
+
+  const [invoices, purchases] = await Promise.all([
+    client.qPayInvoice.findMany({
+      where: {
+        status: PosQPayStatus.PAID,
+        webhookPayload: {
+          path: ["userId"],
+          equals: userId,
+        },
+      },
+      select: { amount: true, webhookPayload: true },
+    }),
+    client.paidAccessPurchase.findMany({
+      where: { userId, sourceType: "FRANCHISE" },
+      select: { metadata: true },
+    }),
+  ]);
+
+  const paidMembershipAmount = invoices.reduce((total, invoice) => {
+    const payload = projectPaymentPayload(invoice);
+    return String(payload.kind || "") === "ASSOCIATION_MEMBERSHIP"
+      ? total + Math.max(0, Math.round(Number(invoice.amount || 0)))
+      : total;
+  }, 0);
+  const totalCredits = Math.floor(
+    paidMembershipAmount / MEMBERSHIP_FRANCHISE_CREDIT_PRICE,
+  );
+  const usedCredits = purchases.filter((purchase) =>
+    isMembershipCreditPurchase(purchase.metadata),
+  ).length;
+
+  return {
+    eligible: true,
+    totalCredits,
+    usedCredits,
+    remainingCredits: Math.max(0, totalCredits - usedCredits),
+  };
+}
+
+async function unlockFranchiseWithMembershipCredit({
+  userId,
+  project,
+}: {
+  userId: string;
+  project: PaidProject;
+}) {
+  return prisma.$transaction(
+    async (tx) => {
+      const existing = await tx.paidAccessPurchase.findUnique({
+        where: {
+          userId_sourceType_itemId: {
+            userId,
+            sourceType: "FRANCHISE",
+            itemId: project.id,
+          },
+        },
+      });
+      if (existing) {
+        return {
+          unlocked: true,
+          alreadyUnlocked: true,
+          access: await getMembershipFranchiseAccess(userId, tx),
+        };
+      }
+
+      const access = await getMembershipFranchiseAccess(userId, tx);
+      if (!access.eligible || access.remainingCredits <= 0) {
+        return { unlocked: false, alreadyUnlocked: false, access };
+      }
+
+      const fileUrl = String(project.pdfUrl || "").trim() || null;
+      await tx.paidAccessPurchase.create({
+        data: {
+          userId,
+          sourceType: "FRANCHISE",
+          itemId: project.id,
+          title: project.title,
+          fileUrl,
+          fileName: fileUrl ? paidAccessFileName(project) : null,
+          amount: 0,
+          metadata: {
+            kind: "FRANCHISE_ACCESS",
+            accessSource: "MEMBERSHIP_CREDIT",
+            creditPrice: MEMBERSHIP_FRANCHISE_CREDIT_PRICE,
+            projectId: project.id,
+            projectTitle: project.title,
+            unlockedAt: new Date().toISOString(),
+          } as unknown as Prisma.JsonObject,
+        },
+      });
+
+      return {
+        unlocked: true,
+        alreadyUnlocked: false,
+        access: {
+          ...access,
+          usedCredits: access.usedCredits + 1,
+          remainingCredits: access.remainingCredits - 1,
+        },
+      };
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
+}
+
+async function getMPointBalance(
+  userId: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma,
+) {
+  const balance = await client.mPointLedger.aggregate({
+    where: { userId },
+    _sum: { amount: true },
+  });
+  return Number(balance._sum.amount || 0);
+}
+
+async function unlockFranchiseWithMPoint({
+  userId,
+  project,
+}: {
+  userId: string;
+  project: PaidProject;
+}) {
+  const pointCost = normalizeProjectPrice(project.price);
+  return prisma.$transaction(
+    async (tx) => {
+      const existing = await tx.paidAccessPurchase.findUnique({
+        where: {
+          userId_sourceType_itemId: {
+            userId,
+            sourceType: "FRANCHISE",
+            itemId: project.id,
+          },
+        },
+      });
+      const currentBalance = await getMPointBalance(userId, tx);
+      if (existing) {
+        return {
+          unlocked: true,
+          alreadyUnlocked: true,
+          pointCost: 0,
+          pointBalance: currentBalance,
+        };
+      }
+      if (pointCost <= 0) {
+        return {
+          unlocked: true,
+          alreadyUnlocked: false,
+          pointCost: 0,
+          pointBalance: currentBalance,
+        };
+      }
+      if (currentBalance < pointCost) {
+        return {
+          unlocked: false,
+          alreadyUnlocked: false,
+          pointCost,
+          pointBalance: currentBalance,
+        };
+      }
+
+      const balanceAfter = currentBalance - pointCost;
+      const fileUrl = String(project.pdfUrl || "").trim() || null;
+      await tx.paidAccessPurchase.create({
+        data: {
+          userId,
+          sourceType: "FRANCHISE",
+          itemId: project.id,
+          title: project.title,
+          fileUrl,
+          fileName: fileUrl ? paidAccessFileName(project) : null,
+          amount: 0,
+          metadata: {
+            kind: "FRANCHISE_ACCESS",
+            accessSource: "M_POINT",
+            pointCost,
+            projectId: project.id,
+            projectTitle: project.title,
+            unlockedAt: new Date().toISOString(),
+          } as unknown as Prisma.JsonObject,
+        },
+      });
+      await tx.mPointLedger.create({
+        data: {
+          userId,
+          type: "SPEND",
+          amount: -pointCost,
+          balanceAfter,
+          sourceType: "FRANCHISE",
+          sourceId: project.id,
+          description: `Franchise төсөл M Point-оор нээв - ${project.title}`,
+        },
+      });
+
+      return {
+        unlocked: true,
+        alreadyUnlocked: false,
+        pointCost,
+        pointBalance: balanceAfter,
+      };
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 }
 
 async function ensurePaidAccessPurchaseForInvoice({
@@ -1310,7 +1548,9 @@ router.get("/site-settings/marketplace-chrome", async (_req, res) => {
     res.json(obj);
   } catch (error) {
     console.error("get marketplace chrome settings error", error);
-    res.status(500).json({ message: "Marketplace тохиргоо авахад алдаа гарлаа" });
+    res
+      .status(500)
+      .json({ message: "Marketplace тохиргоо авахад алдаа гарлаа" });
   }
 });
 
@@ -1343,7 +1583,8 @@ router.get("/site-settings/mglbusiness/status", async (_req, res) => {
       where: { key: MGLBUSINESS_STATUS_KEY },
       select: { value: true, updatedAt: true },
     });
-    const status = setting?.value === "live" ? "live" : MGLBUSINESS_DEFAULT_STATUS;
+    const status =
+      setting?.value === "live" ? "live" : MGLBUSINESS_DEFAULT_STATUS;
     res.setHeader("Cache-Control", "no-store");
     res.json({
       key: MGLBUSINESS_STATUS_KEY,
@@ -1787,17 +2028,37 @@ router.get(
   },
 );
 
-// GET /site-settings/franchise — public Franchise summary list.
-router.get("/site-settings/franchise", async (req, res) => {
+// GET /site-settings/franchise — public summaries plus membership access state.
+router.get("/site-settings/franchise", optionalAuth, async (req, res) => {
   try {
     const projects = await getFranchiseProjects();
+    const userId = String((req as any).user?.userId || "").trim();
+    const publicProjects = getPublicFranchiseProjects(projects, req);
+    const [purchasedIds, membershipAccess, mPointBalance] = userId
+      ? await Promise.all([
+          getPurchasedPaidAccessIds({
+            userId,
+            projects: projects.map(normalizeFranchiseProject),
+            kind: "FRANCHISE_ACCESS",
+          }),
+          getMembershipFranchiseAccess(userId),
+          getMPointBalance(userId),
+        ])
+      : [new Set<string>(), null, 0];
     res.setHeader(
       "Cache-Control",
-      "public, max-age=30, stale-while-revalidate=60",
+      userId
+        ? "private, no-store"
+        : "public, max-age=30, stale-while-revalidate=60",
     );
     res.json({
       success: true,
-      projects: getPublicFranchiseProjects(projects, req),
+      projects: publicProjects.map((project) => ({
+        ...project,
+        hasPurchased: purchasedIds.has(project.id),
+      })),
+      membershipAccess,
+      mPointBalance,
     });
   } catch (error) {
     console.error("get franchise list error", error);
@@ -1807,6 +2068,97 @@ router.get("/site-settings/franchise", async (req, res) => {
     });
   }
 });
+
+router.post(
+  "/site-settings/franchise/:projectId/membership-unlock",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const userId = String((req as any).user?.userId || "").trim();
+      const projectId = String(req.params.projectId || "").trim();
+      const projects = await getFranchiseProjects();
+      const project = projects.find(
+        (item) => item.id === projectId && item.isActive !== false,
+      );
+      if (!project) {
+        res
+          .status(404)
+          .json({ success: false, message: "Franchise олдсонгүй" });
+        return;
+      }
+
+      if (normalizeProjectPrice(project.price) <= 0) {
+        res.json({ success: true, unlocked: true, free: true });
+        return;
+      }
+
+      const result = await unlockFranchiseWithMembershipCredit({
+        userId,
+        project: normalizeFranchiseProject(project),
+      });
+      if (!result.unlocked) {
+        res.status(403).json({
+          success: false,
+          ...result,
+          message: result.access.eligible
+            ? "Franchise төсөл нээх эрх үлдээгүй байна"
+            : "Идэвхтэй гишүүнчлэлийн эрх шаардлагатай",
+        });
+        return;
+      }
+
+      res.json({ success: true, ...result, projectId });
+    } catch (error) {
+      console.error("membership franchise unlock error", error);
+      res.status(500).json({
+        success: false,
+        message: "Franchise төсөл нээхэд алдаа гарлаа",
+      });
+    }
+  },
+);
+
+router.post(
+  "/site-settings/franchise/:projectId/m-point-unlock",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const userId = String((req as any).user?.userId || "").trim();
+      const projectId = String(req.params.projectId || "").trim();
+      const projects = await getFranchiseProjects();
+      const project = projects.find(
+        (item) => item.id === projectId && item.isActive !== false,
+      );
+      if (!project) {
+        res
+          .status(404)
+          .json({ success: false, message: "Franchise олдсонгүй" });
+        return;
+      }
+
+      const result = await unlockFranchiseWithMPoint({
+        userId,
+        project: normalizeFranchiseProject(project),
+      });
+      if (!result.unlocked) {
+        res.status(409).json({
+          success: false,
+          ...result,
+          message: `M Point хүрэлцэхгүй байна. Шаардлагатай: ${result.pointCost.toLocaleString("mn-MN")} M, үлдэгдэл: ${result.pointBalance.toLocaleString("mn-MN")} M`,
+        });
+        return;
+      }
+
+      res.json({ success: true, ...result, projectId });
+    } catch (error) {
+      console.error("M Point franchise unlock error", error);
+      res.status(500).json({
+        success: false,
+        message: "M Point-оор franchise төсөл нээхэд алдаа гарлаа",
+      });
+    }
+  },
+);
 
 // GET /site-settings/franchise/:projectId/detail — full Franchise detail.
 router.get(
@@ -2298,20 +2650,6 @@ const createFranchiseSystemQrPaymentSession = async (
     const amount = normalizeProjectPrice(normalized.price);
     if (amount <= 0) {
       res.json({ success: true, free: true, projectId });
-      return;
-    }
-
-    const primeUser = await prisma.user.findFirst({
-      where: activePrimeUserWhere(userId),
-      select: { id: true },
-    });
-    if (primeUser) {
-      res.json({
-        success: true,
-        free: true,
-        primeAccess: true,
-        projectId,
-      });
       return;
     }
 

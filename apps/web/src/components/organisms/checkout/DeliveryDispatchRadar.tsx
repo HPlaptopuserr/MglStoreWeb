@@ -1,13 +1,21 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   CheckCircle2,
+  ChevronRight,
   Clock3,
   MapPin,
   Navigation,
   RadioTower,
   XCircle,
+  X,
 } from "lucide-react";
+import {
+  CheckoutOrderSummary,
+  type CheckoutSummaryItem,
+} from "./CheckoutOrderSummary";
 
 export type DeliveryDispatchAttempt = {
   id: string;
@@ -30,6 +38,17 @@ export type DeliverySession = {
   orderNumber: string;
   subtotal?: number;
   total?: number;
+  items?: Array<{
+    id: string;
+    productId: string;
+    name: string;
+    sku: string | null;
+    unit: string | null;
+    quantity: number;
+    price: number;
+    subtotal: number;
+    imageUrl: string | null;
+  }>;
   status: "ACCEPTED" | "SEARCHING" | "QUEUED" | "NO_BRANCH_AVAILABLE" | "NOT_STARTED";
   canPay: boolean;
   autoAssignedDelivery?: boolean;
@@ -85,6 +104,172 @@ function formatZoneLabel(zone: number, zones: number[]) {
   const previousRadius = zones[zone - 2] ?? 0;
   if (!radius) return `${zone}-р бүс`;
   return previousRadius > 0 ? `${previousRadius}-${radius} км` : `0-${radius} км`;
+}
+
+export function DeliveryDispatchRadarPopup({
+  session,
+  now,
+  items,
+  total,
+  cancelling,
+  paying,
+  onCancel,
+  onPay,
+}: {
+  session: DeliverySession;
+  now: number;
+  items?: CheckoutSummaryItem[];
+  total: number;
+  cancelling: boolean;
+  paying: boolean;
+  onCancel: () => void;
+  onPay: () => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const [mounted, setMounted] = useState(false);
+  const remainingSeconds = getRemainingSeconds(session.activeExpiresAt, now);
+  const activeAttempts = session.attempts.filter(
+    (attempt) => attempt.status === "PENDING",
+  ).length;
+  const label = session.canPay
+    ? "Хүргэлтийн салбар баталгаажлаа"
+    : session.status === "NO_BRANCH_AVAILABLE"
+      ? "Хүргэлт баталгаажаагүй"
+      : "Хүргэлтийн хүсэлт илгээж байна";
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  const modal = open ? (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-slate-950/60 p-0 backdrop-blur-sm sm:p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) setOpen(false);
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Хүргэлтийн хүсэлтийн дэлгэрэнгүй"
+        className="flex h-[100dvh] w-full flex-col overflow-hidden bg-white shadow-2xl sm:h-[calc(100dvh-2rem)] sm:max-w-lg sm:rounded-3xl"
+      >
+        <header className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4 py-3 sm:px-5">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-widest text-orange-600">
+              Dispatch radar
+            </p>
+            <h2 className="mt-1 text-base font-black text-slate-950">
+              Хүргэлтийн хүсэлт
+            </h2>
+          </div>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Popup хаах"
+            className="rounded-full bg-slate-100 p-2 text-slate-500 hover:bg-slate-200"
+          >
+            <X size={19} />
+          </button>
+        </header>
+
+        <div
+          data-lenis-prevent
+          data-testid="delivery-dispatch-scroll"
+          className="min-h-0 flex-1 touch-pan-y space-y-3 overflow-y-auto overscroll-contain px-4 py-3 [scrollbar-gutter:stable] sm:px-5"
+        >
+          <DeliveryDispatchRadar session={session} now={now} />
+          <CheckoutOrderSummary items={items} total={total} />
+          <footer className="border-t border-slate-100 pt-3">
+            <div className="rounded-2xl border border-orange-100 bg-gradient-to-br from-orange-50 to-amber-50 p-3">
+              <div className="mb-3 flex items-center gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white shadow-lg shadow-orange-200">
+                  <Navigation size={18} />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-slate-950">
+                    {session.canPay
+                      ? "Хүргэлт баталгаажлаа"
+                      : "Хүргэлтийн хариу хүлээж байна"}
+                  </p>
+                  <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">
+                    {session.canPay
+                      ? `${session.acceptedBranch?.name ?? "Салбар"} · Төлбөр хийхэд бэлэн`
+                      : "Салбар олдмогц төлбөрийн товч идэвхжинэ"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  onPay();
+                }}
+                disabled={!session.canPay || cancelling || paying}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-orange-200 transition hover:-translate-y-0.5 hover:shadow-xl disabled:translate-y-0 disabled:cursor-not-allowed disabled:from-orange-200 disabled:to-amber-200 disabled:shadow-none"
+              >
+                {paying
+                  ? "QR үүсгэж байна..."
+                  : session.canPay
+                    ? "Төлбөр төлөх"
+                    : "Хариу хүлээж байна"}
+              </button>
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={cancelling || paying}
+                className="mt-2 w-full rounded-xl px-4 py-2 text-xs font-black text-slate-500 transition hover:bg-white hover:text-red-600 disabled:opacity-50"
+              >
+                {cancelling
+                  ? "Захиалга цуцалж байна..."
+                  : "Захиалгыг цуцлах"}
+              </button>
+            </div>
+          </footer>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 p-3 text-left transition hover:border-orange-300 hover:bg-orange-100"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white">
+          <RadioTower size={18} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs font-black text-slate-950">
+            {label}
+          </span>
+          <span className="mt-0.5 block truncate text-[11px] font-semibold text-slate-500">
+            {activeAttempts || session.attempts.length} салбар · Дэлгэрэнгүй харах
+          </span>
+        </span>
+        {remainingSeconds !== null && !session.canPay && (
+          <span className="rounded-lg bg-white px-2.5 py-1.5 text-center shadow-sm">
+            <span className="block text-sm font-black tabular-nums text-slate-950">
+              {remainingSeconds}
+            </span>
+            <span className="block text-[9px] font-bold text-slate-400">сек</span>
+          </span>
+        )}
+        <ChevronRight size={17} className="shrink-0 text-orange-600" />
+      </button>
+
+      {mounted && modal ? createPortal(modal, document.body) : null}
+    </>
+  );
 }
 
 export function DeliveryDispatchRadar({

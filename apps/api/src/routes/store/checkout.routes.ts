@@ -7,7 +7,6 @@ import {
 import jwt from "jsonwebtoken";
 import { OrderDispatchAttemptStatus } from "@prisma/client";
 import {
-  DeliverySourceType,
   DeliveryStatus,
   prisma,
   OrderStatus,
@@ -30,9 +29,13 @@ import {
   createSystemQrInvoice,
 } from "../../services/systemqr";
 import {
-  notifyAssignedOrderDelivery,
-  routeOrderDelivery,
-} from "../../services/delivery-routing.service";
+  cancelExpiredStoreCheckouts,
+  STORE_CHECKOUT_PAYMENT_TIMEOUT_MS,
+} from "../../services/store-checkout-expiration.service";
+import {
+  notifyNewOnlineOrderRequest,
+  notifyNewPaidOrder,
+} from "../../services/order-notification.service";
 
 const router: ExpressRouter = Router();
 const JWT_SECRET =
@@ -118,7 +121,14 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
 const STORE_CHECKOUT_ACCOUNT_REF =
   process.env.STORE_CHECKOUT_PAYMENT_ACCOUNT_REF?.trim() || "9999";
-const STORE_MINIMUM_ORDER_AMOUNT = 50_000;
+const configuredMinimumOrderAmount = Number(
+  process.env.STORE_MINIMUM_ORDER_AMOUNT || 0,
+);
+const STORE_MINIMUM_ORDER_AMOUNT =
+  Number.isFinite(configuredMinimumOrderAmount) &&
+  configuredMinimumOrderAmount > 0
+    ? Math.floor(configuredMinimumOrderAmount)
+    : 0;
 
 type StorePaymentAccount = {
   id?: string;
@@ -204,48 +214,7 @@ async function autoAssignExpiredCheckout(orderId: string) {
     });
 
     if (expired.length === 0) {
-      const order = await tx.order.findUnique({
-        where: { id: orderId },
-        select: {
-          branchId: true,
-          status: true,
-          createdAt: true,
-          delivery: { select: { courierId: true } },
-          _count: { select: { dispatchAttempts: true } },
-        },
-      });
-      const fallbackAt =
-        order?.createdAt.getTime() ?? Number.POSITIVE_INFINITY;
-      if (
-        !order ||
-        order.branchId ||
-        order._count.dispatchAttempts > 0 ||
-        fallbackAt + DISPATCH_WINDOW_SECONDS * 1000 > Date.now() ||
-        order.delivery?.courierId
-      ) {
-        return null;
-      }
-
-      const delivery = await routeOrderDelivery(tx, {
-        orderId,
-        sourceType: DeliverySourceType.WEBSITE_ORDER,
-      });
-      if (!delivery.courierId) return null;
-
-      await tx.order.update({
-        where: { id: orderId },
-        data: { status: OrderStatus.CONFIRMED },
-      });
-      await tx.orderHistory.create({
-        data: {
-          orderId,
-          fromStatus: order.status as OrderStatus,
-          toStatus: OrderStatus.CONFIRMED,
-          note: "Салбарын radar хоосон байсан тул 10 секундийн дараа хүргэлтийн компанийн ажилтанд автоматаар оноосон",
-        },
-      });
-
-      return;
+      return null;
     }
 
     await tx.orderDispatchAttempt.updateMany({
@@ -304,11 +273,6 @@ async function autoAssignExpiredCheckout(orderId: string) {
       },
     });
 
-    await routeOrderDelivery(tx, {
-      orderId,
-      sourceType: DeliverySourceType.WEBSITE_ORDER,
-    });
-
     return;
   });
 }
@@ -332,6 +296,23 @@ async function getCheckoutDispatchSnapshot(
       customerLng: true,
       branchId: true,
       paymentStatus: true,
+      items: {
+        select: {
+          id: true,
+          productId: true,
+          productName: true,
+          productSku: true,
+          quantity: true,
+          price: true,
+          subtotal: true,
+          product: {
+            select: {
+              unit: true,
+              images: { take: 1, select: { url: true } },
+            },
+          },
+        },
+      },
       delivery: {
         select: {
           courierId: true,
@@ -384,6 +365,17 @@ async function getCheckoutDispatchSnapshot(
     orderNumber: order.orderNumber,
     subtotal: Number(order.subtotal),
     total: Number(order.total),
+    items: order.items.map((item) => ({
+      id: item.id,
+      productId: item.productId,
+      name: item.productName,
+      sku: item.productSku,
+      unit: item.product.unit,
+      quantity: item.quantity,
+      price: Number(item.price),
+      subtotal: Number(item.subtotal),
+      imageUrl: item.product.images[0]?.url || null,
+    })),
     status: hasAccepted
       ? "ACCEPTED"
       : activeAttempt
@@ -496,6 +488,30 @@ async function createStorePaymentInvoice(params: {
 
   const merchantRes = await getVendorMerchantConfig(params.organizationId);
   if (!merchantRes.success || !merchantRes.config) {
+    if (
+      process.env.NODE_ENV !== "production" &&
+      process.env.MGL_LOCAL_DEV === "true"
+    ) {
+      const invoiceId = `DEV-QPAY-${params.orderId}`;
+      const qrText = `mglstore://local-payment?orderId=${encodeURIComponent(
+        params.orderId,
+      )}&amount=${params.amount}`;
+      return {
+        data: {
+          invoice_id: invoiceId,
+          qr_text: qrText,
+          qr_image: "",
+          urls: [],
+        },
+        rawPayload: {
+          provider: "LOCAL_DEV",
+          invoice_id: invoiceId,
+          qr_text: qrText,
+          qr_image: "",
+          urls: [],
+        },
+      };
+    }
     throw new Error("QPAY_NOT_CONFIGURED");
   }
 
@@ -701,11 +717,12 @@ async function confirmPaidOrderAndCreateDelivery(
   rawPayload: unknown,
   note: string,
 ) {
-  const assignment = await prisma.$transaction(async (tx) => {
+  const confirmed = await prisma.$transaction(async (tx) => {
     const claimed = await tx.order.updateMany({
       where: {
         id: order.id,
-        paymentStatus: { not: PaymentStatus.PAID },
+        status: { not: OrderStatus.CANCELLED },
+        paymentStatus: PaymentStatus.PENDING,
       },
       data: {
         paymentStatus: PaymentStatus.PAID,
@@ -728,33 +745,25 @@ async function confirmPaidOrderAndCreateDelivery(
 
     await decrementOrderStock(tx, order.id, order.customerId);
 
-    await tx.orderHistory.create({
-      data: {
-        orderId: order.id,
-        fromStatus:
-          (order.status as OrderStatus | undefined) ?? OrderStatus.PENDING,
-        toStatus: OrderStatus.CONFIRMED,
-        changedById: order.customerId,
-        note,
-      },
-    });
+    const previousStatus =
+      (order.status as OrderStatus | undefined) ?? OrderStatus.PENDING;
+    if (previousStatus !== OrderStatus.CONFIRMED) {
+      await tx.orderHistory.create({
+        data: {
+          orderId: order.id,
+          fromStatus: previousStatus,
+          toStatus: OrderStatus.CONFIRMED,
+          changedById: order.customerId,
+          note,
+        },
+      });
+    }
 
-    const delivery = await routeOrderDelivery(tx, {
-      orderId: order.id,
-      sourceType: DeliverySourceType.WEBSITE_ORDER,
-    });
-
-    return {
-      courierId: delivery.courierId,
-      deliveryId: delivery.id,
-    };
+    return { paid: true };
   });
-
-  if (assignment) {
-    await notifyAssignedOrderDelivery({
-      courierId: assignment.courierId,
-      deliveryId: assignment.deliveryId,
-      orderNumber: order.orderNumber,
+  if (confirmed) {
+    await notifyNewPaidOrder(order.id).catch((error: unknown) => {
+      console.error("Paid order notification failed", error);
     });
   }
 }
@@ -879,6 +888,13 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         stock: true,
         supplyType: true,
         organizationId: true,
+        managedByWarehouseId: true,
+        warehouseInventories: {
+          select: {
+            warehouseId: true,
+            quantity: true,
+          },
+        },
         discounts: {
           where: { isActive: true, validUntil: { gte: new Date() } },
           select: { percent: true },
@@ -966,6 +982,13 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
           stock: true,
           supplyType: true,
           organizationId: true,
+          managedByWarehouseId: true,
+          warehouseInventories: {
+            select: {
+              warehouseId: true,
+              quantity: true,
+            },
+          },
           discounts: {
             where: { isActive: true, validUntil: { gte: new Date() } },
             select: { percent: true },
@@ -982,9 +1005,6 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     }
 
     const productMap = new Map(products.map((p) => [p.id, p]));
-    const isPreorderOnlyOrder = products.every(
-      (product) => product.supplyType === "CHINA_PREORDER",
-    );
 
     // Validate stock & build order items
     let subtotal = 0;
@@ -1006,9 +1026,20 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       }
       const qty = Math.max(1, Math.floor(Number(line.qty) || 1));
       const isPreorder = product.supplyType === "CHINA_PREORDER";
-      if (!isPreorder && product.stock < qty) {
+      const warehouseStock =
+        product.warehouseInventories.length > 0
+          ? product.warehouseInventories.reduce(
+              (total, inventory) => total + Math.max(0, inventory.quantity),
+              0,
+            )
+          : product.stock;
+      if (!isPreorder && warehouseStock < qty) {
         return res.status(400).json({
-          message: `${product.name} барааны нөөц хүрэлцэхгүй (${product.stock} ширхэг)`,
+          code: "INSUFFICIENT_STOCK",
+          productId: product.id,
+          availableStock: warehouseStock,
+          requestedQuantity: qty,
+          message: `${product.name} барааны нөөц хүрэлцэхгүй (${warehouseStock} ширхэг)`,
         });
       }
       const basePrice = Number(product.price);
@@ -1030,19 +1061,37 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       });
     }
 
-    // All products must belong to one organization
     const orgIds = [...new Set(products.map((p) => p.organizationId))];
-    if (orgIds.length !== 1) {
-      return res.status(400).json({
-        message: "Нэг захиалгад зөвхөн нэг дэлгүүрийн бараа байх ёстой",
-      });
-    }
+    const organizationGroups = orgIds.map((organizationId) => {
+      const groupProducts = products.filter(
+        (product) => product.organizationId === organizationId,
+      );
+      const groupProductIds = new Set(
+        groupProducts.map((product) => product.id),
+      );
+      const items = orderItemsData.filter((item) =>
+        groupProductIds.has(item.productId),
+      );
+      return {
+        organizationId,
+        items,
+        subtotal: items.reduce((sum, item) => sum + item.subtotal, 0),
+        isPreorderOnly: groupProducts.every(
+          (product) => product.supplyType === "CHINA_PREORDER",
+        ),
+      };
+    });
 
     const normalizedCustomerLat = toNumberOrNull(customerLat);
     const normalizedCustomerLng = toNumberOrNull(customerLng);
+    const hasCustomerCoordinates =
+      normalizedCustomerLat !== null && normalizedCustomerLng !== null;
     const total = subtotal; // no delivery fee for now
 
-    if (total < STORE_MINIMUM_ORDER_AMOUNT) {
+    if (
+      STORE_MINIMUM_ORDER_AMOUNT > 0 &&
+      total < STORE_MINIMUM_ORDER_AMOUNT
+    ) {
       return res.status(400).json({
         code: "MINIMUM_ORDER_AMOUNT",
         message: `Захиалгын доод дүн ${STORE_MINIMUM_ORDER_AMOUNT.toLocaleString()}₮ байна.`,
@@ -1052,91 +1101,123 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       });
     }
 
-    if (
-      !isPreorderOnlyOrder &&
-      (normalizedCustomerLat === null || normalizedCustomerLng === null)
-    ) {
-      return res.status(400).json({
-        code: "CUSTOMER_LOCATION_REQUIRED",
-        message:
-          "Хүргэлт хайхын тулд хэрэглэгчийн байршлын өргөрөг, уртраг тодорхой байх шаардлагатай.",
-      });
-    }
-
-    // Create order + items, then prepare branch radar before payment.
-    const order = await prisma.$transaction(async (tx) => {
-      const ord = await tx.order.create({
-        data: {
-          orderNumber: generateOrderNumber(),
-          organizationId: orgIds[0],
-          customerId: customer.id,
-          status: OrderStatus.PENDING,
-          paymentStatus: PaymentStatus.PENDING,
-          paymentMethod: PaymentMethod.QPAY,
-          shippingAddress:
-            shippingAddress ||
-            (isPreorderOnlyOrder ? "Урьдчилсан захиалга" : ""),
-          phone: normalizedPhone,
-          note: orderNote || null,
-          customerLat: normalizedCustomerLat,
-          customerLng: normalizedCustomerLng,
-          subtotal,
-          total,
-          items: {
-            create: orderItemsData,
-          },
-          history: {
-            create: {
-              toStatus: OrderStatus.PENDING,
-              changedById: customer.id,
-              note: isPreorderOnlyOrder
-                ? "Урьдчилсан захиалга бүртгэгдсэн"
-                : "Захиалга үүсгэж, ойр салбар хайж эхэлсэн",
+    // One customer checkout is split atomically into one order per store.
+    const createdOrders = await prisma.$transaction(async (tx) => {
+      const results = [];
+      for (const group of organizationGroups) {
+        const order = await tx.order.create({
+          data: {
+            orderNumber: generateOrderNumber(),
+            organizationId: group.organizationId,
+            customerId: customer.id,
+            status: OrderStatus.PENDING,
+            paymentStatus: PaymentStatus.PENDING,
+            paymentMethod: PaymentMethod.QPAY,
+            shippingAddress:
+              shippingAddress ||
+              (group.isPreorderOnly ? "Урьдчилсан захиалга" : ""),
+            phone: normalizedPhone,
+            note: orderNote || null,
+            customerLat: normalizedCustomerLat,
+            customerLng: normalizedCustomerLng,
+            subtotal: group.subtotal,
+            total: group.subtotal,
+            items: { create: group.items },
+            history: {
+              create: {
+                toStatus: OrderStatus.PENDING,
+                changedById: customer.id,
+                note: group.isPreorderOnly
+                  ? "Урьдчилсан захиалга бүртгэгдсэн"
+                  : !hasCustomerCoordinates
+                    ? "Захиалга бүртгэгдсэн. Байршлын координатгүй тул гараар хуваарилна"
+                    : "Захиалга үүсгэж, ойр салбар хайж эхэлсэн",
+              },
             },
           },
-        },
-        include: {
-          items: true,
-        },
-      });
-
-      if (!isPreorderOnlyOrder) {
-        await seedOrderDispatchRadar(tx, {
-          id: ord.id,
-          organizationId: ord.organizationId,
-          customerLat: ord.customerLat,
-          customerLng: ord.customerLng,
+          include: { items: true },
         });
-      }
 
-      return ord;
+        if (!group.isPreorderOnly && hasCustomerCoordinates) {
+          await seedOrderDispatchRadar(tx, {
+            id: order.id,
+            organizationId: order.organizationId,
+            customerLat: order.customerLat,
+            customerLng: order.customerLng,
+          });
+        }
+        results.push({ order, isPreorderOnly: group.isPreorderOnly });
+      }
+      return results;
     });
 
-    const dispatch = isPreorderOnlyOrder
-      ? null
-      : await getCheckoutDispatchSnapshot(order.id, customer.id);
+    const orderResults = await Promise.all(
+      createdOrders.map(async ({ order, isPreorderOnly }) => ({
+        order,
+        isPreorderOnly,
+        dispatch:
+          !isPreorderOnly && hasCustomerCoordinates
+            ? await getCheckoutDispatchSnapshot(order.id, customer.id)
+            : null,
+      })),
+    );
+    const primary = orderResults[0];
+    if (!primary) {
+      throw new Error("Checkout created no orders");
+    }
+    const dispatch = primary.dispatch;
     const dispatchStatus =
-      dispatch?.status === "NOT_STARTED" && !isPreorderOnlyOrder
+      orderResults.length > 1
+        ? "MULTI_ORDER_CREATED"
+        : !primary.isPreorderOnly && !hasCustomerCoordinates
+        ? "MANUAL_REVIEW"
+        : dispatch?.status === "NOT_STARTED" && !primary.isPreorderOnly
         ? "MANUAL_REVIEW"
         : dispatch?.status || "PREORDER_REGISTERED";
 
+    await Promise.all(
+      orderResults.map(({ order }) =>
+        notifyNewOnlineOrderRequest(order.id).catch((error: unknown) => {
+          console.error("Online order request notification failed", {
+            orderId: order.id,
+            error,
+          });
+        }),
+      ),
+    );
+
     return res.status(201).json({
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      total: Number(order.total),
-      subtotal: Number(order.subtotal),
+      orderId: primary.order.id,
+      orderNumber: primary.order.orderNumber,
+      orderCount: orderResults.length,
+      orders: orderResults.map(({ order, isPreorderOnly, dispatch }) => ({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        organizationId: order.organizationId,
+        total: Number(order.total),
+        subtotal: Number(order.subtotal),
+        preorderOrder: isPreorderOnly,
+        dispatchStatus:
+          !isPreorderOnly && !hasCustomerCoordinates
+            ? "MANUAL_REVIEW"
+            : dispatch?.status || "PREORDER_REGISTERED",
+      })),
+      total,
+      subtotal,
       paymentId: null,
       paymentRequired: false,
       dispatchStatus,
-      preorderOrder: isPreorderOnlyOrder,
+      preorderOrder: orderResults.every((result) => result.isPreorderOnly),
       dispatch,
-      items: order.items.map((i) => ({
-        productId: i.productId,
-        name: i.productName,
-        qty: i.quantity,
-        price: Number(i.price),
-        subtotal: Number(i.subtotal),
-      })),
+      items: orderResults.flatMap(({ order }) =>
+        order.items.map((item) => ({
+          productId: item.productId,
+          name: item.productName,
+          qty: item.quantity,
+          price: Number(item.price),
+          subtotal: Number(item.subtotal),
+        })),
+      ),
     });
   } catch (error) {
     console.error("store checkout error", error);
@@ -1318,18 +1399,6 @@ router.post(
       if (order.customerId !== customer.id) {
         return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
       }
-      const isPreorderOnlyOrder = order.items.every(
-        (item) => item.product?.supplyType === "CHINA_PREORDER",
-      );
-      if (
-        !order.branchId &&
-        !order.delivery?.courierId &&
-        !isPreorderOnlyOrder
-      ) {
-        return res.status(409).json({
-          message: "Салбар захиалгыг баталгаажуулсны дараа төлбөр төлнө.",
-        });
-      }
       if (order.paymentStatus === PaymentStatus.PAID) {
         return res
           .status(400)
@@ -1349,7 +1418,7 @@ router.post(
           qrImage: raw.qr_image || "",
           qpayInvoiceId: raw.invoice_id || existing.providerRef,
           deepLinks: raw.urls || [],
-          expiresIn: 300,
+          expiresIn: STORE_CHECKOUT_PAYMENT_TIMEOUT_MS / 1000,
           items: order.items.map((i) => ({
             productId: i.productId,
             name: i.productName,
@@ -1409,7 +1478,7 @@ router.post(
         qrImage: invoice.data.qr_image,
         qpayInvoiceId: invoice.data.invoice_id,
         deepLinks: invoice.data.urls,
-        expiresIn: 300,
+        expiresIn: STORE_CHECKOUT_PAYMENT_TIMEOUT_MS / 1000,
         items: order.items.map((i) => ({
           productId: i.productId,
           name: i.productName,
@@ -1433,6 +1502,7 @@ router.post(
   "/store/checkout/:orderId/confirm",
   async (req: Request, res: Response) => {
     try {
+      await cancelExpiredStoreCheckouts();
       const customer = await getCustomer(req);
       if (!customer || !customer.isActive || customer.deletedAt) {
         return res.status(401).json({ message: "Нэвтэрнэ үү" });
@@ -1478,6 +1548,17 @@ router.post(
           orderNumber: order.orderNumber,
           status: "PAID",
           message: "Төлбөр аль хэдийн төлөгдсөн",
+        });
+      }
+      if (
+        order.status === OrderStatus.CANCELLED ||
+        order.paymentStatus === PaymentStatus.CANCELLED
+      ) {
+        return res.status(410).json({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          status: "CANCELLED",
+          message: "Төлбөрийн хугацаа дууссан тул захиалга цуцлагдсан",
         });
       }
 
@@ -1534,6 +1615,7 @@ router.get(
   "/store/checkout/:orderId/payment-status",
   async (req: Request, res: Response) => {
     try {
+      await cancelExpiredStoreCheckouts();
       const customer = await getCustomer(req);
       if (!customer || !customer.isActive || customer.deletedAt) {
         return res.status(401).json({ message: "Нэвтэрнэ үү" });
@@ -1575,6 +1657,12 @@ router.get(
       if (order.paymentStatus === "PAID") {
         return res.json({ status: "PAID" });
       }
+      if (
+        order.status === OrderStatus.CANCELLED ||
+        order.paymentStatus === PaymentStatus.CANCELLED
+      ) {
+        return res.json({ status: "CANCELLED" });
+      }
 
       const payment = order.payments[0];
       if (!payment?.providerRef) {
@@ -1606,6 +1694,94 @@ router.get(
   },
 );
 
+/* Local development only: confirm a pending checkout without a payment provider. */
+router.post(
+  "/store/checkout/:orderId/dev-confirm",
+  async (req: Request, res: Response) => {
+    if (
+      process.env.NODE_ENV === "production" ||
+      process.env.MGL_LOCAL_DEV !== "true"
+    ) {
+      return res.status(404).json({ message: "Not found" });
+    }
+
+    try {
+      const customer = await getCustomer(req);
+      if (!customer || !customer.isActive || customer.deletedAt) {
+        return res.status(401).json({ message: "Нэвтэрнэ үү" });
+      }
+
+      const order = await prisma.order.findUnique({
+        where: { id: req.params.orderId },
+        select: {
+          id: true,
+          customerId: true,
+          organizationId: true,
+          status: true,
+          customerLat: true,
+          customerLng: true,
+          paymentStatus: true,
+          orderNumber: true,
+          total: true,
+          payments: {
+            where: { method: PaymentMethod.QPAY },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: { id: true, status: true },
+          },
+        },
+      });
+      if (!order) {
+        return res.status(404).json({ message: "Захиалга олдсонгүй" });
+      }
+      if (order.customerId !== customer.id) {
+        return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
+      }
+      if (order.status === OrderStatus.CANCELLED) {
+        return res.status(410).json({ message: "Захиалга цуцлагдсан байна" });
+      }
+      if (order.paymentStatus === PaymentStatus.PAID) {
+        return res.json({ status: "PAID" });
+      }
+
+      const payment =
+        order.payments[0] ??
+        (await prisma.paymentAttempt.create({
+          data: {
+            orderId: order.id,
+            method: PaymentMethod.QPAY,
+            status: PaymentStatus.PENDING,
+            amount: Number(order.total),
+            providerRef: `DEV-${order.id}`,
+          },
+          select: { id: true, status: true },
+        }));
+
+      await confirmPaidOrderAndCreateDelivery(
+        order,
+        payment.id,
+        {
+          provider: "LOCAL_DEV",
+          transactionId: `DEV-QPAY-${Date.now()}`,
+          confirmedBy: customer.id,
+        },
+        "Local development төлбөр баталгаажсан",
+      );
+
+      return res.json({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        status: "PAID",
+      });
+    } catch (error) {
+      console.error("store dev payment confirm error", error);
+      return res
+        .status(500)
+        .json({ message: "Dev төлбөр баталгаажуулахад алдаа гарлаа" });
+    }
+  },
+);
+
 /* ══════════════════════════════════════════════════════════
    POST /store/qpay/callback
    QPay webhook callback — called by QPay when payment succeeds.
@@ -1613,6 +1789,7 @@ router.get(
    ══════════════════════════════════════════════════════════ */
 router.post("/store/qpay/callback", async (req: Request, res: Response) => {
   try {
+    await cancelExpiredStoreCheckouts();
     const orderId = req.query.orderId as string;
     if (!orderId) {
       return res.status(400).json({ message: "orderId required" });
@@ -1647,6 +1824,12 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
 
     if (order.paymentStatus === "PAID") {
       return res.json({ message: "already paid" });
+    }
+    if (
+      order.status === OrderStatus.CANCELLED ||
+      order.paymentStatus === PaymentStatus.CANCELLED
+    ) {
+      return res.status(410).json({ message: "order payment expired" });
     }
 
     const payment = order.payments[0];
@@ -1690,10 +1873,26 @@ router.get("/store/orders", async (req: Request, res: Response) => {
       return res.status(401).json({ message: "Нэвтэрнэ үү" });
     }
 
+    const from =
+      typeof req.query.from === "string" ? new Date(req.query.from) : null;
+    const to = typeof req.query.to === "string" ? new Date(req.query.to) : null;
+    const createdAt =
+      (from && !Number.isNaN(from.getTime())) ||
+      (to && !Number.isNaN(to.getTime()))
+        ? {
+            ...(from && !Number.isNaN(from.getTime()) ? { gte: from } : {}),
+            ...(to && !Number.isNaN(to.getTime()) ? { lte: to } : {}),
+          }
+        : undefined;
+
     const orders = await prisma.order.findMany({
-      where: { customerId: customer.id, deletedAt: null },
+      where: {
+        customerId: customer.id,
+        deletedAt: null,
+        ...(createdAt ? { createdAt } : {}),
+      },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: 200,
       include: {
         items: {
           select: {
@@ -1704,6 +1903,18 @@ router.get("/store/orders", async (req: Request, res: Response) => {
             price: true,
             subtotal: true,
             review: { select: { score: true } },
+            product: {
+              select: {
+                description: true,
+                sku: true,
+                unit: true,
+                supplyType: true,
+                images: {
+                  take: 1,
+                  select: { url: true },
+                },
+              },
+            },
           },
         },
         payments: {
@@ -1736,6 +1947,12 @@ router.get("/store/orders", async (req: Request, res: Response) => {
             branch: { select: { id: true, name: true, address: true } },
           },
         },
+        delivery: {
+          select: {
+            courierId: true,
+            providerOrganizationId: true,
+          },
+        },
       },
     });
 
@@ -1745,6 +1962,9 @@ router.get("/store/orders", async (req: Request, res: Response) => {
         orderNumber: o.orderNumber,
         status: o.status,
         paymentStatus: o.paymentStatus,
+        paymentReady:
+          o.paymentStatus === PaymentStatus.PENDING &&
+          o.status !== OrderStatus.CANCELLED,
         paymentMethod: o.paymentMethod,
         total: Number(o.total),
         subtotal: Number(o.subtotal),
@@ -1803,6 +2023,10 @@ router.get("/store/orders", async (req: Request, res: Response) => {
           price: Number(i.price),
           subtotal: Number(i.subtotal),
           reviewScore: i.review?.score ?? null,
+          description: i.product.description,
+          sku: i.product.sku,
+          unit: i.product.unit,
+          imageUrl: i.product.images[0]?.url ?? null,
         })),
         requiresReview:
           o.status === OrderStatus.COMPLETED &&

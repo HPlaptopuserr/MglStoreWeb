@@ -9,19 +9,18 @@ import {
   AlertCircle,
   MapPin,
   Check,
-  XCircle,
 } from "lucide-react";
 import { useCart } from "@/hooks/useCart";
 import type { CartItem } from "@/lib/cart";
 import { useAuth, type AuthAddress, type AuthUser } from "@/lib/auth-context";
-import { API } from "@/lib/api";
+import { API, resolveApiAssetUrl } from "@/lib/api";
 import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import {
   getActiveCheckoutDispatch,
   setActiveCheckoutDispatch,
 } from "@/lib/active-checkout-dispatch";
 import {
-  DeliveryDispatchRadar,
+  DeliveryDispatchRadarPopup,
   type DeliverySession,
 } from "@/components/organisms/checkout/DeliveryDispatchRadar";
 import { LoginModal } from "@/components/organisms/auth/LoginModal";
@@ -224,6 +223,20 @@ export default function CheckoutPage() {
     null;
   const displaySubtotal = deliverySession?.subtotal ?? total;
   const displayTotal = deliverySession?.total ?? total;
+  const cartCheckoutItems = items.map((item) => ({
+    id: item.id,
+    productId: item.id,
+    name: item.name,
+    sku: null,
+    unit: null,
+    quantity: item.quantity,
+    price: item.price,
+    subtotal: item.price * item.quantity,
+    imageUrl: item.image ?? null,
+  }));
+  const checkoutItems = deliverySession?.items?.length
+    ? deliverySession.items
+    : cartCheckoutItems;
   const isPreorderCart =
     items.length > 0 &&
     items.every((item) => item.supplyType === "CHINA_PREORDER");
@@ -299,12 +312,16 @@ export default function CheckoutPage() {
         );
         if (!res.ok) return;
         const data = await res.json();
-        setActiveCheckoutDispatch(data);
-        setDeliverySession(data);
-        if (data.status === "NO_BRANCH_AVAILABLE") {
+        const syncedSession: DeliverySession = {
+          ...data,
+          items: data.items?.length ? data.items : deliverySession.items,
+        };
+        setActiveCheckoutDispatch(syncedSession);
+        setDeliverySession(syncedSession);
+        if (syncedSession.status === "NO_BRANCH_AVAILABLE") {
           setDeliveryUnavailable(true);
           setCheckoutStep("pickup");
-        } else if (data.canPay) {
+        } else if (syncedSession.canPay) {
           setCheckoutStep("ready-to-pay");
         }
       } catch {
@@ -314,6 +331,62 @@ export default function CheckoutPage() {
 
     const poll = window.setInterval(syncDispatch, 5000);
     return () => window.clearInterval(poll);
+  }, [authFetch, deliverySession]);
+
+  useEffect(() => {
+    if (!deliverySession?.orderId || deliverySession.items?.length) return;
+
+    let cancelled = false;
+    const hydrateOrderItems = async () => {
+      try {
+        const res = await authFetch(`${API}/store/orders`);
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          orders?: Array<{
+            id: string;
+            items?: Array<{
+              id: string;
+              productId: string;
+              name: string;
+              sku?: string | null;
+              unit?: string | null;
+              qty: number;
+              price: number;
+              subtotal: number;
+              imageUrl?: string | null;
+            }>;
+          }>;
+        };
+        const order = data.orders?.find(
+          (candidate) => candidate.id === deliverySession.orderId,
+        );
+        if (cancelled || !order?.items?.length) return;
+
+        const hydratedSession: DeliverySession = {
+          ...deliverySession,
+          items: order.items.map((item) => ({
+            id: item.id,
+            productId: item.productId,
+            name: item.name,
+            sku: item.sku ?? null,
+            unit: item.unit ?? null,
+            quantity: item.qty,
+            price: item.price,
+            subtotal: item.subtotal,
+            imageUrl: item.imageUrl ?? null,
+          })),
+        };
+        setDeliverySession(hydratedSession);
+        setActiveCheckoutDispatch(hydratedSession);
+      } catch {
+        // The dispatch-status poll can still provide the item snapshot later.
+      }
+    };
+
+    void hydrateOrderItems();
+    return () => {
+      cancelled = true;
+    };
   }, [authFetch, deliverySession]);
 
   const createPayment = async (session: Pick<DeliverySession, "orderId">) => {
@@ -527,10 +600,39 @@ export default function CheckoutPage() {
       }
 
       if (data.dispatch && !data.qpayInvoiceId) {
-        setActiveCheckoutDispatch(data.dispatch);
-        setDeliverySession(data.dispatch);
+        const responseItems = Array.isArray(data.items)
+          ? data.items.map(
+              (item: {
+                productId: string;
+                name: string;
+                qty: number;
+                price: number;
+                subtotal: number;
+              }) => ({
+                id: item.productId,
+                productId: item.productId,
+                name: item.name,
+                sku: null,
+                unit: null,
+                quantity: item.qty,
+                price: item.price,
+                subtotal: item.subtotal,
+                imageUrl: null,
+              }),
+            )
+          : [];
+        const dispatchSession: DeliverySession = {
+          ...data.dispatch,
+          items: data.dispatch.items?.length
+            ? data.dispatch.items
+            : responseItems.length
+              ? responseItems
+              : cartCheckoutItems,
+        };
+        setActiveCheckoutDispatch(dispatchSession);
+        setDeliverySession(dispatchSession);
         clearCart();
-        setCheckoutStep(data.dispatch.canPay ? "ready-to-pay" : "radar");
+        setCheckoutStep(dispatchSession.canPay ? "ready-to-pay" : "radar");
         return;
       }
 
@@ -762,22 +864,16 @@ export default function CheckoutPage() {
             </h2>
 
             {deliverySession && (
-              <div className="space-y-3">
-                <DeliveryDispatchRadar session={deliverySession} now={now} />
-                <button
-                  type="button"
-                  onClick={cancelDeliverySearch}
-                  disabled={cancellingOrder}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-black text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {cancellingOrder ? (
-                    <Loader2 size={17} className="animate-spin" />
-                  ) : (
-                    <XCircle size={17} />
-                  )}
-                  {cancellingOrder ? "Цуцалж байна..." : "Захиалга цуцлах"}
-                </button>
-              </div>
+              <DeliveryDispatchRadarPopup
+                session={deliverySession}
+                now={now}
+                items={checkoutItems}
+                total={displayTotal}
+                cancelling={cancellingOrder}
+                paying={loading}
+                onCancel={() => void cancelDeliverySearch()}
+                onPay={() => void handleCheckout()}
+              />
             )}
 
             {deliveryUnavailable && !deliverySession && (
@@ -817,10 +913,47 @@ export default function CheckoutPage() {
                 />
               )}
 
-            <div className="space-y-2 text-sm">
+            {!deliverySession && checkoutItems.length > 0 && (
+              <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-2">
+                {checkoutItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-2 rounded-lg bg-white p-2"
+                  >
+                    {item.imageUrl ? (
+                      <img
+                        src={resolveApiAssetUrl(item.imageUrl)}
+                        alt=""
+                        className="h-9 w-9 shrink-0 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xs font-black text-gray-400">
+                        {item.quantity}
+                      </span>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-black text-gray-800">
+                        {item.name}
+                      </p>
+                      <p className="mt-0.5 text-[10px] font-semibold text-gray-400">
+                        {item.quantity} {item.unit || "ш"} × ₮
+                        {item.price.toLocaleString()}
+                        {item.sku ? ` · ${item.sku}` : ""}
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-xs font-black tabular-nums text-gray-900">
+                      ₮{item.subtotal.toLocaleString()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!deliverySession && <div className="space-y-2 text-sm">
               <div className="flex justify-between text-gray-500">
                 <span>
-                  Бүтээгдэхүүн ({items.reduce((s, i) => s + i.quantity, 0)})
+                  Бүтээгдэхүүн (
+                  {checkoutItems.reduce((sum, item) => sum + item.quantity, 0)})
                 </span>
                 <span className="tabular-nums">
                   ₮{displaySubtotal.toLocaleString()}
@@ -835,9 +968,7 @@ export default function CheckoutPage() {
                       ? "Байршил шаардахгүй"
                       : deliveryUnavailable
                         ? "Салбараас авна"
-                        : deliverySession && !deliverySession.canPay
-                          ? "Шалгагдаж байна"
-                          : "Үнэгүй"}
+                        : "Үнэгүй"}
                 </span>
               </div>
               <div className="border-t border-gray-100 pt-2 flex justify-between">
@@ -846,7 +977,7 @@ export default function CheckoutPage() {
                   ₮{displayTotal.toLocaleString()}
                 </span>
               </div>
-            </div>
+            </div>}
 
             {error && (
               <div className="flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
@@ -855,17 +986,16 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            <button
+            {!deliverySession && <button
               onClick={handleCheckout}
               disabled={
                 loading ||
                 cancellingOrder ||
-                (items.length === 0 && !deliverySession?.canPay) ||
-                (!deliverySession?.canPay && !phone.trim()) ||
-                (!deliverySession?.canPay && !orderNote.trim()) ||
+                items.length === 0 ||
+                !phone.trim() ||
+                !orderNote.trim() ||
                 (!isPreorderCart && deliveryUnavailable) ||
-                (!isPreorderCart && checkoutStep === "confirm-location") ||
-                Boolean(deliverySession && !deliverySession.canPay)
+                (!isPreorderCart && checkoutStep === "confirm-location")
               }
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-sm font-bold text-white transition-colors hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -876,12 +1006,8 @@ export default function CheckoutPage() {
                 </>
               ) : !isPreorderCart && deliveryUnavailable ? (
                 "Салбар дээрээс авах"
-              ) : deliverySession && !deliverySession.canPay ? (
-                "5 салбараас хариу хүлээж байна"
               ) : !isPreorderCart && checkoutStep === "confirm-location" ? (
                 "Байршлаа баталгаажуулна уу"
-              ) : deliverySession?.canPay ? (
-                "QPay-ээр төлөх"
               ) : !phone.trim() ? (
                 "Утасны дугаар оруулна уу"
               ) : !orderNote.trim() ? (
@@ -893,7 +1019,7 @@ export default function CheckoutPage() {
               ) : (
                 "Нэвтэрч захиалга өгөх"
               )}
-            </button>
+            </button>}
 
             {!user && (
               <p className="text-center text-xs text-gray-400">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Loader2,
   Package,
@@ -22,6 +22,12 @@ import {
   ThumbsDown,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
+import {
+  DeliveryPackageDialog,
+  type DeliveryPackageDetails,
+} from "@mgl/ui";
+import { fetchDeliveryAssignmentOptions } from "@/features/online-orders/online-order.api";
+import type { DeliveryAssignmentPartnership } from "@/features/online-orders/online-order.types";
 
 /* ───── types ───── */
 type DispatchItem = {
@@ -241,16 +247,29 @@ export default function DispatchOrdersPage() {
     null,
   );
   const [showDetail, setShowDetail] = useState(false);
+  const [showPackageDialog, setShowPackageDialog] = useState(false);
   const [showDriverForm, setShowDriverForm] = useState(false);
   const [showPadaan, setShowPadaan] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
   const [showDeliveredList, setShowDeliveredList] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Driver form
-  const [driverName, setDriverName] = useState("");
-  const [driverPhone, setDriverPhone] = useState("");
-  const [vehicleNumber, setVehicleNumber] = useState("");
+  // Delivery network assignment
+  const [deliveryPartnerships, setDeliveryPartnerships] = useState<
+    DeliveryAssignmentPartnership[]
+  >([]);
+  const [selectedPartnershipId, setSelectedPartnershipId] = useState("");
+  const [selectedCourierId, setSelectedCourierId] = useState("");
+  const [assignmentOptionsLoading, setAssignmentOptionsLoading] =
+    useState(false);
+  const [assignmentError, setAssignmentError] = useState("");
+  const selectedPartnership = useMemo(
+    () =>
+      deliveryPartnerships.find(
+        (partnership) => partnership.id === selectedPartnershipId,
+      ),
+    [deliveryPartnerships, selectedPartnershipId],
+  );
 
   // Returns
   const [activeTab, setActiveTab] = useState<"dispatches" | "returns">(
@@ -310,18 +329,22 @@ export default function DispatchOrdersPage() {
   };
 
   // ───── Actions ─────
-  const confirmDispatch = async (id: string) => {
+  const confirmDispatch = async (
+    id: string,
+    packageDetails: DeliveryPackageDetails,
+  ) => {
     setActionLoading(true);
     try {
       const res = await wmsFetch(
         `${API}/stock-requests/dispatches/${id}/confirm`,
         {
           method: "PATCH",
-          body: JSON.stringify({}),
+          body: JSON.stringify(packageDetails),
         },
       );
       if (res.ok) {
         await fetchDispatches();
+        setShowPackageDialog(false);
         setShowDetail(false);
       } else {
         const err = await res.json();
@@ -334,61 +357,62 @@ export default function DispatchOrdersPage() {
     }
   };
 
+  const openDriverAssignment = async () => {
+    setShowDriverForm(true);
+    setAssignmentOptionsLoading(true);
+    setAssignmentError("");
+    setSelectedPartnershipId("");
+    setSelectedCourierId("");
+    try {
+      const options = await fetchDeliveryAssignmentOptions();
+      setDeliveryPartnerships(
+        options.filter(
+          (partnership) => partnership.warehouseId === selectedWarehouseId,
+        ),
+      );
+    } catch (error) {
+      setAssignmentError(
+        error instanceof Error
+          ? error.message
+          : "Хүргэлтийн сонголт авахад алдаа гарлаа",
+      );
+    } finally {
+      setAssignmentOptionsLoading(false);
+    }
+  };
+
   const dispatchWithDriver = async (id: string) => {
-    if (!driverName.trim() || !driverPhone.trim()) {
-      alert("Жолоочийн нэр, утас шаардлагатай");
+    if (!selectedPartnershipId || !selectedCourierId) {
+      setAssignmentError("Хүргэлтийн компани болон хүргэгч сонгоно уу");
       return;
     }
     setActionLoading(true);
+    setAssignmentError("");
     try {
       const res = await wmsFetch(
         `${API}/stock-requests/dispatches/${id}/dispatch`,
         {
           method: "PATCH",
           body: JSON.stringify({
-            driverName: driverName.trim(),
-            driverPhone: driverPhone.trim(),
-            vehicleNumber: vehicleNumber.trim() || undefined,
+            partnershipId: selectedPartnershipId,
+            courierId: selectedCourierId,
           }),
         },
       );
       if (res.ok) {
         setShowDriverForm(false);
-        setDriverName("");
-        setDriverPhone("");
-        setVehicleNumber("");
+        setSelectedPartnershipId("");
+        setSelectedCourierId("");
         await fetchDispatches();
         setShowDetail(false);
       } else {
-        const err = await res.json();
-        alert(err.message || "Алдаа гарлаа");
+        const err = (await res.json().catch(() => ({}))) as {
+          message?: string;
+        };
+        setAssignmentError(err.message || "Илгээмж хуваарилахад алдаа гарлаа");
       }
     } catch {
-      alert("Сүлжээний алдаа");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const deliverDispatch = async (id: string) => {
-    setActionLoading(true);
-    try {
-      const res = await wmsFetch(
-        `${API}/stock-requests/dispatches/${id}/deliver`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({}),
-        },
-      );
-      if (res.ok) {
-        await fetchDispatches();
-        setShowDetail(false);
-      } else {
-        const err = await res.json();
-        alert(err.message || "Алдаа гарлаа");
-      }
-    } catch {
-      alert("Сүлжээний алдаа");
+      setAssignmentError("Сервертэй холбогдоход алдаа гарлаа");
     } finally {
       setActionLoading(false);
     }
@@ -1161,9 +1185,8 @@ export default function DispatchOrdersPage() {
           >
             <DispatchDetail
               dispatch={selectedDispatch}
-              onConfirm={() => confirmDispatch(selectedDispatch.id)}
-              onDispatch={() => setShowDriverForm(true)}
-              onDeliver={() => deliverDispatch(selectedDispatch.id)}
+              onConfirm={() => setShowPackageDialog(true)}
+              onDispatch={() => void openDriverAssignment()}
               onCancel={() => cancelDispatch(selectedDispatch.id)}
               onPadaan={() => setShowPadaan(true)}
               onInvoice={() => setShowInvoice(true)}
@@ -1172,6 +1195,19 @@ export default function DispatchOrdersPage() {
             />
           </div>
         </div>
+      )}
+
+      {showPackageDialog && selectedDispatch && (
+        <DeliveryPackageDialog
+          orderNumber={selectedDispatch.dispatchNumber}
+          submitting={actionLoading}
+          onClose={() => {
+            if (!actionLoading) setShowPackageDialog(false);
+          }}
+          onSubmit={(details) =>
+            confirmDispatch(selectedDispatch.id, details)
+          }
+        />
       )}
 
       {/* ───── Driver Assignment Modal ───── */}
@@ -1184,47 +1220,91 @@ export default function DispatchOrdersPage() {
             className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="mb-4 text-lg font-bold text-slate-800">
-              Жолооч томилох
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Жолоочийн нэр *
-                </label>
-                <input
-                  type="text"
-                  value={driverName}
-                  onChange={(e) => setDriverName(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  placeholder="Нэр"
-                />
+            <div className="mb-5 flex items-start gap-3">
+              <div className="rounded-lg bg-blue-50 p-2 text-blue-700">
+                <Truck className="h-5 w-5" />
               </div>
               <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Утасны дугаар *
-                </label>
-                <input
-                  type="text"
-                  value={driverPhone}
-                  onChange={(e) => setDriverPhone(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  placeholder="9999-9999"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Тээврийн хэрэгсэлийн дугаар
-                </label>
-                <input
-                  type="text"
-                  value={vehicleNumber}
-                  onChange={(e) => setVehicleNumber(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-                  placeholder="0000 УНА"
-                />
+                <h3 className="text-lg font-bold text-slate-900">
+                  Хүргэлт хуваарилах
+                </h3>
+                <p className="mt-0.5 text-sm text-slate-500">
+                  Бүртгэлтэй хүргэлтийн байгууллага, хүргэгч сонгоно уу.
+                </p>
               </div>
             </div>
+
+            {assignmentOptionsLoading ? (
+              <div className="flex h-36 items-center justify-center rounded-xl bg-slate-50">
+                <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+              </div>
+            ) : deliveryPartnerships.length === 0 ? (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+                Энэ агуулахад идэвхтэй хүргэлтийн байгууллага эсвэл бүртгэлтэй
+                хүргэгч алга. “Хүргэлтийн сүлжээ” хэсэгт эхлээд хамтын ажиллагаа
+                болон хүргэгчээ бүртгэнэ үү.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Хүргэлтийн байгууллага
+                  </span>
+                  <select
+                    value={selectedPartnershipId}
+                    onChange={(event) => {
+                      setSelectedPartnershipId(event.target.value);
+                      setSelectedCourierId("");
+                      setAssignmentError("");
+                    }}
+                    className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  >
+                    <option value="">Байгууллага сонгох</option>
+                    {deliveryPartnerships.map((partnership) => (
+                      <option key={partnership.id} value={partnership.id}>
+                        {partnership.provider.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-semibold text-slate-700">
+                    Хүргэгч
+                  </span>
+                  <select
+                    value={selectedCourierId}
+                    disabled={!selectedPartnership}
+                    onChange={(event) => {
+                      setSelectedCourierId(event.target.value);
+                      setAssignmentError("");
+                    }}
+                    className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100"
+                  >
+                    <option value="">Хүргэгч сонгох</option>
+                    {selectedPartnership?.couriers.map((courier) => (
+                      <option key={courier.id} value={courier.id}>
+                        {courier.profile?.fullName || courier.email}
+                        {courier.profile?.phoneNumber
+                          ? ` · ${courier.profile.phoneNumber}`
+                          : ""}
+                        {courier.deliveryDriverProfile?.vehiclePlateNumber
+                          ? ` · ${courier.deliveryDriverProfile.vehiclePlateNumber}`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            )}
+
+            {assignmentError && (
+              <p
+                role="alert"
+                className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+              >
+                {assignmentError}
+              </p>
+            )}
             <div className="mt-5 flex gap-3">
               <button
                 onClick={() => setShowDriverForm(false)}
@@ -1234,8 +1314,13 @@ export default function DispatchOrdersPage() {
               </button>
               <button
                 onClick={() => dispatchWithDriver(selectedDispatch.id)}
-                disabled={actionLoading}
-                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+                disabled={
+                  actionLoading ||
+                  assignmentOptionsLoading ||
+                  !selectedPartnershipId ||
+                  !selectedCourierId
+                }
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {actionLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1737,7 +1822,6 @@ function DispatchDetail({
   dispatch: d,
   onConfirm,
   onDispatch,
-  onDeliver,
   onCancel,
   onPadaan,
   onInvoice,
@@ -1747,7 +1831,6 @@ function DispatchDetail({
   dispatch: Dispatch;
   onConfirm: () => void;
   onDispatch: () => void;
-  onDeliver: () => void;
   onCancel: () => void;
   onPadaan: () => void;
   onInvoice: () => void;
@@ -2043,18 +2126,18 @@ function DispatchDetail({
           </>
         )}
         {d.status === "DISPATCHED" && (
-          <button
-            onClick={onDeliver}
-            disabled={actionLoading}
-            className="flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-          >
-            {actionLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4" />
-            )}
-            Хүргэгдсэн гэж тэмдэглэх
-          </button>
+          <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800">
+            <Truck className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold">
+                Хүргэгчийн баталгаажуулалт хүлээгдэж байна
+              </p>
+              <p className="mt-0.5 text-xs leading-5 text-blue-700">
+                Барааг хүлээлгэн өгсний дараа хүргэлтийн ажилтан зурагтай
+                баримтаар хүргэлтийг дуусгана.
+              </p>
+            </div>
+          </div>
         )}
         {d.status === "DELIVERED" && (
           <button

@@ -1,7 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Bell, Search } from "lucide-react";
+import { Search } from "lucide-react";
+import { WarehouseNotificationsMenu } from "@/features/notifications/WarehouseNotificationsMenu";
 
 interface WmsHeaderProps {
   userName: string;
@@ -40,13 +41,7 @@ export default function WmsHeader({ userName, userInitials }: WmsHeaderProps) {
           />
         </div>
 
-        {/* Notifications */}
-        <button className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700">
-          <Bell className="h-4 w-4" />
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-            3
-          </span>
-        </button>
+        <WarehouseNotificationsMenu />
 
         {/* User */}
         <div className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5">

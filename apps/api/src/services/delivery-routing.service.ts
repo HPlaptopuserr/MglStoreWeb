@@ -3,6 +3,8 @@ import {
   DeliveryPartnershipStatus,
   DeliverySourceType,
   DeliveryStatus,
+  OrderStatus,
+  PaymentStatus,
   type Prisma,
 } from "@mgl/database";
 import { sendPushToUsers } from "./push-notification.service";
@@ -195,9 +197,21 @@ export async function routeOrderDelivery(
       id: true,
       orderNumber: true,
       organizationId: true,
+      paymentStatus: true,
+      status: true,
     },
   });
   if (!order) throw new Error("Захиалга олдсонгүй");
+  if (order.paymentStatus !== PaymentStatus.PAID) {
+    throw new Error(
+      "Төлбөр баталгаажаагүй захиалгад хүргэлт үүсгэх боломжгүй",
+    );
+  }
+  if (order.status !== OrderStatus.SHIPPING) {
+    throw new Error(
+      "Бараа бэлтгэгдэж, багцын мэдээлэл баталгаажаагүй байна",
+    );
+  }
 
   const partnership = await selectLeastLoadedPartnership(tx, {
     requesterOrganizationId: order.organizationId,

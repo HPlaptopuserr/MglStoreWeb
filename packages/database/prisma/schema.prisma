@@ -1538,6 +1538,15 @@ model Delivery {
   courierId               String?
   status                  DeliveryStatus       @default(WAITING)
   trackingCode            String?
+  packageCount            Int                  @default(1)
+  totalWeightKg           Decimal?             @db.Decimal(10, 2)
+  packageLengthCm         Decimal?             @db.Decimal(10, 2)
+  packageWidthCm          Decimal?             @db.Decimal(10, 2)
+  packageHeightCm         Decimal?             @db.Decimal(10, 2)
+  sizeCategory            String?
+  isFragile               Boolean              @default(false)
+  handlingInstructions    String?
+  readyAt                 DateTime?
   pickupTime              DateTime?
   deliveredAt             DateTime?
   proofImage              String?
@@ -2284,6 +2293,7 @@ enum InvestorTier {
 enum OrderStatus {
   PENDING
   CONFIRMED
+  PREPARING
   PREPARED
   SHIPPING
   COMPLETED

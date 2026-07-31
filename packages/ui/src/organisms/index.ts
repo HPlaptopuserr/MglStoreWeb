@@ -1,5 +1,6 @@
 export * from "./AppSidebar";
 export * from "./AdminSidebar";
+export * from "./DeliveryPackageDialog";
 export * from "./ForgotPasswordFlow";
 export * from "./LoginForm";
 export * from "./ProductLabelPrintDialog";

@@ -11,10 +11,17 @@ import {
   DeliverySourceType,
   prisma,
   OrderStatus,
+  PaymentStatus,
   type Prisma,
 } from "@mgl/database";
 import { isFullAdmin } from "@mgl/types";
-import { routeOrderDelivery } from "../../services/delivery-routing.service";
+import {
+  notifyAssignedOrderDelivery,
+  routeOrderDelivery,
+} from "../../services/delivery-routing.service";
+import { parseDeliveryPackageDetails } from "../../services/delivery-package.service";
+import { notifyCustomerOrderStage } from "../../services/order-notification.service";
+import { completeOrderFulfillment } from "../../services/order-completion.service";
 
 const router: ExpressRouter = Router();
 const JWT_SECRET =
@@ -127,7 +134,8 @@ async function advanceNextDispatchAttempt(
    CONFIRMED → PREPARED → SHIPPING → COMPLETED
    ══════════════════════════════════════════════════════════ */
 const STATUS_FLOW: Record<string, OrderStatus | null> = {
-  CONFIRMED: OrderStatus.PREPARED,
+  CONFIRMED: OrderStatus.PREPARING,
+  PREPARING: OrderStatus.PREPARED,
   PREPARED: OrderStatus.SHIPPING,
   // SHIPPING → COMPLETED only via delivery code confirm
 };
@@ -148,10 +156,16 @@ router.post(
           organizationId: user.organizationId,
           deletedAt: null,
         },
-        select: { id: true },
+        select: { id: true, status: true },
       });
       if (!order) {
         return res.status(404).json({ message: "Захиалга олдсонгүй" });
+      }
+      if (order.status !== OrderStatus.SHIPPING) {
+        return res.status(409).json({
+          message:
+            "Багцын мэдээллийг баталж хүргэлтийн ажил үүсгэсний дараа хүргэлтийн компани сонгоно.",
+        });
       }
 
       const delivery = await prisma.$transaction(async (tx) => {
@@ -232,7 +246,7 @@ router.get("/vendor/orders", async (req: Request, res: Response) => {
     const where: Record<string, unknown> = {
       organizationId: user.organizationId!,
       deletedAt: null,
-      paymentStatus: "PAID",
+      paymentStatus: { in: ["PENDING", "PAID"] },
     };
     if (status && Object.values(OrderStatus).includes(status as OrderStatus)) {
       where.status = status;
@@ -292,6 +306,9 @@ router.get("/vendor/orders", async (req: Request, res: Response) => {
         orderNumber: o.orderNumber,
         status: o.status,
         paymentStatus: o.paymentStatus,
+        isOrderRequest:
+          o.status === OrderStatus.PENDING &&
+          o.paymentStatus === PaymentStatus.PENDING,
         total: Number(o.total),
         subtotal: Number(o.subtotal),
         phone: o.phone,
@@ -688,13 +705,25 @@ router.patch(
       }
 
       const updateData: Record<string, unknown> = { status: nextStatus };
+      const parsedPackage =
+        nextStatus === OrderStatus.SHIPPING
+          ? parseDeliveryPackageDetails(req.body)
+          : null;
+      if (parsedPackage?.error) {
+        return res.status(400).json({
+          code: "DELIVERY_PACKAGE_DETAILS_REQUIRED",
+          message:
+            "Хайрцгийн тоо, нийт жин, урт, өргөн, өндөр болон оворын ангиллыг бүрэн оруулна уу.",
+        });
+      }
+      const packageDetails = parsedPackage?.data ?? null;
 
       // Generate delivery code when moving to SHIPPING
       if (nextStatus === OrderStatus.SHIPPING) {
         updateData.deliveryCode = generateDeliveryCode();
       }
 
-      await prisma.$transaction(async (tx) => {
+      const deliveryAssignment = await prisma.$transaction(async (tx) => {
         await tx.order.update({ where: { id: order.id }, data: updateData });
 
         await tx.orderHistory.create({
@@ -704,7 +733,9 @@ router.patch(
             toStatus: nextStatus,
             changedById: user.id,
             note:
-              nextStatus === OrderStatus.PREPARED
+              nextStatus === OrderStatus.PREPARING
+                ? "Барааг бэлтгэж эхэлсэн"
+                : nextStatus === OrderStatus.PREPARED
                 ? "Бараа бэлтгэгдсэн"
                 : nextStatus === OrderStatus.SHIPPING
                   ? "Хүргэлтэнд гарсан"
@@ -713,12 +744,43 @@ router.patch(
         });
 
         if (nextStatus === OrderStatus.SHIPPING) {
-          await routeOrderDelivery(tx, {
+          const delivery = await routeOrderDelivery(tx, {
             orderId: order.id,
             sourceType: DeliverySourceType.WEBSITE_ORDER,
           });
+          await tx.delivery.update({
+            where: { id: delivery.id },
+            data: {
+              ...packageDetails,
+              handlingInstructions:
+                packageDetails?.handlingInstructions || null,
+              readyAt: new Date(),
+            },
+          });
+          return {
+            id: delivery.id,
+            courierId: delivery.courierId,
+          };
         }
+        return null;
       });
+
+      if (deliveryAssignment) {
+        await notifyAssignedOrderDelivery({
+          courierId: deliveryAssignment.courierId,
+          deliveryId: deliveryAssignment.id,
+          orderNumber: order.orderNumber,
+        });
+      }
+      if (nextStatus === OrderStatus.PREPARING) {
+        await notifyCustomerOrderStage(order.id, "PREPARING", {
+          email: true,
+        }).catch(
+          (error: unknown) => {
+            console.error("Preparing order notification failed", error);
+          },
+        );
+      }
 
       return res.json({
         orderId: order.id,
@@ -805,50 +867,16 @@ router.post(
       }
 
       await prisma.$transaction(async (tx) => {
-        await tx.order.update({
-          where: { id: order.id },
-          data: {
-            status: OrderStatus.COMPLETED,
-            deliveryCode: null, // clear the code after use
-          },
+        await completeOrderFulfillment(tx, {
+          orderId: order.id,
+          changedById: decoded.userId!,
+          note: "Хүргэлт баталгаажсан (кодоор)",
         });
-
-        await tx.orderHistory.create({
-          data: {
-            orderId: order.id,
-            fromStatus: OrderStatus.SHIPPING,
-            toStatus: OrderStatus.COMPLETED,
-            changedById: decoded.userId!,
-            note: "Хүргэлт баталгаажсан (кодоор)",
-          },
-        });
-
-        for (const item of order.items) {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: { soldCount: { increment: item.quantity } },
-          });
-        }
-        const uniqueCustomers = await tx.order.groupBy({
-          by: ["customerId"],
-          where: {
-            organizationId: order.organizationId,
-            status: OrderStatus.COMPLETED,
-            deletedAt: null,
-          },
-        });
-        await tx.organization.update({
-          where: { id: order.organizationId },
-          data: {
-            soldCount: {
-              increment: order.items.reduce(
-                (total, item) => total + item.quantity,
-                0,
-              ),
-            },
-            customerCount: String(uniqueCustomers.length),
-          },
-        });
+      });
+      await notifyCustomerOrderStage(order.id, "DELIVERED", {
+        email: true,
+      }).catch((error: unknown) => {
+        console.error("Delivered order notification failed", error);
       });
 
       return res.json({
