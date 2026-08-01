@@ -89,6 +89,16 @@ function activePrimeUserWhere(userId: string): Prisma.UserWhereInput {
   };
 }
 
+async function hasActivePrimeAccess(userId: string) {
+  if (!userId) return false;
+
+  const user = await prisma.user.findFirst({
+    where: activePrimeUserWhere(userId),
+    select: { id: true },
+  });
+  return Boolean(user);
+}
+
 type PaidProject = {
   id: string;
   title: string;
@@ -1017,13 +1027,7 @@ async function ensurePaidProjectAccess({
   if (price <= 0) return true;
 
   if (userId) {
-    if (kind !== "FRANCHISE_ACCESS") {
-      const primeUser = await prisma.user.findFirst({
-        where: activePrimeUserWhere(userId),
-        select: { id: true },
-      });
-      if (primeUser) return true;
-    }
+    if (await hasActivePrimeAccess(userId)) return true;
 
     const purchase = await findPaidAccessPurchaseForProject({
       userId,
@@ -2034,17 +2038,19 @@ router.get("/site-settings/franchise", optionalAuth, async (req, res) => {
     const projects = await getFranchiseProjects();
     const userId = String((req as any).user?.userId || "").trim();
     const publicProjects = getPublicFranchiseProjects(projects, req);
-    const [purchasedIds, membershipAccess, mPointBalance] = userId
-      ? await Promise.all([
-          getPurchasedPaidAccessIds({
-            userId,
-            projects: projects.map(normalizeFranchiseProject),
-            kind: "FRANCHISE_ACCESS",
-          }),
-          getMembershipFranchiseAccess(userId),
-          getMPointBalance(userId),
-        ])
-      : [new Set<string>(), null, 0];
+    const [purchasedIds, membershipAccess, mPointBalance, hasPrimeAccess] =
+      userId
+        ? await Promise.all([
+            getPurchasedPaidAccessIds({
+              userId,
+              projects: projects.map(normalizeFranchiseProject),
+              kind: "FRANCHISE_ACCESS",
+            }),
+            getMembershipFranchiseAccess(userId),
+            getMPointBalance(userId),
+            hasActivePrimeAccess(userId),
+          ])
+        : [new Set<string>(), null, 0, false];
     res.setHeader(
       "Cache-Control",
       userId
@@ -2055,7 +2061,9 @@ router.get("/site-settings/franchise", optionalAuth, async (req, res) => {
       success: true,
       projects: publicProjects.map((project) => ({
         ...project,
-        hasPurchased: purchasedIds.has(project.id),
+        // The web client uses this flag as its full-access signal. Active PRIME
+        // members can open every franchise file without buying each item.
+        hasPurchased: hasPrimeAccess || purchasedIds.has(project.id),
       })),
       membershipAccess,
       mPointBalance,
