@@ -653,6 +653,29 @@ async function getVerifyMnSessionStatus(
   return data as VerifyMnStatusResponse;
 }
 
+const VERIFY_MN_STATUS_MAX_ATTEMPTS = 4;
+const VERIFY_MN_STATUS_RETRY_DELAY_MS = 750;
+
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForVerifyMnSessionStatus(sessionId: string) {
+  let status = await getVerifyMnSessionStatus(sessionId);
+
+  for (
+    let attempt = 1;
+    attempt < VERIFY_MN_STATUS_MAX_ATTEMPTS &&
+    status.sessionStatus === "PENDING";
+    attempt += 1
+  ) {
+    await wait(VERIFY_MN_STATUS_RETRY_DELAY_MS);
+    status = await getVerifyMnSessionStatus(sessionId);
+  }
+
+  return status;
+}
+
 function createWebAccessToken(
   user: any,
   orgInfo?: Partial<AuthOrgContext> | null,
@@ -1076,7 +1099,7 @@ router.post(
           .json({ message: "Admin хэрэглэгч идэвхгүй байна" });
       }
 
-      const status = await getVerifyMnSessionStatus(sessionId);
+      const status = await waitForVerifyMnSessionStatus(sessionId);
       const statusPhone = normalizePhoneDigits(status.phone);
       if (statusPhone && statusPhone !== identifier) {
         return res
@@ -1273,7 +1296,7 @@ router.post(
           .json({ message: "Нийлүүлэгч хэрэглэгч идэвхгүй байна" });
       }
 
-      const status = await getVerifyMnSessionStatus(sessionId);
+      const status = await waitForVerifyMnSessionStatus(sessionId);
       const statusPhone = normalizePhoneDigits(status.phone);
       if (statusPhone && statusPhone !== identifier) {
         return res
@@ -1701,7 +1724,7 @@ router.post("/web/verify-mn/complete", async (req, res) => {
         .json({ message: "Утасны дугаар болон sessionId шаардлагатай." });
     }
 
-    const status = await getVerifyMnSessionStatus(sessionId);
+    const status = await waitForVerifyMnSessionStatus(sessionId);
     const statusPhone = normalizePhoneDigits(status.phone);
     if (statusPhone && statusPhone !== identifier) {
       return res
@@ -2040,7 +2063,7 @@ router.post(
         return res.status(404).json({ message: "Бүртгэлгүй хэрэглэгч байна" });
       }
 
-      const status = await getVerifyMnSessionStatus(sessionId);
+      const status = await waitForVerifyMnSessionStatus(sessionId);
       const statusPhone = normalizePhoneDigits(status.phone);
       if (statusPhone && statusPhone !== identifier) {
         return res

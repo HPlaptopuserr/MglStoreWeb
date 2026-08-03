@@ -13,6 +13,7 @@ export {
   personalOrganizationRoutes,
   vendorSetupRoutes,
   warehouseSetupRoutes,
+  salesRepresentativeRoutes,
 } from "./business";
 
 export { businessCategoriesRoutes, productsRoutes } from "./catalog";

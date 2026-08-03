@@ -224,9 +224,9 @@ export default function Dashboard() {
     : 0;
 
   return (
-    <div className="min-h-screen bg-slate-50/60 p-4 sm:p-6 lg:p-8">
+    <div className="min-w-0 bg-slate-50/60">
       {/* ── Header ── */}
-      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mb-5 flex flex-col gap-3 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
             Хяналтын самбар
@@ -235,10 +235,10 @@ export default function Dashboard() {
             {orgName}
           </h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:gap-3 sm:overflow-visible sm:px-0 sm:pb-0">
           <Link
             href="/sales"
-            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+            className="flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
           >
             <ReceiptText size={15} />
             Борлуулалт
@@ -246,7 +246,7 @@ export default function Dashboard() {
           {showPos && (
             <Link
               href="/pos"
-              className="flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"
+              className="flex shrink-0 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2 text-sm font-bold text-violet-700 hover:bg-violet-100 transition-colors"
             >
               <Barcode size={15} />
               POS касс
@@ -255,7 +255,7 @@ export default function Dashboard() {
           {(data?.pendingPayments?.count ?? 0) > 0 && (
             <Link
               href="/shipments"
-              className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-100 transition-colors"
+              className="flex shrink-0 items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-2 text-sm font-bold text-red-600 hover:bg-red-100 transition-colors"
             >
               <AlertCircle size={15} />
               {data!.pendingPayments.count} төлбөр хүлээгдэж байна
@@ -285,7 +285,7 @@ export default function Dashboard() {
       ) : (
         <div className="space-y-6">
           {/* ── Hero Stats row ── */}
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 sm:gap-4 lg:grid-cols-4">
             {/* Active shipments - hero yellow */}
             <Link
               href="/shipments"

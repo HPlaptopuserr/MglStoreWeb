@@ -182,7 +182,7 @@ export default function VendorDashboardLayout({
               value={selectedOrganizationId}
               disabled={isSwitchingOrganization}
               onChange={(event) => handleOrganizationChange(event.target.value)}
-              className="h-9 max-w-[190px] rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition hover:border-slate-300 disabled:cursor-wait disabled:opacity-60"
+              className="h-9 min-w-0 max-w-[128px] truncate rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none transition hover:border-slate-300 disabled:cursor-wait disabled:opacity-60 sm:max-w-[190px] sm:px-3 sm:text-sm"
               aria-label="Байгууллага солих"
             >
               {organizations.map((organization) => (

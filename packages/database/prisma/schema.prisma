@@ -97,6 +97,7 @@ model User {
   warehouseManualDispatches        WarehouseManualDispatch[]      @relation("WarehouseManualDispatchCreatedBy")
   assignedWarehouseCouriers        WarehouseCourierAssignment[]   @relation("WarehouseCourierAssignedBy")
   deliveryDriverProfile            DeliveryDriverProfile?
+  salesVisits                      SalesVisit[]
 
   @@index([role])
   @@index([isPrime])
@@ -463,6 +464,8 @@ model Organization {
   warehouseCourierAssignments     WarehouseCourierAssignment[] @relation("CourierProviderOrganization")
   deliveryJobsRequested           Delivery[]                   @relation("DeliveryRequesterOrganization")
   deliveryJobsProvided            Delivery[]                   @relation("DeliveryProviderOrganization")
+  salesVisitLocations             SalesVisitLocation[]
+  salesVisits                     SalesVisit[]
 
   @@index([type])
   @@index([status])
@@ -665,6 +668,7 @@ model OrganizationMember {
   capabilities   Capability[] @default([])
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  salesLocationAssignments SalesVisitLocationAssignment[]
 
   @@unique([userId, organizationId])
   @@index([userId])
@@ -673,6 +677,62 @@ model OrganizationMember {
   @@index([department])
   @@index([isActive])
   @@index([deletedAt])
+}
+
+model SalesVisitLocation {
+  id             String                           @id @default(uuid())
+  organizationId String
+  name           String
+  address        String
+  latitude       Float
+  longitude      Float
+  radiusMeters   Int                              @default(150)
+  contactName    String?
+  contactPhone   String?
+  isActive       Boolean                          @default(true)
+  createdAt      DateTime                         @default(now())
+  updatedAt      DateTime                         @updatedAt
+  organization   Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignments    SalesVisitLocationAssignment[]
+  visits         SalesVisit[]
+
+  @@index([organizationId, isActive])
+}
+
+model SalesVisitLocationAssignment {
+  locationId String
+  memberId   String
+  createdAt  DateTime           @default(now())
+  location   SalesVisitLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  member     OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@id([locationId, memberId])
+  @@index([memberId])
+}
+
+model SalesVisit {
+  id                 String             @id @default(uuid())
+  organizationId     String
+  locationId         String
+  userId             String
+  checkedInAt        DateTime           @default(now())
+  checkedInLatitude  Float
+  checkedInLongitude Float
+  checkedOutAt       DateTime?
+  checkedOutLatitude Float?
+  checkedOutLongitude Float?
+  durationMinutes    Int?
+  note               String?
+  promotedProductIds String[]           @default([])
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location           SalesVisitLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, checkedInAt])
+  @@index([locationId, checkedInAt])
+  @@index([userId, checkedInAt])
 }
 
 model OrganizationTask {
@@ -2256,6 +2316,7 @@ enum Capability {
   DELIVERY_DRIVER
   STOCK_MANAGER
   ORDER_PROCESSOR
+  SALES_REPRESENTATIVE
 }
 
 enum PlatformRole {

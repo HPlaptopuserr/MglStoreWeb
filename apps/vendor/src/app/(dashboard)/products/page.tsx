@@ -463,7 +463,7 @@ export default function ProductsPage() {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50/50 p-4 md:p-6 space-y-6">
+    <div className="min-w-0 space-y-5 bg-slate-50/50 sm:space-y-6">
       {/* Toast */}
       {toast && (
         <div
@@ -527,7 +527,7 @@ export default function ProductsPage() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-black tracking-tight text-slate-900">Бараа</h1>
+            <h1 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">Бараа</h1>
             {isPlanActive && planStatus?.currentPlan && (
               <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${
                 planStatus.currentPlan.isTrial ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
@@ -539,8 +539,8 @@ export default function ProductsPage() {
           </div>
           <p className="mt-0.5 text-sm font-medium text-slate-500">Таны бараа бүтээгдэхүүний каталог</p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1 md:w-72">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center sm:gap-3">
+          <div className="relative col-span-2 flex-1 md:w-72">
             <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-white text-sm font-medium outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all shadow-sm"
@@ -553,7 +553,7 @@ export default function ProductsPage() {
             type="button"
             onClick={() => setLabelPrintOpen(true)}
             disabled={visibleProducts.length === 0}
-            className={`flex h-11 items-center gap-2 rounded-xl px-5 text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+            className={`flex h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-bold shadow-lg transition-colors whitespace-nowrap sm:px-5 ${
               visibleProducts.length > 0
                 ? "bg-slate-900 text-white shadow-slate-500/20 hover:bg-slate-800"
                 : "cursor-not-allowed bg-slate-300 text-white shadow-none"
@@ -566,7 +566,7 @@ export default function ProductsPage() {
             onClick={() => canAddProduct && setImportOpen(true)}
             disabled={!canAddProduct}
             title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
-            className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+            className={`flex h-11 items-center justify-center gap-2 rounded-xl px-3 text-sm font-bold text-white shadow-lg transition-colors whitespace-nowrap sm:px-5 ${
               canAddProduct
                 ? isPreorderView
                   ? "bg-blue-600 shadow-blue-500/25 hover:bg-blue-700"
@@ -582,7 +582,7 @@ export default function ProductsPage() {
               onClick={() => canAddProduct && openAdd()}
               disabled={!canAddProduct}
               title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
-              className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+              className={`col-span-2 flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold text-white shadow-lg transition-colors whitespace-nowrap sm:col-span-1 ${
                 canAddProduct
                   ? "bg-indigo-600 shadow-indigo-500/25 hover:bg-indigo-700"
                   : "bg-slate-300 cursor-not-allowed shadow-none"
@@ -597,7 +597,7 @@ export default function ProductsPage() {
               onClick={() => canAddProduct && openAddPreorder()}
               disabled={!canAddProduct}
               title={!isPlanActive ? "Идэвхтэй план шаардлагатай" : productLimitReached ? `Дээд хязгаар: ${productLimit} бараа` : ""}
-              className={`flex items-center gap-2 h-11 px-5 rounded-xl text-white text-sm font-bold shadow-lg transition-colors whitespace-nowrap ${
+              className={`col-span-2 flex h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold text-white shadow-lg transition-colors whitespace-nowrap sm:col-span-1 ${
                 canAddProduct
                   ? "bg-blue-600 shadow-blue-500/25 hover:bg-blue-700"
                   : "bg-slate-300 cursor-not-allowed shadow-none"
@@ -611,19 +611,19 @@ export default function ProductsPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-2 sm:gap-4 md:grid-cols-4">
         {[
           { label: "Нийт бараа", value: visibleProducts.length, icon: Package, color: "bg-indigo-50 text-indigo-600" },
           { label: "Идэвхтэй", value: visibleProducts.filter((p) => p.isActive).length, icon: ToggleRight, color: "bg-emerald-50 text-emerald-600" },
           { label: "Нийт нөөц", value: visibleProducts.reduce((s, p) => s + p.stock, 0), icon: BarChart2, color: "bg-amber-50 text-amber-600" },
           { label: "Ангилалтай", value: visibleProducts.filter((p) => p.businessCategoryId).length, icon: Layers, color: "bg-blue-50 text-blue-600" },
         ].map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="bg-white rounded-2xl border border-slate-100 p-5 flex items-center gap-4 shadow-sm hover:shadow-md transition-shadow">
-            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${color}`}>
+          <div key={label} className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm transition-shadow hover:shadow-md sm:gap-4 sm:p-5">
+            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:h-12 sm:w-12 ${color}`}>
               <Icon size={20} />
             </div>
             <div>
-              <div className="text-2xl font-black text-slate-900">{value}</div>
+              <div className="truncate text-xl font-black text-slate-900 sm:text-2xl">{value}</div>
               <div className="text-xs font-medium text-slate-500 mt-0.5">{label}</div>
             </div>
           </div>
@@ -836,7 +836,7 @@ export default function ProductsPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+            <div className="flex w-full items-center gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm md:w-auto">
               {[
                 { key: "all", label: "Бүгд", count: visibleProducts.length },
                 {
@@ -853,7 +853,7 @@ export default function ProductsPage() {
                 <button
                   key={btn.key}
                   onClick={() => setStatusFilter(btn.key as "all" | "active" | "inactive")}
-                  className={`rounded-lg px-4 py-2 text-sm font-semibold transition-all ${statusFilter === btn.key
+                  className={`shrink-0 rounded-lg px-3 py-2 text-sm font-semibold transition-all sm:px-4 ${statusFilter === btn.key
                       ? "bg-indigo-600 text-white shadow-md"
                       : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
                     }`}

@@ -187,23 +187,23 @@ export default function SalesHistoryPage() {
       </div>
 
       {/* Filters */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 flex flex-wrap gap-3 items-end">
-        <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-1 items-end gap-3 rounded-2xl border border-slate-200 bg-white p-4 min-[420px]:grid-cols-2 lg:flex lg:flex-wrap">
+        <div className="flex min-w-0 flex-col gap-1">
           <label className="text-xs font-semibold text-slate-500">Эхлэх огноо</label>
           <input
             type="date"
             value={fromDate}
             onChange={(e) => setFromDate(e.target.value)}
-            className="h-9 rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
+            className="h-9 min-w-0 w-full rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
           />
         </div>
-        <div className="flex flex-col gap-1">
+        <div className="flex min-w-0 flex-col gap-1">
           <label className="text-xs font-semibold text-slate-500">Дуусах огноо</label>
           <input
             type="date"
             value={toDate}
             onChange={(e) => setToDate(e.target.value)}
-            className="h-9 rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
+            className="h-9 min-w-0 w-full rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200"
           />
         </div>
         <button
@@ -213,19 +213,19 @@ export default function SalesHistoryPage() {
         >
           Хайх
         </button>
-        <div className="relative ml-auto">
+        <div className="relative min-w-0 min-[420px]:col-span-2 lg:col-span-1 lg:ml-auto">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Баримт №, нэр, бараа..."
-            className="h-9 rounded-lg border border-slate-200 pl-9 pr-3 text-sm w-60 focus:outline-none focus:ring-2 focus:ring-violet-200"
+            className="h-9 w-full min-w-0 rounded-lg border border-slate-200 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 lg:w-60"
           />
         </div>
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-4 md:gap-4">
         {[
           { label: "Нийт гүйлгээ", value: `${filtered.length} / ${total}` },
           { label: "Нийт орлого", value: `₮${fmt(totalRevenue)}` },
@@ -295,11 +295,11 @@ export default function SalesHistoryPage() {
                   {/* Main row */}
                   <button
                     onClick={() => setExpandedId(expanded ? null : sale.id)}
-                    className={`w-full grid grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] gap-4 px-5 py-3 items-center text-left transition-colors ${
+                    className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition-colors md:grid-cols-[2fr_1fr_1fr_1fr_1fr_auto] md:gap-4 md:px-5 ${
                       isVoided ? "bg-rose-50/40 hover:bg-rose-50" : "hover:bg-slate-50"
                     }`}
                   >
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className={`text-sm font-bold font-mono ${
                           isVoided ? "text-rose-700 line-through" : "text-slate-900"
@@ -319,12 +319,12 @@ export default function SalesHistoryPage() {
                         </p>
                       ) : null}
                     </div>
-                    <div>
+                    <div className="hidden md:block">
                       <p className="text-sm text-slate-700">{sale.branchName}</p>
                       {sale.registerName && <p className="text-xs text-slate-400">{sale.registerName}</p>}
                     </div>
-                    <p className="text-sm text-slate-700">{sale.cashierName}</p>
-                    <div className="flex flex-wrap items-center gap-2">
+                    <p className="hidden text-sm text-slate-700 md:block">{sale.cashierName}</p>
+                    <div className="hidden flex-wrap items-center gap-2 md:flex">
                       <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold w-fit ${
                         sale.paymentMethod === "CASH" ? "bg-emerald-50 text-emerald-700" :
                         sale.paymentMethod === "CARD" ? "bg-blue-50 text-blue-700" :
@@ -339,14 +339,14 @@ export default function SalesHistoryPage() {
                         </span>
                       ) : null}
                     </div>
-                    <p className={`text-sm font-bold text-right ${
+                    <p className={`text-right text-sm font-bold md:block ${
                       isVoided ? "text-rose-600 line-through" : "text-slate-900"
                     }`}>
                       ₮{fmt(sale.grandTotal)}
                     </p>
                     {expanded
-                      ? <ChevronDown className="h-4 w-4 text-slate-400" />
-                      : <ChevronRight className="h-4 w-4 text-slate-400" />
+                      ? <ChevronDown className="hidden h-4 w-4 text-slate-400 md:block" />
+                      : <ChevronRight className="hidden h-4 w-4 text-slate-400 md:block" />
                     }
                   </button>
 
@@ -363,8 +363,8 @@ export default function SalesHistoryPage() {
                         </div>
                       ) : null}
                       <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Барааны жагсаалт</p>
-                      <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-                        <div className="grid grid-cols-[3fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2 bg-slate-50 text-xs font-bold text-slate-400 uppercase">
+                      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                        <div className="grid min-w-[640px] grid-cols-[3fr_1fr_1fr_1fr_1fr] gap-3 bg-slate-50 px-4 py-2 text-xs font-bold uppercase text-slate-400">
                           <span>Бараа</span>
                           <span className="text-right">Тоо</span>
                           <span className="text-right">Нэгж үнэ</span>
@@ -372,7 +372,7 @@ export default function SalesHistoryPage() {
                           <span className="text-right">Нийт</span>
                         </div>
                         {sale.lines.map((line, li) => (
-                          <div key={li} className="grid grid-cols-[3fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2.5 border-t border-slate-100 text-sm">
+                          <div key={li} className="grid min-w-[640px] grid-cols-[3fr_1fr_1fr_1fr_1fr] gap-3 border-t border-slate-100 px-4 py-2.5 text-sm">
                             <div>
                               <p className="font-medium text-slate-900">{line.productName}</p>
                               {line.productSku && <p className="text-xs text-slate-400">{line.productSku}</p>}
@@ -383,7 +383,7 @@ export default function SalesHistoryPage() {
                             <p className="text-right font-semibold text-slate-900">₮{fmt(line.lineTotal)}</p>
                           </div>
                         ))}
-                        <div className="grid grid-cols-[3fr_1fr_1fr_1fr_1fr] gap-3 px-4 py-2.5 border-t border-slate-200 bg-slate-50 text-sm font-bold">
+                        <div className="grid min-w-[640px] grid-cols-[3fr_1fr_1fr_1fr_1fr] gap-3 border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-bold">
                           <span className="text-slate-500">Нийт дүн</span>
                           <span className="text-right text-slate-700">{sale.lines.reduce((a, l) => a + l.qty, 0)} ш</span>
                           <span></span>

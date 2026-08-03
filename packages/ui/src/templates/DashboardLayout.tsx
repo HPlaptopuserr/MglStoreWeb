@@ -48,7 +48,7 @@ export function DashboardLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen w-full overflow-x-hidden bg-slate-50 font-sans">
+    <div className="flex min-h-dvh w-full overflow-x-hidden bg-slate-50 font-sans">
       {isAdmin && (
         <AdminSidebar
           {...sidebarProps}
@@ -75,7 +75,7 @@ export function DashboardLayout({
         />
       )}
 
-      <div className="flex min-h-screen min-w-0 flex-1 flex-col bg-slate-50">
+      <div className="flex min-h-dvh min-w-0 flex-1 flex-col bg-slate-50">
         {isVendor && !isVendorPosRoute && (
           <VendorHeader
             onMenuToggle={() => setMobileMenuOpen((o) => !o)}
@@ -88,8 +88,8 @@ export function DashboardLayout({
             isAdmin
               ? "px-4 pt-6 pb-10 sm:px-10 sm:pt-8"
               : isVendorPosRoute
-                ? "px-3 pt-2 pb-6 sm:px-4"
-                : "px-4 pt-5 pb-10 sm:px-6 sm:pt-6"
+                ? "px-2 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-4"
+                : "px-3 pt-4 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-6"
           }`}
         >
           <div
