@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Crown,
   X,
@@ -18,6 +18,7 @@ type Plan = {
   name: string;
   price: number;
   durationDays: number;
+  durationLabel?: string;
   isTrial: boolean;
   badge?: string;
 };
@@ -45,7 +46,9 @@ const PLAN_ICONS: Record<string, string> = {
 };
 
 export function PlanGrantDialog({ orgId, orgName, plans, onSuccess, onClose }: Props) {
-  const [selectedPlanId, setSelectedPlanId] = useState<string>(plans[1]?.id ?? plans[0]?.id ?? "");
+  const [selectedPlanId, setSelectedPlanId] = useState<string>(
+    plans.find((plan) => plan.id === "1y")?.id ?? plans[1]?.id ?? plans[0]?.id ?? "",
+  );
   const [note, setNote] = useState("");
   const [useCustomDays, setUseCustomDays] = useState(false);
   const [customDays, setCustomDays] = useState("");
@@ -53,14 +56,39 @@ export function PlanGrantDialog({ orgId, orgName, plans, onSuccess, onClose }: P
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  useEffect(() => {
+    setSelectedPlanId((currentPlanId) => {
+      const yearEndPlanId = plans.find((plan) => plan.id === "1y")?.id;
+      if (yearEndPlanId) return yearEndPlanId;
+      if (plans.some((plan) => plan.id === currentPlanId)) return currentPlanId;
+      return plans[1]?.id ?? plans[0]?.id ?? "";
+    });
+  }, [plans]);
+
   const selectedPlan = plans.find((p) => p.id === selectedPlanId);
 
   const effectiveDays =
     useCustomDays && customDays ? Number(customDays) : (selectedPlan?.durationDays ?? 0);
 
-  const expiresAt = effectiveDays
-    ? new Date(Date.now() + effectiveDays * 86_400_000).toLocaleDateString("mn-MN")
-    : null;
+  const isYearEndPlan = selectedPlan?.id === "1y" && !useCustomDays;
+  const expiresAt = (() => {
+    if (isYearEndPlan) {
+      const yearEnd = new Date();
+      yearEnd.setMonth(11, 31);
+      yearEnd.setHours(23, 59, 59, 999);
+      return yearEnd.toLocaleDateString("mn-MN");
+    }
+
+    return effectiveDays
+      ? new Date(Date.now() + effectiveDays * 86_400_000).toLocaleDateString("mn-MN")
+      : null;
+  })();
+
+  const durationLabel = useCustomDays
+    ? `${effectiveDays} хоног`
+    : selectedPlan?.id === "1y"
+      ? "Энэ оныг дуустал"
+      : (selectedPlan?.durationLabel ?? `${effectiveDays} хоног`);
 
   const handleSubmit = async () => {
     if (!selectedPlanId) return setError("Багц сонгоно уу");
@@ -96,15 +124,15 @@ export function PlanGrantDialog({ orgId, orgName, plans, onSuccess, onClose }: P
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      <div className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl overflow-hidden">
+      <div className="relative flex max-h-[calc(100dvh-1rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)]">
         {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-600 to-violet-600 px-6 py-5">
+        <div className="shrink-0 bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-4 sm:px-6 sm:py-5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center">
@@ -124,7 +152,7 @@ export function PlanGrantDialog({ orgId, orgName, plans, onSuccess, onClose }: P
           </div>
         </div>
 
-        <div className="p-6 space-y-5">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain p-4 sm:space-y-5 sm:p-6">
           {success ? (
             <div className="flex flex-col items-center py-6 gap-3">
               <div className="w-14 h-14 rounded-full bg-emerald-100 flex items-center justify-center">
@@ -169,7 +197,9 @@ export function PlanGrantDialog({ orgId, orgName, plans, onSuccess, onClose }: P
                             )}
                           </p>
                           <p className="text-xs text-slate-400 mt-0.5">
-                            {plan.durationDays} хоног
+                            {plan.id === "1y"
+                              ? `${new Date().getFullYear()} оны 12-р сарын 31 хүртэл`
+                              : (plan.durationLabel ?? `${plan.durationDays} хоног`)}
                           </p>
                         </div>
                       </div>
@@ -239,7 +269,8 @@ export function PlanGrantDialog({ orgId, orgName, plans, onSuccess, onClose }: P
                 <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-3">
                   <p className="text-xs font-semibold text-indigo-700 mb-1">Урьдчилан харах</p>
                   <p className="text-sm text-indigo-800">
-                    <span className="font-bold">{selectedPlan.name}</span> — {effectiveDays} хоног
+                    <span className="font-bold">{selectedPlan.name}</span>
+                    {(selectedPlan.id !== "1y" || useCustomDays) && ` — ${durationLabel}`}
                   </p>
                   <p className="text-xs text-indigo-600 mt-0.5">Дуусах: {expiresAt}</p>
                 </div>

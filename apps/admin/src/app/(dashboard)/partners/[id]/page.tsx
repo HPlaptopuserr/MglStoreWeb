@@ -428,7 +428,7 @@ export default function PartnerDetailsPage() {
                 <Crown size={15} className="text-violet-500" /> Pro Багц
               </h3>
               <button
-                onClick={() => { if (!planData && partner?.id) fetchPlanData(partner.id); setShowGrantDialog(true); }}
+                onClick={() => { if (partner?.id) fetchPlanData(partner.id); setShowGrantDialog(true); }}
                 className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-semibold rounded-lg transition-colors"
               >
                 <Crown size={11} /> Төлбөргүй нэмэх

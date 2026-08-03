@@ -3,6 +3,7 @@ import { prisma } from "@mgl/database";
 import { requireAuth } from "../../middleware/auth";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import { syncOwnerPersonalMembershipFromOrgPlan } from "../../services/owner-membership-sync.service";
+import { calculatePlanExpiration } from "../../lib/plan-expiration";
 
 const router: ExpressRouter = Router();
 
@@ -198,7 +199,7 @@ const LEGACY_PLANS: Plan[] = [
   },
   {
     id: "1y",
-    name: "1 Жил",
+    name: "Энэ оныг дуустал",
     price: 449_900,
     durationDays: 365,
     maxProducts: -1,
@@ -209,7 +210,7 @@ const LEGACY_PLANS: Plan[] = [
     isTrial: false,
     badge: "Хамгийн ашигтай",
     durationMonths: 12,
-    durationLabel: "1 жил",
+    durationLabel: "Энэ оныг дуустал",
   },
 ];
 
@@ -269,7 +270,7 @@ function getRequestOrganizationId(req: any) {
 
 function activationData(plan: Plan) {
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + plan.durationDays * 24 * 60 * 60 * 1000);
+  const expiresAt = calculatePlanExpiration(plan, now);
   return { now, expiresAt };
 }
 

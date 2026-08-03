@@ -4,6 +4,7 @@ import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 import { Permission } from "@mgl/types";
 import { PLANS, getPlan } from "../vendor/vendor-upgrade.routes";
 import { syncOwnerPersonalMembershipFromOrgPlan } from "../../services/owner-membership-sync.service";
+import { calculatePlanExpiration } from "../../lib/plan-expiration";
 
 const router: ExpressRouter = Router();
 
@@ -56,7 +57,7 @@ router.get(
           isActive,
           currentPlan: org.planType ? getPlan(org.planType) ?? null : null,
         },
-        plans: PLANS,
+        plans: [getPlan("1y"), ...PLANS].filter(Boolean),
         history: history.map((h: any) => ({
           id: h.id,
           planType: h.planType,
@@ -114,8 +115,12 @@ router.post(
       if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
 
       const now = new Date();
-      const days = customDays && customDays > 0 ? customDays : plan.durationDays;
-      const expiresAt = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+      const customDurationDays = customDays && customDays > 0 ? customDays : undefined;
+      const expiresAt = calculatePlanExpiration(plan, now, customDurationDays);
+      const days = Math.max(
+        1,
+        Math.ceil((expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)),
+      );
 
       const invoiceNo = `GRANT-${org.id.slice(0, 8).toUpperCase()}-${Date.now()}`;
       const invoiceId = `admin-grant-${org.id.slice(0, 8)}-${Date.now()}`;

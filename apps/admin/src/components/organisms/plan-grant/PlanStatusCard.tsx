@@ -13,7 +13,7 @@ const PLAN_LABELS: Record<string, string> = {
   "1m": "1 Сар",
   "3m": "3 Сар",
   "6m": "6 Сар",
-  "1y": "1 Жил",
+  "1y": "Энэ оныг дуустал",
 };
 
 const PLAN_COLORS: Record<string, { bg: string; border: string; text: string; badge: string }> = {
