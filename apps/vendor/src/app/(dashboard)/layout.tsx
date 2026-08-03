@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@mgl/ui";
 import { NotificationDropdown } from "@/components/organisms/NotificationDropdown";
+import VendorTutorialButton from "@/components/organisms/VendorTutorialButton";
 import {
   isFeatureEnabled,
   POS_FEATURE_KEY,
@@ -169,6 +170,7 @@ export default function VendorDashboardLayout({
       showSupplyProducts={showSupplyProducts}
       showPreorderProducts={showPreorderProducts}
       showServicePosts={showServicePosts}
+      vendorBottomSlot={<VendorTutorialButton variant="sidebar" />}
       notificationComponent={
         <>
           {organizations.length > 1 && (
