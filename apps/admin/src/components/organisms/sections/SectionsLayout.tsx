@@ -54,10 +54,10 @@ const SECTION_COPY: Record<
       "Салбарын касс, register болон төлбөрийн төхөөрөмжийн тохиргоог удирдана.",
   },
   "vendor-features": {
-    eyebrow: "Vendor app",
-    title: "Vendor тохиргоо",
+    eyebrow: "Vendor operations",
+    title: "Vendor & POS тохиргоо",
     description:
-      "Vendor хэрэглэгчдэд нээлттэй байх боломж, функцуудыг тохируулна.",
+      "Vendor боломж, борлуулалтын суваг болон POS кассуудыг нэг дор удирдана.",
   },
   hr: {
     eyebrow: "People",
@@ -132,9 +132,9 @@ export function SectionsLayout({
     active === "banner" || active === "categories" || active === "study";
 
   return (
-    <div className="relative -m-4 min-h-[calc(100vh-5rem)] bg-[#f6f7fb] p-4 sm:-m-6 sm:p-6">
-      <div className="mx-auto flex max-w-[1500px] flex-col gap-5">
-        <div className="sticky top-3 z-30 rounded-2xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+    <div className="relative -m-4 min-h-[calc(100vh-5rem)] bg-[#f6f7fb] p-3 sm:-m-6 sm:p-4">
+      <div className="mx-auto flex max-w-[1500px] flex-col gap-3">
+        <div className="sticky top-2 z-30 rounded-2xl border border-slate-200 bg-white/95 p-2.5 shadow-sm backdrop-blur">
           <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
             <div className="min-w-0 flex-1">
               <SectionsSidebar
@@ -169,27 +169,27 @@ export function SectionsLayout({
 
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           {active !== "forms" && (
-            <div className="border-b border-slate-100 bg-white px-5 py-5 sm:px-7">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-700">
-                    <ActiveIcon size={18} />
+            <div className="border-b border-slate-100 bg-white px-4 py-3 sm:px-5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-violet-50 text-violet-700">
+                    <ActiveIcon size={17} />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-violet-500">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-500">
                       {activeInfo.eyebrow}
                     </p>
-                    <h2 className="mt-1 text-xl font-black tracking-tight text-slate-950">
+                    <h1 className="text-lg font-black leading-tight tracking-tight text-slate-950">
                       {activeInfo.title}
-                    </h2>
-                    <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+                    </h1>
+                    <p className="mt-0.5 max-w-3xl truncate text-xs text-slate-500 sm:text-sm">
                       {activeInfo.description}
                     </p>
                   </div>
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
-                  UI хэсэг сонгогдсон
-                </div>
+                <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 sm:inline-flex">
+                  <CheckCircle2 size={13} /> Сонгогдсон
+                </span>
               </div>
             </div>
           )}

@@ -41,7 +41,7 @@ export function SectionsSidebar({ active, onSelect, visibleSections }: Props) {
 
   return (
     <aside className="w-full">
-      <div className="mb-3 flex flex-col gap-2 px-1 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mb-2 flex items-center justify-between gap-3 px-1">
         <div className="flex min-w-0 items-center gap-3">
           <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-slate-400">
             Sections
@@ -57,15 +57,12 @@ export function SectionsSidebar({ active, onSelect, visibleSections }: Props) {
           <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-black text-violet-700">
             {activeIndex >= 0 ? activeIndex + 1 : 1}/{items.length}
           </span>
-          <span className="hidden text-xs font-bold text-slate-500 sm:inline">
-            Хажуу тийш scroll хийгээд хэсгээ сонгоно.
-          </span>
         </div>
       </div>
 
       <div
         ref={scrollerRef}
-        className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:thin]"
+        className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:thin]"
       >
         {items.map(({ key, label, icon: Icon }, index) => {
           const isActive = active === key;
@@ -74,20 +71,20 @@ export function SectionsSidebar({ active, onSelect, visibleSections }: Props) {
               key={key}
               ref={isActive ? activeButtonRef : null}
               onClick={() => onSelect(key)}
-              className={`group flex h-[52px] min-w-[190px] items-center gap-3 rounded-xl border px-3 text-left transition-all sm:min-w-[210px] ${
+              className={`group flex h-11 min-w-[174px] items-center gap-2.5 rounded-xl border px-2.5 text-left transition-all sm:min-w-[190px] ${
                 isActive
                   ? "border-violet-400 bg-violet-100 shadow-sm ring-2 ring-violet-200"
                   : "border-slate-200 bg-white hover:border-violet-200 hover:bg-slate-50"
               }`}
             >
               <span
-                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
                   isActive
                     ? "bg-violet-600 text-white"
                     : "bg-slate-100 text-slate-500 group-hover:bg-white"
                 }`}
               >
-                <Icon size={17} />
+                <Icon size={16} />
               </span>
               <span className="min-w-0 flex-1">
                 <span
@@ -97,7 +94,7 @@ export function SectionsSidebar({ active, onSelect, visibleSections }: Props) {
                 >
                   {label}
                 </span>
-                <span className="mt-0.5 block text-[11px] font-bold text-slate-400">
+                <span className="block text-[10px] font-bold text-slate-400">
                   Section {String(index + 1).padStart(2, "0")}
                 </span>
               </span>

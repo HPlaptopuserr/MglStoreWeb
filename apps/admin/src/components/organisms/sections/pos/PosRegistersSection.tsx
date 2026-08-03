@@ -85,15 +85,25 @@ const EMPTY_FORM: FormState = {
 const CLOUD_CARD_PROVIDERS = ["MINU_AGENT", "PUSH_ECR"];
 const BRIDGE_CARD_PROVIDERS = ["ANDROID_PGW", "QPOSLANE", "GANTIGO", "IDPAY"];
 const CARD_PROVIDERS = [...CLOUD_CARD_PROVIDERS, ...BRIDGE_CARD_PROVIDERS];
-const isCloudCardProvider = (provider: string) => CLOUD_CARD_PROVIDERS.includes(provider);
-const isBridgeCardProvider = (provider: string) => BRIDGE_CARD_PROVIDERS.includes(provider);
-const isTerminalIdOptionalProvider = (provider: string) => provider === "ANDROID_PGW";
+const isCloudCardProvider = (provider: string) =>
+  CLOUD_CARD_PROVIDERS.includes(provider);
+const isBridgeCardProvider = (provider: string) =>
+  BRIDGE_CARD_PROVIDERS.includes(provider);
+const isTerminalIdOptionalProvider = (provider: string) =>
+  provider === "ANDROID_PGW";
 const getPosVisibilityKey = (organizationId: string) =>
   `pos-enabled-${organizationId}`;
 
-
 /* ─── component ──────────────────────────────────────────────────────── */
-export function PosRegistersSection() {
+type PosRegistersSectionProps = {
+  organizationId?: string;
+  embedded?: boolean;
+};
+
+export function PosRegistersSection({
+  organizationId,
+  embedded = false,
+}: PosRegistersSectionProps = {}) {
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState("");
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -122,18 +132,31 @@ export function PosRegistersSection() {
   const [quickBranchAddress, setQuickBranchAddress] = useState("");
   const [quickBranchSaving, setQuickBranchSaving] = useState(false);
   const [quickBranchError, setQuickBranchError] = useState("");
+  const activeOrgId = organizationId ?? selectedOrgId;
 
   /* fetch orgs on mount */
   useEffect(() => {
+    if (organizationId) {
+      setLoadingOrgs(false);
+      return;
+    }
     adminFetch(`${API}/partners?minimal=true`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((data) => {
-        const list = Array.isArray(data) ? data : data?.data || data?.partners || [];
-        setOrgs(list.map((p: any) => ({ id: p.id, name: p.name, slug: p.slug ?? "" })));
+        const list = Array.isArray(data)
+          ? data
+          : data?.data || data?.partners || [];
+        setOrgs(
+          list.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            slug: p.slug ?? "",
+          })),
+        );
       })
       .catch(() => setError("Байгууллагын жагсаалт авахад алдаа гарлаа."))
       .finally(() => setLoadingOrgs(false));
-  }, []);
+  }, [organizationId]);
 
   /* fetch branches + registers when org changes */
   const reload = useCallback(async (orgId: string) => {
@@ -152,8 +175,7 @@ export function PosRegistersSection() {
       if (settingRes.ok) {
         const settings = (await settingRes.json()) as Record<string, string>;
         const raw = settings[getPosVisibilityKey(orgId)];
-        const enabled =
-          raw === "1" || raw === "true" || raw === "on";
+        const enabled = raw === "1" || raw === "true" || raw === "on";
         setPosVisible(enabled);
       } else {
         setPosVisible(false);
@@ -168,9 +190,12 @@ export function PosRegistersSection() {
   }, []);
 
   useEffect(() => {
-    if (selectedOrgId) reload(selectedOrgId);
-    else { setBranches([]); setRegisters([]); }
-  }, [selectedOrgId, reload]);
+    if (activeOrgId) reload(activeOrgId);
+    else {
+      setBranches([]);
+      setRegisters([]);
+    }
+  }, [activeOrgId, reload]);
 
   /* form helpers */
   const openAdd = () => {
@@ -220,10 +245,13 @@ export function PosRegistersSection() {
     setQuickBranchSaving(true);
     setQuickBranchError("");
     try {
-      const res = await adminFetch(`${API}/partners/${selectedOrgId}/branches`, {
+      const res = await adminFetch(`${API}/partners/${activeOrgId}/branches`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: quickBranchName.trim(), address: quickBranchAddress.trim() }),
+        body: JSON.stringify({
+          name: quickBranchName.trim(),
+          address: quickBranchAddress.trim(),
+        }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -362,16 +390,29 @@ export function PosRegistersSection() {
       setError("Карт идэвхтэй үед Провайдер заавал сонгоно уу.");
       return;
     }
-    if (form.cardEnabled && !isTerminalIdOptionalProvider(form.cardProviderType) && !form.cardTerminalId.trim()) {
+    if (
+      form.cardEnabled &&
+      !isTerminalIdOptionalProvider(form.cardProviderType) &&
+      !form.cardTerminalId.trim()
+    ) {
       setError("Карт идэвхтэй үед Terminal ID / Serial заавал бөглөнө үү.");
       return;
     }
-    if (form.cardEnabled && isBridgeCardProvider(form.cardProviderType) && !form.terminalBridgeUrl.trim()) {
+    if (
+      form.cardEnabled &&
+      isBridgeCardProvider(form.cardProviderType) &&
+      !form.terminalBridgeUrl.trim()
+    ) {
       setError("Bridge provider сонгосон үед Bridge URL заавал бөглөнө үү.");
       return;
     }
-    if (form.qpayEnabled && (!form.qpayMerchantId.trim() || !form.qpayTerminalId.trim())) {
-      setError("QPay идэвхтэй үед Merchant ID болон Terminal ID заавал бөглөнө үү.");
+    if (
+      form.qpayEnabled &&
+      (!form.qpayMerchantId.trim() || !form.qpayTerminalId.trim())
+    ) {
+      setError(
+        "QPay идэвхтэй үед Merchant ID болон Terminal ID заавал бөглөнө үү.",
+      );
       return;
     }
     if (form.ebarimtEnabled && form.ebarimtPosApiUrl.trim()) {
@@ -379,11 +420,16 @@ export function PosRegistersSection() {
         const p = new URL(form.ebarimtPosApiUrl.trim());
         if (!["http:", "https:"].includes(p.protocol)) throw new Error();
       } catch {
-        setError("eBarimt PosAPI URL зөвхөн http:// эсвэл https:// байх ёстой.");
+        setError(
+          "eBarimt PosAPI URL зөвхөн http:// эсвэл https:// байх ёстой.",
+        );
         return;
       }
     }
-    if (form.ebarimtMerchantTin.trim() && !/^\d+$/.test(form.ebarimtMerchantTin.trim())) {
+    if (
+      form.ebarimtMerchantTin.trim() &&
+      !/^\d+$/.test(form.ebarimtMerchantTin.trim())
+    ) {
       setError("eBarimt merchant TIN зөвхөн тоо байна.");
       return;
     }
@@ -404,7 +450,7 @@ export function PosRegistersSection() {
     setError("");
     try {
       const body = {
-        organizationId: selectedOrgId,
+        organizationId: activeOrgId,
         branchId: form.branchId,
         name: form.name.trim(),
         label: form.label.trim() || null,
@@ -415,7 +461,7 @@ export function PosRegistersSection() {
           : form.cardTerminalId.trim() || null,
         terminalBridgeUrl: isCloudCardProvider(form.cardProviderType)
           ? null
-          : (form.terminalBridgeUrl.trim() || null),
+          : form.terminalBridgeUrl.trim() || null,
         qpayEnabled: form.qpayEnabled,
         qpayMerchantId: form.qpayMerchantId.trim() || null,
         qpayTerminalId: form.qpayTerminalId.trim() || null,
@@ -439,7 +485,7 @@ export function PosRegistersSection() {
         return;
       }
       closeForm();
-      reload(selectedOrgId);
+      reload(activeOrgId);
     } catch {
       setError("Сервертэй холбогдоход алдаа гарлаа.");
     } finally {
@@ -455,8 +501,10 @@ export function PosRegistersSection() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isActive: !r.isActive }),
       });
-      reload(selectedOrgId);
-    } catch { /* ignore */ }
+      reload(activeOrgId);
+    } catch {
+      /* ignore */
+    }
   };
 
   /* delete */
@@ -464,20 +512,22 @@ export function PosRegistersSection() {
     if (!confirm("POS касс устгах уу?")) return;
     setDeletingId(id);
     try {
-      await adminFetch(`${API}/admin/pos-registers/${id}`, { method: "DELETE" });
-      reload(selectedOrgId);
+      await adminFetch(`${API}/admin/pos-registers/${id}`, {
+        method: "DELETE",
+      });
+      reload(activeOrgId);
     } finally {
       setDeletingId(null);
     }
   };
 
   const togglePosVisibility = async () => {
-    if (!selectedOrgId) return;
+    if (!activeOrgId) return;
     const next = !posVisible;
     setSavingPosVisibility(true);
     try {
       const res = await adminFetch(
-        `${API}/site-settings/${getPosVisibilityKey(selectedOrgId)}`,
+        `${API}/site-settings/${getPosVisibilityKey(activeOrgId)}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -502,12 +552,14 @@ export function PosRegistersSection() {
       {/* header */}
       <div className="flex items-start justify-between">
         <div>
-          <h2 className="text-lg font-bold text-slate-800 mb-1">POS кассын удирдах</h2>
+          <h2 className="text-lg font-bold text-slate-800 mb-1">
+            POS кассын удирдах
+          </h2>
           <p className="text-sm text-slate-400">
             Байгууллага бүрийн POS кассын тохиргоог энд бүртгэж удирдана.
           </p>
         </div>
-        {selectedOrgId && (
+        {activeOrgId && (
           <button
             onClick={openAdd}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold transition-colors shadow-sm"
@@ -520,16 +572,18 @@ export function PosRegistersSection() {
 
       {/* org selector + POS visibility toggle */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <OrgSearchDropdown
-          orgs={orgs}
-          value={selectedOrgId}
-          onChange={setSelectedOrgId}
-          loading={loadingOrgs}
-          label="Байгууллага сонгох"
-          className="w-80"
-        />
+        {!embedded && (
+          <OrgSearchDropdown
+            orgs={orgs}
+            value={selectedOrgId}
+            onChange={setSelectedOrgId}
+            loading={loadingOrgs}
+            label="Байгууллага сонгох"
+            className="w-80"
+          />
+        )}
 
-        {selectedOrgId && (
+        {activeOrgId && (
           <button
             onClick={togglePosVisibility}
             disabled={loadingPosVisibility || savingPosVisibility}
@@ -559,7 +613,7 @@ export function PosRegistersSection() {
       )}
 
       {/* registers list */}
-      {selectedOrgId && (
+      {activeOrgId && (
         <>
           {loadingRegs ? (
             <div className="flex items-center gap-2 text-sm text-slate-400 py-4">
@@ -568,7 +622,9 @@ export function PosRegistersSection() {
           ) : registers.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-2xl border-2 border-dashed border-slate-200 py-12 text-center">
               <Monitor size={32} className="text-slate-300" />
-              <p className="text-sm font-medium text-slate-400">Бүртгэгдээгүй байна</p>
+              <p className="text-sm font-medium text-slate-400">
+                Бүртгэгдээгүй байна
+              </p>
               <button
                 onClick={openAdd}
                 className="mt-1 inline-flex items-center gap-2 rounded-xl bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-700 hover:bg-violet-100"
@@ -594,7 +650,9 @@ export function PosRegistersSection() {
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-slate-800 text-sm">{r.name}</span>
+                          <span className="font-bold text-slate-800 text-sm">
+                            {r.name}
+                          </span>
                           {r.label && (
                             <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
                               {r.label}
@@ -612,7 +670,10 @@ export function PosRegistersSection() {
                         <div className="mt-1.5 flex flex-wrap gap-2">
                           {r.cardEnabled ? (
                             <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                              <CreditCard size={11} /> Card{r.cardProviderType ? ` · ${r.cardProviderType}` : ""}
+                              <CreditCard size={11} /> Card
+                              {r.cardProviderType
+                                ? ` · ${r.cardProviderType}`
+                                : ""}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-400">
@@ -621,7 +682,8 @@ export function PosRegistersSection() {
                           )}
                           {r.qpayEnabled ? (
                             <span className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">
-                              <QrCode size={11} /> QPay{r.qpayMerchantId ? ` · ${r.qpayMerchantId}` : ""}
+                              <QrCode size={11} /> QPay
+                              {r.qpayMerchantId ? ` · ${r.qpayMerchantId}` : ""}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-400">
@@ -635,7 +697,10 @@ export function PosRegistersSection() {
                           )}
                           {r.ebarimtEnabled ? (
                             <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
-                              <QrCode size={11} /> eBarimt{r.ebarimtMerchantTin ? ` · ${r.ebarimtMerchantTin}` : ""}
+                              <QrCode size={11} /> eBarimt
+                              {r.ebarimtMerchantTin
+                                ? ` · ${r.ebarimtMerchantTin}`
+                                : ""}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-400">
@@ -648,7 +713,9 @@ export function PosRegistersSection() {
                             </span>
                           )}
                         </div>
-                        <p className="mt-1 text-[11px] font-mono text-slate-300 truncate">{r.id}</p>
+                        <p className="mt-1 text-[11px] font-mono text-slate-300 truncate">
+                          {r.id}
+                        </p>
                       </div>
                     </div>
 
@@ -663,7 +730,11 @@ export function PosRegistersSection() {
                             : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                         }`}
                       >
-                        {r.isActive ? <CheckCircle2 size={13} /> : <XCircle size={13} />}
+                        {r.isActive ? (
+                          <CheckCircle2 size={13} />
+                        ) : (
+                          <XCircle size={13} />
+                        )}
                         {r.isActive ? "Идэвхтэй" : "Идэвхгүй"}
                       </button>
                       <button
@@ -701,7 +772,10 @@ export function PosRegistersSection() {
               <h3 className="font-bold text-slate-800">
                 {editingId ? "POS засах" : "POS нэмэх"}
               </h3>
-              <button onClick={closeForm} className="rounded-lg p-1.5 hover:bg-slate-100 text-slate-400">
+              <button
+                onClick={closeForm}
+                className="rounded-lg p-1.5 hover:bg-slate-100 text-slate-400"
+              >
                 <X size={16} />
               </button>
             </div>
@@ -744,17 +818,27 @@ export function PosRegistersSection() {
                   >
                     <option value="">— Салбар сонгох —</option>
                     {branches.map((b) => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
+                      <option key={b.id} value={b.id}>
+                        {b.name}
+                      </option>
                     ))}
                   </select>
-                  <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <ChevronDown
+                    size={13}
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
                 </div>
                 {branches.length === 0 && !quickBranchOpen && (
                   <div className="mt-1.5 flex items-center gap-2">
-                    <p className="text-xs text-amber-600">Салбар бүртгэгдээгүй байна.</p>
+                    <p className="text-xs text-amber-600">
+                      Салбар бүртгэгдээгүй байна.
+                    </p>
                     <button
                       type="button"
-                      onClick={() => { setQuickBranchOpen(true); setQuickBranchError(""); }}
+                      onClick={() => {
+                        setQuickBranchOpen(true);
+                        setQuickBranchError("");
+                      }}
                       className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
                     >
                       <Plus size={12} /> Салбар нэмэх
@@ -763,7 +847,9 @@ export function PosRegistersSection() {
                 )}
                 {quickBranchOpen && (
                   <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 space-y-2">
-                    <p className="text-xs font-semibold text-indigo-700">Шинэ салбар нэмэх</p>
+                    <p className="text-xs font-semibold text-indigo-700">
+                      Шинэ салбар нэмэх
+                    </p>
                     {quickBranchError && (
                       <p className="text-xs text-red-600">{quickBranchError}</p>
                     )}
@@ -782,7 +868,10 @@ export function PosRegistersSection() {
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => { setQuickBranchOpen(false); setQuickBranchError(""); }}
+                        onClick={() => {
+                          setQuickBranchOpen(false);
+                          setQuickBranchError("");
+                        }}
                         className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
                       >
                         Болих
@@ -793,7 +882,11 @@ export function PosRegistersSection() {
                         disabled={quickBranchSaving}
                         className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
                       >
-                        {quickBranchSaving ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                        {quickBranchSaving ? (
+                          <Loader2 size={11} className="animate-spin" />
+                        ) : (
+                          <Plus size={11} />
+                        )}
                         Нэмэх
                       </button>
                     </div>
@@ -809,7 +902,8 @@ export function PosRegistersSection() {
                   className={`${INPUT} font-mono`}
                 />
                 <p className="mt-1 text-[11px] text-slate-400">
-                  operator.ebarimt.mn → PosAPI жагсаалт дээр гарсан POS дугаарыг энд оруулна.
+                  operator.ebarimt.mn → PosAPI жагсаалт дээр гарсан POS дугаарыг
+                  энд оруулна.
                 </p>
               </Field>
 
@@ -820,7 +914,9 @@ export function PosRegistersSection() {
                     onClick={toggleCardEnabled}
                     className={`relative h-5 w-9 rounded-full transition-colors ${form.cardEnabled ? "bg-emerald-500" : "bg-slate-300"}`}
                   >
-                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.cardEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                    <span
+                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.cardEnabled ? "translate-x-4" : "translate-x-0.5"}`}
+                    />
                   </div>
                   <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
                     <CreditCard size={14} /> Картын терминал идэвхжүүлэх
@@ -847,62 +943,84 @@ export function PosRegistersSection() {
                         >
                           <option value="">— сонгох —</option>
                           {CARD_PROVIDERS.map((p) => (
-                            <option key={p} value={p}>{p}</option>
+                            <option key={p} value={p}>
+                              {p}
+                            </option>
                           ))}
                         </select>
-                        <ChevronDown size={13} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <ChevronDown
+                          size={13}
+                          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                        />
                       </div>
                     </Field>
-                    <Field label={isTerminalIdOptionalProvider(form.cardProviderType) ? "Terminal ID / Serial (optional)" : "Terminal ID / Serial"}>
+                    <Field
+                      label={
+                        isTerminalIdOptionalProvider(form.cardProviderType)
+                          ? "Terminal ID / Serial (optional)"
+                          : "Terminal ID / Serial"
+                      }
+                    >
                       <input
                         value={form.cardTerminalId}
                         onChange={(e) => set("cardTerminalId", e.target.value)}
-                        disabled={isTerminalIdOptionalProvider(form.cardProviderType)}
-                        placeholder={isTerminalIdOptionalProvider(form.cardProviderType) ? "Terminal-аас автоматаар ирнэ" : "SN1234"}
+                        disabled={isTerminalIdOptionalProvider(
+                          form.cardProviderType,
+                        )}
+                        placeholder={
+                          isTerminalIdOptionalProvider(form.cardProviderType)
+                            ? "Terminal-аас автоматаар ирнэ"
+                            : "SN1234"
+                        }
                         className={`${INPUT} disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400`}
                       />
                     </Field>
-                    {!isCloudCardProvider(form.cardProviderType) && <Field label="Bridge URL" className="col-span-2">
-                      <input
-                        value={form.terminalBridgeUrl}
-                        onChange={(e) => {
-                          set("terminalBridgeUrl", e.target.value);
-                          setBridgeCheckMessage(null);
-                        }}
-                        placeholder="http://localhost:7420"
-                        className={INPUT}
-                      />
-                      <div className="mt-2 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={checkBridgeHealth}
-                          disabled={checkingBridge || !form.terminalBridgeUrl.trim()}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          {checkingBridge ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <CheckCircle2 size={12} />
-                          )}
-                          Bridge шалгах
-                        </button>
-
-                        {bridgeCheckMessage && (
-                          <span
-                            className={`text-xs font-medium ${
-                              bridgeCheckMessage.type === "success"
-                                ? "text-emerald-700"
-                                : "text-rose-700"
-                            }`}
+                    {!isCloudCardProvider(form.cardProviderType) && (
+                      <Field label="Bridge URL" className="col-span-2">
+                        <input
+                          value={form.terminalBridgeUrl}
+                          onChange={(e) => {
+                            set("terminalBridgeUrl", e.target.value);
+                            setBridgeCheckMessage(null);
+                          }}
+                          placeholder="http://localhost:7420"
+                          className={INPUT}
+                        />
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={checkBridgeHealth}
+                            disabled={
+                              checkingBridge || !form.terminalBridgeUrl.trim()
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            {bridgeCheckMessage.text}
-                          </span>
-                        )}
-                      </div>
-                      <p className="mt-1 text-[11px] text-slate-400">
-                        Касс дахь локал bridge server хаяг (хоосон бол mock simulation хэрэглэнэ)
-                      </p>
-                    </Field>}
+                            {checkingBridge ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <CheckCircle2 size={12} />
+                            )}
+                            Bridge шалгах
+                          </button>
+
+                          {bridgeCheckMessage && (
+                            <span
+                              className={`text-xs font-medium ${
+                                bridgeCheckMessage.type === "success"
+                                  ? "text-emerald-700"
+                                  : "text-rose-700"
+                              }`}
+                            >
+                              {bridgeCheckMessage.text}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-1 text-[11px] text-slate-400">
+                          Касс дахь локал bridge server хаяг (хоосон бол mock
+                          simulation хэрэглэнэ)
+                        </p>
+                      </Field>
+                    )}
                   </div>
                 )}
               </div>
@@ -914,7 +1032,9 @@ export function PosRegistersSection() {
                     onClick={toggleQpayEnabled}
                     className={`relative h-5 w-9 rounded-full transition-colors ${form.qpayEnabled ? "bg-sky-500" : "bg-slate-300"}`}
                   >
-                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.qpayEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                    <span
+                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.qpayEnabled ? "translate-x-4" : "translate-x-0.5"}`}
+                    />
                   </div>
                   <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
                     <QrCode size={14} /> QPay идэвхжүүлэх
@@ -949,7 +1069,9 @@ export function PosRegistersSection() {
                     onClick={toggleEbarimtEnabled}
                     className={`relative h-5 w-9 rounded-full transition-colors ${form.ebarimtEnabled ? "bg-indigo-500" : "bg-slate-300"}`}
                   >
-                    <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.ebarimtEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                    <span
+                      className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.ebarimtEnabled ? "translate-x-4" : "translate-x-0.5"}`}
+                    />
                   </div>
                   <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
                     <QrCode size={14} /> eBarimt идэвхжүүлэх
@@ -965,26 +1087,36 @@ export function PosRegistersSection() {
                     <Field label="PosAPI URL" className="col-span-2">
                       <input
                         value={form.ebarimtPosApiUrl}
-                        onChange={(e) => set("ebarimtPosApiUrl", e.target.value)}
+                        onChange={(e) =>
+                          set("ebarimtPosApiUrl", e.target.value)
+                        }
                         placeholder="http://localhost:7080"
                         className={INPUT}
                       />
                       <p className="mt-1 text-[11px] text-slate-400">
-                        Касс дээр суусан PosAPI service. Ихэнх бодит орчинд http://localhost:7080 хэвээр байна.
+                        Касс дээр суусан PosAPI service. Ихэнх бодит орчинд
+                        http://localhost:7080 хэвээр байна.
                       </p>
                     </Field>
                     <Field label="Merchant TIN (дараа нөхнө)">
                       <input
                         value={form.ebarimtMerchantTin}
-                        onChange={(e) => set("ebarimtMerchantTin", e.target.value)}
+                        onChange={(e) =>
+                          set("ebarimtMerchantTin", e.target.value)
+                        }
                         placeholder="Merchant TIN"
                         className={INPUT}
                       />
                     </Field>
-                    <Field label="Merchant нэр (дараа нөхнө)" className="col-span-2">
+                    <Field
+                      label="Merchant нэр (дараа нөхнө)"
+                      className="col-span-2"
+                    >
                       <input
                         value={form.ebarimtMerchantName}
-                        onChange={(e) => set("ebarimtMerchantName", e.target.value)}
+                        onChange={(e) =>
+                          set("ebarimtMerchantName", e.target.value)
+                        }
                         placeholder="Merchant нэр"
                         className={INPUT}
                       />
@@ -1007,7 +1139,11 @@ export function PosRegistersSection() {
                 disabled={saving}
                 className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-5 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60 transition-colors"
               >
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                {saving ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Save size={14} />
+                )}
                 Хадгалах
               </button>
             </div>

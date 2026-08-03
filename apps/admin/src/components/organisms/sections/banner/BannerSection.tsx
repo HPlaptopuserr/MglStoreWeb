@@ -226,19 +226,16 @@ export function BannerSection({ banners, setBanners }: Props) {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+    <div className="flex flex-col gap-4">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="grid gap-0 lg:grid-cols-[0.92fr_1.08fr]">
-          <div className="border-b border-slate-100 p-5 lg:border-b-0 lg:border-r lg:p-6">
-            <div className="mb-5">
+          <div className="border-b border-slate-100 p-4 lg:border-b-0 lg:border-r lg:p-5">
+            <div className="mb-4">
               <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-white">
                 <Layers3 size={13} />
                 Banner studio
               </div>
-              <h2 className="text-2xl font-black tracking-tight text-slate-950">
-                Промо баннер
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
+              <p className="text-sm leading-5 text-slate-500">
                 Зураг upload хийх эсвэл premium default загвараар text banner үүсгээд
                 нүүр хуудасны slider-т нэмнэ.
               </p>
@@ -312,9 +309,9 @@ export function BannerSection({ banners, setBanners }: Props) {
             </div>
           </div>
 
-          <div className="bg-[#fbfcff] p-5 lg:p-6">
+          <div className="bg-[#fbfcff] p-4 lg:p-5">
             {mode === "upload" ? (
-              <div className="flex h-full min-h-[360px] flex-col">
+              <div className="flex h-full min-h-[320px] flex-col">
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-black text-slate-900">Upload banner</p>

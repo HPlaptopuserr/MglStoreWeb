@@ -27,7 +27,12 @@ export function SectionsRouteFrame({
 
   const visibleSections = useMemo(() => {
     if (isFullAdmin) return SECTIONS;
-    return SECTIONS.filter((section) => !section.requires || hasPermission(section.requires));
+    return SECTIONS.filter(
+      (section) =>
+        (!section.requires || hasPermission(section.requires)) &&
+        (!section.requiresAny ||
+          section.requiresAny.some((permission) => hasPermission(permission))),
+    );
   }, [isFullAdmin, hasPermission]);
 
   const defaultKey = visibleSections[0]?.key ?? "banner";

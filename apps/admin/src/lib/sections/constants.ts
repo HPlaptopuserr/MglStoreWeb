@@ -4,7 +4,6 @@ import {
   MapPin,
   CreditCard,
   Wrench,
-  Monitor,
   Users,
   ClipboardList,
   Settings2,
@@ -22,17 +21,17 @@ export const SECTIONS: {
   label: string;
   icon: React.ElementType;
   requires?: string;
+  requiresAny?: string[];
 }[] = [
   { key: "banner", label: "Промо баннер", icon: ImagePlus },
   { key: "branches", label: "Салбар байршил", icon: MapPin },
   { key: "cards", label: "Карт хэвлэх", icon: CreditCard },
   { key: "qr", label: "QR Generator", icon: Wrench },
-  { key: "pos", label: "POS Register", icon: Monitor, requires: "MANAGE_POS" },
   {
     key: "vendor-features",
-    label: "Vendor тохиргоо",
+    label: "Vendor & POS",
     icon: Settings2,
-    requires: "MANAGE_SITE_SETTINGS",
+    requiresAny: ["MANAGE_SITE_SETTINGS", "MANAGE_POS"],
   },
   { key: "hr", label: "Хүний нөөц", icon: Users, requires: "MANAGE_USERS" },
   {

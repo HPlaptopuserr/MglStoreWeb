@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { Eye, MapPin, Navigation } from "lucide-react";
+import { MapPin, Navigation } from "lucide-react";
 import type { BranchMapItem } from "@/lib/sections/types";
 import { BranchList } from "./BranchList";
 
@@ -45,11 +45,11 @@ export function BranchPreviewPanel({
       {/* ── Header ────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-sky-600">
-            <Eye size={13} />
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+            <MapPin size={13} />
           </div>
           <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-            Flutter App Preview
+            Салбарын map ба жагсаалт
           </p>
         </div>
         {hasMapPreview && (
@@ -70,7 +70,7 @@ export function BranchPreviewPanel({
         <div className="space-y-2">
           <div
             ref={previewMapRef}
-            className="h-60 w-full rounded-xl border border-slate-200 shadow-sm"
+            className="relative z-0 h-60 w-full rounded-xl border border-slate-200 shadow-sm"
           />
           {selectedRegisteredBranch && (
             <div className="flex items-start gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3.5 py-2.5">
@@ -93,10 +93,10 @@ export function BranchPreviewPanel({
         <div className="h-60 rounded-xl border border-dashed border-slate-300 bg-gradient-to-br from-slate-50 to-white flex flex-col items-center justify-center text-center px-6 gap-2">
           <MapPin size={28} className="text-slate-300" />
           <p className="text-sm text-slate-500">
-            Зүүн талд координат оруулах эсвэл доорх жагсаалтаас салбар сонгоход энд харагдана
+            Салбар нэмсний дараа map дээр байршил нь энд харагдана
           </p>
           <p className="text-xs text-slate-400">
-            Энэ preview нь Flutter app дээр хэрхэн харагдахыг харуулна
+            Доорх жагсаалтаас салбар сонгож дэлгэрэнгүй байршлыг шалгана
           </p>
         </div>
       )}

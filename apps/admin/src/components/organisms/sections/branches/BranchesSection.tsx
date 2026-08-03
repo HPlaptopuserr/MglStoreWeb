@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, MapPin, Plus, X } from "lucide-react";
 import { useBranches } from "@/hooks/sections/useBranches";
 import { BranchForm } from "@/components/molecules/sections/branches/BranchForm";
 import { BranchPreviewPanel } from "@/components/molecules/sections/branches/BranchPreviewPanel";
@@ -21,6 +21,7 @@ export function BranchesSection({
 }: Props) {
   const [active, setActive] = useState(true);
   const [branchMapError, setBranchMapError] = useState("");
+  const [editorOpen, setEditorOpen] = useState(false);
 
   const branches = useBranches(active);
 
@@ -74,7 +75,32 @@ export function BranchesSection({
     return () => {
       cancelled = true;
     };
-  }, [branches.branchLoading]);
+  }, [branches.branchLoading, editorOpen]);
+
+  useEffect(() => {
+    if (branches.branchSuccess) setEditorOpen(false);
+  }, [branches.branchSuccess]);
+
+  useEffect(() => {
+    if (editorOpen || !mapInstanceRef.current) return;
+    mapInstanceRef.current.remove();
+    mapInstanceRef.current = null;
+    markerInstanceRef.current = null;
+  }, [editorOpen]);
+
+  useEffect(() => {
+    if (!editorOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setEditorOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [editorOpen]);
 
   // Cleanup picker map on unmount
   useEffect(() => {
@@ -252,44 +278,54 @@ export function BranchesSection({
   ]);
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Section header */}
-      <div>
-        <h2 className="text-lg font-bold text-slate-800 mb-1">
-          Салбарын байршил
-        </h2>
-        <p className="text-sm text-slate-400">
-          Нүүр хуудасны хамгийн доод хэсэгт харагдах map-д салбарын байршлыг
-          нэмнэ.
-        </p>
-
-        {/* Web map visibility toggle */}
-        <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-          <div>
-            <p className="text-sm font-semibold text-slate-700">
-              Web дээр map харуулах
+    <div className="flex flex-col gap-4">
+      <section className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+            <MapPin size={18} />
+          </span>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-black text-slate-900">
+                Бүртгэлтэй салбарууд
+              </h2>
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-black text-slate-500">
+                {branches.branchItems.length}
+              </span>
+            </div>
+            <p className="mt-1 text-xs font-semibold text-slate-500">
+              Web map дээр харагдах салбарын байршлууд
             </p>
-            <p className="text-xs text-slate-500">
-              Асаалттай үед web нүүр хуудсанд салбарын map харагдана.
-            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
+            <span className="text-xs font-bold text-slate-600">Web map</span>
+            <button
+              type="button"
+              onClick={onToggle}
+              disabled={saving}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                showBranchMapOnWeb ? "bg-violet-600" : "bg-slate-300"
+              } disabled:opacity-60`}
+              aria-label="Web map visibility toggle"
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  showBranchMapOnWeb ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
           </div>
           <button
             type="button"
-            onClick={onToggle}
-            disabled={saving}
-            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${
-              showBranchMapOnWeb ? "bg-violet-600" : "bg-slate-300"
-            } disabled:opacity-60`}
-            aria-label="Web map visibility toggle"
+            onClick={() => setEditorOpen(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-violet-700"
           >
-            <span
-              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                showBranchMapOnWeb ? "translate-x-6" : "translate-x-1"
-              }`}
-            />
+            <Plus size={16} /> Салбар нэмэх
           </button>
         </div>
-      </div>
+      </section>
 
       {branches.branchLoading ? (
         <div className="flex flex-col items-center justify-center py-16 text-slate-400">
@@ -314,43 +350,79 @@ export function BranchesSection({
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <BranchForm
-            partners={branches.branchPartners}
-            orgId={branches.branchOrgId}
-            setOrgId={branches.setBranchOrgId}
-            selectedOrg={branches.selectedBranchOrg}
-            form={branches.branchForm}
-            setForm={branches.setBranchForm}
-            branchSaving={branches.branchSaving}
-            branchError={branches.branchError}
-            branchSuccess={branches.branchSuccess}
-            branchValidationError={branches.branchValidationError}
-            canCreateBranch={branches.canCreateBranch}
-            branchMapError={branchMapError}
-            mapPickerRef={mapPickerRef}
-            onSubmit={branches.handleCreateBranch}
-          />
+        <BranchPreviewPanel
+          previewMapRef={previewMapRef}
+          hasMapPreview={branches.hasMapPreview}
+          isBranchCoordsValid={branches.isBranchCoordsValid}
+          selectedRegisteredBranch={branches.selectedRegisteredBranch}
+          previewLat={branches.previewLat}
+          previewLng={branches.previewLng}
+          filteredItems={branches.filteredRegisteredBranchItems}
+          allCount={branches.branchItems.length}
+          selectedId={branches.selectedRegisteredBranchId}
+          onSelect={branches.setSelectedRegisteredBranchId}
+          searchCity={branches.branchSearchCity}
+          setSearchCity={branches.setBranchSearchCity}
+          searchDistrict={branches.branchSearchDistrict}
+          setSearchDistrict={branches.setBranchSearchDistrict}
+          searchKhoroo={branches.branchSearchKhoroo}
+          setSearchKhoroo={branches.setBranchSearchKhoroo}
+        />
+      )}
 
-          <BranchPreviewPanel
-            previewMapRef={previewMapRef}
-            hasMapPreview={branches.hasMapPreview}
-            isBranchCoordsValid={branches.isBranchCoordsValid}
-            selectedRegisteredBranch={branches.selectedRegisteredBranch}
-            previewLat={branches.previewLat}
-            previewLng={branches.previewLng}
-            filteredItems={branches.filteredRegisteredBranchItems}
-            allCount={branches.branchItems.length}
-            selectedId={branches.selectedRegisteredBranchId}
-            onSelect={branches.setSelectedRegisteredBranchId}
-            searchCity={branches.branchSearchCity}
-            setSearchCity={branches.setBranchSearchCity}
-            searchDistrict={branches.branchSearchDistrict}
-            setSearchDistrict={branches.setBranchSearchDistrict}
-            searchKhoroo={branches.branchSearchKhoroo}
-            setSearchKhoroo={branches.setBranchSearchKhoroo}
+      {editorOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="Салбар нэмэх цонх хаах"
+            onClick={() => setEditorOpen(false)}
+            className="fixed inset-0 z-[1000] cursor-default bg-slate-950/50 backdrop-blur-[2px]"
           />
-        </div>
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="branch-editor-title"
+            className="fixed inset-x-3 top-3 z-[1010] isolate max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-2xl bg-[#fbfcff] p-4 shadow-2xl sm:inset-x-6 sm:top-6 sm:mx-auto sm:max-h-[calc(100dvh-3rem)] sm:max-w-3xl sm:p-5"
+          >
+            <div className="sticky -top-4 z-20 mb-4 flex items-center justify-between border-b border-slate-100 bg-white pb-3 pt-1 sm:-top-5">
+              <div>
+                <h3
+                  id="branch-editor-title"
+                  className="text-lg font-black text-slate-950"
+                >
+                  Шинэ салбар нэмэх
+                </h3>
+                <p className="mt-1 text-xs font-semibold text-slate-500">
+                  1. Байгууллага · 2. Мэдээлэл · 3. Map байршил
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditorOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:bg-slate-100"
+                aria-label="Хаах"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <BranchForm
+              partners={branches.branchPartners}
+              orgId={branches.branchOrgId}
+              setOrgId={branches.setBranchOrgId}
+              selectedOrg={branches.selectedBranchOrg}
+              form={branches.branchForm}
+              setForm={branches.setBranchForm}
+              branchSaving={branches.branchSaving}
+              branchError={branches.branchError}
+              branchSuccess={branches.branchSuccess}
+              branchValidationError={branches.branchValidationError}
+              canCreateBranch={branches.canCreateBranch}
+              branchMapError={branchMapError}
+              mapPickerRef={mapPickerRef}
+              onSubmit={branches.handleCreateBranch}
+            />
+          </section>
+        </>
       )}
     </div>
   );

@@ -12,12 +12,16 @@ import {
   Store,
   Globe2,
   Tags,
-  Info,
   AlertTriangle,
   Archive,
+  Monitor,
+  Pencil,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { API, adminFetch, getApiErrorMessage } from "@/lib/api";
 import { OrgSearchDropdown } from "@/components/molecules/OrgSearchDropdown";
+import { PosRegistersSection } from "@/components/organisms/sections/pos/PosRegistersSection";
 
 type Org = { id: string; name: string; slug: string };
 
@@ -144,6 +148,9 @@ export function VendorFeaturesSection() {
   const [globalProductsEnabled, setGlobalProductsEnabled] = useState(true);
   const [loadingGlobalProducts, setLoadingGlobalProducts] = useState(true);
   const [savingGlobalProducts, setSavingGlobalProducts] = useState(false);
+  const [activePanel, setActivePanel] = useState<"features" | "pos" | null>(
+    null,
+  );
 
   const [toggles, setToggles] = useState<FeatureToggle[]>(
     FEATURES.map((f) => ({
@@ -161,6 +168,21 @@ export function VendorFeaturesSection() {
     false;
   const webChannelIsLive =
     globalProductsEnabled && organizationWebProductsEnabled;
+  const enabledFeatureCount = toggles.filter((toggle) => toggle.enabled).length;
+
+  useEffect(() => {
+    if (!activePanel) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActivePanel(null);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [activePanel]);
 
   useEffect(() => {
     adminFetch(`${API}/partners?minimal=true`)
@@ -312,74 +334,9 @@ export function VendorFeaturesSection() {
   };
 
   return (
-    <div className="space-y-5">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
-              <Store size={20} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-500">
-                Vendor app
-              </p>
-              <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
-                Vendor тохиргоо
-              </h2>
-              <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
-                Байгууллага бүрт vendor болон org дээр ямар module нээлттэй
-                харагдахыг удирдана.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div
-              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                globalProductsEnabled
-                  ? "bg-emerald-50 text-emerald-600"
-                  : "bg-slate-100 text-slate-400"
-              }`}
-            >
-              <Globe2 size={18} />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-slate-800">
-                Public web бүтээгдэхүүний ерөнхий эрх
-              </p>
-              <p className="text-xs text-slate-400">
-                Бүх байгууллагын public каталогийн master switch
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            aria-pressed={globalProductsEnabled}
-            onClick={handleGlobalProductsToggle}
-            disabled={loadingGlobalProducts || savingGlobalProducts}
-            className={`inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-colors disabled:opacity-60 ${
-              globalProductsEnabled
-                ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            {loadingGlobalProducts || savingGlobalProducts ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : globalProductsEnabled ? (
-              <CheckCircle2 size={14} />
-            ) : (
-              <XCircle size={14} />
-            )}
-            {globalProductsEnabled ? "Нээлттэй" : "Хаалттай"}
-          </button>
-        </div>
-      </div>
-
-      <div className="relative z-20 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="grid gap-4 lg:grid-cols-[420px_minmax(0,1fr)] lg:items-end">
+    <div className="space-y-4">
+      <section className="relative z-20 overflow-visible rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="grid gap-4 border-b border-slate-100 p-4 lg:grid-cols-[minmax(280px,420px)_1fr] lg:items-end">
           <OrgSearchDropdown
             orgs={orgs}
             value={selectedOrgId}
@@ -389,161 +346,234 @@ export function VendorFeaturesSection() {
             className="w-full"
           />
 
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3">
-            <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-              Сонгосон байгууллага
-            </p>
-            <p className="mt-1 truncate text-sm font-black text-slate-800">
-              {selectedOrg ? selectedOrg.name : "Эхлээд байгууллага сонгоно уу"}
-            </p>
-            <p className="mt-0.5 truncate text-xs font-semibold text-slate-400">
-              {selectedOrg?.slug
-                ? `@${selectedOrg.slug}`
-                : `${orgs.length} байгууллагаас хайж сонгоно`}
-            </p>
+          <div className="flex items-center justify-between gap-4 rounded-xl bg-slate-50 px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-3">
+              <span
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${globalProductsEnabled ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}
+              >
+                <Globe2 size={17} />
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-slate-800">
+                  Public web master
+                </p>
+                <p className="truncate text-xs font-semibold text-slate-400">
+                  Бүх байгууллагын каталог
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              aria-pressed={globalProductsEnabled}
+              onClick={handleGlobalProductsToggle}
+              disabled={loadingGlobalProducts || savingGlobalProducts}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 disabled:opacity-60 ${globalProductsEnabled ? "bg-emerald-500" : "bg-slate-300"}`}
+              aria-label="Public web ерөнхий эрх"
+            >
+              {loadingGlobalProducts || savingGlobalProducts ? (
+                <Loader2
+                  size={13}
+                  className="absolute left-3.5 top-1.5 animate-spin text-white"
+                />
+              ) : (
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${globalProductsEnabled ? "translate-x-5" : "translate-x-0.5"}`}
+                />
+              )}
+            </button>
           </div>
         </div>
-      </div>
+
+        {/* feature toggles */}
+        {selectedOrgId && (
+          <>
+            {loadingFeatures ? (
+              <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-5 text-sm font-semibold text-slate-400">
+                <Loader2 size={15} className="animate-spin" /> Ачаалж байна...
+              </div>
+            ) : (
+              <div className="grid gap-3 p-4 lg:grid-cols-2">
+                <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600">
+                        <SlidersHorizontal size={19} />
+                      </span>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-black text-slate-900">
+                          Vendor боломжууд
+                        </h3>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          {enabledFeatureCount}/{toggles.length} боломж нээлттэй
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActivePanel("features")}
+                      className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-700 transition hover:bg-violet-100"
+                    >
+                      <Pencil size={14} /> Тохируулах
+                    </button>
+                  </div>
+                </section>
+
+                <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600">
+                        <Monitor size={19} />
+                      </span>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-black text-slate-900">
+                          POS Register
+                        </h3>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">
+                          Касс, терминал, QPay болон eBarimt
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActivePanel("pos")}
+                      className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-700 transition hover:bg-cyan-100"
+                    >
+                      <Pencil size={14} /> Удирдах
+                    </button>
+                  </div>
+                </section>
+              </div>
+            )}
+          </>
+        )}
+
+        {!selectedOrgId && (
+          <div className="p-6 text-center">
+            <p className="text-sm font-bold text-slate-500">
+              Удирдах байгууллагаа сонгоно уу
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Vendor болон POS тохиргоо энд гарна.
+            </p>
+          </div>
+        )}
+
+        {selectedOrgId && !loadingFeatures && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={`flex items-center gap-2 border-t px-4 py-2.5 text-xs font-bold ${
+              organizationWebProductsEnabled && !globalProductsEnabled
+                ? "border-amber-200 bg-amber-50 text-amber-700"
+                : webChannelIsLive
+                  ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                  : "border-slate-100 bg-slate-50 text-slate-500"
+            }`}
+          >
+            {organizationWebProductsEnabled && !globalProductsEnabled ? (
+              <AlertTriangle size={14} />
+            ) : webChannelIsLive ? (
+              <CheckCircle2 size={14} />
+            ) : (
+              <XCircle size={14} />
+            )}
+            {organizationWebProductsEnabled && !globalProductsEnabled
+              ? "Байгууллагын web эрх нээлттэй ч master эрх хаалттай байна."
+              : webChannelIsLive
+                ? `${selectedOrg?.name}: онлайн худалдааны суваг идэвхтэй.`
+                : `${selectedOrg?.name}: public web суваг хаалттай.`}
+          </div>
+        )}
+      </section>
 
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
           {error}
         </div>
       )}
 
-      <div className="rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3">
-        <div className="flex items-start gap-3">
-          <Info size={18} className="mt-0.5 shrink-0 text-blue-600" />
-          <div>
-            <p className="text-sm font-bold text-blue-950">
-              Public суваг болон Vendor боломж
-            </p>
-            <p className="mt-1 text-xs font-semibold leading-5 text-blue-700">
-              Энэ хэсэг MGL Business mobile app-ийн дотоод “Бараа, агуулах”
-              эрхээс тусдаа. System admin visibility хязгаарлалтыг тойрч харах
-              боломжтой тул public үр дүнг guest горимоор шалгана уу.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {selectedOrgId &&
-        organizationWebProductsEnabled &&
-        !globalProductsEnabled && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
-            <div className="flex items-start gap-3">
-              <AlertTriangle
-                size={18}
-                className="mt-0.5 shrink-0 text-amber-600"
-              />
+      {activePanel && selectedOrgId && (
+        <>
+          <button
+            type="button"
+            aria-label="Тохиргооны цонх хаах"
+            onClick={() => setActivePanel(null)}
+            className="fixed inset-0 z-40 cursor-default bg-slate-950/50 backdrop-blur-[2px]"
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="vendor-settings-dialog-title"
+            className="fixed inset-x-3 top-3 z-50 max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-[#fbfcff] p-4 shadow-2xl sm:inset-x-6 sm:top-6 sm:mx-auto sm:max-h-[calc(100dvh-3rem)] sm:max-w-5xl sm:p-5"
+          >
+            <div className="sticky -top-4 z-30 mb-4 flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-1 pb-3 pt-1 sm:-top-5">
               <div>
-                <p className="text-sm font-bold text-amber-950">
-                  Байгууллагын web эрх нээлттэй боловч global эрх хаалттай
-                </p>
-                <p className="mt-1 text-xs font-semibold leading-5 text-amber-700">
-                  Энэ байгууллагын бараа public хэрэглэгчдэд харагдахгүй.
-                  Ерөнхий эрхийг нээсний дараа байгууллагын тохиргоо үйлчилнэ.
+                <h3
+                  id="vendor-settings-dialog-title"
+                  className="text-lg font-black text-slate-950"
+                >
+                  {activePanel === "features"
+                    ? "Vendor боломжууд"
+                    : "POS Register"}
+                </h3>
+                <p className="mt-1 text-xs font-semibold text-slate-500">
+                  {selectedOrg?.name} байгууллагын тохиргоо
                 </p>
               </div>
-            </div>
-          </div>
-        )}
-
-      {selectedOrgId && !loadingFeatures && (
-        <div
-          className={`rounded-2xl border px-4 py-4 ${
-            webChannelIsLive
-              ? "border-emerald-200 bg-emerald-50"
-              : "border-slate-200 bg-slate-50"
-          }`}
-          role="status"
-          aria-live="polite"
-        >
-          <div className="flex items-start gap-3">
-            <Globe2
-              size={18}
-              className={`mt-0.5 shrink-0 ${
-                webChannelIsLive ? "text-emerald-600" : "text-slate-400"
-              }`}
-            />
-            <div>
-              <p
-                className={`text-sm font-black ${
-                  webChannelIsLive ? "text-emerald-950" : "text-slate-800"
-                }`}
+              <button
+                type="button"
+                onClick={() => setActivePanel(null)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                aria-label="Хаах"
               >
-                {webChannelIsLive
-                  ? "Онлайн худалдааны суваг идэвхтэй"
-                  : "Зөвхөн дотоод барааны сан ашиглана"}
-              </p>
-              <p
-                className={`mt-1 text-xs font-semibold leading-5 ${
-                  webChannelIsLive ? "text-emerald-700" : "text-slate-500"
-                }`}
-              >
-                {webChannelIsLive
-                  ? "ACTIVE, APPROVED төлөвтэй бараанууд website болон store каталогт харагдана. Идэвхгүй эсвэл хяналтаар батлагдаагүй бараа нийтлэгдэхгүй."
-                  : "Бараа, үлдэгдэл, POS болон нэгдсэн сангийн бүртгэл хэвийн ажиллана. Харин public website дээр энэ байгууллагын бараа харагдахгүй."}
-              </p>
+                <X size={16} />
+              </button>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* feature toggles */}
-      {selectedOrgId && (
-        <>
-          {loadingFeatures ? (
-            <div className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-5 text-sm font-semibold text-slate-400">
-              <Loader2 size={15} className="animate-spin" /> Ачаалж байна...
-            </div>
-          ) : (
-            <div className="space-y-5">
-              {FEATURE_GROUPS.map((group) => (
-                <section
-                  key={group.key}
-                  aria-labelledby={`vendor-feature-group-${group.key}`}
-                  className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
-                >
-                  <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-500">
-                    {group.eyebrow}
-                  </p>
-                  <h3
-                    id={`vendor-feature-group-${group.key}`}
-                    className="mt-1 text-lg font-black text-slate-950"
+            {activePanel === "features" ? (
+              <div className="space-y-4">
+                {FEATURE_GROUPS.map((group) => (
+                  <section
+                    key={group.key}
+                    className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
                   >
-                    {group.title}
-                  </h3>
-
-                  <div className="mt-4 grid gap-3 lg:grid-cols-2">
-                    {toggles
-                      .filter((toggle) =>
-                        FEATURES.some(
-                          (feature) =>
-                            feature.suffix === toggle.key &&
-                            feature.group === group.key,
-                        ),
-                      )
-                      .map((toggle) => {
-                        const feature = FEATURES.find(
-                          (item) => item.suffix === toggle.key,
-                        );
-
-                        return (
-                          <VendorFeatureCard
-                            key={toggle.key}
-                            toggle={toggle}
-                            description={feature?.description ?? ""}
-                            organizationId={selectedOrgId}
-                            onToggle={handleToggle}
-                          />
-                        );
-                      })}
-                  </div>
-                </section>
-              ))}
-            </div>
-          )}
+                    <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-500">
+                      {group.eyebrow}
+                    </p>
+                    <h4 className="mt-1 text-base font-black text-slate-950">
+                      {group.title}
+                    </h4>
+                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                      {toggles
+                        .filter((toggle) =>
+                          FEATURES.some(
+                            (feature) =>
+                              feature.suffix === toggle.key &&
+                              feature.group === group.key,
+                          ),
+                        )
+                        .map((toggle) => {
+                          const feature = FEATURES.find(
+                            (item) => item.suffix === toggle.key,
+                          );
+                          return (
+                            <VendorFeatureCard
+                              key={toggle.key}
+                              toggle={toggle}
+                              description={feature?.description ?? ""}
+                              organizationId={selectedOrgId}
+                              onToggle={handleToggle}
+                            />
+                          );
+                        })}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <PosRegistersSection organizationId={selectedOrgId} embedded />
+            )}
+          </section>
         </>
       )}
     </div>

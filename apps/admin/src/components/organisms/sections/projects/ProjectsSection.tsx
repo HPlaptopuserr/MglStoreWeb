@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ChangeEvent } from "react";
+import { Fragment, useEffect, useState, type ChangeEvent } from "react";
 import {
   Check,
   CreditCard,
@@ -16,6 +16,7 @@ import {
   Save,
   Trash2,
   UserRound,
+  X,
 } from "lucide-react";
 import type {
   ProjectItem,
@@ -96,6 +97,10 @@ export function ProjectsSection({
     null,
   );
   const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [showcaseEditorOpen, setShowcaseEditorOpen] = useState(false);
+  const [editingShowcaseId, setEditingShowcaseId] = useState<string | null>(
+    null,
+  );
   const [uploadError, setUploadError] = useState("");
   const [pdfUploadError, setPdfUploadError] = useState("");
   const [contractTemplates, setContractTemplates] = useState<
@@ -109,6 +114,9 @@ export function ProjectsSection({
   const isStudyMode = mode === "study";
   const isProjectMode = mode === "project";
   const showcaseSections = isProjectMode ? projectShowcaseSections : [];
+  const editingShowcaseSection =
+    showcaseSections.find((section) => section.id === editingShowcaseId) ??
+    null;
   const copy =
     mode === "franchise"
       ? {
@@ -162,6 +170,28 @@ export function ProjectsSection({
             summaryPlaceholder:
               "Web дээр үнэгүй харагдах богино танилцуулга...",
           };
+
+  useEffect(() => {
+    if (!editingProjectId && !showcaseEditorOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && editingShowcaseId) {
+        setEditingShowcaseId(null);
+      } else if (event.key === "Escape") {
+        setEditingProjectId(null);
+        setShowcaseEditorOpen(false);
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [editingProjectId, editingShowcaseId, showcaseEditorOpen]);
 
   useEffect(() => {
     if (!isFranchiseMode) return;
@@ -241,6 +271,20 @@ export function ProjectsSection({
     });
   };
 
+  const reorderProject = (sourceId: string, targetId: string) => {
+    setProjects((prev) => {
+      const sourceIndex = prev.findIndex((project) => project.id === sourceId);
+      const targetIndex = prev.findIndex((project) => project.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+        return prev;
+      }
+      const next = [...prev];
+      const [moved] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+  };
+
   const addShowcaseSection = () => {
     if (!setProjectShowcaseSections) return;
     const section: ProjectShowcaseSection = {
@@ -250,6 +294,7 @@ export function ProjectsSection({
       projectIds: [],
     };
     setProjectShowcaseSections((prev) => [...prev, section]);
+    setEditingShowcaseId(section.id);
   };
 
   const updateShowcaseSection = <K extends keyof ProjectShowcaseSection>(
@@ -286,6 +331,7 @@ export function ProjectsSection({
     setProjectShowcaseSections((prev) =>
       prev.filter((section) => section.id !== id),
     );
+    if (editingShowcaseId === id) setEditingShowcaseId(null);
   };
 
   const updateProject = <K extends keyof ProjectItem>(
@@ -872,127 +918,292 @@ export function ProjectsSection({
       )}
 
       {isProjectMode && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h3 className="text-base font-black text-slate-950">
-                Web дээр гарах төслийн мөрүүд
-              </h3>
-              <p className="mt-1 text-sm font-semibold text-slate-500">
-                Нэрийг нь өөрчилж, хэдэн ч scroll хэсэг нэмж болно.
-              </p>
+        <>
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-black text-slate-950">
+                    Web бүтэц ба дараалал
+                  </h3>
+                  <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-black text-violet-700">
+                    {showcaseSections.length} мөр
+                  </span>
+                </div>
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  {showcaseSections.length > 0
+                    ? `${showcaseSections.reduce((total, section) => total + section.projectIds.length, 0)} төслийн сонголт тохируулсан`
+                    : "Web-ийн scroll мөр хараахан тохируулаагүй"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowcaseEditorOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-bold text-violet-700 transition hover:bg-violet-100"
+              >
+                <Pencil className="h-4 w-4" />
+                Tool нээх
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={addShowcaseSection}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-950 px-3 py-2 text-xs font-bold text-white shadow-sm transition hover:bg-slate-800"
-            >
-              <Plus className="h-4 w-4" />
-              Мөр нэмэх
-            </button>
-          </div>
+          </section>
 
-          {showcaseSections.length === 0 ? (
-            <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm font-semibold text-slate-500">
-              Одоогоор web дээр тусдаа scroll мөр оруулаагүй байна.
-            </div>
-          ) : (
-            <div className="mt-4 space-y-3">
-              {showcaseSections.map((section, index) => (
-                <article
-                  key={section.id}
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
-                >
-                  <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
-                    <label className="space-y-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Мөрийн нэр #{index + 1}
-                      </span>
-                      <input
-                        value={section.title}
-                        onChange={(event) =>
-                          updateShowcaseSection(
-                            section.id,
-                            "title",
-                            event.target.value,
-                          )
-                        }
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-bold outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="Жишээ: Шинэ хөрөнгө оруулалтын төслүүд"
-                      />
-                    </label>
-                    <label className="space-y-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Богино тайлбар
-                      </span>
-                      <input
-                        value={section.subtitle || ""}
-                        onChange={(event) =>
-                          updateShowcaseSection(
-                            section.id,
-                            "subtitle",
-                            event.target.value,
-                          )
-                        }
-                        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder="Жишээ: Эрчим хүч, ложистик, кластер"
-                      />
-                    </label>
+          {showcaseEditorOpen && (
+            <>
+              <button
+                type="button"
+                aria-label="Web төслийн мөрийн тохиргоо хаах"
+                onClick={() => setShowcaseEditorOpen(false)}
+                className="fixed inset-0 z-40 cursor-default bg-slate-950/50 backdrop-blur-[2px]"
+              />
+              <section
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="showcase-editor-title"
+                className="fixed inset-x-3 top-3 z-50 max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:inset-x-6 sm:top-6 sm:mx-auto sm:max-h-[calc(100dvh-3rem)] sm:max-w-5xl sm:p-5"
+              >
+                <div className="sticky -top-4 z-20 mb-4 flex items-center justify-between gap-3 border-b border-slate-100 bg-white pb-3 pt-1 sm:-top-5">
+                  <div>
+                    <h3
+                      id="showcase-editor-title"
+                      className="text-lg font-black text-slate-950"
+                    >
+                      Web бүтэц ба дараалал
+                    </h3>
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                      Мөр бүрийн нэр, тайлбар болон харагдах төслүүдийг сонгоно.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => removeShowcaseSection(section.id)}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 text-xs font-bold text-red-600 transition hover:bg-red-100 lg:self-end"
+                      onClick={addShowcaseSection}
+                      className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-800"
                     >
-                      <Trash2 className="h-4 w-4" />
-                      Устгах
+                      <Plus className="h-4 w-4" /> Мөр нэмэх
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowcaseEditorOpen(false)}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                      aria-label="Хаах"
+                    >
+                      <X className="h-4 w-4" />
                     </button>
                   </div>
+                </div>
 
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                    {projects.map((project) => {
-                      const selected = section.projectIds.includes(project.id);
-                      return (
-                        <label
-                          key={`${section.id}-${project.id}`}
-                          className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 transition ${
-                            selected
-                              ? "border-violet-200 bg-white text-slate-950 shadow-sm"
-                              : "border-slate-200 bg-white/60 text-slate-500 hover:bg-white"
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() =>
-                              toggleShowcaseProject(section.id, project.id)
-                            }
-                            className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
-                          />
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm font-black">
-                              {project.title || copy.unnamed}
-                            </span>
-                            <span className="block truncate text-xs font-semibold text-slate-400">
-                              {project.category || "Ангилалгүй"}
-                            </span>
-                          </span>
-                        </label>
-                      );
-                    })}
+                {showcaseSections.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm font-semibold text-slate-500">
+                    Мөр нэмээд web дээр харагдах төслүүдээ сонгоно уу.
                   </div>
-                </article>
-              ))}
-            </div>
+                ) : (
+                  <div className="space-y-3">
+                    {showcaseSections.map((section, index) => (
+                      <article
+                        key={section.id}
+                        className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-xs font-black text-violet-600 ring-1 ring-slate-200">
+                            {String(index + 1).padStart(2, "0")}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-black text-slate-900">
+                              {section.title}
+                            </p>
+                            <p className="mt-0.5 truncate text-xs font-semibold text-slate-400">
+                              {section.projectIds.length} төсөл ·{" "}
+                              {section.subtitle || "Тайлбаргүй"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditingShowcaseId(section.id)}
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                          >
+                            <Pencil className="h-3.5 w-3.5" /> Засах
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeShowcaseSection(section.id)}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-red-100 bg-red-50 text-red-600 transition hover:bg-red-100"
+                            aria-label="Мөр устгах"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
+
+                {editingShowcaseSection && (
+                  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/45 p-3 backdrop-blur-[2px] sm:p-6">
+                    <section
+                      role="dialog"
+                      aria-modal="true"
+                      aria-labelledby="showcase-row-editor-title"
+                      className="max-h-[calc(100dvh-1.5rem)] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-4 shadow-2xl sm:max-h-[calc(100dvh-3rem)] sm:p-5"
+                    >
+                      <div className="sticky -top-4 z-10 mb-4 flex items-center justify-between border-b border-slate-100 bg-white pb-3 sm:-top-5">
+                        <div>
+                          <h4
+                            id="showcase-row-editor-title"
+                            className="text-lg font-black text-slate-950"
+                          >
+                            Мөрийн тохиргоо
+                          </h4>
+                          <p className="mt-1 text-xs font-semibold text-slate-500">
+                            Нэр, тайлбар болон харагдах төслүүд
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditingShowcaseId(null)}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100"
+                          aria-label="Хаах"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="space-y-1.5">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                            Мөрийн нэр
+                          </span>
+                          <input
+                            value={editingShowcaseSection.title}
+                            onChange={(event) =>
+                              updateShowcaseSection(
+                                editingShowcaseSection.id,
+                                "title",
+                                event.target.value,
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                          />
+                        </label>
+                        <label className="space-y-1.5">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                            Богино тайлбар
+                          </span>
+                          <input
+                            value={editingShowcaseSection.subtitle || ""}
+                            onChange={(event) =>
+                              updateShowcaseSection(
+                                editingShowcaseSection.id,
+                                "subtitle",
+                                event.target.value,
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                          />
+                        </label>
+                      </div>
+                      <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                        {projects.map((project) => {
+                          const selected =
+                            editingShowcaseSection.projectIds.includes(
+                              project.id,
+                            );
+                          return (
+                            <label
+                              key={`${editingShowcaseSection.id}-${project.id}`}
+                              className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 transition ${selected ? "border-violet-300 bg-violet-50" : "border-slate-200 bg-slate-50 hover:bg-white"}`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() =>
+                                  toggleShowcaseProject(
+                                    editingShowcaseSection.id,
+                                    project.id,
+                                  )
+                                }
+                                className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
+                              />
+                              <span className="min-w-0">
+                                <span className="block truncate text-sm font-black text-slate-900">
+                                  {project.title || copy.unnamed}
+                                </span>
+                                <span className="block truncate text-xs font-semibold text-slate-400">
+                                  {project.category || "Ангилалгүй"}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-4 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setEditingShowcaseId(null)}
+                          className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-700"
+                        >
+                          Боллоо
+                        </button>
+                      </div>
+                    </section>
+                  </div>
+                )}
+
+                {projects.length > 0 && (
+                  <div className="mt-5 border-t border-slate-200 pt-5">
+                    <div className="mb-3">
+                      <h4 className="text-base font-black text-slate-950">
+                        Төслийн дараалал
+                      </h4>
+                      <p className="mt-1 text-xs font-semibold text-slate-500">
+                        Grip хэсгээс mouse-аар чирж хүссэн байрлал дээрээ drop
+                        хийнэ.
+                      </p>
+                    </div>
+                    <ProjectOrderList
+                      projects={projects}
+                      mode={mode}
+                      onEdit={(projectId) => {
+                        setShowcaseEditorOpen(false);
+                        setEditingProjectId(projectId);
+                      }}
+                      onMove={moveProject}
+                      onReorder={reorderProject}
+                      onToggleVisibility={(projectId) => {
+                        const project = projects.find(
+                          (item) => item.id === projectId,
+                        );
+                        if (project)
+                          updateProject(
+                            projectId,
+                            "isActive",
+                            !project.isActive,
+                          );
+                      }}
+                      embedded
+                    />
+                  </div>
+                )}
+              </section>
+            </>
           )}
-        </section>
+        </>
       )}
 
-      <ProjectOrderList
-        projects={projects}
-        mode={mode}
-        onEdit={setEditingProjectId}
-        onMove={moveProject}
-      />
+      {!isProjectMode && (
+        <ProjectOrderList
+          projects={projects}
+          mode={mode}
+          onEdit={setEditingProjectId}
+          onMove={moveProject}
+          onReorder={reorderProject}
+          onToggleVisibility={(projectId) => {
+            const project = projects.find((item) => item.id === projectId);
+            if (project)
+              updateProject(projectId, "isActive", !project.isActive);
+          }}
+        />
+      )}
 
       {projects.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-10 text-center">
@@ -1007,97 +1218,114 @@ export function ProjectsSection({
           </button>
         </div>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {projects.map((project, index) => {
-            const isEditing = editingProjectId === project.id;
-            const isDeleting = deletingProjectId === project.id;
-            const projectImages = getProjectImages(project);
-            const primaryImage = projectImages[0];
-            const selectedPaymentAccount = getSelectedPaymentAccount(
-              project,
-              paymentAccounts,
-            );
-            const studyProgramRows = isStudyMode
-              ? parseStudyProgramRows(project.details)
-              : [];
-            const visibleStudyProgramRows =
-              studyProgramRows.length > 0
-                ? studyProgramRows
-                : [{ title: "", description: "" }];
-            const studyTeacherRows = isStudyMode
-              ? parseStudyTeacherRows(project.teacherInfo)
-              : [];
-            const visibleStudyTeacherRows =
-              studyTeacherRows.length > 0
-                ? studyTeacherRows
-                : [{ name: "", description: "", imageUrl: "" }];
-            const responsiblePeople = getResponsiblePeople(project);
-            const primaryResponsiblePerson = responsiblePeople[0];
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-black text-slate-950">
+                {isProjectMode
+                  ? "Төслийн жагсаалт"
+                  : isFranchiseMode
+                    ? "Franchise жагсаалт"
+                    : "Сургалтын жагсаалт"}
+              </h3>
+              <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                “Засах” товчоор мэдээллийг popup цонхоор нээнэ.
+              </p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-black text-slate-500">
+              Нийт {projects.length}
+            </span>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {projects.map((project, index) => {
+              const isEditing = editingProjectId === project.id;
+              const isDeleting = deletingProjectId === project.id;
+              const projectImages = getProjectImages(project);
+              const primaryImage = projectImages[0];
+              const selectedPaymentAccount = getSelectedPaymentAccount(
+                project,
+                paymentAccounts,
+              );
+              const studyProgramRows = isStudyMode
+                ? parseStudyProgramRows(project.details)
+                : [];
+              const visibleStudyProgramRows =
+                studyProgramRows.length > 0
+                  ? studyProgramRows
+                  : [{ title: "", description: "" }];
+              const studyTeacherRows = isStudyMode
+                ? parseStudyTeacherRows(project.teacherInfo)
+                : [];
+              const visibleStudyTeacherRows =
+                studyTeacherRows.length > 0
+                  ? studyTeacherRows
+                  : [{ name: "", description: "", imageUrl: "" }];
+              const responsiblePeople = getResponsiblePeople(project);
+              const primaryResponsiblePerson = responsiblePeople[0];
 
-            return (
-              <article
-                key={project.id}
-                className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${
-                  isEditing ? "md:col-span-2 xl:col-span-3 p-5" : "p-3"
-                }`}
-              >
-                <div
-                  className={`mb-3 flex items-start justify-between gap-3 ${
-                    isEditing ? "flex-wrap" : ""
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-500">
-                      {copy.itemLabel} #{index + 1}
-                    </p>
-                    <h3
-                      className={`mt-1 font-black text-slate-950 ${
-                        isEditing ? "text-lg" : "line-clamp-1 text-sm leading-5"
-                      }`}
-                    >
-                      {project.title || copy.unnamed}
-                    </h3>
-                    <p className="mt-1 truncate text-xs font-semibold text-slate-400">
-                      {project.category || "Ангилалгүй"} ·{" "}
-                      {project.price > 0 ? formatMnt(project.price) : "Үнэгүй"}
-                    </p>
-                    {isEditing && project.price > 0 && (
-                      <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700">
-                        <CreditCard className="h-3.5 w-3.5" />
-                        {formatPaymentAccount(selectedPaymentAccount)}
-                      </p>
-                    )}
-                  </div>
-                  <div
-                    className={`flex items-center justify-end gap-2 ${
-                      isEditing ? "flex-wrap" : "shrink-0"
+              return (
+                <Fragment key={project.id}>
+                  {isEditing && (
+                    <button
+                      type="button"
+                      aria-label="Засварын цонх хаах"
+                      onClick={() => setEditingProjectId(null)}
+                      className="fixed inset-0 z-40 cursor-default bg-slate-950/50 backdrop-blur-[2px]"
+                    />
+                  )}
+                  <article
+                    role={isEditing ? "dialog" : undefined}
+                    aria-modal={isEditing ? true : undefined}
+                    aria-label={
+                      isEditing
+                        ? `${project.title || copy.unnamed} засах`
+                        : undefined
+                    }
+                    className={`overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${
+                      isEditing
+                        ? "fixed inset-x-3 top-3 z-50 max-h-[calc(100dvh-1.5rem)] overflow-y-auto p-4 sm:inset-x-6 sm:top-6 sm:mx-auto sm:max-h-[calc(100dvh-3rem)] sm:max-w-5xl sm:p-5"
+                        : "p-3"
                     }`}
                   >
-                    {isEditing && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateProject(
-                              project.id,
-                              "isActive",
-                              !project.isActive,
-                            )
-                          }
-                          className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${
-                            project.isActive
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-slate-100 text-slate-500"
+                    <div
+                      className={`mb-3 flex items-start justify-between gap-3 ${
+                        isEditing
+                          ? "sticky -top-4 z-20 flex-wrap border-b border-slate-100 bg-white pb-3 pt-1 sm:-top-5"
+                          : ""
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-violet-500">
+                          {copy.itemLabel} #{index + 1}
+                        </p>
+                        <h3
+                          className={`mt-1 font-black text-slate-950 ${
+                            isEditing
+                              ? "text-lg"
+                              : "line-clamp-1 text-sm leading-5"
                           }`}
                         >
-                          {project.isActive ? (
-                            <Eye className="h-4 w-4" />
-                          ) : (
-                            <EyeOff className="h-4 w-4" />
-                          )}
-                          {project.isActive ? "Web дээр харагдана" : "Нуусан"}
-                        </button>
-                        {isProjectMode && (
+                          {project.title || copy.unnamed}
+                        </h3>
+                        <p className="mt-1 truncate text-xs font-semibold text-slate-400">
+                          {project.category || "Ангилалгүй"} ·{" "}
+                          {project.price > 0
+                            ? formatMnt(project.price)
+                            : "Үнэгүй"}
+                        </p>
+                        {isEditing && project.price > 0 && (
+                          <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700">
+                            <CreditCard className="h-3.5 w-3.5" />
+                            {formatPaymentAccount(selectedPaymentAccount)}
+                          </p>
+                        )}
+                      </div>
+                      <div
+                        className={`flex items-center justify-end gap-2 ${
+                          isEditing ? "flex-wrap" : "shrink-0"
+                        }`}
+                      >
+                        {isEditing && isProjectMode && (
                           <button
                             type="button"
                             onClick={() =>
@@ -1119,1451 +1347,1512 @@ export function ProjectsSection({
                               : "Онцлохгүй"}
                           </button>
                         )}
-                      </>
-                    )}
-                    {!isEditing && isProjectMode && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateProject(
-                            project.id,
-                            "isFeatured",
-                            !project.isFeatured,
-                          )
-                        }
-                        className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${
-                          project.isFeatured
-                            ? "bg-amber-50 text-amber-700"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                        aria-label={
-                          project.isFeatured
-                            ? "Онцлох carousel-оос хасах"
-                            : "Онцлох carousel-д нэмэх"
-                        }
-                      >
-                        <Check className="h-4 w-4" />
-                        <span className="sr-only">
-                          {project.isFeatured ? "Онцлох carousel" : "Онцлохгүй"}
-                        </span>
-                      </button>
-                    )}
-                    {isEditing ? (
-                      <button
-                        type="button"
-                        onClick={() => void saveProjectEdits()}
-                        disabled={saving}
-                        className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-violet-700 disabled:opacity-60"
-                      >
-                        {saving ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Save className="h-4 w-4" />
-                        )}
-                        Хадгалах
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setEditingProjectId(project.id)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-                      >
-                        <Pencil className="h-4 w-4" />
-                        <span
-                          className={isEditing ? "" : "sr-only sm:not-sr-only"}
-                        >
-                          Засах
-                        </span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => void removeProject(project.id)}
-                      disabled={isDeleting || saving}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-60"
-                      aria-label={`${copy.itemLabel} устгах`}
-                    >
-                      {isDeleting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
-                </div>
-
-                {isEditing ? (
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <label className="space-y-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        {copy.titleLabel}
-                      </span>
-                      <input
-                        value={project.title}
-                        onChange={(e) =>
-                          updateProject(project.id, "title", e.target.value)
-                        }
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder={copy.titlePlaceholder}
-                      />
-                    </label>
-                    <label className="space-y-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        {isStudyMode ? "Сургалтын ангилал" : "Ангилал"}
-                      </span>
-                      <input
-                        value={project.category}
-                        onChange={(e) =>
-                          updateProject(project.id, "category", e.target.value)
-                        }
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder={copy.categoryPlaceholder}
-                      />
-                    </label>
-                    <>
-                      <label className="space-y-1.5">
-                        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                          {isStudyMode
-                            ? "Сургалтын төлбөр"
-                            : "Дэлгэрэнгүй үзэх үнэ"}
-                        </span>
-                        <input
-                          type="number"
-                          min={0}
-                          step={100}
-                          value={project.price}
-                          onChange={(e) =>
-                            updateProject(
-                              project.id,
-                              "price",
-                              parsePrice(e.target.value),
-                            )
-                          }
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                          placeholder={isStudyMode ? "0 бол үнэгүй" : "5000"}
-                        />
-                        {isStudyMode && (
-                          <p className="text-xs font-semibold text-slate-500">
-                            0 гэж оруулбал web дээр “Үнэгүй” гэж харагдана.
-                          </p>
-                        )}
-                      </label>
-                      {isStudyMode && (
-                        <label className="space-y-1.5">
-                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                            Хямдрахаас өмнөх үнэ
-                          </span>
-                          <input
-                            type="number"
-                            min={0}
-                            step={100}
-                            value={project.originalPrice || 0}
-                            onChange={(e) =>
+                        {!isEditing && isProjectMode && (
+                          <button
+                            type="button"
+                            onClick={() =>
                               updateProject(
                                 project.id,
-                                "originalPrice",
-                                parsePrice(e.target.value),
+                                "isFeatured",
+                                !project.isFeatured,
                               )
                             }
-                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                            placeholder="Жишээ: 72000"
-                          />
-                          <p className="text-xs font-semibold text-slate-500">
-                            0 бол “₮72,000” зэрэг дарсан хуучин үнэ web дээр
-                            харагдахгүй.
-                          </p>
-                        </label>
-                      )}
-                      <label className="space-y-1.5">
-                        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                          {isStudyMode
-                            ? "Төлбөртэй сургалтын данс"
-                            : "Төлбөр орох данс"}
-                        </span>
-                        <select
-                          value={
-                            selectedPaymentAccount?.id ||
-                            project.paymentAccountId ||
-                            ""
-                          }
-                          onChange={(e) =>
-                            updateProjectPaymentAccount(
-                              project.id,
-                              e.target.value,
-                            )
-                          }
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        >
-                          <option value="">Данс сонгоно уу</option>
-                          {paymentAccounts.map((account) => (
-                            <option key={account.id} value={account.id}>
-                              {formatPaymentAccount(account)}
-                            </option>
-                          ))}
-                        </select>
-                        {paymentAccounts.length === 0 && (
-                          <p className="text-xs font-semibold text-amber-600">
-                            “Гэрээний төлбөр” тохиргоонд эхлээд Minu Dynamic QR
-                            данс холбоно уу.
-                          </p>
+                            className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-bold ${
+                              project.isFeatured
+                                ? "bg-amber-50 text-amber-700"
+                                : "bg-slate-100 text-slate-500"
+                            }`}
+                            aria-label={
+                              project.isFeatured
+                                ? "Онцлох carousel-оос хасах"
+                                : "Онцлох carousel-д нэмэх"
+                            }
+                          >
+                            <Check className="h-4 w-4" />
+                            <span className="sr-only">
+                              {project.isFeatured
+                                ? "Онцлох carousel"
+                                : "Онцлохгүй"}
+                            </span>
+                          </button>
                         )}
-                      </label>
-                      {isFranchiseMode && (
+                        {isEditing ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void saveProjectEdits()}
+                              disabled={saving}
+                              className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-violet-700 disabled:opacity-60"
+                            >
+                              {saving ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Save className="h-4 w-4" />
+                              )}
+                              Хадгалах
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingProjectId(null)}
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                              aria-label="Засварын цонх хаах"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setEditingProjectId(project.id)}
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+                          >
+                            <Pencil className="h-4 w-4" />
+                            <span
+                              className={
+                                isEditing ? "" : "sr-only sm:not-sr-only"
+                              }
+                            >
+                              Засах
+                            </span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => void removeProject(project.id)}
+                          disabled={isDeleting || saving}
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-red-100 bg-red-50 text-red-600 hover:bg-red-100 disabled:opacity-60"
+                          aria-label={`${copy.itemLabel} устгах`}
+                        >
+                          {isDeleting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+
+                    {isEditing ? (
+                      <div className="grid gap-4 lg:grid-cols-2">
                         <label className="space-y-1.5">
                           <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                            Franchise гэрээний template
+                            {copy.titleLabel}
                           </span>
-                          <select
-                            value={project.contractTemplateId || ""}
+                          <input
+                            value={project.title}
+                            onChange={(e) =>
+                              updateProject(project.id, "title", e.target.value)
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            placeholder={copy.titlePlaceholder}
+                          />
+                        </label>
+                        <label className="space-y-1.5">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                            {isStudyMode ? "Сургалтын ангилал" : "Ангилал"}
+                          </span>
+                          <input
+                            value={project.category}
                             onChange={(e) =>
                               updateProject(
                                 project.id,
-                                "contractTemplateId",
+                                "category",
                                 e.target.value,
                               )
                             }
                             className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                          >
-                            <option value="">
-                              {contractTemplatesLoading
-                                ? "Гэрээнүүд ачаалж байна..."
-                                : "Гэрээ сонгоогүй"}
-                            </option>
-                            {contractTemplates.map((template) => (
-                              <option key={template.id} value={template.id}>
-                                {template.title || template.id}
-                                {template.isPaid ? " · төлбөртэй" : ""}
-                              </option>
-                            ))}
-                          </select>
-                          {contractTemplates.length === 0 &&
-                            !contractTemplatesLoading && (
-                              <p className="text-xs font-semibold text-amber-600">
-                                Эхлээд "Гэрээний мэдээлэл" хэсэгт contract
-                                template үүсгээд энд сонгоно.
-                              </p>
-                            )}
-                        </label>
-                      )}
-                    </>
-                    <div className="space-y-1.5 lg:col-span-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                          {isStudyMode
-                            ? "Сургалтын card / hero зураг"
-                            : "Зургууд"}
-                        </span>
-                        <span className="text-xs font-bold text-slate-400">
-                          {projectImages.length}/{MAX_PROJECT_IMAGES}
-                        </span>
-                      </div>
-                      <div className="rounded-xl border border-slate-100 bg-slate-50 p-2">
-                        {projectImages.length > 0 ? (
-                          <div className="mb-3 grid grid-cols-3 gap-2">
-                            {projectImages.map((image, imageIndex) => (
-                              <div
-                                key={`${image}-${imageIndex}`}
-                                className="group relative aspect-[4/3] overflow-hidden rounded-lg border border-slate-200 bg-white"
-                              >
-                                <img
-                                  src={image}
-                                  alt={`${project.title || copy.itemLabel} зураг ${imageIndex + 1}`}
-                                  className="h-full w-full object-cover"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    updateProjectImages(
-                                      project.id,
-                                      projectImages.filter(
-                                        (_, indexToKeep) =>
-                                          indexToKeep !== imageIndex,
-                                      ),
-                                    )
-                                  }
-                                  className="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-red-600 opacity-0 shadow-sm transition group-hover:opacity-100"
-                                  aria-label="Зураг устгах"
-                                >
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="mb-3 flex h-24 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-slate-400">
-                            <ImagePlus className="h-7 w-7" />
-                          </div>
-                        )}
-                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
-                          {uploadingProjectId === project.id ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <ImagePlus className="h-4 w-4" />
-                          )}
-                          {uploadingProjectId === project.id
-                            ? "Зураг оруулж байна..."
-                            : isStudyMode
-                              ? "Сургалтын зураг сонгох"
-                              : "Зурагнууд сонгох"}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            className="hidden"
-                            disabled={
-                              uploadingProjectId === project.id ||
-                              projectImages.length >= MAX_PROJECT_IMAGES
-                            }
-                            onChange={(e) => uploadProjectImage(project.id, e)}
+                            placeholder={copy.categoryPlaceholder}
                           />
                         </label>
-                        {uploadError && uploadingProjectId === null && (
-                          <p className="mt-2 text-xs font-semibold text-red-500">
-                            {uploadError}
-                          </p>
-                        )}
-                      </div>
-                      <textarea
-                        value={projectImages.join("\n")}
-                        onChange={(e) =>
-                          updateProjectImages(
-                            project.id,
-                            parseImageUrls(e.target.value),
-                          )
-                        }
-                        rows={3}
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder={
-                          isStudyMode
-                            ? "Зургийн URL оруулах бол мөр мөрөөр бичнэ. Эхний зураг card дээр гарна."
-                            : "Зургийн URL-уудыг мөр мөрөөр оруулж болно"
-                        }
-                      />
-                    </div>
-                    <label className="space-y-1.5 lg:col-span-2">
-                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        {isStudyMode ? "Сэдэв / keyword tag-ууд" : "Tag-ууд"}
-                      </span>
-                      <input
-                        value={tagText(project)}
-                        onChange={(e) =>
-                          updateProject(
-                            project.id,
-                            "tags",
-                            parseTags(e.target.value),
-                          )
-                        }
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder={
-                          isStudyMode
-                            ? "dashboard, POS, төлбөр, beginner"
-                            : "ус, хөрөнгө оруулалт, сум орон нутаг"
-                        }
-                      />
-                    </label>
-                    {!isStudyMode && (
-                      <div className="space-y-3 lg:col-span-2">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                              Хариуцаж байгаа ажилчид
-                            </p>
-                            <p className="mt-1 text-xs font-semibold text-slate-500">
-                              Web дээр тухайн төсөл/franchise дээр харагдах
-                              хариуцсан хүний нэр, үүрэг, холбоо барих мэдээлэл.
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <select
-                              value=""
-                              disabled={
-                                teamMembersLoading || teamMembers.length === 0
-                              }
-                              onChange={(event) => {
-                                addResponsibleFromTeam(
+                        <>
+                          <label className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              {isStudyMode
+                                ? "Сургалтын төлбөр"
+                                : "Дэлгэрэнгүй үзэх үнэ"}
+                            </span>
+                            <input
+                              type="number"
+                              min={0}
+                              step={100}
+                              value={project.price}
+                              onChange={(e) =>
+                                updateProject(
                                   project.id,
-                                  event.target.value,
-                                );
-                                event.currentTarget.value = "";
-                              }}
-                              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-                              aria-label="Баг хамт олноос хариуцагч сонгох"
+                                  "price",
+                                  parsePrice(e.target.value),
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                              placeholder={
+                                isStudyMode ? "0 бол үнэгүй" : "5000"
+                              }
+                            />
+                            {isStudyMode && (
+                              <p className="text-xs font-semibold text-slate-500">
+                                0 гэж оруулбал web дээр “Үнэгүй” гэж харагдана.
+                              </p>
+                            )}
+                          </label>
+                          {isStudyMode && (
+                            <label className="space-y-1.5">
+                              <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                Хямдрахаас өмнөх үнэ
+                              </span>
+                              <input
+                                type="number"
+                                min={0}
+                                step={100}
+                                value={project.originalPrice || 0}
+                                onChange={(e) =>
+                                  updateProject(
+                                    project.id,
+                                    "originalPrice",
+                                    parsePrice(e.target.value),
+                                  )
+                                }
+                                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                placeholder="Жишээ: 72000"
+                              />
+                              <p className="text-xs font-semibold text-slate-500">
+                                0 бол “₮72,000” зэрэг дарсан хуучин үнэ web дээр
+                                харагдахгүй.
+                              </p>
+                            </label>
+                          )}
+                          <label className="space-y-1.5">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              {isStudyMode
+                                ? "Төлбөртэй сургалтын данс"
+                                : "Төлбөр орох данс"}
+                            </span>
+                            <select
+                              value={
+                                selectedPaymentAccount?.id ||
+                                project.paymentAccountId ||
+                                ""
+                              }
+                              onChange={(e) =>
+                                updateProjectPaymentAccount(
+                                  project.id,
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                             >
-                              <option value="">
-                                {teamMembersLoading
-                                  ? "Баг уншиж байна..."
-                                  : "Баг хамт олноос сонгох"}
-                              </option>
-                              {teamMembers.map((member) => (
-                                <option key={member.id} value={member.id}>
-                                  {member.name}
-                                  {member.role ? ` · ${member.role}` : ""}
+                              <option value="">Данс сонгоно уу</option>
+                              {paymentAccounts.map((account) => (
+                                <option key={account.id} value={account.id}>
+                                  {formatPaymentAccount(account)}
                                 </option>
                               ))}
                             </select>
-                            <button
-                              type="button"
-                              onClick={() => addResponsiblePerson(project.id)}
-                              className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50"
-                            >
-                              <Plus className="h-4 w-4" />
-                              Ажилтан нэмэх
-                            </button>
-                          </div>
-                        </div>
-
-                        {responsiblePeople.length === 0 ? (
-                          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm font-semibold text-slate-500">
-                            Хариуцсан ажилтан нэмээгүй байна.
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            {responsiblePeople.map((person, personIndex) => (
-                              <div
-                                key={person.id || personIndex}
-                                className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
-                              >
-                                <div className="mb-3 flex items-center justify-between gap-3">
-                                  <div className="flex min-w-0 items-center gap-3">
-                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-400">
-                                      {person.avatarUrl ? (
-                                        <img
-                                          src={person.avatarUrl}
-                                          alt={person.name || "Хариуцагч"}
-                                          className="h-full w-full object-cover"
-                                        />
-                                      ) : (
-                                        <UserRound className="h-5 w-5" />
-                                      )}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-xs font-black text-slate-400">
-                                        Хариуцагч #{personIndex + 1}
-                                      </p>
-                                      <p className="truncate text-sm font-black text-slate-900">
-                                        {person.name || "Нэр оруулаагүй"}
-                                      </p>
-                                      {person.teamMemberId && (
-                                        <p className="mt-0.5 text-[11px] font-bold text-emerald-600">
-                                          Баг хамт олноос татсан
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      removeResponsiblePerson(
-                                        project.id,
-                                        person.id,
-                                      )
-                                    }
-                                    className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 transition hover:bg-red-100"
-                                    aria-label="Хариуцагч устгах"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                </div>
-
-                                <div className="grid gap-3 lg:grid-cols-2">
-                                  <label className="space-y-1.5">
-                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                      Нэр
-                                    </span>
-                                    <input
-                                      value={person.name || ""}
-                                      onChange={(e) =>
-                                        updateResponsiblePerson(
-                                          project.id,
-                                          person.id,
-                                          "name",
-                                          e.target.value,
-                                        )
-                                      }
-                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                      placeholder="Жишээ: Б. Бат-Эрдэнэ"
-                                    />
-                                  </label>
-                                  <label className="space-y-1.5">
-                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                      Албан тушаал / role
-                                    </span>
-                                    <input
-                                      value={person.role || ""}
-                                      onChange={(e) =>
-                                        updateResponsiblePerson(
-                                          project.id,
-                                          person.id,
-                                          "role",
-                                          e.target.value,
-                                        )
-                                      }
-                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                      placeholder="Жишээ: Төслийн менежер"
-                                    />
-                                  </label>
-                                  <label className="space-y-1.5 lg:col-span-2">
-                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                      Юу хариуцаж байгаа
-                                    </span>
-                                    <textarea
-                                      value={person.responsibility || ""}
-                                      onChange={(e) =>
-                                        updateResponsiblePerson(
-                                          project.id,
-                                          person.id,
-                                          "responsibility",
-                                          e.target.value,
-                                        )
-                                      }
-                                      rows={2}
-                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                      placeholder="Жишээ: Гэрээ, салбар нээлт, сургалт болон өдөр тутмын хэрэгжилт хариуцна."
-                                    />
-                                  </label>
-                                  <label className="space-y-1.5">
-                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                      Утас
-                                    </span>
-                                    <input
-                                      value={person.phone || ""}
-                                      onChange={(e) =>
-                                        updateResponsiblePerson(
-                                          project.id,
-                                          person.id,
-                                          "phone",
-                                          e.target.value,
-                                        )
-                                      }
-                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                      placeholder="Жишээ: 99112233"
-                                    />
-                                  </label>
-                                  <label className="space-y-1.5">
-                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                      Email
-                                    </span>
-                                    <input
-                                      type="email"
-                                      value={person.email || ""}
-                                      onChange={(e) =>
-                                        updateResponsiblePerson(
-                                          project.id,
-                                          person.id,
-                                          "email",
-                                          e.target.value,
-                                        )
-                                      }
-                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                      placeholder="Жишээ: name@mglstore.mn"
-                                    />
-                                  </label>
-                                  <div className="space-y-2 lg:col-span-2">
-                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                      Зураг
-                                    </span>
-                                    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3">
-                                      <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-slate-400">
-                                        {person.avatarUrl ? (
-                                          <img
-                                            src={person.avatarUrl}
-                                            alt={person.name || "Хариуцагч"}
-                                            className="h-full w-full object-cover"
-                                          />
-                                        ) : (
-                                          <UserRound className="h-7 w-7" />
-                                        )}
-                                      </div>
-                                      <div className="min-w-0 flex-1">
-                                        <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
-                                          {uploadingResponsibleImageKey ===
-                                          `${project.id}-${person.id}` ? (
-                                            <Loader2 className="h-4 w-4 animate-spin" />
-                                          ) : (
-                                            <ImagePlus className="h-4 w-4" />
-                                          )}
-                                          {uploadingResponsibleImageKey ===
-                                          `${project.id}-${person.id}`
-                                            ? "Upload хийж байна..."
-                                            : "Зураг сонгох"}
-                                          <input
-                                            type="file"
-                                            accept="image/*"
-                                            className="hidden"
-                                            disabled={
-                                              uploadingResponsibleImageKey ===
-                                              `${project.id}-${person.id}`
-                                            }
-                                            onChange={(event) =>
-                                              uploadResponsiblePersonImage(
-                                                project.id,
-                                                person.id,
-                                                event,
-                                              )
-                                            }
-                                          />
-                                        </label>
-                                        <input
-                                          value={person.avatarUrl || ""}
-                                          onChange={(e) =>
-                                            updateResponsiblePerson(
-                                              project.id,
-                                              person.id,
-                                              "avatarUrl",
-                                              e.target.value,
-                                            )
-                                          }
-                                          className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                          placeholder="Upload хийсний дараа URL автоматаар орно"
-                                        />
-                                        {person.avatarUrl && (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              updateResponsiblePerson(
-                                                project.id,
-                                                person.id,
-                                                "avatarUrl",
-                                                "",
-                                              )
-                                            }
-                                            className="mt-2 text-xs font-bold text-red-600 hover:text-red-700"
-                                          >
-                                            Зураг устгах
-                                          </button>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {isStudyMode && (
-                      <>
-                        <div className="lg:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
-                          <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">
-                            Сургалтын дэлгэрэнгүй талбарууд
-                          </p>
-                          <p className="mt-1 text-sm font-semibold leading-6 text-slate-600">
-                            Доорх мэдээлэл нь сургалтын hover preview,
-                            дэлгэрэнгүй modal, бүртгэлийн card дээр харагдана.
-                          </p>
-                        </div>
-                        <div className="lg:col-span-2">
-                          <StudyEditorPanel
-                            title="Багш нар"
-                            description="Зураг, нэр, товч танилцуулга. Web дээр mentor profile байдлаар харагдана."
-                            defaultOpen
-                            action={
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  addStudyTeacherRow(
+                            {paymentAccounts.length === 0 && (
+                              <p className="text-xs font-semibold text-amber-600">
+                                “Гэрээний төлбөр” тохиргоонд эхлээд Minu Dynamic
+                                QR данс холбоно уу.
+                              </p>
+                            )}
+                          </label>
+                          {isFranchiseMode && (
+                            <label className="space-y-1.5">
+                              <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                Franchise гэрээний template
+                              </span>
+                              <select
+                                value={project.contractTemplateId || ""}
+                                onChange={(e) =>
+                                  updateProject(
                                     project.id,
-                                    studyTeacherRows,
-                                  );
-                                }}
-                                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50"
+                                    "contractTemplateId",
+                                    e.target.value,
+                                  )
+                                }
+                                className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
                               >
-                                <Plus className="h-4 w-4" />
-                                Багш нэмэх
-                              </button>
-                            }
-                          >
-                            <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                              {visibleStudyTeacherRows.map((row, rowIndex) => (
-                                <div
-                                  key={`${project.id}-teacher-${rowIndex}`}
-                                  className="rounded-xl border border-slate-200 bg-white p-3"
-                                >
-                                  <div className="mb-2 flex items-center justify-between gap-3">
-                                    <p className="text-xs font-black text-slate-400">
-                                      Багш #{rowIndex + 1}
-                                    </p>
-                                    {visibleStudyTeacherRows.length > 1 && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          removeStudyTeacherRow(
-                                            project.id,
-                                            studyTeacherRows,
-                                            rowIndex,
-                                          )
-                                        }
-                                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100"
-                                        aria-label="Багш устгах"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
-                                    )}
-                                  </div>
-                                  <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-                                    <div className="space-y-2 lg:col-span-2">
-                                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                        Багшийн зураг
-                                      </span>
-                                      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3">
-                                        <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-400">
-                                          {row.imageUrl ? (
-                                            <img
-                                              src={row.imageUrl}
-                                              alt={row.name || "Багшийн зураг"}
-                                              className="h-full w-full object-cover"
-                                            />
-                                          ) : (
-                                            <ImagePlus className="h-7 w-7" />
-                                          )}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
-                                            {uploadingTeacherImageKey ===
-                                            `${project.id}-${rowIndex}` ? (
-                                              <Loader2 className="h-4 w-4 animate-spin" />
-                                            ) : (
-                                              <ImagePlus className="h-4 w-4" />
-                                            )}
-                                            {uploadingTeacherImageKey ===
-                                            `${project.id}-${rowIndex}`
-                                              ? "Upload хийж байна..."
-                                              : "Зураг upload"}
-                                            <input
-                                              type="file"
-                                              accept="image/*"
-                                              className="hidden"
-                                              disabled={
-                                                uploadingTeacherImageKey ===
-                                                `${project.id}-${rowIndex}`
-                                              }
-                                              onChange={(event) =>
-                                                uploadStudyTeacherImage(
-                                                  project.id,
-                                                  studyTeacherRows,
-                                                  rowIndex,
-                                                  event,
-                                                )
-                                              }
-                                            />
-                                          </label>
-                                          <input
-                                            value={row.imageUrl || ""}
-                                            onChange={(e) =>
-                                              updateStudyTeacherRow(
-                                                project.id,
-                                                studyTeacherRows,
-                                                rowIndex,
-                                                "imageUrl",
-                                                e.target.value,
-                                              )
-                                            }
-                                            className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                            placeholder="Зургийн URL эсвэл upload хийсний дараа автоматаар орно"
-                                          />
-                                          {row.imageUrl && (
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                updateStudyTeacherRow(
-                                                  project.id,
-                                                  studyTeacherRows,
-                                                  rowIndex,
-                                                  "imageUrl",
-                                                  "",
-                                                )
-                                              }
-                                              className="mt-2 text-xs font-bold text-red-600 hover:text-red-700"
-                                            >
-                                              Зураг устгах
-                                            </button>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </div>
-                                    <label className="space-y-1.5">
-                                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                        Багшийн нэр
-                                      </span>
-                                      <input
-                                        value={row.name}
-                                        onChange={(e) =>
-                                          updateStudyTeacherRow(
-                                            project.id,
-                                            studyTeacherRows,
-                                            rowIndex,
-                                            "name",
-                                            e.target.value,
-                                          )
-                                        }
-                                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                        placeholder="Жишээ: Б. Бат-Эрдэнэ"
-                                      />
-                                    </label>
-                                    <label className="space-y-1.5">
-                                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                        Товч танилцуулга
-                                      </span>
-                                      <textarea
-                                        value={row.description}
-                                        onChange={(e) =>
-                                          updateStudyTeacherRow(
-                                            project.id,
-                                            studyTeacherRows,
-                                            rowIndex,
-                                            "description",
-                                            e.target.value,
-                                          )
-                                        }
-                                        rows={2}
-                                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                        placeholder="Жишээ: Store operation зөвлөх. POS, захиалга, байгууллагын workflow дээр 5+ жил ажилласан туршлагатай."
-                                      />
-                                    </label>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </StudyEditorPanel>
-                        </div>
-                        <div className="lg:col-span-2">
-                          <StudyEditorPanel
-                            title="Хугацаа, байршил, бүртгэл"
-                            description="Онцлох байрлал, өдөр цаг, хэлбэр, хаяг, хүний тоо болон label."
-                          >
-                            <div className="grid gap-4 lg:grid-cols-3">
-                              <label className="space-y-1.5">
-                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                  Онцлох байрлал
-                                </span>
-                                <input
-                                  type="number"
-                                  min={0}
-                                  step={1}
-                                  value={project.featuredOrder || 0}
-                                  onChange={(e) =>
-                                    updateProject(
-                                      project.id,
-                                      "featuredOrder",
-                                      parsePrice(e.target.value),
-                                    )
-                                  }
-                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                  placeholder="Жишээ: 1"
-                                />
-                                <p className="text-xs font-semibold text-slate-500">
-                                  1, 2, 3 гэж оруулбал web дээр онцлох хэсэгт
-                                  тэр дарааллаар гарна. 0 бол автомат.
-                                </p>
-                              </label>
-                              <label className="space-y-1.5">
-                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                  Сургалт болох өдөр
-                                </span>
-                                <input
-                                  type="date"
-                                  value={project.courseDate || ""}
-                                  onChange={(e) =>
-                                    updateProject(
-                                      project.id,
-                                      "courseDate",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                />
-                              </label>
-                              <label className="space-y-1.5">
-                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                  Эхлэх цаг
-                                </span>
-                                <input
-                                  type="time"
-                                  value={project.courseTime || ""}
-                                  onChange={(e) =>
-                                    updateProject(
-                                      project.id,
-                                      "courseTime",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                />
-                              </label>
-                              <label className="space-y-1.5">
-                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                  Төрөл / төлөв
-                                </span>
-                                <select
-                                  value={project.deliveryType || ""}
-                                  onChange={(e) =>
-                                    updateProject(
-                                      project.id,
-                                      "deliveryType",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                >
-                                  <option value="">Сонгоно уу</option>
-                                  {getSelectOptions(
-                                    STUDY_DELIVERY_TYPE_OPTIONS,
-                                    project.deliveryType,
-                                  ).map((option) => (
-                                    <option key={option} value={option}>
-                                      {option}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="space-y-1.5">
-                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                  Сургалтын хугацаа
-                                </span>
-                                <select
-                                  value={project.duration || ""}
-                                  onChange={(e) =>
-                                    updateProject(
-                                      project.id,
-                                      "duration",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                >
-                                  <option value="">Сонгоно уу</option>
-                                  {getSelectOptions(
-                                    STUDY_DURATION_OPTIONS,
-                                    project.duration,
-                                  ).map((option) => (
-                                    <option key={option} value={option}>
-                                      {option}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="space-y-1.5">
-                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                  Байршил / хэлбэр
-                                </span>
-                                <select
-                                  value={project.location || ""}
-                                  onChange={(e) =>
-                                    updateProject(
-                                      project.id,
-                                      "location",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                >
-                                  <option value="">Сонгоно уу</option>
-                                  {getSelectOptions(
-                                    STUDY_LOCATION_OPTIONS,
-                                    project.location,
-                                  ).map((option) => (
-                                    <option key={option} value={option}>
-                                      {option}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="space-y-1.5">
-                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                  Хаяг
-                                </span>
-                                <input
-                                  value={project.address || ""}
-                                  onChange={(e) =>
-                                    updateProject(
-                                      project.id,
-                                      "address",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                  placeholder="Жишээ: УБ, СБД, ... тоот"
-                                />
-                              </label>
-                              <label className="space-y-1.5">
-                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                  Хүний тоо / багийн хэмжээ
-                                </span>
-                                <select
-                                  value={project.capacity || ""}
-                                  onChange={(e) =>
-                                    updateProject(
-                                      project.id,
-                                      "capacity",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                >
-                                  <option value="">Сонгоно уу</option>
-                                  {getSelectOptions(
-                                    STUDY_CAPACITY_OPTIONS,
-                                    project.capacity,
-                                  ).map((option) => (
-                                    <option key={option} value={option}>
-                                      {option}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="space-y-1.5">
-                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                  Үнийн тайлбар
-                                </span>
-                                <select
-                                  value={project.priceNote || ""}
-                                  onChange={(e) =>
-                                    updateProject(
-                                      project.id,
-                                      "priceNote",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                >
-                                  <option value="">Сонгоно уу</option>
-                                  {getSelectOptions(
-                                    STUDY_PRICE_NOTE_OPTIONS,
-                                    project.priceNote,
-                                  ).map((option) => (
-                                    <option key={option} value={option}>
-                                      {option}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="space-y-1.5">
-                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                  Бүртгэлийн label
-                                </span>
-                                <select
-                                  value={project.registrationLabel || ""}
-                                  onChange={(e) =>
-                                    updateProject(
-                                      project.id,
-                                      "registrationLabel",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                >
-                                  <option value="">Сонгоно уу</option>
-                                  {getSelectOptions(
-                                    STUDY_REGISTRATION_LABEL_OPTIONS,
-                                    project.registrationLabel,
-                                  ).map((option) => (
-                                    <option key={option} value={option}>
-                                      {option}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                              <label className="space-y-1.5 lg:col-span-3">
-                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                  Өдөр, цагийн нэмэлт тайлбар
-                                </span>
-                                <input
-                                  value={project.scheduleNote || ""}
-                                  onChange={(e) =>
-                                    updateProject(
-                                      project.id,
-                                      "scheduleNote",
-                                      e.target.value,
-                                    )
-                                  }
-                                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                  placeholder="Жишээ: Огноо баталгаажмагц бүртгүүлсэн хүмүүст мэдэгдэнэ"
-                                />
-                              </label>
-                            </div>
-                          </StudyEditorPanel>
-                        </div>
-                      </>
-                    )}
-                    <label className="space-y-1.5 lg:col-span-2">
-                      <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                        {isStudyMode
-                          ? "Card дээр харагдах хураангуй"
-                          : "Хураангуй"}
-                      </span>
-                      <textarea
-                        value={project.summary}
-                        onChange={(e) =>
-                          updateProject(project.id, "summary", e.target.value)
-                        }
-                        rows={3}
-                        className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                        placeholder={copy.summaryPlaceholder}
-                      />
-                    </label>
-                    {isStudyMode ? (
-                      <div className="lg:col-span-2">
-                        <StudyEditorPanel
-                          title="Сургалтын хөтөлбөр"
-                          description="Гарчиг нь accordion дээр харагдаж, дэлгэрэнгүй нь дарахад нээгдэнэ."
-                          defaultOpen
-                          action={
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.preventDefault();
-                                addStudyProgramRow(
-                                  project.id,
-                                  studyProgramRows,
-                                );
-                              }}
-                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50"
-                            >
-                              <Plus className="h-4 w-4" />
-                              Хөтөлбөр нэмэх
-                            </button>
-                          }
-                        >
-                          <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                            {visibleStudyProgramRows.map((row, rowIndex) => (
-                              <div
-                                key={`${project.id}-program-${rowIndex}`}
-                                className="rounded-xl border border-slate-200 bg-white p-3"
-                              >
-                                <div className="mb-2 flex items-center justify-between gap-3">
-                                  <p className="text-xs font-black text-slate-400">
-                                    Хөтөлбөр #{rowIndex + 1}
+                                <option value="">
+                                  {contractTemplatesLoading
+                                    ? "Гэрээнүүд ачаалж байна..."
+                                    : "Гэрээ сонгоогүй"}
+                                </option>
+                                {contractTemplates.map((template) => (
+                                  <option key={template.id} value={template.id}>
+                                    {template.title || template.id}
+                                    {template.isPaid ? " · төлбөртэй" : ""}
+                                  </option>
+                                ))}
+                              </select>
+                              {contractTemplates.length === 0 &&
+                                !contractTemplatesLoading && (
+                                  <p className="text-xs font-semibold text-amber-600">
+                                    Эхлээд "Гэрээний мэдээлэл" хэсэгт contract
+                                    template үүсгээд энд сонгоно.
                                   </p>
-                                  {visibleStudyProgramRows.length > 1 && (
+                                )}
+                            </label>
+                          )}
+                        </>
+                        <div className="space-y-1.5 lg:col-span-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              {isStudyMode
+                                ? "Сургалтын card / hero зураг"
+                                : "Зургууд"}
+                            </span>
+                            <span className="text-xs font-bold text-slate-400">
+                              {projectImages.length}/{MAX_PROJECT_IMAGES}
+                            </span>
+                          </div>
+                          <div className="rounded-xl border border-slate-100 bg-slate-50 p-2">
+                            {projectImages.length > 0 ? (
+                              <div className="mb-3 grid grid-cols-3 gap-2">
+                                {projectImages.map((image, imageIndex) => (
+                                  <div
+                                    key={`${image}-${imageIndex}`}
+                                    className="group relative aspect-[4/3] overflow-hidden rounded-lg border border-slate-200 bg-white"
+                                  >
+                                    <img
+                                      src={image}
+                                      alt={`${project.title || copy.itemLabel} зураг ${imageIndex + 1}`}
+                                      className="h-full w-full object-cover"
+                                    />
                                     <button
                                       type="button"
                                       onClick={() =>
-                                        removeStudyProgramRow(
+                                        updateProjectImages(
                                           project.id,
-                                          studyProgramRows,
-                                          rowIndex,
+                                          projectImages.filter(
+                                            (_, indexToKeep) =>
+                                              indexToKeep !== imageIndex,
+                                          ),
                                         )
                                       }
-                                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100"
-                                      aria-label="Хөтөлбөр устгах"
+                                      className="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-red-600 opacity-0 shadow-sm transition group-hover:opacity-100"
+                                      aria-label="Зураг устгах"
                                     >
-                                      <Trash2 className="h-4 w-4" />
+                                      <Trash2 className="h-3.5 w-3.5" />
                                     </button>
-                                  )}
-                                </div>
-                                <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
-                                  <label className="space-y-1.5">
-                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                      Гарчиг
-                                    </span>
-                                    <input
-                                      value={row.title}
-                                      onChange={(e) =>
-                                        updateStudyProgramRow(
-                                          project.id,
-                                          studyProgramRows,
-                                          rowIndex,
-                                          "title",
-                                          e.target.value,
-                                        )
-                                      }
-                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                      placeholder="Жишээ: Dashboard тохируулах"
-                                    />
-                                  </label>
-                                  <label className="space-y-1.5">
-                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                      Холбогдох дэлгэрэнгүй
-                                    </span>
-                                    <textarea
-                                      value={row.description}
-                                      onChange={(e) =>
-                                        updateStudyProgramRow(
-                                          project.id,
-                                          studyProgramRows,
-                                          rowIndex,
-                                          "description",
-                                          e.target.value,
-                                        )
-                                      }
-                                      rows={2}
-                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                                      placeholder="Жишээ: Борлуулалт, захиалга, тайлангийн үндсэн хэсгүүдийг тохируулж сурна."
-                                    />
-                                  </label>
-                                </div>
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                        </StudyEditorPanel>
-                      </div>
-                    ) : (
-                      <label className="space-y-1.5 lg:col-span-2">
-                        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                          Дэлгэрэнгүй мэдээлэл
-                        </span>
-                        <textarea
-                          value={project.details}
-                          onChange={(e) =>
-                            updateProject(project.id, "details", e.target.value)
-                          }
-                          rows={6}
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                          placeholder="Төлбөр төлсний дараа харагдах дэлгэрэнгүй нөхцөл, боломж, холбоо барих мэдээлэл..."
-                        />
-                      </label>
-                    )}
-                    {!isStudyMode && (
-                      <div className="space-y-1.5 lg:col-span-2">
-                        <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                          {copy.pdfLabel}
-                        </span>
-                        <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                          <div className="flex flex-wrap items-center gap-3">
+                            ) : (
+                              <div className="mb-3 flex h-24 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-slate-400">
+                                <ImagePlus className="h-7 w-7" />
+                              </div>
+                            )}
                             <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
-                              {uploadingPdfProjectId === project.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <FileText className="h-4 w-4" />
-                              )}
-                              {uploadingPdfProjectId === project.id
-                                ? "PDF оруулж байна..."
-                                : "PDF сонгох"}
-                              <input
-                                type="file"
-                                accept="application/pdf,.pdf"
-                                className="hidden"
-                                disabled={uploadingPdfProjectId === project.id}
-                                onChange={(e) =>
-                                  uploadProjectPdf(project.id, e)
-                                }
-                              />
-                            </label>
-                            <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-200 bg-white px-3 py-2 text-xs font-bold text-orange-700 shadow-sm transition hover:border-orange-300 hover:bg-orange-50">
-                              {uploadingPdfThumbnailProjectId === project.id ? (
+                              {uploadingProjectId === project.id ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
                                 <ImagePlus className="h-4 w-4" />
                               )}
-                              {uploadingPdfThumbnailProjectId === project.id
-                                ? "Thumbnail оруулж байна..."
-                                : "Thumbnail зураг"}
+                              {uploadingProjectId === project.id
+                                ? "Зураг оруулж байна..."
+                                : isStudyMode
+                                  ? "Сургалтын зураг сонгох"
+                                  : "Зурагнууд сонгох"}
                               <input
                                 type="file"
                                 accept="image/*"
+                                multiple
                                 className="hidden"
                                 disabled={
-                                  uploadingPdfThumbnailProjectId === project.id
+                                  uploadingProjectId === project.id ||
+                                  projectImages.length >= MAX_PROJECT_IMAGES
                                 }
                                 onChange={(e) =>
-                                  uploadPdfThumbnail(project.id, e)
+                                  uploadProjectImage(project.id, e)
                                 }
                               />
                             </label>
-                            {project.pdfUrl && (
-                              <a
-                                href={project.pdfUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"
-                              >
-                                <FileText className="h-4 w-4" />
-                                PDF харах
-                              </a>
+                            {uploadError && uploadingProjectId === null && (
+                              <p className="mt-2 text-xs font-semibold text-red-500">
+                                {uploadError}
+                              </p>
                             )}
                           </div>
-                          <div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr] md:items-center">
-                            <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-white">
-                              {project.pdfThumbnailUrl ? (
-                                <>
-                                  <img
-                                    src={project.pdfThumbnailUrl}
-                                    alt={`${project.title || copy.itemLabel} thumbnail`}
-                                    className="h-full w-full object-cover"
-                                  />
+                          <textarea
+                            value={projectImages.join("\n")}
+                            onChange={(e) =>
+                              updateProjectImages(
+                                project.id,
+                                parseImageUrls(e.target.value),
+                              )
+                            }
+                            rows={3}
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            placeholder={
+                              isStudyMode
+                                ? "Зургийн URL оруулах бол мөр мөрөөр бичнэ. Эхний зураг card дээр гарна."
+                                : "Зургийн URL-уудыг мөр мөрөөр оруулж болно"
+                            }
+                          />
+                        </div>
+                        <label className="space-y-1.5 lg:col-span-2">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                            {isStudyMode
+                              ? "Сэдэв / keyword tag-ууд"
+                              : "Tag-ууд"}
+                          </span>
+                          <input
+                            value={tagText(project)}
+                            onChange={(e) =>
+                              updateProject(
+                                project.id,
+                                "tags",
+                                parseTags(e.target.value),
+                              )
+                            }
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            placeholder={
+                              isStudyMode
+                                ? "dashboard, POS, төлбөр, beginner"
+                                : "ус, хөрөнгө оруулалт, сум орон нутаг"
+                            }
+                          />
+                        </label>
+                        {!isStudyMode && (
+                          <div className="space-y-3 lg:col-span-2">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                  Хариуцаж байгаа ажилчид
+                                </p>
+                                <p className="mt-1 text-xs font-semibold text-slate-500">
+                                  Web дээр тухайн төсөл/franchise дээр харагдах
+                                  хариуцсан хүний нэр, үүрэг, холбоо барих
+                                  мэдээлэл.
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <select
+                                  value=""
+                                  disabled={
+                                    teamMembersLoading ||
+                                    teamMembers.length === 0
+                                  }
+                                  onChange={(event) => {
+                                    addResponsibleFromTeam(
+                                      project.id,
+                                      event.target.value,
+                                    );
+                                    event.currentTarget.value = "";
+                                  }}
+                                  className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm outline-none transition focus:border-violet-400 focus:ring-4 focus:ring-violet-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                                  aria-label="Баг хамт олноос хариуцагч сонгох"
+                                >
+                                  <option value="">
+                                    {teamMembersLoading
+                                      ? "Баг уншиж байна..."
+                                      : "Баг хамт олноос сонгох"}
+                                  </option>
+                                  {teamMembers.map((member) => (
+                                    <option key={member.id} value={member.id}>
+                                      {member.name}
+                                      {member.role ? ` · ${member.role}` : ""}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    addResponsiblePerson(project.id)
+                                  }
+                                  className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                  Ажилтан нэмэх
+                                </button>
+                              </div>
+                            </div>
+
+                            {responsiblePeople.length === 0 ? (
+                              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm font-semibold text-slate-500">
+                                Хариуцсан ажилтан нэмээгүй байна.
+                              </div>
+                            ) : (
+                              <div className="space-y-3">
+                                {responsiblePeople.map(
+                                  (person, personIndex) => (
+                                    <div
+                                      key={person.id || personIndex}
+                                      className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                                    >
+                                      <div className="mb-3 flex items-center justify-between gap-3">
+                                        <div className="flex min-w-0 items-center gap-3">
+                                          <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-400">
+                                            {person.avatarUrl ? (
+                                              <img
+                                                src={person.avatarUrl}
+                                                alt={person.name || "Хариуцагч"}
+                                                className="h-full w-full object-cover"
+                                              />
+                                            ) : (
+                                              <UserRound className="h-5 w-5" />
+                                            )}
+                                          </div>
+                                          <div className="min-w-0">
+                                            <p className="text-xs font-black text-slate-400">
+                                              Хариуцагч #{personIndex + 1}
+                                            </p>
+                                            <p className="truncate text-sm font-black text-slate-900">
+                                              {person.name || "Нэр оруулаагүй"}
+                                            </p>
+                                            {person.teamMemberId && (
+                                              <p className="mt-0.5 text-[11px] font-bold text-emerald-600">
+                                                Баг хамт олноос татсан
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            removeResponsiblePerson(
+                                              project.id,
+                                              person.id,
+                                            )
+                                          }
+                                          className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-red-50 text-red-600 transition hover:bg-red-100"
+                                          aria-label="Хариуцагч устгах"
+                                        >
+                                          <Trash2 className="h-4 w-4" />
+                                        </button>
+                                      </div>
+
+                                      <div className="grid gap-3 lg:grid-cols-2">
+                                        <label className="space-y-1.5">
+                                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Нэр
+                                          </span>
+                                          <input
+                                            value={person.name || ""}
+                                            onChange={(e) =>
+                                              updateResponsiblePerson(
+                                                project.id,
+                                                person.id,
+                                                "name",
+                                                e.target.value,
+                                              )
+                                            }
+                                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            placeholder="Жишээ: Б. Бат-Эрдэнэ"
+                                          />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Албан тушаал / role
+                                          </span>
+                                          <input
+                                            value={person.role || ""}
+                                            onChange={(e) =>
+                                              updateResponsiblePerson(
+                                                project.id,
+                                                person.id,
+                                                "role",
+                                                e.target.value,
+                                              )
+                                            }
+                                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            placeholder="Жишээ: Төслийн менежер"
+                                          />
+                                        </label>
+                                        <label className="space-y-1.5 lg:col-span-2">
+                                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Юу хариуцаж байгаа
+                                          </span>
+                                          <textarea
+                                            value={person.responsibility || ""}
+                                            onChange={(e) =>
+                                              updateResponsiblePerson(
+                                                project.id,
+                                                person.id,
+                                                "responsibility",
+                                                e.target.value,
+                                              )
+                                            }
+                                            rows={2}
+                                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            placeholder="Жишээ: Гэрээ, салбар нээлт, сургалт болон өдөр тутмын хэрэгжилт хариуцна."
+                                          />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Утас
+                                          </span>
+                                          <input
+                                            value={person.phone || ""}
+                                            onChange={(e) =>
+                                              updateResponsiblePerson(
+                                                project.id,
+                                                person.id,
+                                                "phone",
+                                                e.target.value,
+                                              )
+                                            }
+                                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            placeholder="Жишээ: 99112233"
+                                          />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Email
+                                          </span>
+                                          <input
+                                            type="email"
+                                            value={person.email || ""}
+                                            onChange={(e) =>
+                                              updateResponsiblePerson(
+                                                project.id,
+                                                person.id,
+                                                "email",
+                                                e.target.value,
+                                              )
+                                            }
+                                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            placeholder="Жишээ: name@mglstore.mn"
+                                          />
+                                        </label>
+                                        <div className="space-y-2 lg:col-span-2">
+                                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Зураг
+                                          </span>
+                                          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3">
+                                            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 text-slate-400">
+                                              {person.avatarUrl ? (
+                                                <img
+                                                  src={person.avatarUrl}
+                                                  alt={
+                                                    person.name || "Хариуцагч"
+                                                  }
+                                                  className="h-full w-full object-cover"
+                                                />
+                                              ) : (
+                                                <UserRound className="h-7 w-7" />
+                                              )}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
+                                                {uploadingResponsibleImageKey ===
+                                                `${project.id}-${person.id}` ? (
+                                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                  <ImagePlus className="h-4 w-4" />
+                                                )}
+                                                {uploadingResponsibleImageKey ===
+                                                `${project.id}-${person.id}`
+                                                  ? "Upload хийж байна..."
+                                                  : "Зураг сонгох"}
+                                                <input
+                                                  type="file"
+                                                  accept="image/*"
+                                                  className="hidden"
+                                                  disabled={
+                                                    uploadingResponsibleImageKey ===
+                                                    `${project.id}-${person.id}`
+                                                  }
+                                                  onChange={(event) =>
+                                                    uploadResponsiblePersonImage(
+                                                      project.id,
+                                                      person.id,
+                                                      event,
+                                                    )
+                                                  }
+                                                />
+                                              </label>
+                                              <input
+                                                value={person.avatarUrl || ""}
+                                                onChange={(e) =>
+                                                  updateResponsiblePerson(
+                                                    project.id,
+                                                    person.id,
+                                                    "avatarUrl",
+                                                    e.target.value,
+                                                  )
+                                                }
+                                                className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                placeholder="Upload хийсний дараа URL автоматаар орно"
+                                              />
+                                              {person.avatarUrl && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    updateResponsiblePerson(
+                                                      project.id,
+                                                      person.id,
+                                                      "avatarUrl",
+                                                      "",
+                                                    )
+                                                  }
+                                                  className="mt-2 text-xs font-bold text-red-600 hover:text-red-700"
+                                                >
+                                                  Зураг устгах
+                                                </button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ),
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {isStudyMode && (
+                          <>
+                            <div className="lg:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+                              <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-700">
+                                Сургалтын дэлгэрэнгүй талбарууд
+                              </p>
+                              <p className="mt-1 text-sm font-semibold leading-6 text-slate-600">
+                                Доорх мэдээлэл нь сургалтын hover preview,
+                                дэлгэрэнгүй modal, бүртгэлийн card дээр
+                                харагдана.
+                              </p>
+                            </div>
+                            <div className="lg:col-span-2">
+                              <StudyEditorPanel
+                                title="Багш нар"
+                                description="Зураг, нэр, товч танилцуулга. Web дээр mentor profile байдлаар харагдана."
+                                defaultOpen
+                                action={
                                   <button
                                     type="button"
-                                    onClick={() =>
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      addStudyTeacherRow(
+                                        project.id,
+                                        studyTeacherRows,
+                                      );
+                                    }}
+                                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50"
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                    Багш нэмэх
+                                  </button>
+                                }
+                              >
+                                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                  {visibleStudyTeacherRows.map(
+                                    (row, rowIndex) => (
+                                      <div
+                                        key={`${project.id}-teacher-${rowIndex}`}
+                                        className="rounded-xl border border-slate-200 bg-white p-3"
+                                      >
+                                        <div className="mb-2 flex items-center justify-between gap-3">
+                                          <p className="text-xs font-black text-slate-400">
+                                            Багш #{rowIndex + 1}
+                                          </p>
+                                          {visibleStudyTeacherRows.length >
+                                            1 && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                removeStudyTeacherRow(
+                                                  project.id,
+                                                  studyTeacherRows,
+                                                  rowIndex,
+                                                )
+                                              }
+                                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100"
+                                              aria-label="Багш устгах"
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                            </button>
+                                          )}
+                                        </div>
+                                        <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                                          <div className="space-y-2 lg:col-span-2">
+                                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                              Багшийн зураг
+                                            </span>
+                                            <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                                              <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-400">
+                                                {row.imageUrl ? (
+                                                  <img
+                                                    src={row.imageUrl}
+                                                    alt={
+                                                      row.name ||
+                                                      "Багшийн зураг"
+                                                    }
+                                                    className="h-full w-full object-cover"
+                                                  />
+                                                ) : (
+                                                  <ImagePlus className="h-7 w-7" />
+                                                )}
+                                              </div>
+                                              <div className="min-w-0 flex-1">
+                                                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
+                                                  {uploadingTeacherImageKey ===
+                                                  `${project.id}-${rowIndex}` ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                  ) : (
+                                                    <ImagePlus className="h-4 w-4" />
+                                                  )}
+                                                  {uploadingTeacherImageKey ===
+                                                  `${project.id}-${rowIndex}`
+                                                    ? "Upload хийж байна..."
+                                                    : "Зураг upload"}
+                                                  <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="hidden"
+                                                    disabled={
+                                                      uploadingTeacherImageKey ===
+                                                      `${project.id}-${rowIndex}`
+                                                    }
+                                                    onChange={(event) =>
+                                                      uploadStudyTeacherImage(
+                                                        project.id,
+                                                        studyTeacherRows,
+                                                        rowIndex,
+                                                        event,
+                                                      )
+                                                    }
+                                                  />
+                                                </label>
+                                                <input
+                                                  value={row.imageUrl || ""}
+                                                  onChange={(e) =>
+                                                    updateStudyTeacherRow(
+                                                      project.id,
+                                                      studyTeacherRows,
+                                                      rowIndex,
+                                                      "imageUrl",
+                                                      e.target.value,
+                                                    )
+                                                  }
+                                                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                                  placeholder="Зургийн URL эсвэл upload хийсний дараа автоматаар орно"
+                                                />
+                                                {row.imageUrl && (
+                                                  <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                      updateStudyTeacherRow(
+                                                        project.id,
+                                                        studyTeacherRows,
+                                                        rowIndex,
+                                                        "imageUrl",
+                                                        "",
+                                                      )
+                                                    }
+                                                    className="mt-2 text-xs font-bold text-red-600 hover:text-red-700"
+                                                  >
+                                                    Зураг устгах
+                                                  </button>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </div>
+                                          <label className="space-y-1.5">
+                                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                              Багшийн нэр
+                                            </span>
+                                            <input
+                                              value={row.name}
+                                              onChange={(e) =>
+                                                updateStudyTeacherRow(
+                                                  project.id,
+                                                  studyTeacherRows,
+                                                  rowIndex,
+                                                  "name",
+                                                  e.target.value,
+                                                )
+                                              }
+                                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                              placeholder="Жишээ: Б. Бат-Эрдэнэ"
+                                            />
+                                          </label>
+                                          <label className="space-y-1.5">
+                                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                              Товч танилцуулга
+                                            </span>
+                                            <textarea
+                                              value={row.description}
+                                              onChange={(e) =>
+                                                updateStudyTeacherRow(
+                                                  project.id,
+                                                  studyTeacherRows,
+                                                  rowIndex,
+                                                  "description",
+                                                  e.target.value,
+                                                )
+                                              }
+                                              rows={2}
+                                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                              placeholder="Жишээ: Store operation зөвлөх. POS, захиалга, байгууллагын workflow дээр 5+ жил ажилласан туршлагатай."
+                                            />
+                                          </label>
+                                        </div>
+                                      </div>
+                                    ),
+                                  )}
+                                </div>
+                              </StudyEditorPanel>
+                            </div>
+                            <div className="lg:col-span-2">
+                              <StudyEditorPanel
+                                title="Хугацаа, байршил, бүртгэл"
+                                description="Онцлох байрлал, өдөр цаг, хэлбэр, хаяг, хүний тоо болон label."
+                              >
+                                <div className="grid gap-4 lg:grid-cols-3">
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Онцлох байрлал
+                                    </span>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      step={1}
+                                      value={project.featuredOrder || 0}
+                                      onChange={(e) =>
+                                        updateProject(
+                                          project.id,
+                                          "featuredOrder",
+                                          parsePrice(e.target.value),
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                      placeholder="Жишээ: 1"
+                                    />
+                                    <p className="text-xs font-semibold text-slate-500">
+                                      1, 2, 3 гэж оруулбал web дээр онцлох
+                                      хэсэгт тэр дарааллаар гарна. 0 бол
+                                      автомат.
+                                    </p>
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Сургалт болох өдөр
+                                    </span>
+                                    <input
+                                      type="date"
+                                      value={project.courseDate || ""}
+                                      onChange={(e) =>
+                                        updateProject(
+                                          project.id,
+                                          "courseDate",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    />
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Эхлэх цаг
+                                    </span>
+                                    <input
+                                      type="time"
+                                      value={project.courseTime || ""}
+                                      onChange={(e) =>
+                                        updateProject(
+                                          project.id,
+                                          "courseTime",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    />
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Төрөл / төлөв
+                                    </span>
+                                    <select
+                                      value={project.deliveryType || ""}
+                                      onChange={(e) =>
+                                        updateProject(
+                                          project.id,
+                                          "deliveryType",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    >
+                                      <option value="">Сонгоно уу</option>
+                                      {getSelectOptions(
+                                        STUDY_DELIVERY_TYPE_OPTIONS,
+                                        project.deliveryType,
+                                      ).map((option) => (
+                                        <option key={option} value={option}>
+                                          {option}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Сургалтын хугацаа
+                                    </span>
+                                    <select
+                                      value={project.duration || ""}
+                                      onChange={(e) =>
+                                        updateProject(
+                                          project.id,
+                                          "duration",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    >
+                                      <option value="">Сонгоно уу</option>
+                                      {getSelectOptions(
+                                        STUDY_DURATION_OPTIONS,
+                                        project.duration,
+                                      ).map((option) => (
+                                        <option key={option} value={option}>
+                                          {option}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Байршил / хэлбэр
+                                    </span>
+                                    <select
+                                      value={project.location || ""}
+                                      onChange={(e) =>
+                                        updateProject(
+                                          project.id,
+                                          "location",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    >
+                                      <option value="">Сонгоно уу</option>
+                                      {getSelectOptions(
+                                        STUDY_LOCATION_OPTIONS,
+                                        project.location,
+                                      ).map((option) => (
+                                        <option key={option} value={option}>
+                                          {option}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Хаяг
+                                    </span>
+                                    <input
+                                      value={project.address || ""}
+                                      onChange={(e) =>
+                                        updateProject(
+                                          project.id,
+                                          "address",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                      placeholder="Жишээ: УБ, СБД, ... тоот"
+                                    />
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Хүний тоо / багийн хэмжээ
+                                    </span>
+                                    <select
+                                      value={project.capacity || ""}
+                                      onChange={(e) =>
+                                        updateProject(
+                                          project.id,
+                                          "capacity",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    >
+                                      <option value="">Сонгоно уу</option>
+                                      {getSelectOptions(
+                                        STUDY_CAPACITY_OPTIONS,
+                                        project.capacity,
+                                      ).map((option) => (
+                                        <option key={option} value={option}>
+                                          {option}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Үнийн тайлбар
+                                    </span>
+                                    <select
+                                      value={project.priceNote || ""}
+                                      onChange={(e) =>
+                                        updateProject(
+                                          project.id,
+                                          "priceNote",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    >
+                                      <option value="">Сонгоно уу</option>
+                                      {getSelectOptions(
+                                        STUDY_PRICE_NOTE_OPTIONS,
+                                        project.priceNote,
+                                      ).map((option) => (
+                                        <option key={option} value={option}>
+                                          {option}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="space-y-1.5">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Бүртгэлийн label
+                                    </span>
+                                    <select
+                                      value={project.registrationLabel || ""}
+                                      onChange={(e) =>
+                                        updateProject(
+                                          project.id,
+                                          "registrationLabel",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                    >
+                                      <option value="">Сонгоно уу</option>
+                                      {getSelectOptions(
+                                        STUDY_REGISTRATION_LABEL_OPTIONS,
+                                        project.registrationLabel,
+                                      ).map((option) => (
+                                        <option key={option} value={option}>
+                                          {option}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                  <label className="space-y-1.5 lg:col-span-3">
+                                    <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                      Өдөр, цагийн нэмэлт тайлбар
+                                    </span>
+                                    <input
+                                      value={project.scheduleNote || ""}
+                                      onChange={(e) =>
+                                        updateProject(
+                                          project.id,
+                                          "scheduleNote",
+                                          e.target.value,
+                                        )
+                                      }
+                                      className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                      placeholder="Жишээ: Огноо баталгаажмагц бүртгүүлсэн хүмүүст мэдэгдэнэ"
+                                    />
+                                  </label>
+                                </div>
+                              </StudyEditorPanel>
+                            </div>
+                          </>
+                        )}
+                        <label className="space-y-1.5 lg:col-span-2">
+                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                            {isStudyMode
+                              ? "Card дээр харагдах хураангуй"
+                              : "Хураангуй"}
+                          </span>
+                          <textarea
+                            value={project.summary}
+                            onChange={(e) =>
+                              updateProject(
+                                project.id,
+                                "summary",
+                                e.target.value,
+                              )
+                            }
+                            rows={3}
+                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                            placeholder={copy.summaryPlaceholder}
+                          />
+                        </label>
+                        {isStudyMode ? (
+                          <div className="lg:col-span-2">
+                            <StudyEditorPanel
+                              title="Сургалтын хөтөлбөр"
+                              description="Гарчиг нь accordion дээр харагдаж, дэлгэрэнгүй нь дарахад нээгдэнэ."
+                              defaultOpen
+                              action={
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.preventDefault();
+                                    addStudyProgramRow(
+                                      project.id,
+                                      studyProgramRows,
+                                    );
+                                  }}
+                                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50"
+                                >
+                                  <Plus className="h-4 w-4" />
+                                  Хөтөлбөр нэмэх
+                                </button>
+                              }
+                            >
+                              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                {visibleStudyProgramRows.map(
+                                  (row, rowIndex) => (
+                                    <div
+                                      key={`${project.id}-program-${rowIndex}`}
+                                      className="rounded-xl border border-slate-200 bg-white p-3"
+                                    >
+                                      <div className="mb-2 flex items-center justify-between gap-3">
+                                        <p className="text-xs font-black text-slate-400">
+                                          Хөтөлбөр #{rowIndex + 1}
+                                        </p>
+                                        {visibleStudyProgramRows.length > 1 && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeStudyProgramRow(
+                                                project.id,
+                                                studyProgramRows,
+                                                rowIndex,
+                                              )
+                                            }
+                                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 text-red-600 transition hover:bg-red-100"
+                                            aria-label="Хөтөлбөр устгах"
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </button>
+                                        )}
+                                      </div>
+                                      <div className="grid gap-3 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                                        <label className="space-y-1.5">
+                                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Гарчиг
+                                          </span>
+                                          <input
+                                            value={row.title}
+                                            onChange={(e) =>
+                                              updateStudyProgramRow(
+                                                project.id,
+                                                studyProgramRows,
+                                                rowIndex,
+                                                "title",
+                                                e.target.value,
+                                              )
+                                            }
+                                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            placeholder="Жишээ: Dashboard тохируулах"
+                                          />
+                                        </label>
+                                        <label className="space-y-1.5">
+                                          <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                            Холбогдох дэлгэрэнгүй
+                                          </span>
+                                          <textarea
+                                            value={row.description}
+                                            onChange={(e) =>
+                                              updateStudyProgramRow(
+                                                project.id,
+                                                studyProgramRows,
+                                                rowIndex,
+                                                "description",
+                                                e.target.value,
+                                              )
+                                            }
+                                            rows={2}
+                                            className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                            placeholder="Жишээ: Борлуулалт, захиалга, тайлангийн үндсэн хэсгүүдийг тохируулж сурна."
+                                          />
+                                        </label>
+                                      </div>
+                                    </div>
+                                  ),
+                                )}
+                              </div>
+                            </StudyEditorPanel>
+                          </div>
+                        ) : (
+                          <label className="space-y-1.5 lg:col-span-2">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              Дэлгэрэнгүй мэдээлэл
+                            </span>
+                            <textarea
+                              value={project.details}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "details",
+                                  e.target.value,
+                                )
+                              }
+                              rows={6}
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                              placeholder="Төлбөр төлсний дараа харагдах дэлгэрэнгүй нөхцөл, боломж, холбоо барих мэдээлэл..."
+                            />
+                          </label>
+                        )}
+                        {!isStudyMode && (
+                          <div className="space-y-1.5 lg:col-span-2">
+                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                              {copy.pdfLabel}
+                            </span>
+                            <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                              <div className="flex flex-wrap items-center gap-3">
+                                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-violet-300 hover:bg-violet-50">
+                                  {uploadingPdfProjectId === project.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <FileText className="h-4 w-4" />
+                                  )}
+                                  {uploadingPdfProjectId === project.id
+                                    ? "PDF оруулж байна..."
+                                    : "PDF сонгох"}
+                                  <input
+                                    type="file"
+                                    accept="application/pdf,.pdf"
+                                    className="hidden"
+                                    disabled={
+                                      uploadingPdfProjectId === project.id
+                                    }
+                                    onChange={(e) =>
+                                      uploadProjectPdf(project.id, e)
+                                    }
+                                  />
+                                </label>
+                                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-orange-200 bg-white px-3 py-2 text-xs font-bold text-orange-700 shadow-sm transition hover:border-orange-300 hover:bg-orange-50">
+                                  {uploadingPdfThumbnailProjectId ===
+                                  project.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <ImagePlus className="h-4 w-4" />
+                                  )}
+                                  {uploadingPdfThumbnailProjectId === project.id
+                                    ? "Thumbnail оруулж байна..."
+                                    : "Thumbnail зураг"}
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    disabled={
+                                      uploadingPdfThumbnailProjectId ===
+                                      project.id
+                                    }
+                                    onChange={(e) =>
+                                      uploadPdfThumbnail(project.id, e)
+                                    }
+                                  />
+                                </label>
+                                {project.pdfUrl && (
+                                  <a
+                                    href={project.pdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700"
+                                  >
+                                    <FileText className="h-4 w-4" />
+                                    PDF харах
+                                  </a>
+                                )}
+                              </div>
+                              <div className="mt-3 grid gap-3 md:grid-cols-[180px_1fr] md:items-center">
+                                <div className="relative aspect-[16/10] overflow-hidden rounded-xl border border-slate-200 bg-white">
+                                  {project.pdfThumbnailUrl ? (
+                                    <>
+                                      <img
+                                        src={project.pdfThumbnailUrl}
+                                        alt={`${project.title || copy.itemLabel} thumbnail`}
+                                        className="h-full w-full object-cover"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          updateProject(
+                                            project.id,
+                                            "pdfThumbnailUrl",
+                                            "",
+                                          )
+                                        }
+                                        className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm transition hover:bg-red-50"
+                                        aria-label="Thumbnail устгах"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center text-slate-400">
+                                      <ImagePlus className="h-7 w-7" />
+                                      <span className="px-3 text-[11px] font-bold">
+                                        Web preview дээр харагдах thumbnail
+                                        зураг
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="text-xs font-semibold leading-5 text-slate-500">
+                                    Төлбөртэй preview modal дээр PDF embed
+                                    хийхгүй, энэ зураг харагдана. Thumbnail
+                                    байхгүй бол үндсэн зураг fallback болно.
+                                  </p>
+                                  <input
+                                    value={project.pdfThumbnailUrl || ""}
+                                    onChange={(e) =>
                                       updateProject(
                                         project.id,
                                         "pdfThumbnailUrl",
-                                        "",
+                                        e.target.value,
                                       )
                                     }
-                                    className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-600 shadow-sm transition hover:bg-red-50"
-                                    aria-label="Thumbnail устгах"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </button>
-                                </>
-                              ) : (
-                                <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-center text-slate-400">
-                                  <ImagePlus className="h-7 w-7" />
-                                  <span className="px-3 text-[11px] font-bold">
-                                    Web preview дээр харагдах thumbnail зураг
-                                  </span>
+                                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
+                                    placeholder="Thumbnail image URL"
+                                  />
                                 </div>
-                              )}
+                              </div>
+                              {pdfUploadError &&
+                                uploadingPdfProjectId === null && (
+                                  <p className="mt-2 text-xs font-semibold text-red-500">
+                                    {pdfUploadError}
+                                  </p>
+                                )}
                             </div>
-                            <div>
-                              <p className="text-xs font-semibold leading-5 text-slate-500">
-                                Төлбөртэй preview modal дээр PDF embed хийхгүй,
-                                энэ зураг харагдана. Thumbnail байхгүй бол
-                                үндсэн зураг fallback болно.
-                              </p>
-                              <input
-                                value={project.pdfThumbnailUrl || ""}
-                                onChange={(e) =>
-                                  updateProject(
-                                    project.id,
-                                    "pdfThumbnailUrl",
-                                    e.target.value,
-                                  )
-                                }
-                                className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-4 focus:ring-orange-100"
-                                placeholder="Thumbnail image URL"
-                              />
-                            </div>
+                            <input
+                              value={project.pdfUrl || ""}
+                              onChange={(e) =>
+                                updateProject(
+                                  project.id,
+                                  "pdfUrl",
+                                  e.target.value,
+                                )
+                              }
+                              className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                              placeholder="PDF upload хийсний дараа URL энд автоматаар орно"
+                            />
                           </div>
-                          {pdfUploadError && uploadingPdfProjectId === null && (
-                            <p className="mt-2 text-xs font-semibold text-red-500">
-                              {pdfUploadError}
-                            </p>
-                          )}
-                        </div>
-                        <input
-                          value={project.pdfUrl || ""}
-                          onChange={(e) =>
-                            updateProject(project.id, "pdfUrl", e.target.value)
-                          }
-                          className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
-                          placeholder="PDF upload хийсний дараа URL энд автоматаар орно"
-                        />
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl bg-slate-50 p-3">
-                    {primaryImage ? (
-                      <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
-                        <img
-                          src={primaryImage}
-                          alt={project.title || `${copy.itemLabel} image`}
-                          className="h-full w-full object-cover"
-                        />
-                        {projectImages.length > 1 && (
-                          <span className="absolute bottom-2 right-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-bold text-white">
-                            +{projectImages.length - 1}
-                          </span>
                         )}
                       </div>
                     ) : (
-                      <div className="flex aspect-[16/9] w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-slate-400">
-                        <ImagePlus className="h-7 w-7" />
+                      <div className="rounded-2xl bg-slate-50 p-3">
+                        {primaryImage ? (
+                          <div className="relative aspect-[16/9] w-full overflow-hidden rounded-xl border border-slate-200 bg-white">
+                            <img
+                              src={primaryImage}
+                              alt={project.title || `${copy.itemLabel} image`}
+                              className="h-full w-full object-cover"
+                            />
+                            {projectImages.length > 1 && (
+                              <span className="absolute bottom-2 right-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-bold text-white">
+                                +{projectImages.length - 1}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex aspect-[16/9] w-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white text-slate-400">
+                            <ImagePlus className="h-7 w-7" />
+                          </div>
+                        )}
+                        <div className="mt-3 min-w-0">
+                          <p className="line-clamp-2 min-h-[40px] text-xs leading-5 text-slate-600">
+                            {project.summary ||
+                              "Хураангуй мэдээлэл оруулаагүй байна."}
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <div className="inline-flex items-center gap-2 rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700">
+                              {project.price > 0
+                                ? `${formatMnt(project.price)}`
+                                : "Үнэгүй"}
+                            </div>
+                            {!isStudyMode && (
+                              <div
+                                className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                                  project.pdfUrl
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : "bg-amber-50 text-amber-700"
+                                }`}
+                              >
+                                <FileText className="h-3 w-3" />
+                                {project.pdfUrl ? "PDF" : "PDFгүй"}
+                              </div>
+                            )}
+                            <div
+                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                                project.isActive
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-slate-100 text-slate-500"
+                              }`}
+                            >
+                              {project.isActive ? (
+                                <Eye className="h-3 w-3" />
+                              ) : (
+                                <EyeOff className="h-3 w-3" />
+                              )}
+                              {project.isActive ? "Web" : "Нуусан"}
+                            </div>
+                            {isProjectMode && project.isFeatured && (
+                              <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                                <Check className="h-3 w-3" />
+                                Онцлох
+                              </div>
+                            )}
+                          </div>
+                          {project.tags && project.tags.length > 0 && (
+                            <div className="mt-3 flex flex-wrap gap-1.5">
+                              {project.tags.slice(0, 4).map((tag) => (
+                                <span
+                                  key={tag}
+                                  className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-slate-500"
+                                >
+                                  #{tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {!isStudyMode && primaryResponsiblePerson && (
+                            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                              <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-slate-400">
+                                <UserRound className="h-3.5 w-3.5" />
+                                Хариуцагч
+                              </div>
+                              <p className="mt-2 truncate text-sm font-black text-slate-900">
+                                {primaryResponsiblePerson.name ||
+                                  "Нэр оруулаагүй"}
+                              </p>
+                              {(primaryResponsiblePerson.responsibility ||
+                                primaryResponsiblePerson.role) && (
+                                <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">
+                                  {primaryResponsiblePerson.responsibility ||
+                                    primaryResponsiblePerson.role}
+                                </p>
+                              )}
+                              <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-slate-500">
+                                {primaryResponsiblePerson.phone && (
+                                  <span className="inline-flex items-center gap-1">
+                                    <Phone className="h-3 w-3" />
+                                    {primaryResponsiblePerson.phone}
+                                  </span>
+                                )}
+                                {primaryResponsiblePerson.email && (
+                                  <span className="inline-flex items-center gap-1">
+                                    <Mail className="h-3 w-3" />
+                                    {primaryResponsiblePerson.email}
+                                  </span>
+                                )}
+                              </div>
+                              {responsiblePeople.length > 1 && (
+                                <p className="mt-2 text-[11px] font-black text-violet-600">
+                                  +{responsiblePeople.length - 1} ажилтан
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     )}
-                    <div className="mt-3 min-w-0">
-                      <p className="line-clamp-2 min-h-[40px] text-xs leading-5 text-slate-600">
-                        {project.summary ||
-                          "Хураангуй мэдээлэл оруулаагүй байна."}
-                      </p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <div className="inline-flex items-center gap-2 rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700">
-                          {project.price > 0
-                            ? `${formatMnt(project.price)}`
-                            : "Үнэгүй"}
-                        </div>
-                        {!isStudyMode && (
-                          <div
-                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                              project.pdfUrl
-                                ? "bg-emerald-50 text-emerald-700"
-                                : "bg-amber-50 text-amber-700"
-                            }`}
-                          >
-                            <FileText className="h-3 w-3" />
-                            {project.pdfUrl ? "PDF" : "PDFгүй"}
-                          </div>
-                        )}
-                        <div
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                            project.isActive
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-slate-100 text-slate-500"
-                          }`}
-                        >
-                          {project.isActive ? (
-                            <Eye className="h-3 w-3" />
-                          ) : (
-                            <EyeOff className="h-3 w-3" />
-                          )}
-                          {project.isActive ? "Web" : "Нуусан"}
-                        </div>
-                        {isProjectMode && project.isFeatured && (
-                          <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-700">
-                            <Check className="h-3 w-3" />
-                            Онцлох
-                          </div>
-                        )}
-                      </div>
-                      {project.tags && project.tags.length > 0 && (
-                        <div className="mt-3 flex flex-wrap gap-1.5">
-                          {project.tags.slice(0, 4).map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-slate-500"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {!isStudyMode && primaryResponsiblePerson && (
-                        <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
-                          <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-wide text-slate-400">
-                            <UserRound className="h-3.5 w-3.5" />
-                            Хариуцагч
-                          </div>
-                          <p className="mt-2 truncate text-sm font-black text-slate-900">
-                            {primaryResponsiblePerson.name || "Нэр оруулаагүй"}
-                          </p>
-                          {(primaryResponsiblePerson.responsibility ||
-                            primaryResponsiblePerson.role) && (
-                            <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-500">
-                              {primaryResponsiblePerson.responsibility ||
-                                primaryResponsiblePerson.role}
-                            </p>
-                          )}
-                          <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-bold text-slate-500">
-                            {primaryResponsiblePerson.phone && (
-                              <span className="inline-flex items-center gap-1">
-                                <Phone className="h-3 w-3" />
-                                {primaryResponsiblePerson.phone}
-                              </span>
-                            )}
-                            {primaryResponsiblePerson.email && (
-                              <span className="inline-flex items-center gap-1">
-                                <Mail className="h-3 w-3" />
-                                {primaryResponsiblePerson.email}
-                              </span>
-                            )}
-                          </div>
-                          {responsiblePeople.length > 1 && (
-                            <p className="mt-2 text-[11px] font-black text-violet-600">
-                              +{responsiblePeople.length - 1} ажилтан
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </article>
-            );
-          })}
-        </div>
+                  </article>
+                </Fragment>
+              );
+            })}
+          </div>
+        </section>
       )}
     </div>
   );

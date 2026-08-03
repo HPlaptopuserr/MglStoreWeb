@@ -198,7 +198,7 @@ export function BranchForm({
               </span>
             )}
           </div>
-          <div ref={mapPickerRef} className="h-64 w-full" />
+          <div ref={mapPickerRef} className="relative z-0 h-64 w-full" />
           <div className="border-t border-slate-200 bg-slate-50 px-3 py-2">
             <p className="text-[11px] text-slate-500">
               Map дээр дарахад координат автоматаар бөглөгдөнө.
