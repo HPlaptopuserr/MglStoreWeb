@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import {
   BarChart2,
@@ -196,6 +196,7 @@ export interface VendorSidebarProps {
   showPreorderProducts?: boolean;
   showServicePosts?: boolean;
   showContractArchive?: boolean;
+  bottomSlot?: ReactNode;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
 }
@@ -286,6 +287,7 @@ export function VendorSidebar({
   showPreorderProducts = false,
   showServicePosts = false,
   showContractArchive = false,
+  bottomSlot,
   mobileOpen = false,
   onMobileClose,
 }: VendorSidebarProps) {
@@ -369,6 +371,7 @@ export function VendorSidebar({
         userRole={userRole}
         userInitials={profileInitials}
         groups={groups}
+        bottomSlot={bottomSlot}
         bottomGroups={VENDOR_BOTTOM_GROUPS}
         collapsed={isCollapsed}
         onCollapsedChange={handleCollapsedChange}
@@ -382,6 +385,7 @@ export function VendorSidebar({
         userRole={userRole}
         userInitials={profileInitials}
         groups={mobileGroups}
+        bottomSlot={bottomSlot}
         bottomGroups={VENDOR_BOTTOM_GROUPS}
         collapsed={false}
         onCollapsedChange={() => undefined}
