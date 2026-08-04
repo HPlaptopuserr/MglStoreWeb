@@ -1,12 +1,24 @@
 "use client";
 
 import { useMemo } from "react";
-import { X, Banknote, BarChart2, Loader2, PackageSearch, Type, AlignLeft, AlertTriangle, ArrowRight, CalendarClock } from "lucide-react";
+import {
+  X,
+  Banknote,
+  BarChart2,
+  Loader2,
+  PackageSearch,
+  Type,
+  AlignLeft,
+  AlertTriangle,
+  ArrowRight,
+  CalendarClock,
+} from "lucide-react";
 import { BusinessCategory, FormState, Product } from "../types";
 import { CategorySelector } from "./CategorySelector";
 import { ImageUploadGrid } from "./ImageUploadGrid";
 import { ProductDataAssistantPanel } from "./ProductDataAssistantPanel";
 import { VendorSkuGenerator } from "./VendorSkuGenerator";
+import { MasterCatalogSuggestions } from "./MasterCatalogSuggestions";
 import {
   EBARIMT_TAX_PRODUCT_CODES,
   type EbarimtTaxProductCode,
@@ -32,7 +44,11 @@ const TAX_TYPE_OPTIONS = [
   { value: "NOT_VAT", label: "NOT_VAT - НӨАТ ногдохгүй" },
 ] as const;
 
-const TAX_PRODUCT_CODE_REQUIRED_TYPES = new Set(["VAT_FREE", "VAT_ZERO", "NOT_VAT"]);
+const TAX_PRODUCT_CODE_REQUIRED_TYPES = new Set([
+  "VAT_FREE",
+  "VAT_ZERO",
+  "NOT_VAT",
+]);
 
 const TAX_CODE_SYNONYMS: Record<string, string[]> = {
   beef: ["үхрийн", "мах"],
@@ -91,10 +107,32 @@ function getTaxSearchTokens(value: string) {
   return Array.from(expanded);
 }
 
-function findBusinessCategory(categories: BusinessCategory[], id: string): BusinessCategory | null {
+function findBusinessCategory(
+  categories: BusinessCategory[],
+  id: string,
+): BusinessCategory | null {
   for (const category of categories) {
     if (category.id === id) return category;
-    const child = category.children ? findBusinessCategory(category.children, id) : null;
+    const child = category.children
+      ? findBusinessCategory(category.children, id)
+      : null;
+    if (child) return child;
+  }
+  return null;
+}
+
+function findBusinessCategoryByName(
+  categories: BusinessCategory[],
+  name: string | null,
+): BusinessCategory | null {
+  if (!name) return null;
+  const normalizedName = name.trim().toLocaleLowerCase("mn");
+  for (const category of categories) {
+    if (category.name.trim().toLocaleLowerCase("mn") === normalizedName)
+      return category;
+    const child: BusinessCategory | null = category.children
+      ? findBusinessCategoryByName(category.children, name)
+      : null;
     if (child) return child;
   }
   return null;
@@ -157,7 +195,9 @@ function getTaxProductCodeSuggestions(query: string) {
     score: scoreTaxProductCode(entry, tokens),
   }))
     .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score || a.entry.code.localeCompare(b.entry.code))
+    .sort(
+      (a, b) => b.score - a.score || a.entry.code.localeCompare(b.entry.code),
+    )
     .slice(0, 5)
     .map((item) => item.entry);
 }
@@ -183,10 +223,15 @@ export function ProductFormModal({
     [selectedCategory],
   );
   const categoryDefaultTaxProductCode = useMemo(
-    () => getTaxProductCodeSuggestions(selectedCategoryTaxSearchText)[0] ?? null,
+    () =>
+      getTaxProductCodeSuggestions(selectedCategoryTaxSearchText)[0] ?? null,
     [selectedCategoryTaxSearchText],
   );
-  const taxProductCodeQuery = [form.taxProductCode, form.name, selectedCategoryTaxSearchText]
+  const taxProductCodeQuery = [
+    form.taxProductCode,
+    form.name,
+    selectedCategoryTaxSearchText,
+  ]
     .filter(Boolean)
     .join(" ");
   const taxProductCodeSuggestions = useMemo(
@@ -194,13 +239,20 @@ export function ProductFormModal({
     [taxProductCodeQuery],
   );
   const selectedTaxProductCode = useMemo(
-    () => EBARIMT_TAX_PRODUCT_CODES.find((entry) => entry.code === form.taxProductCode.trim()),
+    () =>
+      EBARIMT_TAX_PRODUCT_CODES.find(
+        (entry) => entry.code === form.taxProductCode.trim(),
+      ),
     [form.taxProductCode],
   );
-  const isTaxProductCodeRequired = TAX_PRODUCT_CODE_REQUIRED_TYPES.has(form.taxType);
+  const isTaxProductCodeRequired = TAX_PRODUCT_CODE_REQUIRED_TYPES.has(
+    form.taxType,
+  );
   const applyBusinessCategory = (id: string) => {
     const category = findBusinessCategory(categories, id);
-    const defaultTaxProductCode = getTaxProductCodeSuggestions(getCategoryTaxSearchText(category))[0]?.code || "";
+    const defaultTaxProductCode =
+      getTaxProductCodeSuggestions(getCategoryTaxSearchText(category))[0]
+        ?.code || "";
 
     setForm((current) => ({
       ...current,
@@ -210,22 +262,29 @@ export function ProductFormModal({
         : defaultTaxProductCode,
     }));
   };
-  const duplicateProduct = (form.sku || form.barcode)
-    ? products.find((p) => {
-        const skuMatch = form.sku && p.sku?.toLowerCase() === form.sku.toLowerCase();
-        const barcodeMatch = form.barcode && p.barcode?.toLowerCase() === form.barcode.toLowerCase();
-        return (skuMatch || barcodeMatch) && p.id !== editingId;
-      })
-    : undefined;
+  const duplicateProduct =
+    form.sku || form.barcode
+      ? products.find((p) => {
+          const skuMatch =
+            form.sku && p.sku?.toLowerCase() === form.sku.toLowerCase();
+          const barcodeMatch =
+            form.barcode &&
+            p.barcode?.toLowerCase() === form.barcode.toLowerCase();
+          return (skuMatch || barcodeMatch) && p.id !== editingId;
+        })
+      : undefined;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 flex flex-col max-h-[90vh]">
-        
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-6 py-5 border-b border-slate-100 bg-white z-10 shrink-0">
           <div>
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-              {editingId ? "Бараа засах" : isPreorder ? "Захиалгын бараа бүртгэх" : "Шинэ бараа бүртгэх"}
+              {editingId
+                ? "Бараа засах"
+                : isPreorder
+                  ? "Захиалгын бараа бүртгэх"
+                  : "Шинэ бараа бүртгэх"}
             </h2>
             <p className="text-sm font-medium text-slate-500 mt-1">
               {isPreorder
@@ -245,16 +304,14 @@ export function ProductFormModal({
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           <form id="product-form" onSubmit={onSave} className="p-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-              
               {/* Left Column: Basic Info */}
               <div className="lg:col-span-7 space-y-6">
-                
                 <div className="space-y-4">
                   <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                     <Type size={16} className="text-indigo-500" />
                     Үндсэн мэдээлэл
                   </h3>
-                  
+
                   <div className="space-y-2">
                     <label className="text-sm font-semibold text-slate-700">
                       Барааны нэр <span className="text-red-500">*</span>
@@ -264,7 +321,13 @@ export function ProductFormModal({
                       className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all placeholder:text-slate-400"
                       placeholder="Жишээ: Цэвэр ус 0.5л"
                       value={form.name}
-                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          name: e.target.value,
+                          masterProductId: "",
+                        }))
+                      }
                     />
                   </div>
 
@@ -278,10 +341,21 @@ export function ProductFormModal({
                     {duplicateProduct && (
                       <div className="flex flex-col gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl mt-2 animate-in fade-in slide-in-from-top-2">
                         <div className="flex items-start gap-2">
-                          <AlertTriangle size={16} className="text-amber-500 mt-0.5 shrink-0" />
+                          <AlertTriangle
+                            size={16}
+                            className="text-amber-500 mt-0.5 shrink-0"
+                          />
                           <div className="flex-1">
-                            <p className="text-sm font-bold text-amber-800 leading-tight">Бүртгэлтэй код олдлоо!</p>
-                            <p className="text-xs text-amber-600 mt-0.5">Энэ SKU эсвэл Barcode <span className="font-bold">{duplicateProduct.name}</span> бараанд ашиглагдаж байна.</p>
+                            <p className="text-sm font-bold text-amber-800 leading-tight">
+                              Бүртгэлтэй код олдлоо!
+                            </p>
+                            <p className="text-xs text-amber-600 mt-0.5">
+                              Энэ SKU эсвэл Barcode{" "}
+                              <span className="font-bold">
+                                {duplicateProduct.name}
+                              </span>{" "}
+                              бараанд ашиглагдаж байна.
+                            </p>
                           </div>
                         </div>
                         {onSwitchToEdit && (
@@ -290,7 +364,8 @@ export function ProductFormModal({
                             onClick={() => onSwitchToEdit(duplicateProduct)}
                             className="flex items-center justify-center gap-1.5 w-full bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold py-2 rounded-lg transition-colors"
                           >
-                            Тус барааны мэдээллийг засах <ArrowRight size={14} />
+                            Тус барааны мэдээллийг засах{" "}
+                            <ArrowRight size={14} />
                           </button>
                         )}
                       </div>
@@ -298,17 +373,58 @@ export function ProductFormModal({
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Баркод (Barcode)</label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      Баркод (Barcode)
+                    </label>
                     <div className="relative">
-                      <PackageSearch size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <PackageSearch
+                        size={18}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                      />
                       <input
                         className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all placeholder:text-slate-400"
                         placeholder="Жишээ: 865604212512"
                         value={form.barcode}
-                        onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value }))}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            barcode: e.target.value,
+                            masterProductId: "",
+                          }))
+                        }
                       />
                     </div>
                   </div>
+
+                  <MasterCatalogSuggestions
+                    name={form.name}
+                    barcode={form.barcode}
+                    selectedId={form.masterProductId}
+                    disabled={Boolean(editingId)}
+                    onSelect={(product) => {
+                      const matchedCategory = findBusinessCategoryByName(
+                        categories,
+                        product.categoryName,
+                      );
+                      setForm((current) => ({
+                        ...current,
+                        masterProductId: product.id,
+                        name: product.canonicalName,
+                        barcode: product.barcode || current.barcode,
+                        description: current.description.trim()
+                          ? current.description
+                          : product.description || "",
+                        images:
+                          current.images.length > 0 || !product.imageUrl
+                            ? current.images
+                            : [product.imageUrl],
+                        businessCategoryId:
+                          current.businessCategoryId ||
+                          matchedCategory?.id ||
+                          "",
+                      }));
+                    }}
+                  />
                 </div>
 
                 <div className="space-y-4 pt-2">
@@ -316,14 +432,16 @@ export function ProductFormModal({
                     <Banknote size={16} className="text-emerald-500" />
                     Үнэ & Нөөц
                   </h3>
-                  
+
                   <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-slate-700">
                         Авсан үнэ (₮)
                       </label>
                       <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₮</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">
+                          ₮
+                        </span>
                         <input
                           type="number"
                           min="0"
@@ -331,57 +449,65 @@ export function ProductFormModal({
                           className="w-full h-12 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all font-medium"
                           placeholder="0"
                           value={form.costPrice}
-                          onChange={(e) => setForm((f) => ({ ...f, costPrice: e.target.value }))}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              costPrice: e.target.value,
+                            }))
+                          }
                         />
                       </div>
                     </div>
-                      <>
-                        <div className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">
-                            Бөөний үнэ (₮)
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="1"
-                            className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium outline-none transition-all focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
-                            placeholder="Тохируулаагүй"
-                            value={form.wholesalePrice}
-                            onChange={(e) =>
-                              setForm((current) => ({
-                                ...current,
-                                wholesalePrice: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-semibold text-slate-700">
-                            Захиалгын үнэ (₮)
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            step="1"
-                            className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
-                            placeholder="Тохируулаагүй"
-                            value={form.orderPrice}
-                            onChange={(e) =>
-                              setForm((current) => ({
-                                ...current,
-                                orderPrice: e.target.value,
-                              }))
-                            }
-                          />
-                        </div>
-                      </>
+                    <>
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">
+                          Бөөний үнэ (₮)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium outline-none transition-all focus:border-violet-500 focus:bg-white focus:ring-4 focus:ring-violet-500/10"
+                          placeholder="Тохируулаагүй"
+                          value={form.wholesalePrice}
+                          onChange={(e) =>
+                            setForm((current) => ({
+                              ...current,
+                              wholesalePrice: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">
+                          Захиалгын үнэ (₮)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="1"
+                          className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-4 text-sm font-medium outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                          placeholder="Тохируулаагүй"
+                          value={form.orderPrice}
+                          onChange={(e) =>
+                            setForm((current) => ({
+                              ...current,
+                              orderPrice: e.target.value,
+                            }))
+                          }
+                        />
+                      </div>
+                    </>
 
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-slate-700">
-                        Ширхэгийн үнэ (₮) <span className="text-red-500">*</span>
+                        Ширхэгийн үнэ (₮){" "}
+                        <span className="text-red-500">*</span>
                       </label>
                       <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">₮</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-medium">
+                          ₮
+                        </span>
                         <input
                           required
                           type="number"
@@ -390,16 +516,23 @@ export function ProductFormModal({
                           className="w-full h-12 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 focus:bg-white transition-all font-medium"
                           placeholder="0"
                           value={form.price}
-                          onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+                          onChange={(e) =>
+                            setForm((f) => ({ ...f, price: e.target.value }))
+                          }
                         />
                       </div>
                     </div>
-                    
+
                     {!isPreorder && (
                       <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700">Нөөц (ширхэг)</label>
+                        <label className="text-sm font-semibold text-slate-700">
+                          Нөөц (ширхэг)
+                        </label>
                         <div className="relative">
-                          <BarChart2 size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <BarChart2
+                            size={18}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                          />
                           <input
                             type="number"
                             min="0"
@@ -407,7 +540,9 @@ export function ProductFormModal({
                             className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all font-medium"
                             placeholder="0"
                             value={form.stock}
-                            onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))}
+                            onChange={(e) =>
+                              setForm((f) => ({ ...f, stock: e.target.value }))
+                            }
                           />
                         </div>
                       </div>
@@ -415,14 +550,24 @@ export function ProductFormModal({
 
                     {!isPreorder && (
                       <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700">Дуусах хугацаа</label>
+                        <label className="text-sm font-semibold text-slate-700">
+                          Дуусах хугацаа
+                        </label>
                         <div className="relative">
-                          <CalendarClock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <CalendarClock
+                            size={18}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                          />
                           <input
                             type="date"
                             className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all font-medium"
                             value={form.expiryDate}
-                            onChange={(e) => setForm((f) => ({ ...f, expiryDate: e.target.value }))}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                expiryDate: e.target.value,
+                              }))
+                            }
                           />
                         </div>
                       </div>
@@ -431,14 +576,19 @@ export function ProductFormModal({
 
                   <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
                     <div className="mb-3">
-                      <p className="text-sm font-bold text-emerald-800">eBarimt татварын тохиргоо</p>
+                      <p className="text-sm font-bold text-emerald-800">
+                        eBarimt татварын тохиргоо
+                      </p>
                       <p className="mt-0.5 text-xs font-medium text-emerald-700">
-                        POS дээр сагслахад татвар болон eBarimt payload-д ашиглагдана.
+                        POS дээр сагслахад татвар болон eBarimt payload-д
+                        ашиглагдана.
                       </p>
                     </div>
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700">Татварын төрөл</label>
+                        <label className="text-sm font-semibold text-slate-700">
+                          Татварын төрөл
+                        </label>
                         <select
                           className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
                           value={form.taxType}
@@ -458,7 +608,9 @@ export function ProductFormModal({
                       </div>
 
                       <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700">Хотын татвар (%)</label>
+                        <label className="text-sm font-semibold text-slate-700">
+                          Хотын татвар (%)
+                        </label>
                         <input
                           type="number"
                           min="0"
@@ -466,23 +618,37 @@ export function ProductFormModal({
                           step="0.01"
                           className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
                           value={form.cityTaxRate}
-                          onChange={(e) => setForm((f) => ({ ...f, cityTaxRate: e.target.value }))}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              cityTaxRate: e.target.value,
+                            }))
+                          }
                         />
                       </div>
 
                       <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700">Ангиллын код</label>
+                        <label className="text-sm font-semibold text-slate-700">
+                          Ангиллын код
+                        </label>
                         <input
                           className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
                           placeholder="4711000"
                           value={form.classificationCode}
-                          onChange={(e) => setForm((f) => ({ ...f, classificationCode: e.target.value }))}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              classificationCode: e.target.value,
+                            }))
+                          }
                         />
                       </div>
 
                       <div className="space-y-2 sm:col-span-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <label className="text-sm font-semibold text-slate-700">Tax product code</label>
+                          <label className="text-sm font-semibold text-slate-700">
+                            Tax product code
+                          </label>
                           {selectedTaxProductCode && (
                             <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
                               {selectedTaxProductCode.name}
@@ -493,31 +659,49 @@ export function ProductFormModal({
                           className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
                           placeholder="Код эсвэл нэрээр хайх"
                           value={form.taxProductCode}
-                          onChange={(e) => setForm((f) => ({ ...f, taxProductCode: e.target.value }))}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              taxProductCode: e.target.value,
+                            }))
+                          }
                         />
-                        {isTaxProductCodeRequired && !form.taxProductCode.trim() && (
-                          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
-                            Энэ татварын төрөлд taxProductCode шаардлагатай. Доорх саналуудаас хамгийн ойрыг нь сонгоно уу.
-                          </p>
-                        )}
+                        {isTaxProductCodeRequired &&
+                          !form.taxProductCode.trim() && (
+                            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
+                              Энэ татварын төрөлд taxProductCode шаардлагатай.
+                              Доорх саналуудаас хамгийн ойрыг нь сонгоно уу.
+                            </p>
+                          )}
                         {taxProductCodeSuggestions.length > 0 && (
                           <div className="overflow-hidden rounded-xl border border-emerald-100 bg-white">
                             {taxProductCodeSuggestions.map((entry) => (
                               <button
                                 key={entry.code}
                                 type="button"
-                                onClick={() => setForm((f) => ({ ...f, taxProductCode: entry.code }))}
+                                onClick={() =>
+                                  setForm((f) => ({
+                                    ...f,
+                                    taxProductCode: entry.code,
+                                  }))
+                                }
                                 className={`flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-emerald-50 ${
-                                  form.taxProductCode.trim() === entry.code ? "bg-emerald-50" : ""
+                                  form.taxProductCode.trim() === entry.code
+                                    ? "bg-emerald-50"
+                                    : ""
                                 }`}
                               >
                                 <span className="mt-0.5 rounded-lg bg-emerald-100 px-2 py-1 text-xs font-black text-emerald-700">
                                   {entry.code}
                                 </span>
                                 <span className="min-w-0">
-                                  <span className="block text-sm font-bold text-slate-800">{entry.name}</span>
+                                  <span className="block text-sm font-bold text-slate-800">
+                                    {entry.name}
+                                  </span>
                                   <span className="mt-0.5 block truncate text-xs font-medium text-slate-500">
-                                    {entry.className || entry.groupName || entry.subClassName}
+                                    {entry.className ||
+                                      entry.groupName ||
+                                      entry.subClassName}
                                   </span>
                                 </span>
                               </button>
@@ -530,44 +714,61 @@ export function ProductFormModal({
                 </div>
 
                 {isPreorder && (
-                <div className="space-y-4 pt-2">
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                    <PackageSearch size={16} className="text-blue-500" />
-                    Захиалгын мэдээлэл
-                  </h3>
+                  <div className="space-y-4 pt-2">
+                    <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                      <PackageSearch size={16} className="text-blue-500" />
+                      Захиалгын мэдээлэл
+                    </h3>
 
-                  <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 space-y-4">
-                    <div className="rounded-xl border border-blue-100 bg-white px-4 py-3">
-                      <p className="text-sm font-bold text-blue-800">Хятадаас захиалгаар ирэх бараа</p>
-                      <p className="mt-1 text-xs font-medium leading-5 text-blue-600">
-                        Энэ бараа POS кассын бэлэн нөөцөд орохгүй. Web дээр захиалгаар ирэх хэсэгт тусдаа харагдана.
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-[140px_1fr]">
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700">Ирэх хоног</label>
-                        <input
-                          type="number"
-                          min="0"
-                          max="365"
-                          className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                          value={form.preorderLeadTimeDays}
-                          onChange={(e) => setForm((f) => ({ ...f, preorderLeadTimeDays: e.target.value }))}
-                        />
+                    <div className="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 space-y-4">
+                      <div className="rounded-xl border border-blue-100 bg-white px-4 py-3">
+                        <p className="text-sm font-bold text-blue-800">
+                          Хятадаас захиалгаар ирэх бараа
+                        </p>
+                        <p className="mt-1 text-xs font-medium leading-5 text-blue-600">
+                          Энэ бараа POS кассын бэлэн нөөцөд орохгүй. Web дээр
+                          захиалгаар ирэх хэсэгт тусдаа харагдана.
+                        </p>
                       </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700">Нэмэлт тайлбар</label>
-                        <input
-                          className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
-                          placeholder="Жишээ: Урьдчилгаа төлөөд 14-21 хоногт ирнэ"
-                          value={form.preorderNote}
-                          onChange={(e) => setForm((f) => ({ ...f, preorderNote: e.target.value }))}
-                        />
+
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[140px_1fr]">
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">
+                            Ирэх хоног
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="365"
+                            className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                            value={form.preorderLeadTimeDays}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                preorderLeadTimeDays: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">
+                            Нэмэлт тайлбар
+                          </label>
+                          <input
+                            className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                            placeholder="Жишээ: Урьдчилгаа төлөөд 14-21 хоногт ирнэ"
+                            value={form.preorderNote}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                preorderNote: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
                 )}
 
                 <div className="space-y-4 pt-2">
@@ -575,24 +776,31 @@ export function ProductFormModal({
                     <AlignLeft size={16} className="text-amber-500" />
                     Дэлгэрэнгүй
                   </h3>
-                  
+
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Тайлбар</label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      Тайлбар
+                    </label>
                     <textarea
                       rows={4}
                       className="w-full p-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all resize-none placeholder:text-slate-400"
                       placeholder="Барааны тухай дэлгэрэнгүй тайлбар..."
                       value={form.description}
-                      onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, description: e.target.value }))
+                      }
                     />
                   </div>
 
                   <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-4 space-y-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <p className="text-sm font-bold text-amber-900">Marketplace эхэнд гаргах</p>
+                        <p className="text-sm font-bold text-amber-900">
+                          Marketplace эхэнд гаргах
+                        </p>
                         <p className="mt-1 text-xs font-medium leading-5 text-amber-700">
-                          Асаасан бараа mglstore.mn дээр жагсаалт болон хайлтын эхэнд гарна.
+                          Асаасан бараа mglstore.mn дээр жагсаалт болон хайлтын
+                          эхэнд гарна.
                         </p>
                       </div>
                       <button
@@ -600,7 +808,10 @@ export function ProductFormModal({
                         onClick={() =>
                           setForm((f) => ({
                             ...f,
-                            marketplacePriority: Number(f.marketplacePriority || 0) > 0 ? "0" : "100",
+                            marketplacePriority:
+                              Number(f.marketplacePriority || 0) > 0
+                                ? "0"
+                                : "100",
                           }))
                         }
                         className={`shrink-0 rounded-xl px-4 py-2 text-sm font-bold transition-colors ${
@@ -609,11 +820,15 @@ export function ProductFormModal({
                             : "bg-white text-slate-600 ring-1 ring-amber-200 hover:bg-amber-100"
                         }`}
                       >
-                        {Number(form.marketplacePriority || 0) > 0 ? "Асаалттай" : "Унтраалттай"}
+                        {Number(form.marketplacePriority || 0) > 0
+                          ? "Асаалттай"
+                          : "Унтраалттай"}
                       </button>
                     </div>
                     <div className="space-y-2">
-                      <label className="text-sm font-semibold text-slate-700">Дарааллын оноо</label>
+                      <label className="text-sm font-semibold text-slate-700">
+                        Дарааллын оноо
+                      </label>
                       <input
                         type="number"
                         min="0"
@@ -621,12 +836,16 @@ export function ProductFormModal({
                         step="1"
                         className="w-full h-12 px-4 rounded-xl border border-amber-200 bg-white text-slate-900 text-sm outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 transition-all font-medium"
                         value={form.marketplacePriority}
-                        onChange={(e) => setForm((f) => ({ ...f, marketplacePriority: e.target.value }))}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            marketplacePriority: e.target.value,
+                          }))
+                        }
                       />
                     </div>
                   </div>
                 </div>
-
               </div>
 
               {/* Right Column: Media & Classification */}
@@ -636,18 +855,18 @@ export function ProductFormModal({
                   categories={categories}
                   products={products}
                   editingId={editingId}
-                  onApplyCategory={(id) =>
-                    applyBusinessCategory(id)
-                  }
+                  onApplyCategory={(id) => applyBusinessCategory(id)}
                   onApplyDescription={(description) =>
                     setForm((current) => ({ ...current, description }))
                   }
                   onSwitchToEdit={onSwitchToEdit}
                 />
-                
+
                 <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100 space-y-5">
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">Ангилал</label>
+                    <label className="text-sm font-semibold text-slate-700">
+                      Ангилал
+                    </label>
                     <CategorySelector
                       categories={categories}
                       value={form.businessCategoryId}
@@ -656,7 +875,9 @@ export function ProductFormModal({
                     {categoryDefaultTaxProductCode && (
                       <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold leading-5 text-emerald-700">
                         Ангиллын eBarimt default:{" "}
-                        <span className="font-black">{categoryDefaultTaxProductCode.code}</span>{" "}
+                        <span className="font-black">
+                          {categoryDefaultTaxProductCode.code}
+                        </span>{" "}
                         {categoryDefaultTaxProductCode.name}
                       </p>
                     )}
@@ -666,10 +887,11 @@ export function ProductFormModal({
                 <div className="bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
                   <ImageUploadGrid
                     images={form.images}
-                    onChange={(imgs) => setForm((f) => ({ ...f, images: imgs }))}
+                    onChange={(imgs) =>
+                      setForm((f) => ({ ...f, images: imgs }))
+                    }
                   />
                 </div>
-                
               </div>
             </div>
           </form>

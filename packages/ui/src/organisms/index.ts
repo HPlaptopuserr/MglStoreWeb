@@ -4,6 +4,7 @@ export * from "./DeliveryPackageDialog";
 export * from "./ForgotPasswordFlow";
 export * from "./LoginForm";
 export * from "./ProductLabelPrintDialog";
+export * from "./ProductCatalogView";
 export * from "./VerifyMnPanel";
 export * from "./VendorHeader";
 export * from "./VendorSidebar";

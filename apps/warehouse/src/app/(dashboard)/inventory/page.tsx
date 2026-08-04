@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Package,
   AlertTriangle,
-  XCircle,
   X,
   Calendar,
   Barcode,
@@ -17,9 +16,16 @@ import {
   Trash2,
   Edit3,
   Save,
+  BarChart3,
+  Layers3,
+  ShieldCheck,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 import { WarehouseCategoryPicker } from "@/features/categories";
+import {
+  ProductImageEditor,
+  WarehouseInventoryCatalog,
+} from "@/features/inventory";
 
 type InventoryItem = {
   id: string;
@@ -75,6 +81,7 @@ type EditInventoryForm = {
   batchNumber: string;
   expiryDate: string;
   note: string;
+  images: string[];
 };
 
 const toDateInputValue = (value: string | null) => {
@@ -94,6 +101,8 @@ export default function InventoryPage() {
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [editForm, setEditForm] = useState<EditInventoryForm | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -212,7 +221,52 @@ export default function InventoryPage() {
       batchNumber: item.batchNumber || "",
       expiryDate: toDateInputValue(item.expiryDate),
       note: item.note || "",
+      images: item.product.images.map((image) => image.url),
     });
+    setImageError(null);
+  };
+
+  const handleImageUpload = async (files: FileList) => {
+    if (!editForm) return;
+
+    const remaining = 5 - editForm.images.length;
+    const selectedFiles = Array.from(files).slice(0, remaining);
+    if (selectedFiles.length === 0) return;
+
+    setUploadingImages(true);
+    setImageError(null);
+    try {
+      const results = await Promise.allSettled(
+        selectedFiles.map(async (file) => {
+          const formData = new FormData();
+          formData.append("image", file);
+          const response = await wmsFetch(`${API}/products/upload-image`, {
+            method: "POST",
+            body: formData,
+          });
+          if (!response.ok) throw new Error("UPLOAD_FAILED");
+          const data = (await response.json()) as { url?: string };
+          if (!data.url) throw new Error("MISSING_URL");
+          return data.url;
+        }),
+      );
+
+      const uploaded = results.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+      setEditForm((current) =>
+        current
+          ? { ...current, images: [...current.images, ...uploaded].slice(0, 5) }
+          : current,
+      );
+      if (uploaded.length !== selectedFiles.length) {
+        setImageError("Зарим зураг хуулагдсангүй. Дахин оролдоно уу.");
+      }
+    } catch {
+      setImageError("Зураг хуулахад алдаа гарлаа. Дахин оролдоно уу.");
+    } finally {
+      setUploadingImages(false);
+    }
   };
 
   const openDetail = (item: InventoryItem) => {
@@ -301,13 +355,29 @@ export default function InventoryPage() {
         return;
       }
 
+      const imageResponse = await wmsFetch(
+        `${API}/products/${selectedItem.product.id}/images`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ images: editForm.images }),
+        },
+      );
+      if (!imageResponse.ok) {
+        setImageError("Бусад мэдээлэл хадгалагдсан ч зураг хадгалагдсангүй.");
+        return;
+      }
+
       const updated = await res.json();
+      const updatedImages = (await imageResponse.json()) as {
+        images?: { id: string; url: string }[];
+      };
       const nextItem: InventoryItem = {
         ...selectedItem,
         ...updated,
         product: {
           ...selectedItem.product,
           ...updated.product,
+          images: updatedImages.images || updated.product?.images || [],
         },
       };
 
@@ -436,241 +506,148 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* Stats bar */}
-      <div className="flex items-center gap-6 text-sm">
-        <div className="flex items-center gap-1.5">
-          <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-          <span className="text-slate-600">
-            Хэвийн{" "}
-            <span className="font-semibold text-slate-900">
-              {counts.healthy}
-            </span>
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-          <span className="text-slate-600">
-            Дутагдал{" "}
-            <span className="font-semibold text-slate-900">{counts.low}</span>
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
-          <span className="text-slate-600">
-            Дууссан{" "}
-            <span className="font-semibold text-slate-900">{counts.out}</span>
-          </span>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        {loading ? (
-          <div className="flex h-64 flex-col items-center justify-center gap-2">
-            <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
-            <p className="text-xs text-slate-400">Мэдээлэл татаж байна...</p>
-          </div>
-        ) : fetchError ? (
-          <div className="flex h-64 flex-col items-center justify-center gap-3 text-slate-400">
-            <Package className="h-8 w-8 text-red-300" />
-            <p className="text-sm font-medium text-slate-600">
-              Сервертэй холбогдоход алдаа гарлаа
-            </p>
-            <p className="text-xs text-slate-400">
-              Интернэт холболт болон серверийн байдлыг шалгана уу
-            </p>
-            <button
-              onClick={() => setRetryCount((c) => c + 1)}
-              className="mt-1 flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+      {/* Vendor-style summary cards */}
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {[
+          {
+            label: "Нийт бараа",
+            value: counts.total,
+            icon: Package,
+            color: "bg-indigo-50 text-indigo-600",
+          },
+          {
+            label: "Хэвийн",
+            value: counts.healthy,
+            icon: ShieldCheck,
+            color: "bg-emerald-50 text-emerald-600",
+          },
+          {
+            label: "Нийт нөөц",
+            value: inventory.reduce((sum, item) => sum + item.quantity, 0),
+            icon: BarChart3,
+            color: "bg-amber-50 text-amber-600",
+          },
+          {
+            label: "Байрлалтай",
+            value: inventory.filter((item) => Boolean(item.location)).length,
+            icon: Layers3,
+            color: "bg-blue-50 text-blue-600",
+          },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <div
+            key={label}
+            className="flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 shadow-sm transition-shadow hover:shadow-md sm:px-4"
+          >
+            <div
+              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg sm:h-10 sm:w-10 ${color}`}
             >
-              <Loader2 className="h-3.5 w-3.5" />
-              Дахин оролдох
-            </button>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex h-64 flex-col items-center justify-center gap-2 text-slate-400">
-            <Package className="h-8 w-8" />
-            <p className="text-sm">Бараа олдсонгүй</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-left text-xs uppercase tracking-wider text-slate-500">
-                  <th className="px-4 py-3 font-semibold">Төлөв</th>
-                  <th className="px-4 py-3 font-semibold">Бараа</th>
-                  <th className="px-4 py-3 font-semibold">SKU</th>
-                  <th className="px-4 py-3 font-semibold">Байрлал</th>
-                  <th className="px-4 py-3 text-right font-semibold">
-                    Гар дээрх
-                  </th>
-                  <th className="px-4 py-3 text-right font-semibold">Min</th>
-                  <th className="px-4 py-3 text-right font-semibold">Үнэ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginated.map((item) => {
-                  const status = getStatus(item);
-                  return (
-                    <tr
-                      key={item.id}
-                      onClick={() => openDetail(item)}
-                      className="border-b border-slate-50 cursor-pointer transition-colors last:border-0 hover:bg-blue-50"
-                    >
-                      <td className="px-4 py-3">
-                        {status === "out" ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
-                            <XCircle className="h-3 w-3" />
-                            Дууссан
-                          </span>
-                        ) : status === "low" ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">
-                            <AlertTriangle className="h-3 w-3" />
-                            Дутагдал
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700">
-                            Хэвийн
-                          </span>
-                        )}
-                      </td>
-                      <td className="min-w-60 px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-100 bg-slate-50">
-                            <Package className="h-5 w-5 text-slate-300" />
-                            {item.product.images[0]?.url && (
-                              <img
-                                src={item.product.images[0].url}
-                                alt={item.product.name}
-                                className="absolute inset-0 h-full w-full object-cover"
-                                onError={(event) => {
-                                  event.currentTarget.style.display = "none";
-                                }}
-                              />
-                            )}
-                          </div>
-                          <span className="font-medium text-slate-900">
-                            {item.product.name}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-slate-500">
-                        {item.product.sku || "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        {item.location ? (
-                          <span className="rounded bg-slate-100 px-2 py-0.5 font-mono text-xs text-slate-600">
-                            {item.location}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-slate-300">—</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <span
-                          className={`text-base font-bold ${
-                            status === "out"
-                              ? "text-red-600"
-                              : status === "low"
-                                ? "text-amber-600"
-                                : "text-slate-900"
-                          }`}
-                        >
-                          {item.quantity.toLocaleString()}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right text-slate-500">
-                        {item.minQuantity}
-                      </td>
-                      <td className="px-4 py-3 text-right text-slate-600">
-                        {Number(item.product.price).toLocaleString()}₮
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3">
-                <p className="text-xs text-slate-500">
-                  Нийт{" "}
-                  <span className="font-semibold text-slate-700">
-                    {filtered.length}
-                  </span>{" "}
-                  барааны{" "}
-                  <span className="font-semibold text-slate-700">
-                    {(currentPage - 1) * PAGE_SIZE + 1}–
-                    {Math.min(currentPage * PAGE_SIZE, filtered.length)}
-                  </span>
-                  -г харуулж байна
-                </p>
-
-                <div className="flex items-center gap-1">
-                  {/* Prev */}
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition-colors hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-
-                  {/* Page numbers with smart ellipsis */}
-                  {(() => {
-                    const pages: (number | "…")[] = [];
-                    if (totalPages <= 7) {
-                      for (let i = 1; i <= totalPages; i++) pages.push(i);
-                    } else {
-                      pages.push(1);
-                      if (currentPage > 3) pages.push("…");
-                      const start = Math.max(2, currentPage - 1);
-                      const end = Math.min(totalPages - 1, currentPage + 1);
-                      for (let i = start; i <= end; i++) pages.push(i);
-                      if (currentPage < totalPages - 2) pages.push("…");
-                      pages.push(totalPages);
-                    }
-                    return pages.map((p, idx) =>
-                      p === "…" ? (
-                        <span
-                          key={`e${idx}`}
-                          className="flex h-8 w-8 items-center justify-center text-xs text-slate-400"
-                        >
-                          …
-                        </span>
-                      ) : (
-                        <button
-                          key={p}
-                          onClick={() => setCurrentPage(p as number)}
-                          className={`flex h-8 w-8 items-center justify-center rounded-lg border text-xs font-semibold transition-colors ${
-                            currentPage === p
-                              ? "border-blue-500 bg-blue-600 text-white"
-                              : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:text-blue-600"
-                          }`}
-                        >
-                          {p}
-                        </button>
-                      ),
-                    );
-                  })()}
-
-                  {/* Next */}
-                  <button
-                    onClick={() =>
-                      setCurrentPage((p) => Math.min(totalPages, p + 1))
-                    }
-                    disabled={currentPage === totalPages}
-                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition-colors hover:border-blue-300 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
+              <Icon size={18} />
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-lg font-black leading-tight text-slate-900 sm:text-xl">
+                {value.toLocaleString()}
               </div>
-            )}
+              <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-500 sm:text-xs">
+                {label}
+              </div>
+            </div>
           </div>
-        )}
+        ))}
       </div>
+
+      <div className="flex min-w-0 items-center gap-2.5">
+        <h2 className="text-base font-bold text-slate-900 sm:text-lg">
+          Агуулахын бараа
+        </h2>
+        <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
+          {filtered.length} олдлоо
+        </span>
+      </div>
+
+      {/* Vendor-style inventory catalog */}
+      {loading ? (
+        <div className="flex h-64 flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+          <p className="text-xs text-slate-400">Мэдээлэл татаж байна...</p>
+        </div>
+      ) : fetchError ? (
+        <div className="flex h-64 flex-col items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white text-slate-400 shadow-sm">
+          <Package className="h-8 w-8 text-red-300" />
+          <p className="text-sm font-medium text-slate-600">
+            Сервертэй холбогдоход алдаа гарлаа
+          </p>
+          <p className="text-xs text-slate-400">
+            Интернэт холболт болон серверийн байдлыг шалгана уу
+          </p>
+          <button
+            onClick={() => setRetryCount((count) => count + 1)}
+            className="mt-1 flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition hover:bg-indigo-700"
+          >
+            Дахин оролдох
+          </button>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex h-64 flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-slate-400 shadow-sm">
+          <Package className="h-9 w-9" />
+          <p className="text-sm font-semibold text-slate-600">Бараа олдсонгүй</p>
+          <p className="text-xs">Хайлт эсвэл төлөвийн шүүлтүүрээ өөрчилнө үү.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <WarehouseInventoryCatalog
+            items={paginated}
+            onSelect={(itemId) => {
+              const item = paginated.find((candidate) => candidate.id === itemId);
+              if (item) openDetail(item);
+            }}
+            onEdit={(itemId) => {
+              const item = paginated.find((candidate) => candidate.id === itemId);
+              if (!item) return;
+              setSelectedItem(item);
+              openEdit(item);
+            }}
+          />
+
+          {totalPages > 1 && (
+            <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row">
+              <p className="text-xs text-slate-500">
+                Нийт <span className="font-bold text-slate-700">{filtered.length}</span>{" "}
+                барааны{" "}
+                <span className="font-bold text-slate-700">
+                  {(currentPage - 1) * PAGE_SIZE + 1}–
+                  {Math.min(currentPage * PAGE_SIZE, filtered.length)}
+                </span>
+                -г харуулж байна
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={currentPage === 1}
+                  aria-label="Өмнөх хуудас"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <span className="min-w-16 px-2 text-center text-xs font-bold text-slate-600">
+                  {currentPage} / {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                  }
+                  disabled={currentPage === totalPages}
+                  aria-label="Дараагийн хуудас"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Detail Modal */}
       {selectedItem && (
@@ -697,6 +674,20 @@ export default function InventoryPage() {
                 </div>
 
                 <div className="grid gap-4 sm:grid-cols-2">
+                  <ProductImageEditor
+                    images={editForm.images}
+                    productName={editForm.name || selectedItem.product.name}
+                    uploading={uploadingImages}
+                    error={imageError}
+                    onAdd={handleImageUpload}
+                    onRemove={(index) =>
+                      setEditForm({
+                        ...editForm,
+                        images: editForm.images.filter((_, i) => i !== index),
+                      })
+                    }
+                  />
+
                   <div className="sm:col-span-2">
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
                       Барааны нэр
@@ -995,14 +986,14 @@ export default function InventoryPage() {
                 <div className="sticky bottom-0 -mx-5 -mb-5 flex gap-3 border-t border-slate-100 bg-white px-5 py-4 sm:-mx-6 sm:-mb-6 sm:px-6">
                   <button
                     onClick={() => setEditForm(null)}
-                    disabled={savingEdit}
+                    disabled={savingEdit || uploadingImages}
                     className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   >
                     Болих
                   </button>
                   <button
                     onClick={handleSaveEdit}
-                    disabled={savingEdit}
+                    disabled={savingEdit || uploadingImages}
                     className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
                   >
                     {savingEdit ? (

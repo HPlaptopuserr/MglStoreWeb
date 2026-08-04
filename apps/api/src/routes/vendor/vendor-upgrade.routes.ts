@@ -1,9 +1,14 @@
-import { Router, type Router as ExpressRouter } from "express";
+import { Router, type Request, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
 import { requireAuth } from "../../middleware/auth";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import { syncOwnerPersonalMembershipFromOrgPlan } from "../../services/owner-membership-sync.service";
 import { calculatePlanExpiration } from "../../lib/plan-expiration";
+import {
+  MEMBERSHIP_SPONSORED_PLAN_ID,
+  resolveVendorPlanEntitlement,
+} from "../../services/vendor-plan-entitlement.service";
+import type { AuthPayload } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
@@ -16,9 +21,9 @@ export type Plan = {
   name: string;
   price: number;
   durationDays: number;
-  maxProducts: number;       // -1 = unlimited
-  maxImages: number;         // max images per product, -1 = unlimited
-  maxCategories: number;     // -1 = unlimited
+  maxProducts: number; // -1 = unlimited
+  maxImages: number; // max images per product, -1 = unlimited
+  maxCategories: number; // -1 = unlimited
   hasBanner: boolean;
   hasAnalytics: boolean;
   isTrial: boolean;
@@ -52,6 +57,21 @@ const MEMBERSHIP_VENDOR_LIMITS = {
   hasAnalytics: true,
 };
 
+const MEMBERSHIP_SPONSORED_PLAN: Plan = {
+  id: MEMBERSHIP_SPONSORED_PLAN_ID,
+  name: "Гишүүнчлэлийн эрх",
+  price: 0,
+  durationDays: 0,
+  isTrial: false,
+  badge: "Гишүүн",
+  benefits: [
+    "Түнш байгууллагын Vendor plan",
+    "Хязгааргүй бараа болон ангилал",
+    "Гишүүнчлэл идэвхтэй хугацаанд ашиглана",
+  ],
+  ...MEMBERSHIP_VENDOR_LIMITS,
+};
+
 export const PLANS: Plan[] = [
   {
     id: "silver_1m",
@@ -62,7 +82,10 @@ export const PLANS: Plan[] = [
     tier: "SILVER",
     durationMonths: 1,
     durationLabel: "1 сар",
-    benefits: ["Стандарт бүтээгдэхүүний хөнгөлөлт", "Стандарт хэрэглэгчийн дэмжлэг"],
+    benefits: [
+      "Стандарт бүтээгдэхүүний хөнгөлөлт",
+      "Стандарт хэрэглэгчийн дэмжлэг",
+    ],
     unavailable: ["Priority хүргэлтийн үйлчилгээ"],
     ...MEMBERSHIP_VENDOR_LIMITS,
   },
@@ -75,7 +98,10 @@ export const PLANS: Plan[] = [
     tier: "SILVER",
     durationMonths: 6,
     durationLabel: "6 сарын bundle · 180,000₮",
-    benefits: ["Стандарт бүтээгдэхүүний хөнгөлөлт", "Стандарт хэрэглэгчийн дэмжлэг"],
+    benefits: [
+      "Стандарт бүтээгдэхүүний хөнгөлөлт",
+      "Стандарт хэрэглэгчийн дэмжлэг",
+    ],
     unavailable: ["Priority хүргэлтийн үйлчилгээ"],
     ...MEMBERSHIP_VENDOR_LIMITS,
   },
@@ -215,7 +241,10 @@ const LEGACY_PLANS: Plan[] = [
 ];
 
 export function getPlan(id: string): Plan | undefined {
-  return PLANS.find((p) => p.id === id) ?? LEGACY_PLANS.find((p) => p.id === id);
+  if (id === MEMBERSHIP_SPONSORED_PLAN_ID) return MEMBERSHIP_SPONSORED_PLAN;
+  return (
+    PLANS.find((p) => p.id === id) ?? LEGACY_PLANS.find((p) => p.id === id)
+  );
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -260,12 +289,30 @@ async function getOrgForUser(userId: string, organizationId?: string | null) {
   });
 }
 
-function getRequestUserId(req: any) {
-  return req.user?.userId || req.user?.id || req.userId;
+interface VendorUpgradeRequest extends Request {
+  user?: AuthPayload;
 }
 
-function getRequestOrganizationId(req: any) {
-  return req.user?.organizationId || req.query?.organizationId || req.body?.organizationId || req.organizationId;
+function getRequestUserId(req: Request): string {
+  const userId = (req as VendorUpgradeRequest).user?.userId;
+  if (!userId) {
+    throw new Error("Authenticated user ID is missing");
+  }
+  return userId;
+}
+
+function getRequestOrganizationId(req: Request): string | undefined {
+  const request = req as VendorUpgradeRequest;
+  const queryOrganizationId = req.query.organizationId;
+  const body = req.body as { organizationId?: unknown } | undefined;
+
+  return (
+    request.user?.organizationId ??
+    (typeof queryOrganizationId === "string"
+      ? queryOrganizationId
+      : undefined) ??
+    (typeof body?.organizationId === "string" ? body.organizationId : undefined)
+  );
 }
 
 function activationData(plan: Plan) {
@@ -283,28 +330,34 @@ router.get("/vendor/upgrade/status", requireAuth, async (req, res) => {
   try {
     const userId = getRequestUserId(req);
     const org = await getOrgForUser(userId, getRequestOrganizationId(req));
-    if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
+    if (!org)
+      return res
+        .status(404)
+        .json({ success: false, message: "Байгууллага олдсонгүй" });
+    const entitlement = await resolveVendorPlanEntitlement(org.id);
+    if (!entitlement)
+      return res
+        .status(404)
+        .json({ success: false, message: "Байгууллага олдсонгүй" });
 
-    const pendingInvoice = await (prisma.orgUpgradePlan as any).findFirst({
+    const pendingInvoice = await prisma.orgUpgradePlan.findFirst({
       where: { organizationId: org.id, status: "PENDING" },
       orderBy: { createdAt: "desc" },
     });
-
-    const isActive =
-      org.subdomainEnabled && org.planExpiresAt
-        ? new Date(org.planExpiresAt) > new Date()
-        : false;
 
     return res.json({
       success: true,
       subdomainEnabled: org.subdomainEnabled,
       subdomain: `${org.slug}.mglstore.mn`,
-      planType: org.planType,
-      planActivatedAt: org.planActivatedAt,
-      planExpiresAt: org.planExpiresAt,
+      planType: entitlement.effectivePlanType,
+      planActivatedAt: entitlement.effectivePlanActivatedAt,
+      planExpiresAt: entitlement.effectivePlanExpiresAt,
       trialUsed: org.trialUsed,
-      isActive,
-      currentPlan: org.planType ? getPlan(org.planType) ?? null : null,
+      isActive: entitlement.isActive,
+      entitlementSource: entitlement.source,
+      currentPlan: entitlement.effectivePlanType
+        ? (getPlan(entitlement.effectivePlanType) ?? null)
+        : null,
       pendingInvoice: pendingInvoice
         ? {
             invoiceId: pendingInvoice.invoiceId,
@@ -331,19 +384,31 @@ router.post("/vendor/upgrade/trial", requireAuth, async (req, res) => {
   try {
     const userId = getRequestUserId(req);
     const org = await getOrgForUser(userId, getRequestOrganizationId(req));
-    if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
+    if (!org)
+      return res
+        .status(404)
+        .json({ success: false, message: "Байгууллага олдсонгүй" });
 
     if (org.trialUsed) {
-      return res.status(400).json({ success: false, message: "Үнэгүй туршилтыг аль хэдийн ашигласан байна" });
+      return res.status(400).json({
+        success: false,
+        message: "Үнэгүй туршилтыг аль хэдийн ашигласан байна",
+      });
     }
-    if (org.subdomainEnabled && org.planExpiresAt && new Date(org.planExpiresAt) > new Date()) {
-      return res.status(400).json({ success: false, message: "Идэвхтэй план аль хэдийн байна" });
+    if (
+      org.subdomainEnabled &&
+      org.planExpiresAt &&
+      new Date(org.planExpiresAt) > new Date()
+    ) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Идэвхтэй план аль хэдийн байна" });
     }
 
     const plan = getPlan("trial")!;
     const { now, expiresAt } = activationData(plan);
 
-    await (prisma.organization as any).update({
+    await prisma.organization.update({
       where: { id: org.id },
       data: {
         subdomainEnabled: true,
@@ -377,14 +442,19 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
 
     const plan = getPlan(planId);
     if (!plan || plan.isTrial) {
-      return res.status(400).json({ success: false, message: "Буруу план сонгосон" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Буруу план сонгосон" });
     }
 
     const org = await getOrgForUser(userId, getRequestOrganizationId(req));
-    if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
+    if (!org)
+      return res
+        .status(404)
+        .json({ success: false, message: "Байгууллага олдсонгүй" });
 
     // Cancel stale pending invoices
-    await (prisma.orgUpgradePlan as any).updateMany({
+    await prisma.orgUpgradePlan.updateMany({
       where: { organizationId: org.id, status: "PENDING" },
       data: { status: "CANCELLED" },
     });
@@ -396,10 +466,13 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
       orderNumber: invoiceNo,
       amount: plan.price,
       description: `MglStore Pro (${plan.name}) - ${org.name}`,
-      callbackConfig: { path: "/api/vendor/upgrade/callback", query: { orgId: org.id } },
+      callbackConfig: {
+        path: "/api/vendor/upgrade/callback",
+        query: { orgId: org.id },
+      },
     });
 
-    await (prisma.orgUpgradePlan as any).create({
+    await prisma.orgUpgradePlan.create({
       data: {
         organizationId: org.id,
         planType: planId,
@@ -422,74 +495,99 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error("upgrade initiate error", error);
-    return res.status(500).json({ success: false, message: "QPay нэхэмжлэл үүсгэхэд алдаа гарлаа" });
+    return res.status(500).json({
+      success: false,
+      message: "QPay нэхэмжлэл үүсгэхэд алдаа гарлаа",
+    });
   }
 });
 
 /**
  * POST /api/vendor/upgrade/check/:invoiceId
  */
-router.post("/vendor/upgrade/check/:invoiceId", requireAuth, async (req, res) => {
-  try {
-    const userId = getRequestUserId(req);
-    const { invoiceId } = req.params;
+router.post(
+  "/vendor/upgrade/check/:invoiceId",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const userId = getRequestUserId(req);
+      const { invoiceId } = req.params;
 
-    const org = await getOrgForUser(userId, getRequestOrganizationId(req));
-    if (!org) return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
+      const org = await getOrgForUser(userId, getRequestOrganizationId(req));
+      if (!org)
+        return res
+          .status(404)
+          .json({ success: false, message: "Байгууллага олдсонгүй" });
 
-    const dbPlan = await (prisma.orgUpgradePlan as any).findFirst({
-      where: { invoiceId, organizationId: org.id },
-    });
-    if (!dbPlan) return res.status(404).json({ success: false, message: "Нэхэмжлэл олдсонгүй" });
+      const dbPlan = await prisma.orgUpgradePlan.findFirst({
+        where: { invoiceId, organizationId: org.id },
+      });
+      if (!dbPlan)
+        return res
+          .status(404)
+          .json({ success: false, message: "Нэхэмжлэл олдсонгүй" });
 
-    if (dbPlan.status === "PAID") {
-      return res.json({ success: true, paid: true, message: "Төлбөр аль хэдийн баталгаажсан" });
-    }
-
-    const qpayCheck = await checkQPayPayment(invoiceId);
-    const isPaid = qpayCheck.count > 0 && qpayCheck.rows.some((r: any) => r.payment_status === "PAID");
-
-    if (isPaid) {
-      const plan = getPlan(dbPlan.planType)!;
-      const { now, expiresAt } = activationData(plan);
-
-      await prisma.$transaction(async (tx) => {
-        await (tx.orgUpgradePlan as any).update({
-          where: { id: dbPlan.id },
-          data: { status: "PAID", paidAt: now, expiresAt },
+      if (dbPlan.status === "PAID") {
+        return res.json({
+          success: true,
+          paid: true,
+          message: "Төлбөр аль хэдийн баталгаажсан",
         });
-        await (tx.organization as any).update({
-          where: { id: org.id },
-          data: {
-            subdomainEnabled: true,
-            planType: dbPlan.planType,
-            planActivatedAt: now,
-            planExpiresAt: expiresAt,
-          },
+      }
+
+      const qpayCheck = await checkQPayPayment(invoiceId);
+      const isPaid =
+        qpayCheck.count > 0 &&
+        qpayCheck.rows.some((row) => row.payment_status === "PAID");
+
+      if (isPaid) {
+        const plan = getPlan(dbPlan.planType)!;
+        const { now, expiresAt } = activationData(plan);
+
+        await prisma.$transaction(async (tx) => {
+          await tx.orgUpgradePlan.update({
+            where: { id: dbPlan.id },
+            data: { status: "PAID", paidAt: now, expiresAt },
+          });
+          await tx.organization.update({
+            where: { id: org.id },
+            data: {
+              subdomainEnabled: true,
+              planType: dbPlan.planType,
+              planActivatedAt: now,
+              planExpiresAt: expiresAt,
+            },
+          });
+          await syncOwnerPersonalMembershipFromOrgPlan({
+            prisma: tx,
+            organizationId: org.id,
+            paidAt: now,
+            expiresAt,
+          });
         });
-        await syncOwnerPersonalMembershipFromOrgPlan({
-          prisma: tx,
-          organizationId: org.id,
-          paidAt: now,
+
+        return res.json({
+          success: true,
+          paid: true,
+          subdomain: `${org.slug}.mglstore.mn`,
+          planType: dbPlan.planType,
           expiresAt,
         });
-      });
+      }
 
       return res.json({
         success: true,
-        paid: true,
-        subdomain: `${org.slug}.mglstore.mn`,
-        planType: dbPlan.planType,
-        expiresAt,
+        paid: false,
+        message: "Төлбөр хүлээгдэж байна",
       });
+    } catch (error) {
+      console.error("upgrade check error", error);
+      return res
+        .status(500)
+        .json({ success: false, message: "Серверийн алдаа" });
     }
-
-    return res.json({ success: true, paid: false, message: "Төлбөр хүлээгдэж байна" });
-  } catch (error) {
-    console.error("upgrade check error", error);
-    return res.status(500).json({ success: false, message: "Серверийн алдаа" });
-  }
-});
+  },
+);
 
 /**
  * POST /api/vendor/upgrade/callback  — QPay webhook
@@ -498,27 +596,39 @@ router.post("/vendor/upgrade/callback", async (req, res) => {
   try {
     const { orgId } = req.query as { orgId: string };
     const { invoice_id } = req.body || {};
-    if (!invoice_id || !orgId) return res.status(400).json({ message: "Missing params" });
+    if (!invoice_id || !orgId)
+      return res.status(400).json({ message: "Missing params" });
 
-    const dbPlan = await (prisma.orgUpgradePlan as any).findFirst({
-      where: { invoiceId: invoice_id, organizationId: orgId, status: "PENDING" },
+    const dbPlan = await prisma.orgUpgradePlan.findFirst({
+      where: {
+        invoiceId: invoice_id,
+        organizationId: orgId,
+        status: "PENDING",
+      },
     });
     if (!dbPlan) return res.status(200).json({ message: "already handled" });
 
     const qpayCheck = await checkQPayPayment(invoice_id);
-    const isPaid = qpayCheck.count > 0 && qpayCheck.rows.some((r: any) => r.payment_status === "PAID");
+    const isPaid =
+      qpayCheck.count > 0 &&
+      qpayCheck.rows.some((row) => row.payment_status === "PAID");
 
     if (isPaid) {
       const plan = getPlan(dbPlan.planType)!;
       const { now, expiresAt } = activationData(plan);
       await prisma.$transaction(async (tx) => {
-        await (tx.orgUpgradePlan as any).update({
+        await tx.orgUpgradePlan.update({
           where: { id: dbPlan.id },
           data: { status: "PAID", paidAt: now, expiresAt },
         });
-        await (tx.organization as any).update({
+        await tx.organization.update({
           where: { id: orgId },
-          data: { subdomainEnabled: true, planType: dbPlan.planType, planActivatedAt: now, planExpiresAt: expiresAt },
+          data: {
+            subdomainEnabled: true,
+            planType: dbPlan.planType,
+            planActivatedAt: now,
+            planExpiresAt: expiresAt,
+          },
         });
         await syncOwnerPersonalMembershipFromOrgPlan({
           prisma: tx,

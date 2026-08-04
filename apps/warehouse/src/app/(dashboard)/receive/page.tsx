@@ -19,16 +19,12 @@ import SkuGenerator from "@/components/SkuGenerator";
 import { ExcelImportModal } from "@/components/ExcelImportModal";
 import { API, wmsFetch } from "@/lib/api";
 import { WarehouseCategoryPicker } from "@/features/categories";
+import {
+  WarehouseVendorProductResults,
+  type WarehouseVendorProduct,
+} from "@/features/receive/WarehouseVendorProductResults";
 
-type Product = {
-  id: string;
-  name: string;
-  sku: string | null;
-  barcode: string | null;
-  price: string;
-  stock: number;
-  images?: { url: string }[];
-};
+type Product = WarehouseVendorProduct;
 
 type ReceiveItem = {
   productId: string;
@@ -204,6 +200,7 @@ export default function ReceivePage() {
 
   const totalQuantity = items.reduce((sum, i) => sum + i.quantity, 0);
   const totalCost = items.reduce((sum, i) => sum + i.quantity * i.cost, 0);
+  const selectedProductIds = new Set(items.map((item) => item.productId));
 
   // ───── Image handling (convert to base64 data URL) ─────
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -460,34 +457,11 @@ export default function ReceivePage() {
 
               {/* Search dropdown */}
               {searchResults.length > 0 && (
-                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-                  {searchResults.map((p) => (
-                    <button
-                      key={p.id}
-                      onClick={() => addItem(p)}
-                      disabled={items.some((i) => i.productId === p.id)}
-                      className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition-colors hover:bg-blue-50 disabled:opacity-40"
-                    >
-                      <div>
-                        <p className="font-medium text-slate-900">{p.name}</p>
-                        <p className="text-xs text-slate-500">
-                          {p.sku || p.barcode || "SKU байхгүй"} ·{" "}
-                          {Number(p.price).toLocaleString()}₮
-                          {typeof p.stock === "number" && (
-                            <span className="ml-1 text-slate-400">
-                              · Үлдэгдэл: {p.stock}
-                            </span>
-                          )}
-                        </p>
-                      </div>
-                      {items.some((i) => i.productId === p.id) ? (
-                        <span className="text-xs text-slate-400">Нэмсэн</span>
-                      ) : (
-                        <Plus className="h-4 w-4 text-blue-500" />
-                      )}
-                    </button>
-                  ))}
-                </div>
+                <WarehouseVendorProductResults
+                  products={searchResults}
+                  selectedIds={selectedProductIds}
+                  onSelect={addItem}
+                />
               )}
             </div>
 

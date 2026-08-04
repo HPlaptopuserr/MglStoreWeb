@@ -40,6 +40,7 @@ export interface Product {
 }
 
 export interface FormState {
+  masterProductId: string;
   name: string;
   sku: string;
   barcode: string;
@@ -60,6 +61,19 @@ export interface FormState {
   marketplacePriority: string;
   businessCategoryId: string;
   images: string[];
+}
+
+export interface MasterCatalogProduct {
+  id: string;
+  canonicalName: string;
+  barcode: string | null;
+  brand: string | null;
+  unit: string | null;
+  description: string | null;
+  imageUrl: string | null;
+  categoryName: string | null;
+  usageCount: number;
+  exactBarcodeMatch: boolean;
 }
 
 export interface PlanStatus {

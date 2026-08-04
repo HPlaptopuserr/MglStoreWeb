@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "dev": "turbo dev --filter=!@mgl/types --filter=!@mgl/pos-bridge",
+    "dev:health": "node scripts/check-dev-health.mjs",
     "build": "turbo build",
     "audit:architecture": "node scripts/audit-architecture.mjs",
     "audit:architecture:strict": "node scripts/audit-architecture.mjs --strict",
