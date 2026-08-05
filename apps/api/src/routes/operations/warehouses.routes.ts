@@ -1986,6 +1986,7 @@ router.patch(
         preorderLeadTimeDays,
         preorderNote,
         isActive,
+        images,
       } = req.body;
 
       const updateData: any = {};
@@ -2063,6 +2064,26 @@ router.patch(
       if (isActive !== undefined)
         productUpdateData.isActive = Boolean(isActive);
 
+      let imageUrls: string[] | undefined;
+      if (images !== undefined) {
+        if (!Array.isArray(images)) {
+          return res.status(400).json({
+            message: "Зургийн мэдээлэл буруу байна",
+          });
+        }
+        if (images.length > 5) {
+          return res.status(400).json({
+            message: "Нэг бараанд 5 хүртэл зураг хадгалах боломжтой",
+          });
+        }
+        imageUrls = images.map((image) => String(image).trim());
+        if (imageUrls.some((url) => !url)) {
+          return res.status(400).json({
+            message: "Зургийн холбоос хоосон байж болохгүй",
+          });
+        }
+      }
+
       const targetInventory = await prisma.warehouseInventory.findUnique({
         where: { warehouseId_productId: { warehouseId, productId } },
         select: { productId: true },
@@ -2085,6 +2106,15 @@ router.patch(
             where: { id: productId },
             data: productUpdateData,
           });
+        }
+
+        if (imageUrls !== undefined) {
+          await tx.productImage.deleteMany({ where: { productId } });
+          if (imageUrls.length > 0) {
+            await tx.productImage.createMany({
+              data: imageUrls.map((url) => ({ productId, url })),
+            });
+          }
         }
 
         const inv = await tx.warehouseInventory.update({

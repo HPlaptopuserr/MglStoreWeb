@@ -278,6 +278,7 @@ export default function InventoryPage() {
   const closeDetail = () => {
     setSelectedItem(null);
     setEditForm(null);
+    setImageError(null);
     setDeleteConfirm(false);
   };
 
@@ -345,6 +346,7 @@ export default function InventoryPage() {
             batchNumber: editForm.batchNumber.trim() || null,
             expiryDate: editForm.expiryDate || null,
             note: editForm.note.trim() || null,
+            images: editForm.images,
           }),
         },
       );
@@ -355,29 +357,14 @@ export default function InventoryPage() {
         return;
       }
 
-      const imageResponse = await wmsFetch(
-        `${API}/products/${selectedItem.product.id}/images`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({ images: editForm.images }),
-        },
-      );
-      if (!imageResponse.ok) {
-        setImageError("Бусад мэдээлэл хадгалагдсан ч зураг хадгалагдсангүй.");
-        return;
-      }
-
       const updated = await res.json();
-      const updatedImages = (await imageResponse.json()) as {
-        images?: { id: string; url: string }[];
-      };
       const nextItem: InventoryItem = {
         ...selectedItem,
         ...updated,
         product: {
           ...selectedItem.product,
           ...updated.product,
-          images: updatedImages.images || updated.product?.images || [],
+          images: updated.product?.images || [],
         },
       };
 
@@ -385,6 +372,7 @@ export default function InventoryPage() {
         prev.map((item) => (item.id === selectedItem.id ? nextItem : item)),
       );
       setSelectedItem(nextItem);
+      setImageError(null);
       setEditForm(null);
     } catch {
       alert("Бараа засахад алдаа гарлаа");
