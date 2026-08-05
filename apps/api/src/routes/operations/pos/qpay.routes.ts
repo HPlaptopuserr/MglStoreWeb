@@ -336,25 +336,14 @@ router.get("/pos/payments/qpay/status/:invoiceId", async (req, res) => {
       return res.status(403).json({ message: "Өөр байгууллагын QPay invoice харах боломжгүй" });
     }
 
-    // Auto-expire if past deadline
+    // Provider state is authoritative. Always reconcile first, even after the
+    // QR deadline: a bank payment can complete just before expiry while its
+    // callback/status check reaches us a little later.
     let current = invoice;
-    if (invoice.status === PosQPayStatus.PENDING && invoice.expiresAt <= new Date()) {
-      current = await prisma.qPayInvoice.update({
-        where: { id },
-        data: { status: PosQPayStatus.EXPIRED },
-        include: {
-          register: {
-            select: {
-              id: true,
-              organizationId: true,
-              qpayEnabled: true,
-              qpayMerchantId: true,
-              qpayTerminalId: true,
-            },
-          },
-        },
-      });
-    } else if (invoice.status === PosQPayStatus.PENDING) {
+    if (
+      invoice.status === PosQPayStatus.PENDING ||
+      invoice.status === PosQPayStatus.EXPIRED
+    ) {
       const payload = (invoice.webhookPayload || {}) as Record<string, unknown>;
       const providerInvoiceId = String(payload.providerInvoiceId || "").trim();
       if (providerInvoiceId) {
@@ -439,6 +428,30 @@ router.get("/pos/payments/qpay/status/:invoiceId", async (req, res) => {
             });
           }
         }
+      }
+
+      if (
+        current.status === PosQPayStatus.PENDING &&
+        invoice.expiresAt <= new Date()
+      ) {
+        await prisma.qPayInvoice.updateMany({
+          where: { id, status: PosQPayStatus.PENDING },
+          data: { status: PosQPayStatus.EXPIRED },
+        });
+        current = await prisma.qPayInvoice.findUniqueOrThrow({
+          where: { id },
+          include: {
+            register: {
+              select: {
+                id: true,
+                organizationId: true,
+                qpayEnabled: true,
+                qpayMerchantId: true,
+                qpayTerminalId: true,
+              },
+            },
+          },
+        });
       }
     }
 
