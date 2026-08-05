@@ -592,12 +592,14 @@ export function ProductFormModal({
                         <select
                           className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
                           value={form.taxType}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              taxType: e.target.value as typeof form.taxType,
-                            }))
-                          }
+                          onChange={(event) => {
+                            const taxType = event.currentTarget
+                              .value as FormState["taxType"];
+                            setForm((current) => ({
+                              ...current,
+                              taxType,
+                            }));
+                          }}
                         >
                           {TAX_TYPE_OPTIONS.map((option) => (
                             <option key={option.value} value={option.value}>
@@ -647,7 +649,7 @@ export function ProductFormModal({
                       <div className="space-y-2 sm:col-span-2">
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <label className="text-sm font-semibold text-slate-700">
-                            Tax product code
+                            Татварын ангиллын код (Tax product code)
                           </label>
                           {selectedTaxProductCode && (
                             <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">

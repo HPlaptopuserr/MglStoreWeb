@@ -38,6 +38,11 @@ import {
   VendorProductCatalog,
 } from "@/features/products";
 
+type TaxCodeFilter = "all" | "with-code" | "without-code";
+
+const hasTaxProductCode = (product: Product) =>
+  Boolean(product.taxProductCode?.trim());
+
 const EMPTY_FORM: FormState = {
   masterProductId: "",
   name: "",
@@ -100,6 +105,7 @@ export default function ProductsPage() {
   const [statusFilter, setStatusFilter] = useState<
     "all" | "active" | "inactive"
   >("all");
+  const [taxCodeFilter, setTaxCodeFilter] = useState<TaxCodeFilter>("all");
   const [typeFilter, setTypeFilter] = useState<"all" | "stock" | "preorder">(
     "all",
   );
@@ -157,7 +163,9 @@ export default function ProductsPage() {
         includeExpiredInventory: "1",
         includeInactive: "1",
       });
-      const res = await authFetch(`${API}/products?${params.toString()}`);
+      const res = await authFetch(`${API}/products?${params.toString()}`, {
+        cache: "no-store",
+      });
       if (!res.ok) {
         const raw = await res.text().catch(() => "");
         let message = "Бараа ачаалахад алдаа гарлаа";
@@ -449,12 +457,28 @@ export default function ProductsPage() {
         throw new Error(err.message || "Алдаа гарлаа");
       }
 
+      const savedProduct = (await res
+        .json()
+        .catch(() => null)) as Product | null;
+      if (savedProduct?.id) {
+        setProducts((current) => {
+          const exists = current.some(
+            (product) => product.id === savedProduct.id,
+          );
+          return exists
+            ? current.map((product) =>
+                product.id === savedProduct.id ? savedProduct : product,
+              )
+            : [savedProduct, ...current];
+        });
+      }
+
       showToast(
         "success",
         editingId ? "Бараа шинэчлэгдлээ" : "Бараа амжилттай нэмэгдлээ",
       );
       closeForm();
-      fetchProducts();
+      await fetchProducts();
     } catch (err) {
       showToast("error", err instanceof Error ? err.message : "Алдаа гарлаа");
     } finally {
@@ -513,14 +537,22 @@ export default function ProductsPage() {
       const matchSearch =
         p.name.toLowerCase().includes(query) ||
         (p.sku || "").toLowerCase().includes(query) ||
-        (p.barcode || "").toLowerCase().includes(query);
+        (p.barcode || "").toLowerCase().includes(query) ||
+        (p.taxProductCode || "").toLowerCase().includes(query) ||
+        (p.classificationCode || "").toLowerCase().includes(query);
 
       const matchStatus =
         statusFilter === "all" ||
         (statusFilter === "active" && p.isActive) ||
         (statusFilter === "inactive" && !p.isActive);
 
-      return matchSearch && matchStatus;
+      const hasTaxCode = hasTaxProductCode(p);
+      const matchTaxCode =
+        taxCodeFilter === "all" ||
+        (taxCodeFilter === "with-code" && hasTaxCode) ||
+        (taxCodeFilter === "without-code" && !hasTaxCode);
+
+      return matchSearch && matchStatus && matchTaxCode;
     })
     .sort(
       (a, b) =>
@@ -648,7 +680,7 @@ export default function ProductsPage() {
             />
             <input
               className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-white text-sm font-medium outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all shadow-sm"
-              placeholder="Нэр, SKU хайх..."
+              placeholder="Нэр, SKU, татварын код хайх..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -754,8 +786,8 @@ export default function ProductsPage() {
             color: "bg-amber-50 text-amber-600",
           },
           {
-            label: "Ангилалтай",
-            value: visibleProducts.filter((p) => p.businessCategoryId).length,
+            label: "Татварын кодтой",
+            value: visibleProducts.filter(hasTaxProductCode).length,
             icon: Layers,
             color: "bg-blue-50 text-blue-600",
           },
@@ -1037,9 +1069,13 @@ export default function ProductsPage() {
             <h3 className="text-xl font-bold text-slate-800 mb-2">
               {searchQuery
                 ? "Хайлтад тохирох бараа олдсонгүй"
-                : isPreorderView
-                  ? "Та хараахан захиалгын бараа нэмээгүй байна"
-                  : "Та хараахан бараа нэмээгүй байна"}
+                : taxCodeFilter === "with-code"
+                  ? "Татварын ангиллын кодтой бараа олдсонгүй"
+                  : taxCodeFilter === "without-code"
+                    ? "Татварын ангиллын кодгүй бараа олдсонгүй"
+                    : isPreorderView
+                      ? "Та хараахан захиалгын бараа нэмээгүй байна"
+                      : "Та хараахан бараа нэмээгүй байна"}
             </h3>
             <p className="text-sm text-slate-500 max-w-md mx-auto mb-8">
               {searchQuery
@@ -1048,7 +1084,16 @@ export default function ProductsPage() {
                   ? "Захиалгаар ирэх бараагаа тусад нь бүртгэж web дээр захиалгаар харуулна."
                   : "Эхний бараагаа бүртгэж борлуулалтаа эхлүүлээрэй. Excel файл ашиглан олноор нь оруулах боломжтой."}
             </p>
-            {!searchQuery && (
+            {!searchQuery && taxCodeFilter !== "all" && (
+              <button
+                type="button"
+                onClick={() => setTaxCodeFilter("all")}
+                className="inline-flex h-11 items-center rounded-xl bg-emerald-600 px-6 text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-colors hover:bg-emerald-700"
+              >
+                Бүх барааг харах
+              </button>
+            )}
+            {!searchQuery && taxCodeFilter === "all" && (
               <div className="flex flex-col items-center justify-center gap-3 sm:flex-row">
                 <button
                   onClick={() => setImportOpen(true)}
@@ -1080,7 +1125,7 @@ export default function ProductsPage() {
             onToggleActive={handleToggleActive}
             onDelete={handleDelete}
             toolbar={
-              <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center">
+              <div className="flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center">
                 <div className="flex shrink-0 items-center gap-2.5">
                   <h2 className="text-base font-bold text-slate-900 sm:text-lg">
                     {isPreorderView ? "Захиалгын бараа" : "Миний бараа"}
@@ -1089,7 +1134,7 @@ export default function ProductsPage() {
                     {filtered.length} олдлоо
                   </span>
                 </div>
-                <div className="flex w-full items-center gap-0.5 overflow-x-auto rounded-xl border border-slate-200 bg-white p-0.5 shadow-sm lg:ml-auto lg:w-auto">
+                <div className="flex w-full items-center gap-0.5 overflow-x-auto rounded-xl border border-slate-200 bg-white p-0.5 shadow-sm xl:ml-auto xl:w-auto">
                   {[
                     {
                       key: "all",
@@ -1125,6 +1170,51 @@ export default function ProductsPage() {
                         className={`ml-2 text-xs ${statusFilter === btn.key ? "text-indigo-200" : "opacity-60"}`}
                       >
                         {btn.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <div className="flex w-full items-center gap-0.5 overflow-x-auto rounded-xl border border-emerald-200 bg-white p-0.5 shadow-sm xl:w-auto">
+                  {[
+                    {
+                      key: "with-code",
+                      label: "Татварын кодтой",
+                      count: visibleProducts.filter(hasTaxProductCode).length,
+                    },
+                    {
+                      key: "without-code",
+                      label: "Татварын кодгүй",
+                      count: visibleProducts.filter(
+                        (product) => !hasTaxProductCode(product),
+                      ).length,
+                    },
+                  ].map((button) => (
+                    <button
+                      key={button.key}
+                      type="button"
+                      aria-pressed={taxCodeFilter === button.key}
+                      onClick={() =>
+                        setTaxCodeFilter((current) =>
+                          current === button.key
+                            ? "all"
+                            : (button.key as TaxCodeFilter),
+                        )
+                      }
+                      className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all sm:px-3.5 ${
+                        taxCodeFilter === button.key
+                          ? "bg-emerald-600 text-white shadow-md"
+                          : "text-slate-500 hover:bg-emerald-50 hover:text-emerald-700"
+                      }`}
+                    >
+                      {button.label}
+                      <span
+                        className={`ml-2 text-xs ${
+                          taxCodeFilter === button.key
+                            ? "text-emerald-100"
+                            : "opacity-60"
+                        }`}
+                      >
+                        {button.count}
                       </span>
                     </button>
                   ))}
