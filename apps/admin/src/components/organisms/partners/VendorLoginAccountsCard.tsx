@@ -21,8 +21,8 @@ import {
   X,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
-import { VendorLoginAccountSelector } from "./VendorLoginAccountSelector";
 import { VendorLoginContextOverview } from "./VendorLoginContextOverview";
+import { VendorLoginGrantDialog } from "./VendorLoginGrantDialog";
 import {
   assignableVendorLoginRoles,
   type PartnerForLoginAccounts,
@@ -467,7 +467,7 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
             </div>
             <button
               onClick={() => {
-                setGrantOpen((value) => !value);
+                setGrantOpen(true);
                 setGrantError("");
                 setGrantNotice("");
                 setSelectedAccount(null);
@@ -475,8 +475,8 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
               }}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-black text-white shadow-sm transition hover:bg-slate-800"
             >
-              {grantOpen ? <X size={14} /> : <Plus size={14} />}
-              {grantOpen ? "Form хаах" : "Login эрх олгох"}
+              <Plus size={14} />
+              Login эрх олгох
             </button>
           </div>
         </div>
@@ -484,69 +484,6 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
 
       <div className="space-y-4 p-5">
         <VendorLoginContextOverview members={members} partner={partner} />
-
-        {grantOpen && (
-          <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 shadow-sm">
-            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h4 className="text-sm font-black text-indigo-950">Vendor login эрх шинээр олгох</h4>
-                <p className="text-xs font-semibold leading-5 text-indigo-700">
-                  Энэ user vendor portal дээр login email эсвэл login утсаар нэвтэрнэ.
-                </p>
-              </div>
-              <span className="rounded-full bg-white px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-indigo-600">
-                {members.length === 0 ? "First owner" : "Additional user"}
-              </span>
-            </div>
-
-            {grantError && (
-              <div className="mb-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                <p>{grantError}</p>
-                <p className="mt-1 text-xs font-medium leading-5 text-red-600">
-                  Оруулсан login email: {grantForm.email.trim() || "хоосон"}
-                </p>
-              </div>
-            )}
-
-            {grantNotice && (
-              <div className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800">
-                <p>{grantNotice}</p>
-                <p className="mt-1 text-xs font-medium leading-5 text-emerald-700">
-                  Одоо дээрх “Нэвтрэх боломжтой user-үүд” хэсэгт бодит login account харагдана.
-                </p>
-              </div>
-            )}
-
-            <VendorLoginAccountSelector
-              selectedAccount={selectedAccount}
-              onSelectedAccountChange={handleSelectedAccountChange}
-              role={grantForm.role}
-              onRoleChange={(role) => setGrantForm((prev) => ({ ...prev, role }))}
-              disabledUserIds={memberUserIds}
-              title="Vendor login эрх шинээр олгох"
-              description="Personal account сонгож энэ байгууллагын page role онооно."
-              badge={members.length === 0 ? "First owner" : "Additional user"}
-            />
-
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs font-semibold leading-5 text-indigo-700">
-                Сонгосон personal account-д энэ байгууллагын page role онооно.
-              </p>
-              <button
-                onClick={grantLoginAccess}
-                disabled={
-                  busyAction === "grant-login" ||
-                  !selectedAccount ||
-                  !isValidEmail(grantForm.email)
-                }
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
-              >
-                {busyAction === "grant-login" ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
-                Эрх олгох
-              </button>
-            </div>
-          </div>
-        )}
 
         {phoneNotice && (
           <div className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm font-bold leading-6 text-indigo-800">
@@ -801,6 +738,28 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
           </div>
         )}
       </div>
+
+      {grantOpen ? (
+        <VendorLoginGrantDialog
+          memberCount={members.length}
+          error={grantError}
+          notice={grantNotice}
+          selectedAccount={selectedAccount}
+          role={grantForm.role}
+          disabledUserIds={memberUserIds}
+          submittedEmail={grantForm.email}
+          isSubmitting={busyAction === "grant-login"}
+          canSubmit={Boolean(selectedAccount && isValidEmail(grantForm.email))}
+          onSelectedAccountChange={handleSelectedAccountChange}
+          onRoleChange={(role) => setGrantForm((prev) => ({ ...prev, role }))}
+          onSubmit={grantLoginAccess}
+          onClose={() => {
+            setGrantOpen(false);
+            setGrantError("");
+            setGrantNotice("");
+          }}
+        />
+      ) : null}
     </section>
   );
 }

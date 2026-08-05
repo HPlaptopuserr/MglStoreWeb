@@ -129,6 +129,7 @@ const toBusinessAppControlPayload = (organization: {
   businessInventoryEnabled: boolean;
   businessAttendanceEnabled: boolean;
   businessAttendanceManualEnabled: boolean;
+  salesRepVendorRestrictionEnabled: boolean;
   businessTasksEnabled: boolean;
   businessDeliveryEnabled: boolean;
   ceoServiceEnabled: boolean;
@@ -178,6 +179,7 @@ const toBusinessAppControlPayload = (organization: {
   },
   settings: {
     attendanceManual: organization.businessAttendanceManualEnabled,
+    restrictSalesRepVendors: organization.salesRepVendorRestrictionEnabled,
   },
   members: organization.members?.map(mapOrganizationLoginMember) ?? [],
 });
@@ -521,6 +523,7 @@ router.get(
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
           businessAttendanceManualEnabled: true,
+          salesRepVendorRestrictionEnabled: true,
           businessTasksEnabled: true,
           businessDeliveryEnabled: true,
           ceoServiceEnabled: true,
@@ -593,6 +596,7 @@ router.patch(
         };
         settings?: {
           attendanceManual?: boolean;
+          restrictSalesRepVendors?: boolean;
         };
         ceoService?: {
           enabled?: boolean;
@@ -646,6 +650,11 @@ router.patch(
           body.settings.attendanceManual,
         );
       }
+      if (body.settings?.restrictSalesRepVendors !== undefined) {
+        data.salesRepVendorRestrictionEnabled = Boolean(
+          body.settings.restrictSalesRepVendors,
+        );
+      }
       if (body.ceoService) {
         if (body.ceoService.enabled !== undefined) {
           data.ceoServiceEnabled = Boolean(body.ceoService.enabled);
@@ -690,6 +699,7 @@ router.patch(
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
           businessAttendanceManualEnabled: true,
+          salesRepVendorRestrictionEnabled: true,
           businessTasksEnabled: true,
           businessDeliveryEnabled: true,
           ceoServiceEnabled: true,

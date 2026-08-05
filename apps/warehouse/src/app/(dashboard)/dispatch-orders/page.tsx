@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Loader2,
   Package,
@@ -20,12 +20,10 @@ import {
   RotateCcw,
   ThumbsUp,
   ThumbsDown,
+  RefreshCw,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
-import {
-  DeliveryPackageDialog,
-  type DeliveryPackageDetails,
-} from "@mgl/ui";
+import { DeliveryPackageDialog, type DeliveryPackageDetails } from "@mgl/ui";
 import { fetchDeliveryAssignmentOptions } from "@/features/online-orders/online-order.api";
 import type { DeliveryAssignmentPartnership } from "@/features/online-orders/online-order.types";
 
@@ -229,7 +227,9 @@ function paymentStatusClass(status?: string | null) {
   }
 }
 
-function paymentOutstanding(payment: NonNullable<Dispatch["request"]["payment"]>) {
+function paymentOutstanding(
+  payment: NonNullable<Dispatch["request"]["payment"]>,
+) {
   return Math.max(
     0,
     Number(payment.totalAmount || 0) - Number(payment.paidAmount || 0),
@@ -241,6 +241,12 @@ export default function DispatchOrdersPage() {
   const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [warehouseLoadError, setWarehouseLoadError] = useState<string | null>(
+    null,
+  );
 
   // Detail / action modals
   const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(
@@ -295,38 +301,80 @@ export default function DispatchOrdersPage() {
 
   // ───── Load warehouses ─────
   useEffect(() => {
+    setWarehouseLoadError(null);
     wmsFetch(`${API}/warehouses`)
-      .then((r) => r.json())
+      .then(async (response) => {
+        const body = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(
+            body?.message || "Агуулахын мэдээлэл авахад алдаа гарлаа",
+          );
+        }
+        return body;
+      })
       .then((data) => {
         const list = Array.isArray(data) ? data : data.warehouses || [];
         setWarehouses(list);
         if (list.length > 0) setSelectedWarehouseId(list[0].id);
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        setWarehouseLoadError(
+          error instanceof Error
+            ? error.message
+            : "Агуулахын мэдээлэл авахад алдаа гарлаа",
+        );
+      });
   }, []);
 
-  // ───── Fetch dispatches when warehouse changes ─────
+  const fetchDispatches = useCallback(
+    async (silent = false) => {
+      if (!selectedWarehouseId) return;
+      if (silent) setRefreshing(true);
+      else setLoading(true);
+      try {
+        setLoadError(null);
+        const response = await wmsFetch(
+          `${API}/stock-requests/warehouse/${selectedWarehouseId}/dispatches`,
+        );
+        const body = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(
+            body?.message || "Илгээмжийн захиалга авахад алдаа гарлаа",
+          );
+        }
+        setDispatches(Array.isArray(body) ? body : []);
+        setLastUpdatedAt(new Date());
+      } catch (error) {
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Илгээмжийн захиалга авахад алдаа гарлаа",
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [selectedWarehouseId],
+  );
+
+  // Keep the warehouse queue live while admin approves new requests.
   useEffect(() => {
     if (!selectedWarehouseId) return;
-    fetchDispatches();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedWarehouseId]);
-
-  const fetchDispatches = async () => {
-    setLoading(true);
-    try {
-      const res = await wmsFetch(
-        `${API}/stock-requests/warehouse/${selectedWarehouseId}/dispatches`,
-      );
-      if (res.ok) {
-        setDispatches(await res.json());
-      }
-    } catch {
-      /* ignore */
-    } finally {
-      setLoading(false);
-    }
-  };
+    void fetchDispatches();
+    const interval = window.setInterval(
+      () => void fetchDispatches(true),
+      15_000,
+    );
+    const refreshOnFocus = () => {
+      if (document.visibilityState === "visible") void fetchDispatches(true);
+    };
+    document.addEventListener("visibilitychange", refreshOnFocus);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshOnFocus);
+    };
+  }, [fetchDispatches, selectedWarehouseId]);
 
   // ───── Actions ─────
   const confirmDispatch = async (
@@ -604,6 +652,27 @@ export default function DispatchOrdersPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <div className="hidden text-right sm:block">
+            <p className="text-xs font-medium text-slate-500">
+              15 секунд тутам шинэчилнэ
+            </p>
+            {lastUpdatedAt && (
+              <p className="text-[11px] text-slate-400">
+                Сүүлд: {lastUpdatedAt.toLocaleTimeString("mn-MN")}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchDispatches(true)}
+            disabled={!selectedWarehouseId || refreshing}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:border-blue-300 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <RefreshCw
+              className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+            />
+            Шинэчлэх
+          </button>
           {warehouses.length > 1 && (
             <select
               value={selectedWarehouseId}
@@ -619,6 +688,31 @@ export default function DispatchOrdersPage() {
           )}
         </div>
       </div>
+
+      {(warehouseLoadError || loadError) && (
+        <div className="flex items-start justify-between gap-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="font-semibold">
+                Захиалгын мэдээлэл шинэчлэгдсэнгүй
+              </p>
+              <p className="mt-0.5 text-xs text-red-600">
+                {warehouseLoadError || loadError}
+              </p>
+            </div>
+          </div>
+          {selectedWarehouseId && (
+            <button
+              type="button"
+              onClick={() => void fetchDispatches(true)}
+              className="shrink-0 rounded-lg bg-white px-3 py-1.5 text-xs font-bold shadow-sm"
+            >
+              Дахин оролдох
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
@@ -1204,9 +1298,7 @@ export default function DispatchOrdersPage() {
           onClose={() => {
             if (!actionLoading) setShowPackageDialog(false);
           }}
-          onSubmit={(details) =>
-            confirmDispatch(selectedDispatch.id, details)
-          }
+          onSubmit={(details) => confirmDispatch(selectedDispatch.id, details)}
         />
       )}
 

@@ -50,7 +50,16 @@ import {
   routeWarehouseDispatchDelivery,
 } from "../../services/delivery-routing.service";
 import { parseDeliveryPackageDetails } from "../../services/delivery-package.service";
+import {
+  getOutstandingStockPayments,
+  serializeOutstandingPayment,
+} from "../../services/outstanding-stock-payment.service";
 import { transferStockToVendor } from "../../services/stock-transfer.service";
+import {
+  canAdminAdvanceStockRequest,
+  effectiveWarehouseDispatchStatus,
+  warehouseDispatchRequiredMessage,
+} from "../../services/stock-request-routing.policy";
 import { recommendationService } from "../../services/recommendations/recommendation.service";
 
 const router: ExpressRouter = Router();
@@ -75,10 +84,7 @@ const padaanImageUpload = multer({
   },
 });
 
-router.use(
-  "/stock-requests/padaan/uploads",
-  express.static(padaanUploadsDir),
-);
+router.use("/stock-requests/padaan/uploads", express.static(padaanUploadsDir));
 const DISPATCH_STATUSES = [
   "PENDING",
   "CONFIRMED",
@@ -263,51 +269,6 @@ router.post(
     return res.json(await buildProcurementAdvice(normalized));
   },
 );
-
-const getOutstandingStockPayments = async (
-  organizationId: string,
-  excludePaymentId?: string,
-) => {
-  const payments = await prisma.stockRequestPayment.findMany({
-    where: {
-      organizationId,
-      status: { not: PaymentStatus.CANCELLED },
-      request: {
-        status: {
-          notIn: [StockRequestStatus.CANCELLED, StockRequestStatus.REJECTED],
-        },
-      },
-      ...(excludePaymentId ? { id: { not: excludePaymentId } } : {}),
-    },
-    include: {
-      request: { select: { requestNumber: true } },
-    },
-    orderBy: { createdAt: "asc" },
-  });
-
-  return payments
-    .map((payment) => ({
-      ...payment,
-      outstandingAmount: Math.max(
-        0,
-        Number(payment.totalAmount) - Number(payment.paidAmount),
-      ),
-    }))
-    .filter((payment) => payment.outstandingAmount > 0);
-};
-
-const serializeOutstandingPayment = (
-  payment: Awaited<ReturnType<typeof getOutstandingStockPayments>>[number],
-) => ({
-  id: payment.id,
-  invoiceNumber: payment.invoiceNumber,
-  requestNumber: payment.request.requestNumber,
-  outstandingAmount: payment.outstandingAmount,
-  totalAmount: Number(payment.totalAmount),
-  paidAmount: Number(payment.paidAmount),
-  status: payment.status,
-  dueDate: payment.dueDate,
-});
 
 // Generate dispatch number  DSP-YYMMDDSSSSS
 const generateDispatchNumber = async (): Promise<string> => {
@@ -627,9 +588,7 @@ router.post(
     try {
       const { id } = req.params;
       if (!req.file) {
-        return res
-          .status(400)
-          .json({ message: "Падааны зураг шаардлагатай" });
+        return res.status(400).json({ message: "Падааны зураг шаардлагатай" });
       }
 
       const request = await findEditablePadaanRequest(req, res, id);
@@ -719,7 +678,9 @@ router.post(
           },
         },
         select: {
-          warehouse: { select: { type: true, isActive: true, deletedAt: true } },
+          warehouse: {
+            select: { type: true, isActive: true, deletedAt: true },
+          },
         },
       });
 
@@ -1066,10 +1027,18 @@ router.patch("/stock-requests/:id/process", requireAuth, async (req, res) => {
 
     const request = await prisma.warehouseStockRequest.findUnique({
       where: { id },
+      include: { dispatch: { select: { id: true } } },
     });
 
     if (!request) {
       return res.status(404).json({ message: "Хүсэлт олдсонгүй" });
+    }
+
+    if (!canAdminAdvanceStockRequest(request.dispatch)) {
+      return res.status(409).json({
+        code: "WAREHOUSE_DISPATCH_REQUIRED",
+        message: warehouseDispatchRequiredMessage,
+      });
     }
 
     if (request.status !== StockRequestStatus.APPROVED) {
@@ -1101,11 +1070,18 @@ router.patch("/stock-requests/:id/complete", requireAuth, async (req, res) => {
 
     const request = await prisma.warehouseStockRequest.findUnique({
       where: { id },
-      include: { items: true },
+      include: { items: true, dispatch: { select: { id: true } } },
     });
 
     if (!request) {
       return res.status(404).json({ message: "Хүсэлт олдсонгүй" });
+    }
+
+    if (!canAdminAdvanceStockRequest(request.dispatch)) {
+      return res.status(409).json({
+        code: "WAREHOUSE_DISPATCH_REQUIRED",
+        message: warehouseDispatchRequiredMessage,
+      });
     }
 
     if (
@@ -1251,7 +1227,9 @@ router.get(
         },
         select: {
           warehouseId: true,
-          warehouse: { select: { type: true, isActive: true, deletedAt: true } },
+          warehouse: {
+            select: { type: true, isActive: true, deletedAt: true },
+          },
         },
       });
       if (
@@ -1828,10 +1806,7 @@ router.get(
         });
       }
 
-      const limit = Math.min(
-        12,
-        Math.max(1, Number(req.query.limit) || 8),
-      );
+      const limit = Math.min(12, Math.max(1, Number(req.query.limit) || 8));
       return res.json(
         await recommendationService.recommend({
           organizationId,
@@ -2480,7 +2455,19 @@ router.get(
         orderBy: { createdAt: "desc" },
       });
 
-      res.json(dispatches);
+      res.json(
+        dispatches.map((dispatch) => ({
+          ...dispatch,
+          status: effectiveWarehouseDispatchStatus(
+            dispatch.status,
+            dispatch.request.status,
+          ),
+          deliveredAt:
+            dispatch.request.status === StockRequestStatus.COMPLETED
+              ? dispatch.deliveredAt || dispatch.request.completedAt
+              : dispatch.deliveredAt,
+        })),
+      );
     } catch (error) {
       console.error("get warehouse dispatches error", error);
       res.status(500).json({
@@ -2578,6 +2565,14 @@ router.patch(
       }
       if (!(await assertWarehouseAccess(req, res, dispatch.warehouseId)))
         return;
+
+      if (dispatch.request.status === StockRequestStatus.COMPLETED) {
+        return res.status(409).json({
+          code: "STOCK_REQUEST_ALREADY_COMPLETED",
+          message:
+            "Энэ захиалга өмнө нь дууссан тул дахин бараа гаргах боломжгүй",
+        });
+      }
 
       if (dispatch.status !== "PENDING") {
         return res.status(400).json({

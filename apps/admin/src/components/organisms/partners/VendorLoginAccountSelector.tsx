@@ -21,6 +21,7 @@ type Props = {
   title?: string;
   description?: string;
   badge?: string;
+  autoFocus?: boolean;
 };
 
 const MIN_SEARCH_LENGTH = 3;
@@ -45,6 +46,7 @@ export function VendorLoginAccountSelector({
   title = "Vendor login эрх шинээр олгох",
   description = "Personal account сонгож тухайн байгууллагын page role онооно.",
   badge = "Personal account",
+  autoFocus = false,
 }: Props) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -191,6 +193,7 @@ export function VendorLoginAccountSelector({
             <div className="relative">
               <input
                 type="search"
+                autoFocus={autoFocus}
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Нэр, email, утсаар хайх"

@@ -310,6 +310,11 @@ export function MglBusinessTab() {
                 onToggle={toggleSetting}
               />
 
+              <SalesRepresentativeBehaviorControls
+                settings={draftSettings}
+                onToggle={toggleSetting}
+              />
+
               <CeoServiceControlPanel
                 controls={draftCeoService}
                 onToggle={toggleCeoService}
@@ -797,6 +802,70 @@ function AttendanceBehaviorControls({
         </span>
       </button>
     </div>
+  );
+}
+
+function SalesRepresentativeBehaviorControls({
+  settings,
+  onToggle,
+}: {
+  settings: BusinessAppSettings;
+  onToggle: (key: keyof BusinessAppSettings) => void;
+}) {
+  const restricted = settings.restrictSalesRepVendors;
+  return (
+    <section className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+      <div className="mb-3 flex items-start gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
+          <UserCog size={19} />
+        </div>
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
+            Худалдааны төлөөлөгч
+          </p>
+          <h3 className="mt-1 text-base font-black text-slate-950">
+            Vendor хандалтын хязгаар
+          </h3>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+            Унтраалттай үед Х/Т бүтэн утас эсвэл имэйлээр дурын vendor-ийг
+            шалгаж ажиллана.
+          </p>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => onToggle("restrictSalesRepVendors")}
+        aria-pressed={restricted}
+        className={`flex w-full items-center justify-between gap-4 rounded-2xl border p-4 text-left transition ${
+          restricted
+            ? "border-indigo-200 bg-indigo-50 shadow-sm ring-2 ring-indigo-100"
+            : "border-slate-200 bg-white hover:border-slate-300"
+        }`}
+      >
+        <div className="min-w-0">
+          <p className="text-sm font-black text-slate-950">
+            Зөвхөн оноосон vendor-той ажиллуулах
+          </p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+            {restricted
+              ? "Х/Т зөвхөн өөрт оноосон vendor-ийг хайж, төлбөр болон захиалгатай ажиллана."
+              : "Хязгааргүй: exact утас/имэйлээр бүртгэлтэй vendor-ийг олж ажиллана."}
+          </p>
+        </div>
+        <span
+          className={`h-7 w-12 shrink-0 rounded-full p-0.5 transition ${
+            restricted ? "bg-indigo-500" : "bg-slate-200"
+          }`}
+        >
+          <span
+            className={`block h-6 w-6 rounded-full bg-white shadow-sm transition ${
+              restricted ? "translate-x-5" : "translate-x-0"
+            }`}
+          />
+        </span>
+      </button>
+    </section>
   );
 }
 

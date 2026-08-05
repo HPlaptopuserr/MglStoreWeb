@@ -22,6 +22,7 @@ export type BusinessAppFeatures = {
 
 export type BusinessAppSettings = {
   attendanceManual: boolean;
+  restrictSalesRepVendors: boolean;
 };
 
 export type CeoServiceControls = {
@@ -119,6 +120,7 @@ export const DEFAULT_FEATURES: BusinessAppFeatures = {
 
 export const DEFAULT_SETTINGS: BusinessAppSettings = {
   attendanceManual: false,
+  restrictSalesRepVendors: false,
 };
 
 export const DEFAULT_CEO_SERVICE: CeoServiceControls = {
@@ -249,6 +251,8 @@ export function normalizeBusinessAppControl(
       attendanceManual:
         organization.settings?.attendanceManual ??
         DEFAULT_SETTINGS.attendanceManual,
+      restrictSalesRepVendors:
+        organization.settings?.restrictSalesRepVendors ?? false,
     },
     ceoService: {
       ...DEFAULT_CEO_SERVICE,

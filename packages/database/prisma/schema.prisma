@@ -355,117 +355,119 @@ model BusinessCategory {
 }
 
 model Organization {
-  id                              String                       @id @default(uuid())
-  name                            String
-  nameNormalized                  String?
-  slug                            String                       @unique
-  taxId                           String                       @unique
-  type                            OrgType                      @default(SUPPLIER)
-  status                          OrgStatus                    @default(ACTIVE)
-  isVerified                      Boolean                      @default(false)
-  email                           String?
-  phone                           String?
-  logoUrl                         String?
-  address                         String?
-  createdAt                       DateTime                     @default(now())
-  updatedAt                       DateTime                     @updatedAt
-  deletedAt                       DateTime?
-  businessCategory                String?
-  bannerUrl                       String?
-  customerCount                   String?                      @default("0")
-  deliveryPrice                   String?
-  deliveryText                    String?
-  description                     String?
-  openingHours                    String[]                     @default([])
-  operatingYears                  Int                          @default(1)
-  rating                          Float                        @default(0)
-  reviewCount                     Int                          @default(0)
-  soldCount                       Int                          @default(0)
-  shortDescription                String?
-  deletedBy                       String?
-  deletionReason                  String?
-  scheduledPermanentDeletionAt    DateTime?
-  maxMembers                      Int                          @default(5)
-  qpayMerchantId                  String?                      @unique
-  qpayMerchantKey                 String?
-  qpayInvoiceCode                 String?
-  qpayBankAccounts                Json?
-  qpayEnabled                     Boolean                      @default(false)
-  qpayConnectedAt                 DateTime?
-  webQpayMerchantId               String?                      @unique
-  webQpayMerchantKey              String?
-  webQpayInvoiceCode              String?
-  webQpayBankAccounts             Json?
-  webQpayEnabled                  Boolean                      @default(false)
-  webQpayConnectedAt              DateTime?
-  minuAgentEnabled                Boolean                      @default(false)
-  minuAgentUsername               String?
-  minuAgentPassword               String?
-  minuAgentBranchId               String?
-  minuAgentConnectedAt            DateTime?
-  subdomainEnabled                Boolean                      @default(false)
-  planType                        String?
-  planActivatedAt                 DateTime?
-  planExpiresAt                   DateTime?
-  trialUsed                       Boolean                      @default(false)
-  businessOrdersEnabled           Boolean                      @default(true)
-  businessInventoryEnabled        Boolean                      @default(true)
-  businessAttendanceEnabled       Boolean                      @default(true)
-  businessAttendanceManualEnabled Boolean                      @default(false)
-  businessTasksEnabled            Boolean                      @default(true)
-  businessDeliveryEnabled         Boolean                      @default(false)
-  ceoServiceEnabled               Boolean                      @default(false)
-  ceoAdviceNotificationsEnabled   Boolean                      @default(true)
-  ceoCalendarRemindersEnabled     Boolean                      @default(true)
-  ceoWeeklyDigestEnabled          Boolean                      @default(true)
-  ceoRiskAlertsEnabled            Boolean                      @default(true)
-  ceoKpiInsightsEnabled           Boolean                      @default(true)
-  ceoDecisionBriefEnabled         Boolean                      @default(true)
-  tasks                           OrganizationTask[]
-  attendanceRecords               AttendanceRecord[]           @relation("OrgAttendanceRecords")
-  attendanceZones                 AttendanceZone[]
-  branches                        Branch[]
-  investorProfile                 InvestorProfile?
-  orders                          Order[]
-  invites                         OrganizationInvite[]
-  members                         OrganizationMember[]
-  posRegisters                    PosRegister[]
-  feedPosts                       Post[]                       @relation("OrganizationPosts")
-  products                        Product[]
-  productRequests                 ProductRequest[]
-  servicePosts                    ServicePost[]
-  serviceRequests                 ServiceRequest[]
-  stockDispatches                 StockDispatch[]              @relation("OrganizationDispatches")
-  stockRequestPayments            StockRequestPayment[]        @relation("OrganizationStockPayments")
-  warehouseAssignments            WarehouseOrganization[]
-  stockRequests                   WarehouseStockRequest[]      @relation("OrganizationStockRequests")
-  dispatchReturns                 DispatchReturn[]             @relation("OrganizationReturns")
-  joinRequests                    OrgJoinRequest[]             @relation("OrgJoinRequests")
-  posShifts                       PosShift[]
-  posSales                        PosSale[]
-  posCreditCustomers              PosCreditCustomer[]
-  posCreditSales                  PosCreditSale[]
-  posLoyaltyTransactions          PosLoyaltyTransaction[]
-  restaurantTables                RestaurantTable[]
-  restaurantTickets               RestaurantTicket[]
-  kitchenTickets                  KitchenTicket[]
-  contracts                       Contract[]
-  productInteractions             ProductInteraction[]
-  productInterestScores           ProductInterestScore[]
-  productReviews                  ProductReview[]
-  reels                           Reel[]
-  reelInteractions                ReelInteraction[]
-  upgradePlans                    OrgUpgradePlan[]
-  cardTerminalRequests            CardTerminalRequest[]
-  gameScores                      OrganizationGameScore[]
-  dailyActivities                 OrganizationDailyActivity[]
-  deliveryPartnershipsRequested   DeliveryPartnership[]        @relation("DeliveryPartnershipRequester")
-  deliveryPartnershipsProvided    DeliveryPartnership[]        @relation("DeliveryPartnershipProvider")
-  warehouseCourierAssignments     WarehouseCourierAssignment[] @relation("CourierProviderOrganization")
-  deliveryJobsRequested           Delivery[]                   @relation("DeliveryRequesterOrganization")
-  deliveryJobsProvided            Delivery[]                   @relation("DeliveryProviderOrganization")
-  salesVisitLocations             SalesVisitLocation[]
-  salesVisits                     SalesVisit[]
+  id                               String                       @id @default(uuid())
+  name                             String
+  nameNormalized                   String?
+  slug                             String                       @unique
+  taxId                            String                       @unique
+  type                             OrgType                      @default(SUPPLIER)
+  status                           OrgStatus                    @default(ACTIVE)
+  isVerified                       Boolean                      @default(false)
+  email                            String?
+  phone                            String?
+  logoUrl                          String?
+  address                          String?
+  createdAt                        DateTime                     @default(now())
+  updatedAt                        DateTime                     @updatedAt
+  deletedAt                        DateTime?
+  businessCategory                 String?
+  bannerUrl                        String?
+  customerCount                    String?                      @default("0")
+  deliveryPrice                    String?
+  deliveryText                     String?
+  description                      String?
+  openingHours                     String[]                     @default([])
+  operatingYears                   Int                          @default(1)
+  rating                           Float                        @default(0)
+  reviewCount                      Int                          @default(0)
+  soldCount                        Int                          @default(0)
+  shortDescription                 String?
+  deletedBy                        String?
+  deletionReason                   String?
+  scheduledPermanentDeletionAt     DateTime?
+  maxMembers                       Int                          @default(5)
+  qpayMerchantId                   String?                      @unique
+  qpayMerchantKey                  String?
+  qpayInvoiceCode                  String?
+  qpayBankAccounts                 Json?
+  qpayEnabled                      Boolean                      @default(false)
+  qpayConnectedAt                  DateTime?
+  webQpayMerchantId                String?                      @unique
+  webQpayMerchantKey               String?
+  webQpayInvoiceCode               String?
+  webQpayBankAccounts              Json?
+  webQpayEnabled                   Boolean                      @default(false)
+  webQpayConnectedAt               DateTime?
+  minuAgentEnabled                 Boolean                      @default(false)
+  minuAgentUsername                String?
+  minuAgentPassword                String?
+  minuAgentBranchId                String?
+  minuAgentConnectedAt             DateTime?
+  subdomainEnabled                 Boolean                      @default(false)
+  planType                         String?
+  planActivatedAt                  DateTime?
+  planExpiresAt                    DateTime?
+  trialUsed                        Boolean                      @default(false)
+  businessOrdersEnabled            Boolean                      @default(true)
+  businessInventoryEnabled         Boolean                      @default(true)
+  businessAttendanceEnabled        Boolean                      @default(true)
+  businessAttendanceManualEnabled  Boolean                      @default(false)
+  salesRepVendorRestrictionEnabled Boolean                      @default(false)
+  businessTasksEnabled             Boolean                      @default(true)
+  businessDeliveryEnabled          Boolean                      @default(false)
+  ceoServiceEnabled                Boolean                      @default(false)
+  ceoAdviceNotificationsEnabled    Boolean                      @default(true)
+  ceoCalendarRemindersEnabled      Boolean                      @default(true)
+  ceoWeeklyDigestEnabled           Boolean                      @default(true)
+  ceoRiskAlertsEnabled             Boolean                      @default(true)
+  ceoKpiInsightsEnabled            Boolean                      @default(true)
+  ceoDecisionBriefEnabled          Boolean                      @default(true)
+  tasks                            OrganizationTask[]
+  attendanceRecords                AttendanceRecord[]           @relation("OrgAttendanceRecords")
+  attendanceZones                  AttendanceZone[]
+  branches                         Branch[]
+  investorProfile                  InvestorProfile?
+  orders                           Order[]
+  invites                          OrganizationInvite[]
+  members                          OrganizationMember[]
+  posRegisters                     PosRegister[]
+  feedPosts                        Post[]                       @relation("OrganizationPosts")
+  products                         Product[]
+  productRequests                  ProductRequest[]
+  servicePosts                     ServicePost[]
+  serviceRequests                  ServiceRequest[]
+  stockDispatches                  StockDispatch[]              @relation("OrganizationDispatches")
+  stockRequestPayments             StockRequestPayment[]        @relation("OrganizationStockPayments")
+  warehouseAssignments             WarehouseOrganization[]
+  stockRequests                    WarehouseStockRequest[]      @relation("OrganizationStockRequests")
+  dispatchReturns                  DispatchReturn[]             @relation("OrganizationReturns")
+  joinRequests                     OrgJoinRequest[]             @relation("OrgJoinRequests")
+  posShifts                        PosShift[]
+  posSales                         PosSale[]
+  posCreditCustomers               PosCreditCustomer[]
+  posCreditSales                   PosCreditSale[]
+  posLoyaltyTransactions           PosLoyaltyTransaction[]
+  restaurantTables                 RestaurantTable[]
+  restaurantTickets                RestaurantTicket[]
+  kitchenTickets                   KitchenTicket[]
+  contracts                        Contract[]
+  productInteractions              ProductInteraction[]
+  productInterestScores            ProductInterestScore[]
+  productReviews                   ProductReview[]
+  reels                            Reel[]
+  reelInteractions                 ReelInteraction[]
+  upgradePlans                     OrgUpgradePlan[]
+  cardTerminalRequests             CardTerminalRequest[]
+  gameScores                       OrganizationGameScore[]
+  dailyActivities                  OrganizationDailyActivity[]
+  deliveryPartnershipsRequested    DeliveryPartnership[]        @relation("DeliveryPartnershipRequester")
+  deliveryPartnershipsProvided     DeliveryPartnership[]        @relation("DeliveryPartnershipProvider")
+  warehouseCourierAssignments      WarehouseCourierAssignment[] @relation("CourierProviderOrganization")
+  deliveryJobsRequested            Delivery[]                   @relation("DeliveryRequesterOrganization")
+  deliveryJobsProvided             Delivery[]                   @relation("DeliveryProviderOrganization")
+  salesVisitLocations              SalesVisitLocation[]         @relation("SalesLocationOwner")
+  representedSalesLocations        SalesVisitLocation[]         @relation("SalesLocationVendor")
+  salesVisits                      SalesVisit[]
 
   @@index([type])
   @@index([status])
@@ -655,19 +657,19 @@ model InvestorProfile {
 }
 
 model OrganizationMember {
-  id             String       @id @default(uuid())
-  userId         String
-  organizationId String
-  role           OrgRole      @default(STAFF)
-  department     String?
-  isActive       Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  deletedAt      DateTime?
-  isPrimary      Boolean      @default(false)
-  capabilities   Capability[] @default([])
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                       String                         @id @default(uuid())
+  userId                   String
+  organizationId           String
+  role                     OrgRole                        @default(STAFF)
+  department               String?
+  isActive                 Boolean                        @default(true)
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
+  deletedAt                DateTime?
+  isPrimary                Boolean                        @default(false)
+  capabilities             Capability[]                   @default([])
+  organization             Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user                     User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
   salesLocationAssignments SalesVisitLocationAssignment[]
 
   @@unique([userId, organizationId])
@@ -680,23 +682,26 @@ model OrganizationMember {
 }
 
 model SalesVisitLocation {
-  id             String                           @id @default(uuid())
-  organizationId String
-  name           String
-  address        String
-  latitude       Float
-  longitude      Float
-  radiusMeters   Int                              @default(150)
-  contactName    String?
-  contactPhone   String?
-  isActive       Boolean                          @default(true)
-  createdAt      DateTime                         @default(now())
-  updatedAt      DateTime                         @updatedAt
-  organization   Organization                     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  assignments    SalesVisitLocationAssignment[]
-  visits         SalesVisit[]
+  id                   String                         @id @default(uuid())
+  organizationId       String
+  vendorOrganizationId String?                        @unique
+  name                 String
+  address              String
+  latitude             Float
+  longitude            Float
+  radiusMeters         Int                            @default(150)
+  contactName          String?
+  contactPhone         String?
+  isActive             Boolean                        @default(true)
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+  organization         Organization                   @relation("SalesLocationOwner", fields: [organizationId], references: [id], onDelete: Cascade)
+  vendorOrganization   Organization?                  @relation("SalesLocationVendor", fields: [vendorOrganizationId], references: [id], onDelete: SetNull)
+  assignments          SalesVisitLocationAssignment[]
+  visits               SalesVisit[]
 
   @@index([organizationId, isActive])
+  @@index([vendorOrganizationId])
 }
 
 model SalesVisitLocationAssignment {
@@ -711,24 +716,24 @@ model SalesVisitLocationAssignment {
 }
 
 model SalesVisit {
-  id                 String             @id @default(uuid())
-  organizationId     String
-  locationId         String
-  userId             String
-  checkedInAt        DateTime           @default(now())
-  checkedInLatitude  Float
-  checkedInLongitude Float
-  checkedOutAt       DateTime?
-  checkedOutLatitude Float?
+  id                  String             @id @default(uuid())
+  organizationId      String
+  locationId          String
+  userId              String
+  checkedInAt         DateTime           @default(now())
+  checkedInLatitude   Float
+  checkedInLongitude  Float
+  checkedOutAt        DateTime?
+  checkedOutLatitude  Float?
   checkedOutLongitude Float?
-  durationMinutes    Int?
-  note               String?
-  promotedProductIds String[]           @default([])
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  location           SalesVisitLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
-  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  durationMinutes     Int?
+  note                String?
+  promotedProductIds  String[]           @default([])
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  organization        Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location            SalesVisitLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([organizationId, checkedInAt])
   @@index([locationId, checkedInAt])
@@ -2511,6 +2516,9 @@ enum AuditAction {
   CARD_TERMINAL_REQUEST_CREATED
   CARD_TERMINAL_REQUEST_APPROVED
   CARD_TERMINAL_REQUEST_REJECTED
+  SALES_REP_VENDOR_LOOKUP
+  SALES_REP_VENDOR_ORDER_CREATED
+  SALES_REP_VENDOR_PAYMENT_OPENED
 }
 
 enum PosActivationStatus {

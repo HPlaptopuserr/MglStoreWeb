@@ -87,6 +87,11 @@ type StockRequest = {
   };
   items: StockRequestItem[];
   payment?: Payment;
+  dispatch?: {
+    id: string;
+    dispatchNumber: string;
+    status: "PENDING" | "CONFIRMED" | "DISPATCHED" | "DELIVERED" | "CANCELLED";
+  } | null;
 };
 
 const statusConfig: Record<
@@ -635,7 +640,7 @@ export default function AdminStockRequestsPage() {
                       </>
                     )}
 
-                    {request.status === "APPROVED" && (
+                    {request.status === "APPROVED" && !request.dispatch && (
                       <button
                         onClick={() => handleProcess(request.id)}
                         className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
@@ -644,13 +649,27 @@ export default function AdminStockRequestsPage() {
                       </button>
                     )}
 
-                    {request.status === "PROCESSING" && (
+                    {request.status === "APPROVED" && request.dispatch && (
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-700">
+                        <Warehouse className="h-4 w-4" />
+                        Агуулах руу илгээсэн
+                      </span>
+                    )}
+
+                    {request.status === "PROCESSING" && !request.dispatch && (
                       <button
                         onClick={() => handleComplete(request.id)}
                         className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-900"
                       >
                         Дуусгах
                       </button>
+                    )}
+
+                    {request.status === "PROCESSING" && request.dispatch && (
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700">
+                        <Truck className="h-4 w-4" />
+                        Агуулах боловсруулж байна
+                      </span>
                     )}
 
                     <button
