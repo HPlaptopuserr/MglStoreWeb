@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import {
   Search,
   Loader2,
@@ -61,6 +61,15 @@ type WarehouseOption = {
 
 type StockStatus = "all" | "healthy" | "low" | "out";
 
+type InventorySummary = {
+  total: number;
+  healthy: number;
+  low: number;
+  out: number;
+  totalStock: number;
+  located: number;
+};
+
 type EditInventoryForm = {
   name: string;
   description: string;
@@ -97,6 +106,7 @@ export default function InventoryPage() {
   const [fetchError, setFetchError] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StockStatus>("all");
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [editForm, setEditForm] = useState<EditInventoryForm | null>(null);
@@ -106,7 +116,22 @@ export default function InventoryPage() {
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [summary, setSummary] = useState<InventorySummary>({
+    total: 0,
+    healthy: 0,
+    low: 0,
+    out: 0,
+    totalStock: 0,
+    located: 0,
+  });
   const PAGE_SIZE = 20;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
   // Load warehouses
   useEffect(() => {
@@ -138,13 +163,31 @@ export default function InventoryPage() {
       setLoading(true);
       setFetchError(false);
       try {
+        const params = new URLSearchParams({
+          page: String(currentPage),
+          limit: String(PAGE_SIZE),
+          status: statusFilter,
+        });
+        if (debouncedSearch) params.set("search", debouncedSearch);
         const res = await wmsFetch(
-          `${API}/warehouses/${selectedWarehouseId}/inventory`,
+          `${API}/warehouses/${selectedWarehouseId}/inventory?${params.toString()}`,
         );
         if (cancelled) return;
         if (res.ok) {
           const data = await res.json();
           setInventory(data.inventory || []);
+          setTotalItems(data.pagination?.total || 0);
+          setTotalPages(data.pagination?.totalPages || 1);
+          setSummary(
+            data.summary || {
+              total: 0,
+              healthy: 0,
+              low: 0,
+              out: 0,
+              totalStock: 0,
+              located: 0,
+            },
+          );
         } else {
           setInventory([]);
           setFetchError(true);
@@ -161,7 +204,7 @@ export default function InventoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedWarehouseId, retryCount]);
+  }, [selectedWarehouseId, currentPage, debouncedSearch, statusFilter, retryCount]);
 
   const handleDelete = async () => {
     if (!selectedItem) return;
@@ -379,42 +422,10 @@ export default function InventoryPage() {
     return "healthy";
   };
 
-  const filtered = useMemo(() => {
-    return inventory.filter((item) => {
-      // Status filter
-      if (statusFilter !== "all" && getStatus(item) !== statusFilter) {
-        return false;
-      }
-      // Search
-      if (search) {
-        const q = search.toLowerCase();
-        return (
-          item.product.name.toLowerCase().includes(q) ||
-          (item.product.sku?.toLowerCase().includes(q) ?? false) ||
-          (item.location?.toLowerCase().includes(q) ?? false)
-        );
-      }
-      return true;
-    });
-  }, [inventory, search, statusFilter]);
-
   // Reset to page 1 when filter/search changes
-  useMemo(() => {
+  useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter, selectedWarehouseId]);
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
-  );
-
-  const counts = useMemo(() => {
-    const healthy = inventory.filter((i) => getStatus(i) === "healthy").length;
-    const low = inventory.filter((i) => getStatus(i) === "low").length;
-    const out = inventory.filter((i) => getStatus(i) === "out").length;
-    return { healthy, low, out, total: inventory.length };
-  }, [inventory]);
+  }, [debouncedSearch, statusFilter, selectedWarehouseId]);
 
   const getStatusLabel = (item: InventoryItem) => {
     const status = getStatus(item);
@@ -464,10 +475,10 @@ export default function InventoryPage() {
         <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
           {(
             [
-              { key: "all", label: "Бүгд", count: counts.total },
-              { key: "healthy", label: "Хэвийн", count: counts.healthy },
-              { key: "low", label: "Дутагдал", count: counts.low },
-              { key: "out", label: "Дууссан", count: counts.out },
+              { key: "all", label: "Бүгд", count: summary.total },
+              { key: "healthy", label: "Хэвийн", count: summary.healthy },
+              { key: "low", label: "Дутагдал", count: summary.low },
+              { key: "out", label: "Дууссан", count: summary.out },
             ] as const
           ).map((btn) => (
             <button
@@ -491,25 +502,25 @@ export default function InventoryPage() {
         {[
           {
             label: "Нийт бараа",
-            value: counts.total,
+            value: summary.total,
             icon: Package,
             color: "bg-indigo-50 text-indigo-600",
           },
           {
             label: "Хэвийн",
-            value: counts.healthy,
+            value: summary.healthy,
             icon: ShieldCheck,
             color: "bg-emerald-50 text-emerald-600",
           },
           {
             label: "Нийт нөөц",
-            value: inventory.reduce((sum, item) => sum + item.quantity, 0),
+            value: summary.totalStock,
             icon: BarChart3,
             color: "bg-amber-50 text-amber-600",
           },
           {
             label: "Байрлалтай",
-            value: inventory.filter((item) => Boolean(item.location)).length,
+            value: summary.located,
             icon: Layers3,
             color: "bg-blue-50 text-blue-600",
           },
@@ -540,7 +551,7 @@ export default function InventoryPage() {
           Агуулахын бараа
         </h2>
         <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
-          {filtered.length} олдлоо
+          {totalItems} олдлоо
         </span>
       </div>
 
@@ -566,7 +577,7 @@ export default function InventoryPage() {
             Дахин оролдох
           </button>
         </div>
-      ) : filtered.length === 0 ? (
+      ) : inventory.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-slate-400 shadow-sm">
           <Package className="h-9 w-9" />
           <p className="text-sm font-semibold text-slate-600">Бараа олдсонгүй</p>
@@ -575,13 +586,13 @@ export default function InventoryPage() {
       ) : (
         <div className="space-y-3">
           <WarehouseInventoryCatalog
-            items={paginated}
+            items={inventory}
             onSelect={(itemId) => {
-              const item = paginated.find((candidate) => candidate.id === itemId);
+              const item = inventory.find((candidate) => candidate.id === itemId);
               if (item) openDetail(item);
             }}
             onEdit={(itemId) => {
-              const item = paginated.find((candidate) => candidate.id === itemId);
+              const item = inventory.find((candidate) => candidate.id === itemId);
               if (!item) return;
               setSelectedItem(item);
               openEdit(item);
@@ -591,11 +602,11 @@ export default function InventoryPage() {
           {totalPages > 1 && (
             <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row">
               <p className="text-xs text-slate-500">
-                Нийт <span className="font-bold text-slate-700">{filtered.length}</span>{" "}
+                Нийт <span className="font-bold text-slate-700">{totalItems}</span>{" "}
                 барааны{" "}
                 <span className="font-bold text-slate-700">
                   {(currentPage - 1) * PAGE_SIZE + 1}–
-                  {Math.min(currentPage * PAGE_SIZE, filtered.length)}
+                  {Math.min(currentPage * PAGE_SIZE, totalItems)}
                 </span>
                 -г харуулж байна
               </p>

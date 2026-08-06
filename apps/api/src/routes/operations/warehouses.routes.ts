@@ -8,6 +8,7 @@ import {
   InventoryReason,
   OrderStatus,
   PaymentStatus,
+  Prisma,
   prisma,
   WarehouseType,
 } from "@mgl/database";
@@ -1641,11 +1642,51 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
       });
     }
 
-    const records = await prisma.warehouseInventory.findMany({
-      where: {
-        warehouseId: id,
-        product: { deletedAt: null },
-      },
+    const page = Math.max(1, Number.parseInt(String(req.query.page ?? "1"), 10) || 1);
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(String(req.query.limit ?? "20"), 10) || 20),
+    );
+    const search = String(req.query.search ?? "").trim().slice(0, 100);
+    const status = String(req.query.status ?? "all");
+    const baseWhere: Prisma.WarehouseInventoryWhereInput = {
+      warehouseId: id,
+      product: { deletedAt: null },
+    };
+    const where: Prisma.WarehouseInventoryWhereInput = {
+      ...baseWhere,
+      ...(search
+        ? {
+            OR: [
+              { product: { name: { contains: search, mode: "insensitive" } } },
+              { product: { sku: { contains: search, mode: "insensitive" } } },
+              { product: { barcode: { contains: search, mode: "insensitive" } } },
+              { location: { contains: search, mode: "insensitive" } },
+            ],
+          }
+        : {}),
+      ...(status === "out"
+        ? { quantity: 0 }
+        : status === "low"
+          ? {
+              quantity: {
+                gt: 0,
+                lte: prisma.warehouseInventory.fields.minQuantity,
+              },
+            }
+          : status === "healthy"
+            ? {
+                quantity: {
+                  gt: prisma.warehouseInventory.fields.minQuantity,
+                },
+              }
+            : {}),
+    };
+
+    const [records, total, totalCount, outCount, lowCount, stockAggregate, locatedCount] =
+      await Promise.all([
+        prisma.warehouseInventory.findMany({
+      where,
       select: {
         id: true,
         quantity: true,
@@ -1674,7 +1715,29 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
         },
       },
       orderBy: { updatedAt: "desc" },
-    });
+          skip: (page - 1) * limit,
+          take: limit,
+        }),
+        prisma.warehouseInventory.count({ where }),
+        prisma.warehouseInventory.count({ where: baseWhere }),
+        prisma.warehouseInventory.count({ where: { ...baseWhere, quantity: 0 } }),
+        prisma.warehouseInventory.count({
+          where: {
+            ...baseWhere,
+            quantity: {
+              gt: 0,
+              lte: prisma.warehouseInventory.fields.minQuantity,
+            },
+          },
+        }),
+        prisma.warehouseInventory.aggregate({
+          where: baseWhere,
+          _sum: { quantity: true },
+        }),
+        prisma.warehouseInventory.count({
+          where: { ...baseWhere, location: { not: null } },
+        }),
+      ]);
 
     // Fetch images in one batch. A limited nested image relation per inventory
     // row produces an expensive lateral query on large warehouses.
@@ -1706,7 +1769,23 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
     }));
 
     res.setHeader("Cache-Control", "private, max-age=15");
-    return res.json({ inventory });
+    return res.json({
+      inventory,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+      summary: {
+        total: totalCount,
+        healthy: totalCount - outCount - lowCount,
+        low: lowCount,
+        out: outCount,
+        totalStock: stockAggregate._sum.quantity ?? 0,
+        located: locatedCount,
+      },
+    });
   } catch (error) {
     console.error("get warehouse inventory catalog error", error);
     return res.status(500).json({
