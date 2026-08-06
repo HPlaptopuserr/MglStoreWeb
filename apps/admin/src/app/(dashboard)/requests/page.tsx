@@ -112,6 +112,37 @@ export default function RequestsPage() {
     null,
   );
 
+  const visibleStockRequests = useMemo(
+    () =>
+      [...stockRequests].sort((left, right) => {
+        const leftIsSalesRequest =
+          left.requestNumber.startsWith("SR-") ||
+          left.note?.startsWith("[Х/Т захиалга]");
+        const rightIsSalesRequest =
+          right.requestNumber.startsWith("SR-") ||
+          right.note?.startsWith("[Х/Т захиалга]");
+        const leftPriority =
+          left.status === "PENDING" && leftIsSalesRequest
+            ? 0
+            : left.status === "PENDING"
+              ? 1
+              : 2;
+        const rightPriority =
+          right.status === "PENDING" && rightIsSalesRequest
+            ? 0
+            : right.status === "PENDING"
+              ? 1
+              : 2;
+
+        return (
+          leftPriority - rightPriority ||
+          new Date(right.requestedAt).getTime() -
+            new Date(left.requestedAt).getTime()
+        );
+      }),
+    [stockRequests],
+  );
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchTerm.trim());
@@ -208,7 +239,13 @@ export default function RequestsPage() {
       }
     };
 
-    fetchSectionLists();
+    void fetchSectionLists();
+    if (activeSection !== "stock" || !canSeeStock) return;
+
+    const interval = window.setInterval(() => {
+      void fetchSectionLists();
+    }, 20_000);
+    return () => window.clearInterval(interval);
   }, [activeSection, cardTerminalFilter]);
 
   const approveRequest = async (id: string) => {
@@ -1084,10 +1121,16 @@ export default function RequestsPage() {
                         </td>
                       </tr>
                     ) : (
-                      stockRequests.slice(0, 12).map((item) => (
+                      visibleStockRequests.slice(0, 12).map((item) => (
                         <tr key={item.id} className="hover:bg-slate-50/70">
                           <td className="px-4 py-3.5 text-sm font-semibold text-slate-900">
-                            {item.requestNumber}
+                            <span>{item.requestNumber}</span>
+                            {(item.requestNumber.startsWith("SR-") ||
+                              item.note?.startsWith("[Х/Т захиалга]")) && (
+                              <span className="ml-2 inline-flex rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+                                Х/Т
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3.5 text-sm text-slate-600">
                             {item.organization?.name || "-"}

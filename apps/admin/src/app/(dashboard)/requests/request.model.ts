@@ -89,6 +89,7 @@ export type StockRequestSummary = {
   requestNumber: string;
   status: string;
   requestedAt: string;
+  note?: string | null;
   organization?: { name?: string };
   warehouse?: { name?: string };
 };
