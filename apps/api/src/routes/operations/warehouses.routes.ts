@@ -1676,12 +1676,33 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
       orderBy: { updatedAt: "desc" },
     });
 
-    // Product images are intentionally excluded here. Loading a limited nested
-    // image relation for every inventory row produces an expensive lateral
-    // query on large warehouses and can exceed the WMS request timeout.
+    // Fetch images in one batch. A limited nested image relation per inventory
+    // row produces an expensive lateral query on large warehouses.
+    const productIds = records.map((record) => record.product.id);
+    const productImages = productIds.length
+      ? await prisma.productImage.findMany({
+          where: { productId: { in: productIds } },
+          select: { id: true, url: true, productId: true },
+        })
+      : [];
+    const imagesByProductId = new Map<
+      string,
+      Array<{ id: string; url: string }>
+    >();
+    for (const image of productImages) {
+      const images = imagesByProductId.get(image.productId) ?? [];
+      if (images.length < 5) {
+        images.push({ id: image.id, url: image.url });
+        imagesByProductId.set(image.productId, images);
+      }
+    }
+
     const inventory = records.map((record) => ({
       ...record,
-      product: { ...record.product, images: [] },
+      product: {
+        ...record.product,
+        images: imagesByProductId.get(record.product.id) ?? [],
+      },
     }));
 
     res.setHeader("Cache-Control", "private, max-age=15");
