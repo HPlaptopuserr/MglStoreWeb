@@ -8,9 +8,9 @@ import {
   Loader2,
   TrendingUp,
   TrendingDown,
-  Clock,
   ArrowRight,
   Layers,
+  ClipboardList,
 } from "lucide-react";
 import Link from "next/link";
 import { API, wmsFetch } from "@/lib/api";
@@ -207,6 +207,26 @@ export default function WmsDashboardPage() {
             </div>
           ) : (
             <div className="space-y-2">
+              <Link
+                href="/dispatch-orders"
+                className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3 transition-colors hover:border-amber-300 hover:bg-amber-50"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-100">
+                    <ClipboardList className="h-4 w-4 text-amber-700" />
+                  </div>
+                  <div>
+                    <span className="block text-sm font-semibold text-slate-800">
+                      Ирсэн хүсэлт шалгах
+                    </span>
+                    <span className="block text-[11px] text-slate-500">
+                      Х/Т болон бараа таталтын хүсэлт
+                    </span>
+                  </div>
+                </div>
+                <ArrowRight className="h-4 w-4 text-amber-500" />
+              </Link>
+
               {outOfStockList.map((item) => (
                 <div
                   key={item.id}
@@ -285,26 +305,12 @@ export default function WmsDashboardPage() {
                     <ArrowUpFromLine className="h-4 w-4 text-blue-600" />
                   </div>
                   <span className="text-sm font-medium text-slate-700">
-                    Бараа гаргах
+                    Бараа бэлтгэж гаргах
                   </span>
                 </div>
                 <ArrowRight className="h-4 w-4 text-slate-300" />
               </Link>
 
-              <Link
-                href="/transfers"
-                className="flex items-center justify-between rounded-lg border border-slate-100 px-4 py-3 transition-colors hover:border-blue-200 hover:bg-blue-50/30"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-100">
-                    <Clock className="h-4 w-4 text-purple-600" />
-                  </div>
-                  <span className="text-sm font-medium text-slate-700">
-                    Шилжүүлэг
-                  </span>
-                </div>
-                <ArrowRight className="h-4 w-4 text-slate-300" />
-              </Link>
             </div>
           </div>
 
@@ -346,11 +352,11 @@ export default function WmsDashboardPage() {
         </div>
       </div>
 
-      {/* Recent movements */}
-      <RecentMovements movements={movements} onSelect={setSelectedMovement} />
-
       {/* Pending stock requests */}
       <PendingRequests warehouseId={selectedWarehouse?.id} />
+
+      {/* Recent movements */}
+      <RecentMovements movements={movements} onSelect={setSelectedMovement} />
 
       {/* Category modal */}
       {showCategoryModal && (

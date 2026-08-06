@@ -19,7 +19,7 @@ import { AppSidebar, type AppSidebarGroup } from "@mgl/ui";
 const WMS_NAV_GROUPS: AppSidebarGroup[] = [
   {
     id: "overview",
-    title: "Хяналт",
+    title: "Нүүр",
     items: [
       {
         id: "dashboard",
@@ -27,18 +27,19 @@ const WMS_NAV_GROUPS: AppSidebarGroup[] = [
         href: "/dashboard",
         icon: LayoutDashboard,
       },
-      {
-        id: "reports",
-        label: "Тайлан, шинжилгээ",
-        href: "/reports",
-        icon: BarChart3,
-      },
     ],
   },
   {
-    id: "inventory-operations",
-    title: "Нөөцийн ажиллагаа",
+    id: "daily-work",
+    title: "Өдөр тутмын ажил",
     items: [
+      {
+        id: "dispatch-orders",
+        label: "Ирсэн хүсэлт шалгах",
+        href: "/dispatch-orders",
+        icon: ClipboardList,
+        tone: "warning",
+      },
       {
         id: "receive",
         label: "Бараа хүлээн авах",
@@ -47,10 +48,40 @@ const WMS_NAV_GROUPS: AppSidebarGroup[] = [
         tone: "success",
       },
       {
+        id: "dispatch",
+        label: "Бараа бэлтгэж гаргах",
+        href: "/dispatch",
+        icon: PackageMinus,
+      },
+      {
+        id: "online-orders",
+        label: "Онлайн захиалга бэлтгэх",
+        href: "/online-orders",
+        icon: ShoppingBag,
+      },
+    ],
+  },
+  {
+    id: "inventory-logistics",
+    title: "Нөөц ба логистик",
+    items: [
+      {
         id: "inventory",
         label: "Нөөцийн үлдэгдэл",
         href: "/inventory",
         icon: Package,
+      },
+      {
+        id: "transfers",
+        label: "Агуулах хооронд шилжүүлэг",
+        href: "/transfers",
+        icon: ArrowLeftRight,
+      },
+      {
+        id: "delivery-network",
+        label: "Хүргэлтийн сүлжээ",
+        href: "/delivery",
+        icon: Truck,
       },
       {
         id: "movements",
@@ -61,45 +92,14 @@ const WMS_NAV_GROUPS: AppSidebarGroup[] = [
     ],
   },
   {
-    id: "order-fulfillment",
-    title: "Захиалга ба гаргалт",
+    id: "analytics",
+    title: "Хяналт ба тайлан",
     items: [
       {
-        id: "online-orders",
-        label: "Онлайн захиалга",
-        href: "/online-orders",
-        icon: ShoppingBag,
-        tone: "warning",
-      },
-      {
-        id: "dispatch-orders",
-        label: "Барааны хүсэлтүүд",
-        href: "/dispatch-orders",
-        icon: ClipboardList,
-      },
-      {
-        id: "dispatch",
-        label: "Бараа гаргах",
-        href: "/dispatch",
-        icon: PackageMinus,
-      },
-    ],
-  },
-  {
-    id: "logistics",
-    title: "Логистик",
-    items: [
-      {
-        id: "transfers",
-        label: "Агуулах хооронд шилжүүлэх",
-        href: "/transfers",
-        icon: ArrowLeftRight,
-      },
-      {
-        id: "delivery-network",
-        label: "Хүргэлтийн сүлжээ",
-        href: "/delivery",
-        icon: Truck,
+        id: "reports",
+        label: "Тайлан, шинжилгээ",
+        href: "/reports",
+        icon: BarChart3,
       },
     ],
   },
