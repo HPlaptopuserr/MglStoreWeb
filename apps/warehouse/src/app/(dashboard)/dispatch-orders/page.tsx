@@ -26,6 +26,7 @@ import { API, wmsFetch } from "@/lib/api";
 import { DeliveryPackageDialog, type DeliveryPackageDetails } from "@mgl/ui";
 import { fetchDeliveryAssignmentOptions } from "@/features/online-orders/online-order.api";
 import type { DeliveryAssignmentPartnership } from "@/features/online-orders/online-order.types";
+import { WarehouseStockRequestQueue } from "@/features/dispatch/WarehouseStockRequestQueue";
 
 /* ───── types ───── */
 type DispatchItem = {
@@ -712,6 +713,13 @@ export default function DispatchOrdersPage() {
             </button>
           )}
         </div>
+      )}
+
+      {selectedWarehouseId && (
+        <WarehouseStockRequestQueue
+          warehouseId={selectedWarehouseId}
+          onDecision={() => void fetchDispatches(true)}
+        />
       )}
 
       {/* Tabs */}

@@ -217,6 +217,26 @@ async function assertWarehouseAccess(
   return true;
 }
 
+async function assertStockRequestDecisionAccess(
+  req: Request,
+  res: Response,
+  warehouseId: string,
+) {
+  const actor = getActor(req);
+  const canManagePlatformStock = Boolean(
+    actor &&
+      (isFullAdmin(actor.role) ||
+        hasPlatformPermission(actor.role, Permission.MANAGE_STOCK)),
+  );
+  if (canManagePlatformStock) return actor;
+  if (actor && (await hasWarehouseAccess(actor, warehouseId))) return actor;
+
+  res.status(403).json({
+    message: "Энэ хүсэлтийг шийдвэрлэх агуулахын эрхгүй байна",
+  });
+  return null;
+}
+
 router.post(
   "/stock-requests/procurement/ai-recommendations",
   requireAuth,
@@ -533,7 +553,6 @@ router.get("/stock-requests/:id", requireAuth, async (req, res) => {
     if (!request) {
       return res.status(404).json({ message: "Хүсэлт олдсонгүй" });
     }
-
     res.json(request);
   } catch (error) {
     console.error("get stock request error", error);
@@ -867,6 +886,12 @@ router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
     if (!request) {
       return res.status(404).json({ message: "Хүсэлт олдсонгүй" });
     }
+    const decisionActor = await assertStockRequestDecisionAccess(
+      req,
+      res,
+      request.warehouseId,
+    );
+    if (!decisionActor) return;
 
     if (request.status !== StockRequestStatus.PENDING) {
       return res.status(400).json({
@@ -935,7 +960,7 @@ router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
           where: { id },
           data: {
             status: StockRequestStatus.APPROVED,
-            reviewedById: reviewedById || null,
+            reviewedById: reviewedById || decisionActor.userId,
             reviewNote: reviewNote || null,
             reviewedAt: new Date(),
             approvedAt: new Date(),
@@ -996,6 +1021,12 @@ router.patch("/stock-requests/:id/reject", requireAuth, async (req, res) => {
     if (!request) {
       return res.status(404).json({ message: "Хүсэлт олдсонгүй" });
     }
+    const decisionActor = await assertStockRequestDecisionAccess(
+      req,
+      res,
+      request.warehouseId,
+    );
+    if (!decisionActor) return;
 
     if (request.status !== StockRequestStatus.PENDING) {
       return res.status(400).json({
@@ -1008,7 +1039,7 @@ router.patch("/stock-requests/:id/reject", requireAuth, async (req, res) => {
         where: { id },
         data: {
           status: StockRequestStatus.REJECTED,
-          reviewedById: reviewedById || null,
+          reviewedById: reviewedById || decisionActor.userId,
           reviewNote: reviewNote || null,
           reviewedAt: new Date(),
           rejectedAt: new Date(),

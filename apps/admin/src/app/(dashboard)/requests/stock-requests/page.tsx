@@ -244,43 +244,8 @@ export default function AdminStockRequestsPage() {
     }
   };
 
-  const handleConfirmPayment = async (paymentId: string) => {
-    if (!confirm("Төлбөр төлөгдсөн гэж баталгаажуулах уу?")) return;
-    setIsProcessing(true);
-    try {
-      const response = await adminFetch(
-        `${API}/stock-requests/payments/${paymentId}/confirm`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ paidAmount: null }), // Full amount
-        },
-      );
-      if (!response.ok) throw new Error("Failed to confirm payment");
-      // Refresh payment history
-      if (selectedRequest) {
-        fetchPaymentHistory(
-          selectedRequest.organization.id,
-          selectedRequest.payment?.id,
-        );
-      }
-    } catch (error) {
-      alert("Төлбөр баталгаажуулахад алдаа гарлаа");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   const handleApprove = async () => {
     if (!selectedRequest) return;
-
-    // Check for unpaid payments
-    if (unpaidPayments.length > 0) {
-      setApprovalError(
-        `Өмнөх ${unpaidPayments.length} төлбөр төлөгдөөгүй байна. Эхлээд төлбөрийг баталгаажуулна уу.`,
-      );
-      return;
-    }
 
     setIsProcessing(true);
     setApprovalError(null);
@@ -941,21 +906,6 @@ export default function AdminStockRequestsPage() {
                       </div>
                     )}
                   </div>
-                  {selectedRequest.payment.status === "PENDING" && (
-                    <button
-                      onClick={() =>
-                        handleConfirmPayment(selectedRequest.payment!.id)
-                      }
-                      disabled={isProcessing}
-                      className="mt-3 w-full rounded-lg bg-green-600 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                    >
-                      {isProcessing ? (
-                        <Loader2 className="h-4 w-4 mx-auto animate-spin" />
-                      ) : (
-                        "Төлбөр төлөгдсөн гэж баталгаажуулах"
-                      )}
-                    </button>
-                  )}
                 </div>
               )}
 
@@ -1033,41 +983,11 @@ export default function AdminStockRequestsPage() {
                                 : "Алдаатай"}
                           </span>
                         </div>
-                        {(payment.status === "PENDING" ||
-                          payment.status === "FAILED") &&
-                          payment.id !== selectedRequest.payment?.id && (
-                            <button
-                              onClick={() => handleConfirmPayment(payment.id)}
-                              disabled={isProcessing}
-                              className="ml-2 shrink-0 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
-                            >
-                              Баталгаажуулах
-                            </button>
-                          )}
                       </div>
                     ))}
                   </div>
                 )}
 
-                {/* Unpaid Warning */}
-                {unpaidPayments.length > 0 &&
-                  selectedRequest.status === "PENDING" && (
-                    <div className="mt-3 rounded-lg bg-red-50 border border-red-200 p-3">
-                      <div className="flex items-start gap-2">
-                        <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-sm font-semibold text-red-800">
-                            Өмнөх төлбөр төлөгдөөгүй
-                          </p>
-                          <p className="text-xs text-red-600 mt-0.5">
-                            Энэ байгууллагын {unpaidPayments.length} төлбөр
-                            төлөгдөөгүй байна. Төлбөр баталгаажуулсны дараа
-                            хүсэлтийг зөвшөөрөх боломжтой.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
               </div>
 
               {/* Approval Actions */}
@@ -1085,16 +1005,9 @@ export default function AdminStockRequestsPage() {
                     <div className="flex gap-3">
                       <button
                         onClick={() => setApprovalAction("approve")}
-                        disabled={unpaidPayments.length > 0}
-                        className={`flex-1 rounded-lg py-3 text-sm font-bold text-white ${
-                          unpaidPayments.length > 0
-                            ? "bg-slate-300 cursor-not-allowed"
-                            : "bg-green-600 hover:bg-green-700"
-                        }`}
+                        className="flex-1 rounded-lg bg-green-600 py-3 text-sm font-bold text-white hover:bg-green-700"
                       >
-                        {unpaidPayments.length > 0
-                          ? "Төлбөр төлөгдөөгүй"
-                          : "Зөвшөөрөх"}
+                        Зөвшөөрөх
                       </button>
                       <button
                         onClick={() => setApprovalAction("reject")}
