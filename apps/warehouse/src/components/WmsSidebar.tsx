@@ -18,92 +18,88 @@ import { AppSidebar, type AppSidebarGroup } from "@mgl/ui";
 
 const WMS_NAV_GROUPS: AppSidebarGroup[] = [
   {
-    id: "wms-menu",
-    title: "Цэс",
+    id: "overview",
+    title: "Хяналт",
     items: [
       {
-        id: "overview-menu",
-        label: "Хяналт",
+        id: "dashboard",
+        label: "Хянах самбар",
         href: "/dashboard",
         icon: LayoutDashboard,
-        children: [
-          {
-            id: "dashboard",
-            label: "Хянах самбар",
-            href: "/dashboard",
-            icon: LayoutDashboard,
-          },
-          {
-            id: "reports",
-            label: "Тайлан",
-            href: "/reports",
-            icon: BarChart3,
-          },
-        ],
       },
       {
-        id: "inventory-menu",
-        label: "Нөөц",
+        id: "reports",
+        label: "Тайлан, шинжилгээ",
+        href: "/reports",
+        icon: BarChart3,
+      },
+    ],
+  },
+  {
+    id: "inventory-operations",
+    title: "Нөөцийн ажиллагаа",
+    items: [
+      {
+        id: "receive",
+        label: "Бараа хүлээн авах",
+        href: "/receive",
+        icon: PackageCheck,
+        tone: "success",
+      },
+      {
+        id: "inventory",
+        label: "Нөөцийн үлдэгдэл",
         href: "/inventory",
         icon: Package,
-        children: [
-          {
-            id: "inventory",
-            label: "Нөөцийн байдал",
-            href: "/inventory",
-            icon: Package,
-          },
-          {
-            id: "receive",
-            label: "Бараа хүлээн авах",
-            href: "/receive",
-            icon: PackageCheck,
-          },
-        ],
       },
+      {
+        id: "movements",
+        label: "Хөдөлгөөний түүх",
+        href: "/movements",
+        icon: ScrollText,
+      },
+    ],
+  },
+  {
+    id: "order-fulfillment",
+    title: "Захиалга ба гаргалт",
+    items: [
       {
         id: "online-orders",
         label: "Онлайн захиалга",
         href: "/online-orders",
         icon: ShoppingBag,
+        tone: "warning",
+      },
+      {
+        id: "dispatch-orders",
+        label: "Барааны хүсэлтүүд",
+        href: "/dispatch-orders",
+        icon: ClipboardList,
+      },
+      {
+        id: "dispatch",
+        label: "Бараа гаргах",
+        href: "/dispatch",
+        icon: PackageMinus,
+      },
+    ],
+  },
+  {
+    id: "logistics",
+    title: "Логистик",
+    items: [
+      {
+        id: "transfers",
+        label: "Агуулах хооронд шилжүүлэх",
+        href: "/transfers",
+        icon: ArrowLeftRight,
       },
       {
         id: "delivery-network",
         label: "Хүргэлтийн сүлжээ",
         href: "/delivery",
         icon: Truck,
-      },
-      {
-        id: "dispatch-menu",
-        label: "Гаргалт ба шилжилт",
-        href: "/dispatch-orders",
-        icon: ClipboardList,
-        children: [
-          {
-            id: "dispatch-orders",
-            label: "Илгээмжийн захиалга",
-            href: "/dispatch-orders",
-            icon: ClipboardList,
-          },
-          {
-            id: "dispatch",
-            label: "Бараа гаргах",
-            href: "/dispatch",
-            icon: PackageMinus,
-          },
-          {
-            id: "transfers",
-            label: "Шилжүүлэг",
-            href: "/transfers",
-            icon: ArrowLeftRight,
-          },
-          {
-            id: "movements",
-            label: "Хөдөлгөөний түүх",
-            href: "/movements",
-            icon: ScrollText,
-          },
-        ],
       },
     ],
   },
@@ -115,18 +111,10 @@ const WMS_BOTTOM_GROUPS: AppSidebarGroup[] = [
     title: "Доод цэс",
     items: [
       {
-        id: "system-menu",
-        label: "Систем",
+        id: "settings",
+        label: "Тохиргоо",
         href: "/settings",
         icon: Settings,
-        children: [
-          {
-            id: "settings",
-            label: "Тохиргоо",
-            href: "/settings",
-            icon: Settings,
-          },
-        ],
       },
     ],
   },
