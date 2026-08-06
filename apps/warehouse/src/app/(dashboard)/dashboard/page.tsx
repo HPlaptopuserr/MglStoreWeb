@@ -350,7 +350,7 @@ export default function WmsDashboardPage() {
       <RecentMovements movements={movements} onSelect={setSelectedMovement} />
 
       {/* Pending stock requests */}
-      <PendingRequests />
+      <PendingRequests warehouseId={selectedWarehouse?.id} />
 
       {/* Category modal */}
       {showCategoryModal && (

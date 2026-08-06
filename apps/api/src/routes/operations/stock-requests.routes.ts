@@ -326,22 +326,40 @@ router.get("/stock-requests", requireAuth, async (req, res) => {
     }
     const targetOrganizationId =
       typeof organizationId === "string" ? organizationId : undefined;
+    const targetWarehouseId =
+      typeof warehouseId === "string" ? warehouseId : undefined;
 
     const canManagePlatformStock =
       isFullAdmin(actor.role) ||
       hasPlatformPermission(actor.role, Permission.MANAGE_STOCK);
 
     if (!canManagePlatformStock) {
-      if (!targetOrganizationId) {
-        return res.status(400).json({ message: "organizationId шаардлагатай" });
+      if (targetOrganizationId) {
+        const permissions = await assertOrgPermission(
+          req,
+          res,
+          targetOrganizationId,
+          Permission.VIEW_ORG_DASHBOARD,
+        );
+        if (!permissions) return;
+      } else if (targetWarehouseId) {
+        const warehouseAccess = await prisma.warehouseSetupToken.findFirst({
+          where: {
+            warehouseId: targetWarehouseId,
+            userId: actor.userId,
+            usedAt: { not: null },
+            warehouse: { isActive: true, deletedAt: null },
+          },
+          select: { id: true },
+        });
+        if (!warehouseAccess) {
+          return res.status(403).json({ message: "Агуулахын эрх олдсонгүй" });
+        }
+      } else {
+        return res.status(400).json({
+          message: "organizationId эсвэл warehouseId шаардлагатай",
+        });
       }
-      const permissions = await assertOrgPermission(
-        req,
-        res,
-        targetOrganizationId,
-        Permission.VIEW_ORG_DASHBOARD,
-      );
-      if (!permissions) return;
     }
 
     const where: Prisma.WarehouseStockRequestWhereInput = {};
@@ -354,8 +372,8 @@ router.get("/stock-requests", requireAuth, async (req, res) => {
       where.status = status as StockRequestStatus;
     }
 
-    if (warehouseId) {
-      where.warehouseId = warehouseId as string;
+    if (targetWarehouseId) {
+      where.warehouseId = targetWarehouseId;
     }
 
     const requests = await prisma.warehouseStockRequest.findMany({

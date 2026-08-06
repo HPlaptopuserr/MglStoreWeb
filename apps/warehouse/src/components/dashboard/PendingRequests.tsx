@@ -1,25 +1,68 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { API, wmsFetch } from "@/lib/api";
 
-export function PendingRequests() {
-  const [requests, setRequests] = useState<any[]>([]);
+type PendingStockRequest = {
+  id: string;
+  requestNumber: string;
+  note: string | null;
+  requestedAt: string;
+  organization?: { name?: string };
+};
+
+type PendingRequestsProps = {
+  warehouseId?: string;
+};
+
+export function PendingRequests({ warehouseId }: PendingRequestsProps) {
+  const [requests, setRequests] = useState<PendingStockRequest[]>([]);
+
+  const load = useCallback(async () => {
+    if (!warehouseId) {
+      setRequests([]);
+      return;
+    }
+
+    try {
+      const params = new URLSearchParams({
+        status: "PENDING",
+        warehouseId,
+      });
+      const res = await wmsFetch(`${API}/stock-requests?${params}`);
+      if (!res.ok) return;
+
+      const data: unknown = await res.json();
+      if (!Array.isArray(data)) {
+        setRequests([]);
+        return;
+      }
+      const pending = data as PendingStockRequest[];
+      setRequests(
+        pending.sort((left, right) => {
+          const leftIsSalesRequest =
+            left.requestNumber.startsWith("SR-") ||
+            left.note?.startsWith("[Х/Т захиалга]");
+          const rightIsSalesRequest =
+            right.requestNumber.startsWith("SR-") ||
+            right.note?.startsWith("[Х/Т захиалга]");
+          return (
+            Number(rightIsSalesRequest) - Number(leftIsSalesRequest) ||
+            new Date(right.requestedAt).getTime() -
+              new Date(left.requestedAt).getTime()
+          );
+        }),
+      );
+    } catch {
+      // Keep the previous successful result during transient refresh failures.
+    }
+  }, [warehouseId]);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await wmsFetch(`${API}/stock-requests?status=PENDING`);
-        if (res.ok) {
-          const data = await res.json();
-          setRequests(Array.isArray(data) ? data.slice(0, 5) : []);
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-    load();
-  }, []);
+    void load();
+    const interval = window.setInterval(() => void load(), 20_000);
+    return () => window.clearInterval(interval);
+  }, [load]);
 
   if (requests.length === 0) return null;
 
@@ -45,13 +88,19 @@ export function PendingRequests() {
             </tr>
           </thead>
           <tbody>
-            {requests.map((req) => (
+            {requests.slice(0, 10).map((req) => (
               <tr
                 key={req.id}
                 className="border-b border-slate-50 last:border-0"
               >
                 <td className="py-2.5 pr-4 font-medium text-blue-600">
                   #{req.requestNumber}
+                  {(req.requestNumber.startsWith("SR-") ||
+                    req.note?.startsWith("[Х/Т захиалга]")) && (
+                    <span className="ml-2 inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+                      Х/Т
+                    </span>
+                  )}
                 </td>
                 <td className="py-2.5 pr-4 text-slate-600">
                   {req.organization?.name || "—"}
