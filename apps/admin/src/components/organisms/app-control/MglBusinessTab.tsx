@@ -232,16 +232,29 @@ export function MglBusinessTab() {
     role: BusinessAppRole,
   ) => {
     if (!selectedOrg || member.role === role || member.role === "OWNER") return;
+
+    if (
+      role === "OWNER" &&
+      !window.confirm(
+        `${member.fullName || member.email || "Энэ хэрэглэгч"}-ийг ${selectedOrg.name} байгууллагын CEO / Owner болгох уу? Одоогийн owner Manager эрхтэй болно.`,
+      )
+    ) {
+      return;
+    }
+
     setSavingRoleUserId(member.userId);
     setError("");
     setSaved(false);
 
     try {
+      const isOwnerTransfer = role === "OWNER";
       const response = await adminFetch(
-        `${API}/partners/${selectedOrg.id}/members/${member.userId}/role`,
+        isOwnerTransfer
+          ? `${API}/partners/${selectedOrg.id}/members/${member.userId}/owner`
+          : `${API}/partners/${selectedOrg.id}/members/${member.userId}/role`,
         {
           method: "PATCH",
-          body: JSON.stringify({ role }),
+          ...(isOwnerTransfer ? {} : { body: JSON.stringify({ role }) }),
         },
       );
       const body = (await response.json().catch(() => ({}))) as {
@@ -993,9 +1006,7 @@ function MemberRoleControls({
                     }
                     className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-black text-slate-900 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                   >
-                    {member.role === "OWNER" && (
-                      <option value="OWNER">{ROLE_LABEL.OWNER}</option>
-                    )}
+                    <option value="OWNER">{ROLE_LABEL.OWNER}</option>
                     {ROLE_OPTIONS.map((role) => (
                       <option key={role.value} value={role.value}>
                         {role.label}
@@ -1004,7 +1015,7 @@ function MemberRoleControls({
                   </select>
                   <span className="text-[11px] font-semibold leading-4 text-slate-400">
                     {locked
-                      ? "CEO / Owner эрхийг эндээс солихгүй."
+                      ? "Owner-ийг өөр ажилтны dropdown-оос шилжүүлнэ."
                       : ROLE_OPTIONS.find((role) => role.value === member.role)
                           ?.description || ROLE_LABEL[member.role]}
                   </span>
