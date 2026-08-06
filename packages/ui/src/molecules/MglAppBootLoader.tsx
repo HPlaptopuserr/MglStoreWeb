@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
 import { cn } from "../lib";
 import { MglCraneLoader } from "./MglLoadingScreen";
 
@@ -109,7 +108,6 @@ export function MglAppBootLoader({
   criticalImageWaitMs = 700,
   className,
 }: MglAppBootLoaderProps) {
-  const pathname = usePathname();
   const [visible, setVisible] = useState(true);
   const loadIdRef = useRef(0);
 
@@ -137,7 +135,7 @@ export function MglAppBootLoader({
     return () => {
       cancelled = true;
     };
-  }, [criticalImageWaitMs, maxWaitMs, minimumVisibleMs, pathname]);
+  }, [criticalImageWaitMs, maxWaitMs, minimumVisibleMs]);
 
   if (!visible) return null;
 

@@ -243,6 +243,7 @@ function SidebarContent({
                           <Link
                             key={child.id}
                             href={child.href}
+                            prefetch={false}
                             onClick={child.onClick}
                             className={cn(
                               "group flex h-8 items-center gap-2 rounded-md px-2.5 text-[13px] font-medium transition-all duration-200",
@@ -271,6 +272,7 @@ function SidebarContent({
               <Link
                 key={item.id}
                 href={item.href}
+                prefetch={false}
                 onClick={item.onClick}
                 title={collapsed ? item.label : undefined}
                 className={cn(
@@ -332,6 +334,7 @@ function SidebarContent({
         {profileHref ? (
           <Link
             href={profileHref}
+            prefetch={false}
             title={collapsed ? "Профайл" : undefined}
             className="min-w-0 flex-1"
           >
