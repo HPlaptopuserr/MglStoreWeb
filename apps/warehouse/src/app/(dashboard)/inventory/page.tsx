@@ -126,14 +126,15 @@ export default function InventoryPage() {
     load();
   }, []);
 
-  // Load inventory when warehouse changes (with auto-retry on network error)
+  // Load inventory when warehouse changes. A failed request is surfaced
+  // immediately instead of keeping the screen in a long retry spinner.
   useEffect(() => {
     if (!selectedWarehouseId) {
       setLoading(false);
       return;
     }
     let cancelled = false;
-    const load = async (attempt = 0) => {
+    const load = async () => {
       setLoading(true);
       setFetchError(false);
       try {
@@ -144,22 +145,13 @@ export default function InventoryPage() {
         if (res.ok) {
           const data = await res.json();
           setInventory(data.inventory || []);
-        } else if (attempt < 2) {
-          setTimeout(() => {
-            if (!cancelled) load(attempt + 1);
-          }, 1500);
-          return;
         } else {
+          setInventory([]);
           setFetchError(true);
         }
       } catch {
         if (cancelled) return;
-        if (attempt < 2) {
-          setTimeout(() => {
-            if (!cancelled) load(attempt + 1);
-          }, 1500);
-          return;
-        }
+        setInventory([]);
         setFetchError(true);
       } finally {
         if (!cancelled) setLoading(false);

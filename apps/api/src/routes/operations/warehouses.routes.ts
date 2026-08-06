@@ -1641,7 +1641,7 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
       });
     }
 
-    const inventory = await prisma.warehouseInventory.findMany({
+    const records = await prisma.warehouseInventory.findMany({
       where: {
         warehouseId: id,
         product: { deletedAt: null },
@@ -1670,15 +1670,19 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
             preorderLeadTimeDays: true,
             preorderNote: true,
             isActive: true,
-            images: {
-              take: 5,
-              select: { id: true, url: true },
-            },
           },
         },
       },
       orderBy: { updatedAt: "desc" },
     });
+
+    // Product images are intentionally excluded here. Loading a limited nested
+    // image relation for every inventory row produces an expensive lateral
+    // query on large warehouses and can exceed the WMS request timeout.
+    const inventory = records.map((record) => ({
+      ...record,
+      product: { ...record.product, images: [] },
+    }));
 
     res.setHeader("Cache-Control", "private, max-age=15");
     return res.json({ inventory });
