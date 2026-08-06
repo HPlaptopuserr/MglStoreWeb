@@ -35,6 +35,28 @@ export async function wmsFetch(
   ) {
     headers.set("Content-Type", "application/json");
   }
+  const method = init?.method?.toUpperCase() ?? "GET";
+  const inputUrl =
+    typeof input === "string"
+      ? input
+      : input instanceof URL
+        ? input.toString()
+        : input.url;
+  const canUseDevelopmentFallback =
+    process.env.NODE_ENV !== "production" &&
+    method === "GET" &&
+    inputUrl.startsWith("http://localhost:4000/");
+  const requestProductionFallback = () => {
+    const fallbackUrl = inputUrl.replace(
+      "http://localhost:4000",
+      PRODUCTION_API_BASE,
+    );
+    return fetch(fallbackUrl, {
+      ...init,
+      headers,
+      signal: createRequestSignal(),
+    });
+  };
   const request = () =>
     fetch(input, {
       ...init,
@@ -46,29 +68,11 @@ export async function wmsFetch(
   try {
     res = await request();
   } catch (error) {
-    const method = init?.method?.toUpperCase() ?? "GET";
-    const inputUrl =
-      typeof input === "string"
-        ? input
-        : input instanceof URL
-          ? input.toString()
-          : input.url;
-    const canUseDevelopmentFallback =
-      process.env.NODE_ENV !== "production" &&
-      method === "GET" &&
-      inputUrl.startsWith("http://localhost:4000/");
-
     if (!canUseDevelopmentFallback) throw error;
-
-    const fallbackUrl = inputUrl.replace(
-      "http://localhost:4000",
-      PRODUCTION_API_BASE,
-    );
-    res = await fetch(fallbackUrl, {
-      ...init,
-      headers,
-      signal: createRequestSignal(),
-    });
+    res = await requestProductionFallback();
+  }
+  if (res.status === 404 && canUseDevelopmentFallback) {
+    res = await requestProductionFallback();
   }
   if (res.status === 401 && typeof window !== "undefined") {
     localStorage.removeItem("wms_token");
