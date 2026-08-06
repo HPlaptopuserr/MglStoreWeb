@@ -25,7 +25,7 @@ import { getSalesStoreLocationSources } from "../../services/sales-store-portfol
 import { notifyNewSalesRepresentativeStockRequest } from "../../services/stock-request-notification.service";
 
 const router: ExpressRouter = Router();
-const MANAGER_ROLES = new Set(["OWNER", "ADMIN"]);
+const MANAGER_ROLES = new Set(["OWNER", "ADMIN", "CEO", "MANAGER"]);
 
 export function distanceMeters(
   lat1: number,
