@@ -1628,6 +1628,68 @@ router.patch(
   },
 );
 
+// Lightweight inventory catalog for the WMS inventory screen.
+router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const actor = (
+      req as typeof req & { user?: { userId?: string; role?: string } }
+    ).user;
+    if (!(await hasWarehouseAccess(actor, id))) {
+      return res.status(403).json({
+        message: "Энэ агуулахын барааг харах эрхгүй байна",
+      });
+    }
+
+    const inventory = await prisma.warehouseInventory.findMany({
+      where: {
+        warehouseId: id,
+        product: { deletedAt: null },
+      },
+      select: {
+        id: true,
+        quantity: true,
+        minQuantity: true,
+        maxQuantity: true,
+        location: true,
+        batchNumber: true,
+        expiryDate: true,
+        note: true,
+        product: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            sku: true,
+            barcode: true,
+            unit: true,
+            price: true,
+            costPrice: true,
+            businessCategoryId: true,
+            supplyType: true,
+            preorderLeadTimeDays: true,
+            preorderNote: true,
+            isActive: true,
+            images: {
+              take: 5,
+              select: { id: true, url: true },
+            },
+          },
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+
+    res.setHeader("Cache-Control", "private, max-age=15");
+    return res.json({ inventory });
+  } catch (error) {
+    console.error("get warehouse inventory catalog error", error);
+    return res.status(500).json({
+      message: "Агуулахын бараа татахад алдаа гарлаа",
+    });
+  }
+});
+
 // Add/Update inventory for a warehouse
 router.post(
   "/warehouses/:id/inventory",

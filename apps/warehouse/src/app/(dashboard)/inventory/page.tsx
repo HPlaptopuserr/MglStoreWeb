@@ -138,12 +138,12 @@ export default function InventoryPage() {
       setFetchError(false);
       try {
         const res = await wmsFetch(
-          `${API}/warehouses/${selectedWarehouseId}/detail`,
+          `${API}/warehouses/${selectedWarehouseId}/inventory`,
         );
         if (cancelled) return;
         if (res.ok) {
           const data = await res.json();
-          setInventory(data.inventories || []);
+          setInventory(data.inventory || []);
         } else if (attempt < 2) {
           setTimeout(() => {
             if (!cancelled) load(attempt + 1);
