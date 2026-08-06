@@ -1,20 +1,32 @@
-import { PaymentStatus, StockRequestStatus, prisma } from "@mgl/database";
+import {
+  PaymentStatus,
+  Prisma,
+  StockRequestStatus,
+  prisma,
+} from "@mgl/database";
+
+export function outstandingStockPaymentWhere(
+  organizationId: string,
+  excludePaymentId?: string,
+): Prisma.StockRequestPaymentWhereInput {
+  return {
+    organizationId,
+    status: { not: PaymentStatus.CANCELLED },
+    request: {
+      status: {
+        notIn: [StockRequestStatus.CANCELLED, StockRequestStatus.REJECTED],
+      },
+    },
+    ...(excludePaymentId ? { id: { not: excludePaymentId } } : {}),
+  };
+}
 
 export async function getOutstandingStockPayments(
   organizationId: string,
   excludePaymentId?: string,
 ) {
   const payments = await prisma.stockRequestPayment.findMany({
-    where: {
-      organizationId,
-      status: { not: PaymentStatus.CANCELLED },
-      request: {
-        status: {
-          notIn: [StockRequestStatus.CANCELLED, StockRequestStatus.REJECTED],
-        },
-      },
-      ...(excludePaymentId ? { id: { not: excludePaymentId } } : {}),
-    },
+    where: outstandingStockPaymentWhere(organizationId, excludePaymentId),
     include: {
       request: { select: { requestNumber: true, status: true } },
     },
@@ -39,6 +51,7 @@ export type OutstandingStockPayment = Awaited<
 export function serializeOutstandingPayment(payment: OutstandingStockPayment) {
   return {
     id: payment.id,
+    vendorId: payment.organizationId,
     invoiceNumber: payment.invoiceNumber,
     requestNumber: payment.request.requestNumber,
     requestStatus: payment.request.status,

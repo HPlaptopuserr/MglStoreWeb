@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -180,22 +180,30 @@ export default function RequestsHubPage() {
   const [loading, setLoading] = useState(true);
   const [stockRequests, setStockRequests] = useState<StockRequest[]>([]);
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const storedUser = JSON.parse(localStorage.getItem("vendor_user") || "{}");
-        if (storedUser.organizationId) {
-          const res = await authFetch(`${API}/stock-requests?organizationId=${storedUser.organizationId}`);
-          if (res?.ok) setStockRequests(await res.json() || []);
-        }
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
+  const fetchAll = useCallback(async (silent = false) => {
+    try {
+      if (!silent) setLoading(true);
+      const storedUser = JSON.parse(
+        localStorage.getItem("vendor_user") || "{}",
+      );
+      if (storedUser.organizationId) {
+        const res = await authFetch(
+          `${API}/stock-requests?organizationId=${storedUser.organizationId}`,
+        );
+        if (res?.ok) setStockRequests((await res.json()) || []);
       }
-    };
-    fetchAll();
+    } catch (error: unknown) {
+      console.error("Failed to fetch stock requests", error);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void fetchAll();
+    const interval = window.setInterval(() => void fetchAll(true), 20_000);
+    return () => window.clearInterval(interval);
+  }, [fetchAll]);
 
   const summary = useMemo(() => ({
     total: stockRequests.length,

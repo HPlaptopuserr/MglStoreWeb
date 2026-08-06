@@ -21,6 +21,8 @@ import {
   getOutstandingStockPayments,
   serializeOutstandingPayment,
 } from "../../services/outstanding-stock-payment.service";
+import { getSalesStoreLocationSources } from "../../services/sales-store-portfolio.service";
+import { notifyNewSalesRepresentativeStockRequest } from "../../services/stock-request-notification.service";
 
 const router: ExpressRouter = Router();
 const MANAGER_ROLES = new Set(["OWNER", "ADMIN"]);
@@ -386,52 +388,17 @@ router.get(
   requireAuth,
   async (req, res) => {
     const current = await membership((req as any).user as AuthPayload);
-    if (!requireRepresentative(current))
+    if (
+      !current ||
+      (!MANAGER_ROLES.has(current.role) && !requireRepresentative(current))
+    )
       return res
         .status(403)
-        .json({ message: "Худалдааны төлөөлөгчийн эрх шаардлагатай" });
+        .json({ message: "Дэлгүүрийн байршил харах эрх шаардлагатай" });
 
-    const rows = await prisma.salesVisitLocation.findMany({
-      where: {
-        isActive: true,
-        vendorOrganizationId: { not: null },
-        vendorOrganization: {
-          is: { status: OrgStatus.ACTIVE, deletedAt: null },
-        },
-      },
-      select: {
-        id: true,
-        name: true,
-        address: true,
-        latitude: true,
-        longitude: true,
-        radiusMeters: true,
-        contactName: true,
-        contactPhone: true,
-        assignments: {
-          select: { memberId: true },
-        },
-        vendorOrganization: {
-          select: {
-            id: true,
-            name: true,
-            taxId: true,
-            email: true,
-            phone: true,
-            address: true,
-            businessCategory: true,
-          },
-        },
-      },
-      orderBy: [{ name: "asc" }, { createdAt: "desc" }],
-    });
-
-    const stores = rows.map(({ assignments, ...location }) => ({
+    const locations = await getSalesStoreLocationSources(current.id);
+    const stores = locations.map((location) => ({
       ...location,
-      assignedMemberIds: assignments.map(({ memberId }) => memberId),
-      assignedToMe: assignments.some(
-        ({ memberId }) => memberId === current!.id,
-      ),
       region: salesStoreRegion(
         location.latitude,
         location.longitude,
@@ -626,8 +593,11 @@ router.get(
           paidAmount: payment.totalAmount,
           paidAt: new Date(),
           paymentMethod: PaymentMethod.QPAY,
-          confirmedById: actor.userId,
-          note: "Х/Т QPay автомат баталгаажуулалт",
+          // The representative only presents the vendor's QR. The payment
+          // belongs to the vendor organization and is confirmed by QPay.
+          confirmedById: null,
+          confirmedAt: new Date(),
+          note: "Дэлгүүрийн QPay төлбөр — автоматаар баталгаажсан",
         },
       });
       return res.json({ status: "PAID" });
@@ -671,7 +641,9 @@ router.post(
         paidAmount: payment.totalAmount,
         paidAt: new Date(),
         paymentMethod: PaymentMethod.QPAY,
-        note: "Х/Т local QPay баталгаажуулалт",
+        confirmedById: null,
+        confirmedAt: new Date(),
+        note: "Дэлгүүрийн local QPay туршилтын төлбөр",
       },
     });
     return res.json({ status: updated.status, paymentId: updated.id });
@@ -1297,6 +1269,14 @@ router.post(
         },
       },
     });
+    if (order?.id) {
+      void notifyNewSalesRepresentativeStockRequest(order.id).catch((error) => {
+        console.error("sales representative stock request notification error", {
+          requestId: order.id,
+          error,
+        });
+      });
+    }
     return res.status(201).json(order);
   },
 );
