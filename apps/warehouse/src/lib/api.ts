@@ -9,6 +9,12 @@ export const API_BASE =
 
 export const API = `${API_BASE}/api`;
 
+const PRODUCTION_API_BASE = "https://api.mglstore.mn";
+
+function createRequestSignal(signal?: AbortSignal | null) {
+  return signal ?? AbortSignal.timeout(15_000);
+}
+
 /** Fetch wrapper that auto-attaches the WMS auth token */
 export async function wmsFetch(
   input: string | URL | Request,
@@ -29,11 +35,41 @@ export async function wmsFetch(
   ) {
     headers.set("Content-Type", "application/json");
   }
-  const res = await fetch(input, {
-    ...init,
-    headers,
-    signal: init?.signal ?? AbortSignal.timeout(15_000),
-  });
+  const request = () =>
+    fetch(input, {
+      ...init,
+      headers,
+      signal: createRequestSignal(init?.signal),
+    });
+
+  let res: Response;
+  try {
+    res = await request();
+  } catch (error) {
+    const method = init?.method?.toUpperCase() ?? "GET";
+    const inputUrl =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+    const canUseDevelopmentFallback =
+      process.env.NODE_ENV !== "production" &&
+      method === "GET" &&
+      inputUrl.startsWith("http://localhost:4000/");
+
+    if (!canUseDevelopmentFallback) throw error;
+
+    const fallbackUrl = inputUrl.replace(
+      "http://localhost:4000",
+      PRODUCTION_API_BASE,
+    );
+    res = await fetch(fallbackUrl, {
+      ...init,
+      headers,
+      signal: createRequestSignal(),
+    });
+  }
   if (res.status === 401 && typeof window !== "undefined") {
     localStorage.removeItem("wms_token");
     localStorage.removeItem("wms_user");
