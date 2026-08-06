@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowDownToLine,
@@ -39,30 +39,22 @@ export default function WmsDashboardPage() {
   const [selectedMovement, setSelectedMovement] = useState<Movement | null>(
     null,
   );
+  const warehouseDetailsRef = useRef(new Map<string, WarehouseDetail>());
 
   useEffect(() => {
     const load = async () => {
       try {
         // Fetch warehouses
-        const whRes = await wmsFetch(`${API}/warehouses`);
+        const whRes = await wmsFetch(`${API}/warehouses?summary=true`);
         if (whRes.ok) {
           const whData = await whRes.json();
           const whList = Array.isArray(whData)
             ? whData
             : whData.warehouses || [];
 
-          // Fetch details for each warehouse
-          const details: WarehouseDetail[] = [];
-          for (const wh of whList.slice(0, 10)) {
-            const detailRes = await wmsFetch(
-              `${API}/warehouses/${wh.id}/detail`,
-            );
-            if (detailRes.ok) {
-              details.push(await detailRes.json());
-            }
-          }
-          setWarehouses(details);
-          if (details.length > 0) setSelectedWarehouse(details[0]);
+          const summaries = whList.slice(0, 25) as WarehouseDetail[];
+          setWarehouses(summaries);
+          if (summaries.length > 0) setSelectedWarehouse(summaries[0]);
         }
 
         // Fetch categories
@@ -90,6 +82,40 @@ export default function WmsDashboardPage() {
     };
     load();
   }, []);
+
+  useEffect(() => {
+    const warehouseId = selectedWarehouse?.id;
+    if (!warehouseId || selectedWarehouse.inventories) return;
+
+    const cached = warehouseDetailsRef.current.get(warehouseId);
+    if (cached) {
+      setSelectedWarehouse(cached);
+      return;
+    }
+
+    const controller = new AbortController();
+    const loadDetail = async () => {
+      try {
+        const response = await wmsFetch(
+          `${API}/warehouses/${warehouseId}/detail`,
+          { signal: controller.signal },
+        );
+        if (!response.ok) return;
+        const detail = (await response.json()) as WarehouseDetail;
+        setSelectedWarehouse((current) => {
+          if (current?.id !== warehouseId) return current;
+          const merged = { ...detail, summary: current.summary };
+          warehouseDetailsRef.current.set(warehouseId, merged);
+          return merged;
+        });
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error("Warehouse detail load failed", error);
+      }
+    };
+    void loadDetail();
+    return () => controller.abort();
+  }, [selectedWarehouse]);
 
   if (loading) {
     return (

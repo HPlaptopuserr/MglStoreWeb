@@ -213,7 +213,7 @@ async function getImportBusinessCategoryChoices() {
 // Warehouses created and operated by admins through the standalone WMS.
 router.get("/warehouses", requireAuth, async (req, res) => {
   try {
-    const { organizationId, isActive } = req.query;
+    const { organizationId, isActive, summary } = req.query;
     const actor = (
       req as typeof req & { user?: { userId?: string; role?: string } }
     ).user;
@@ -278,12 +278,53 @@ router.get("/warehouses", requireAuth, async (req, res) => {
       },
     });
 
-    // Transform to include organizations array and flatten createdBy
+    const inventoryStats =
+      summary === "true" && warehouses.length > 0
+        ? await prisma.warehouseInventory.findMany({
+            where: { warehouseId: { in: warehouses.map(({ id }) => id) } },
+            select: { warehouseId: true, quantity: true, minQuantity: true },
+          })
+        : [];
+    const statsByWarehouse = new Map<
+      string,
+      {
+        totalProducts: number;
+        totalQuantity: number;
+        lowStockCount: number;
+        outOfStockCount: number;
+      }
+    >();
+    for (const inventory of inventoryStats) {
+      const current = statsByWarehouse.get(inventory.warehouseId) ?? {
+        totalProducts: 0,
+        totalQuantity: 0,
+        lowStockCount: 0,
+        outOfStockCount: 0,
+      };
+      current.totalProducts += 1;
+      current.totalQuantity += inventory.quantity;
+      if (inventory.quantity === 0) current.outOfStockCount += 1;
+      else if (inventory.quantity <= inventory.minQuantity)
+        current.lowStockCount += 1;
+      statsByWarehouse.set(inventory.warehouseId, current);
+    }
+
+    // Transform to include organizations array and optional lightweight stock summary.
     const result = warehouses.map((w: (typeof warehouses)[number]) => ({
       ...w,
       organizations: w.organizations.map(
         (wo: (typeof w.organizations)[number]) => wo.organization,
       ),
+      ...(summary === "true"
+        ? {
+            summary: statsByWarehouse.get(w.id) ?? {
+              totalProducts: 0,
+              totalQuantity: 0,
+              lowStockCount: 0,
+              outOfStockCount: 0,
+            },
+          }
+        : {}),
       createdBy: w.createdBy
         ? {
             id: w.createdBy.id,

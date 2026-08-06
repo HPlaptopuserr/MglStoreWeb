@@ -29,7 +29,11 @@ export async function wmsFetch(
   ) {
     headers.set("Content-Type", "application/json");
   }
-  const res = await fetch(input, { ...init, headers });
+  const res = await fetch(input, {
+    ...init,
+    headers,
+    signal: init?.signal ?? AbortSignal.timeout(15_000),
+  });
   if (res.status === 401 && typeof window !== "undefined") {
     localStorage.removeItem("wms_token");
     localStorage.removeItem("wms_user");
