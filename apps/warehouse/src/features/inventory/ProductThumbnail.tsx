@@ -9,6 +9,7 @@ interface ProductThumbnailProps {
   productName: string;
   className?: string;
   size?: number;
+  quality?: number;
   eager?: boolean;
 }
 
@@ -16,7 +17,8 @@ export function ProductThumbnail({
   imageUrl,
   productName,
   className = "h-11 w-11",
-  size = 96,
+  size = 72,
+  quality = 60,
   eager = false,
 }: ProductThumbnailProps) {
   const [failed, setFailed] = useState(false);
@@ -28,11 +30,12 @@ export function ProductThumbnail({
       <Package className="h-5 w-5 text-slate-300" aria-hidden="true" />
       {imageUrl && !failed && (
         <img
-          src={getOptimizedProductImageUrl(imageUrl, size)}
+          src={getOptimizedProductImageUrl(imageUrl, size, quality)}
           alt={productName}
           loading={eager ? "eager" : "lazy"}
           decoding="async"
           fetchPriority={eager ? "high" : "low"}
+          referrerPolicy="no-referrer"
           className="absolute inset-0 h-full w-full object-cover"
           onError={() => setFailed(true)}
         />
@@ -40,4 +43,3 @@ export function ProductThumbnail({
     </div>
   );
 }
-

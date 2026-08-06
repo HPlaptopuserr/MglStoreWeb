@@ -251,7 +251,8 @@ function InventoryGrid({
               imageUrl={item.product.images[0]?.url}
               productName={item.product.name}
               className="h-32 w-full rounded-xl"
-              size={640}
+              size={384}
+              quality={65}
             />
             <div className="px-1 pb-1 pt-2.5">
               <div className="flex min-w-0 items-start gap-2">
