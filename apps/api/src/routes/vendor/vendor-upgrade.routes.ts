@@ -14,12 +14,16 @@ import {
 } from "../../services/vendor-plan-entitlement.service";
 import type { AuthPayload } from "../../middleware/auth";
 import {
+  CONTRACT_PAYMENT_ACCOUNTS_SETTING_KEY,
   UpgradeMinuConfigurationError,
+  UPGRADE_PAYMENT_ACCOUNT_SETTING_KEY,
   buildUpgradeMinuWebhookUrl,
   calculateUpgradeRenewalExpiration,
+  findUpgradePaymentAccountByMerchantCode,
   hasSufficientLegacyQPayPayment,
-  isUpgradeMinuConfigured,
   resolveUpgradeMinuMerchantConfig,
+  resolveUpgradePaymentAccountFromSettings,
+  type UpgradeMinuPaymentAccount,
 } from "../../services/upgrade-minu.service";
 
 const router: ExpressRouter = Router();
@@ -437,7 +441,11 @@ async function isUpgradeInvoicePaid(invoice: {
   paymentMerchantCode: string | null;
 }) {
   if (invoice.paymentProvider.toUpperCase() === "SYSTEMQR") {
-    const config = resolveUpgradeMinuMerchantConfig();
+    const config = invoice.paymentMerchantCode
+      ? await resolveUpgradeMinuConfigForMerchant(
+          invoice.paymentMerchantCode,
+        )
+      : await resolveCurrentUpgradeMinuConfig();
     const payment = await checkSystemQrPayment(
       {
         merchantCode: invoice.paymentMerchantCode || config.merchantCode,
@@ -454,6 +462,89 @@ async function isUpgradeInvoicePaid(invoice: {
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────
+
+function resolveUpgradeMinuConfigFromAccount(
+  account: UpgradeMinuPaymentAccount,
+) {
+  if (!account.username || !account.password) {
+    throw new UpgradeMinuConfigurationError(
+      "Сонгосон Pro Upgrade Minu дансны username/password хадгалагдаагүй байна. Admin дээр зөв credential-ээ оруулж хадгална уу",
+    );
+  }
+
+  return resolveUpgradeMinuMerchantConfig(
+    {
+      ...process.env,
+      SYSTEMQR_UPGRADE_USERNAME: account.username,
+      SYSTEMQR_UPGRADE_PASSWORD: account.password,
+    },
+    account.merchantCode,
+  );
+}
+
+async function resolveUpgradeMinuConfigForMerchant(merchantCode: string) {
+  const paymentAccounts = await prisma.siteSetting.findUnique({
+    where: { key: CONTRACT_PAYMENT_ACCOUNTS_SETTING_KEY },
+    select: { value: true },
+  });
+  const account = findUpgradePaymentAccountByMerchantCode(
+    paymentAccounts?.value,
+    merchantCode,
+  );
+
+  // Existing invoices created before the Admin selector was introduced can
+  // still be checked with the server credential.
+  return account
+    ? resolveUpgradeMinuConfigFromAccount(account)
+    : resolveUpgradeMinuMerchantConfig(process.env, merchantCode);
+}
+
+async function resolveCurrentUpgradeMinuConfig() {
+  const settings = await prisma.siteSetting.findMany({
+    where: {
+      key: {
+        in: [
+          UPGRADE_PAYMENT_ACCOUNT_SETTING_KEY,
+          CONTRACT_PAYMENT_ACCOUNTS_SETTING_KEY,
+        ],
+      },
+    },
+    select: { key: true, value: true },
+  });
+  const settingByKey = new Map(
+    settings.map((setting) => [setting.key, setting.value]),
+  );
+  const adminSelection = settingByKey.get(
+    UPGRADE_PAYMENT_ACCOUNT_SETTING_KEY,
+  );
+
+  if (adminSelection === undefined) {
+    throw new UpgradeMinuConfigurationError(
+      "Admin → Тохиргоо → Төлбөрийн данс хэсэгт Pro Upgrade-ийн Minu дансаа сонгоно уу",
+    );
+  }
+
+  const account = resolveUpgradePaymentAccountFromSettings(
+    adminSelection,
+    settingByKey.get(CONTRACT_PAYMENT_ACCOUNTS_SETTING_KEY),
+  );
+  if (!account) {
+    throw new UpgradeMinuConfigurationError(
+      "Admin → Тохиргоо → Төлбөрийн данс хэсэгт Pro Upgrade-ийн Minu дансаа сонгоно уу",
+    );
+  }
+
+  return resolveUpgradeMinuConfigFromAccount(account);
+}
+
+async function isCurrentUpgradeMinuConfigured() {
+  try {
+    await resolveCurrentUpgradeMinuConfig();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * GET /api/vendor/upgrade/status
@@ -486,7 +577,7 @@ router.get("/vendor/upgrade/status", requireAuth, async (req, res) => {
       planExpiresAt: entitlement.effectivePlanExpiresAt,
       trialUsed: org.trialUsed,
       isActive: entitlement.isActive,
-      paymentConfigured: isUpgradeMinuConfigured(),
+      paymentConfigured: await isCurrentUpgradeMinuConfigured(),
       entitlementSource: entitlement.source,
       currentPlan: entitlement.effectivePlanType
         ? (getPlan(entitlement.effectivePlanType) ?? null)
@@ -588,7 +679,7 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
         .status(404)
         .json({ success: false, message: "Байгууллага олдсонгүй" });
 
-    const minuConfig = resolveUpgradeMinuMerchantConfig();
+    const minuConfig = await resolveCurrentUpgradeMinuConfig();
     const existingInvoice = await prisma.orgUpgradePlan.findFirst({
       where: { organizationId: org.id, status: "PENDING" },
       orderBy: { createdAt: "desc" },
@@ -677,6 +768,71 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Minu Dynamic QR нэхэмжлэл үүсгэхэд алдаа гарлаа",
+      ...(process.env.NODE_ENV !== "production"
+        ? {
+            detail:
+              error instanceof Error ? error.message : String(error),
+          }
+        : {}),
+    });
+  }
+});
+
+/**
+ * POST /api/vendor/upgrade/cancel/:invoiceId
+ * Stops an unpaid local checkout so the vendor can choose another plan.
+ * The provider invoice may remain visible at Minu, but a later callback for
+ * the cancelled row is intentionally ignored and can never activate access.
+ */
+router.post("/vendor/upgrade/cancel/:invoiceId", requireAuth, async (req, res) => {
+  try {
+    const userId = getRequestUserId(req);
+    const { invoiceId } = req.params;
+    const org = await getOrgForUser(userId, getRequestOrganizationId(req));
+    if (!org) {
+      return res.status(404).json({
+        success: false,
+        message: "Байгууллага олдсонгүй",
+      });
+    }
+
+    const invoice = await prisma.orgUpgradePlan.findFirst({
+      where: { invoiceId, organizationId: org.id },
+      select: { id: true, status: true },
+    });
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: "Нэхэмжлэл олдсонгүй",
+      });
+    }
+    if (invoice.status === "PAID") {
+      return res.status(409).json({
+        success: false,
+        message: "Төлбөр баталгаажсан тул нэхэмжлэлийг цуцлах боломжгүй",
+      });
+    }
+    if (invoice.status !== "PENDING") {
+      return res.json({ success: true, cancelled: true });
+    }
+
+    const cancelled = await prisma.orgUpgradePlan.updateMany({
+      where: { id: invoice.id, status: "PENDING" },
+      data: { status: "CANCELLED" },
+    });
+    if (cancelled.count !== 1) {
+      return res.status(409).json({
+        success: false,
+        message: "Нэхэмжлэлийн төлөв өөрчлөгдсөн байна. Дахин шалгана уу",
+      });
+    }
+
+    return res.json({ success: true, cancelled: true });
+  } catch (error) {
+    console.error("upgrade cancel error", error);
+    return res.status(500).json({
+      success: false,
+      message: "Нэхэмжлэл цуцлахад серверийн алдаа гарлаа",
     });
   }
 });

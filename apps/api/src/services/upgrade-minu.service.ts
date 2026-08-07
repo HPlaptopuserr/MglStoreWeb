@@ -8,7 +8,19 @@ type UpgradePlanDuration = {
 
 const MONEY_TOLERANCE = 0.01;
 
+export const UPGRADE_PAYMENT_ACCOUNT_SETTING_KEY =
+  "pro-upgrade-payment-account";
+export const CONTRACT_PAYMENT_ACCOUNTS_SETTING_KEY =
+  "contract-payment-accounts";
+
 export type UpgradeMinuMerchantConfig = {
+  merchantCode: string;
+  username: string;
+  password: string;
+};
+
+export type UpgradeMinuPaymentAccount = {
+  id: string;
   merchantCode: string;
   username: string;
   password: string;
@@ -27,6 +39,7 @@ export class UpgradeMinuConfigurationError extends Error {
  */
 export function resolveUpgradeMinuMerchantConfig(
   source: NodeJS.ProcessEnv = process.env,
+  merchantCodeOverride = "",
 ): UpgradeMinuMerchantConfig {
   const dedicatedUsername = source.SYSTEMQR_UPGRADE_USERNAME?.trim() || "";
   const dedicatedPassword = source.SYSTEMQR_UPGRADE_PASSWORD?.trim() || "";
@@ -45,8 +58,7 @@ export function resolveUpgradeMinuMerchantConfig(
   const password = dedicatedAuthRequested
     ? dedicatedPassword
     : source.SYSTEMQR_PASSWORD?.trim() || "";
-  const merchantCode =
-    source.SYSTEMQR_UPGRADE_MERCHANT_CODE?.trim() || username;
+  const merchantCode = merchantCodeOverride.trim();
 
   if (!merchantCode || !username || !password) {
     throw new UpgradeMinuConfigurationError(
@@ -54,17 +66,96 @@ export function resolveUpgradeMinuMerchantConfig(
     );
   }
 
+  const masterUsername = source.SYSTEMQR_USERNAME?.trim() || "";
+  if (
+    masterUsername &&
+    merchantCode.toLowerCase() === masterUsername.toLowerCase()
+  ) {
+    throw new UpgradeMinuConfigurationError(
+      "Pro Upgrade-д Minu master username биш, Admin дээр бүртгэсэн subMerchant данс сонгоно уу",
+    );
+  }
+
   return { merchantCode, username, password };
 }
 
-export function isUpgradeMinuConfigured(
-  source: NodeJS.ProcessEnv = process.env,
-): boolean {
+export function resolveUpgradeMerchantCodeFromSettings(
+  selectionValue: string | null | undefined,
+  paymentAccountsValue: string | null | undefined,
+): string {
+  return (
+    resolveUpgradePaymentAccountFromSettings(
+      selectionValue,
+      paymentAccountsValue,
+    )?.merchantCode || ""
+  );
+}
+
+function readUpgradePaymentAccounts(
+  paymentAccountsValue: string | null | undefined,
+): UpgradeMinuPaymentAccount[] {
+  if (!paymentAccountsValue) return [];
+
   try {
-    resolveUpgradeMinuMerchantConfig(source);
-    return true;
+    const accounts = JSON.parse(paymentAccountsValue) as unknown;
+    if (!Array.isArray(accounts)) return [];
+
+    return accounts.flatMap((account) => {
+      if (!account || typeof account !== "object") return [];
+      const record = account as Record<string, unknown>;
+      const id = String(record.id || "").trim();
+      const merchantCode = String(record.merchantCode || "").trim();
+      if (!id || !merchantCode) return [];
+
+      return [
+        {
+          id,
+          merchantCode,
+          username: String(record.username || merchantCode).trim(),
+          password: String(record.password || "").trim(),
+        },
+      ];
+    });
   } catch {
-    return false;
+    return [];
+  }
+}
+
+export function findUpgradePaymentAccountByMerchantCode(
+  paymentAccountsValue: string | null | undefined,
+  merchantCode: string,
+): UpgradeMinuPaymentAccount | null {
+  const expectedCode = merchantCode.trim().toLowerCase();
+  if (!expectedCode) return null;
+
+  return (
+    readUpgradePaymentAccounts(paymentAccountsValue).find(
+      (account) => account.merchantCode.toLowerCase() === expectedCode,
+    ) || null
+  );
+}
+
+export function resolveUpgradePaymentAccountFromSettings(
+  selectionValue: string | null | undefined,
+  paymentAccountsValue: string | null | undefined,
+): UpgradeMinuPaymentAccount | null {
+  if (!selectionValue || !paymentAccountsValue) return null;
+
+  try {
+    const selection = JSON.parse(selectionValue) as { accountId?: unknown };
+    const accountId =
+      typeof selection?.accountId === "string"
+        ? selection.accountId.trim()
+        : "";
+    if (!accountId) return null;
+
+    return (
+      readUpgradePaymentAccounts(paymentAccountsValue).find(
+        (account) => account.id === accountId,
+      ) || null
+    );
+  } catch {
+    return null;
   }
 }
 
@@ -113,10 +204,6 @@ export function hasSufficientLegacyQPayPayment(
   return settledAmount + MONEY_TOLERANCE >= expectedAmount;
 }
 
-/**
- * Expired access starts again now. An active subscription is extended from
- * its current expiry so paying early never discards already-paid days.
- */
 export function calculateUpgradeRenewalExpiration(
   plan: UpgradePlanDuration,
   currentExpiresAt: Date | null | undefined,

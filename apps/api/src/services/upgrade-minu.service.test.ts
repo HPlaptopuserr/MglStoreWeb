@@ -6,14 +6,18 @@ import {
   calculateUpgradeRenewalExpiration,
   hasSufficientLegacyQPayPayment,
   resolveUpgradeMinuMerchantConfig,
+  resolveUpgradeMerchantCodeFromSettings,
+  resolveUpgradePaymentAccountFromSettings,
 } from "./upgrade-minu.service";
 
 test("upgrade Minu uses one platform merchant with server credentials", () => {
-  const config = resolveUpgradeMinuMerchantConfig({
-    SYSTEMQR_USERNAME: "platform-user",
-    SYSTEMQR_PASSWORD: "platform-password",
-    SYSTEMQR_UPGRADE_MERCHANT_CODE: "MGLSTORE-MERCHANT",
-  });
+  const config = resolveUpgradeMinuMerchantConfig(
+    {
+      SYSTEMQR_USERNAME: "platform-user",
+      SYSTEMQR_PASSWORD: "platform-password",
+    },
+    "MGLSTORE-MERCHANT",
+  );
 
   assert.deepEqual(config, {
     merchantCode: "MGLSTORE-MERCHANT",
@@ -22,16 +26,16 @@ test("upgrade Minu uses one platform merchant with server credentials", () => {
   });
 });
 
-test("upgrade Minu can use the existing platform username as merchant code", () => {
-  const config = resolveUpgradeMinuMerchantConfig({
-    SYSTEMQR_USERNAME: "platform-merchant",
-    SYSTEMQR_PASSWORD: "platform-password",
-  });
-
-  assert.equal(config.merchantCode, "platform-merchant");
-  assert.equal(config.username, "platform-merchant");
+test("upgrade Minu requires an explicit platform merchant code", () => {
+  assert.throws(
+    () =>
+      resolveUpgradeMinuMerchantConfig({
+        SYSTEMQR_USERNAME: "platform-user",
+        SYSTEMQR_PASSWORD: "platform-password",
+      }),
+    UpgradeMinuConfigurationError,
+  );
 });
-
 test("upgrade Minu rejects a partial dedicated credential pair", () => {
   assert.throws(
     () =>
@@ -41,6 +45,57 @@ test("upgrade Minu rejects a partial dedicated credential pair", () => {
         SYSTEMQR_UPGRADE_USERNAME: "upgrade-user",
       }),
     UpgradeMinuConfigurationError,
+  );
+});
+
+test("upgrade Minu allows a subMerchant username equal to its merchant code", () => {
+  const config = resolveUpgradeMinuMerchantConfig(
+    {
+      SYSTEMQR_USERNAME: "master-user",
+      SYSTEMQR_PASSWORD: "master-password",
+      SYSTEMQR_UPGRADE_USERNAME: "SUB-MERCHANT",
+      SYSTEMQR_UPGRADE_PASSWORD: "sub-password",
+    },
+    "SUB-MERCHANT",
+  );
+
+  assert.equal(config.merchantCode, "SUB-MERCHANT");
+  assert.equal(config.username, "SUB-MERCHANT");
+});
+
+test("upgrade Minu resolves only the account selected by Admin", () => {
+  const selection = JSON.stringify({ accountId: "upgrade-account" });
+  const accounts = JSON.stringify([
+    { id: "other-account", merchantCode: "OTHER-MERCHANT" },
+    {
+      id: "upgrade-account",
+      merchantCode: "UPGRADE-MERCHANT",
+      username: "upgrade-user",
+      password: "upgrade-password",
+    },
+  ]);
+  const merchantCode = resolveUpgradeMerchantCodeFromSettings(
+    selection,
+    accounts,
+  );
+  const account = resolveUpgradePaymentAccountFromSettings(selection, accounts);
+
+  assert.equal(merchantCode, "UPGRADE-MERCHANT");
+  assert.deepEqual(account, {
+    id: "upgrade-account",
+    merchantCode: "UPGRADE-MERCHANT",
+    username: "upgrade-user",
+    password: "upgrade-password",
+  });
+});
+
+test("upgrade Minu rejects a missing Admin account selection", () => {
+  assert.equal(
+    resolveUpgradeMerchantCodeFromSettings(
+      JSON.stringify({ accountId: "deleted-account" }),
+      JSON.stringify([{ id: "active-account", merchantCode: "ACTIVE" }]),
+    ),
+    "",
   );
 });
 

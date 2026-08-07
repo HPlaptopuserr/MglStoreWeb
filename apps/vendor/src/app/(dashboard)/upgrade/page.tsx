@@ -21,6 +21,7 @@ import {
   ArrowRight,
   Clock,
   ExternalLink,
+  ArrowLeft,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { API, authFetch } from "@/lib/api";
@@ -353,8 +354,10 @@ export default function UpgradePage() {
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
   const [isActing, setIsActing] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [paid, setPaid] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [showPendingCheckout, setShowPendingCheckout] = useState(true);
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -459,6 +462,7 @@ export default function UpgradePage() {
       const data = await res.json();
       if (data.success) {
         await loadStatus();
+        setShowPendingCheckout(true);
       } else {
         setMessage({
           type: "error",
@@ -503,6 +507,39 @@ export default function UpgradePage() {
     }
   };
 
+  const handleBackToPlans = async () => {
+    const invoiceId = status?.pendingInvoice?.invoiceId;
+    if (!invoiceId) {
+      setShowPendingCheckout(false);
+      return;
+    }
+
+    setIsCancelling(true);
+    setMessage(null);
+    try {
+      const res = await authFetch(
+        withOrgId(`${API}/vendor/upgrade/cancel/${invoiceId}`),
+        { method: "POST" },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        setMessage({
+          type: "error",
+          text: data.message || "Нэхэмжлэл цуцлахад алдаа гарлаа",
+        });
+        return;
+      }
+
+      setSelectedPlan(null);
+      setShowPendingCheckout(false);
+      await loadStatus();
+    } catch {
+      setMessage({ type: "error", text: "Серверийн алдаа" });
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
   const copyQR = () => {
     if (!status?.pendingInvoice?.qrText) return;
     navigator.clipboard.writeText(status.pendingInvoice.qrText);
@@ -523,6 +560,7 @@ export default function UpgradePage() {
   const plans = status?.plans ?? [];
   const membershipPlanGroups = groupMembershipPlans(plans);
   const hasPendingInvoice = !!status?.pendingInvoice && !paid;
+  const displayPendingInvoice = hasPendingInvoice && showPendingCheckout;
   const pendingPlan = hasPendingInvoice
     ? plans.find((p) => p.id === status?.pendingInvoice?.planType)
     : null;
@@ -720,8 +758,23 @@ export default function UpgradePage() {
       )}
 
       {/* ── Pending Minu Dynamic QR / legacy QPay ── */}
-      {hasPendingInvoice && (
+      {displayPendingInvoice && (
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+          <div className="px-6 pt-5">
+            <button
+              type="button"
+              onClick={handleBackToPlans}
+              disabled={isCancelling}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-bold text-slate-600 transition hover:border-orange-300 hover:bg-orange-50 hover:text-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isCancelling ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <ArrowLeft className="h-4 w-4" />
+              )}
+              {isCancelling ? "Буцаж байна..." : "Буцах"}
+            </button>
+          </div>
           <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-amber-50 rounded-xl">
@@ -777,7 +830,7 @@ export default function UpgradePage() {
             </div>
 
             {!!status?.pendingInvoice?.deepLinks?.length && (
-              <div>
+              <div className="sm:hidden">
                 <p className="mb-3 text-center text-xs font-bold text-slate-500">
                   Утсаараа төлөх бол банкны апп-аа сонгоно уу
                 </p>
@@ -860,7 +913,7 @@ export default function UpgradePage() {
       )}
 
       {/* ── Plan Selector (no active plan) ── */}
-      {!isActive && !hasPendingInvoice && (
+      {!isActive && !displayPendingInvoice && (
         <div className="space-y-5">
           <div className="flex items-center justify-between">
             <div>
@@ -929,7 +982,7 @@ export default function UpgradePage() {
       )}
 
       {/* ── Renew (when active) ── */}
-      {isActive && !hasPendingInvoice && (
+      {isActive && !displayPendingInvoice && (
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-100">
             <h3 className="text-base font-black text-slate-900">

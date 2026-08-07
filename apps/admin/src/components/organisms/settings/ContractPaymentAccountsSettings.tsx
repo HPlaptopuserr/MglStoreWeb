@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CreditCard, Loader2, Save, ShieldCheck } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 import {
   CONTRACT_PAYMENT_ACCOUNTS_KEY,
   DEFAULT_SYSTEMQR_LOCATION,
   PaymentAccountsSettingsPanel,
+  getBankLabel,
   parseContractPaymentAccounts,
   toSystemQrConfig,
   type ContractPaymentAccount,
@@ -13,6 +15,20 @@ import {
   type SystemQrCity,
   type SystemQrKhoroo,
 } from "../sections/contract/PaymentAccountPanels";
+
+const PRO_UPGRADE_PAYMENT_ACCOUNT_KEY = "pro-upgrade-payment-account";
+
+const readUpgradePaymentAccountId = (raw?: string | null) => {
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw);
+    return typeof parsed?.accountId === "string"
+      ? parsed.accountId.trim()
+      : "";
+  } catch {
+    return "";
+  }
+};
 
 const defaultSystemQr = {
   enabled: true,
@@ -47,6 +63,9 @@ export function ContractPaymentAccountsSettings() {
   });
   const [connectingMinuAccount, setConnectingMinuAccount] = useState(false);
   const [checkingMinuAccounts, setCheckingMinuAccounts] = useState(false);
+  const [upgradePaymentAccountId, setUpgradePaymentAccountId] = useState("");
+  const [savingUpgradeAccount, setSavingUpgradeAccount] = useState(false);
+  const [upgradeAccountSaved, setUpgradeAccountSaved] = useState(false);
   const [systemQrCities, setSystemQrCities] = useState<SystemQrCity[]>([]);
   const [systemQrKhoroos, setSystemQrKhoroos] = useState<SystemQrKhoroo[]>([]);
   const [systemQrCategories, setSystemQrCategories] = useState<SystemQrCategory[]>([]);
@@ -55,9 +74,24 @@ export function ContractPaymentAccountsSettings() {
     adminFetch(`${API}/site-settings/admin`)
       .then((res) => (res.ok ? res.json() : {}))
       .then((data: Record<string, string>) => {
+        const paymentAccounts = parseContractPaymentAccounts(
+          data[CONTRACT_PAYMENT_ACCOUNTS_KEY],
+        );
+        const savedUpgradeAccountId = readUpgradePaymentAccountId(
+          data[PRO_UPGRADE_PAYMENT_ACCOUNT_KEY],
+        );
+        setUpgradePaymentAccountId(savedUpgradeAccountId);
+        setUpgradeAccountSaved(
+          Boolean(
+            savedUpgradeAccountId &&
+              paymentAccounts.some(
+                (account) => account.id === savedUpgradeAccountId,
+              ),
+          ),
+        );
         setSettings((prev: any) => ({
           ...prev,
-          paymentAccounts: parseContractPaymentAccounts(data[CONTRACT_PAYMENT_ACCOUNTS_KEY]),
+          paymentAccounts,
         }));
       })
       .catch(() => {});
@@ -173,6 +207,50 @@ export function ContractPaymentAccountsSettings() {
 
     if (!res.ok) {
       throw new Error("Дансны сан хадгалахад алдаа гарлаа");
+    }
+  };
+
+  const persistUpgradePaymentAccount = async (accountId: string) => {
+    const account = (settings.paymentAccounts || []).find(
+      (item: ContractPaymentAccount) => item.id === accountId,
+    );
+    if (accountId && !account?.merchantCode) {
+      throw new Error("Сонгосон Minu дансны merchantCode дутуу байна");
+    }
+
+    const res = await adminFetch(
+      `${API}/site-settings/${PRO_UPGRADE_PAYMENT_ACCOUNT_KEY}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          value: JSON.stringify({
+            accountId: account?.id || "",
+            merchantCode: account?.merchantCode || "",
+            updatedAt: new Date().toISOString(),
+          }),
+        }),
+      },
+    );
+    if (!res.ok) {
+      throw new Error("Pro Upgrade төлбөрийн данс хадгалахад алдаа гарлаа");
+    }
+  };
+
+  const saveUpgradePaymentAccount = async () => {
+    setSavingUpgradeAccount(true);
+    setUpgradeAccountSaved(false);
+    try {
+      await persistUpgradePaymentAccount(upgradePaymentAccountId);
+      setUpgradeAccountSaved(true);
+    } catch (error) {
+      console.error("save Pro Upgrade payment account error", error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Pro Upgrade төлбөрийн данс хадгалахад алдаа гарлаа",
+      );
+    } finally {
+      setSavingUpgradeAccount(false);
     }
   };
 
@@ -319,6 +397,11 @@ export function ContractPaymentAccountsSettings() {
     const nextAccounts = (settings.paymentAccounts || []).filter((item: ContractPaymentAccount) => item.id !== accountId);
     try {
       await persistPaymentAccounts(nextAccounts);
+      if (upgradePaymentAccountId === accountId) {
+        await persistUpgradePaymentAccount("");
+        setUpgradePaymentAccountId("");
+        setUpgradeAccountSaved(false);
+      }
       setSettings((prev: any) => ({
         ...prev,
         paymentAccounts: nextAccounts,
@@ -485,23 +568,104 @@ export function ContractPaymentAccountsSettings() {
     }
   };
 
+  const selectedUpgradeAccount = (settings.paymentAccounts || []).find(
+    (account: ContractPaymentAccount) =>
+      account.id === upgradePaymentAccountId,
+  );
+
   return (
-    <PaymentAccountsSettingsPanel
-      settings={settings}
-      setSettings={setSettings}
-      selectPaymentAccount={selectPaymentAccount}
-      connectingMinuAccount={connectingMinuAccount}
-      checkingMinuAccounts={checkingMinuAccounts}
-      checkMinuSubMerchants={checkMinuSubMerchants}
-      deletePaymentAccount={deletePaymentAccount}
-      handleConnectMinuAccount={handleConnectMinuAccount}
-      onSystemQrCityChange={handleSystemQrCityChange}
-      onSystemQrDistrictChange={handleSystemQrDistrictChange}
-      systemQrCategories={systemQrCategories}
-      systemQrCities={systemQrCities}
-      systemQrKhoroos={systemQrKhoroos}
-      updateSystemQr={updateSystemQr}
-      upsertCurrentPaymentAccount={upsertCurrentPaymentAccount}
-    />
+    <div className="space-y-6">
+      <section className="rounded-2xl border border-orange-200 bg-orange-50/60 p-5 shadow-sm">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white">
+            <ShieldCheck size={20} />
+          </div>
+          <div>
+            <h2 className="text-base font-black text-slate-900">
+              Pro Upgrade төлбөрийн данс
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              Кассын системийн эрх сунгалтын бүх Minu Dynamic QR төлбөр зөвхөн
+              энд сонгосон платформын дансанд орно. Vendor Profile-ийн POS
+              merchant тохиргоог ашиглахгүй.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
+              Сунгалтын орлого хүлээн авах Minu данс
+            </span>
+            <select
+              value={upgradePaymentAccountId}
+              onChange={(event) => {
+                setUpgradePaymentAccountId(event.target.value);
+                setUpgradeAccountSaved(false);
+              }}
+              className="w-full rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100"
+            >
+              <option value="">Данс сонгоогүй — Pro Upgrade төлбөр хаалттай</option>
+              {(settings.paymentAccounts || []).map(
+                (account: ContractPaymentAccount) => (
+                  <option key={account.id} value={account.id}>
+                    {account.label || account.merchantName} ·{" "}
+                    {getBankLabel(account.bankCode)} {account.accountNumber || "-"}
+                    {" · "}{account.merchantCode}
+                  </option>
+                ),
+              )}
+            </select>
+          </label>
+
+          <button
+            type="button"
+            onClick={saveUpgradePaymentAccount}
+            disabled={savingUpgradeAccount}
+            className="mt-auto inline-flex h-[42px] items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-bold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {savingUpgradeAccount ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : upgradeAccountSaved ? (
+              <ShieldCheck size={16} />
+            ) : (
+              <Save size={16} />
+            )}
+            {savingUpgradeAccount
+              ? "Хадгалж байна..."
+              : upgradeAccountSaved
+                ? "Хадгалагдсан"
+                : "Pro Upgrade-д хадгалах"}
+          </button>
+        </div>
+
+        {selectedUpgradeAccount && (
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+            <CreditCard size={15} />
+            {selectedUpgradeAccount.label || selectedUpgradeAccount.merchantName}
+            {" · "}{getBankLabel(selectedUpgradeAccount.bankCode)}
+            {" · "}{selectedUpgradeAccount.accountNumber || "Дансны дугаар хадгалагдаагүй"}
+          </div>
+        )}
+      </section>
+
+      <PaymentAccountsSettingsPanel
+        settings={settings}
+        setSettings={setSettings}
+        selectPaymentAccount={selectPaymentAccount}
+        connectingMinuAccount={connectingMinuAccount}
+        checkingMinuAccounts={checkingMinuAccounts}
+        checkMinuSubMerchants={checkMinuSubMerchants}
+        deletePaymentAccount={deletePaymentAccount}
+        handleConnectMinuAccount={handleConnectMinuAccount}
+        onSystemQrCityChange={handleSystemQrCityChange}
+        onSystemQrDistrictChange={handleSystemQrDistrictChange}
+        systemQrCategories={systemQrCategories}
+        systemQrCities={systemQrCities}
+        systemQrKhoroos={systemQrKhoroos}
+        updateSystemQr={updateSystemQr}
+        upsertCurrentPaymentAccount={upsertCurrentPaymentAccount}
+      />
+    </div>
   );
 }
