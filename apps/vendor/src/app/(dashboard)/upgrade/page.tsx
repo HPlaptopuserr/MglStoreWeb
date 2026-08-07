@@ -20,8 +20,17 @@ import {
   TrendingUp,
   ArrowRight,
   Clock,
+  ExternalLink,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { API, authFetch } from "@/lib/api";
+
+type QPayDeepLink = {
+  name: string;
+  description: string;
+  logo: string;
+  link: string;
+};
 
 type Plan = {
   id: string;
@@ -50,11 +59,14 @@ type UpgradeStatus = {
   planExpiresAt: string | null;
   trialUsed: boolean;
   isActive: boolean;
+  paymentConfigured: boolean;
   currentPlan: Plan | null;
   pendingInvoice: {
     invoiceId: string;
     invoiceNo: string;
     qrText: string;
+    qrImage: string | null;
+    deepLinks: QPayDeepLink[];
     amount: number;
     planType: string;
     createdAt: string;
@@ -64,6 +76,10 @@ type UpgradeStatus = {
 
 function fmt(n: number) {
   return n === -1 ? "Хязгааргүй" : n.toLocaleString();
+}
+
+function qpayImageSource(value: string) {
+  return value.startsWith("data:") ? value : `data:image/png;base64,${value}`;
 }
 
 function StatCard({
@@ -78,14 +94,26 @@ function StatCard({
   highlight?: boolean;
 }) {
   return (
-    <div className={`rounded-2xl p-4 ${highlight ? "bg-amber-50 border border-amber-100" : "bg-slate-50 border border-slate-100"}`}>
+    <div
+      className={`rounded-2xl p-4 ${highlight ? "bg-amber-50 border border-amber-100" : "bg-slate-50 border border-slate-100"}`}
+    >
       <div className="flex items-center gap-2 mb-2">
-        <div className={`p-1.5 rounded-lg ${highlight ? "bg-amber-100" : "bg-white border border-slate-200"}`}>
-          <Icon className={`w-3.5 h-3.5 ${highlight ? "text-amber-600" : "text-slate-500"}`} />
+        <div
+          className={`p-1.5 rounded-lg ${highlight ? "bg-amber-100" : "bg-white border border-slate-200"}`}
+        >
+          <Icon
+            className={`w-3.5 h-3.5 ${highlight ? "text-amber-600" : "text-slate-500"}`}
+          />
         </div>
-        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">{label}</p>
+        <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+          {label}
+        </p>
       </div>
-      <p className={`text-lg font-black ${highlight ? "text-amber-700" : "text-slate-800"}`}>{value}</p>
+      <p
+        className={`text-lg font-black ${highlight ? "text-amber-700" : "text-slate-800"}`}
+      >
+        {value}
+      </p>
     </div>
   );
 }
@@ -181,7 +209,9 @@ function VendorMembershipTierCard({
 
       <div className="flex items-start justify-between mb-4">
         <div>
-          <p className="font-black text-slate-950 text-xl leading-tight">{group.name}</p>
+          <p className="font-black text-slate-950 text-xl leading-tight">
+            {group.name}
+          </p>
           <div className="mt-3 flex items-end gap-2">
             <span className="text-3xl font-black tracking-tight text-slate-950">
               {group.monthlyPrice.toLocaleString()}
@@ -302,12 +332,16 @@ function SelectedPaymentSummary({ plan }: { plan: Plan }) {
           <p className="text-xl font-black text-slate-900 mt-0.5 flex items-baseline gap-2">
             {plan.name}
             {plan.durationLabel && (
-              <span className="text-sm font-bold text-slate-400">{plan.durationLabel}</span>
+              <span className="text-sm font-bold text-slate-400">
+                {plan.durationLabel}
+              </span>
             )}
           </p>
         </div>
         <div className="text-right">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Төлөх дүн</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            Төлөх дүн
+          </p>
           <p className="mt-0.5 text-2xl font-black text-orange-500">
             {plan.price.toLocaleString()}₮
           </p>
@@ -325,7 +359,10 @@ export default function UpgradePage() {
   const [isChecking, setIsChecking] = useState(false);
   const [paid, setPaid] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [message, setMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const getOrgId = () => {
@@ -333,7 +370,9 @@ export default function UpgradePage() {
       const user = JSON.parse(localStorage.getItem("vendor_user") || "{}");
       if (user.organizationId) return user.organizationId as string;
       const token = localStorage.getItem("vendor_token");
-      const payload = token ? JSON.parse(atob(token.split(".")[1] || "")) : null;
+      const payload = token
+        ? JSON.parse(atob(token.split(".")[1] || ""))
+        : null;
       return payload?.organizationId as string | undefined;
     } catch {
       return undefined;
@@ -355,15 +394,24 @@ export default function UpgradePage() {
         if (data.success) {
           setStatus(data);
         } else {
-          setMessage({ type: "error", text: data.message || "Төлөвийн мэдээлэл авахад алдаа гарлаа" });
+          setMessage({
+            type: "error",
+            text: data.message || "Төлөвийн мэдээлэл авахад алдаа гарлаа",
+          });
         }
       } else {
         const err = await res.json().catch(() => ({}));
-        setMessage({ type: "error", text: err.message || "Серверийн алдаа. Дахин оролдоно уу." });
+        setMessage({
+          type: "error",
+          text: err.message || "Серверийн алдаа. Дахин оролдоно уу.",
+        });
       }
     } catch (e) {
       console.error(e);
-      setMessage({ type: "error", text: "Холболтын алдаа. Дахин оролдоно уу." });
+      setMessage({
+        type: "error",
+        text: "Холболтын алдаа. Дахин оролдоно уу.",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -378,14 +426,19 @@ export default function UpgradePage() {
     pollRef.current = setInterval(async () => {
       try {
         const res = await authFetch(
-          withOrgId(`${API}/vendor/upgrade/check/${status.pendingInvoice!.invoiceId}`),
+          withOrgId(
+            `${API}/vendor/upgrade/check/${status.pendingInvoice!.invoiceId}`,
+          ),
           { method: "POST" },
         );
         const data = await res.json();
         if (data.paid) {
           clearInterval(pollRef.current!);
           setPaid(true);
-          setMessage({ type: "success", text: "Амжилттай! Таны Pro план идэвхжлээ." });
+          setMessage({
+            type: "success",
+            text: "Амжилттай! Таны Pro план идэвхжлээ.",
+          });
           await loadStatus();
         }
       } catch {
@@ -411,7 +464,10 @@ export default function UpgradePage() {
       if (data.success) {
         await loadStatus();
       } else {
-        setMessage({ type: "error", text: data.message || "Нэхэмжлэл үүсгэхэд алдаа гарлаа" });
+        setMessage({
+          type: "error",
+          text: data.message || "Нэхэмжлэл үүсгэхэд алдаа гарлаа",
+        });
       }
     } catch {
       setMessage({ type: "error", text: "Серверийн алдаа" });
@@ -425,16 +481,24 @@ export default function UpgradePage() {
     setIsChecking(true);
     try {
       const res = await authFetch(
-        withOrgId(`${API}/vendor/upgrade/check/${status.pendingInvoice.invoiceId}`),
+        withOrgId(
+          `${API}/vendor/upgrade/check/${status.pendingInvoice.invoiceId}`,
+        ),
         { method: "POST" },
       );
       const data = await res.json();
       if (data.paid) {
         setPaid(true);
-        setMessage({ type: "success", text: "Амжилттай! Таны Pro план идэвхжлээ." });
+        setMessage({
+          type: "success",
+          text: "Амжилттай! Таны Pro план идэвхжлээ.",
+        });
         await loadStatus();
       } else {
-        setMessage({ type: "error", text: "Төлбөр баталгаажаагүй байна. Түр хүлээгээд дахин шалгана уу." });
+        setMessage({
+          type: "error",
+          text: "Төлбөр баталгаажаагүй байна. Түр хүлээгээд дахин шалгана уу.",
+        });
       }
     } catch {
       setMessage({ type: "error", text: "Серверийн алдаа" });
@@ -462,19 +526,25 @@ export default function UpgradePage() {
   const isActive = status?.isActive || paid;
   const plans = status?.plans ?? [];
   const membershipPlanGroups = groupMembershipPlans(plans);
-  const hasPendingInvoice = !!status?.pendingInvoice && !paid && !isActive;
+  const hasPendingInvoice = !!status?.pendingInvoice && !paid;
   const pendingPlan = hasPendingInvoice
     ? plans.find((p) => p.id === status?.pendingInvoice?.planType)
     : null;
-  const chosenPlan = selectedPlan ? plans.find((p) => p.id === selectedPlan) : null;
+  const chosenPlan = selectedPlan
+    ? plans.find((p) => p.id === selectedPlan)
+    : null;
 
   const daysLeft = status?.planExpiresAt
-    ? Math.max(0, Math.ceil((new Date(status.planExpiresAt).getTime() - Date.now()) / 86400000))
+    ? Math.max(
+        0,
+        Math.ceil(
+          (new Date(status.planExpiresAt).getTime() - Date.now()) / 86400000,
+        ),
+      )
     : null;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 pb-20 space-y-6">
-
       {/* ── Hero ── */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#FFAD02] via-amber-400 to-amber-500 p-8 shadow-xl shadow-amber-200/50">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.2),transparent_60%)]" />
@@ -485,10 +555,13 @@ export default function UpgradePage() {
             <div className="p-2 bg-black/10 rounded-xl backdrop-blur-sm">
               <Crown className="w-6 h-6 text-black" />
             </div>
-            <h1 className="text-3xl font-black text-black tracking-tight">MglStore Pro</h1>
+            <h1 className="text-3xl font-black text-black tracking-tight">
+              MglStore Pro
+            </h1>
           </div>
           <p className="text-black/70 font-medium text-base max-w-sm leading-relaxed">
-            Personal account-ийн membership-тэй ижил Silver, Gold, Platinum эрхээр vendor боломжуудаа идэвхжүүл
+            Personal account-ийн membership-тэй ижил Silver, Gold, Platinum
+            эрхээр vendor боломжуудаа идэвхжүүл
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
             {[
@@ -496,7 +569,10 @@ export default function UpgradePage() {
               { icon: ShieldCheck, text: "Найдвартай платформ" },
               { icon: TrendingUp, text: "Борлуулалт нэмэгдүүл" },
             ].map(({ icon: Icon, text }) => (
-              <div key={text} className="flex items-center gap-1.5 bg-black/10 backdrop-blur-sm rounded-full px-3 py-1.5">
+              <div
+                key={text}
+                className="flex items-center gap-1.5 bg-black/10 backdrop-blur-sm rounded-full px-3 py-1.5"
+              >
                 <Icon className="w-3.5 h-3.5 text-black/70" />
                 <span className="text-xs font-bold text-black/80">{text}</span>
               </div>
@@ -531,6 +607,13 @@ export default function UpgradePage() {
         </div>
       )}
 
+      {status && !status.paymentConfigured && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+          QPay төлбөр түр идэвхгүй байна. Платформын merchant тохиргоог бүрэн
+          оруулсны дараа багцын төлбөр авах боломжтой болно.
+        </div>
+      )}
+
       {/* ── Active Plan ── */}
       {isActive && (
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
@@ -540,8 +623,12 @@ export default function UpgradePage() {
                 <CheckCircle2 className="w-5 h-5 text-emerald-500" />
               </div>
               <div>
-                <h2 className="text-base font-black text-slate-900">Идэвхтэй план</h2>
-                <p className="text-xs text-slate-400 font-medium">Таны одоогийн багц</p>
+                <h2 className="text-base font-black text-slate-900">
+                  Идэвхтэй план
+                </h2>
+                <p className="text-xs text-slate-400 font-medium">
+                  Таны одоогийн багц
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -562,9 +649,21 @@ export default function UpgradePage() {
             {/* Stats grid */}
             {status?.currentPlan && (
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <StatCard icon={Package} label="Бүтээгдэхүүн" value={fmt(status.currentPlan.maxProducts)} />
-                <StatCard icon={Image} label="Зураг / бараа" value={fmt(status.currentPlan.maxImages)} />
-                <StatCard icon={Tag} label="Ангилал" value={fmt(status.currentPlan.maxCategories)} />
+                <StatCard
+                  icon={Package}
+                  label="Бүтээгдэхүүн"
+                  value={fmt(status.currentPlan.maxProducts)}
+                />
+                <StatCard
+                  icon={Image}
+                  label="Зураг / бараа"
+                  value={fmt(status.currentPlan.maxImages)}
+                />
+                <StatCard
+                  icon={Tag}
+                  label="Ангилал"
+                  value={fmt(status.currentPlan.maxCategories)}
+                />
                 {daysLeft !== null && (
                   <StatCard
                     icon={Clock}
@@ -578,22 +677,35 @@ export default function UpgradePage() {
 
             {/* Expiry */}
             {status?.planExpiresAt && (
-              <div className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${
-                daysLeft !== null && daysLeft <= 7
-                  ? "bg-rose-50 border border-rose-100"
-                  : "bg-slate-50 border border-slate-100"
-              }`}>
-                <Calendar className={`w-4 h-4 shrink-0 ${daysLeft !== null && daysLeft <= 7 ? "text-rose-500" : "text-slate-400"}`} />
+              <div
+                className={`flex items-center gap-3 rounded-2xl px-4 py-3 ${
+                  daysLeft !== null && daysLeft <= 7
+                    ? "bg-rose-50 border border-rose-100"
+                    : "bg-slate-50 border border-slate-100"
+                }`}
+              >
+                <Calendar
+                  className={`w-4 h-4 shrink-0 ${daysLeft !== null && daysLeft <= 7 ? "text-rose-500" : "text-slate-400"}`}
+                />
                 <div className="flex-1">
-                  <p className={`text-sm font-semibold ${daysLeft !== null && daysLeft <= 7 ? "text-rose-700" : "text-slate-600"}`}>
-                    {daysLeft !== null && daysLeft <= 7 ? "Удахгүй дуусна!" : "Дуусах огноо"}
+                  <p
+                    className={`text-sm font-semibold ${daysLeft !== null && daysLeft <= 7 ? "text-rose-700" : "text-slate-600"}`}
+                  >
+                    {daysLeft !== null && daysLeft <= 7
+                      ? "Удахгүй дуусна!"
+                      : "Дуусах огноо"}
                   </p>
-                  <p className={`text-xs font-medium mt-0.5 ${daysLeft !== null && daysLeft <= 7 ? "text-rose-500" : "text-slate-400"}`}>
-                    {new Date(status.planExpiresAt).toLocaleDateString("mn-MN", {
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
+                  <p
+                    className={`text-xs font-medium mt-0.5 ${daysLeft !== null && daysLeft <= 7 ? "text-rose-500" : "text-slate-400"}`}
+                  >
+                    {new Date(status.planExpiresAt).toLocaleDateString(
+                      "mn-MN",
+                      {
+                        year: "numeric",
+                        month: "long",
+                        day: "numeric",
+                      },
+                    )}
                   </p>
                 </div>
                 {daysLeft !== null && daysLeft <= 7 && (
@@ -616,8 +728,12 @@ export default function UpgradePage() {
                 <Sparkles className="w-5 h-5 text-amber-500" />
               </div>
               <div>
-                <h2 className="text-base font-black text-slate-900">QPay төлбөр хүлээгдэж байна</h2>
-                <p className="text-xs text-slate-400 font-medium">Апп-аар уншуулж гүйлгээ хийнэ үү</p>
+                <h2 className="text-base font-black text-slate-900">
+                  QPay төлбөр хүлээгдэж байна
+                </h2>
+                <p className="text-xs text-slate-400 font-medium">
+                  Апп-аар уншуулж гүйлгээ хийнэ үү
+                </p>
               </div>
             </div>
             {pendingPlan && (
@@ -628,17 +744,31 @@ export default function UpgradePage() {
           </div>
 
           <div className="p-6 space-y-5">
-            {/* QR placeholder */}
+            {/* QPay QR */}
             <div className="flex flex-col items-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 p-8 gap-4">
-              <div className="w-48 h-48 bg-white rounded-2xl border-2 border-slate-200 flex items-center justify-center shadow-sm">
-                <div className="text-center px-4">
-                  <Globe className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-                  <p className="text-[9px] text-slate-300 font-mono break-all leading-relaxed">
-                    {status?.pendingInvoice?.qrText.slice(0, 60)}...
-                  </p>
-                </div>
+              <div className="w-56 h-56 bg-white rounded-2xl border-2 border-slate-200 flex items-center justify-center p-3 shadow-sm">
+                {status?.pendingInvoice?.qrImage ? (
+                  <img
+                    src={qpayImageSource(status.pendingInvoice.qrImage)}
+                    alt="QPay төлбөрийн QR"
+                    className="h-full w-full object-contain"
+                  />
+                ) : status?.pendingInvoice?.qrText ? (
+                  <QRCodeSVG
+                    value={status.pendingInvoice.qrText}
+                    size={200}
+                    level="M"
+                    bgColor="#ffffff"
+                    fgColor="#020617"
+                    includeMargin
+                  />
+                ) : (
+                  <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+                )}
               </div>
-              <p className="text-sm font-semibold text-slate-500">QPay апп-аар уншуулна уу</p>
+              <p className="text-sm font-semibold text-slate-500">
+                QPay апп-аар уншуулна уу
+              </p>
               <button
                 onClick={copyQR}
                 className="flex items-center gap-2 px-5 py-2.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-sm font-semibold text-slate-700 transition-all hover:shadow-sm"
@@ -652,15 +782,55 @@ export default function UpgradePage() {
               </button>
             </div>
 
+            {!!status?.pendingInvoice?.deepLinks?.length && (
+              <div>
+                <p className="mb-3 text-center text-xs font-bold text-slate-500">
+                  Утсаараа төлөх бол банкны апп-аа сонгоно уу
+                </p>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {status.pendingInvoice.deepLinks.map((bank) => (
+                    <a
+                      key={`${bank.name}-${bank.link}`}
+                      href={bank.link}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex min-h-12 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-orange-300 hover:text-orange-600"
+                    >
+                      {bank.logo ? (
+                        <img
+                          src={bank.logo}
+                          alt=""
+                          className="h-7 w-7 rounded-lg object-contain"
+                        />
+                      ) : (
+                        <ExternalLink className="h-4 w-4 text-orange-500" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate">
+                        {bank.name}
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Invoice details */}
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-slate-50 rounded-2xl p-4">
-                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Нэхэмжлэлийн №</p>
-                <p className="font-mono font-bold text-slate-800 text-sm">{status?.pendingInvoice?.invoiceNo}</p>
+                <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-1">
+                  Нэхэмжлэлийн №
+                </p>
+                <p className="font-mono font-bold text-slate-800 text-sm">
+                  {status?.pendingInvoice?.invoiceNo}
+                </p>
               </div>
               <div className="bg-amber-50 rounded-2xl p-4 border border-amber-100">
-                <p className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider mb-1">Нийт дүн</p>
-                <p className="font-black text-amber-700 text-lg">{status?.pendingInvoice?.amount.toLocaleString()}₮</p>
+                <p className="text-[11px] font-semibold text-amber-400 uppercase tracking-wider mb-1">
+                  Нийт дүн
+                </p>
+                <p className="font-black text-amber-700 text-lg">
+                  {status?.pendingInvoice?.amount.toLocaleString()}₮
+                </p>
               </div>
             </div>
 
@@ -678,24 +848,17 @@ export default function UpgradePage() {
                 )}
                 {isChecking ? "Шалгаж байна..." : "Төлбөр шалгах"}
               </button>
-              <button
-                onClick={async () => {
-                  await (authFetch as any)(withOrgId(`${API}/vendor/upgrade/initiate`), {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ planId: status?.pendingInvoice?.planType }),
-                  });
-                  await loadStatus();
-                }}
-                className="px-5 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold rounded-2xl transition-colors text-sm"
-              >
-                Шинэчлэх
-              </button>
             </div>
+
+            <p className="text-center text-xs font-medium text-slate-400">
+              Төлбөр зөвхөн MglStore-ийн QPay merchant дансанд хүлээн авна.
+            </p>
 
             <div className="flex items-center gap-2 justify-center">
               <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <p className="text-xs text-slate-400">Төлбөр автоматаар шалгагдаж байна</p>
+              <p className="text-xs text-slate-400">
+                Төлбөр автоматаар шалгагдаж байна
+              </p>
             </div>
           </div>
         </div>
@@ -706,9 +869,12 @@ export default function UpgradePage() {
         <div className="space-y-5">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-black text-slate-900">Membership сонгох</h2>
+              <h2 className="text-xl font-black text-slate-900">
+                Membership сонгох
+              </h2>
               <p className="text-sm text-slate-400 mt-0.5">
-                Personal account-ийн Silver, Gold, Platinum tier-тэй ижил эрхээр идэвхжүүлнэ.
+                Personal account-ийн Silver, Gold, Platinum tier-тэй ижил эрхээр
+                идэвхжүүлнэ.
               </p>
             </div>
           </div>
@@ -733,7 +899,9 @@ export default function UpgradePage() {
                 <VendorMembershipTierCard
                   key={group.tier}
                   group={group}
-                  selected={group.plans.some((plan) => plan.id === selectedPlan)}
+                  selected={group.plans.some(
+                    (plan) => plan.id === selectedPlan,
+                  )}
                   selectedPlanId={selectedPlan}
                   onSelectPlan={setSelectedPlan}
                 />
@@ -746,7 +914,7 @@ export default function UpgradePage() {
               <SelectedPaymentSummary plan={chosenPlan} />
               <button
                 onClick={handleInitiate}
-                disabled={isActing}
+                disabled={isActing || !status?.paymentConfigured}
                 className="w-full flex items-center justify-center gap-2 py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-black rounded-2xl transition-all text-base shadow-md shadow-orange-100 active:scale-[0.98]"
               >
                 {isActing ? (
@@ -756,7 +924,9 @@ export default function UpgradePage() {
                 )}
                 {isActing
                   ? "Үүсгэж байна..."
-                  : `QuickQR-р ${chosenPlan.price.toLocaleString()}₮ төлөх`}
+                  : !status?.paymentConfigured
+                    ? "QPay тохиргоо хүлээгдэж байна"
+                    : `QPay-р ${chosenPlan.price.toLocaleString()}₮ төлөх`}
               </button>
             </>
           )}
@@ -767,8 +937,12 @@ export default function UpgradePage() {
       {isActive && !hasPendingInvoice && (
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-100">
-            <h3 className="text-base font-black text-slate-900">Membership сунгах / шинэчлэх</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Хугацааг сунгаж тасалдалгүй үргэлжлүүлнэ</p>
+            <h3 className="text-base font-black text-slate-900">
+              Membership сунгах / шинэчлэх
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Хугацааг сунгаж тасалдалгүй үргэлжлүүлнэ
+            </p>
           </div>
           <div className="p-6 space-y-4">
             <div className="grid gap-4 lg:grid-cols-3">
@@ -776,7 +950,9 @@ export default function UpgradePage() {
                 <VendorMembershipTierCard
                   key={group.tier}
                   group={group}
-                  selected={group.plans.some((plan) => plan.id === selectedPlan)}
+                  selected={group.plans.some(
+                    (plan) => plan.id === selectedPlan,
+                  )}
                   selectedPlanId={selectedPlan}
                   onSelectPlan={setSelectedPlan}
                 />
@@ -788,7 +964,7 @@ export default function UpgradePage() {
                 <SelectedPaymentSummary plan={chosenPlan} />
                 <button
                   onClick={handleInitiate}
-                  disabled={isActing}
+                  disabled={isActing || !status?.paymentConfigured}
                   className="w-full flex items-center justify-center gap-2 py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white font-black rounded-2xl transition-all shadow-sm shadow-orange-100 active:scale-[0.98]"
                 >
                   {isActing ? (
@@ -798,7 +974,9 @@ export default function UpgradePage() {
                   )}
                   {isActing
                     ? "Үүсгэж байна..."
-                    : `${chosenPlan.name} ${chosenPlan.durationLabel || ""}-аар сунгах`}
+                    : !status?.paymentConfigured
+                      ? "QPay тохиргоо хүлээгдэж байна"
+                      : `${chosenPlan.name} ${chosenPlan.durationLabel || ""}-аар сунгах`}
                 </button>
               </>
             )}

@@ -1,5 +1,5 @@
 import { Router, type Request, type Router as ExpressRouter } from "express";
-import { prisma } from "@mgl/database";
+import { Prisma, prisma } from "@mgl/database";
 import { requireAuth } from "../../middleware/auth";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import { syncOwnerPersonalMembershipFromOrgPlan } from "../../services/owner-membership-sync.service";
@@ -9,6 +9,13 @@ import {
   resolveVendorPlanEntitlement,
 } from "../../services/vendor-plan-entitlement.service";
 import type { AuthPayload } from "../../middleware/auth";
+import {
+  UpgradeQPayConfigurationError,
+  calculateUpgradeRenewalExpiration,
+  hasSufficientUpgradePayment,
+  isUpgradeQPayConfigured,
+  resolveUpgradeQPayMerchantContext,
+} from "../../services/upgrade-qpay.service";
 
 const router: ExpressRouter = Router();
 
@@ -254,7 +261,9 @@ async function getOrgForUser(userId: string, organizationId?: string | null) {
     where: {
       userId,
       isActive: true,
+      deletedAt: null,
       ...(organizationId ? { organizationId } : {}),
+      organization: { deletedAt: null },
     },
     select: {
       organization: {
@@ -271,22 +280,7 @@ async function getOrgForUser(userId: string, organizationId?: string | null) {
       },
     },
   });
-  if (member?.organization) return member.organization;
-
-  if (!organizationId) return null;
-  return prisma.organization.findFirst({
-    where: { id: organizationId, deletedAt: null },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      subdomainEnabled: true,
-      planType: true,
-      planActivatedAt: true,
-      planExpiresAt: true,
-      trialUsed: true,
-    },
-  });
+  return member?.organization ?? null;
 }
 
 interface VendorUpgradeRequest extends Request {
@@ -319,6 +313,122 @@ function activationData(plan: Plan) {
   const now = new Date();
   const expiresAt = calculatePlanExpiration(plan, now);
   return { now, expiresAt };
+}
+
+type UpgradeQPayLink = {
+  name: string;
+  description: string;
+  logo: string;
+  link: string;
+};
+
+function readUpgradeQPayLinks(
+  value: Prisma.JsonValue | null,
+): UpgradeQPayLink[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const link = typeof record.link === "string" ? record.link : "";
+    if (!link) return [];
+    return [
+      {
+        name: typeof record.name === "string" ? record.name : "Банкны апп",
+        description:
+          typeof record.description === "string" ? record.description : "",
+        logo: typeof record.logo === "string" ? record.logo : "",
+        link,
+      },
+    ];
+  });
+}
+
+async function activatePaidUpgradeInvoice(
+  invoiceId: string,
+  organizationId: string,
+) {
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const invoice = await tx.orgUpgradePlan.findFirst({
+            where: { invoiceId, organizationId },
+          });
+          if (!invoice) throw new Error("Upgrade invoice not found");
+
+          const organization = await tx.organization.findUnique({
+            where: { id: organizationId },
+            select: { planExpiresAt: true },
+          });
+          if (!organization) throw new Error("Upgrade organization not found");
+
+          if (invoice.status === "PAID") {
+            return {
+              planType: invoice.planType,
+              expiresAt: invoice.expiresAt ?? organization.planExpiresAt,
+              alreadyHandled: true,
+            };
+          }
+          if (invoice.status !== "PENDING") {
+            throw new Error(`Upgrade invoice is ${invoice.status}`);
+          }
+
+          const plan = getPlan(invoice.planType);
+          if (!plan || plan.isTrial) throw new Error("Upgrade plan not found");
+
+          const paidAt = new Date();
+          const expiresAt = calculateUpgradeRenewalExpiration(
+            plan,
+            organization.planExpiresAt,
+            paidAt,
+          );
+
+          await tx.orgUpgradePlan.update({
+            where: { id: invoice.id },
+            data: { status: "PAID", paidAt, expiresAt },
+          });
+          await tx.organization.update({
+            where: { id: organizationId },
+            data: {
+              subdomainEnabled: true,
+              planType: invoice.planType,
+              planActivatedAt: paidAt,
+              planExpiresAt: expiresAt,
+            },
+          });
+          await syncOwnerPersonalMembershipFromOrgPlan({
+            prisma: tx,
+            organizationId,
+            paidAt,
+            expiresAt,
+          });
+
+          return {
+            planType: invoice.planType,
+            expiresAt,
+            alreadyHandled: false,
+          };
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    } catch (error) {
+      const retryable =
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2034";
+      if (!retryable || attempt === maxAttempts) throw error;
+    }
+  }
+
+  throw new Error("Upgrade activation failed after retries");
+}
+
+async function isUpgradeInvoicePaid(invoiceId: string, expectedAmount: number) {
+  const merchantContext = resolveUpgradeQPayMerchantContext();
+  const payment = await checkQPayPayment(invoiceId, merchantContext);
+  return hasSufficientUpgradePayment(payment, expectedAmount);
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────
@@ -354,6 +464,7 @@ router.get("/vendor/upgrade/status", requireAuth, async (req, res) => {
       planExpiresAt: entitlement.effectivePlanExpiresAt,
       trialUsed: org.trialUsed,
       isActive: entitlement.isActive,
+      paymentConfigured: isUpgradeQPayConfigured(),
       entitlementSource: entitlement.source,
       currentPlan: entitlement.effectivePlanType
         ? (getPlan(entitlement.effectivePlanType) ?? null)
@@ -363,6 +474,8 @@ router.get("/vendor/upgrade/status", requireAuth, async (req, res) => {
             invoiceId: pendingInvoice.invoiceId,
             invoiceNo: pendingInvoice.invoiceNo,
             qrText: pendingInvoice.qrText,
+            qrImage: pendingInvoice.qrImage,
+            deepLinks: readUpgradeQPayLinks(pendingInvoice.qpayUrls),
             amount: Number(pendingInvoice.amount),
             planType: pendingInvoice.planType,
             createdAt: pendingInvoice.createdAt,
@@ -433,7 +546,7 @@ router.post("/vendor/upgrade/trial", requireAuth, async (req, res) => {
 
 /**
  * POST /api/vendor/upgrade/initiate
- * Body: { planId: "1m" | "3m" | "6m" | "1y" }
+ * Body: { planId: "silver_1m" | "silver_6m" | ... }
  */
 router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
   try {
@@ -453,11 +566,43 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
         .status(404)
         .json({ success: false, message: "Байгууллага олдсонгүй" });
 
-    // Cancel stale pending invoices
-    await prisma.orgUpgradePlan.updateMany({
+    const merchantContext = resolveUpgradeQPayMerchantContext();
+    const existingInvoice = await prisma.orgUpgradePlan.findFirst({
       where: { organizationId: org.id, status: "PENDING" },
-      data: { status: "CANCELLED" },
+      orderBy: { createdAt: "desc" },
     });
+    if (existingInvoice) {
+      if (existingInvoice.planType !== planId) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Өмнөх QPay нэхэмжлэл хүлээгдэж байна. Төлбөрөө шалгасны дараа өөр багц сонгоно уу.",
+          pendingInvoice: {
+            invoiceId: existingInvoice.invoiceId,
+            invoiceNo: existingInvoice.invoiceNo,
+            qrText: existingInvoice.qrText,
+            qrImage: existingInvoice.qrImage,
+            deepLinks: readUpgradeQPayLinks(existingInvoice.qpayUrls),
+            amount: Number(existingInvoice.amount),
+            planType: existingInvoice.planType,
+            createdAt: existingInvoice.createdAt,
+          },
+        });
+      }
+
+      return res.json({
+        success: true,
+        reused: true,
+        invoiceId: existingInvoice.invoiceId,
+        invoiceNo: existingInvoice.invoiceNo,
+        qrText: existingInvoice.qrText,
+        qrImage: existingInvoice.qrImage,
+        deepLinks: readUpgradeQPayLinks(existingInvoice.qpayUrls),
+        amount: Number(existingInvoice.amount),
+        planType: existingInvoice.planType,
+        plan,
+      });
+    }
 
     const invoiceNo = `UPG-${org.id.slice(0, 8).toUpperCase()}-${Date.now()}`;
 
@@ -466,9 +611,10 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
       orderNumber: invoiceNo,
       amount: plan.price,
       description: `MglStore Pro (${plan.name}) - ${org.name}`,
+      merchantContext,
       callbackConfig: {
         path: "/api/vendor/upgrade/callback",
-        query: { orgId: org.id },
+        query: { orgId: org.id, invoiceNo },
       },
     });
 
@@ -479,6 +625,8 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
         invoiceId: qpayRes.invoice_id,
         invoiceNo,
         qrText: qpayRes.qr_text,
+        qrImage: qpayRes.qr_image || null,
+        qpayUrls: qpayRes.urls as unknown as Prisma.InputJsonValue,
         amount: plan.price,
         status: "PENDING",
       },
@@ -489,12 +637,20 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
       invoiceId: qpayRes.invoice_id,
       invoiceNo,
       qrText: qpayRes.qr_text,
+      qrImage: qpayRes.qr_image,
+      deepLinks: qpayRes.urls,
       amount: plan.price,
       planType: planId,
       plan,
     });
   } catch (error) {
     console.error("upgrade initiate error", error);
+    if (error instanceof UpgradeQPayConfigurationError) {
+      return res.status(503).json({
+        success: false,
+        message: error.message,
+      });
+    }
     return res.status(500).json({
       success: false,
       message: "QPay нэхэмжлэл үүсгэхэд алдаа гарлаа",
@@ -534,44 +690,28 @@ router.post(
           message: "Төлбөр аль хэдийн баталгаажсан",
         });
       }
+      if (dbPlan.status !== "PENDING") {
+        return res.status(409).json({
+          success: false,
+          paid: false,
+          message: "Энэ нэхэмжлэл идэвхгүй болсон байна",
+        });
+      }
 
-      const qpayCheck = await checkQPayPayment(invoiceId);
-      const isPaid =
-        qpayCheck.count > 0 &&
-        qpayCheck.rows.some((row) => row.payment_status === "PAID");
+      const isPaid = await isUpgradeInvoicePaid(
+        invoiceId,
+        Number(dbPlan.amount),
+      );
 
       if (isPaid) {
-        const plan = getPlan(dbPlan.planType)!;
-        const { now, expiresAt } = activationData(plan);
-
-        await prisma.$transaction(async (tx) => {
-          await tx.orgUpgradePlan.update({
-            where: { id: dbPlan.id },
-            data: { status: "PAID", paidAt: now, expiresAt },
-          });
-          await tx.organization.update({
-            where: { id: org.id },
-            data: {
-              subdomainEnabled: true,
-              planType: dbPlan.planType,
-              planActivatedAt: now,
-              planExpiresAt: expiresAt,
-            },
-          });
-          await syncOwnerPersonalMembershipFromOrgPlan({
-            prisma: tx,
-            organizationId: org.id,
-            paidAt: now,
-            expiresAt,
-          });
-        });
+        const activation = await activatePaidUpgradeInvoice(invoiceId, org.id);
 
         return res.json({
           success: true,
           paid: true,
           subdomain: `${org.slug}.mglstore.mn`,
-          planType: dbPlan.planType,
-          expiresAt,
+          planType: activation.planType,
+          expiresAt: activation.expiresAt,
         });
       }
 
@@ -582,6 +722,13 @@ router.post(
       });
     } catch (error) {
       console.error("upgrade check error", error);
+      if (error instanceof UpgradeQPayConfigurationError) {
+        return res.status(503).json({
+          success: false,
+          paid: false,
+          message: error.message,
+        });
+      }
       return res
         .status(500)
         .json({ success: false, message: "Серверийн алдаа" });
@@ -594,52 +741,46 @@ router.post(
  */
 router.post("/vendor/upgrade/callback", async (req, res) => {
   try {
-    const { orgId } = req.query as { orgId: string };
-    const { invoice_id } = req.body || {};
-    if (!invoice_id || !orgId)
-      return res.status(400).json({ message: "Missing params" });
+    const orgId = String(req.query.orgId || req.query.orderId || "").trim();
+    const invoiceNo = String(req.query.invoiceNo || "").trim();
+    const callbackInvoiceId = String(
+      req.body?.invoice_id ||
+        req.body?.invoiceId ||
+        req.query.invoice_id ||
+        req.query.invoiceId ||
+        "",
+    ).trim();
+    if (!callbackInvoiceId && !invoiceNo) {
+      return res.status(400).json({ message: "Missing invoice identifier" });
+    }
 
     const dbPlan = await prisma.orgUpgradePlan.findFirst({
       where: {
-        invoiceId: invoice_id,
-        organizationId: orgId,
-        status: "PENDING",
+        ...(orgId ? { organizationId: orgId } : {}),
+        OR: [
+          ...(callbackInvoiceId ? [{ invoiceId: callbackInvoiceId }] : []),
+          ...(invoiceNo ? [{ invoiceNo }] : []),
+        ],
       },
     });
-    if (!dbPlan) return res.status(200).json({ message: "already handled" });
-
-    const qpayCheck = await checkQPayPayment(invoice_id);
-    const isPaid =
-      qpayCheck.count > 0 &&
-      qpayCheck.rows.some((row) => row.payment_status === "PAID");
-
-    if (isPaid) {
-      const plan = getPlan(dbPlan.planType)!;
-      const { now, expiresAt } = activationData(plan);
-      await prisma.$transaction(async (tx) => {
-        await tx.orgUpgradePlan.update({
-          where: { id: dbPlan.id },
-          data: { status: "PAID", paidAt: now, expiresAt },
-        });
-        await tx.organization.update({
-          where: { id: orgId },
-          data: {
-            subdomainEnabled: true,
-            planType: dbPlan.planType,
-            planActivatedAt: now,
-            planExpiresAt: expiresAt,
-          },
-        });
-        await syncOwnerPersonalMembershipFromOrgPlan({
-          prisma: tx,
-          organizationId: orgId,
-          paidAt: now,
-          expiresAt,
-        });
-      });
+    if (!dbPlan) return res.status(200).json({ message: "invoice ignored" });
+    if (dbPlan.status === "PAID") {
+      return res.status(200).json({ message: "already handled" });
+    }
+    if (dbPlan.status !== "PENDING") {
+      return res.status(200).json({ message: "invoice inactive" });
     }
 
-    return res.status(200).json({ message: "ok" });
+    const isPaid = await isUpgradeInvoicePaid(
+      dbPlan.invoiceId,
+      Number(dbPlan.amount),
+    );
+
+    if (isPaid) {
+      await activatePaidUpgradeInvoice(dbPlan.invoiceId, dbPlan.organizationId);
+    }
+
+    return res.status(200).json({ message: isPaid ? "ok" : "payment pending" });
   } catch (error) {
     console.error("upgrade callback error", error);
     return res.status(500).json({ message: "error" });

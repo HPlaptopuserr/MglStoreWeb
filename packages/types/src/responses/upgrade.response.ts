@@ -23,11 +23,19 @@ export type UpgradeStatus = {
   planExpiresAt: string | null;
   trialUsed: boolean;
   isActive: boolean;
+  paymentConfigured: boolean;
   currentPlan: Plan | null;
   pendingInvoice: {
     invoiceId: string;
     invoiceNo: string;
     qrText: string;
+    qrImage?: string | null;
+    deepLinks?: Array<{
+      name: string;
+      description: string;
+      logo: string;
+      link: string;
+    }>;
     amount: number;
     planType: string;
     planId?: string | null;

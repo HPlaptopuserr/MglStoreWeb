@@ -556,6 +556,8 @@ model OrgUpgradePlan {
   invoiceId      String            @unique
   invoiceNo      String            @unique
   qrText         String            @default("")
+  qrImage        String?
+  qpayUrls       Json?
   amount         Decimal           @db.Decimal(18, 2)
   status         PlanPaymentStatus @default(PENDING)
   paidAt         DateTime?
