@@ -125,7 +125,7 @@ function coordinates(
     : null;
 }
 
-function salesVendorDetails(body: Record<string, unknown>) {
+export function salesVendorDetails(body: Record<string, unknown>) {
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const taxId = typeof body.taxId === "string" ? body.taxId.trim() : "";
   const ownerName =
@@ -133,7 +133,7 @@ function salesVendorDetails(body: Record<string, unknown>) {
   const ownerEmail =
     typeof body.ownerEmail === "string"
       ? body.ownerEmail.trim().toLowerCase()
-      : "";
+      : null;
   const ownerPhone =
     typeof body.ownerPhone === "string" ? body.ownerPhone.trim() : "";
   const address = typeof body.address === "string" ? body.address.trim() : "";
@@ -146,7 +146,7 @@ function salesVendorDetails(body: Record<string, unknown>) {
     !name ||
     !taxId ||
     !ownerName ||
-    !ownerEmail.includes("@") ||
+    (ownerEmail !== null && !ownerEmail.includes("@")) ||
     !ownerPhone ||
     !address ||
     !point ||
@@ -170,6 +170,16 @@ function requireRepresentative(
 ) {
   return Boolean(
     current?.capabilities.includes(Capability.SALES_REPRESENTATIVE),
+  );
+}
+
+export function canRegisterSalesVendor(
+  role: string | null | undefined,
+  capabilities: readonly Capability[] = [],
+) {
+  return Boolean(
+    (role && MANAGER_ROLES.has(role)) ||
+    capabilities.includes(Capability.SALES_REPRESENTATIVE),
   );
 }
 
@@ -285,25 +295,29 @@ router.post(
   async (req, res) => {
     const actor = (req as any).user as AuthPayload;
     const current = await membership(actor);
-    if (!current || !requireRepresentative(current))
+    if (!current || !canRegisterSalesVendor(current.role, current.capabilities))
       return res
         .status(403)
-        .json({ message: "Худалдааны төлөөлөгчийн эрх шаардлагатай" });
+        .json({ message: "Дэлгүүр бүртгэх эрх шаардлагатай" });
     const body = req.body as Record<string, unknown>;
     const email =
       typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
     const phone = typeof body.phone === "string" ? body.phone.trim() : "";
-    if ((!email && !phone) || (email && phone))
-      return res
-        .status(400)
-        .json({ message: "Утас эсвэл имэйлийн аль нэгийг оруулна уу" });
+    const taxId = typeof body.taxId === "string" ? body.taxId.trim() : "";
+    const lookupCount = [email, phone, taxId].filter(Boolean).length;
+    if (lookupCount !== 1)
+      return res.status(400).json({
+        message: "Утас, имэйл эсвэл регистрийн аль нэгийг оруулна уу",
+      });
     const vendor = await prisma.organization.findFirst({
       where: {
         status: OrgStatus.ACTIVE,
         deletedAt: null,
         ...(email
           ? { email: { equals: email, mode: "insensitive" } }
-          : { phone: { in: exactPhoneCandidates(phone) } }),
+          : phone
+            ? { phone: { in: exactPhoneCandidates(phone) } }
+            : { taxId }),
       },
       select: {
         id: true,
@@ -340,7 +354,7 @@ router.post(
         meta: {
           vendorId: vendor.id,
           representativeOrganizationId: current.organizationId,
-          lookupType: email ? "EMAIL" : "PHONE",
+          lookupType: email ? "EMAIL" : phone ? "PHONE" : "TAX_ID",
         },
       },
     });
@@ -354,16 +368,17 @@ router.post(
 
 router.get("/sales-representative/vendors", requireAuth, async (req, res) => {
   const current = await membership((req as any).user as AuthPayload);
-  if (!requireRepresentative(current))
+  if (!current || !canRegisterSalesVendor(current.role, current.capabilities))
     return res
       .status(403)
-      .json({ message: "Худалдааны төлөөлөгчийн эрх шаардлагатай" });
+      .json({ message: "Дэлгүүрийн мэдээлэл харах эрх шаардлагатай" });
+  const manager = MANAGER_ROLES.has(current!.role);
   const rows = await prisma.salesVisitLocation.findMany({
     where: {
       organizationId: current!.organizationId,
       isActive: true,
       vendorOrganizationId: { not: null },
-      assignments: { some: { memberId: current!.id } },
+      ...(!manager && { assignments: { some: { memberId: current!.id } } }),
     },
     include: {
       vendorOrganization: {
@@ -728,10 +743,11 @@ router.patch(
 router.post("/sales-representative/vendors", requireAuth, async (req, res) => {
   const actor = (req as any).user as AuthPayload;
   const current = await membership(actor);
-  if (!requireRepresentative(current))
+  if (!current || !canRegisterSalesVendor(current.role, current.capabilities))
     return res
       .status(403)
-      .json({ message: "Худалдааны төлөөлөгчийн эрх шаардлагатай" });
+      .json({ message: "Дэлгүүр бүртгэх эрх шаардлагатай" });
+  const representative = requireRepresentative(current);
   const body = req.body as Record<string, unknown>;
   const existingVendorId =
     typeof body.vendorId === "string" ? body.vendorId.trim() : "";
@@ -739,7 +755,7 @@ router.post("/sales-representative/vendors", requireAuth, async (req, res) => {
   if (!details) {
     return res.status(400).json({
       message:
-        "Нэр, регистр, эзний нэр, имэйл, утас, хаяг болон GPS байршил шаардлагатай",
+        "Нэр, регистр, эзний нэр, утас, хаяг болон GPS байршил шаардлагатай",
     });
   }
   const {
@@ -791,7 +807,7 @@ router.post("/sales-representative/vendors", requireAuth, async (req, res) => {
           where: { id: existingVendor.id },
           data: {
             ...(!existingVendor.taxId && { taxId }),
-            ...(!existingVendor.email && { email: ownerEmail }),
+            ...(!existingVendor.email && ownerEmail && { email: ownerEmail }),
             ...(!existingVendor.phone && { phone: ownerPhone }),
             ...(!existingVendor.address && { address }),
             ...(!existingVendor.businessCategory && {
@@ -811,18 +827,20 @@ router.post("/sales-representative/vendors", requireAuth, async (req, res) => {
                 contactName: ownerName,
                 contactPhone: ownerPhone,
                 isActive: true,
-                assignments: {
-                  upsert: {
-                    where: {
-                      locationId_memberId: {
-                        locationId: existingLocation.id,
-                        memberId: current!.id,
+                ...(representative && {
+                  assignments: {
+                    upsert: {
+                      where: {
+                        locationId_memberId: {
+                          locationId: existingLocation.id,
+                          memberId: current!.id,
+                        },
                       },
+                      create: { memberId: current!.id },
+                      update: {},
                     },
-                    create: { memberId: current!.id },
-                    update: {},
                   },
-                },
+                }),
               },
             })
           : await tx.salesVisitLocation.create({
@@ -835,7 +853,9 @@ router.post("/sales-representative/vendors", requireAuth, async (req, res) => {
                 longitude: point.longitude,
                 contactName: ownerName,
                 contactPhone: ownerPhone,
-                assignments: { create: [{ memberId: current!.id }] },
+                ...(representative && {
+                  assignments: { create: [{ memberId: current!.id }] },
+                }),
               },
             });
         return { vendor, location, inviteLink: null };
@@ -845,28 +865,34 @@ router.post("/sales-representative/vendors", requireAuth, async (req, res) => {
   }
 
   const duplicate = await prisma.organization.findFirst({
-    where: { OR: [{ taxId }, { email: ownerEmail }], deletedAt: null },
+    where: {
+      OR: [{ taxId }, ...(ownerEmail ? [{ email: ownerEmail }] : [])],
+      deletedAt: null,
+    },
     select: { id: true },
   });
   if (duplicate)
     return res.status(409).json({
       message: "Энэ регистр эсвэл имэйлээр байгууллага бүртгэлтэй байна",
     });
-  const existingUser = await prisma.user.findUnique({
-    where: { email: ownerEmail },
-    select: {
-      id: true,
-      passwordHash: true,
-      organizationMemberships: {
-        where: { isActive: true },
-        select: { id: true },
-        take: 1,
-      },
-    },
-  });
-  const inviteToken = existingUser?.passwordHash
-    ? null
-    : crypto.randomBytes(32).toString("hex");
+  const existingUser = ownerEmail
+    ? await prisma.user.findUnique({
+        where: { email: ownerEmail },
+        select: {
+          id: true,
+          passwordHash: true,
+          organizationMemberships: {
+            where: { isActive: true },
+            select: { id: true },
+            take: 1,
+          },
+        },
+      })
+    : null;
+  const inviteToken =
+    ownerEmail && !existingUser?.passwordHash
+      ? crypto.randomBytes(32).toString("hex")
+      : null;
   const expiresAt = inviteToken
     ? new Date(Date.now() + 24 * 60 * 60 * 1000)
     : null;
@@ -887,46 +913,48 @@ router.post("/sales-representative/vendors", requireAuth, async (req, res) => {
           isVerified: false,
         },
       });
-      const owner =
-        existingUser ??
-        (await tx.user.create({
-          data: {
-            email: ownerEmail,
-            role: PlatformRole.USER,
-            isActive: true,
-            emailVerified: false,
-            onboardingSource: OnboardingSource.ADMIN,
+      if (ownerEmail) {
+        const owner =
+          existingUser ??
+          (await tx.user.create({
+            data: {
+              email: ownerEmail,
+              role: PlatformRole.USER,
+              isActive: true,
+              emailVerified: false,
+              onboardingSource: OnboardingSource.ADMIN,
+            },
+            select: {
+              id: true,
+              passwordHash: true,
+              organizationMemberships: { select: { id: true }, take: 1 },
+            },
+          }));
+        await tx.profile.upsert({
+          where: { userId: owner.id },
+          // Existing account details belong to the owner and must not be
+          // overwritten by a representative-entered contact record.
+          update: {},
+          create: {
+            userId: owner.id,
+            fullName: ownerName,
+            phoneNumber: ownerPhone,
           },
-          select: {
-            id: true,
-            passwordHash: true,
-            organizationMemberships: { select: { id: true }, take: 1 },
-          },
-        }));
-      await tx.profile.upsert({
-        where: { userId: owner.id },
-        // Existing account details belong to the owner and must not be
-        // overwritten by a representative-entered contact record.
-        update: {},
-        create: {
-          userId: owner.id,
-          fullName: ownerName,
-          phoneNumber: ownerPhone,
-        },
-      });
-      await tx.organizationMember.create({
-        data: {
-          userId: owner.id,
-          organizationId: vendor.id,
-          role: "OWNER",
-          isPrimary: owner.organizationMemberships.length === 0,
-          isActive: true,
-        },
-      });
-      if (inviteToken && expiresAt)
-        await tx.vendorSetupToken.create({
-          data: { userId: owner.id, token: inviteToken, expiresAt },
         });
+        await tx.organizationMember.create({
+          data: {
+            userId: owner.id,
+            organizationId: vendor.id,
+            role: "OWNER",
+            isPrimary: owner.organizationMemberships.length === 0,
+            isActive: true,
+          },
+        });
+        if (inviteToken && expiresAt)
+          await tx.vendorSetupToken.create({
+            data: { userId: owner.id, token: inviteToken, expiresAt },
+          });
+      }
       const location = await tx.salesVisitLocation.create({
         data: {
           organizationId: current!.organizationId,
@@ -937,7 +965,9 @@ router.post("/sales-representative/vendors", requireAuth, async (req, res) => {
           longitude: point.longitude,
           contactName: ownerName,
           contactPhone: ownerPhone,
-          assignments: { create: [{ memberId: current!.id }] },
+          ...(representative && {
+            assignments: { create: [{ memberId: current!.id }] },
+          }),
         },
       });
       return { vendor, location };

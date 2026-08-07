@@ -1,12 +1,41 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { Capability } from "@mgl/database";
 import {
+  canRegisterSalesVendor,
   canRepresentativeAccessVendor,
   distanceMeters,
   exactPhoneCandidates,
   salesProductSearchFilter,
   salesStoreRegion,
+  salesVendorDetails,
 } from "./sales-representative.routes";
+
+test("owners, managers, and representatives can register stores", () => {
+  assert.equal(canRegisterSalesVendor("OWNER"), true);
+  assert.equal(canRegisterSalesVendor("MANAGER"), true);
+  assert.equal(
+    canRegisterSalesVendor("STAFF", [Capability.SALES_REPRESENTATIVE]),
+    true,
+  );
+  assert.equal(canRegisterSalesVendor("STAFF"), false);
+});
+
+test("store registration accepts a missing owner email", () => {
+  const details = salesVendorDetails({
+    name: "Test store",
+    taxId: "1234567",
+    ownerName: "Owner",
+    ownerPhone: "99112233",
+    address: "Ulaanbaatar",
+    latitude: 47.9184,
+    longitude: 106.9177,
+    storeType: "GROCERY",
+  });
+
+  assert.ok(details);
+  assert.equal(details.ownerEmail, null);
+});
 
 test("sales visit distance is zero for the same coordinate", () => {
   assert.equal(distanceMeters(47.9184, 106.9177, 47.9184, 106.9177), 0);
