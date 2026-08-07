@@ -575,6 +575,11 @@ const isOversizedInlineImage = (url: string) =>
 const parseOptionalExpiryDate = (value: unknown) => {
   if (value === undefined) return undefined;
   if (value === null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (!parsed) return undefined;
+    return new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
+  }
   const date = new Date(String(value));
   return Number.isFinite(date.getTime()) ? date : undefined;
 };
@@ -1562,17 +1567,29 @@ router.get("/products/import-template", async (req, res) => {
           : "Жишээ бараа 1",
         "SKU (sku)": isPreorderTemplate ? "PRE-001" : "SKU-001",
         Ангилал: categoryChoices[0]?.label || "",
-        "Үнэ (price)": 25000,
+        "Баркод (barcode)": isPreorderTemplate
+          ? "8650000000011"
+          : "8650000000001",
         "Өртөг (costPrice)": 15000,
-        "Нөөц (stock)": isPreorderTemplate ? 0 : 100,
-        "Тайлбар (description)": "Барааны тайлбар энд бичнэ",
+        "Бөөний үнэ (wholesalePrice)": 22000,
+        "Захиалгын үнэ (orderPrice)": 20000,
+        "Үнэ (price)": 25000,
         ...(isPreorderTemplate
           ? {
               "Ирэх хоног (preorderLeadTimeDays)": 14,
               "Захиалгын тайлбар (preorderNote)":
                 "Хятадаас захиалгаар 14 хоногт ирнэ",
             }
-          : {}),
+          : {
+              "Нөөц (stock)": 100,
+              "Дуусах хугацаа (expiryDate)": "2026-12-31",
+            }),
+        "Татварын төрөл (taxType)": "VAT_ABLE",
+        "Хотын татвар (cityTaxRate)": 0,
+        "Ангиллын код (classificationCode)": "4711000",
+        "Татварын ангиллын код (taxProductCode)": "",
+        "Marketplace дараалал (marketplacePriority)": 0,
+        "Тайлбар (description)": "Барааны тайлбар энд бичнэ",
       },
       {
         Зураг: "(зургаа энд оруулна)",
@@ -1581,16 +1598,28 @@ router.get("/products/import-template", async (req, res) => {
           : "Жишээ бараа 2",
         "SKU (sku)": isPreorderTemplate ? "PRE-002" : "SKU-002",
         Ангилал: categoryChoices[1]?.label || categoryChoices[0]?.label || "",
-        "Үнэ (price)": 50000,
+        "Баркод (barcode)": isPreorderTemplate
+          ? "8650000000012"
+          : "8650000000002",
         "Өртөг (costPrice)": 30000,
-        "Нөөц (stock)": isPreorderTemplate ? 0 : 50,
-        "Тайлбар (description)": "",
+        "Бөөний үнэ (wholesalePrice)": 45000,
+        "Захиалгын үнэ (orderPrice)": 42000,
+        "Үнэ (price)": 50000,
         ...(isPreorderTemplate
           ? {
               "Ирэх хоног (preorderLeadTimeDays)": 21,
               "Захиалгын тайлбар (preorderNote)": "",
             }
-          : {}),
+          : {
+              "Нөөц (stock)": 50,
+              "Дуусах хугацаа (expiryDate)": "",
+            }),
+        "Татварын төрөл (taxType)": "VAT_ABLE",
+        "Хотын татвар (cityTaxRate)": 0,
+        "Ангиллын код (classificationCode)": "4711000",
+        "Татварын ангиллын код (taxProductCode)": "",
+        "Marketplace дараалал (marketplacePriority)": 0,
+        "Тайлбар (description)": "",
       },
     ];
 
@@ -1600,12 +1629,22 @@ router.get("/products/import-template", async (req, res) => {
       { wch: 25 },
       { wch: 15 },
       { wch: 28 },
+      { wch: 20 },
       { wch: 12 },
       { wch: 12 },
-      { wch: 10 },
-      { wch: 35 },
-      ...(isPreorderTemplate ? [{ wch: 24 }, { wch: 36 }] : []),
+      { wch: 12 },
+      { wch: 12 },
+      ...(isPreorderTemplate
+        ? [{ wch: 24 }, { wch: 36 }]
+        : [{ wch: 12 }, { wch: 22 }]),
+      { wch: 22 },
+      { wch: 22 },
+      { wch: 28 },
+      { wch: 38 },
+      { wch: 34 },
+      { wch: 40 },
     ];
+    ws["!autofilter"] = { ref: "A1:Q3" };
     // Make image column rows taller for pasting images
     ws["!rows"] = [{ hpt: 20 }, { hpt: 60 }, { hpt: 60 }];
     const wb = XLSX.utils.book_new();
@@ -1625,10 +1664,20 @@ router.get("/products/import-template", async (req, res) => {
       { wch: 38 },
     ];
     XLSX.utils.book_append_sheet(wb, categorySheet, "Ангиллууд");
+    const taxTypeSheet = XLSX.utils.aoa_to_sheet([
+      ["Татварын төрөл", "Тайлбар"],
+      ["VAT_ABLE", "НӨАТ-тай"],
+      ["VAT_FREE", "НӨАТ-аас чөлөөлөгдсөн"],
+      ["VAT_ZERO", "НӨАТ 0%"],
+      ["NOT_VAT", "НӨАТ ногдохгүй"],
+    ]);
+    taxTypeSheet["!cols"] = [{ wch: 20 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, taxTypeSheet, "Татварын төрөл");
 
     const buf = await addCategoryDropdownToWorkbook(
       Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" })),
       categoryChoices.length,
+      "L",
     );
 
     res.setHeader(
@@ -1652,10 +1701,19 @@ type ProductImportErrorRow = {
   error: string;
   name: string;
   sku: string;
+  barcode: string;
   businessCategory: string;
   price: string;
+  wholesalePrice: string;
+  orderPrice: string;
   costPrice: string;
   stock: string;
+  expiryDate: string;
+  taxType: string;
+  cityTaxRate: string;
+  classificationCode: string;
+  taxProductCode: string;
+  marketplacePriority: string;
   preorderLeadTimeDays: string;
   preorderNote: string;
   description: string;
@@ -1677,10 +1735,19 @@ function toProductImportErrorRow(
     error,
     name: importRowValue(row, colMap.name),
     sku: importRowValue(row, colMap.sku),
+    barcode: importRowValue(row, colMap.barcode),
     businessCategory: importRowValue(row, colMap.businessCategory),
     price: importRowValue(row, colMap.price),
+    wholesalePrice: importRowValue(row, colMap.wholesalePrice),
+    orderPrice: importRowValue(row, colMap.orderPrice),
     costPrice: importRowValue(row, colMap.costPrice),
     stock: importRowValue(row, colMap.stock),
+    expiryDate: importRowValue(row, colMap.expiryDate),
+    taxType: importRowValue(row, colMap.taxType),
+    cityTaxRate: importRowValue(row, colMap.cityTaxRate),
+    classificationCode: importRowValue(row, colMap.classificationCode),
+    taxProductCode: importRowValue(row, colMap.taxProductCode),
+    marketplacePriority: importRowValue(row, colMap.marketplacePriority),
     preorderLeadTimeDays: importRowValue(row, colMap.preorderLeadTimeDays),
     preorderNote: importRowValue(row, colMap.preorderNote),
     description: importRowValue(row, colMap.description),
@@ -1848,31 +1915,46 @@ router.post(
       const actorId = (req as any).user?.userId ?? null;
       const reviewData = await getReviewStatusForVendorMutation();
 
-      // Pre-scan: detect duplicate SKUs within the file
+      // Pre-scan: detect duplicate identifiers within the file.
       const skusInFile = new Map<string, number>();
-      const duplicateSkuRows = new Set<number>();
+      const barcodesInFile = new Map<string, number>();
+      const duplicateIdentifierRows = new Set<number>();
       for (let i = 0; i < rows.length; i++) {
         const rowNumber = getExcelRowIndex(rows[i], i) + 1;
         const sku = resolveCol(rows[i], colMap.sku);
-        if (sku) {
-          const normalized = String(sku).trim().toLowerCase();
-          if (skusInFile.has(normalized)) {
-            const message = `Мөр ${rowNumber}: SKU "${String(sku).trim()}" файл дотор давхардсан (мөр ${skusInFile.get(normalized)})`;
-            results.errors.push(message);
-            results.errorRows.push(
-              toProductImportErrorRow(rows[i], rowNumber, message, colMap),
-            );
-            results.skipped++;
-            duplicateSkuRows.add(i);
-          } else {
-            skusInFile.set(normalized, rowNumber);
-          }
+        const barcode = resolveCol(rows[i], colMap.barcode);
+        const normalizedSku = sku ? String(sku).trim().toLowerCase() : "";
+        const normalizedBarcode = barcode ? String(barcode).trim() : "";
+        let duplicateMessage = "";
+
+        if (normalizedSku && skusInFile.has(normalizedSku)) {
+          duplicateMessage = `Мөр ${rowNumber}: SKU "${String(sku).trim()}" файл дотор давхардсан (мөр ${skusInFile.get(normalizedSku)})`;
+        } else if (normalizedBarcode && barcodesInFile.has(normalizedBarcode)) {
+          duplicateMessage = `Мөр ${rowNumber}: Баркод "${normalizedBarcode}" файл дотор давхардсан (мөр ${barcodesInFile.get(normalizedBarcode)})`;
         }
+
+        if (duplicateMessage) {
+          results.errors.push(duplicateMessage);
+          results.errorRows.push(
+            toProductImportErrorRow(
+              rows[i],
+              rowNumber,
+              duplicateMessage,
+              colMap,
+            ),
+          );
+          results.skipped++;
+          duplicateIdentifierRows.add(i);
+          continue;
+        }
+
+        if (normalizedSku) skusInFile.set(normalizedSku, rowNumber);
+        if (normalizedBarcode) barcodesInFile.set(normalizedBarcode, rowNumber);
       }
 
       for (let i = 0; i < rows.length; i++) {
-        // Skip rows already flagged as duplicates in pre-scan
-        if (duplicateSkuRows.has(i)) continue;
+        // Skip rows already flagged as duplicates in pre-scan.
+        if (duplicateIdentifierRows.has(i)) continue;
 
         const row = rows[i];
         const excelRowIndex = getExcelRowIndex(row, i);
@@ -1880,10 +1962,19 @@ router.post(
 
         const name = resolveCol(row, colMap.name);
         const sku = resolveCol(row, colMap.sku);
+        const barcode = resolveCol(row, colMap.barcode);
         const businessCategoryRaw = resolveCol(row, colMap.businessCategory);
         const price = resolveCol(row, colMap.price);
+        const wholesalePrice = resolveCol(row, colMap.wholesalePrice);
+        const orderPrice = resolveCol(row, colMap.orderPrice);
         const costPrice = resolveCol(row, colMap.costPrice);
         const stock = resolveCol(row, colMap.stock);
+        const expiryDate = resolveCol(row, colMap.expiryDate);
+        const taxType = resolveCol(row, colMap.taxType);
+        const cityTaxRate = resolveCol(row, colMap.cityTaxRate);
+        const classificationCode = resolveCol(row, colMap.classificationCode);
+        const taxProductCode = resolveCol(row, colMap.taxProductCode);
+        const marketplacePriority = resolveCol(row, colMap.marketplacePriority);
         const description = resolveCol(row, colMap.description);
         const preorderLeadTimeDays = resolveCol(
           row,
@@ -1928,9 +2019,93 @@ router.post(
           continue;
         }
 
+        const wholesalePriceNum =
+          wholesalePrice === undefined || wholesalePrice === ""
+            ? null
+            : parseFloat(String(wholesalePrice));
+        if (
+          wholesalePriceNum !== null &&
+          (isNaN(wholesalePriceNum) || wholesalePriceNum < 0)
+        ) {
+          const message = `Мөр ${rowNum}: Бөөний үнэ буруу — "${wholesalePrice}"`;
+          results.errors.push(message);
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
+          results.skipped++;
+          continue;
+        }
+
+        const orderPriceNum =
+          orderPrice === undefined || orderPrice === ""
+            ? null
+            : parseFloat(String(orderPrice));
+        if (
+          orderPriceNum !== null &&
+          (isNaN(orderPriceNum) || orderPriceNum < 0)
+        ) {
+          const message = `Мөр ${rowNum}: Захиалгын үнэ буруу — "${orderPrice}"`;
+          results.errors.push(message);
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
+          results.skipped++;
+          continue;
+        }
+
         const stockNum = stock !== undefined ? parseInt(String(stock)) : 0;
         if (isNaN(stockNum) || stockNum < 0 || stockNum > 2_147_483_647) {
           const message = `Мөр ${rowNum}: Нөөц буруу — "${stock}"`;
+          results.errors.push(message);
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
+          results.skipped++;
+          continue;
+        }
+
+        const parsedExpiryDate = isPreorderImport
+          ? null
+          : parseOptionalExpiryDate(expiryDate);
+        if (expiryDate !== undefined && parsedExpiryDate === undefined) {
+          const message = `Мөр ${rowNum}: Дуусах хугацаа буруу — "${expiryDate}"`;
+          results.errors.push(message);
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
+          results.skipped++;
+          continue;
+        }
+
+        const rawTaxType = String(taxType ?? "")
+          .trim()
+          .toUpperCase();
+        if (rawTaxType && !TAX_TYPES.has(rawTaxType)) {
+          const message = `Мөр ${rowNum}: Татварын төрөл буруу — "${taxType}"`;
+          results.errors.push(message);
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
+          results.skipped++;
+          continue;
+        }
+        const normalizedTaxType = rawTaxType || "VAT_ABLE";
+
+        const normalizedCityTaxRate = normalizePercent(cityTaxRate, 0);
+        if (normalizedCityTaxRate === undefined) {
+          const message = `Мөр ${rowNum}: Хотын татвар 0-100 хооронд байх ёстой`;
+          results.errors.push(message);
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
+          results.skipped++;
+          continue;
+        }
+
+        const normalizedMarketplacePriority =
+          normalizeMarketplacePriority(marketplacePriority);
+        if (normalizedMarketplacePriority === undefined) {
+          const message = `Мөр ${rowNum}: Marketplace дараалал 0-1,000,000 хооронд бүхэл тоо байх ёстой`;
           results.errors.push(message);
           results.errorRows.push(
             toProductImportErrorRow(row, rowNum, message, colMap),
@@ -1953,6 +2128,7 @@ router.post(
         }
 
         const normalizedSku = sku ? String(sku).trim() : null;
+        const normalizedBarcode = barcode ? String(barcode).trim() : null;
         const rowBusinessCategoryId = resolveBusinessCategoryIdFromChoices(
           businessCategoryRaw,
           categoryChoices,
@@ -1965,6 +2141,42 @@ router.post(
           );
           results.skipped++;
           continue;
+        }
+
+        if (normalizedBarcode) {
+          const [sameSkuProduct, sameBarcodeProduct] = await Promise.all([
+            normalizedSku
+              ? prisma.product.findUnique({
+                  where: {
+                    organizationId_sku: {
+                      organizationId,
+                      sku: normalizedSku,
+                    },
+                  },
+                  select: { id: true },
+                })
+              : null,
+            prisma.product.findFirst({
+              where: {
+                organizationId,
+                barcode: normalizedBarcode,
+                deletedAt: null,
+              },
+              select: { id: true },
+            }),
+          ]);
+          if (
+            sameBarcodeProduct &&
+            sameBarcodeProduct.id !== sameSkuProduct?.id
+          ) {
+            const message = `Мөр ${rowNum}: Баркод "${normalizedBarcode}" өөр бараанд бүртгэлтэй байна`;
+            results.errors.push(message);
+            results.errorRows.push(
+              toProductImportErrorRow(row, rowNum, message, colMap),
+            );
+            results.skipped++;
+            continue;
+          }
         }
 
         try {
@@ -1998,9 +2210,16 @@ router.post(
 
           const productData = {
             name: String(name).trim(),
+            barcode: normalizedBarcode,
             description: description ? String(description).trim() : null,
             price: priceNum,
+            wholesalePrice: wholesalePriceNum,
+            orderPrice: orderPriceNum,
             costPrice: costPriceNum,
+            taxType: normalizedTaxType,
+            cityTaxRate: normalizedCityTaxRate,
+            classificationCode: normalizeClassificationCode(classificationCode),
+            taxProductCode: normalizeOptionalText(taxProductCode),
             stock: isPreorderImport ? 0 : stockNum,
             supplyType: isPreorderImport
               ? ("CHINA_PREORDER" as const)
@@ -2012,6 +2231,7 @@ router.post(
               isPreorderImport && preorderNote
                 ? String(preorderNote).trim()
                 : null,
+            marketplacePriority: normalizedMarketplacePriority,
             businessCategoryId: rowBusinessCategoryId || orgBusinessCategoryId,
             isActive: true,
             submittedById: actorId,
@@ -2041,6 +2261,7 @@ router.post(
             const masterProduct = await resolveMasterProduct(prisma, {
               masterProductId: existing?.masterProductId,
               name: productData.name,
+              barcode: normalizedBarcode,
               description: productData.description,
               imageUrl: imageUrls[0] || null,
             });
@@ -2057,6 +2278,7 @@ router.post(
               },
               update: {
                 ...productData,
+                barcode: masterProduct.barcode || normalizedBarcode,
                 masterProductId: masterProduct.id,
                 deletedAt: null,
                 ...(imageUrls.length > 0 && {
@@ -2070,6 +2292,7 @@ router.post(
                 organizationId,
                 sku: normalizedSku,
                 ...productData,
+                barcode: masterProduct.barcode || normalizedBarcode,
                 masterProductId: masterProduct.id,
                 ...(imageUrls.length > 0 && {
                   images: { create: imageUrls.map((url) => ({ url })) },
@@ -2086,6 +2309,7 @@ router.post(
           } else {
             const masterProduct = await resolveMasterProduct(prisma, {
               name: productData.name,
+              barcode: normalizedBarcode,
               description: productData.description,
               imageUrl: imageUrls[0] || null,
             });
@@ -2100,6 +2324,7 @@ router.post(
                 organizationId,
                 sku: null,
                 ...productData,
+                barcode: masterProduct.barcode || normalizedBarcode,
                 masterProductId: masterProduct.id,
                 ...(imageUrls.length > 0 && {
                   images: { create: imageUrls.map((url) => ({ url })) },
@@ -2114,6 +2339,28 @@ router.post(
               },
             });
           }
+
+          await upsertVendorProductInventory(prisma, {
+            organizationId,
+            productId: product.id,
+            stock: isPreorderImport ? 0 : stockNum,
+            stockProvided: !isPreorderImport,
+            expiryDate: parsedExpiryDate,
+            expiryDateProvided: !isPreorderImport && expiryDate !== undefined,
+            createdById: actorId,
+          });
+          const syncedProduct = await prisma.product.findUnique({
+            where: { id: product.id },
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              price: true,
+              stock: true,
+            },
+          });
+          if (syncedProduct) product = syncedProduct;
+
           results.products.push({
             id: product.id,
             name: product.name,

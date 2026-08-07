@@ -326,6 +326,7 @@ export async function uploadBufferToSupabase(
 export const PRODUCT_COL_MAP = {
   name: ["name", "Нэр", "нэр", "Нэр (name)", "Барааны нэр"],
   sku: ["sku", "SKU", "Код", "код", "SKU (sku)", "№"],
+  barcode: ["barcode", "Barcode", "Баркод", "баркод", "Баркод (barcode)"],
   businessCategory: [
     "businessCategory",
     "businessCategoryId",
@@ -337,8 +338,65 @@ export const PRODUCT_COL_MAP = {
     "Барааны ангилал",
   ],
   price: ["price", "Үнэ", "үнэ", "Үнэ (price)", "Ф50", "Ф100"],
+  wholesalePrice: [
+    "wholesalePrice",
+    "Wholesale price",
+    "Бөөний үнэ",
+    "бөөний үнэ",
+    "Бөөний үнэ (wholesalePrice)",
+  ],
+  orderPrice: [
+    "orderPrice",
+    "Order price",
+    "Захиалгын үнэ",
+    "захиалгын үнэ",
+    "Захиалгын үнэ (orderPrice)",
+  ],
   costPrice: ["costPrice", "Өртөг", "өртөг", "Өртөг (costPrice)", "Өртөг үнэ"],
   stock: ["stock", "Нөөц", "нөөц", "Нөөц (stock)", "Тоо ширхэг"],
+  expiryDate: [
+    "expiryDate",
+    "Expiry date",
+    "Дуусах хугацаа",
+    "дуусах хугацаа",
+    "Дуусах хугацаа (expiryDate)",
+  ],
+  taxType: [
+    "taxType",
+    "Tax type",
+    "Татварын төрөл",
+    "татварын төрөл",
+    "Татварын төрөл (taxType)",
+  ],
+  cityTaxRate: [
+    "cityTaxRate",
+    "City tax rate",
+    "Хотын татвар",
+    "хотын татвар",
+    "Хотын татвар %",
+    "Хотын татвар (cityTaxRate)",
+  ],
+  classificationCode: [
+    "classificationCode",
+    "Classification code",
+    "Ангиллын код",
+    "ангиллын код",
+    "Ангиллын код (classificationCode)",
+  ],
+  taxProductCode: [
+    "taxProductCode",
+    "Tax product code",
+    "Татварын ангиллын код",
+    "татварын ангиллын код",
+    "Татварын ангиллын код (taxProductCode)",
+  ],
+  marketplacePriority: [
+    "marketplacePriority",
+    "Marketplace priority",
+    "Marketplace дараалал",
+    "marketplace дараалал",
+    "Marketplace дараалал (marketplacePriority)",
+  ],
   description: ["description", "Тайлбар", "тайлбар", "Тайлбар (description)"],
   preorderLeadTimeDays: [
     "preorderLeadTimeDays",
@@ -481,20 +539,29 @@ export function resolveBusinessCategoryIdFromChoices(
 export async function addCategoryDropdownToWorkbook(
   buffer: Buffer,
   categoryCount: number,
+  taxTypeColumn = "J",
 ): Promise<Buffer> {
-  if (categoryCount === 0) return buffer;
-
   const zip = await JSZip.loadAsync(buffer);
   const sheetPath = "xl/worksheets/sheet1.xml";
   const sheetFile = zip.file(sheetPath);
   if (!sheetFile) return buffer;
 
   let sheetXml = await sheetFile.async("text");
+  const validations = [
+    ...(categoryCount > 0
+      ? [
+          `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="Ангилал буруу" error="Жагсаалтаас ангиллаа сонгоно уу" sqref="D2:D1001">` +
+            `<formula1>&apos;Ангиллууд&apos;!$A$2:$A$${categoryCount + 1}</formula1>` +
+            `</dataValidation>`,
+        ]
+      : []),
+    `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="Татварын төрөл буруу" error="Жагсаалтаас татварын төрлөө сонгоно уу" sqref="${taxTypeColumn}2:${taxTypeColumn}1001">` +
+      `<formula1>&apos;Татварын төрөл&apos;!$A$2:$A$5</formula1>` +
+      `</dataValidation>`,
+  ];
   const validationXml =
-    `<dataValidations count="1">` +
-    `<dataValidation type="list" allowBlank="1" showErrorMessage="1" sqref="D2:D1001">` +
-    `<formula1>&apos;Ангиллууд&apos;!$A$2:$A$${categoryCount + 1}</formula1>` +
-    `</dataValidation>` +
+    `<dataValidations count="${validations.length}">` +
+    validations.join("") +
     `</dataValidations>`;
 
   sheetXml = sheetXml.replace(

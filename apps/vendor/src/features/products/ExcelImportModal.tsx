@@ -41,10 +41,19 @@ interface ImportErrorRow {
   error: string;
   name: string;
   sku: string;
+  barcode: string;
   businessCategory: string;
   price: string;
+  wholesalePrice: string;
+  orderPrice: string;
   costPrice: string;
   stock: string;
+  expiryDate: string;
+  taxType: string;
+  cityTaxRate: string;
+  classificationCode: string;
+  taxProductCode: string;
+  marketplacePriority: string;
   preorderLeadTimeDays: string;
   preorderNote: string;
   description: string;
@@ -53,10 +62,19 @@ interface ImportErrorRow {
 type EditableImportRowField =
   | "name"
   | "sku"
+  | "barcode"
   | "businessCategory"
   | "price"
+  | "wholesalePrice"
+  | "orderPrice"
   | "costPrice"
   | "stock"
+  | "expiryDate"
+  | "taxType"
+  | "cityTaxRate"
+  | "classificationCode"
+  | "taxProductCode"
+  | "marketplacePriority"
   | "preorderLeadTimeDays"
   | "preorderNote"
   | "description";
@@ -127,10 +145,28 @@ const getColumnInfo = (mode: ImportMode) => [
     req: false,
     desc: "Dropdown-оос сонгоно. Хоосон бол байгууллагын үндсэн ангилал орно",
   },
-  { col: "Үнэ (price)", req: true, desc: "Зарах үнэ (тоо)" },
+  { col: "Баркод (barcode)", req: false, desc: "Давхардахгүй баркод" },
   { col: "Өртөг (costPrice)", req: false, desc: "Өртөг үнэ (тоо)" },
+  {
+    col: "Бөөний үнэ (wholesalePrice)",
+    req: false,
+    desc: "Бөөний худалдааны үнэ",
+  },
+  {
+    col: "Захиалгын үнэ (orderPrice)",
+    req: false,
+    desc: "Урьдчилсан захиалгын үнэ",
+  },
+  { col: "Үнэ (price)", req: true, desc: "Зарах үнэ (тоо)" },
   ...(mode === "stock"
-    ? [{ col: "Нөөц (stock)", req: false, desc: "Нөөцийн тоо (0 анхдагч)" }]
+    ? [
+        { col: "Нөөц (stock)", req: false, desc: "Нөөцийн тоо (0 анхдагч)" },
+        {
+          col: "Дуусах хугацаа (expiryDate)",
+          req: false,
+          desc: "Огноо: YYYY-MM-DD",
+        },
+      ]
     : [
         {
           col: "Ирэх хоног (preorderLeadTimeDays)",
@@ -143,6 +179,31 @@ const getColumnInfo = (mode: ImportMode) => [
           desc: "Жишээ: Хятадаас 14-21 хоногт ирнэ",
         },
       ]),
+  {
+    col: "Татварын төрөл (taxType)",
+    req: false,
+    desc: "VAT_ABLE, VAT_FREE, VAT_ZERO эсвэл NOT_VAT",
+  },
+  {
+    col: "Хотын татвар (cityTaxRate)",
+    req: false,
+    desc: "0-100 хувь; хоосон бол 0",
+  },
+  {
+    col: "Ангиллын код (classificationCode)",
+    req: false,
+    desc: "Хоосон бол 4711000",
+  },
+  {
+    col: "Татварын ангиллын код (taxProductCode)",
+    req: false,
+    desc: "eBarimt татварын бүтээгдэхүүний код",
+  },
+  {
+    col: "Marketplace дараалал (marketplacePriority)",
+    req: false,
+    desc: "0-1,000,000; 0 бол энгийн дараалал",
+  },
   { col: "Тайлбар (description)", req: false, desc: "Барааны тайлбар" },
 ];
 
@@ -247,10 +308,19 @@ export function ExcelImportModal({
     const payloadRows = rows.map((row) => ({
       name: row.name,
       sku: row.sku,
+      barcode: row.barcode,
       businessCategory: row.businessCategory,
       price: row.price,
+      wholesalePrice: row.wholesalePrice,
+      orderPrice: row.orderPrice,
       costPrice: row.costPrice,
       stock: row.stock,
+      expiryDate: row.expiryDate,
+      taxType: row.taxType,
+      cityTaxRate: row.cityTaxRate,
+      classificationCode: row.classificationCode,
+      taxProductCode: row.taxProductCode,
+      marketplacePriority: row.marketplacePriority,
       preorderLeadTimeDays: row.preorderLeadTimeDays,
       preorderNote: row.preorderNote,
       description: row.description,
@@ -745,18 +815,30 @@ function ImportResults({
             </div>
           )}
           <div className="max-h-80 overflow-auto">
-            <table className="w-full min-w-[900px] text-left">
+            <table className="w-full min-w-[2800px] text-left">
               <thead className="sticky top-0 z-10 bg-white border-b border-slate-100">
                 <tr className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
                   <th className="px-3 py-2 w-16">Мөр</th>
                   <th className="px-3 py-2 min-w-44">Нэр</th>
                   <th className="px-3 py-2 min-w-32">SKU</th>
                   <th className="px-3 py-2 min-w-44">Ангилал</th>
+                  <th className="px-3 py-2 min-w-40">Баркод</th>
                   <th className="px-3 py-2 w-32">Үнэ</th>
+                  <th className="px-3 py-2 w-32">Бөөний үнэ</th>
+                  <th className="px-3 py-2 w-32">Захиалгын үнэ</th>
                   <th className="px-3 py-2 w-32">Өртөг</th>
                   <th className="px-3 py-2 w-24">
                     {mode === "stock" ? "Нөөц" : "Хоног"}
                   </th>
+                  <th className="px-3 py-2 min-w-44">
+                    {mode === "stock" ? "Дуусах хугацаа" : "Захиалгын тайлбар"}
+                  </th>
+                  <th className="px-3 py-2 min-w-36">Татвар</th>
+                  <th className="px-3 py-2 w-28">Хотын татвар</th>
+                  <th className="px-3 py-2 min-w-36">Ангиллын код</th>
+                  <th className="px-3 py-2 min-w-44">Татварын код</th>
+                  <th className="px-3 py-2 w-32">Marketplace</th>
+                  <th className="px-3 py-2 min-w-56">Тайлбар</th>
                   <th className="px-3 py-2 min-w-52">Алдаа</th>
                   <th className="px-3 py-2 w-12" />
                 </tr>
@@ -801,9 +883,40 @@ function ImportResults({
                     </td>
                     <td className="px-3 py-2">
                       <input
+                        value={row.barcode}
+                        onChange={(e) =>
+                          updateEditableRow(index, "barcode", e.target.value)
+                        }
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 font-mono text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
                         value={row.price}
                         onChange={(e) =>
                           updateEditableRow(index, "price", e.target.value)
+                        }
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.wholesalePrice}
+                        onChange={(e) =>
+                          updateEditableRow(
+                            index,
+                            "wholesalePrice",
+                            e.target.value,
+                          )
+                        }
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.orderPrice}
+                        onChange={(e) =>
+                          updateEditableRow(index, "orderPrice", e.target.value)
                         }
                         className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
                       />
@@ -828,6 +941,101 @@ function ImportResults({
                           updateEditableRow(
                             index,
                             mode === "stock" ? "stock" : "preorderLeadTimeDays",
+                            e.target.value,
+                          )
+                        }
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type={mode === "stock" ? "date" : "text"}
+                        value={
+                          mode === "stock" ? row.expiryDate : row.preorderNote
+                        }
+                        onChange={(e) =>
+                          updateEditableRow(
+                            index,
+                            mode === "stock" ? "expiryDate" : "preorderNote",
+                            e.target.value,
+                          )
+                        }
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <select
+                        value={row.taxType || "VAT_ABLE"}
+                        onChange={(e) =>
+                          updateEditableRow(index, "taxType", e.target.value)
+                        }
+                        className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      >
+                        <option value="VAT_ABLE">VAT_ABLE</option>
+                        <option value="VAT_FREE">VAT_FREE</option>
+                        <option value="VAT_ZERO">VAT_ZERO</option>
+                        <option value="NOT_VAT">NOT_VAT</option>
+                      </select>
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.cityTaxRate}
+                        onChange={(e) =>
+                          updateEditableRow(
+                            index,
+                            "cityTaxRate",
+                            e.target.value,
+                          )
+                        }
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.classificationCode}
+                        onChange={(e) =>
+                          updateEditableRow(
+                            index,
+                            "classificationCode",
+                            e.target.value,
+                          )
+                        }
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 font-mono text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.taxProductCode}
+                        onChange={(e) =>
+                          updateEditableRow(
+                            index,
+                            "taxProductCode",
+                            e.target.value,
+                          )
+                        }
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 font-mono text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.marketplacePriority}
+                        onChange={(e) =>
+                          updateEditableRow(
+                            index,
+                            "marketplacePriority",
+                            e.target.value,
+                          )
+                        }
+                        className="h-9 w-full rounded-lg border border-slate-200 px-2 text-xs text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                      />
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        value={row.description}
+                        onChange={(e) =>
+                          updateEditableRow(
+                            index,
+                            "description",
                             e.target.value,
                           )
                         }
