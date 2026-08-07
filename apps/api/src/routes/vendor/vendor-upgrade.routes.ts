@@ -1,7 +1,11 @@
 import { Router, type Request, type Router as ExpressRouter } from "express";
 import { Prisma, prisma } from "@mgl/database";
 import { requireAuth } from "../../middleware/auth";
-import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
+import { checkQPayPayment } from "../../services/qpay";
+import {
+  checkSystemQrPayment,
+  createSystemQrInvoice,
+} from "../../services/systemqr";
 import { syncOwnerPersonalMembershipFromOrgPlan } from "../../services/owner-membership-sync.service";
 import { calculatePlanExpiration } from "../../lib/plan-expiration";
 import {
@@ -10,12 +14,13 @@ import {
 } from "../../services/vendor-plan-entitlement.service";
 import type { AuthPayload } from "../../middleware/auth";
 import {
-  UpgradeQPayConfigurationError,
+  UpgradeMinuConfigurationError,
+  buildUpgradeMinuWebhookUrl,
   calculateUpgradeRenewalExpiration,
-  hasSufficientUpgradePayment,
-  isUpgradeQPayConfigured,
-  resolveUpgradeQPayMerchantContext,
-} from "../../services/upgrade-qpay.service";
+  hasSufficientLegacyQPayPayment,
+  isUpgradeMinuConfigured,
+  resolveUpgradeMinuMerchantConfig,
+} from "../../services/upgrade-minu.service";
 
 const router: ExpressRouter = Router();
 
@@ -315,16 +320,16 @@ function activationData(plan: Plan) {
   return { now, expiresAt };
 }
 
-type UpgradeQPayLink = {
+type UpgradePaymentLink = {
   name: string;
   description: string;
   logo: string;
   link: string;
 };
 
-function readUpgradeQPayLinks(
+function readUpgradePaymentLinks(
   value: Prisma.JsonValue | null,
-): UpgradeQPayLink[] {
+): UpgradePaymentLink[] {
   if (!Array.isArray(value)) return [];
 
   return value.flatMap((item) => {
@@ -425,10 +430,27 @@ async function activatePaidUpgradeInvoice(
   throw new Error("Upgrade activation failed after retries");
 }
 
-async function isUpgradeInvoicePaid(invoiceId: string, expectedAmount: number) {
-  const merchantContext = resolveUpgradeQPayMerchantContext();
-  const payment = await checkQPayPayment(invoiceId, merchantContext);
-  return hasSufficientUpgradePayment(payment, expectedAmount);
+async function isUpgradeInvoicePaid(invoice: {
+  invoiceId: string;
+  amount: Prisma.Decimal;
+  paymentProvider: string;
+  paymentMerchantCode: string | null;
+}) {
+  if (invoice.paymentProvider.toUpperCase() === "SYSTEMQR") {
+    const config = resolveUpgradeMinuMerchantConfig();
+    const payment = await checkSystemQrPayment(
+      {
+        merchantCode: invoice.paymentMerchantCode || config.merchantCode,
+        invoiceNumber: invoice.invoiceId,
+      },
+      config.username,
+      config.password,
+    );
+    return payment.paid;
+  }
+
+  const payment = await checkQPayPayment(invoice.invoiceId);
+  return hasSufficientLegacyQPayPayment(payment, Number(invoice.amount));
 }
 
 // ─── Routes ───────────────────────────────────────────────────────────────
@@ -464,7 +486,7 @@ router.get("/vendor/upgrade/status", requireAuth, async (req, res) => {
       planExpiresAt: entitlement.effectivePlanExpiresAt,
       trialUsed: org.trialUsed,
       isActive: entitlement.isActive,
-      paymentConfigured: isUpgradeQPayConfigured(),
+      paymentConfigured: isUpgradeMinuConfigured(),
       entitlementSource: entitlement.source,
       currentPlan: entitlement.effectivePlanType
         ? (getPlan(entitlement.effectivePlanType) ?? null)
@@ -474,8 +496,8 @@ router.get("/vendor/upgrade/status", requireAuth, async (req, res) => {
             invoiceId: pendingInvoice.invoiceId,
             invoiceNo: pendingInvoice.invoiceNo,
             qrText: pendingInvoice.qrText,
-            qrImage: pendingInvoice.qrImage,
-            deepLinks: readUpgradeQPayLinks(pendingInvoice.qpayUrls),
+            paymentProvider: pendingInvoice.paymentProvider,
+            deepLinks: readUpgradePaymentLinks(pendingInvoice.deepLinks),
             amount: Number(pendingInvoice.amount),
             planType: pendingInvoice.planType,
             createdAt: pendingInvoice.createdAt,
@@ -566,7 +588,7 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
         .status(404)
         .json({ success: false, message: "Байгууллага олдсонгүй" });
 
-    const merchantContext = resolveUpgradeQPayMerchantContext();
+    const minuConfig = resolveUpgradeMinuMerchantConfig();
     const existingInvoice = await prisma.orgUpgradePlan.findFirst({
       where: { organizationId: org.id, status: "PENDING" },
       orderBy: { createdAt: "desc" },
@@ -576,13 +598,13 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
         return res.status(409).json({
           success: false,
           message:
-            "Өмнөх QPay нэхэмжлэл хүлээгдэж байна. Төлбөрөө шалгасны дараа өөр багц сонгоно уу.",
+            "Өмнөх QR нэхэмжлэл хүлээгдэж байна. Төлбөрөө шалгасны дараа өөр багц сонгоно уу.",
           pendingInvoice: {
             invoiceId: existingInvoice.invoiceId,
             invoiceNo: existingInvoice.invoiceNo,
             qrText: existingInvoice.qrText,
-            qrImage: existingInvoice.qrImage,
-            deepLinks: readUpgradeQPayLinks(existingInvoice.qpayUrls),
+            paymentProvider: existingInvoice.paymentProvider,
+            deepLinks: readUpgradePaymentLinks(existingInvoice.deepLinks),
             amount: Number(existingInvoice.amount),
             planType: existingInvoice.planType,
             createdAt: existingInvoice.createdAt,
@@ -596,8 +618,8 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
         invoiceId: existingInvoice.invoiceId,
         invoiceNo: existingInvoice.invoiceNo,
         qrText: existingInvoice.qrText,
-        qrImage: existingInvoice.qrImage,
-        deepLinks: readUpgradeQPayLinks(existingInvoice.qpayUrls),
+        paymentProvider: existingInvoice.paymentProvider,
+        deepLinks: readUpgradePaymentLinks(existingInvoice.deepLinks),
         amount: Number(existingInvoice.amount),
         planType: existingInvoice.planType,
         plan,
@@ -606,27 +628,28 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
 
     const invoiceNo = `UPG-${org.id.slice(0, 8).toUpperCase()}-${Date.now()}`;
 
-    const qpayRes = await createQPayInvoice({
-      orderId: org.id,
-      orderNumber: invoiceNo,
-      amount: plan.price,
-      description: `MglStore Pro (${plan.name}) - ${org.name}`,
-      merchantContext,
-      callbackConfig: {
-        path: "/api/vendor/upgrade/callback",
-        query: { orgId: org.id, invoiceNo },
+    const webhook = buildUpgradeMinuWebhookUrl(invoiceNo, org.id);
+    const minuInvoice = await createSystemQrInvoice(
+      {
+        merchantCode: minuConfig.merchantCode,
+        referenceNumber: invoiceNo,
+        amount: plan.price,
+        ...(webhook ? { webhook } : {}),
       },
-    });
+      minuConfig.username,
+      minuConfig.password,
+    );
 
     await prisma.orgUpgradePlan.create({
       data: {
         organizationId: org.id,
         planType: planId,
-        invoiceId: qpayRes.invoice_id,
+        invoiceId: minuInvoice.invoiceId,
         invoiceNo,
-        qrText: qpayRes.qr_text,
-        qrImage: qpayRes.qr_image || null,
-        qpayUrls: qpayRes.urls as unknown as Prisma.InputJsonValue,
+        qrText: minuInvoice.qrText,
+        deepLinks: minuInvoice.urls as unknown as Prisma.InputJsonValue,
+        paymentProvider: "SYSTEMQR",
+        paymentMerchantCode: minuConfig.merchantCode,
         amount: plan.price,
         status: "PENDING",
       },
@@ -634,18 +657,18 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
 
     return res.json({
       success: true,
-      invoiceId: qpayRes.invoice_id,
+      paymentProvider: "SYSTEMQR",
+      invoiceId: minuInvoice.invoiceId,
       invoiceNo,
-      qrText: qpayRes.qr_text,
-      qrImage: qpayRes.qr_image,
-      deepLinks: qpayRes.urls,
+      qrText: minuInvoice.qrText,
+      deepLinks: minuInvoice.urls,
       amount: plan.price,
       planType: planId,
       plan,
     });
   } catch (error) {
     console.error("upgrade initiate error", error);
-    if (error instanceof UpgradeQPayConfigurationError) {
+    if (error instanceof UpgradeMinuConfigurationError) {
       return res.status(503).json({
         success: false,
         message: error.message,
@@ -653,7 +676,7 @@ router.post("/vendor/upgrade/initiate", requireAuth, async (req, res) => {
     }
     return res.status(500).json({
       success: false,
-      message: "QPay нэхэмжлэл үүсгэхэд алдаа гарлаа",
+      message: "Minu Dynamic QR нэхэмжлэл үүсгэхэд алдаа гарлаа",
     });
   }
 });
@@ -698,10 +721,7 @@ router.post(
         });
       }
 
-      const isPaid = await isUpgradeInvoicePaid(
-        invoiceId,
-        Number(dbPlan.amount),
-      );
+      const isPaid = await isUpgradeInvoicePaid(dbPlan);
 
       if (isPaid) {
         const activation = await activatePaidUpgradeInvoice(invoiceId, org.id);
@@ -722,7 +742,7 @@ router.post(
       });
     } catch (error) {
       console.error("upgrade check error", error);
-      if (error instanceof UpgradeQPayConfigurationError) {
+      if (error instanceof UpgradeMinuConfigurationError) {
         return res.status(503).json({
           success: false,
           paid: false,
@@ -737,7 +757,7 @@ router.post(
 );
 
 /**
- * POST /api/vendor/upgrade/callback  — QPay webhook
+ * POST /api/vendor/upgrade/callback — Minu Dynamic QR / legacy QPay webhook
  */
 router.post("/vendor/upgrade/callback", async (req, res) => {
   try {
@@ -746,8 +766,12 @@ router.post("/vendor/upgrade/callback", async (req, res) => {
     const callbackInvoiceId = String(
       req.body?.invoice_id ||
         req.body?.invoiceId ||
+        req.body?.invoice_number ||
+        req.body?.invoiceNumber ||
         req.query.invoice_id ||
         req.query.invoiceId ||
+        req.query.invoice_number ||
+        req.query.invoiceNumber ||
         "",
     ).trim();
     if (!callbackInvoiceId && !invoiceNo) {
@@ -771,10 +795,7 @@ router.post("/vendor/upgrade/callback", async (req, res) => {
       return res.status(200).json({ message: "invoice inactive" });
     }
 
-    const isPaid = await isUpgradeInvoicePaid(
-      dbPlan.invoiceId,
-      Number(dbPlan.amount),
-    );
+    const isPaid = await isUpgradeInvoicePaid(dbPlan);
 
     if (isPaid) {
       await activatePaidUpgradeInvoice(dbPlan.invoiceId, dbPlan.organizationId);

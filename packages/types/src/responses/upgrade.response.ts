@@ -29,7 +29,7 @@ export type UpgradeStatus = {
     invoiceId: string;
     invoiceNo: string;
     qrText: string;
-    qrImage?: string | null;
+    paymentProvider?: "SYSTEMQR" | "QPAY";
     deepLinks?: Array<{
       name: string;
       description: string;

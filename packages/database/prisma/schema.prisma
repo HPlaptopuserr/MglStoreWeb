@@ -549,26 +549,27 @@ model CardTerminalRequest {
 }
 
 model OrgUpgradePlan {
-  id             String            @id @default(uuid())
-  organizationId String
-  planId         String?
-  planType       String
-  invoiceId      String            @unique
-  invoiceNo      String            @unique
-  qrText         String            @default("")
-  qrImage        String?
-  qpayUrls       Json?
-  amount         Decimal           @db.Decimal(18, 2)
-  status         PlanPaymentStatus @default(PENDING)
-  paidAt         DateTime?
-  expiresAt      DateTime?
-  grantedByAdmin Boolean           @default(false)
-  grantNote      String?
-  grantedById    String?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  plan           UpgradePlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
+  id                  String            @id @default(uuid())
+  organizationId      String
+  planId              String?
+  planType            String
+  invoiceId           String            @unique
+  invoiceNo           String            @unique
+  qrText              String            @default("")
+  deepLinks           Json?
+  paymentProvider     String            @default("QPAY")
+  paymentMerchantCode String?
+  amount              Decimal           @db.Decimal(18, 2)
+  status              PlanPaymentStatus @default(PENDING)
+  paidAt              DateTime?
+  expiresAt           DateTime?
+  grantedByAdmin      Boolean           @default(false)
+  grantNote           String?
+  grantedById         String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  organization        Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan                UpgradePlan?      @relation(fields: [planId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([planId])

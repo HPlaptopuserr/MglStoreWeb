@@ -25,7 +25,7 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { API, authFetch } from "@/lib/api";
 
-type QPayDeepLink = {
+type PaymentDeepLink = {
   name: string;
   description: string;
   logo: string;
@@ -65,8 +65,8 @@ type UpgradeStatus = {
     invoiceId: string;
     invoiceNo: string;
     qrText: string;
-    qrImage: string | null;
-    deepLinks: QPayDeepLink[];
+    paymentProvider: "SYSTEMQR" | "QPAY";
+    deepLinks: PaymentDeepLink[];
     amount: number;
     planType: string;
     createdAt: string;
@@ -76,10 +76,6 @@ type UpgradeStatus = {
 
 function fmt(n: number) {
   return n === -1 ? "Хязгааргүй" : n.toLocaleString();
-}
-
-function qpayImageSource(value: string) {
-  return value.startsWith("data:") ? value : `data:image/png;base64,${value}`;
 }
 
 function StatCard({
@@ -530,6 +526,10 @@ export default function UpgradePage() {
   const pendingPlan = hasPendingInvoice
     ? plans.find((p) => p.id === status?.pendingInvoice?.planType)
     : null;
+  const pendingProviderLabel =
+    status?.pendingInvoice?.paymentProvider === "QPAY"
+      ? "QPay"
+      : "Minu Dynamic QR";
   const chosenPlan = selectedPlan
     ? plans.find((p) => p.id === selectedPlan)
     : null;
@@ -609,8 +609,8 @@ export default function UpgradePage() {
 
       {status && !status.paymentConfigured && (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
-          QPay төлбөр түр идэвхгүй байна. Платформын merchant тохиргоог бүрэн
-          оруулсны дараа багцын төлбөр авах боломжтой болно.
+          Minu Dynamic QR төлбөр түр идэвхгүй байна. Платформын merchant
+          тохиргоог бүрэн оруулсны дараа багцын төлбөр авах боломжтой болно.
         </div>
       )}
 
@@ -719,7 +719,7 @@ export default function UpgradePage() {
         </div>
       )}
 
-      {/* ── Pending QPay ── */}
+      {/* ── Pending Minu Dynamic QR / legacy QPay ── */}
       {hasPendingInvoice && (
         <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
@@ -729,7 +729,7 @@ export default function UpgradePage() {
               </div>
               <div>
                 <h2 className="text-base font-black text-slate-900">
-                  QPay төлбөр хүлээгдэж байна
+                  {pendingProviderLabel} төлбөр хүлээгдэж байна
                 </h2>
                 <p className="text-xs text-slate-400 font-medium">
                   Апп-аар уншуулж гүйлгээ хийнэ үү
@@ -744,16 +744,10 @@ export default function UpgradePage() {
           </div>
 
           <div className="p-6 space-y-5">
-            {/* QPay QR */}
+            {/* Dynamic QR */}
             <div className="flex flex-col items-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 p-8 gap-4">
               <div className="w-56 h-56 bg-white rounded-2xl border-2 border-slate-200 flex items-center justify-center p-3 shadow-sm">
-                {status?.pendingInvoice?.qrImage ? (
-                  <img
-                    src={qpayImageSource(status.pendingInvoice.qrImage)}
-                    alt="QPay төлбөрийн QR"
-                    className="h-full w-full object-contain"
-                  />
-                ) : status?.pendingInvoice?.qrText ? (
+                {status?.pendingInvoice?.qrText ? (
                   <QRCodeSVG
                     value={status.pendingInvoice.qrText}
                     size={200}
@@ -767,7 +761,7 @@ export default function UpgradePage() {
                 )}
               </div>
               <p className="text-sm font-semibold text-slate-500">
-                QPay апп-аар уншуулна уу
+                Банкны апп-аар уншуулна уу
               </p>
               <button
                 onClick={copyQR}
@@ -851,7 +845,8 @@ export default function UpgradePage() {
             </div>
 
             <p className="text-center text-xs font-medium text-slate-400">
-              Төлбөр зөвхөн MglStore-ийн QPay merchant дансанд хүлээн авна.
+              Төлбөр зөвхөн MglStore-ийн Minu Dynamic QR merchant дансанд хүлээн
+              авна.
             </p>
 
             <div className="flex items-center gap-2 justify-center">
@@ -925,8 +920,8 @@ export default function UpgradePage() {
                 {isActing
                   ? "Үүсгэж байна..."
                   : !status?.paymentConfigured
-                    ? "QPay тохиргоо хүлээгдэж байна"
-                    : `QPay-р ${chosenPlan.price.toLocaleString()}₮ төлөх`}
+                    ? "Minu QR тохиргоо хүлээгдэж байна"
+                    : `Minu Dynamic QR-р ${chosenPlan.price.toLocaleString()}₮ төлөх`}
               </button>
             </>
           )}
@@ -975,7 +970,7 @@ export default function UpgradePage() {
                   {isActing
                     ? "Үүсгэж байна..."
                     : !status?.paymentConfigured
-                      ? "QPay тохиргоо хүлээгдэж байна"
+                      ? "Minu QR тохиргоо хүлээгдэж байна"
                       : `${chosenPlan.name} ${chosenPlan.durationLabel || ""}-аар сунгах`}
                 </button>
               </>
