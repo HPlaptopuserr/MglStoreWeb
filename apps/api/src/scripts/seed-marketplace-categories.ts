@@ -1,12 +1,14 @@
 import path from "path";
 import dotenv from "dotenv";
 import { prisma } from "@mgl/database";
+import { AUTOMOTIVE_CATEGORIES } from "./data/automotive-categories";
 
 dotenv.config({ path: path.resolve(__dirname, "../../../../.env") });
 dotenv.config();
 
 type Args = {
   apply: boolean;
+  automotiveOnly: boolean;
 };
 
 type CategorySpec = {
@@ -118,12 +120,7 @@ const MARKETPLACE_CATEGORIES: CategorySpec[] = [
   { slug: "office-supplies", name: "Оффис хэрэгсэл", icon: "📎", parentSlug: "books-office", sortOrder: 803 },
   { slug: "printing-services", name: "Хэвлэл, print service", icon: "🖨️", parentSlug: "books-office", sortOrder: 804 },
 
-  { slug: "auto-moto", name: "Авто, мото", icon: "🚗", parentSlug: null, sortOrder: 900 },
-  { slug: "auto-parts", name: "Сэлбэг", icon: "⚙️", parentSlug: "auto-moto", sortOrder: 901 },
-  { slug: "tires-wheels", name: "Дугуй, обуд", icon: "🛞", parentSlug: "auto-moto", sortOrder: 902 },
-  { slug: "car-care", name: "Авто арчилгаа", icon: "🧴", parentSlug: "auto-moto", sortOrder: 903 },
-  { slug: "car-electronics", name: "Авто цахилгаан хэрэгсэл", icon: "🔋", parentSlug: "auto-moto", sortOrder: 904 },
-  { slug: "motorcycle", name: "Мото хэрэгсэл", icon: "🏍️", parentSlug: "auto-moto", sortOrder: 905 },
+  ...AUTOMOTIVE_CATEGORIES,
 
   { slug: "construction-tools", name: "Барилга, засвар", icon: "🏗️", parentSlug: null, sortOrder: 1000 },
   { slug: "real-estate", name: "Үл хөдлөх, орон сууц", icon: "🏘️", parentSlug: "construction-tools", sortOrder: 1001 },
@@ -174,13 +171,18 @@ const LEGACY_PARENT_REFINEMENTS: LegacyParentSpec[] = [
 ];
 
 function parseArgs(): Args {
+  const args = process.argv.slice(2);
   return {
-    apply: process.argv.slice(2).includes("--apply"),
+    apply: args.includes("--apply"),
+    automotiveOnly: args.includes("--automotive-only"),
   };
 }
 
 async function main() {
   const options = parseArgs();
+  const categorySpecs = options.automotiveOnly
+    ? AUTOMOTIVE_CATEGORIES
+    : MARKETPLACE_CATEGORIES;
   const existing = await prisma.businessCategory.findMany({
     select: { id: true, slug: true, name: true, parentId: true, level: true },
   });
@@ -192,7 +194,7 @@ async function main() {
     reason?: string;
   }> = [];
 
-  for (const spec of MARKETPLACE_CATEGORIES) {
+  for (const spec of categorySpecs) {
     const parent = spec.parentSlug ? categoryBySlug.get(spec.parentSlug) : null;
     if (parent === undefined) {
       actions.push({ type: "skip", spec, reason: `Parent not found: ${spec.parentSlug}` });
@@ -248,20 +250,22 @@ async function main() {
       savedBySlug.set(saved.slug, saved);
     }
 
-    for (const legacy of LEGACY_PARENT_REFINEMENTS) {
-      const category = savedBySlug.get(legacy.slug);
-      const parent = savedBySlug.get(legacy.parentSlug);
-      if (!category || !parent || category.id === parent.id) continue;
-      const saved = await prisma.businessCategory.update({
-        where: { id: category.id },
-        data: {
-          parentId: parent.id,
-          level: parent.level + 1,
-          sortOrder: legacy.sortOrder,
-          isActive: true,
-        },
-      });
-      savedBySlug.set(saved.slug, saved);
+    if (!options.automotiveOnly) {
+      for (const legacy of LEGACY_PARENT_REFINEMENTS) {
+        const category = savedBySlug.get(legacy.slug);
+        const parent = savedBySlug.get(legacy.parentSlug);
+        if (!category || !parent || category.id === parent.id) continue;
+        const saved = await prisma.businessCategory.update({
+          where: { id: category.id },
+          data: {
+            parentId: parent.id,
+            level: parent.level + 1,
+            sortOrder: legacy.sortOrder,
+            isActive: true,
+          },
+        });
+        savedBySlug.set(saved.slug, saved);
+      }
     }
   }
 
@@ -277,9 +281,12 @@ async function main() {
     JSON.stringify(
       {
         mode: options.apply ? "apply" : "dry-run",
-        categoriesPlanned: MARKETPLACE_CATEGORIES.length,
+        scope: options.automotiveOnly ? "automotive" : "marketplace",
+        categoriesPlanned: categorySpecs.length,
         actions: summary,
-        legacyReparentsPlanned: LEGACY_PARENT_REFINEMENTS.length,
+        legacyReparentsPlanned: options.automotiveOnly
+          ? 0
+          : LEGACY_PARENT_REFINEMENTS.length,
       },
       null,
       2,
@@ -296,16 +303,18 @@ async function main() {
     }
   }
 
-  console.log("\nLEGACY_REPARENTS");
-  for (const legacy of LEGACY_PARENT_REFINEMENTS) {
-    const category = categoryBySlug.get(legacy.slug);
-    const parent = categoryBySlug.get(legacy.parentSlug);
-    if (!category) {
-      console.log(`SKIP ${legacy.slug} - legacy category not found`);
-    } else if (!parent) {
-      console.log(`SKIP ${legacy.slug} - parent not found: ${legacy.parentSlug}`);
-    } else {
-      console.log(`${options.apply ? "APPLY" : "DRY"} REPARENT ${category.name} parent=${parent.name}`);
+  if (!options.automotiveOnly) {
+    console.log("\nLEGACY_REPARENTS");
+    for (const legacy of LEGACY_PARENT_REFINEMENTS) {
+      const category = categoryBySlug.get(legacy.slug);
+      const parent = categoryBySlug.get(legacy.parentSlug);
+      if (!category) {
+        console.log(`SKIP ${legacy.slug} - legacy category not found`);
+      } else if (!parent) {
+        console.log(`SKIP ${legacy.slug} - parent not found: ${legacy.parentSlug}`);
+      } else {
+        console.log(`${options.apply ? "APPLY" : "DRY"} REPARENT ${category.name} parent=${parent.name}`);
+      }
     }
   }
 

@@ -9,6 +9,7 @@ import {
   Boxes,
   CalendarDays,
   ChevronDown,
+  ChevronRight,
   CheckCircle2,
   Clapperboard,
   Eye,
@@ -27,6 +28,7 @@ import {
   Send,
   ShieldCheck,
   Share2,
+  SlidersHorizontal,
   Star,
   Store,
   Upload,
@@ -38,6 +40,7 @@ import {
 import { API } from "@/lib/api";
 import { useAuth, type AuthOrganization } from "@/lib/auth-context";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
+import type { BusinessCategory } from "@/types/category";
 import { QuickProductExcelImport } from "./QuickProductExcelImport";
 
 const ORG_URL = process.env.NEXT_PUBLIC_ORG_URL || "http://localhost:3004";
@@ -214,6 +217,7 @@ type TimelineEditForm = {
 };
 
 type QuickProductFormState = {
+  businessCategoryId: string;
   name: string;
   price: string;
   stock: string;
@@ -233,6 +237,7 @@ type ReelFormState = {
 };
 
 type CreateMode = "post" | "product" | "reel" | "service" | "ad";
+type DatePreset = "all" | "today" | "7d" | "30d" | "custom";
 
 type OrgProfileFormState = {
   name: string;
@@ -1415,11 +1420,11 @@ function OrganizationContentFeed({
   statusMessage: string;
   services: ManagedServicePost[];
 }) {
-  const [datePreset, setDatePreset] = useState<
-    "all" | "today" | "7d" | "30d" | "custom"
-  >("all");
+  const [datePreset, setDatePreset] = useState<DatePreset>("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [filterOpen, setFilterOpen] = useState(false);
+  useLockBodyScroll(filterOpen);
   const timeline = useMemo(() => {
     const items: ManagedTimelineItem[] = [
       ...products.map((product) => ({
@@ -1562,6 +1567,24 @@ function OrganizationContentFeed({
     (item): item is Extract<ManagedTimelineItem, { kind: "reel" }> =>
       item.kind === "reel",
   );
+  const datePresetLabel =
+    datePreset === "today"
+      ? "Өнөөдөр"
+      : datePreset === "7d"
+        ? "7 хоног"
+        : datePreset === "30d"
+          ? "30 хоног"
+          : datePreset === "custom"
+            ? "Огноогоор"
+            : "Бүгд";
+
+  const selectDatePreset = (preset: Exclude<DatePreset, "custom">) => {
+    setDatePreset(preset);
+    if (preset === "all") {
+      setDateFrom("");
+      setDateTo("");
+    }
+  };
 
   return (
     <section className="space-y-3">
@@ -1571,13 +1594,26 @@ function OrganizationContentFeed({
         <>
           <div className="rounded-[22px] border border-white bg-white px-4 py-4 shadow-[0_14px_40px_rgba(15,23,42,0.06)] sm:px-5">
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div>
+              <div className="flex items-center justify-between gap-3">
+                <div>
                 <h2 className="text-lg font-black text-slate-950">
                   {tabLabel}
                 </h2>
                 <p className="mt-0.5 text-xs font-bold text-slate-400">
                   Шинэ оруулсан нь эхэндээ харагдана
                 </p>
+                </div>
+                {activeTab !== "reels" ? (
+                  <button
+                    type="button"
+                    onClick={() => setFilterOpen(true)}
+                    className="inline-flex h-10 shrink-0 items-center gap-2 rounded-full bg-slate-950 px-3.5 text-xs font-black text-white shadow-lg shadow-slate-900/10 xl:hidden"
+                    aria-haspopup="dialog"
+                  >
+                    <SlidersHorizontal size={15} />
+                    {datePresetLabel}
+                  </button>
+                ) : null}
               </div>
               {activeTab === "reels" ? (
                 <div className="inline-flex h-10 items-center gap-2 rounded-2xl bg-fuchsia-50 px-4 text-xs font-black text-fuchsia-700 ring-1 ring-fuchsia-100 xl:h-9 xl:rounded-full">
@@ -1585,63 +1621,21 @@ function OrganizationContentFeed({
                   {reelItems.length} reel
                 </div>
               ) : (
-                <div className="grid gap-2 xl:flex xl:flex-wrap xl:items-center">
-                  <div className="grid grid-cols-4 gap-2 xl:flex xl:flex-wrap">
-                    <DatePresetButton
-                      active={datePreset === "all"}
-                      onClick={() => {
-                        setDatePreset("all");
-                        setDateFrom("");
-                        setDateTo("");
-                      }}
-                    >
-                      Бүгд
-                    </DatePresetButton>
-                    <DatePresetButton
-                      active={datePreset === "today"}
-                      onClick={() => setDatePreset("today")}
-                    >
-                      Өнөөдөр
-                    </DatePresetButton>
-                    <DatePresetButton
-                      active={datePreset === "7d"}
-                      onClick={() => setDatePreset("7d")}
-                    >
-                      7 хоног
-                    </DatePresetButton>
-                    <DatePresetButton
-                      active={datePreset === "30d"}
-                      onClick={() => setDatePreset("30d")}
-                    >
-                      30 хоног
-                    </DatePresetButton>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 xl:flex xl:flex-wrap">
-                    <label className="flex h-10 min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400 xl:h-9 xl:rounded-full">
-                      <span className="shrink-0">Эхлэх</span>
-                      <input
-                        type="date"
-                        value={dateFrom}
-                        onChange={(event) => {
-                          setDateFrom(event.target.value);
-                          setDatePreset("custom");
-                        }}
-                        className="min-w-0 flex-1 bg-transparent text-[12px] font-black normal-case tracking-normal text-slate-700 outline-none"
-                      />
-                    </label>
-                    <label className="flex h-10 min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400 xl:h-9 xl:rounded-full">
-                      <span className="shrink-0">Дуусах</span>
-                      <input
-                        type="date"
-                        value={dateTo}
-                        onChange={(event) => {
-                          setDateTo(event.target.value);
-                          setDatePreset("custom");
-                        }}
-                        className="min-w-0 flex-1 bg-transparent text-[12px] font-black normal-case tracking-normal text-slate-700 outline-none"
-                      />
-                    </label>
-                  </div>
+                <div className="hidden flex-wrap items-center gap-2 xl:flex">
+                  <ContentDateFilterControls
+                    dateFrom={dateFrom}
+                    datePreset={datePreset}
+                    dateTo={dateTo}
+                    onDateFromChange={(value) => {
+                      setDateFrom(value);
+                      setDatePreset("custom");
+                    }}
+                    onDateToChange={(value) => {
+                      setDateTo(value);
+                      setDatePreset("custom");
+                    }}
+                    onPresetChange={selectDatePreset}
+                  />
                   <span className="inline-flex h-10 items-center justify-center rounded-2xl bg-slate-100 px-4 text-xs font-black text-slate-500 sm:h-auto sm:min-h-10 xl:h-9 xl:rounded-full">
                     {loading
                       ? "Шинэчилж байна..."
@@ -1653,6 +1647,65 @@ function OrganizationContentFeed({
               )}
             </div>
           </div>
+
+          {filterOpen && activeTab !== "reels" ? (
+            <div
+              className="fixed inset-0 z-[150] flex items-end bg-slate-950/55 backdrop-blur-sm xl:hidden"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="content-filter-title"
+            >
+              <button
+                type="button"
+                className="absolute inset-0 cursor-default"
+                onClick={() => setFilterOpen(false)}
+                aria-label="Шүүлтүүр хаах"
+              />
+              <div className="relative w-full rounded-t-[28px] bg-white px-4 pb-[max(20px,env(safe-area-inset-bottom))] pt-3 shadow-2xl">
+                <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200" />
+                <div className="mb-5 flex items-center justify-between">
+                  <div>
+                    <h2 id="content-filter-title" className="text-lg font-black text-slate-950">
+                      Огноогоор шүүх
+                    </h2>
+                    <p className="mt-0.5 text-xs font-bold text-slate-400">
+                      Харах хугацаагаа сонгоно уу
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFilterOpen(false)}
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500"
+                    aria-label="Хаах"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+                <ContentDateFilterControls
+                  dateFrom={dateFrom}
+                  datePreset={datePreset}
+                  dateTo={dateTo}
+                  mobile
+                  onDateFromChange={(value) => {
+                    setDateFrom(value);
+                    setDatePreset("custom");
+                  }}
+                  onDateToChange={(value) => {
+                    setDateTo(value);
+                    setDatePreset("custom");
+                  }}
+                  onPresetChange={selectDatePreset}
+                />
+                <button
+                  type="button"
+                  onClick={() => setFilterOpen(false)}
+                  className="mt-5 flex h-12 w-full items-center justify-center rounded-2xl bg-slate-950 text-sm font-black text-white"
+                >
+                  {filteredTimeline.length} үр дүн харах
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           {statusMessage && (
             <div className="rounded-[18px] border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-black text-orange-700">
@@ -2038,20 +2091,109 @@ function OrganizationAboutPanel({
   );
 }
 
+function ContentDateFilterControls({
+  dateFrom,
+  datePreset,
+  dateTo,
+  mobile = false,
+  onDateFromChange,
+  onDateToChange,
+  onPresetChange,
+}: {
+  dateFrom: string;
+  datePreset: DatePreset;
+  dateTo: string;
+  mobile?: boolean;
+  onDateFromChange: (value: string) => void;
+  onDateToChange: (value: string) => void;
+  onPresetChange: (preset: Exclude<DatePreset, "custom">) => void;
+}) {
+  const presets: Array<{
+    id: Exclude<DatePreset, "custom">;
+    label: string;
+  }> = [
+    { id: "all", label: "Бүгд" },
+    { id: "today", label: "Өнөөдөр" },
+    { id: "7d", label: "7 хоног" },
+    { id: "30d", label: "30 хоног" },
+  ];
+
+  return (
+    <div className={mobile ? "space-y-4" : "contents"}>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:flex xl:flex-wrap">
+        {presets.map((preset) => (
+          <DatePresetButton
+            key={preset.id}
+            active={datePreset === preset.id}
+            onClick={() => onPresetChange(preset.id)}
+            mobile={mobile}
+          >
+            {preset.label}
+          </DatePresetButton>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2 xl:flex xl:flex-wrap">
+        <DateInput
+          label="Эхлэх"
+          mobile={mobile}
+          onChange={onDateFromChange}
+          value={dateFrom}
+        />
+        <DateInput
+          label="Дуусах"
+          mobile={mobile}
+          onChange={onDateToChange}
+          value={dateTo}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DateInput({
+  label,
+  mobile,
+  onChange,
+  value,
+}: {
+  label: string;
+  mobile: boolean;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label
+      className={`flex min-w-0 items-center gap-2 border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-[0.08em] text-slate-400 ${
+        mobile ? "h-14 rounded-2xl" : "h-9 rounded-full"
+      }`}
+    >
+      <span className="shrink-0">{label}</span>
+      <input
+        type="date"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="min-w-0 flex-1 bg-transparent text-[12px] font-black normal-case tracking-normal text-slate-700 outline-none"
+      />
+    </label>
+  );
+}
+
 function DatePresetButton({
   active,
   children,
+  mobile = false,
   onClick,
 }: {
   active: boolean;
   children: React.ReactNode;
+  mobile?: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`h-9 w-full rounded-full px-2 text-xs font-black transition xl:w-auto xl:px-3 ${
+      className={`${mobile ? "h-12" : "h-9"} w-full rounded-full px-2 text-xs font-black transition xl:w-auto xl:px-3 ${
         active
           ? "bg-slate-950 text-white shadow-lg shadow-slate-900/10"
           : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-900"
@@ -3489,6 +3631,7 @@ function OrganizationCreateHub({
 }) {
   const [composerOpen, setComposerOpen] = useState(false);
   const [productForm, setProductForm] = useState<QuickProductFormState>({
+    businessCategoryId: "",
     name: "",
     price: "",
     stock: "0",
@@ -3592,6 +3735,10 @@ function OrganizationCreateHub({
       setProductMessage("Бүтээгдэхүүний нэр болон үнэ зөв оруулна уу.");
       return;
     }
+    if (!productForm.businessCategoryId) {
+      setProductMessage("Бүтээгдэхүүний ангилал сонгоно уу.");
+      return;
+    }
     if (!Number.isFinite(stock) || stock < 0) {
       setProductMessage("Нөөцийн тоо 0-ээс их байх ёстой.");
       return;
@@ -3604,6 +3751,7 @@ function OrganizationCreateHub({
         method: "POST",
         body: JSON.stringify({
           organizationId: selectedOrganizationId,
+          businessCategoryId: productForm.businessCategoryId,
           name: productName,
           price,
           stock,
@@ -3620,6 +3768,7 @@ function OrganizationCreateHub({
         return;
       }
       setProductForm({
+        businessCategoryId: "",
         name: "",
         price: "",
         stock: "0",
@@ -4053,31 +4202,53 @@ function CreateContentModal({
           </div>
 
           {!isPostMode && (
-            <div
-              className={`mt-4 grid gap-2 ${
-                SHOW_POST_SECTION ? "sm:grid-cols-5" : "sm:grid-cols-4"
-              }`}
-            >
-              {modes.map((mode) => {
-                const Icon = mode.icon;
-                const active = createMode === mode.id;
-                return (
-                  <button
-                    key={mode.id}
-                    type="button"
-                    onClick={() => onModeChange(mode.id)}
-                    className={`inline-flex h-11 items-center justify-center gap-2 rounded-2xl text-sm font-black transition ${
-                      active
-                        ? "bg-slate-950 text-white shadow-lg shadow-slate-900/15"
-                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                    }`}
-                  >
-                    <Icon size={17} />
-                    {mode.label}
-                  </button>
-                );
-              })}
-            </div>
+            <section className="mt-4" aria-labelledby="create-mode-title">
+              <div className="mb-2 flex items-center justify-between">
+                <p
+                  id="create-mode-title"
+                  className="text-xs font-black uppercase tracking-[0.1em] text-slate-500"
+                >
+                  Оруулах төрөл
+                </p>
+                <span className="text-[11px] font-bold text-slate-400 sm:hidden">
+                  Нэгийг сонгоно уу
+                </span>
+              </div>
+              <div
+                className={`grid grid-cols-2 gap-2 ${
+                  SHOW_POST_SECTION ? "sm:grid-cols-5" : "sm:grid-cols-4"
+                }`}
+              >
+                {modes.map((mode) => {
+                  const Icon = mode.icon;
+                  const active = createMode === mode.id;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => onModeChange(mode.id)}
+                      className={`group inline-flex min-h-12 items-center justify-start gap-2.5 rounded-2xl border px-3 text-left text-sm font-black transition sm:h-11 sm:min-h-0 sm:justify-center sm:px-2 ${
+                        active
+                          ? "border-slate-950 bg-slate-950 text-white shadow-lg shadow-slate-900/15"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span
+                        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition sm:h-auto sm:w-auto ${
+                          active
+                            ? "bg-white/15 text-white"
+                            : `${mode.tone} group-hover:scale-105`
+                        }`}
+                      >
+                        <Icon size={17} />
+                      </span>
+                      <span className="min-w-0 truncate">{mode.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
           )}
 
           {createMode === "post" && (
@@ -4820,31 +4991,6 @@ function QuickProductForm({
   saving: boolean;
 }) {
   const success = message.includes("амжилттай");
-  const addImages = async (files: FileList | null) => {
-    if (!files?.length) return;
-
-    const selected = Array.from(files)
-      .filter((file) => file.type.startsWith("image/"))
-      .slice(0, Math.max(0, 5 - form.images.length));
-
-    const dataUrls = await Promise.all(
-      selected.map(
-        (file) =>
-          new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result || ""));
-            reader.onerror = () => reject(reader.error);
-            reader.readAsDataURL(file);
-          }),
-      ),
-    );
-
-    onImagesChange([...form.images, ...dataUrls].slice(0, 5));
-  };
-
-  const removeImage = (image: string) => {
-    onImagesChange(form.images.filter((item) => item !== image));
-  };
 
   return (
     <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 p-3 sm:p-4">
@@ -4854,47 +5000,18 @@ function QuickProductForm({
         organizationId={organizationId}
       />
 
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        <label className="inline-flex h-12 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-black text-emerald-700 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50">
-          <ImageIcon size={18} />
-          Зураг оруулах
-          <input
-            type="file"
-            accept="image/*"
-            multiple
-            className="sr-only"
-            onChange={(event) => {
-              void addImages(event.target.files);
-              event.target.value = "";
-            }}
-          />
-        </label>
-        <p className="text-xs font-bold text-slate-500">
-          {form.images.length}/5 зураг
-        </p>
-      </div>
+      <ProductImageUploader
+        images={form.images}
+        onImagesChange={onImagesChange}
+      />
 
-      {form.images.length > 0 && (
-        <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-          {form.images.map((image, index) => (
-            <div
-              key={`${image.slice(0, 40)}-${index}`}
-              className="group relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-white bg-slate-100 shadow-sm"
-            >
-              <img src={image} alt="" className="h-full w-full object-cover" />
-              <button
-                type="button"
-                onClick={() => removeImage(image)}
-                className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-slate-950/75 text-xs font-black text-white opacity-0 transition group-hover:opacity-100"
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <ProductCategorySelect
+        authFetch={authFetch}
+        value={form.businessCategoryId}
+        onChange={(value) => onFieldChange("businessCategoryId", value)}
+      />
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_176px_144px]">
+      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_176px_144px]">
         <label className="min-w-0 flex-1">
           <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
             Бүтээгдэхүүний нэр
@@ -4951,7 +5068,12 @@ function QuickProductForm({
         <button
           type="button"
           onClick={onCreate}
-          disabled={saving || !form.name.trim() || !form.price.trim()}
+          disabled={
+            saving ||
+            !form.businessCategoryId ||
+            !form.name.trim() ||
+            !form.price.trim()
+          }
           className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-black text-white shadow-lg shadow-emerald-500/20 transition hover:-translate-y-0.5 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 sm:w-auto sm:min-w-40"
         >
           <PlusCircle size={17} />
@@ -4966,6 +5088,378 @@ function QuickProductForm({
       >
         {message || "Barcode шаардлагагүй. Нэр, үнэ, нөөцөөр шууд нэмнэ."}
       </p>
+    </div>
+  );
+}
+
+function ProductImageUploader({
+  images,
+  onImagesChange,
+}: {
+  images: string[];
+  onImagesChange: (images: string[]) => void;
+}) {
+  const maxImages = 5;
+  const canAddMore = images.length < maxImages;
+
+  const addImages = async (files: FileList | null) => {
+    if (!files?.length || !canAddMore) return;
+
+    const selected = Array.from(files)
+      .filter((file) => file.type.startsWith("image/"))
+      .slice(0, maxImages - images.length);
+    const dataUrls = await Promise.all(
+      selected.map(
+        (file) =>
+          new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ""));
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(file);
+          }),
+      ),
+    );
+
+    onImagesChange([...images, ...dataUrls].slice(0, maxImages));
+  };
+
+  const removeImage = (indexToRemove: number) => {
+    onImagesChange(images.filter((_, index) => index !== indexToRemove));
+  };
+
+  return (
+    <section className="mb-4" aria-labelledby="product-images-title">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div>
+          <p
+            id="product-images-title"
+            className="text-sm font-black text-slate-950"
+          >
+            Бүтээгдэхүүний зураг
+          </p>
+          <p className="mt-0.5 text-xs font-bold text-slate-500">
+            Эхний зураг бүтээгдэхүүний үндсэн зураг болно
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-500 ring-1 ring-slate-200">
+          {images.length}/{maxImages}
+        </span>
+      </div>
+
+      {images.length === 0 ? (
+        <label className="group flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-[22px] border-2 border-dashed border-slate-300 bg-white px-5 py-6 text-center transition hover:border-emerald-400 hover:bg-emerald-50/60 focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-100">
+          <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 transition group-hover:scale-105 group-hover:bg-emerald-100">
+            <ImageIcon size={25} />
+          </span>
+          <span className="mt-3 text-sm font-black text-slate-950">
+            Зураг нэмэх
+          </span>
+          <span className="mt-1 text-xs font-bold text-slate-500">
+            Энд дарж 5 хүртэл зураг сонгоно уу
+          </span>
+          <span className="mt-2 text-[11px] font-bold text-slate-400">
+            JPG, PNG, WEBP
+          </span>
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            className="sr-only"
+            onChange={(event) => {
+              void addImages(event.target.files);
+              event.target.value = "";
+            }}
+          />
+        </label>
+      ) : (
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+          {images.map((image, index) => (
+            <div
+              key={`${image.slice(0, 40)}-${index}`}
+              className={`group relative aspect-square overflow-hidden rounded-[18px] bg-slate-200 ring-1 ring-slate-200 ${
+                index === 0 ? "col-span-2 row-span-2" : ""
+              }`}
+            >
+              <img
+                src={image}
+                alt={`Бүтээгдэхүүний зураг ${index + 1}`}
+                className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+              />
+              <div className="absolute inset-x-0 top-0 flex items-start justify-between bg-gradient-to-b from-slate-950/55 to-transparent p-2">
+                {index === 0 ? (
+                  <span className="rounded-full bg-white/95 px-2.5 py-1 text-[10px] font-black text-slate-900 shadow-sm">
+                    Үндсэн зураг
+                  </span>
+                ) : (
+                  <span />
+                )}
+                <button
+                  type="button"
+                  onClick={() => removeImage(index)}
+                  aria-label={`${index + 1}-р зургийг устгах`}
+                  className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-950/75 text-white shadow-sm transition hover:scale-105 hover:bg-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+
+          {canAddMore ? (
+            <label className="flex aspect-square cursor-pointer flex-col items-center justify-center rounded-[18px] border-2 border-dashed border-slate-300 bg-white text-slate-500 transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 focus-within:ring-4 focus-within:ring-emerald-100">
+              <PlusCircle size={22} />
+              <span className="mt-1.5 text-xs font-black">Нэмэх</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                className="sr-only"
+                onChange={(event) => {
+                  void addImages(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+            </label>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ProductCategorySelect({
+  authFetch,
+  onChange,
+  value,
+}: {
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  const [categories, setCategories] = useState<BusinessCategory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState(false);
+  const [activeParentId, setActiveParentId] = useState<string | null>(null);
+  useLockBodyScroll(open);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadCategories = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const response = await authFetch(`${API}/business-categories`);
+        const data: unknown = await response.json().catch(() => null);
+        if (!response.ok || !Array.isArray(data)) {
+          throw new Error("Ангиллын жагсаалт авах боломжгүй байна.");
+        }
+        if (!cancelled) setCategories(data as BusinessCategory[]);
+      } catch {
+        if (!cancelled) setError("Ангиллын жагсаалт ачаалж чадсангүй.");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    void loadCategories();
+    return () => {
+      cancelled = true;
+    };
+  }, [authFetch]);
+
+  const categoryById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category])),
+    [categories],
+  );
+  const visibleCategories = useMemo(
+    () =>
+      categories.filter((category) =>
+        activeParentId
+          ? category.parentId === activeParentId
+          : !category.parentId,
+      ),
+    [activeParentId, categories],
+  );
+  const selectedCategory = value ? categoryById.get(value) : undefined;
+  const activeParent = activeParentId
+    ? categoryById.get(activeParentId)
+    : undefined;
+
+  const getCategoryPath = (category: BusinessCategory | undefined) => {
+    if (!category) return "";
+    const names: string[] = [];
+    const visited = new Set<string>();
+    let current: BusinessCategory | undefined = category;
+    while (current && !visited.has(current.id)) {
+      names.unshift(current.name);
+      visited.add(current.id);
+      current = current.parentId
+        ? categoryById.get(current.parentId)
+        : undefined;
+    }
+    return names.join(" › ");
+  };
+
+  const openPicker = () => {
+    setActiveParentId(null);
+    setOpen(true);
+  };
+
+  const chooseCategory = (category: BusinessCategory) => {
+    const hasChildren = categories.some(
+      (candidate) => candidate.parentId === category.id,
+    );
+    if (hasChildren) {
+      setActiveParentId(category.id);
+      return;
+    }
+    onChange(category.id);
+    setOpen(false);
+  };
+
+  const goBack = () => {
+    setActiveParentId(activeParent?.parentId || null);
+  };
+
+  return (
+    <div className="block">
+      <div className="mb-1.5 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+        Ангилал
+        <span className="text-rose-500" aria-hidden="true">
+          *
+        </span>
+      </div>
+      <button
+        type="button"
+        onClick={openPicker}
+        disabled={loading || categories.length === 0}
+        aria-haspopup="dialog"
+        aria-describedby={error ? "product-category-error" : undefined}
+        className="flex min-h-12 w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-left outline-none transition hover:border-emerald-300 focus-visible:ring-4 focus-visible:ring-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100"
+      >
+        <span
+          className={`min-w-0 truncate text-sm font-bold ${
+            selectedCategory ? "text-slate-900" : "text-slate-400"
+          }`}
+        >
+          {loading
+            ? "Ангилал ачаалж байна..."
+            : selectedCategory
+              ? getCategoryPath(selectedCategory)
+              : "Бүтээгдэхүүний ангилал сонгох"}
+        </span>
+        <ChevronRight size={18} className="shrink-0 text-slate-400" />
+      </button>
+      {error ? (
+        <span
+          id="product-category-error"
+          className="mt-1.5 block text-xs font-bold text-rose-600"
+        >
+          {error}
+        </span>
+      ) : null}
+
+      {open ? (
+        <div
+          className="fixed inset-0 z-[180] flex items-end justify-center bg-slate-950/55 backdrop-blur-sm sm:items-center sm:p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="category-picker-title"
+        >
+          <button
+            type="button"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setOpen(false)}
+            aria-label="Ангилал сонголт хаах"
+          />
+          <div className="relative flex max-h-[82dvh] w-full flex-col overflow-hidden rounded-t-[28px] bg-white shadow-2xl sm:max-w-lg sm:rounded-[28px]">
+            <div className="mx-auto mt-3 h-1.5 w-12 shrink-0 rounded-full bg-slate-200 sm:hidden" />
+            <header className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-4 py-4">
+              {activeParent ? (
+                <button
+                  type="button"
+                  onClick={goBack}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200"
+                  aria-label="Өмнөх ангилал руу буцах"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+              ) : (
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                  <Boxes size={20} />
+                </span>
+              )}
+              <div className="min-w-0 flex-1">
+                <h2
+                  id="category-picker-title"
+                  className="truncate text-lg font-black text-slate-950"
+                >
+                  {activeParent?.name || "Ангилал сонгох"}
+                </h2>
+                <p className="mt-0.5 truncate text-xs font-bold text-slate-400">
+                  {activeParent
+                    ? getCategoryPath(activeParent)
+                    : "Үндсэн ангиллаас эхэлж сонгоно уу"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setOpen(false)}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200"
+                aria-label="Хаах"
+              >
+                <X size={20} />
+              </button>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4">
+              {visibleCategories.length > 0 ? (
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {visibleCategories.map((category) => {
+                    const childCount = categories.filter(
+                      (candidate) => candidate.parentId === category.id,
+                    ).length;
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => chooseCategory(category)}
+                        className="group flex min-h-16 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-emerald-300 hover:bg-emerald-50/60 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-emerald-100"
+                      >
+                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition group-hover:bg-emerald-100 group-hover:text-emerald-700">
+                          <Boxes size={18} />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-sm font-black text-slate-900">
+                            {category.name}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] font-bold text-slate-400">
+                            {childCount > 0
+                              ? `${childCount} дэд ангилал`
+                              : "Сонгох"}
+                          </span>
+                        </span>
+                        <ChevronRight
+                          size={18}
+                          className="shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-emerald-600"
+                        />
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-200 px-5 py-10 text-center">
+                  <p className="text-sm font-black text-slate-700">
+                    Дэд ангилал олдсонгүй
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
