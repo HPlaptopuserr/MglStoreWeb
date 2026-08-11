@@ -42,6 +42,7 @@ import {
   type CartLine,
   type CartTotals,
   type PaymentMethod,
+  getPosFunctionShortcutAction,
   type PosCreditBorrower,
   type PosReceipt,
   type SaleCreditPaymentMeta,
@@ -464,10 +465,10 @@ const renderEbarimtQrMarkup = (value?: string | null) => {
 };
 
 const printReceipt = (receipt: PosReceipt) => {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") return false;
 
   const popup = window.open("", "_blank", "width=420,height=760");
-  if (!popup) return;
+  if (!popup) return false;
 
   const content = escapeHtml(formatReceipt(receipt));
   const ebarimtQrData =
@@ -501,6 +502,7 @@ const printReceipt = (receipt: PosReceipt) => {
     </html>
   `);
   popup.document.close();
+  return true;
 };
 
 export default function PosDemoPage() {
@@ -769,6 +771,9 @@ export default function PosDemoPage() {
     successOverlay.visible ||
     isCardProcessing ||
     Boolean(pendingEbarimtSale);
+  const functionShortcutsBlockedRef = useRef(false);
+  functionShortcutsBlockedRef.current =
+    overlayOpen || showProductLabelPrint || showSetupPanel;
 
   useLockBodyScroll(overlayOpen);
 
@@ -787,6 +792,26 @@ export default function PosDemoPage() {
     [shiftHistoryRange],
   );
   const receiptForPreview = selectedReceipt || lastReceipt;
+  const handlePrintReceipt = useCallback(() => {
+    if (!receiptForPreview) {
+      setScanStatus("not-found");
+      setScanMessage("Хэвлэх баримт алга байна.");
+      return;
+    }
+
+    if (!printReceipt(receiptForPreview)) {
+      setScanStatus("not-found");
+      setScanMessage(
+        "Хэвлэх цонх нээгдсэнгүй. Browser popup тохиргоогоо шалгана уу.",
+      );
+      return;
+    }
+
+    setScanStatus("success");
+    setScanMessage(
+      `#${receiptForPreview.receiptNo} баримтыг хэвлэхээр нээлээ.`,
+    );
+  }, [receiptForPreview]);
   const reloadReceiptHistory = useCallback(() => {
     setReceiptReloadToken((value) => value + 1);
   }, []);
@@ -1685,6 +1710,33 @@ export default function PosDemoPage() {
   useEffect(() => {
     if (!posEnabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      const shortcutAction = getPosFunctionShortcutAction(event.key);
+      if (shortcutAction) {
+        if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+          return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.repeat || functionShortcutsBlockedRef.current) return;
+
+        const shortcutButton = document.querySelector<HTMLButtonElement>(
+          `[data-pos-shortcut="${event.key.toUpperCase()}"]`,
+        );
+        if (!shortcutButton || shortcutButton.disabled) {
+          setScanStatus("not-found");
+          setScanMessage(
+            shortcutAction === "PRINT_RECEIPT"
+              ? "Хэвлэх баримт алга байна."
+              : "Одоогоор энэ үйлдлийг хийх боломжгүй байна.",
+          );
+          return;
+        }
+
+        shortcutButton.click();
+        return;
+      }
+
       const target = event.target as HTMLElement | null;
       const isTypingField =
         target instanceof HTMLInputElement ||
@@ -4508,9 +4560,11 @@ export default function PosDemoPage() {
               totals={totals}
               paymentMethod={paymentMethod}
               onChangeMethod={handlePaymentMethodChange}
+              onPrint={handlePrintReceipt}
               onSubmit={() => {
                 void startAutoCheckoutFlow();
               }}
+              printDisabled={!receiptForPreview}
               disabled={
                 state.cart.length === 0 ||
                 saleLoading ||
