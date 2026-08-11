@@ -1,8 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { ImageIcon, X, Loader2, GripHorizontal, AlertCircle } from "lucide-react";
+import {
+  ImageIcon,
+  X,
+  Loader2,
+  GripHorizontal,
+  AlertCircle,
+} from "lucide-react";
 import { authFetch, API } from "@/lib/api";
+import { blobToDataUrl, compressImageForUpload } from "@mgl/ui";
 
 interface Props {
   images: string[];
@@ -15,57 +22,9 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
 
-  const readFileAsDataUrl = (file: File) =>
-    new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsDataURL(file);
-    });
-
-  const compressImageToDataUrl = (file: File) =>
-    new Promise<string>((resolve, reject) => {
-      const objectUrl = URL.createObjectURL(file);
-      const img = new Image();
-
-      img.onload = () => {
-        URL.revokeObjectURL(objectUrl);
-        const maxSide = 1400;
-        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
-        const width = Math.max(1, Math.round(img.width * scale));
-        const height = Math.max(1, Math.round(img.height * scale));
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          reject(new Error("Canvas context unavailable"));
-          return;
-        }
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", 0.82));
-      };
-
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl);
-        reject(new Error("Image load failed"));
-      };
-
-      img.src = objectUrl;
-    });
-
-  const fileToLocalPreview = async (file: File) => {
-    if (file.type.startsWith("image/") && file.type !== "image/gif") {
-      try {
-        return await compressImageToDataUrl(file);
-      } catch {
-        return readFileAsDataUrl(file);
-      }
-    }
-    return readFileAsDataUrl(file);
-  };
-
-  const uploadToServer = async (file: File): Promise<{ url: string | null; error?: string }> => {
+  const uploadToServer = async (
+    file: File,
+  ): Promise<{ url: string | null; error?: string }> => {
     const formData = new FormData();
     formData.append("image", file);
     try {
@@ -80,7 +39,10 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
       const data = await res.json();
       return { url: data.url as string };
     } catch (error) {
-      return { url: null, error: error instanceof Error ? error.message : "Upload failed" };
+      return {
+        url: null,
+        error: error instanceof Error ? error.message : "Upload failed",
+      };
     }
   };
 
@@ -97,7 +59,21 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
 
     for (const file of files) {
       if (current.length >= maxImages) break;
-      const uploaded = await uploadToServer(file);
+      let preparedFile: File;
+      try {
+        preparedFile = await compressImageForUpload(file, {
+          maxDimension: 1600,
+          quality: 0.82,
+        });
+      } catch (error) {
+        failedMessage =
+          error instanceof Error
+            ? error.message
+            : "Зураг боловсруулахад алдаа гарлаа";
+        continue;
+      }
+
+      const uploaded = await uploadToServer(preparedFile);
       if (uploaded.url) {
         current.push(uploaded.url);
         continue;
@@ -105,7 +81,7 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
 
       failedMessage = uploaded.error || failedMessage;
       try {
-        const localPreview = await fileToLocalPreview(file);
+        const localPreview = await blobToDataUrl(preparedFile);
         if (localPreview) {
           current.push(localPreview);
           fallbackUsed = true;
@@ -118,7 +94,9 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
     onChange(current.slice(0, maxImages));
     setUploading(false);
     if (fallbackUsed) {
-      setUploadError("Сервер upload ажиллахгүй байгаа тул зураг түр форм дотор хадгалагдлаа. Render дээр Supabase тохиргоо шалгах хэрэгтэй.");
+      setUploadError(
+        "Сервер upload ажиллахгүй байгаа тул зураг түр форм дотор хадгалагдлаа. Render дээр Supabase тохиргоо шалгах хэрэгтэй.",
+      );
     } else if (failedMessage) {
       setUploadError(`Зураг upload хийхэд алдаа гарлаа: ${failedMessage}`);
     }
@@ -141,7 +119,10 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <label className="text-sm font-semibold text-slate-700">
-          Зурагнууд <span className="text-slate-400 font-normal ml-1">({images.length}/{maxImages})</span>
+          Зурагнууд{" "}
+          <span className="text-slate-400 font-normal ml-1">
+            ({images.length}/{maxImages})
+          </span>
         </label>
       </div>
 
@@ -168,7 +149,9 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
                   setDragging(null);
                 }}
                 className={`relative group aspect-square rounded-2xl overflow-hidden cursor-grab active:cursor-grabbing transition-all duration-300 ${
-                  isFirst ? "ring-2 ring-indigo-500 ring-offset-2" : "border border-slate-200"
+                  isFirst
+                    ? "ring-2 ring-indigo-500 ring-offset-2"
+                    : "border border-slate-200"
                 } ${dragging === idx ? "opacity-40 scale-95" : "hover:shadow-md"}`}
               >
                 <img
@@ -176,7 +159,7 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
                   alt={`Зураг ${idx + 1}`}
                   className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                 />
-                
+
                 {/* Overlay gradient */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
@@ -213,8 +196,8 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
                 canAdd
                   ? "border-slate-300 hover:border-indigo-400 hover:bg-indigo-50/50 cursor-pointer text-slate-500 hover:text-indigo-600"
                   : isUploadingSlot
-                  ? "border-indigo-300 bg-indigo-50/50 text-indigo-500"
-                  : "border-slate-100 bg-slate-50/50 text-slate-300 cursor-not-allowed"
+                    ? "border-indigo-300 bg-indigo-50/50 text-indigo-500"
+                    : "border-slate-100 bg-slate-50/50 text-slate-300 cursor-not-allowed"
               }`}
             >
               {isUploadingSlot ? (
@@ -225,7 +208,10 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
               ) : canAdd ? (
                 <div className="flex flex-col items-center gap-2 group">
                   <div className="p-3 rounded-full bg-slate-100 group-hover:bg-indigo-100 transition-colors">
-                    <ImageIcon size={20} className="text-slate-400 group-hover:text-indigo-500" />
+                    <ImageIcon
+                      size={20}
+                      className="text-slate-400 group-hover:text-indigo-500"
+                    />
                   </div>
                   <span className="text-xs font-medium">Зураг нэмэх</span>
                   <input

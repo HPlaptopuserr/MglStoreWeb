@@ -39,6 +39,10 @@ import {
 } from "lucide-react";
 import { API } from "@/lib/api";
 import { useAuth, type AuthOrganization } from "@/lib/auth-context";
+import {
+  MAX_PRODUCT_IMAGES,
+  uploadProductImages,
+} from "@/lib/product-image-upload";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import type { BusinessCategory } from "@/types/category";
 import { QuickProductExcelImport } from "./QuickProductExcelImport";
@@ -1356,6 +1360,7 @@ export function ManagedOrganizationProfile({
 
       {editingTimelineItem && (
         <TimelineEditModal
+          authFetch={authFetch}
           item={editingTimelineItem}
           onClose={() => setEditingTimelineItem(null)}
           onSave={updateTimelineItem}
@@ -1596,12 +1601,12 @@ function OrganizationContentFeed({
             <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                <h2 className="text-lg font-black text-slate-950">
-                  {tabLabel}
-                </h2>
-                <p className="mt-0.5 text-xs font-bold text-slate-400">
-                  Шинэ оруулсан нь эхэндээ харагдана
-                </p>
+                  <h2 className="text-lg font-black text-slate-950">
+                    {tabLabel}
+                  </h2>
+                  <p className="mt-0.5 text-xs font-bold text-slate-400">
+                    Шинэ оруулсан нь эхэндээ харагдана
+                  </p>
                 </div>
                 {activeTab !== "reels" ? (
                   <button
@@ -1665,7 +1670,10 @@ function OrganizationContentFeed({
                 <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-slate-200" />
                 <div className="mb-5 flex items-center justify-between">
                   <div>
-                    <h2 id="content-filter-title" className="text-lg font-black text-slate-950">
+                    <h2
+                      id="content-filter-title"
+                      className="text-lg font-black text-slate-950"
+                    >
                       Огноогоор шүүх
                     </h2>
                     <p className="mt-0.5 text-xs font-bold text-slate-400">
@@ -2693,10 +2701,12 @@ function TimelineCardFooter({
 }
 
 function TimelineEditModal({
+  authFetch,
   item,
   onClose,
   onSave,
 }: {
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
   item: ManagedTimelineItem;
   onClose: () => void;
   onSave: (item: ManagedTimelineItem, form: TimelineEditForm) => Promise<void>;
@@ -2714,6 +2724,7 @@ function TimelineEditModal({
     type: item.kind === "post" ? item.edit.type : "GENERAL",
   });
   const [saving, setSaving] = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
   const [error, setError] = useState("");
 
   const updateField = (field: keyof TimelineEditForm, value: string) => {
@@ -2722,29 +2733,31 @@ function TimelineEditModal({
   };
 
   const addImages = async (files: FileList | null) => {
-    if (!files?.length || item.kind === "post") return;
-
-    const selected = Array.from(files)
-      .filter((file) => file.type.startsWith("image/"))
-      .slice(0, Math.max(0, 5 - form.images.length));
-
-    const dataUrls = await Promise.all(
-      selected.map(
-        (file) =>
-          new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result || ""));
-            reader.onerror = () => reject(reader.error);
-            reader.readAsDataURL(file);
-          }),
-      ),
-    );
-
+    if (!files?.length || item.kind === "post" || imageUploading) return;
+    setImageUploading(true);
     setError("");
-    setForm((current) => ({
-      ...current,
-      images: [...current.images, ...dataUrls].slice(0, 5),
-    }));
+    try {
+      const uploadedUrls = await uploadProductImages({
+        authFetch,
+        files,
+        remainingSlots: MAX_PRODUCT_IMAGES - form.images.length,
+      });
+      setForm((current) => ({
+        ...current,
+        images: [...current.images, ...uploadedUrls].slice(
+          0,
+          MAX_PRODUCT_IMAGES,
+        ),
+      }));
+    } catch (error) {
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Зураг upload хийхэд алдаа гарлаа.",
+      );
+    } finally {
+      setImageUploading(false);
+    }
   };
 
   const removeImage = (image: string) => {
@@ -2860,6 +2873,7 @@ function TimelineEditModal({
               <div className="sm:col-span-2">
                 <TimelineImageEditor
                   images={form.images}
+                  uploading={imageUploading}
                   onAddImages={addImages}
                   onRemoveImage={removeImage}
                 />
@@ -2919,10 +2933,14 @@ function TimelineEditModal({
           <button
             type="button"
             onClick={save}
-            disabled={saving}
+            disabled={saving || imageUploading}
             className="h-11 rounded-full bg-orange-500 px-7 text-sm font-black text-white shadow-lg shadow-orange-500/20 transition hover:-translate-y-0.5 hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
           >
-            {saving ? "Хадгалж байна..." : "Хадгалах"}
+            {imageUploading
+              ? "Зураг боловсруулж байна..."
+              : saving
+                ? "Хадгалж байна..."
+                : "Хадгалах"}
           </button>
         </div>
       </div>
@@ -2934,21 +2952,28 @@ function TimelineImageEditor({
   images,
   onAddImages,
   onRemoveImage,
+  uploading,
 }: {
   images: string[];
   onAddImages: (files: FileList | null) => void;
   onRemoveImage: (image: string) => void;
+  uploading: boolean;
 }) {
   return (
     <div className="rounded-[22px] border border-slate-200 bg-slate-50 p-3">
       <div className="flex flex-wrap items-center gap-3">
         <label className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-white px-4 text-sm font-black text-emerald-700 shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:bg-emerald-50">
-          <ImageIcon size={18} />
-          Зураг оруулах
+          {uploading ? (
+            <Loader2 size={18} className="animate-spin" />
+          ) : (
+            <ImageIcon size={18} />
+          )}
+          {uploading ? "Боловсруулж байна..." : "Зураг оруулах"}
           <input
             type="file"
             accept="image/*"
             multiple
+            disabled={uploading || images.length >= MAX_PRODUCT_IMAGES}
             className="sr-only"
             onChange={(event) => {
               onAddImages(event.target.files);
@@ -4991,6 +5016,7 @@ function QuickProductForm({
   saving: boolean;
 }) {
   const success = message.includes("амжилттай");
+  const [imageUploading, setImageUploading] = useState(false);
 
   return (
     <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 p-3 sm:p-4">
@@ -5001,8 +5027,10 @@ function QuickProductForm({
       />
 
       <ProductImageUploader
+        authFetch={authFetch}
         images={form.images}
         onImagesChange={onImagesChange}
+        onUploadingChange={setImageUploading}
       />
 
       <ProductCategorySelect
@@ -5070,6 +5098,7 @@ function QuickProductForm({
           onClick={onCreate}
           disabled={
             saving ||
+            imageUploading ||
             !form.businessCategoryId ||
             !form.name.trim() ||
             !form.price.trim()
@@ -5077,7 +5106,11 @@ function QuickProductForm({
           className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-black text-white shadow-lg shadow-emerald-500/20 transition hover:-translate-y-0.5 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 sm:w-auto sm:min-w-40"
         >
           <PlusCircle size={17} />
-          {saving ? "Хадгалж..." : "Оруулах"}
+          {imageUploading
+            ? "Зураг боловсруулж байна..."
+            : saving
+              ? "Хадгалж..."
+              : "Оруулах"}
         </button>
       </div>
 
@@ -5093,34 +5126,42 @@ function QuickProductForm({
 }
 
 function ProductImageUploader({
+  authFetch,
   images,
   onImagesChange,
+  onUploadingChange,
 }: {
+  authFetch: (url: string, init?: RequestInit) => Promise<Response>;
   images: string[];
   onImagesChange: (images: string[]) => void;
+  onUploadingChange: (uploading: boolean) => void;
 }) {
-  const maxImages = 5;
-  const canAddMore = images.length < maxImages;
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const canAddMore = images.length < MAX_PRODUCT_IMAGES;
 
   const addImages = async (files: FileList | null) => {
-    if (!files?.length || !canAddMore) return;
-
-    const selected = Array.from(files)
-      .filter((file) => file.type.startsWith("image/"))
-      .slice(0, maxImages - images.length);
-    const dataUrls = await Promise.all(
-      selected.map(
-        (file) =>
-          new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(String(reader.result || ""));
-            reader.onerror = () => reject(reader.error);
-            reader.readAsDataURL(file);
-          }),
-      ),
-    );
-
-    onImagesChange([...images, ...dataUrls].slice(0, maxImages));
+    if (!files?.length || !canAddMore || uploading) return;
+    setUploading(true);
+    onUploadingChange(true);
+    setUploadError("");
+    try {
+      const uploadedUrls = await uploadProductImages({
+        authFetch,
+        files,
+        remainingSlots: MAX_PRODUCT_IMAGES - images.length,
+      });
+      onImagesChange([...images, ...uploadedUrls].slice(0, MAX_PRODUCT_IMAGES));
+    } catch (error) {
+      setUploadError(
+        error instanceof Error
+          ? error.message
+          : "Зураг upload хийхэд алдаа гарлаа.",
+      );
+    } finally {
+      setUploading(false);
+      onUploadingChange(false);
+    }
   };
 
   const removeImage = (indexToRemove: number) => {
@@ -5142,17 +5183,21 @@ function ProductImageUploader({
           </p>
         </div>
         <span className="shrink-0 rounded-full bg-white px-3 py-1.5 text-xs font-black text-slate-500 ring-1 ring-slate-200">
-          {images.length}/{maxImages}
+          {images.length}/{MAX_PRODUCT_IMAGES}
         </span>
       </div>
 
       {images.length === 0 ? (
         <label className="group flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-[22px] border-2 border-dashed border-slate-300 bg-white px-5 py-6 text-center transition hover:border-emerald-400 hover:bg-emerald-50/60 focus-within:border-emerald-400 focus-within:ring-4 focus-within:ring-emerald-100">
           <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 transition group-hover:scale-105 group-hover:bg-emerald-100">
-            <ImageIcon size={25} />
+            {uploading ? (
+              <Loader2 size={25} className="animate-spin" />
+            ) : (
+              <ImageIcon size={25} />
+            )}
           </span>
           <span className="mt-3 text-sm font-black text-slate-950">
-            Зураг нэмэх
+            {uploading ? "Зураг боловсруулж байна..." : "Зураг нэмэх"}
           </span>
           <span className="mt-1 text-xs font-bold text-slate-500">
             Энд дарж 5 хүртэл зураг сонгоно уу
@@ -5164,6 +5209,7 @@ function ProductImageUploader({
             type="file"
             accept="image/jpeg,image/png,image/webp"
             multiple
+            disabled={uploading}
             className="sr-only"
             onChange={(event) => {
               void addImages(event.target.files);
@@ -5213,6 +5259,7 @@ function ProductImageUploader({
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 multiple
+                disabled={uploading}
                 className="sr-only"
                 onChange={(event) => {
                   void addImages(event.target.files);
@@ -5222,6 +5269,15 @@ function ProductImageUploader({
             </label>
           ) : null}
         </div>
+      )}
+
+      {uploadError && (
+        <p
+          role="alert"
+          className="mt-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-700"
+        >
+          {uploadError}
+        </p>
       )}
     </section>
   );

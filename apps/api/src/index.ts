@@ -1,6 +1,7 @@
 import "./config/env";
 
 import express from "express";
+import multer from "multer";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -189,6 +190,56 @@ app.get("/", (_req, res) => {
 
 app.use("/auth", authRoutes);
 app.use("/api/auth", authRoutes);
+
+app.use(
+  (
+    error: unknown,
+    _req: express.Request,
+    res: express.Response,
+    _next: express.NextFunction,
+  ) => {
+    if (error instanceof multer.MulterError) {
+      const message =
+        error.code === "LIMIT_FILE_SIZE"
+          ? "Зургийн хэмжээ 5 MB-аас бага байх ёстой"
+          : "Зураг upload хийх хүсэлт буруу байна";
+      return res.status(413).json({ code: error.code, message });
+    }
+
+    if (
+      error instanceof Error &&
+      error.message.startsWith("Зөвхөн JPG, PNG, WebP, GIF")
+    ) {
+      return res.status(400).json({
+        code: "UNSUPPORTED_IMAGE_TYPE",
+        message: error.message,
+      });
+    }
+
+    const requestError = error as {
+      status?: number;
+      statusCode?: number;
+      type?: string;
+    };
+    if (
+      requestError?.type === "entity.too.large" ||
+      requestError?.status === 413 ||
+      requestError?.statusCode === 413
+    ) {
+      return res.status(413).json({
+        code: "PAYLOAD_TOO_LARGE",
+        message:
+          "Илгээж буй мэдээлэл хэт том байна. Зургуудаа тусад нь upload хийнэ үү.",
+      });
+    }
+
+    console.error("[api] Unhandled request error", error);
+    return res.status(500).json({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Серверийн алдаа гарлаа",
+    });
+  },
+);
 
 const port = process.env.PORT || 4000;
 

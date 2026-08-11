@@ -41,6 +41,7 @@ import {
 } from "../../services/master-product.service";
 import {
   extractExcelImages,
+  optimizeProductImageBuffer,
   uploadBufferToSupabase,
   PRODUCT_COL_MAP,
   PRODUCT_IMPORT_FILE_SIZE_LIMIT_BYTES,
@@ -569,9 +570,6 @@ const isTruthyQueryValue = (value: unknown) =>
 const getInventoryExpiryFilter = (includeExpired: boolean) =>
   includeExpired ? { not: null } : { gte: getStartOfToday() };
 
-const isOversizedInlineImage = (url: string) =>
-  url.startsWith("data:") && url.length > 12_000;
-
 const parseOptionalExpiryDate = (value: unknown) => {
   if (value === undefined) return undefined;
   if (value === null || value === "") return null;
@@ -583,6 +581,35 @@ const parseOptionalExpiryDate = (value: unknown) => {
   const date = new Date(String(value));
   return Number.isFinite(date.getTime()) ? date : undefined;
 };
+
+const MAX_PRODUCT_IMAGE_COUNT = 5;
+const MAX_INLINE_PRODUCT_IMAGE_LENGTH = 2_500_000;
+
+function normalizeProductImageUrls(value: unknown): string[] | null {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value) || value.length > MAX_PRODUCT_IMAGE_COUNT) {
+    return null;
+  }
+
+  const urls: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") return null;
+    const url = item.trim();
+    const isRemoteUrl = /^https?:\/\//i.test(url) || url.startsWith("/api/");
+    const isInlineImage = /^data:image\/(?:jpeg|png|gif|webp);base64,/i.test(
+      url,
+    );
+    if (
+      !url ||
+      (!isRemoteUrl && !isInlineImage) ||
+      (isInlineImage && url.length > MAX_INLINE_PRODUCT_IMAGE_LENGTH)
+    ) {
+      return null;
+    }
+    urls.push(url);
+  }
+  return urls;
+}
 
 async function getImportBusinessCategoryChoices() {
   const categories = await prisma.businessCategory.findMany({
@@ -1225,9 +1252,7 @@ router.get("/products", optionalAuth, async (req, res) => {
         const expiryDate = expiryByProductId.get(product.id) ?? null;
         return {
           ...product,
-          images: product.images.filter(
-            (image) => !isOversizedInlineImage(image.url),
-          ),
+          images: product.images,
           expiryDate: expiryDate?.toISOString() ?? null,
           searchScore: search ? scoreProductForSearch(product, search) : 0,
           interestScore: scoreProductForInterest(product, interestProfile),
@@ -1535,9 +1560,7 @@ router.get("/products/trending", optionalAuth, async (req, res) => {
     const products = [...rankedProducts, ...fallbackProducts].map(
       (product) => ({
         ...product,
-        images: product.images.filter(
-          (image) => !isOversizedInlineImage(image.url),
-        ),
+        images: product.images,
         trendScore: popularWeightById.get(product.id) || 0,
       }),
     );
@@ -3087,10 +3110,13 @@ router.post(
         businessCategoryName = category.name;
       }
 
-      // Validate max 5 images
-      const imageUrls: string[] = Array.isArray(images)
-        ? images.slice(0, 5)
-        : [];
+      const imageUrls = normalizeProductImageUrls(images);
+      if (!imageUrls) {
+        return res.status(400).json({
+          message:
+            "Зураг буруу байна. 5 хүртэлх upload хийгдсэн зураг ашиглана уу.",
+        });
+      }
       const actorId = (req as any).user?.userId ?? null;
       const reviewData = await getReviewStatusForVendorMutation();
 
@@ -3512,7 +3538,13 @@ router.patch("/products/:id/images", requireAuth, async (req, res) => {
     const perm = await assertProductMutationPermission(req, res, existing);
     if (!perm) return;
 
-    const imageUrls = images.slice(0, 5);
+    const imageUrls = normalizeProductImageUrls(images);
+    if (!imageUrls) {
+      return res.status(400).json({
+        message:
+          "Зураг буруу байна. 5 хүртэлх upload хийгдсэн зураг ашиглана уу.",
+      });
+    }
     await prisma.productImage.deleteMany({ where: { productId: id } });
 
     const product = await prisma.product.update({
@@ -3546,13 +3578,15 @@ router.post(
       }
 
       // Keep product entry usable in local/self-hosted environments without
-      // object storage. The returned data URL is persisted in ProductImage.
+      // object storage. Optimize first so the database fallback stays small.
       if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY) {
-        const dataUrl = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
-        console.warn("upload-image: using database image fallback");
+        const optimized = await optimizeProductImageBuffer(req.file.buffer);
+        const dataUrl = `data:image/webp;base64,${optimized.toString("base64")}`;
+        console.warn("upload-image: using optimized database image fallback");
         return res.json({
           url: dataUrl,
           storage: "database",
+          optimized: true,
         });
       }
 

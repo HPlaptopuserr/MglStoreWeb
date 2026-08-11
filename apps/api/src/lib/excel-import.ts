@@ -282,20 +282,24 @@ export function getImageExt(mime: string): string {
   return map[mime] || ".png";
 }
 
+export async function optimizeProductImageBuffer(buf: Buffer): Promise<Buffer> {
+  return sharp(buf, { animated: false })
+    .rotate()
+    .resize({
+      width: 1200,
+      height: 1200,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 82, effort: 4 })
+    .toBuffer();
+}
+
 export async function uploadBufferToSupabase(
   buf: Buffer,
 ): Promise<string | null> {
   try {
-    const optimized = await sharp(buf, { animated: false })
-      .rotate()
-      .resize({
-        width: 1200,
-        height: 1200,
-        fit: "inside",
-        withoutEnlargement: true,
-      })
-      .webp({ quality: 82, effort: 4 })
-      .toBuffer();
+    const optimized = await optimizeProductImageBuffer(buf);
     const fileName = `products/${Date.now()}-${crypto.randomBytes(8).toString("hex")}.webp`;
 
     const { error } = await getSupabase()
