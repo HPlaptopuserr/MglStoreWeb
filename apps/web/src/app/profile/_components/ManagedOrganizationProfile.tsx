@@ -43,6 +43,7 @@ import {
   MAX_PRODUCT_IMAGES,
   uploadProductImages,
 } from "@/lib/product-image-upload";
+import { normalizeOrganizationMetrics } from "@/lib/organization-presentation";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import type { BusinessCategory } from "@/types/category";
 import { QuickProductExcelImport } from "./QuickProductExcelImport";
@@ -69,7 +70,9 @@ type ManagedOrgDetails = {
   rating?: number;
   reviewCount?: number;
   customerCount?: string | null;
+  customers?: string | null;
   operatingYears?: number;
+  years?: number;
 };
 
 type ManagedProduct = {
@@ -501,7 +504,15 @@ export function ManagedOrganizationProfile({
         const res = await fetch(`${API}/partners/${encodeURIComponent(key)}`);
         const data = await res.json().catch(() => null);
         if (!active) return;
-        setDetails(res.ok && data ? data : null);
+        setDetails(
+          res.ok && data
+            ? {
+                ...data,
+                customerCount: data.customerCount ?? data.customers ?? "0",
+                operatingYears: data.operatingYears ?? data.years ?? 1,
+              }
+            : null,
+        );
       } catch {
         if (active) setDetails(null);
       } finally {
@@ -699,8 +710,13 @@ export function ManagedOrganizationProfile({
   const logo =
     org?.logoUrl || selectedOrg.logoUrl || fallbackLogo(selectedOrg.id);
   const cover = org?.bannerUrl || fallbackCover(selectedOrg.id);
-  const isOpen = (org?.status || selectedOrg.status) === "ACTIVE";
-  const isVerified = Boolean(org?.isVerified ?? selectedOrg.isVerified);
+  const metrics = normalizeOrganizationMetrics({
+    ...org,
+    isVerified: org?.isVerified ?? selectedOrg.isVerified,
+    status: org?.status || selectedOrg.status,
+  });
+  const isOpen = metrics.isOpen;
+  const isVerified = metrics.isVerified;
   const category = org?.businessCategory || selectedOrg.type || "SUPPLIER";
   const shortDescription =
     org?.shortDescription ||
@@ -714,7 +730,7 @@ export function ManagedOrganizationProfile({
     shortDescription: org?.shortDescription || "",
     description: org?.description || "",
     openingHours: org?.openingHours || "",
-    operatingYears: String(org?.operatingYears ?? 1),
+    operatingYears: String(metrics.years),
   };
 
   const updateProfileImage = async (
@@ -972,14 +988,14 @@ export function ManagedOrganizationProfile({
         onToggleImageMenu={setImageActionMenu}
         onUploadImage={updateProfileImage}
         publicHref={orgPublicHref(org || selectedOrg)}
-        rating={org?.rating ?? 5}
-        reviewCount={org?.reviewCount ?? 0}
+        rating={metrics.rating}
+        reviewCount={metrics.reviewCount}
         role={roleLabel[selectedOrg.role] || selectedOrg.role}
         shortDescription={shortDescription}
       />
 
-      <div className="hidden overflow-visible rounded-[30px] bg-white shadow-[0_22px_70px_rgba(15,23,42,0.12)] sm:block">
-        <div className="relative h-[190px] overflow-hidden rounded-t-[24px] bg-slate-200 sm:h-[340px] sm:rounded-t-[30px] lg:h-[400px]">
+      <div className="hidden overflow-visible rounded-2xl border border-slate-100 bg-white shadow-sm sm:block">
+        <div className="relative h-24 overflow-hidden rounded-t-2xl bg-slate-200">
           <button
             type="button"
             onClick={() =>
@@ -997,7 +1013,7 @@ export function ManagedOrganizationProfile({
               referrerPolicy="no-referrer"
             />
           </button>
-          <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/55 via-slate-950/20 to-transparent" />
           <ImageActionMenu
             field="bannerUrl"
             isOpen={imageActionMenu === "bannerUrl"}
@@ -1023,10 +1039,10 @@ export function ManagedOrganizationProfile({
           </div>
         </div>
 
-        <div className="relative -mt-10 mx-3 rounded-[24px] border border-slate-100 bg-white p-4 shadow-xl shadow-slate-200/80 sm:-mt-16 sm:mx-8 sm:rounded-[28px] sm:p-7">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex min-w-0 flex-col items-center gap-4 text-center sm:flex-row sm:items-start sm:gap-6 sm:text-left">
-              <div className="relative h-24 w-24 shrink-0 rounded-[24px] bg-slate-100 shadow-xl ring-4 ring-white sm:h-28 sm:w-28">
+        <div className="relative -mt-8 mx-4 mb-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-lg shadow-slate-200/60">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-4 text-left">
+              <div className="relative h-20 w-20 shrink-0 rounded-2xl bg-slate-100 shadow-md ring-4 ring-white">
                 <button
                   type="button"
                   onClick={() =>
@@ -1034,7 +1050,7 @@ export function ManagedOrganizationProfile({
                       current === "logoUrl" ? null : "logoUrl",
                     )
                   }
-                  className="group h-full w-full overflow-hidden rounded-[24px]"
+                  className="group h-full w-full overflow-hidden rounded-2xl"
                   aria-label="Profile зурагны сонголт"
                 >
                   <img
@@ -1071,7 +1087,7 @@ export function ManagedOrganizationProfile({
 
               <div
                 className={`min-w-0 transition-[padding] ${
-                  imageActionMenu === "logoUrl" ? "pt-28 sm:pt-1" : "pt-1"
+                  imageActionMenu === "logoUrl" ? "pt-28 sm:pt-0" : "pt-0"
                 }`}
               >
                 <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
@@ -1093,14 +1109,14 @@ export function ManagedOrganizationProfile({
                   </Badge>
                 </div>
 
-                <h1 className="mt-3 line-clamp-2 break-words text-2xl font-black tracking-tight text-slate-950 sm:truncate sm:text-4xl">
+                <h1 className="mt-2 line-clamp-2 break-words text-2xl font-black tracking-tight text-slate-950 sm:truncate">
                   {name}
                 </h1>
 
                 <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-sm font-bold sm:justify-start">
                   <span className="inline-flex items-center gap-1 text-slate-900">
                     <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                    {org?.rating ?? 5} ({org?.reviewCount ?? 0})
+                    {metrics.rating.toFixed(1)} ({metrics.reviewCount})
                   </span>
                   {isOpen && (
                     <span className="text-emerald-600">Яг одоо идэвхтэй</span>
@@ -1110,13 +1126,13 @@ export function ManagedOrganizationProfile({
                   )}
                 </div>
 
-                <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
+                <p className="mt-2 max-w-3xl line-clamp-2 text-xs font-semibold leading-5 text-slate-500">
                   {shortDescription}
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 lg:w-[420px] lg:grid-cols-1 xl:w-[520px] xl:grid-cols-3">
+            <div className="grid grid-cols-3 gap-2 lg:w-[440px]">
               <QuickStat
                 icon={ShieldCheck}
                 label="Албан ёсны"
@@ -1125,12 +1141,12 @@ export function ManagedOrganizationProfile({
               <QuickStat
                 icon={Users}
                 label="Харилцагч"
-                value={org?.customerCount || "0"}
+                value={metrics.customers}
               />
               <QuickStat
                 icon={CalendarDays}
                 label="Туршлага"
-                value={`${org?.operatingYears ?? 1} жил`}
+                value={`${metrics.years} жил`}
               />
             </div>
           </div>
@@ -1213,7 +1229,10 @@ export function ManagedOrganizationProfile({
                   label="Эрх"
                   value={roleLabel[selectedOrg.role] || selectedOrg.role}
                 />
-                <InfoPill label="Үнэлгээ" value={`${org?.rating ?? 5} / 5`} />
+                <InfoPill
+                  label="Үнэлгээ"
+                  value={`${metrics.rating.toFixed(1)} / 5`}
+                />
               </div>
             </div>
           </WidgetCard>
@@ -1246,12 +1265,12 @@ export function ManagedOrganizationProfile({
               <MiniMetric
                 icon={Users}
                 label="Харилцагч"
-                value={org?.customerCount || "0"}
+                value={metrics.customers}
               />
               <MiniMetric
                 icon={CalendarDays}
                 label="Туршлага"
-                value={`${org?.operatingYears ?? 1} жил`}
+                value={`${metrics.years} жил`}
               />
               <MiniMetric
                 icon={ShieldCheck}

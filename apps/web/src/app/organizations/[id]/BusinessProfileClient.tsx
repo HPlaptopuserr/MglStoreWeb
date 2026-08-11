@@ -47,6 +47,7 @@ import { getInvestorTierLabel } from "@mgl/types";
 import { resolveApiAssetUrl } from "@/lib/api";
 import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 import { ServiceDetailOverlay } from "@/app/services/_components/ServiceDetailOverlay";
+import { formatOrganizationRating } from "@/lib/organization-presentation";
 
 type ProductItem = OrganizationDetailData["products"][number] & {
   isAvailable?: boolean;
@@ -1159,8 +1160,8 @@ function StorefrontHeader({ data }: { data: OrganizationDetailData }) {
                     Дэлгүүрийн нийт үнэлгээ
                   </p>
                   <p className="mt-1 text-2xl font-black text-slate-950">
-                    {data.rating.toFixed(1)}
-                    <span className="text-sm text-slate-400">/10</span>
+                    {formatOrganizationRating(data.rating)}
+                    <span className="text-sm text-slate-400">/5</span>
                   </p>
                 </div>
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
@@ -1230,7 +1231,7 @@ function StorefrontHeader({ data }: { data: OrganizationDetailData }) {
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs font-bold text-slate-500">
             <span className="inline-flex items-center gap-1 text-amber-600">
               <Star className="h-3.5 w-3.5 fill-current" />
-              {data.rating.toFixed(1)}/10
+              {formatOrganizationRating(data.rating)}/5
             </span>
             <span>{data.reviewCount} үнэлгээ</span>
             <span className="inline-flex items-center gap-1">
@@ -1643,7 +1644,7 @@ function StickyStoreHeader({
             </p>
             <p className="mt-0.5 flex items-center gap-2 text-[10px] font-bold text-slate-400">
               <span className="text-amber-500">
-                ★ {data.rating.toFixed(1)}/10
+                ★ {formatOrganizationRating(data.rating)}/5
               </span>
               <span>{data.stats.customers} хэрэглэгч</span>
             </p>

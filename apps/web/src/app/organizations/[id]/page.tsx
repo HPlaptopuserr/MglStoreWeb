@@ -8,6 +8,7 @@ import {
   queryLocalCatalog,
 } from "@/lib/local-product-catalog";
 import BusinessProfileClient from "./BusinessProfileClient";
+import { normalizeOrganizationMetrics } from "@/lib/organization-presentation";
 
 const SITE_URL = "https://mglstore.mn";
 const FALLBACK_SOCIAL_LOGO = "/social/mglstore-og.jpg";
@@ -50,6 +51,7 @@ interface BackendPartner {
   description?: string;
   shortDescription?: string;
   status?: string;
+  isVerified?: boolean;
   businessCategory?: string;
   type?: string;
   phone?: string;
@@ -165,6 +167,7 @@ function mapPartnerToDetailData(
   partner: BackendPartner,
 ): OrganizationDetailData {
   const category = partner.businessCategory || partner.type || "Бизнес";
+  const metrics = normalizeOrganizationMetrics(partner);
 
   return {
     id: partner.id,
@@ -176,8 +179,8 @@ function mapPartnerToDetailData(
     coverImage:
       partner.bannerUrl ||
       `https://picsum.photos/seed/banner-${partner.slug || partner.id}/1600/900`,
-    isOpen: partner.status === "ACTIVE",
-    isVerified: true,
+    isOpen: metrics.isOpen,
+    isVerified: metrics.isVerified,
     categories: [category],
     investor: partner.isInvestor
       ? {
@@ -187,8 +190,8 @@ function mapPartnerToDetailData(
           investmentAmount: partner.investmentAmount ?? null,
         }
       : undefined,
-    rating: partner.rating ?? 0,
-    reviewCount: partner.reviewCount ?? 0,
+    rating: metrics.rating,
+    reviewCount: metrics.reviewCount,
     shortDescription:
       partner.shortDescription ||
       "Чанартай үйлчилгээ, найдвартай албан ёсны байгууллага.",
@@ -196,9 +199,9 @@ function mapPartnerToDetailData(
       partner.description ||
       "Байгууллагын дэлгэрэнгүй танилцуулга удахгүй нэмэгдэх болно.",
     stats: {
-      customers: partner.customers || "0",
-      years: partner.years ?? 1,
-      soldCount: partner.soldCount ?? 0,
+      customers: metrics.customers,
+      years: metrics.years,
+      soldCount: metrics.soldCount,
     },
     info: {
       hours: normalizeHours(partner.openingHours),
@@ -306,7 +309,7 @@ const fetchOrganization = cache(async function fetchOrganization(
   try {
     // Use dedicated endpoint for single partner
     let res = await fetch(`${API}/partners/${encodeURIComponent(slugOrId)}`, {
-      next: { revalidate: 60 },
+      cache: "no-store",
     });
 
     if (
@@ -316,7 +319,7 @@ const fetchOrganization = cache(async function fetchOrganization(
       fallbackId !== slugOrId
     ) {
       res = await fetch(`${API}/partners/${encodeURIComponent(fallbackId)}`, {
-        next: { revalidate: 60 },
+        cache: "no-store",
       });
     }
 
@@ -398,7 +401,7 @@ export async function generateMetadata({
   };
 }
 
-export async function renderOrganizationDetailPage({
+async function renderOrganizationDetailPage({
   params,
   searchParams,
 }: PageProps) {
