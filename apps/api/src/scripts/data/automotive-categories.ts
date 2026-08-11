@@ -87,7 +87,7 @@ const makeCategories: AutomotiveCategorySpec[] = VEHICLE_MAKES.flatMap(
 );
 
 export const AUTOMOTIVE_CATEGORIES: AutomotiveCategorySpec[] = [
-  { slug: "auto-moto", name: "Авто, мото", icon: "🚗", parentSlug: null, sortOrder: 900 },
+  { slug: "auto-moto", name: "Авто сэлбэг, дагалдах хэрэгсэл", icon: "⚙️", parentSlug: null, sortOrder: 900 },
   { slug: "auto-parts", name: "Автомашины сэлбэг", icon: "⚙️", parentSlug: "auto-moto", sortOrder: 901 },
   { slug: "engine-parts", name: "Хөдөлгүүрийн сэлбэг", icon: "⚙️", parentSlug: "auto-parts", sortOrder: 9011 },
   { slug: "transmission-drivetrain-parts", name: "Хурдны хайрцаг, дамжуулга", icon: "🔩", parentSlug: "auto-parts", sortOrder: 9012 },
@@ -116,4 +116,5 @@ export const AUTOMOTIVE_CATEGORIES: AutomotiveCategorySpec[] = [
   { slug: "commercial-vehicle-parts", name: "Ачааны машин, автобусны сэлбэг", icon: "🚛", parentSlug: "auto-moto", sortOrder: 908 },
   { slug: "motorcycle", name: "Мотоцикл, сэлбэг хэрэгсэл", icon: "🏍️", parentSlug: "auto-moto", sortOrder: 909 },
   ...makeCategories,
+  { slug: "auto-transport", name: "Авто тээвэр, логистикийн үйлчилгээ", icon: "🚚", parentSlug: null, sortOrder: 1200 },
 ];

@@ -131,8 +131,8 @@ const BUSINESS_CATEGORY_TREE = [
   },
   {
     slug: "auto-transport",
-    name: "Авто, тээвэр",
-    icon: "🚗",
+    name: "Авто тээвэр, логистикийн үйлчилгээ",
+    icon: "🚚",
     children: [
       ["car-sales", "Авто худалдаа", "🚘"],
       ["auto-parts", "Сэлбэг", "⚙️"],
