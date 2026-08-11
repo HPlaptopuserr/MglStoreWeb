@@ -2550,9 +2550,9 @@ function TimelineCardMedia({ images }: { images: string[] }) {
   const hasMultipleImages = images.length > 1;
   const frameClass =
     orientation === "portrait"
-      ? "min-h-[360px] max-h-[680px]"
+      ? "h-[408px] max-h-[55dvh]"
       : hasImages
-        ? "max-h-[520px]"
+        ? "max-h-[312px]"
         : "aspect-[16/9] max-h-[210px] sm:max-h-[272px]";
 
   const scrollImage = (direction: -1 | 1) => {
@@ -2610,8 +2610,8 @@ function TimelineCardMedia({ images }: { images: string[] }) {
                       alt=""
                       className={`relative z-10 w-full object-contain ${
                         orientation === "portrait"
-                          ? "max-h-[680px]"
-                          : "max-h-[520px]"
+                          ? "max-h-[408px]"
+                          : "max-h-[312px]"
                       }`}
                       referrerPolicy="no-referrer"
                       onLoad={(event) => {
