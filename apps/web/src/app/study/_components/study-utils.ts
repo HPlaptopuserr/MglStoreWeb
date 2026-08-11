@@ -1,4 +1,7 @@
-import type { ProjectItem } from "@/components/molecules/projects/project-types";
+import type {
+  ProjectItem,
+  StudyTicketOption,
+} from "@/components/molecules/projects/project-types";
 
 const EMPTY_STUDY_PROGRAM_MARKER = "__EMPTY_STUDY_PROGRAM_ROW__";
 const EMPTY_STUDY_TEACHER_MARKER = "__EMPTY_STUDY_TEACHER_ROW__";
@@ -128,15 +131,65 @@ export function buildFeaturedStudyMaterials(materials: ProjectItem[]) {
 }
 
 export function getCourseScheduleText(material: ProjectItem) {
-  return [material.courseDate, material.courseTime]
+  return [getStudyDateText(material.courseDate), material.courseTime]
     .map((item) => String(item || "").trim())
     .filter(Boolean)
     .join(" · ");
 }
 
+export function getStudyDateText(value?: string) {
+  const dateValue = String(value || "").trim();
+  if (!dateValue) return "";
+
+  const date = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dateValue;
+
+  const weekdays = [
+    "Ням",
+    "Даваа",
+    "Мягмар",
+    "Лхагва",
+    "Пүрэв",
+    "Баасан",
+    "Бямба",
+  ];
+  return `${weekdays[date.getDay()]}, ${date.getMonth() + 1}-р сарын ${date.getDate()}`;
+}
+
+export function formatStudyPrice(price: number) {
+  if (!price || price <= 0) return "Үнэгүй";
+  return `${Number(price).toLocaleString("mn-MN")}₮`;
+}
+
+export function getStudyTicketOptions(
+  material: ProjectItem,
+): StudyTicketOption[] {
+  const options = Array.isArray(material.ticketOptions)
+    ? material.ticketOptions
+        .map((option, index) => ({
+          id: String(option?.id || "").trim() || `ticket-${index + 1}`,
+          label: String(option?.label || "").trim(),
+          price:
+            Number.isFinite(Number(option?.price)) && Number(option?.price) > 0
+              ? Math.round(Number(option.price))
+              : 0,
+        }))
+        .filter((option) => option.label)
+    : [];
+
+  if (options.length > 0) return options;
+
+  return [
+    {
+      id: "default",
+      label: material.priceNote || "Нэг хүний эрх",
+      price: Number(material.price || 0),
+    },
+  ];
+}
+
 export function getStudyPriceText(material: ProjectItem) {
-  if (!material.price || material.price <= 0) return "Үнэгүй";
-  return `₮${Number(material.price || 0).toLocaleString("mn-MN")}`;
+  return formatStudyPrice(getStudyTicketOptions(material)[0]?.price || 0);
 }
 
 export function getPrimaryTeacherName(material: ProjectItem) {

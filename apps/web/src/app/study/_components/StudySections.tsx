@@ -9,12 +9,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import type { ProjectItem } from "@/components/molecules/projects/project-types";
-import {
-  CompactStudyMaterialCard,
-  FeaturedStudyMaterialCard,
-  FeaturedStudyMaterialMiniCard,
-  StudyMaterialCard,
-} from "./StudyMaterialCards";
+import { StudyMaterialCard } from "./StudyMaterialCards";
 import type { StudySettings } from "./study-utils";
 
 type StudySectionsProps = {
@@ -29,7 +24,7 @@ type StudySectionsProps = {
   settings: StudySettings;
   showAllCourses: boolean;
   visibleCategoryMaterials: ProjectItem[];
-  onOpenMaterial: (material: ProjectItem) => void;
+  onOpenMaterial: (material: ProjectItem, ticketOptionId?: string) => void;
   onSelectCategory: (category: string) => void;
   onToggleShowAllCourses: () => void;
 };
@@ -124,10 +119,13 @@ function StudyHero({
 
 function StudyFeaturedSection({
   featuredMaterials,
+  openingId,
   onOpenMaterial,
-}: Pick<StudySectionsProps, "featuredMaterials" | "onOpenMaterial">) {
+}: Pick<
+  StudySectionsProps,
+  "featuredMaterials" | "openingId" | "onOpenMaterial"
+>) {
   if (featuredMaterials.length === 0) return null;
-  const secondaryFeaturedMaterials = featuredMaterials.slice(1, 3);
 
   return (
     <section className="mb-8 sm:mb-10">
@@ -137,26 +135,20 @@ function StudyFeaturedSection({
       />
       <div
         className={
-          secondaryFeaturedMaterials.length > 0
-            ? "grid gap-3 sm:gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(340px,0.85fr)]"
-            : "max-w-4xl"
+          featuredMaterials.length > 1
+            ? "flex flex-wrap gap-5"
+            : "max-w-[300px]"
         }
       >
-        <FeaturedStudyMaterialCard
-          material={featuredMaterials[0]}
-          onOpen={onOpenMaterial}
-        />
-        {secondaryFeaturedMaterials.length > 0 && (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-            {secondaryFeaturedMaterials.map((material) => (
-              <FeaturedStudyMaterialMiniCard
-                key={material.id}
-                material={material}
-                onOpen={onOpenMaterial}
-              />
-            ))}
-          </div>
-        )}
+        {featuredMaterials.slice(0, 2).map((material, index) => (
+          <StudyMaterialCard
+            key={material.id}
+            material={material}
+            index={index}
+            openingId={openingId}
+            onOpen={onOpenMaterial}
+          />
+        ))}
       </div>
     </section>
   );
@@ -249,9 +241,15 @@ function StudyTrainingListSection({
       />
 
       {showAllCourses ? (
-        <div className="grid gap-3 sm:grid-cols-2 sm:gap-x-6 sm:gap-y-12 lg:grid-cols-3 xl:grid-cols-4">
+        <div
+          className={
+            activeCategoryMaterials.length > 1
+              ? "flex flex-wrap gap-5"
+              : "max-w-[300px]"
+          }
+        >
           {activeCategoryMaterials.map((material, index) => (
-            <CompactStudyMaterialCard
+            <StudyMaterialCard
               key={material.id}
               material={material}
               index={index}
@@ -261,7 +259,13 @@ function StudyTrainingListSection({
           ))}
         </div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div
+          className={
+            visibleCategoryMaterials.length > 1
+              ? "flex flex-wrap gap-5"
+              : "max-w-[300px]"
+          }
+        >
           {visibleCategoryMaterials.map((material, index) => (
             <StudyMaterialCard
               key={material.id}
@@ -317,6 +321,7 @@ export function StudySections({
       <StudyHero displayMaterials={displayMaterials} settings={settings} />
       <StudyFeaturedSection
         featuredMaterials={featuredMaterials}
+        openingId={openingId}
         onOpenMaterial={onOpenMaterial}
       />
       <StudyTrainingListSection

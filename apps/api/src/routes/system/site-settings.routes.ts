@@ -24,6 +24,12 @@ import {
   createSystemQrInvoice,
   resetSystemQrSubMerchantPassword,
 } from "../../services/systemqr";
+import {
+  getStudyInvoiceExpectedPrice,
+  normalizeStudyTicketOptions,
+  resolveStudyTicketSelection,
+  type StudyTicketOption,
+} from "./study-ticket-options";
 
 const bannerUpload = multer({
   storage: multer.memoryStorage(),
@@ -123,6 +129,7 @@ type PaidProject = {
   scheduleNote?: string;
   priceNote?: string;
   originalPrice?: number;
+  ticketOptions?: StudyTicketOption[];
   tags?: string[];
   isActive?: boolean;
   featuredOrder?: number;
@@ -441,10 +448,12 @@ function normalizeProject(project: PaidProject): PaidProject {
   const imageUrls = getProjectImages(project);
   const contractTemplateId = String(project.contractTemplateId || "").trim();
   const responsiblePeople = normalizeResponsiblePeople(project);
+  const ticketOptions = normalizeStudyTicketOptions(project.ticketOptions);
 
   return {
     ...project,
     price: normalizeProjectPrice(project.price),
+    ticketOptions,
     featuredOrder:
       Number.isFinite(Number(project.featuredOrder)) &&
       Number(project.featuredOrder) > 0
@@ -891,11 +900,12 @@ function projectInvoiceBelongsTo(
   kind: PaidContentKind = "PROJECT_ACCESS",
 ) {
   const payload = projectPaymentPayload(invoice);
+  const expectedPrice = getStudyInvoiceExpectedPrice(payload, price);
   return (
     invoice.saleReference === projectSaleReference(projectId, kind) &&
     String(payload.kind || "") === kind &&
     String(payload.projectId || "") === projectId &&
-    Math.abs(Number(invoice.amount) - price) < 0.01
+    Math.abs(Number(invoice.amount) - expectedPrice) < 0.01
   );
 }
 
@@ -1315,11 +1325,18 @@ async function ensurePaidAccessPurchaseForInvoice({
   const earnedPoints = Math.floor(amount * 0.02);
   const fileUrl = String(project.pdfUrl || "").trim() || null;
   const source = String(payload.source || "").trim();
+  const ticketOptionId = String(payload.ticketOptionId || "").trim();
+  const ticketOptionLabel = String(payload.ticketOptionLabel || "").trim();
   const metadata = {
     kind,
     ...(source ? { source } : {}),
     projectId: itemId,
     projectTitle: project.title,
+    ...(ticketOptionId ? { ticketOptionId } : {}),
+    ...(ticketOptionLabel ? { ticketOptionLabel } : {}),
+    ...(ticketOptionId
+      ? { ticketPrice: normalizeProjectPrice(payload.ticketPrice) }
+      : {}),
     paidAt: invoice.paidAt?.toISOString() || new Date().toISOString(),
   } as unknown as Prisma.JsonObject;
 
@@ -1387,15 +1404,17 @@ async function ensureStudyRegistrationAccess({
   userId,
   project,
   registrationKind,
+  ticketOption,
 }: {
   userId: string;
   project: PaidProject;
   registrationKind: StudyRegistrationKind;
+  ticketOption?: StudyTicketOption;
 }) {
   const itemId = String(project.id || "").trim();
   if (!userId || !itemId) return null;
 
-  const price = normalizeProjectPrice(project.price);
+  const price = normalizeProjectPrice(ticketOption?.price ?? project.price);
   const fileUrl = String(project.pdfUrl || "").trim() || null;
   const now = new Date().toISOString();
 
@@ -1419,6 +1438,11 @@ async function ensureStudyRegistrationAccess({
         projectTitle: project.title,
         category: project.category || "",
         originalPrice: price,
+        ...(ticketOption?.id ? { ticketOptionId: ticketOption.id } : {}),
+        ...(ticketOption?.label
+          ? { ticketOptionLabel: ticketOption.label }
+          : {}),
+        ...(ticketOption ? { ticketPrice: price } : {}),
         registeredAt: now,
       } as unknown as Prisma.JsonObject,
     },
@@ -1438,6 +1462,11 @@ async function ensureStudyRegistrationAccess({
         projectTitle: project.title,
         category: project.category || "",
         originalPrice: price,
+        ...(ticketOption?.id ? { ticketOptionId: ticketOption.id } : {}),
+        ...(ticketOption?.label
+          ? { ticketOptionLabel: ticketOption.label }
+          : {}),
+        ...(ticketOption ? { ticketPrice: price } : {}),
         registeredAt: now,
       } as unknown as Prisma.JsonObject,
     },
@@ -1663,6 +1692,7 @@ router.get(
             id: purchase.id,
             courseId: purchase.itemId,
             courseTitle: purchase.title || project?.title || "Сургалт",
+            ticketOptionLabel: String(metadata.ticketOptionLabel || ""),
             category: String(
               metadata.category || project?.category || "Сургалт",
             ),
@@ -2778,7 +2808,10 @@ const createStudySystemQrPaymentSession = async (
 ) => {
   try {
     const userId = String((req as any).user?.userId || "").trim();
-    const { projectId } = req.body as { projectId?: string };
+    const { projectId, ticketOptionId: requestedTicketOptionId } = req.body as {
+      projectId?: string;
+      ticketOptionId?: string;
+    };
     if (!projectId) {
       res
         .status(400)
@@ -2796,12 +2829,29 @@ const createStudySystemQrPaymentSession = async (
     }
 
     const normalized = normalizeProject(project);
-    const amount = normalizeProjectPrice(normalized.price);
+    const ticketOptionId = String(requestedTicketOptionId || "").trim();
+    const ticketOptions = normalizeStudyTicketOptions(normalized.ticketOptions);
+    const selection = resolveStudyTicketSelection({
+      options: ticketOptions,
+      requestedId: ticketOptionId,
+      fallbackPrice: normalized.price,
+    });
+    const selectedTicketOption = selection.option;
+    if (selection.invalid) {
+      res.status(400).json({
+        success: false,
+        message:
+          "Сонгосон тасалбар олдсонгүй. Хуудсаа шинэчлээд дахин оролдоно уу.",
+      });
+      return;
+    }
+    const amount = selection.amount;
     if (amount <= 0) {
       await ensureStudyRegistrationAccess({
         userId,
         project: normalized,
         registrationKind: "FREE",
+        ticketOption: selectedTicketOption,
       });
       res.json({ success: true, free: true, projectId });
       return;
@@ -2816,6 +2866,7 @@ const createStudySystemQrPaymentSession = async (
         userId,
         project: normalized,
         registrationKind: "PRIME",
+        ticketOption: selectedTicketOption,
       });
       res.json({
         success: true,
@@ -2871,6 +2922,13 @@ const createStudySystemQrPaymentSession = async (
           userId,
           projectId,
           projectTitle: normalized.title,
+          ...(selectedTicketOption
+            ? {
+                ticketOptionId: selectedTicketOption.id,
+                ticketOptionLabel: selectedTicketOption.label,
+                ticketPrice: amount,
+              }
+            : {}),
           paymentAccountId: account.id || "",
           paymentAccountLabel: account.label || account.merchantName || "",
           merchantCode: account.merchantCode,
@@ -2897,6 +2955,13 @@ const createStudySystemQrPaymentSession = async (
             userId,
             projectId,
             projectTitle: normalized.title,
+            ...(selectedTicketOption
+              ? {
+                  ticketOptionId: selectedTicketOption.id,
+                  ticketOptionLabel: selectedTicketOption.label,
+                  ticketPrice: amount,
+                }
+              : {}),
             paymentAccountId: account.id || "",
             paymentAccountLabel: account.label || account.merchantName || "",
             paymentAccountBankCode: account.bankCode || "",
@@ -2918,6 +2983,7 @@ const createStudySystemQrPaymentSession = async (
         provider: "SYSTEMQR",
         providerInvoiceId: systemQr.invoiceId,
         amount,
+        ticketOption: selectedTicketOption || null,
         qrText: systemQr.qrText,
         qrImage: "",
         urls: systemQr.urls,

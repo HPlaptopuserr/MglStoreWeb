@@ -22,6 +22,7 @@ import type {
   ProjectItem,
   ProjectResponsiblePerson,
   ProjectShowcaseSection,
+  StudyTicketOption,
 } from "@/lib/sections/types";
 import { API, adminFetch } from "@/lib/api";
 import { ProjectOrderList } from "./ProjectOrderList";
@@ -517,6 +518,68 @@ export function ProjectsSection({
       [field]: value,
     };
     updateStudyTeacherRows(id, next);
+  };
+
+  const updateStudyTicketOptions = (
+    projectId: string,
+    ticketOptions: StudyTicketOption[],
+  ) => {
+    setProjects((previous) =>
+      previous.map((project) =>
+        project.id === projectId
+          ? {
+              ...project,
+              ticketOptions,
+              price:
+                ticketOptions.length > 0
+                  ? parsePrice(String(ticketOptions[0].price))
+                  : project.price,
+            }
+          : project,
+      ),
+    );
+  };
+
+  const addStudyTicketOption = (
+    projectId: string,
+    ticketOptions: StudyTicketOption[],
+    fallbackPrice: number,
+  ) => {
+    if (ticketOptions.length >= 6) return;
+    updateStudyTicketOptions(projectId, [
+      ...ticketOptions,
+      {
+        id: `ticket-${generateId()}`,
+        label: ticketOptions.length === 0 ? "single" : "double",
+        price: ticketOptions.length === 0 ? fallbackPrice : 0,
+      },
+    ]);
+  };
+
+  const updateStudyTicketOption = <K extends keyof StudyTicketOption>(
+    projectId: string,
+    ticketOptions: StudyTicketOption[],
+    optionId: string,
+    field: K,
+    value: StudyTicketOption[K],
+  ) => {
+    updateStudyTicketOptions(
+      projectId,
+      ticketOptions.map((option) =>
+        option.id === optionId ? { ...option, [field]: value } : option,
+      ),
+    );
+  };
+
+  const removeStudyTicketOption = (
+    projectId: string,
+    ticketOptions: StudyTicketOption[],
+    optionId: string,
+  ) => {
+    updateStudyTicketOptions(
+      projectId,
+      ticketOptions.filter((option) => option.id !== optionId),
+    );
   };
 
   const updateProjectImages = (id: string, imageUrls: string[]) => {
@@ -1260,6 +1323,11 @@ export function ProjectsSection({
                 studyTeacherRows.length > 0
                   ? studyTeacherRows
                   : [{ name: "", description: "", imageUrl: "" }];
+              const studyTicketOptions = isStudyMode
+                ? Array.isArray(project.ticketOptions)
+                  ? project.ticketOptions
+                  : []
+                : [];
               const responsiblePeople = getResponsiblePeople(project);
               const primaryResponsiblePerson = responsiblePeople[0];
 
@@ -2449,6 +2517,112 @@ export function ProjectsSection({
                                     />
                                   </label>
                                 </div>
+                              </StudyEditorPanel>
+                            </div>
+                            <div className="lg:col-span-2">
+                              <StudyEditorPanel
+                                title="Тасалбарын сонголтууд"
+                                description="single, double, VIP зэрэг нэр болон тус бүрийн үнийг оруулна. Эхний сонголт сургалтын үндсэн үнэ болно."
+                                defaultOpen
+                                action={
+                                  <button
+                                    type="button"
+                                    onClick={(event) => {
+                                      event.preventDefault();
+                                      addStudyTicketOption(
+                                        project.id,
+                                        studyTicketOptions,
+                                        project.price,
+                                      );
+                                    }}
+                                    disabled={studyTicketOptions.length >= 6}
+                                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 transition hover:border-violet-300 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                    Сонголт нэмэх
+                                  </button>
+                                }
+                              >
+                                {studyTicketOptions.length === 0 ? (
+                                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm font-semibold leading-6 text-slate-500">
+                                    Сонголт нэмээгүй үед дээрх үндсэн төлбөр нэг
+                                    тасалбар болж харагдана. Олон сонголт гаргах
+                                    бол “Сонголт нэмэх”-ийг дарна уу.
+                                  </div>
+                                ) : (
+                                  <div className="space-y-3">
+                                    {studyTicketOptions.map(
+                                      (option, optionIndex) => (
+                                        <div
+                                          key={option.id}
+                                          className="grid gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end"
+                                        >
+                                          <label className="space-y-1.5">
+                                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                              Тасалбарын нэр
+                                            </span>
+                                            <input
+                                              value={option.label}
+                                              onChange={(event) =>
+                                                updateStudyTicketOption(
+                                                  project.id,
+                                                  studyTicketOptions,
+                                                  option.id,
+                                                  "label",
+                                                  event.target.value,
+                                                )
+                                              }
+                                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                              placeholder={
+                                                optionIndex === 0
+                                                  ? "single"
+                                                  : "double"
+                                              }
+                                            />
+                                          </label>
+                                          <label className="space-y-1.5">
+                                            <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                              Үнэ
+                                            </span>
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              step={100}
+                                              value={option.price}
+                                              onChange={(event) =>
+                                                updateStudyTicketOption(
+                                                  project.id,
+                                                  studyTicketOptions,
+                                                  option.id,
+                                                  "price",
+                                                  parsePrice(
+                                                    event.target.value,
+                                                  ),
+                                                )
+                                              }
+                                              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-violet-400 focus:ring-4 focus:ring-violet-100"
+                                              placeholder="50000"
+                                            />
+                                          </label>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              removeStudyTicketOption(
+                                                project.id,
+                                                studyTicketOptions,
+                                                option.id,
+                                              )
+                                            }
+                                            className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-red-100 bg-white text-red-600 transition hover:bg-red-50"
+                                            aria-label={`${option.label || "Тасалбар"} устгах`}
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                          </button>
+                                        </div>
+                                      ),
+                                    )}
+                                  </div>
+                                )}
                               </StudyEditorPanel>
                             </div>
                           </>

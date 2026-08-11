@@ -32,6 +32,7 @@ export default function StudyPage() {
   const [activeMaterial, setActiveMaterial] = useState<ProjectItem | null>(
     null,
   );
+  const [activeTicketOptionId, setActiveTicketOptionId] = useState("");
   const [loadedMaterials, setLoadedMaterials] = useState<
     Record<string, ProjectItem>
   >({});
@@ -126,7 +127,18 @@ export default function StudyPage() {
     setActiveMaterial(detail);
   };
 
-  const registerStudy = async (material: ProjectItem) => {
+  const openStudyMaterial = (
+    material: ProjectItem,
+    ticketOptionId?: string,
+  ) => {
+    setActiveTicketOptionId(ticketOptionId || "");
+    setActiveMaterial(material);
+  };
+
+  const registerStudy = async (
+    material: ProjectItem,
+    ticketOptionId?: string,
+  ) => {
     const cachedMaterial = loadedMaterials[material.id];
     if (cachedMaterial && registeredMaterialIds[material.id]) {
       setActiveMaterial(cachedMaterial);
@@ -143,7 +155,12 @@ export default function StudyPage() {
       const res = await authFetch(`${API}/site-settings/study/systemqr`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: material.id }),
+        body: JSON.stringify({
+          projectId: material.id,
+          ...(ticketOptionId && ticketOptionId !== "default"
+            ? { ticketOptionId }
+            : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
@@ -192,7 +209,7 @@ export default function StudyPage() {
             settings={settings}
             showAllCourses={showAllCourses}
             visibleCategoryMaterials={visibleCategoryMaterials}
-            onOpenMaterial={setActiveMaterial}
+            onOpenMaterial={openStudyMaterial}
             onSelectCategory={(category) => {
               setActiveCategory(category);
               setShowAllCourses(false);
@@ -224,10 +241,14 @@ export default function StudyPage() {
       {activeMaterial && (
         <StudyCourseModal
           material={activeMaterial}
+          initialTicketOptionId={activeTicketOptionId}
           registered={Boolean(registeredMaterialIds[activeMaterial.id])}
           registering={openingId === activeMaterial.id}
           onRegister={registerStudy}
-          onClose={() => setActiveMaterial(null)}
+          onClose={() => {
+            setActiveMaterial(null);
+            setActiveTicketOptionId("");
+          }}
         />
       )}
     </div>

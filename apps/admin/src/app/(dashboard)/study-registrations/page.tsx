@@ -18,6 +18,7 @@ type StudyRegistration = {
   id: string;
   courseId: string;
   courseTitle: string;
+  ticketOptionLabel?: string;
   category: string;
   amount: number;
   originalPrice: number;
@@ -308,6 +309,9 @@ export default function StudyRegistrationsPage() {
                             {registration.courseTitle}
                           </p>
                           <p className="truncate text-xs font-semibold text-slate-400">
+                            {registration.ticketOptionLabel
+                              ? `${registration.ticketOptionLabel} · `
+                              : ""}
                             #{registration.courseId}
                           </p>
                         </div>

@@ -1,21 +1,27 @@
 "use client";
 
-import { useState } from "react";
-import { CalendarDays, CheckCircle2, GraduationCap } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronRight,
+  GraduationCap,
+  MapPin,
+} from "lucide-react";
 import type { ProjectItem } from "@/components/molecules/projects/project-types";
 import { getProjectImages } from "@/components/molecules/projects/project-utils";
 import {
   getCourseScheduleText,
   getPrimaryTeacherName,
   getStudyPriceText,
-  parseProgramItems,
+  getStudyTicketOptions,
+  formatStudyPrice,
+  parseTeacherItems,
 } from "./study-utils";
 
 type StudyCardProps = {
   material: ProjectItem;
   index: number;
   openingId: string | null;
-  onOpen: (material: ProjectItem) => void;
+  onOpen: (material: ProjectItem, ticketOptionId?: string) => void;
 };
 
 function getOldPriceText(material: ProjectItem) {
@@ -36,24 +42,38 @@ function StudyMaterialImage({
   className,
   iconClassName,
   imageClassName = "object-cover",
+  preserveAspectRatio = false,
 }: {
   material: ProjectItem;
   className: string;
   iconClassName: string;
   imageClassName?: string;
+  preserveAspectRatio?: boolean;
 }) {
   const primaryImage = getProjectImages(material)[0];
 
   return (
-    <div className={`overflow-hidden bg-slate-100 ${className}`}>
+    <div
+      className={`overflow-hidden bg-slate-100 ${
+        preserveAspectRatio ? "flex items-center justify-center" : ""
+      } ${className}`}
+    >
       {primaryImage ? (
         <img
           src={primaryImage}
           alt={material.title}
-          className={`h-full w-full transition duration-500 group-hover:scale-105 ${imageClassName}`}
+          className={`transition duration-500 ${
+            preserveAspectRatio
+              ? "block h-auto max-h-[260px] w-full object-contain group-hover:scale-[1.02]"
+              : `h-full w-full group-hover:scale-105 ${imageClassName}`
+          }`}
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center bg-emerald-50 text-emerald-600">
+        <div
+          className={`flex w-full items-center justify-center bg-emerald-50 text-emerald-600 ${
+            preserveAspectRatio ? "min-h-40" : "h-full"
+          }`}
+        >
           <GraduationCap className={iconClassName} />
         </div>
       )}
@@ -153,153 +173,97 @@ export function FeaturedStudyMaterialMiniCard({
 
 export function StudyMaterialCard({
   material,
-  index,
   openingId,
   onOpen,
 }: StudyCardProps) {
-  const isFree = !material.price || material.price <= 0;
-  const priceText = getStudyPriceText(material);
-  const oldPriceText = getOldPriceText(material);
-  const instructor = getPrimaryTeacherName(material);
-  const rating = getRating(index);
+  const teachers = parseTeacherItems(material);
+  const ticketOptions = getStudyTicketOptions(material);
+  const instructor = teachers[0]?.name || "Багшийн мэдээлэл удахгүй";
+  const venue = material.address || material.location || "";
   const scheduleText =
-    getCourseScheduleText(material) || material.registrationLabel || "";
-  const detailLines = parseProgramItems(material)
-    .map((item) => item.title)
-    .slice(0, 3);
-  const [previewSide, setPreviewSide] = useState<"left" | "right">("right");
-  const openPreviewLeft = previewSide === "left";
-
-  const updatePreviewSide = (element: HTMLDivElement | null) => {
-    if (!element) return;
-    const previewWidth = 320;
-    const previewGap = 14;
-    const edgePadding = 20;
-    const rect = element.getBoundingClientRect();
-    const rightSpace = window.innerWidth - rect.right - previewGap;
-    const leftSpace = rect.left - previewGap;
-    setPreviewSide(
-      rightSpace >= previewWidth || rightSpace >= leftSpace - edgePadding
-        ? "right"
-        : "left",
-    );
-  };
+    [getCourseScheduleText(material), material.duration]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .join(" · ") || "Хуваарь удахгүй";
+  const oldPriceText = getOldPriceText(material);
 
   return (
-    <div
-      className="group relative"
-      onMouseEnter={(event) => updatePreviewSide(event.currentTarget)}
-      onFocus={(event) => updatePreviewSide(event.currentTarget)}
-    >
+    <article className="group w-full max-w-[300px] rounded-[18px] border border-slate-200 bg-white p-4 shadow-[0_3px_12px_rgba(15,23,42,0.07)] transition duration-300 hover:-translate-y-1 hover:border-slate-300 hover:shadow-[0_16px_32px_rgba(15,23,42,0.11)]">
       <button
         type="button"
         onClick={() => onOpen(material)}
         disabled={openingId === material.id}
-        className="grid h-full min-h-[128px] w-full grid-cols-[112px_minmax(0,1fr)] gap-3 rounded-2xl border border-slate-200 bg-white p-2.5 text-left shadow-sm transition duration-200 hover:border-orange-200 hover:shadow-xl focus:outline-none focus:ring-4 focus:ring-orange-100 disabled:opacity-75 sm:flex sm:min-h-[360px] sm:flex-col sm:p-4"
+        className="block w-full rounded-xl text-left focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-100 disabled:opacity-70"
       >
         <StudyMaterialImage
           material={material}
-          className="h-full min-h-[112px] rounded-xl sm:aspect-[16/9] sm:min-h-0 sm:w-full"
-          iconClassName="h-12 w-12"
+          className="min-h-36 rounded-xl"
+          iconClassName="h-10 w-10"
+          preserveAspectRatio
         />
 
-        <div className="flex min-w-0 flex-1 flex-col py-1 sm:pt-5">
-          <h3 className="line-clamp-2 break-words text-base font-black leading-tight text-[#111827] [overflow-wrap:anywhere] sm:text-xl">
+        <div className="pt-5">
+          <h3 className="line-clamp-2 break-words text-xl font-extrabold leading-[1.25] tracking-tight text-slate-900 [overflow-wrap:anywhere]">
             {material.title}
           </h3>
-          <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500 sm:mt-2 sm:text-sm">
+          <p className="mt-2 line-clamp-1 text-sm font-semibold text-slate-500">
             {instructor}
           </p>
-          {scheduleText && (
-            <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 sm:mt-2 sm:text-sm">
-              <CalendarDays className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              <span className="line-clamp-1">{scheduleText}</span>
+          <p className="mt-2 flex min-w-0 items-center gap-2 text-sm font-bold text-emerald-700">
+            <CalendarDays className="h-4 w-4 shrink-0" />
+            <span className="line-clamp-1">{scheduleText}</span>
+          </p>
+          {venue && (
+            <p className="mt-2 flex min-w-0 items-center gap-2 text-xs font-semibold text-slate-500">
+              <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
+              <span className="line-clamp-1">{venue}</span>
             </p>
           )}
 
-          <div className="mt-2 flex flex-wrap items-center gap-1.5 sm:mt-6 sm:gap-2">
-            <span className="rounded-md bg-cyan-100 px-2 py-0.5 text-[10px] font-black text-cyan-900 sm:px-2.5 sm:py-1 sm:text-sm">
-              Bestseller
+          <div className="mt-4 flex flex-wrap gap-2">
+            <span className="rounded-md bg-cyan-50 px-2.5 py-1 text-xs font-bold text-cyan-800">
+              {material.category || "Сургалт"}
             </span>
-            <span className="rounded-md border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600 sm:px-2.5 sm:py-1 sm:text-sm">
-              ★ {rating.score}
+            <span className="rounded-md border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-600">
+              {material.registrationLabel || "Бүртгэл нээлттэй"}
             </span>
-            <span className="hidden rounded-md border border-slate-200 px-2.5 py-1 text-sm font-semibold text-slate-500 sm:inline">
-              {rating.count} ratings
-            </span>
-          </div>
-
-          <div className="mt-auto flex items-end gap-2 pt-2 sm:gap-3 sm:pt-6">
-            <span className="text-base font-black text-[#111827] sm:text-xl">
-              {priceText}
-            </span>
-            {oldPriceText && (
-              <span className="text-xs font-semibold text-slate-500 line-through sm:text-base">
-                {oldPriceText}
-              </span>
-            )}
           </div>
         </div>
       </button>
 
-      <div
-        className={`pointer-events-none absolute top-1/2 z-40 hidden w-[304px] -translate-y-1/2 rounded-xl border border-slate-200 bg-white p-4 text-left opacity-0 shadow-2xl transition duration-150 group-hover:pointer-events-auto group-hover:opacity-100 xl:block ${
-          openPreviewLeft ? "right-[calc(100%+14px)]" : "left-[calc(100%+14px)]"
-        }`}
-      >
-        <div
-          className={`absolute top-1/2 h-5 w-5 -translate-y-1/2 rotate-45 border-slate-200 bg-white ${
-            openPreviewLeft
-              ? "-right-2.5 border-r border-t"
-              : "-left-2.5 border-b border-l"
-          }`}
-        />
-        <h3 className="break-words text-xl font-black leading-tight text-[#2d2f43] [overflow-wrap:anywhere]">
-          {material.title}
-        </h3>
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs font-bold">
-          <span className="rounded-md bg-cyan-100 px-2.5 py-1 text-cyan-900">
-            Bestseller
-          </span>
-          <span className="text-emerald-700">Updated 2026</span>
-        </div>
-        <p className="mt-3 text-xs font-semibold text-slate-500">
-          {material.courseDate ||
-            material.registrationLabel ||
-            "Бүртгэл авч байна"}{" "}
-          · {material.duration || "Хугацаа тохиролцоно"} · Mongolian
-        </p>
-        <p className="mt-4 text-base leading-7 text-slate-700">
-          {material.summary ||
-            "Сургалтын зорилго, багш, хөтөлбөр болон бүртгэлийн мэдээллийг нэг дороос харна."}
-        </p>
-        <div className="mt-4 space-y-2.5">
-          {(detailLines.length > 0
-            ? detailLines
-            : [
-                "Бодит workflow дээр ажиллаж сурна",
-                "Admin болон web хэрэглээг нэг дор ойлгоно",
-                "Дараагийн алхмын checklist авна",
-              ]
-          ).map((line, lineIndex) => (
-            <div
-              key={`${material.id}-hover-${lineIndex}`}
-              className="flex gap-2.5 text-sm leading-6 text-slate-700"
-            >
-              <CheckCircle2 className="mt-1 h-3.5 w-3.5 shrink-0 text-slate-800" />
-              <span>{line}</span>
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => onOpen(material)}
-          className="mt-5 h-11 w-full rounded-xl bg-orange-500 text-sm font-black text-white transition hover:bg-orange-600"
-        >
-          {isFree ? "Үнэгүй бүртгүүлэх" : "Бүртгүүлж үзэх"}
-        </button>
+      <div className="mt-5 border-t border-slate-100">
+        {ticketOptions.map((option, optionIndex) => (
+          <button
+            key={option.id}
+            type="button"
+            onClick={() => onOpen(material, option.id)}
+            disabled={openingId === material.id}
+            className={`flex w-full items-center justify-between gap-3 py-3 text-left transition hover:text-orange-600 focus:outline-none focus-visible:ring-4 focus-visible:ring-orange-100 disabled:opacity-70 ${
+              optionIndex > 0 ? "border-t border-slate-100" : ""
+            }`}
+          >
+            <span className="min-w-0">
+              <span className="block truncate text-[10px] font-bold uppercase leading-4 tracking-[0.08em] text-slate-500">
+                {option.label}
+              </span>
+              <span className="mt-0.5 flex items-baseline gap-2">
+                <span className="text-xl font-black leading-6 tracking-tight text-slate-900">
+                  {formatStudyPrice(option.price)}
+                </span>
+                {optionIndex === 0 && oldPriceText && (
+                  <span className="text-sm font-semibold text-slate-400 line-through">
+                    {oldPriceText}
+                  </span>
+                )}
+              </span>
+            </span>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-50 text-slate-500 transition group-hover:bg-orange-50 group-hover:text-orange-600">
+              <ChevronRight className="h-4 w-4" />
+            </span>
+          </button>
+        ))}
       </div>
-    </div>
+    </article>
   );
 }
 

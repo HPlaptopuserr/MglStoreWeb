@@ -17,6 +17,7 @@ import {
   FolderKanban,
   Building2,
   UsersRound,
+  GraduationCap,
   MapPinned,
   RefreshCcw,
   ShieldCheck,
@@ -377,6 +378,7 @@ export const Header = () => {
                       pathname.startsWith("/franchise") ||
                       pathname.startsWith("/projects") ||
                       pathname.startsWith("/hr") ||
+                      pathname.startsWith("/study") ||
                       mglMenuOpen
                         ? "text-orange-600"
                         : "text-gray-600 hover:text-gray-900"
@@ -394,6 +396,17 @@ export const Header = () => {
 
                   {mglMenuOpen && (
                     <div className="absolute left-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-200/70">
+                      <Link
+                        href="/study"
+                        className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${
+                          pathname.startsWith("/study")
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                        }`}
+                      >
+                        <GraduationCap size={15} />
+                        Сургалтууд
+                      </Link>
                       <Link
                         href="/hr"
                         className={`flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold transition-colors ${

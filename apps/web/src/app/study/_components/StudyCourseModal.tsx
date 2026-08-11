@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   ArrowRight,
   BookOpenCheck,
@@ -12,36 +13,52 @@ import {
   Users,
   X,
 } from "lucide-react";
-import type { ProjectItem } from "@/components/molecules/projects/project-types";
+import type {
+  ProjectItem,
+  StudyTicketOption,
+} from "@/components/molecules/projects/project-types";
 import { getProjectImages } from "@/components/molecules/projects/project-utils";
 import { useLockedBodyScroll } from "./useLockedBodyScroll";
 import {
   FALLBACK_PROGRAM_ITEMS,
   FALLBACK_TEACHER_ITEMS,
+  formatStudyPrice,
   getCourseScheduleText,
-  getStudyPriceText,
+  getStudyTicketOptions,
   parseProgramItems,
   parseTeacherItems,
 } from "./study-utils";
 
 type StudyCourseModalProps = {
   material: ProjectItem;
+  initialTicketOptionId?: string;
   registered: boolean;
   registering: boolean;
-  onRegister: (material: ProjectItem) => void;
+  onRegister: (material: ProjectItem, ticketOptionId?: string) => void;
   onClose: () => void;
 };
 
 export function StudyCourseModal({
   material,
+  initialTicketOptionId,
   registered,
   registering,
   onRegister,
   onClose,
 }: StudyCourseModalProps) {
   const primaryImage = getProjectImages(material)[0];
-  const isFree = !material.price || material.price <= 0;
-  const priceText = getStudyPriceText(material);
+  const ticketOptions = getStudyTicketOptions(material);
+  const initialTicketOption =
+    ticketOptions.find((option) => option.id === initialTicketOptionId) ||
+    ticketOptions[0];
+  const [selectedTicketOptionId, setSelectedTicketOptionId] = useState(
+    initialTicketOption?.id || "default",
+  );
+  const selectedTicketOption =
+    ticketOptions.find((option) => option.id === selectedTicketOptionId) ||
+    ticketOptions[0];
+  const isFree = !selectedTicketOption?.price;
+  const priceText = formatStudyPrice(selectedTicketOption?.price || 0);
   const scheduleText = getCourseScheduleText(material);
   const teacherItems = parseTeacherItems(material);
   const programItems = parseProgramItems(material);
@@ -119,8 +136,11 @@ export function StudyCourseModal({
               primaryImage={primaryImage}
               priceText={priceText}
               isFree={isFree}
+              ticketOptions={ticketOptions}
+              selectedTicketOptionId={selectedTicketOption?.id || "default"}
               registered={registered}
               registering={registering}
+              onSelectTicketOption={setSelectedTicketOptionId}
               onRegister={onRegister}
               onClose={onClose}
             />
@@ -262,8 +282,11 @@ function RegistrationPanel({
   primaryImage,
   priceText,
   isFree,
+  ticketOptions,
+  selectedTicketOptionId,
   registered,
   registering,
+  onSelectTicketOption,
   onRegister,
   onClose,
 }: {
@@ -271,9 +294,12 @@ function RegistrationPanel({
   primaryImage?: string;
   priceText: string;
   isFree: boolean;
+  ticketOptions: StudyTicketOption[];
+  selectedTicketOptionId: string;
   registered: boolean;
   registering: boolean;
-  onRegister: (material: ProjectItem) => void;
+  onSelectTicketOption: (ticketOptionId: string) => void;
+  onRegister: (material: ProjectItem, ticketOptionId?: string) => void;
   onClose: () => void;
 }) {
   return (
@@ -316,9 +342,34 @@ function RegistrationPanel({
             ? "Таны сургалтын бүртгэл баталгаажсан."
             : "Мэдээллээ шалгаад сургалтад бүртгүүлнэ үү."}
         </p>
+        <div className="mt-5 space-y-2.5">
+          {ticketOptions.map((option) => {
+            const selected = option.id === selectedTicketOptionId;
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => onSelectTicketOption(option.id)}
+                disabled={registered || registering}
+                className={`flex w-full items-center justify-between gap-4 rounded-2xl border-2 px-4 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-70 ${
+                  selected
+                    ? "border-sky-500 bg-sky-50 ring-4 ring-sky-100"
+                    : "border-slate-200 bg-white hover:border-sky-300"
+                }`}
+              >
+                <span className="font-black text-slate-800">
+                  {option.label}
+                </span>
+                <span className="text-lg font-black text-sky-600">
+                  {formatStudyPrice(option.price)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
         <button
           type="button"
-          onClick={() => onRegister(material)}
+          onClick={() => onRegister(material, selectedTicketOptionId)}
           disabled={registered || registering}
           className="mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 text-sm font-black text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-70"
         >

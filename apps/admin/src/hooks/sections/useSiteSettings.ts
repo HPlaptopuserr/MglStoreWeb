@@ -91,6 +91,19 @@ function normalizeProjectImages(project: ProjectItem): ProjectItem {
       Number(project.originalPrice) > 0
         ? Math.round(Number(project.originalPrice))
         : 0,
+    ticketOptions: Array.isArray(project.ticketOptions)
+      ? project.ticketOptions
+          .map((option, index) => ({
+            id: String(option?.id || "").trim() || `ticket-${index + 1}`,
+            label: String(option?.label || "").trim(),
+            price:
+              Number.isFinite(Number(option?.price)) &&
+              Number(option?.price) > 0
+                ? Math.round(Number(option.price))
+                : 0,
+          }))
+          .filter((option) => option.label)
+      : [],
     featuredOrder:
       Number.isFinite(Number(project.featuredOrder)) &&
       Number(project.featuredOrder) > 0
@@ -209,8 +222,7 @@ export function useSiteSettings() {
 
   const setMglServices = (
     update:
-      | ServiceCategory[]
-      | ((prev: ServiceCategory[]) => ServiceCategory[]),
+      ServiceCategory[] | ((prev: ServiceCategory[]) => ServiceCategory[]),
   ) => {
     setMglServicesRaw((prev) => {
       const next = typeof update === "function" ? update(prev) : update;
@@ -221,8 +233,7 @@ export function useSiteSettings() {
 
   const setHrServices = (
     update:
-      | ServiceCategory[]
-      | ((prev: ServiceCategory[]) => ServiceCategory[]),
+      ServiceCategory[] | ((prev: ServiceCategory[]) => ServiceCategory[]),
   ) => {
     setHrServicesRaw((prev) => {
       const next = typeof update === "function" ? update(prev) : update;

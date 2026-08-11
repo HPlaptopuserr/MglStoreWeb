@@ -22,12 +22,19 @@ export type ProjectItem = {
   scheduleNote?: string;
   priceNote?: string;
   originalPrice?: number;
+  ticketOptions?: StudyTicketOption[];
   tags?: string[];
   isActive?: boolean;
   isFeatured?: boolean;
   featuredOrder?: number;
   hasPurchased?: boolean;
   responsiblePeople?: ProjectResponsiblePerson[];
+};
+
+export type StudyTicketOption = {
+  id: string;
+  label: string;
+  price: number;
 };
 
 export type ProjectResponsiblePerson = {

@@ -48,6 +48,7 @@ export const emptyProject = (mode: ProjectMode = "project"): ProjectItem => ({
   scheduleNote: "",
   priceNote: "",
   originalPrice: 0,
+  ticketOptions: [],
   tags: [],
   isActive: true,
   isFeatured: false,
