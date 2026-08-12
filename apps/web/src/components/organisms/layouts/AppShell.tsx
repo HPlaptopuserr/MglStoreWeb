@@ -41,14 +41,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             hideGlobalShell
               ? "grow"
               : isCheckoutRoute
-                ? "grow pt-12 md:pt-14"
+                ? "grow pt-20 md:pt-[5.5rem]"
               : isProfileRoute || isOrdersRoute
-                ? "grow pt-16 pb-20 md:pt-16 md:pb-0"
+                ? "grow pt-24 pb-20 md:pt-24 md:pb-0"
                 : isProductsRoute
-                  ? "grow pt-32 pb-20 md:pt-16 md:pb-0"
+                  ? "grow pt-40 pb-20 md:pt-24 md:pb-0"
                   : isMglStoreRoute
-                    ? "grow pt-14 pb-20 md:pt-32 md:pb-0"
-                    : "grow pt-40 pb-20 md:pt-32 md:pb-0"
+                    ? "grow pt-24 pb-20 md:pt-40 md:pb-0"
+                    : "grow pt-48 pb-20 md:pt-40 md:pb-0"
           }
         >
           {children}

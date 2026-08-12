@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { RotateCcw, Loader2, AlertCircle, Plus, Trash2, ChevronDown } from "lucide-react";
+import { RotateCcw, Loader2, AlertCircle, Plus, Trash2, ChevronDown, X, Check, CheckCircle2, ArrowLeft, ArrowRight, ShieldCheck } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
 import { BANK_OPTIONS, DEFAULT_BANK_ACCOUNT, merchantInputClass as inputCls } from "./_merchant-settings/constants";
 import type {
@@ -34,7 +34,10 @@ export function MerchantSettingsSection({
   const [minuStatus, setMinuStatus] = useState<MinuAgentStatus | null>(null);
   const [isQpayLoading, setIsQpayLoading] = useState(true);
   const [isMinuLoading, setIsMinuLoading] = useState(true);
-  const [tab, setTab] = useState<"register" | "manual">("manual");
+  const [registrationOpen, setRegistrationOpen] = useState(false);
+  const [existingAccountOpen, setExistingAccountOpen] = useState(false);
+  const [registrationStep, setRegistrationStep] = useState(0);
+  const [registrationComplete, setRegistrationComplete] = useState(false);
   const [message, setMessage] = useState<MerchantMessage | null>(null);
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -107,6 +110,23 @@ export function MerchantSettingsSection({
     else setKhoroos([]);
     setKhorooId("");
   }, [district]);
+
+  useEffect(() => {
+    if (!registrationOpen && !existingAccountOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSubmitting && !registrationComplete) {
+        setRegistrationOpen(false);
+        setExistingAccountOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [existingAccountOpen, isSubmitting, registrationComplete, registrationOpen]);
 
   const merchantQueryParams = new URLSearchParams();
   if (organizationId) merchantQueryParams.set("organizationId", organizationId);
@@ -278,11 +298,12 @@ export function MerchantSettingsSection({
       const data = await res.json();
       if (data.success) {
         setMessage({ type: "success", text: "Minu Dynamic QR дэд мерчант амжилттай бүртгэгдлээ!" });
+        setRegistrationComplete(true);
         await loadMerchantStatus();
         await loadBankAccounts();
       } else if (data.alreadyRegistered) {
-        // Auto-switch to manual tab so the user can connect with existing credentials
-        setTab("manual");
+        setRegistrationOpen(false);
+        setExistingAccountOpen(true);
         setMessage({
           type: "error",
           text: data.message,
@@ -533,6 +554,36 @@ export function MerchantSettingsSection({
 
   /* ── Render ───────────────────────────────────────────── */
   const isLoading = mode === "terminal" ? isMinuLoading : isQpayLoading;
+  const registrationSteps = [
+    { title: "Үндсэн мэдээлэл", description: "Мерчантын төрөл, нэр ба үйл ажиллагаа" },
+    { title: "Эзэмшигч", description: "Хариуцагч болон холбоо барих мэдээлэл" },
+    { title: "Байршил", description: "Үйл ажиллагаа явуулах хаяг" },
+    { title: "Банкны данс", description: "Орлого хүлээн авах дансаа баталгаажуулах" },
+  ] as const;
+
+  const canContinueRegistration = () => {
+    if (registrationStep === 0) {
+      return Boolean(registerNumber.trim() && displayName.trim() && subCategoryId && (merchantType === "person" || companyName.trim()));
+    }
+    if (registrationStep === 1) {
+      return Boolean(phone.trim() && email.trim() && (merchantType === "company" || (ownerFirstName.trim() && ownerLastName.trim())));
+    }
+    if (registrationStep === 2) {
+      return Boolean(city && district && khorooId && building.trim() && doorNo.trim());
+    }
+    return bankAccounts.some((account, index) =>
+      Boolean(account.account_number && account.account_name && regConfirmNumbers[index] === account.account_number),
+    );
+  };
+
+  const continueRegistration = () => {
+    if (!canContinueRegistration()) {
+      setMessage({ type: "error", text: "Энэ алхмын шаардлагатай мэдээллийг бүрэн, зөв бөглөнө үү." });
+      return;
+    }
+    setMessage(null);
+    setRegistrationStep((step) => Math.min(step + 1, registrationSteps.length - 1));
+  };
 
   if (isLoading) {
     return (
@@ -554,7 +605,7 @@ export function MerchantSettingsSection({
   }
 
   /* Connected state */
-  if (merchantStatus?.isConnected) {
+  if (merchantStatus?.isConnected && !registrationComplete) {
     return (
       <div className="space-y-6">
         <ConnectedMerchantStatusCard
@@ -612,25 +663,83 @@ export function MerchantSettingsSection({
 
       <MerchantSettingsMessage message={message} />
 
-      {/* Tab switcher */}
-      <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+      <div className="grid gap-3 sm:grid-cols-2">
         <button
-          onClick={() => setTab("register")}
-          className={`flex-1 py-2 text-sm font-semibold transition-colors ${tab === "register" ? "bg-[#5B4CFF] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+          onClick={() => {
+            setRegistrationOpen(true);
+            setRegistrationComplete(false);
+            setMessage(null);
+          }}
+          className="flex min-h-14 items-center justify-center rounded-xl bg-[#5B4CFF] px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition hover:bg-[#4A3CDB]"
         >
           Шинээр бүртгүүлэх
         </button>
         <button
-          onClick={() => setTab("manual")}
-          className={`flex-1 py-2 text-sm font-semibold transition-colors ${tab === "manual" ? "bg-[#5B4CFF] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+          onClick={() => {
+            setExistingAccountOpen(true);
+            setMessage(null);
+          }}
+          className="flex min-h-14 items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
         >
           Данс аль хэдийн байна
         </button>
       </div>
 
-      {/* ── REGISTER TAB ── */}
-      {tab === "register" && (
-        <div className="space-y-5">
+      {registrationOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/55 p-0 backdrop-blur-sm sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-labelledby="merchant-registration-title">
+          <div className="flex max-h-[96dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:max-h-[90dvh] sm:rounded-3xl">
+            {registrationComplete ? (
+              <div className="flex min-h-[520px] flex-col items-center justify-center p-6 text-center sm:p-12">
+                <div className="relative mb-7">
+                  <div className="absolute inset-0 animate-ping rounded-full bg-emerald-200 opacity-60" />
+                  <div className="relative grid h-24 w-24 place-items-center rounded-full bg-emerald-100 text-emerald-600 ring-8 ring-emerald-50">
+                    <CheckCircle2 className="h-12 w-12" />
+                  </div>
+                </div>
+                <span className="rounded-full bg-emerald-50 px-4 py-2 text-xs font-black uppercase tracking-[0.16em] text-emerald-700">Бүртгэл амжилттай</span>
+                <h2 className="mt-5 text-2xl font-black text-slate-950 sm:text-4xl">Minu Dynamic QR-д холбогдлоо</h2>
+                <p className="mt-4 max-w-xl text-sm leading-6 text-slate-600 sm:text-base">Таны дэлгүүрийн мерчант бүртгэл амжилттай үүслээ. Одоо кассаасаа QR төлбөр хүлээн авч, орлогоо бүртгүүлсэн банкны дансандаа авах боломжтой.</p>
+                <div className="mt-8 grid w-full max-w-xl gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 text-left sm:grid-cols-3">
+                  {['QR төлбөр идэвхтэй', 'Данс баталгаажсан', 'Касс ашиглахад бэлэн'].map((label) => (
+                    <div key={label} className="flex items-center gap-2 text-xs font-bold text-emerald-800"><Check className="h-4 w-4 shrink-0" />{label}</div>
+                  ))}
+                </div>
+                <button type="button" onClick={() => { setRegistrationOpen(false); setRegistrationComplete(false); }} className="mt-8 min-h-12 w-full max-w-sm rounded-xl bg-emerald-600 px-6 font-bold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700">Тохиргоо руу буцах</button>
+              </div>
+            ) : (
+              <>
+                <div className="flex items-start justify-between border-b border-slate-100 px-5 py-4 sm:px-7 sm:py-5">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.14em] text-indigo-600">Minu Dynamic QR</p>
+                    <h2 id="merchant-registration-title" className="mt-1 text-xl font-black text-slate-950 sm:text-2xl">Мерчант шинээр бүртгүүлэх</h2>
+                    <p className="mt-1 text-sm text-slate-500">Мэдээллээ алхам бүрээр хялбар бөглөнө үү.</p>
+                  </div>
+                  <button type="button" onClick={() => setRegistrationOpen(false)} aria-label="Бүртгэлийн цонх хаах" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900"><X className="h-5 w-5" /></button>
+                </div>
+
+                <div className="border-b border-slate-100 px-5 py-4 sm:px-7">
+                  <div className="hidden grid-cols-4 gap-3 sm:grid">
+                    {registrationSteps.map((step, index) => (
+                      <div key={step.title} className="min-w-0">
+                        <div className={`mb-2 h-1.5 rounded-full ${index <= registrationStep ? 'bg-indigo-600' : 'bg-slate-200'}`} />
+                        <p className={`truncate text-xs font-bold ${index === registrationStep ? 'text-indigo-700' : index < registrationStep ? 'text-emerald-600' : 'text-slate-400'}`}>{index < registrationStep ? '✓ ' : `${index + 1}. `}{step.title}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="sm:hidden">
+                    <div className="mb-2 flex items-center justify-between text-xs font-bold"><span className="text-indigo-700">{registrationSteps[registrationStep].title}</span><span className="text-slate-400">{registrationStep + 1}/{registrationSteps.length}</span></div>
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${((registrationStep + 1) / registrationSteps.length) * 100}%` }} /></div>
+                  </div>
+                </div>
+
+                <div className="overflow-y-auto px-5 py-6 sm:px-7">
+                  <div className="mb-6 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
+                    <p className="font-bold text-indigo-950">{registrationSteps[registrationStep].title}</p>
+                    <p className="mt-1 text-sm text-indigo-700">{registrationSteps[registrationStep].description}</p>
+                  </div>
+                  <MerchantSettingsMessage message={message} />
+                  <div className="mt-5 space-y-5">
+          {registrationStep === 0 && <>
           {/* Merchant type */}
           <div>
             <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">Мерчант төрөл</label>
@@ -725,7 +834,9 @@ export function MerchantSettingsSection({
               <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
             </div>
           </Field>
+          </>}
 
+          {registrationStep === 2 && <>
           {/* City */}
           <Field label="Аймаг/Хот *">
             {cities.length > 0 ? (
@@ -803,7 +914,9 @@ export function MerchantSettingsSection({
           <Field label="Дэлгэрэнгүй хаяг">
             <input type="text" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Нэмэлт тайлбар" className={inputCls} />
           </Field>
+          </>}
 
+          {registrationStep === 1 && <>
           {/* Phone & email */}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Утас *">
@@ -813,7 +926,9 @@ export function MerchantSettingsSection({
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="info@shop.mn" className={inputCls} />
             </Field>
           </div>
+          </>}
 
+          {registrationStep === 3 && <>
           {/* Bank accounts */}
           <div>
             <div className="flex items-center justify-between mb-2">
@@ -890,36 +1005,66 @@ export function MerchantSettingsSection({
               ))}
             </div>
           </div>
+          </>}
+                  </div>
+                </div>
 
-          <button
-            onClick={handleRegister}
-            disabled={isSubmitting}
-            className="w-full py-3 rounded-lg bg-[#5B4CFF] hover:bg-[#4A3CDB] text-white font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Minu Dynamic QR бүртгүүлэх
-          </button>
+                <div className="border-t border-slate-100 bg-white px-5 py-4 sm:px-7">
+                  <div className="flex items-center justify-between gap-3">
+                    <button type="button" onClick={() => registrationStep === 0 ? setRegistrationOpen(false) : setRegistrationStep((step) => Math.max(0, step - 1))} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600 transition hover:bg-slate-50">
+                      <ArrowLeft className="h-4 w-4" /> {registrationStep === 0 ? 'Болих' : 'Өмнөх'}
+                    </button>
+                    <div className="hidden items-center gap-2 text-xs font-semibold text-slate-400 md:flex"><ShieldCheck className="h-4 w-4 text-emerald-500" />Мэдээлэл хамгаалагдана</div>
+                    {registrationStep < registrationSteps.length - 1 ? (
+                      <button type="button" onClick={continueRegistration} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700">Үргэлжлүүлэх <ArrowRight className="h-4 w-4" /></button>
+                    ) : (
+                      <button type="button" onClick={handleRegister} disabled={isSubmitting || !canContinueRegistration()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-bold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">
+                        {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}Бүртгэл баталгаажуулах
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 
       {/* ── MANUAL TAB ── */}
-      {tab === "manual" && (
-        <ManualMerchantConnectionPanel
-          provider={manualProvider}
-          merchantId={merchantId}
-          merchantKey={merchantKey}
-          invoiceCode={invoiceCode}
-          recoveryRegNum={recoveryRegNum}
-          recoveryLoading={recoveryLoading}
-          isSubmitting={isSubmitting}
-          onProviderChange={setManualProvider}
-          onMerchantIdChange={setMerchantId}
-          onMerchantKeyChange={setMerchantKey}
-          onInvoiceCodeChange={setInvoiceCode}
-          onRecoveryRegNumChange={setRecoveryRegNum}
-          onRecover={handleRecover}
-          onConnect={handleManualConnect}
-        />
+      {existingAccountOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-slate-950/55 p-0 backdrop-blur-sm sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-labelledby="existing-merchant-title">
+          <div className="flex max-h-[94dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-3xl bg-slate-50 shadow-2xl sm:max-h-[88dvh] sm:rounded-3xl">
+            <div className="flex items-start justify-between border-b border-slate-100 bg-white px-5 py-5 sm:px-7">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.14em] text-indigo-600">Minu Dynamic QR</p>
+                <h2 id="existing-merchant-title" className="mt-1 text-xl font-black text-slate-950 sm:text-2xl">Өмнөх дансаа холбох</h2>
+                <p className="mt-1 text-sm text-slate-500">Регистрийн дугаараар бүртгэлээ автоматаар олно.</p>
+              </div>
+              <button type="button" onClick={() => setExistingAccountOpen(false)} aria-label="Цонх хаах" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="overflow-y-auto p-4 sm:p-6">
+              <MerchantSettingsMessage message={message} />
+              <div className={message ? "mt-4" : ""}>
+                <ManualMerchantConnectionPanel
+                  provider={manualProvider}
+                  merchantId={merchantId}
+                  merchantKey={merchantKey}
+                  invoiceCode={invoiceCode}
+                  recoveryRegNum={recoveryRegNum}
+                  recoveryLoading={recoveryLoading}
+                  isSubmitting={isSubmitting}
+                  onProviderChange={setManualProvider}
+                  onMerchantIdChange={setMerchantId}
+                  onMerchantKeyChange={setMerchantKey}
+                  onInvoiceCodeChange={setInvoiceCode}
+                  onRecoveryRegNumChange={setRecoveryRegNum}
+                  onRecover={handleRecover}
+                  onConnect={handleManualConnect}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -48,6 +48,7 @@ import {
   createLoginMarketingBanner,
   parseLoginMarketingBanner,
 } from "@/lib/site-banners";
+import { StoreUtilityBar } from "./StoreUtilityBar";
 
 const presentationPdfUrl = "/mgl-sma-taniltsuulga.pdf";
 
@@ -171,6 +172,7 @@ export const Header = () => {
   return (
     <>
       <header className="fixed left-0 right-0 top-0 z-50 flex max-w-full flex-col bg-white/95 shadow-sm backdrop-blur-md">
+        <StoreUtilityBar />
         <div className="border-b border-slate-100">
           <div
             className={`container mx-auto flex min-w-0 items-center justify-between gap-1.5 px-2.5 md:gap-6 md:px-4 ${

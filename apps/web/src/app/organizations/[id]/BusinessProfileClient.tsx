@@ -48,6 +48,8 @@ import { resolveApiAssetUrl } from "@/lib/api";
 import { InvestorRingWrapper } from "@/components/atoms/InvestorRingWrapper";
 import { ServiceDetailOverlay } from "@/app/services/_components/ServiceDetailOverlay";
 import { formatOrganizationRating } from "@/lib/organization-presentation";
+import { StorefrontProductCard } from "./_components/StorefrontProductCard";
+import { StoreUtilityBar } from "@/components/organisms/layouts/StoreUtilityBar";
 
 type ProductItem = OrganizationDetailData["products"][number] & {
   isAvailable?: boolean;
@@ -1302,27 +1304,7 @@ function StoreWebsiteNav({
 }) {
   return (
     <>
-      <div className="border-b border-slate-100 bg-white">
-        <div
-          className={`${STOREFRONT_CONTAINER_CLASS} flex h-8 items-center justify-between text-[10px] font-bold text-slate-500`}
-        >
-          <div className="flex items-center gap-4">
-            <Link href="/">MGL Store</Link>
-            <span>Монгол</span>
-          </div>
-          <nav className="flex items-center gap-4">
-            <Link href="/">Нүүр</Link>
-            <Link href="/orders">Захиалга</Link>
-            <Link href="/profile" className="hidden sm:inline">
-              Миний бүртгэл
-            </Link>
-            <Link href="/checkout" className="inline-flex items-center gap-1">
-              <ShoppingCart className="h-3 w-3 text-orange-500" />
-              Сагс
-            </Link>
-          </nav>
-        </div>
-      </div>
+      <StoreUtilityBar containerClassName={STOREFRONT_CONTAINER_CLASS} />
 
       <div className="border-b border-slate-100 bg-slate-50">
         <div
@@ -1356,83 +1338,6 @@ function StoreWebsiteNav({
   );
 }
 
-function StorefrontProductWidget({ product }: { product: ProductItem }) {
-  const thumbnails = (
-    product.images?.length ? product.images : [product.image]
-  ).slice(0, 4);
-
-  return (
-    <Link
-      href={`/products/${encodeURIComponent(product.id)}`}
-      className="group min-w-0 text-left"
-    >
-      <div className="relative aspect-square overflow-hidden rounded-xl bg-slate-100">
-        <Image
-          src={product.image}
-          alt={product.title}
-          fill
-          sizes="(min-width: 1280px) 200px, (min-width: 640px) 30vw, 46vw"
-          quality={72}
-          className="object-cover transition duration-300 group-hover:scale-[1.025]"
-          referrerPolicy="no-referrer"
-        />
-        {product.supplyType === "CHINA_PREORDER" && (
-          <span className="absolute left-2 top-2 rounded-md bg-emerald-500 px-2 py-1 text-[9px] font-black text-white">
-            Захиалгаар
-          </span>
-        )}
-      </div>
-
-      <div className="mt-1.5 flex h-7 items-center gap-1">
-        {thumbnails.map((thumbnail, index) => (
-          <span
-            key={`${thumbnail}-${index}`}
-            className={`relative h-7 w-7 overflow-hidden rounded-md bg-slate-100 ${
-              index === 0 ? "ring-1 ring-orange-400" : ""
-            }`}
-          >
-            <Image
-              src={thumbnail}
-              alt=""
-              fill
-              sizes="28px"
-              quality={72}
-              className="object-cover"
-              referrerPolicy="no-referrer"
-            />
-          </span>
-        ))}
-        {product.images && product.images.length > 4 && (
-          <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-[10px] font-black text-slate-400">
-            +{product.images.length - 4}
-          </span>
-        )}
-      </div>
-
-      <h3 className="mt-2 line-clamp-2 min-h-10 text-[13px] font-bold leading-5 text-slate-900 transition group-hover:text-orange-600">
-        {product.title}
-      </h3>
-      {product.originalPrice && product.originalPrice > product.price && (
-        <p className="mt-1 text-[10px] font-bold text-orange-500">
-          Хямдарсан ·{" "}
-          {(product.originalPrice - product.price).toLocaleString("mn-MN")}₮
-          хэмнэлт
-        </p>
-      )}
-      <div className="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
-        <span className="text-amber-500">
-          ★ {(product.rating ?? 0).toFixed(1)}
-        </span>
-        <span>{product.reviews ?? 0} үнэлгээ</span>
-        <span>{product.soldCount ?? 0} зарагдсан</span>
-      </div>
-      <p className="mt-1 text-lg font-black tracking-tight text-orange-600">
-        {formatPrice(product.price)}
-      </p>
-    </Link>
-  );
-}
-
 function StorefrontCatalog({
   products,
   search,
@@ -1448,7 +1353,6 @@ function StorefrontCatalog({
     filterKey: "",
     count: STOREFRONT_PAGE_SIZE,
   });
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const categories = useMemo(
     () => [
       ...new Set(
@@ -1485,16 +1389,9 @@ function StorefrontCatalog({
     [visibleCount, visibleProducts],
   );
   const hasMoreProducts = renderedProducts.length < visibleProducts.length;
-  const renderedProductCount = renderedProducts.length;
-
-  useEffect(() => {
-    setIsLoadingMore(false);
-  }, [renderedProductCount]);
-
   const loadMoreRef = useInfiniteScroll({
-    enabled: hasMoreProducts && !isLoadingMore,
+    enabled: hasMoreProducts,
     onLoadMore: () => {
-      setIsLoadingMore(true);
       setPagination({
         filterKey,
         count: visibleCount + STOREFRONT_PAGE_SIZE,
@@ -1504,40 +1401,39 @@ function StorefrontCatalog({
   });
 
   return (
-    <section className="mt-4 grid gap-4 lg:grid-cols-[13rem_minmax(0,1fr)]">
-      <aside className="h-fit rounded-2xl border border-slate-100 bg-white p-2 shadow-sm lg:sticky lg:top-24">
-        <button
-          type="button"
-          onClick={() => setCategory("all")}
-          className={`flex h-11 w-full items-center rounded-xl px-3 text-left text-xs font-black transition ${
-            category === "all"
-              ? "bg-orange-50 text-orange-600"
-              : "text-slate-600 hover:bg-slate-50"
-          }`}
-        >
-          Бүх бараа
-          <span className="ml-auto text-[10px] text-slate-400">
-            {products.length}
-          </span>
-        </button>
-        {categories.map((item) => (
+    <section className="mt-4 overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
+      <div className="border-b border-slate-100 px-3 py-3 sm:px-5">
+        <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <button
-            key={item}
             type="button"
-            onClick={() => setCategory(item)}
-            className={`flex h-10 w-full items-center rounded-xl px-3 text-left text-xs font-bold transition ${
-              category === item
-                ? "bg-orange-50 text-orange-600"
-                : "text-slate-500 hover:bg-slate-50"
+            onClick={() => setCategory("all")}
+            className={`h-10 shrink-0 rounded-xl px-4 text-xs font-black transition ${
+              category === "all"
+                ? "bg-orange-600 text-white shadow-sm shadow-orange-200"
+                : "bg-slate-50 text-slate-600 hover:bg-orange-50 hover:text-orange-600"
             }`}
           >
-            <span className="truncate">{item}</span>
+            Бүх бараа <span className="ml-1 opacity-70">{products.length}</span>
           </button>
-        ))}
-      </aside>
+          {categories.map((item) => (
+            <button
+              key={item}
+              type="button"
+              onClick={() => setCategory(item)}
+              className={`h-10 shrink-0 rounded-xl px-4 text-xs font-bold transition ${
+                category === item
+                  ? "bg-orange-600 text-white shadow-sm shadow-orange-200"
+                  : "bg-slate-50 text-slate-600 hover:bg-orange-50 hover:text-orange-600"
+              }`}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <div className="min-w-0 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm sm:p-4">
-        <div className="mb-4 flex flex-col gap-3 border-b border-slate-100 pb-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 p-3 sm:p-5">
+        <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex gap-1.5">
             {(
               [
@@ -1552,7 +1448,7 @@ function StorefrontCatalog({
                 onClick={() => setSort(value)}
                 className={`h-9 rounded-lg px-3 text-xs font-black transition ${
                   sort === value
-                    ? "bg-orange-50 text-orange-600"
+                    ? "bg-orange-50 text-orange-700 ring-1 ring-orange-100"
                     : "bg-slate-50 text-slate-500 hover:text-slate-900"
                 }`}
               >
@@ -1576,9 +1472,9 @@ function StorefrontCatalog({
             Тохирох бараа олдсонгүй
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
             {renderedProducts.map((product) => (
-              <StorefrontProductWidget key={product.id} product={product} />
+              <StorefrontProductCard key={product.id} product={product} />
             ))}
           </div>
         )}

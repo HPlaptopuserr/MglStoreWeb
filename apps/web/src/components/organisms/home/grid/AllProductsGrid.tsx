@@ -129,7 +129,7 @@ export function AllProductsGrid() {
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
           {Array.from({ length: BATCH_SIZE }).map((_, index) => (
             <div
               key={index}
@@ -142,7 +142,7 @@ export function AllProductsGrid() {
           Одоогоор бүтээгдэхүүн олдсонгүй
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
           {products.map((product, index) => (
             <CatalogProductCard
               key={product.id}
