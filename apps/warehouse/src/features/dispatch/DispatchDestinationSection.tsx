@@ -48,6 +48,9 @@ interface StoreLocationResponse {
   address?: unknown;
   lat?: unknown;
   lng?: unknown;
+  contactName?: unknown;
+  contactPhone?: unknown;
+  locationSource?: unknown;
   organization?: {
     id?: unknown;
     name?: unknown;
@@ -74,6 +77,12 @@ function normalizeStore(value: StoreLocationResponse): DispatchStore | null {
     address: typeof value.address === "string" ? value.address : null,
     lat: value.lat,
     lng: value.lng,
+    contactName:
+      typeof value.contactName === "string" ? value.contactName : null,
+    contactPhone:
+      typeof value.contactPhone === "string" ? value.contactPhone : null,
+    locationSource:
+      value.locationSource === "SALES_VISIT" ? "SALES_VISIT" : "ADMIN_BRANCH",
     organization: {
       id: value.organization.id,
       name: value.organization.name,
@@ -108,14 +117,21 @@ export function DispatchDestinationSection({
       setLoadingStores(true);
       setStoreError("");
       try {
-        const response = await wmsFetch(`${API}/store/branches`, {
+        const response = await wmsFetch(`${API}/warehouses/store-locations`, {
           signal: controller.signal,
         });
         if (!response.ok) throw new Error("STORE_LOAD_FAILED");
         const payload: unknown = await response.json();
-        if (!Array.isArray(payload)) throw new Error("INVALID_STORE_RESPONSE");
+        if (
+          !payload ||
+          typeof payload !== "object" ||
+          !("stores" in payload) ||
+          !Array.isArray(payload.stores)
+        ) {
+          throw new Error("INVALID_STORE_RESPONSE");
+        }
         setStores(
-          payload
+          payload.stores
             .map((item) => normalizeStore(item as StoreLocationResponse))
             .filter((item): item is DispatchStore => item !== null),
         );
@@ -186,6 +202,7 @@ export function DispatchDestinationSection({
       address:
         store.address?.trim() || `${store.organization.name} · ${store.name}`,
       recipientName: `${store.organization.name} · ${store.name}`,
+      recipientPhone: store.contactPhone ?? value.recipientPhone,
       lat: store.lat,
       lng: store.lng,
     });

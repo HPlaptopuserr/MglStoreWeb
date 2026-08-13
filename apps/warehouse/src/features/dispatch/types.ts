@@ -21,6 +21,9 @@ export interface DispatchStore {
   address: string | null;
   lat: number;
   lng: number;
+  contactName: string | null;
+  contactPhone: string | null;
+  locationSource: "ADMIN_BRANCH" | "SALES_VISIT";
   organization: {
     id: string;
     name: string;

@@ -48,6 +48,7 @@ import {
   buildProductSearchWhere,
   scoreProductForSearch,
 } from "../../services/product-discovery.service";
+import { getSalesStoreLocationSources } from "../../services/sales-store-portfolio.service";
 
 const router: ExpressRouter = Router();
 
@@ -343,6 +344,43 @@ router.get("/warehouses", requireAuth, async (req, res) => {
     console.error("get warehouses error", error);
     res.status(500).json({
       message: "Агуулахуудыг авахад алдаа гарлаа",
+    });
+  }
+});
+
+// Unified delivery destinations for WMS operators. MGL Business registers
+// stores as SalesVisitLocation records, while admin-managed stores use Branch.
+// Keep this merge on the server so WMS clients receive one deduplicated source.
+router.get("/warehouses/store-locations", requireAuth, async (req, res) => {
+  try {
+    const accessibleWarehouseIds = await getAccessibleWarehouseIds(req);
+    if (accessibleWarehouseIds.length === 0) {
+      return res.status(403).json({
+        message: "Дэлгүүрийн байршил харах агуулахын эрх олдсонгүй",
+      });
+    }
+
+    const locations = await getSalesStoreLocationSources("");
+    return res.json({
+      stores: locations.map((location) => ({
+        id: location.id,
+        name: location.name,
+        address: location.address,
+        lat: location.latitude,
+        lng: location.longitude,
+        contactName: location.contactName,
+        contactPhone: location.contactPhone,
+        locationSource: location.locationSource,
+        organization: {
+          id: location.vendorOrganization.id,
+          name: location.vendorOrganization.name,
+        },
+      })),
+    });
+  } catch (error) {
+    console.error("get warehouse store locations error", error);
+    return res.status(500).json({
+      message: "Дэлгүүрийн байршлуудыг татахад алдаа гарлаа",
     });
   }
 });
