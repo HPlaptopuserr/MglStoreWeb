@@ -2,40 +2,23 @@
 
 import { useEffect, useState, useMemo } from "react";
 import {
-  Search,
   Loader2,
   ChevronDown,
-  Minus,
-  Plus,
-  Trash2,
   PackageMinus,
   AlertTriangle,
   Check,
   MapPin,
+  ArrowRight,
+  Warehouse,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 import { DispatchDestinationSection } from "@/features/dispatch/DispatchDestinationSection";
+import type { WarehouseInventorySearchItem } from "@/features/dispatch/WarehouseProductSearch";
+import {
+  DispatchItemsSection,
+  type DispatchLineItem,
+} from "@/features/dispatch/DispatchItemsSection";
 import type { DispatchDestination } from "@/features/dispatch/types";
-
-type InventoryItem = {
-  id: string;
-  quantity: number;
-  minQuantity: number;
-  product: {
-    id: string;
-    name: string;
-    sku: string | null;
-    price: string;
-  };
-};
-
-type DispatchItem = {
-  productId: string;
-  name: string;
-  sku: string | null;
-  available: number;
-  quantity: number;
-};
 
 type WarehouseOption = { id: string; name: string };
 
@@ -50,14 +33,11 @@ const emptyDestination = (): DispatchDestination => ({
 export default function DispatchPage() {
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
-  const [search, setSearch] = useState("");
-  const [items, setItems] = useState<DispatchItem[]>([]);
+  const [items, setItems] = useState<DispatchLineItem[]>([]);
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [showConfirm, setShowConfirm] = useState(false);
   const [destination, setDestination] =
     useState<DispatchDestination>(emptyDestination);
@@ -81,60 +61,31 @@ export default function DispatchPage() {
     load();
   }, []);
 
-  // Load inventory when warehouse changes
+  // Reset the draft when the source warehouse changes.
   useEffect(() => {
-    if (!selectedWarehouseId) {
-      setLoading(false);
-      return;
-    }
-    const load = async () => {
-      setLoading(true);
-      try {
-        const res = await wmsFetch(
-          `${API}/warehouses/${selectedWarehouseId}/detail`,
-        );
-        if (res.ok) {
-          const data = await res.json();
-          setInventory(data.inventories || []);
-        }
-      } catch {
-        /* ignore */
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
     setItems([]);
     setDestination(emptyDestination());
     setSubmitError("");
   }, [selectedWarehouseId]);
 
-  const filteredInventory = useMemo(() => {
-    if (!search) return [];
-    const q = search.toLowerCase();
-    return inventory
-      .filter(
-        (inv) =>
-          inv.quantity > 0 &&
-          !items.some((i) => i.productId === inv.product.id) &&
-          (inv.product.name.toLowerCase().includes(q) ||
-            (inv.product.sku?.toLowerCase().includes(q) ?? false)),
-      )
-      .slice(0, 8);
-  }, [inventory, search, items]);
+  const selectedProductIds = useMemo(
+    () => new Set(items.map((item) => item.productId)),
+    [items],
+  );
 
-  const addItem = (inv: InventoryItem) => {
-    setItems([
-      ...items,
+  const addItem = (inv: WarehouseInventorySearchItem) => {
+    setItems((currentItems) => [
+      ...currentItems,
       {
         productId: inv.product.id,
         name: inv.product.name,
         sku: inv.product.sku,
+        imageUrl: inv.product.images?.[0]?.url ?? null,
+        unitPrice: Number(inv.product.price) || 0,
         available: inv.quantity,
         quantity: 1,
       },
     ]);
-    setSearch("");
   };
 
   const updateQuantity = (productId: string, qty: number) => {
@@ -152,6 +103,11 @@ export default function DispatchPage() {
 
   const hasError = items.some((i) => i.quantity > i.available);
   const totalQuantity = items.reduce((sum, i) => sum + i.quantity, 0);
+  const totalAmount = items.reduce(
+    (sum, item) => sum + item.unitPrice * item.quantity,
+    0,
+  );
+  const hasMissingPrice = items.some((item) => item.unitPrice <= 0);
   const hasDestination =
     destination.address.trim().length > 0 &&
     destination.lat !== null &&
@@ -204,14 +160,6 @@ export default function DispatchPage() {
       setReason("");
       setNote("");
       setDestination(emptyDestination());
-      // Refresh inventory
-      const res = await wmsFetch(
-        `${API}/warehouses/${selectedWarehouseId}/detail`,
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setInventory(data.inventories || []);
-      }
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
       console.error("Dispatch failed:", error);
@@ -224,11 +172,16 @@ export default function DispatchPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          Агуулахаас бараа гаргах, нөөц хасах
-        </p>
+    <div className="mx-auto max-w-6xl space-y-6 pb-10">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-slate-600">
+            Агуулахаас дэлгүүр болон хүргэх цэг рүү бараа илгээх
+          </p>
+          <p className="mt-1 text-xs text-slate-400">
+            Байршил сонгох → бараа нэмэх → шалгаж баталгаажуулах
+          </p>
+        </div>
         {saved && (
           <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
             <Check className="h-4 w-4" />
@@ -237,14 +190,23 @@ export default function DispatchPage() {
         )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div className="grid items-start gap-6 lg:grid-cols-12">
+        <div className="space-y-6 lg:col-span-8">
           {/* Warehouse + Reason */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-slate-900">
-              <div className="h-1 w-1 rounded-full bg-blue-600" />
-              Гаргалтын мэдээлэл
-            </h2>
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-900/[0.03] sm:p-6">
+            <div className="mb-5 flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-white">
+                <Warehouse className="h-4 w-4" />
+              </span>
+              <div>
+                <h2 className="font-bold text-slate-950">
+                  Гаргалтын үндсэн мэдээлэл
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Эх үүсвэр агуулах болон гаргах шалтгаанаа сонгоно.
+                </p>
+              </div>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -285,150 +247,16 @@ export default function DispatchPage() {
             onChange={setDestination}
           />
 
-          {/* Product search */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-slate-900">
-              <div className="h-1 w-1 rounded-full bg-blue-600" />
-              Бараа сонгох
-            </h2>
+          <DispatchItemsSection
+            warehouseId={selectedWarehouseId}
+            items={items}
+            excludedProductIds={selectedProductIds}
+            onAdd={addItem}
+            onQuantityChange={updateQuantity}
+            onRemove={removeItem}
+          />
 
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Агуулахын бараанаас хайх..."
-                className="h-11 w-full rounded-lg border border-slate-300 bg-slate-50 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
-              />
-              {loading && (
-                <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-blue-500" />
-              )}
-
-              {filteredInventory.length > 0 && (
-                <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-                  {filteredInventory.map((inv) => (
-                    <button
-                      key={inv.id}
-                      onClick={() => addItem(inv)}
-                      className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm hover:bg-blue-50"
-                    >
-                      <div>
-                        <p className="font-medium text-slate-900">
-                          {inv.product.name}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {inv.product.sku || "—"}
-                        </p>
-                      </div>
-                      <span className="rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
-                        Нөөц: {inv.quantity}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Item list */}
-            {items.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-slate-200 px-4 py-10 text-center">
-                <PackageMinus className="mx-auto h-8 w-8 text-slate-300" />
-                <p className="mt-2 text-sm text-slate-400">
-                  Гаргах бараагаа сонгоно уу
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="grid grid-cols-12 gap-2 px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  <div className="col-span-5">Бараа</div>
-                  <div className="col-span-2 text-center">Нөөц</div>
-                  <div className="col-span-4 text-center">Гаргах тоо</div>
-                  <div className="col-span-1" />
-                </div>
-
-                {items.map((item) => {
-                  const overStock = item.quantity > item.available;
-                  return (
-                    <div
-                      key={item.productId}
-                      className={`grid grid-cols-12 items-center gap-2 rounded-lg border px-3 py-2.5 ${
-                        overStock
-                          ? "border-red-200 bg-red-50/50"
-                          : "border-slate-100 bg-slate-50/50"
-                      }`}
-                    >
-                      <div className="col-span-5">
-                        <p className="text-sm font-medium text-slate-900">
-                          {item.name}
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          {item.sku || "—"}
-                        </p>
-                      </div>
-
-                      <div className="col-span-2 text-center">
-                        <span className="rounded bg-slate-100 px-2 py-0.5 text-sm font-semibold text-slate-600">
-                          {item.available}
-                        </span>
-                      </div>
-
-                      <div className="col-span-4 flex items-center justify-center gap-1">
-                        <button
-                          onClick={() =>
-                            updateQuantity(item.productId, item.quantity - 1)
-                          }
-                          className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                        >
-                          <Minus className="h-3 w-3" />
-                        </button>
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) =>
-                            updateQuantity(
-                              item.productId,
-                              parseInt(e.target.value) || 1,
-                            )
-                          }
-                          className={`h-8 w-16 rounded border text-center text-sm font-semibold outline-none ${
-                            overStock
-                              ? "border-red-300 text-red-600"
-                              : "border-slate-200 focus:border-blue-300"
-                          }`}
-                        />
-                        <button
-                          onClick={() =>
-                            updateQuantity(item.productId, item.quantity + 1)
-                          }
-                          className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                        >
-                          <Plus className="h-3 w-3" />
-                        </button>
-                      </div>
-
-                      <div className="col-span-1 text-right">
-                        <button
-                          onClick={() => removeItem(item.productId)}
-                          className="text-slate-300 hover:text-red-500"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-
-                      {overStock && (
-                        <div className="col-span-12 flex items-center gap-1 text-xs text-red-600">
-                          <AlertTriangle className="h-3 w-3" />
-                          Нөөцөөс хэтэрсэн! Боломжит: {item.available}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-900/[0.03]">
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
               Тэмдэглэл
             </label>
@@ -443,67 +271,130 @@ export default function DispatchPage() {
         </div>
 
         {/* Summary */}
-        <div>
-          <div className="sticky top-24 rounded-xl border border-slate-200 bg-white p-5">
-            <h3 className="mb-4 text-sm font-bold text-slate-900">
-              Гаргалтын дүн
-            </h3>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Барааны төрөл</span>
-                <span className="font-semibold text-slate-900">
-                  {items.length}
+        <div className="lg:col-span-4">
+          <div className="sticky top-24 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-900/[0.05]">
+            <div className="border-b border-slate-100 bg-slate-50/80 p-5">
+              <div className="flex items-center gap-3">
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                  3
                 </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Нийт тоо ширхэг</span>
-                <span className="font-semibold text-slate-900">
-                  {totalQuantity.toLocaleString()}
-                </span>
+                <div>
+                  <h3 className="font-bold text-slate-950">
+                    Шалгаж баталгаажуулах
+                  </h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Гаргалтын эцсийн мэдээлэл
+                  </p>
+                </div>
               </div>
             </div>
-
-            {hasError && (
-              <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
-                <AlertTriangle className="mb-0.5 mr-1 inline h-3 w-3" />
-                Нөөцөөс хэтэрсэн бараа байна
+            <div className="p-5">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Барааны төрөл</span>
+                  <span className="font-semibold text-slate-900">
+                    {items.length}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-slate-500">Нийт тоо ширхэг</span>
+                  <span className="font-semibold text-slate-900">
+                    {totalQuantity.toLocaleString()}
+                  </span>
+                </div>
+                <div className="border-t border-slate-100 pt-3">
+                  <div className="flex items-end justify-between gap-3">
+                    <span className="text-sm font-medium text-slate-600">
+                      Нийт төлбөр
+                    </span>
+                    <span className="text-xl font-extrabold tracking-tight text-blue-700">
+                      {totalAmount.toLocaleString("mn-MN")}₮
+                    </span>
+                  </div>
+                  <p className="mt-1 text-right text-[11px] text-slate-400">
+                    {totalQuantity.toLocaleString("mn-MN")} ширхэг барааны дүн
+                  </p>
+                </div>
               </div>
-            )}
 
-            {!hasDestination && (
-              <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
-                <MapPin className="mb-0.5 mr-1 inline h-3 w-3" />
-                Хүргэх хаяг бичиж, газрын зураг дээр цэг сонгоно уу
-              </div>
-            )}
-
-            {submitError && (
-              <div
-                role="alert"
-                className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
-              >
-                <AlertTriangle className="mb-0.5 mr-1 inline h-3 w-3" />
-                {submitError}
-              </div>
-            )}
-
-            <button
-              onClick={() => setShowConfirm(true)}
-              disabled={
-                saving || items.length === 0 || hasError || !hasDestination
-              }
-              className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <PackageMinus className="h-4 w-4" />
-                  Бараа гаргах
-                </>
+              {hasDestination && (
+                <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50/70 p-3.5">
+                  <div className="flex items-start gap-2.5">
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-blue-600">
+                        Хүргэх цэг
+                      </p>
+                      <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-900">
+                        {destination.recipientName || destination.address}
+                      </p>
+                      {destination.recipientName && (
+                        <p className="mt-1 line-clamp-2 text-xs leading-4 text-slate-500">
+                          {destination.address}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
               )}
-            </button>
+
+              {hasError && (
+                <div className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-600">
+                  <AlertTriangle className="mb-0.5 mr-1 inline h-3 w-3" />
+                  Нөөцөөс хэтэрсэн бараа байна
+                </div>
+              )}
+
+              {hasMissingPrice && (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-medium leading-5 text-amber-700">
+                  <AlertTriangle className="mr-1.5 inline h-3.5 w-3.5" />
+                  Үнэ тохируулаагүй бараа байгаа тул төлбөрийн дүн бүрэн бус
+                  байна.
+                </div>
+              )}
+
+              {!hasDestination && (
+                <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                  <MapPin className="mb-0.5 mr-1 inline h-3 w-3" />
+                  Хүргэх хаяг бичиж, газрын зураг дээр цэг сонгоно уу
+                </div>
+              )}
+
+              {submitError && (
+                <div
+                  role="alert"
+                  className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
+                >
+                  <AlertTriangle className="mb-0.5 mr-1 inline h-3 w-3" />
+                  {submitError}
+                </div>
+              )}
+
+              <button
+                onClick={() => setShowConfirm(true)}
+                disabled={
+                  saving ||
+                  items.length === 0 ||
+                  hasError ||
+                  !hasDestination ||
+                  hasMissingPrice
+                }
+                className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 text-sm font-bold text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:bg-blue-700 hover:shadow-xl disabled:translate-y-0 disabled:cursor-not-allowed disabled:shadow-none disabled:opacity-45"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <PackageMinus className="h-4 w-4" />
+                    Бараа гаргах
+                    <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+              <p className="mt-3 text-center text-[11px] leading-4 text-slate-400">
+                Баталгаажуулсны дараа агуулахын үлдэгдэл автоматаар хасагдана.
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -518,7 +409,9 @@ export default function DispatchPage() {
             <p className="mt-2 text-sm text-slate-500">
               {items.length} төрлийн {totalQuantity} ширхэг бараа агуулахаас
               гаргаж, <strong>{destination.address}</strong> хаяг руу илгээх гэж
-              байна. Үргэлжлүүлэх үү?
+              байна. Нийт төлбөр{" "}
+              <strong>{totalAmount.toLocaleString("mn-MN")}₮</strong>.
+              Үргэлжлүүлэх үү?
             </p>
             <div className="mt-6 flex gap-3">
               <button

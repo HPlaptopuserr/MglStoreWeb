@@ -14,3 +14,15 @@ export interface DispatchAddressSuggestion {
   lng: number | null;
   lastUsedAt: string;
 }
+
+export interface DispatchStore {
+  id: string;
+  name: string;
+  address: string | null;
+  lat: number;
+  lng: number;
+  organization: {
+    id: string;
+    name: string;
+  };
+}

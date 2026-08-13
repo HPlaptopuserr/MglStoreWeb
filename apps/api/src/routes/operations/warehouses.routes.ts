@@ -44,6 +44,10 @@ import {
 } from "../../services/delivery-routing.service";
 import { parseDeliveryPackageDetails } from "../../services/delivery-package.service";
 import { notifyCustomerOrderStage } from "../../services/order-notification.service";
+import {
+  buildProductSearchWhere,
+  scoreProductForSearch,
+} from "../../services/product-discovery.service";
 
 const router: ExpressRouter = Router();
 
@@ -1642,12 +1646,18 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
       });
     }
 
-    const page = Math.max(1, Number.parseInt(String(req.query.page ?? "1"), 10) || 1);
+    const page = Math.max(
+      1,
+      Number.parseInt(String(req.query.page ?? "1"), 10) || 1,
+    );
     const limit = Math.min(
       100,
       Math.max(1, Number.parseInt(String(req.query.limit ?? "20"), 10) || 20),
     );
-    const search = String(req.query.search ?? "").trim().slice(0, 100);
+    const search = String(req.query.search ?? "")
+      .trim()
+      .slice(0, 100);
+    const smartSearch = search.length > 0 && req.query.smartSearch === "true";
     const status = String(req.query.status ?? "all");
     const baseWhere: Prisma.WarehouseInventoryWhereInput = {
       warehouseId: id,
@@ -1658,9 +1668,7 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
       ...(search
         ? {
             OR: [
-              { product: { name: { contains: search, mode: "insensitive" } } },
-              { product: { sku: { contains: search, mode: "insensitive" } } },
-              { product: { barcode: { contains: search, mode: "insensitive" } } },
+              { product: { OR: buildProductSearchWhere(search) } },
               { location: { contains: search, mode: "insensitive" } },
             ],
           }
@@ -1683,61 +1691,93 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
             : {}),
     };
 
-    const [records, total, totalCount, outCount, lowCount, stockAggregate, locatedCount] =
-      await Promise.all([
-        prisma.warehouseInventory.findMany({
-      where,
-      select: {
-        id: true,
-        quantity: true,
-        minQuantity: true,
-        maxQuantity: true,
-        location: true,
-        batchNumber: true,
-        expiryDate: true,
-        note: true,
-        product: {
-          select: {
-            id: true,
-            name: true,
-            description: true,
-            sku: true,
-            barcode: true,
-            unit: true,
-            price: true,
-            costPrice: true,
-            businessCategoryId: true,
-            supplyType: true,
-            preorderLeadTimeDays: true,
-            preorderNote: true,
-            isActive: true,
-          },
-        },
-      },
-      orderBy: { updatedAt: "desc" },
-          skip: (page - 1) * limit,
-          take: limit,
-        }),
-        prisma.warehouseInventory.count({ where }),
-        prisma.warehouseInventory.count({ where: baseWhere }),
-        prisma.warehouseInventory.count({ where: { ...baseWhere, quantity: 0 } }),
-        prisma.warehouseInventory.count({
-          where: {
-            ...baseWhere,
-            quantity: {
-              gt: 0,
-              lte: prisma.warehouseInventory.fields.minQuantity,
+    const [
+      rawRecords,
+      total,
+      totalCount,
+      outCount,
+      lowCount,
+      stockAggregate,
+      locatedCount,
+    ] = await Promise.all([
+      prisma.warehouseInventory.findMany({
+        where,
+        select: {
+          id: true,
+          quantity: true,
+          minQuantity: true,
+          maxQuantity: true,
+          location: true,
+          batchNumber: true,
+          expiryDate: true,
+          note: true,
+          product: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              sku: true,
+              barcode: true,
+              unit: true,
+              price: true,
+              costPrice: true,
+              businessCategoryId: true,
+              businessCategory: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  parent: { select: { id: true, name: true, slug: true } },
+                },
+              },
+              organization: { select: { id: true, name: true } },
+              supplyType: true,
+              preorderLeadTimeDays: true,
+              preorderNote: true,
+              isActive: true,
             },
           },
-        }),
-        prisma.warehouseInventory.aggregate({
-          where: baseWhere,
-          _sum: { quantity: true },
-        }),
-        prisma.warehouseInventory.count({
-          where: { ...baseWhere, location: { not: null } },
-        }),
-      ]);
+        },
+        orderBy: { updatedAt: "desc" },
+        skip: smartSearch ? 0 : (page - 1) * limit,
+        take: smartSearch ? Math.min(Math.max(limit * 8, 60), 200) : limit,
+      }),
+      prisma.warehouseInventory.count({ where }),
+      prisma.warehouseInventory.count({ where: baseWhere }),
+      prisma.warehouseInventory.count({ where: { ...baseWhere, quantity: 0 } }),
+      prisma.warehouseInventory.count({
+        where: {
+          ...baseWhere,
+          quantity: {
+            gt: 0,
+            lte: prisma.warehouseInventory.fields.minQuantity,
+          },
+        },
+      }),
+      prisma.warehouseInventory.aggregate({
+        where: baseWhere,
+        _sum: { quantity: true },
+      }),
+      prisma.warehouseInventory.count({
+        where: { ...baseWhere, location: { not: null } },
+      }),
+    ]);
+
+    const records = smartSearch
+      ? rawRecords
+          .map((record) => ({
+            record,
+            score: scoreProductForSearch(record.product, search),
+          }))
+          .filter(({ score }) => score > 0)
+          .sort(
+            (left, right) =>
+              right.score - left.score ||
+              right.record.quantity - left.record.quantity,
+          )
+          .slice(0, limit)
+          .map(({ record }) => record)
+      : rawRecords;
 
     // Fetch images in one batch. A limited nested image relation per inventory
     // row produces an expensive lateral query on large warehouses.

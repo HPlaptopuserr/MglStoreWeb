@@ -4,8 +4,7 @@ const DEFAULT_API_BASE =
     : "http://localhost:4000";
 
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  DEFAULT_API_BASE;
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") || DEFAULT_API_BASE;
 
 export const API = `${API_BASE}/api`;
 
@@ -15,15 +14,20 @@ function createRequestSignal(signal?: AbortSignal | null) {
   return signal ?? AbortSignal.timeout(15_000);
 }
 
+function isAbortedRequest(error: unknown, signal?: AbortSignal | null) {
+  return (
+    signal?.aborted === true ||
+    (error instanceof DOMException && error.name === "AbortError")
+  );
+}
+
 /** Fetch wrapper that auto-attaches the WMS auth token */
 export async function wmsFetch(
   input: string | URL | Request,
   init?: RequestInit,
 ): Promise<Response> {
   const token =
-    typeof window !== "undefined"
-      ? localStorage.getItem("wms_token")
-      : null;
+    typeof window !== "undefined" ? localStorage.getItem("wms_token") : null;
   const headers = new Headers(init?.headers);
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
@@ -54,7 +58,7 @@ export async function wmsFetch(
     return fetch(fallbackUrl, {
       ...init,
       headers,
-      signal: createRequestSignal(),
+      signal: createRequestSignal(init?.signal),
     });
   };
   const request = () =>
@@ -68,10 +72,12 @@ export async function wmsFetch(
   try {
     res = await request();
   } catch (error) {
-    if (!canUseDevelopmentFallback) throw error;
-    res = await requestProductionFallback();
-  }
-  if (res.status === 404 && canUseDevelopmentFallback) {
+    // A caller abort is an intentional lifecycle event (navigation, changing a
+    // selected warehouse, or a newer search). It must never trigger a request
+    // to a different backend.
+    if (!canUseDevelopmentFallback || isAbortedRequest(error, init?.signal)) {
+      throw error;
+    }
     res = await requestProductionFallback();
   }
   if (res.status === 401 && typeof window !== "undefined") {
