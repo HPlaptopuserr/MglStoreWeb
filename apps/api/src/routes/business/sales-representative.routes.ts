@@ -23,6 +23,10 @@ import {
 } from "../../services/outstanding-stock-payment.service";
 import { getSalesStoreLocationSources } from "../../services/sales-store-portfolio.service";
 import { notifyNewSalesRepresentativeStockRequest } from "../../services/stock-request-notification.service";
+import {
+  confirmRepresentativeCashPayment,
+  validatePartialPaymentAmount,
+} from "../../services/sales-representative-cash-payment.service";
 
 const router: ExpressRouter = Router();
 const MANAGER_ROLES = new Set(["OWNER", "ADMIN", "CEO", "MANAGER"]);
@@ -470,6 +474,61 @@ async function representativePayment(
   });
 }
 
+async function confirmRepresentativeQPayEntry(
+  paymentId: string,
+  transactionId: string,
+) {
+  return prisma.$transaction(async (tx) => {
+    const entry = await tx.stockRequestPaymentEntry.findUnique({
+      where: { transactionId },
+    });
+    if (!entry || entry.paymentId !== paymentId)
+      throw new Error("QPAY_ENTRY_NOT_FOUND");
+    const payment = await tx.stockRequestPayment.findUniqueOrThrow({
+      where: { id: paymentId },
+    });
+    if (entry.status === PaymentStatus.PAID) {
+      return {
+        status: PaymentStatus.PAID,
+        paymentStatus: payment.status,
+        paidAmount: Number(payment.paidAmount),
+        outstandingAmount: Math.max(
+          0,
+          Number(payment.totalAmount) - Number(payment.paidAmount),
+        ),
+      };
+    }
+    const validation = validatePartialPaymentAmount(payment, entry.amount);
+    if (!validation.ok) throw new Error(`PAYMENT_VALIDATION:${validation.message}`);
+    const paidAmount = Number(payment.paidAmount) + validation.amount;
+    const confirmedAt = new Date();
+    await tx.stockRequestPayment.update({
+      where: { id: paymentId },
+      data: {
+        status: validation.fullyPaid ? PaymentStatus.PAID : PaymentStatus.PENDING,
+        paidAmount,
+        paidAt: validation.fullyPaid ? confirmedAt : null,
+        paymentMethod: PaymentMethod.QPAY,
+        confirmedById: null,
+        confirmedAt,
+        note: "Дэлгүүрийн QPay төлбөр — автоматаар баталгаажсан",
+      },
+    });
+    await tx.stockRequestPaymentEntry.update({
+      where: { id: entry.id },
+      data: { status: PaymentStatus.PAID, confirmedAt },
+    });
+    return {
+      status: PaymentStatus.PAID,
+      paymentStatus: validation.fullyPaid
+        ? PaymentStatus.PAID
+        : PaymentStatus.PENDING,
+      paidAmount,
+      outstandingAmount: validation.outstandingBefore - validation.amount,
+    };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+}
+
 router.post(
   "/sales-representative/vendors/:vendorId/payments/:paymentId/qpay",
   requireAuth,
@@ -495,15 +554,26 @@ router.post(
       return res.status(409).json({ message: "Төлбөр аль хэдийн төлөгдсөн" });
     if (payment.status === PaymentStatus.CANCELLED)
       return res.status(409).json({ message: "Төлбөр цуцлагдсан байна" });
-    const amount = Number(payment.totalAmount) - Number(payment.paidAmount);
-    if (!Number.isFinite(amount) || amount <= 0)
-      return res.status(400).json({ message: "Төлөх үлдэгдэлгүй байна" });
+    const validation = validatePartialPaymentAmount(payment, req.body?.amount);
+    if (!validation.ok)
+      return res.status(validation.status).json({ message: validation.message });
+    const amount = validation.amount;
 
     if (process.env.MGL_LOCAL_DEV === "true") {
-      const transactionId = `DEV-QPAY-${payment.id}`;
+      const transactionId = `DEV-QPAY-${payment.id}-${Date.now()}`;
       await prisma.stockRequestPayment.update({
         where: { id: payment.id },
         data: { transactionId, paymentMethod: PaymentMethod.QPAY },
+      });
+      await prisma.stockRequestPaymentEntry.create({
+        data: {
+          paymentId: payment.id,
+          amount,
+          method: PaymentMethod.QPAY,
+          status: PaymentStatus.PENDING,
+          transactionId,
+          note: "Local QPay хэсэгчилсэн төлбөр",
+        },
       });
       void prisma.auditLog.create({
         data: {
@@ -546,6 +616,16 @@ router.post(
           paymentMethod: PaymentMethod.QPAY,
         },
       });
+      await prisma.stockRequestPaymentEntry.create({
+        data: {
+          paymentId: payment.id,
+          amount,
+          method: PaymentMethod.QPAY,
+          status: PaymentStatus.PENDING,
+          transactionId: qpayData.invoice_id,
+          note: "QPay хэсэгчилсэн төлбөр",
+        },
+      });
       void prisma.auditLog.create({
         data: {
           userId: actor.userId,
@@ -579,6 +659,95 @@ router.post(
   },
 );
 
+router.post(
+  "/sales-representative/vendors/:vendorId/payments/:paymentId/cash/confirm",
+  requireAuth,
+  async (req, res) => {
+    const actor = (req as any).user as AuthPayload;
+    const current = await membership(actor);
+    if (!current || !requireRepresentative(current))
+      return res
+        .status(403)
+        .json({ message: "Худалдааны төлөөлөгчийн эрх шаардлагатай" });
+
+    const payment = await representativePayment(
+      current,
+      req.params.vendorId,
+      req.params.paymentId,
+    );
+    if (!payment) return res.status(404).json({ message: "Төлбөр олдсонгүй" });
+    if (!canPayApprovedStockRequest(payment.request.status))
+      return res.status(409).json({
+        code: "STOCK_REQUEST_NOT_APPROVED",
+        message: "Админ зөвшөөрсний дараа бэлэн төлбөр баталгаажна",
+      });
+    if (req.body?.confirmation !== "CASH_RECEIVED")
+      return res.status(400).json({
+        message: "Бэлэн мөнгө хүлээн авснаа баталгаажуулна уу",
+      });
+
+    const idempotencyKey =
+      typeof req.body?.idempotencyKey === "string"
+        ? req.body.idempotencyKey.trim()
+        : "";
+    if (!/^[a-zA-Z0-9-]{16,80}$/.test(idempotencyKey))
+      return res.status(400).json({ message: "Төлбөрийн хүсэлтийн ID буруу байна" });
+
+    const validation = validatePartialPaymentAmount(payment, req.body?.amount);
+    if (!validation.ok)
+      return res
+        .status(validation.status)
+        .json({ message: validation.message });
+
+    let result;
+    try {
+      result = await confirmRepresentativeCashPayment({
+        paymentId: payment.id,
+        amount: validation.amount,
+        actorUserId: actor.userId,
+        idempotencyKey,
+        note: typeof req.body?.note === "string" ? req.body.note : undefined,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message === "PAYMENT_BALANCE_CHANGED")
+        return res.status(409).json({ message: "Үлдэгдэл өөрчлөгдсөн тул дахин оролдоно уу" });
+      if (message === "IDEMPOTENCY_KEY_CONFLICT")
+        return res.status(409).json({ message: "Төлбөрийн хүсэлт давхардсан байна" });
+      if (message.startsWith("PAYMENT_VALIDATION:"))
+        return res.status(409).json({ message: message.slice(19) });
+      throw error;
+    }
+    if (!result.alreadyConfirmed) {
+      void prisma.auditLog.create({
+        data: {
+          userId: actor.userId,
+          action: AuditAction.PAYMENT_STATUS_CHANGED,
+          ip: req.ip,
+          userAgent: req.get("user-agent") || null,
+          meta: {
+            vendorId: req.params.vendorId,
+            paymentId: payment.id,
+            amount: result.amount,
+            paymentMethod: "CASH",
+            source: "SALES_REPRESENTATIVE",
+          },
+        },
+      });
+    }
+
+    return res.json({
+      status: result.status,
+      paymentId: payment.id,
+      amount: result.amount,
+      paidAmount: result.paidAmount,
+      outstandingAmount: result.outstandingAmount,
+      paymentMethod: "CASH",
+      alreadyConfirmed: result.alreadyConfirmed,
+    });
+  },
+);
+
 router.get(
   "/sales-representative/vendors/:vendorId/payments/:paymentId/qpay/status",
   requireAuth,
@@ -601,21 +770,11 @@ router.get(
     try {
       const qpayCheck = await checkQPayPayment(payment.transactionId);
       if (qpayCheck.count === 0) return res.json({ status: "PENDING" });
-      await prisma.stockRequestPayment.update({
-        where: { id: payment.id },
-        data: {
-          status: PaymentStatus.PAID,
-          paidAmount: payment.totalAmount,
-          paidAt: new Date(),
-          paymentMethod: PaymentMethod.QPAY,
-          // The representative only presents the vendor's QR. The payment
-          // belongs to the vendor organization and is confirmed by QPay.
-          confirmedById: null,
-          confirmedAt: new Date(),
-          note: "Дэлгүүрийн QPay төлбөр — автоматаар баталгаажсан",
-        },
-      });
-      return res.json({ status: "PAID" });
+      const result = await confirmRepresentativeQPayEntry(
+        payment.id,
+        payment.transactionId,
+      );
+      return res.json(result);
     } catch (error) {
       console.error("sales representative qpay status error", error);
       return res
@@ -649,19 +808,11 @@ router.post(
       });
     if (!payment.transactionId?.startsWith("DEV-QPAY-"))
       return res.status(400).json({ message: "Туршилтын QR биш байна" });
-    const updated = await prisma.stockRequestPayment.update({
-      where: { id: payment.id },
-      data: {
-        status: PaymentStatus.PAID,
-        paidAmount: payment.totalAmount,
-        paidAt: new Date(),
-        paymentMethod: PaymentMethod.QPAY,
-        confirmedById: null,
-        confirmedAt: new Date(),
-        note: "Дэлгүүрийн local QPay туршилтын төлбөр",
-      },
-    });
-    return res.json({ status: updated.status, paymentId: updated.id });
+    const result = await confirmRepresentativeQPayEntry(
+      payment.id,
+      payment.transactionId,
+    );
+    return res.json({ ...result, paymentId: payment.id });
   },
 );
 

@@ -62,6 +62,7 @@ model User {
   requestedServiceRequests         ServiceRequest[]               @relation("ServiceRequestRequestedBy")
   driverDispatches                 StockDispatch[]                @relation("DriverDispatches")
   confirmedPayments                StockRequestPayment[]          @relation("PaymentConfirmations")
+  confirmedStockPaymentEntries     StockRequestPaymentEntry[]     @relation("StockPaymentEntryConfirmations")
   sessions                         UserSession[]
   vendorSetupTokens                VendorSetupToken[]             @relation("UserVendorSetupTokens")
   createdWarehouses                Warehouse[]                    @relation("WarehouseCreatedBy")
@@ -1919,13 +1920,13 @@ model WarehouseStockRequestItem {
 }
 
 model StockRequestPayment {
-  id             String                @id @default(uuid())
-  invoiceNumber  String                @unique
-  requestId      String                @unique
+  id             String                     @id @default(uuid())
+  invoiceNumber  String                     @unique
+  requestId      String                     @unique
   organizationId String
-  totalAmount    Decimal               @db.Decimal(18, 2)
-  paidAmount     Decimal               @default(0) @db.Decimal(18, 2)
-  status         PaymentStatus         @default(PENDING)
+  totalAmount    Decimal                    @db.Decimal(18, 2)
+  paidAmount     Decimal                    @default(0) @db.Decimal(18, 2)
+  status         PaymentStatus              @default(PENDING)
   paymentMethod  PaymentMethod?
   paidAt         DateTime?
   paidBy         String?
@@ -1934,14 +1935,36 @@ model StockRequestPayment {
   confirmedById  String?
   confirmedAt    DateTime?
   dueDate        DateTime?
-  createdAt      DateTime              @default(now())
-  updatedAt      DateTime              @updatedAt
-  confirmedBy    User?                 @relation("PaymentConfirmations", fields: [confirmedById], references: [id])
-  organization   Organization          @relation("OrganizationStockPayments", fields: [organizationId], references: [id])
-  request        WarehouseStockRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  createdAt      DateTime                   @default(now())
+  updatedAt      DateTime                   @updatedAt
+  confirmedBy    User?                      @relation("PaymentConfirmations", fields: [confirmedById], references: [id])
+  organization   Organization               @relation("OrganizationStockPayments", fields: [organizationId], references: [id])
+  request        WarehouseStockRequest      @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  entries        StockRequestPaymentEntry[]
 
   @@index([organizationId])
   @@index([status])
+  @@index([createdAt])
+}
+
+/// Immutable payment ledger. A stock invoice may be settled through multiple
+/// cash/QPay entries while StockRequestPayment keeps the aggregate balance.
+model StockRequestPaymentEntry {
+  id            String              @id @default(uuid())
+  paymentId     String
+  amount        Decimal             @db.Decimal(18, 2)
+  method        PaymentMethod
+  status        PaymentStatus       @default(PENDING)
+  transactionId String?             @unique
+  confirmedById String?
+  confirmedAt   DateTime?
+  note          String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  payment       StockRequestPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  confirmedBy   User?               @relation("StockPaymentEntryConfirmations", fields: [confirmedById], references: [id])
+
+  @@index([paymentId, status])
   @@index([createdAt])
 }
 

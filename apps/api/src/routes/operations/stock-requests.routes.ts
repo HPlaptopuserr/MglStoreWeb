@@ -61,6 +61,7 @@ import {
   warehouseDispatchRequiredMessage,
 } from "../../services/stock-request-routing.policy";
 import { recommendationService } from "../../services/recommendations/recommendation.service";
+import { canViewStockOrderOwnership } from "../../services/stock-order-visibility.policy";
 
 const router: ExpressRouter = Router();
 const padaanUploadsDir = path.resolve(
@@ -453,7 +454,23 @@ router.get("/stock-requests", requireAuth, async (req, res) => {
             },
           },
         },
-        payment: true,
+        payment: {
+          include: {
+            entries: {
+              where: { status: PaymentStatus.PAID },
+              include: {
+                confirmedBy: {
+                  select: {
+                    id: true,
+                    email: true,
+                    profile: { select: { fullName: true } },
+                  },
+                },
+              },
+              orderBy: { confirmedAt: "asc" },
+            },
+          },
+        },
         dispatch: true,
       },
       orderBy: {
@@ -461,7 +478,15 @@ router.get("/stock-requests", requireAuth, async (req, res) => {
       },
     });
 
-    res.json(requests);
+    const includeOwnership = canViewStockOrderOwnership(
+      actor.role,
+      actor.orgRole,
+    );
+    res.json(
+      includeOwnership
+        ? requests
+        : requests.map(({ requestedBy: _requestedBy, reviewedBy: _reviewedBy, ...request }) => request),
+    );
   } catch (error) {
     console.error("get stock requests error", error);
     res.status(500).json({
@@ -2047,6 +2072,18 @@ router.get(
               },
             },
           },
+          entries: {
+            include: {
+              confirmedBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  profile: { select: { fullName: true } },
+                },
+              },
+            },
+            orderBy: { confirmedAt: "asc" },
+          },
         },
         orderBy: { createdAt: "desc" },
       });
@@ -2124,6 +2161,18 @@ router.get(
               },
             },
           },
+          entries: {
+            include: {
+              confirmedBy: {
+                select: {
+                  id: true,
+                  email: true,
+                  profile: { select: { fullName: true } },
+                },
+              },
+            },
+            orderBy: { confirmedAt: "asc" },
+          },
         },
         orderBy: { createdAt: "desc" },
       });
@@ -2196,6 +2245,18 @@ router.get("/stock-requests/payments/:id", requireAuth, async (req, res) => {
             },
           },
         },
+        entries: {
+          include: {
+            confirmedBy: {
+              select: {
+                id: true,
+                email: true,
+                profile: { select: { fullName: true } },
+              },
+            },
+          },
+          orderBy: { confirmedAt: "asc" },
+        },
       },
     });
 
@@ -2259,27 +2320,44 @@ router.patch(
         return res.status(400).json({ message: confirmation.message });
       }
 
-      const updated = await prisma.stockRequestPayment.update({
-        where: { id },
-        data: {
-          status: confirmation.fullyPaid
-            ? PaymentStatus.PAID
-            : PaymentStatus.PENDING,
-          paidAmount: confirmation.paidAmount,
-          paidAt: confirmation.fullyPaid ? new Date() : null,
-          paidBy: note || null,
-          transactionId: transactionId || null,
-          paymentMethod: paymentMethod || null,
-          confirmedById: actor?.userId || null,
-        },
-        include: {
-          organization: {
-            select: { id: true, name: true },
+      const method = (paymentMethod || payment.paymentMethod) as PaymentMethod | null;
+      if (!method)
+        return res.status(400).json({ message: "Төлбөрийн хэлбэр шаардлагатай" });
+      const entryAmount = confirmation.paidAmount - Number(payment.paidAmount);
+      const confirmedAt = new Date();
+      const updated = await prisma.$transaction(async (tx) => {
+        const result = await tx.stockRequestPayment.update({
+          where: { id },
+          data: {
+            status: confirmation.fullyPaid
+              ? PaymentStatus.PAID
+              : PaymentStatus.PENDING,
+            paidAmount: confirmation.paidAmount,
+            paidAt: confirmation.fullyPaid ? confirmedAt : null,
+            paidBy: note || null,
+            transactionId: transactionId || null,
+            paymentMethod: method,
+            confirmedById: actor?.userId || null,
+            confirmedAt,
           },
-          request: {
-            select: { id: true, requestNumber: true },
+          include: {
+            organization: { select: { id: true, name: true } },
+            request: { select: { id: true, requestNumber: true } },
           },
-        },
+        });
+        await tx.stockRequestPaymentEntry.create({
+          data: {
+            paymentId: id,
+            amount: entryAmount,
+            method,
+            status: PaymentStatus.PAID,
+            transactionId: transactionId || `MANUAL-${id}-${Date.now()}`,
+            confirmedById: actor?.userId || null,
+            confirmedAt,
+            note: note || "Админ баталгаажуулсан төлбөр",
+          },
+        });
+        return result;
       });
 
       res.json(updated);
@@ -3076,10 +3154,20 @@ router.post(
       }
 
       if (process.env.MGL_LOCAL_DEV === "true") {
-        const transactionId = `DEV-QPAY-${payment.id}`;
+        const transactionId = `DEV-QPAY-${payment.id}-${Date.now()}`;
         await prisma.stockRequestPayment.update({
           where: { id: payment.id },
           data: { transactionId, paymentMethod: PaymentMethod.QPAY },
+        });
+        await prisma.stockRequestPaymentEntry.create({
+          data: {
+            paymentId: payment.id,
+            amount,
+            method: PaymentMethod.QPAY,
+            status: PaymentStatus.PENDING,
+            transactionId,
+            note: "Local QPay төлбөр",
+          },
         });
         return res.json({
           paymentId: payment.id,
@@ -3107,6 +3195,16 @@ router.post(
         data: {
           transactionId: qpayData.invoice_id,
           paymentMethod: PaymentMethod.QPAY,
+        },
+      });
+      await prisma.stockRequestPaymentEntry.create({
+        data: {
+          paymentId: payment.id,
+          amount,
+          method: PaymentMethod.QPAY,
+          status: PaymentStatus.PENDING,
+          transactionId: qpayData.invoice_id,
+          note: "QPay төлбөр",
         },
       });
 
@@ -3171,15 +3269,23 @@ router.post(
       return res.status(400).json({ message: "Цуцлагдсан төлбөр байна" });
     }
 
-    const updated = await prisma.stockRequestPayment.update({
-      where: { id },
-      data: {
-        status: PaymentStatus.PAID,
-        paidAmount: payment.totalAmount,
-        paidAt: new Date(),
-        paymentMethod: PaymentMethod.QPAY,
-        note: "Local fake QPay баталгаажуулалт",
-      },
+    const confirmedAt = new Date();
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.stockRequestPayment.update({
+        where: { id },
+        data: {
+          status: PaymentStatus.PAID,
+          paidAmount: payment.totalAmount,
+          paidAt: confirmedAt,
+          paymentMethod: PaymentMethod.QPAY,
+          note: "Local fake QPay баталгаажуулалт",
+        },
+      });
+      await tx.stockRequestPaymentEntry.update({
+        where: { transactionId: payment.transactionId! },
+        data: { status: PaymentStatus.PAID, confirmedAt },
+      });
+      return result;
     });
 
     return res.json({ status: updated.status, paymentId: updated.id });
@@ -3228,16 +3334,34 @@ router.post(
     }
 
     const actor = getActor(req);
-    const updated = await prisma.stockRequestPayment.update({
-      where: { id },
-      data: {
-        status: PaymentStatus.PAID,
-        paidAmount: payment.totalAmount,
-        paidAt: new Date(),
-        paymentMethod: PaymentMethod.CASH,
-        confirmedById: actor?.userId || null,
-        note: "Local development төлбөрийн баталгаажуулалт",
-      },
+    const confirmedAt = new Date();
+    const amount = Number(payment.totalAmount) - Number(payment.paidAmount);
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.stockRequestPayment.update({
+        where: { id },
+        data: {
+          status: PaymentStatus.PAID,
+          paidAmount: payment.totalAmount,
+          paidAt: confirmedAt,
+          paymentMethod: PaymentMethod.CASH,
+          confirmedById: actor?.userId || null,
+          confirmedAt,
+          note: "Local development төлбөрийн баталгаажуулалт",
+        },
+      });
+      await tx.stockRequestPaymentEntry.create({
+        data: {
+          paymentId: id,
+          amount,
+          method: PaymentMethod.CASH,
+          status: PaymentStatus.PAID,
+          transactionId: `DEV-CASH-${id}-${Date.now()}`,
+          confirmedById: actor?.userId || null,
+          confirmedAt,
+          note: "Local development төлбөр",
+        },
+      });
+      return result;
     });
 
     return res.json({ status: updated.status, paymentId: updated.id });
@@ -3284,16 +3408,27 @@ router.get(
 
       // Payment confirmed — update
       const userId = getActor(req)?.userId;
-      await prisma.stockRequestPayment.update({
-        where: { id },
-        data: {
-          status: PaymentStatus.PAID,
-          paidAmount: payment.totalAmount,
-          paidAt: new Date(),
-          paymentMethod: PaymentMethod.QPAY,
-          confirmedById: userId || null,
-          note: "QPay автомат баталгаажуулалт",
-        },
+      const confirmedAt = new Date();
+      await prisma.$transaction(async (tx) => {
+        await tx.stockRequestPayment.update({
+          where: { id },
+          data: {
+            status: PaymentStatus.PAID,
+            paidAmount: payment.totalAmount,
+            paidAt: confirmedAt,
+            paymentMethod: PaymentMethod.QPAY,
+            confirmedById: userId || null,
+            note: "QPay автомат баталгаажуулалт",
+          },
+        });
+        await tx.stockRequestPaymentEntry.update({
+          where: { transactionId: payment.transactionId! },
+          data: {
+            status: PaymentStatus.PAID,
+            confirmedAt,
+            confirmedById: userId || null,
+          },
+        });
       });
 
       return res.json({ status: "PAID" });
@@ -3336,15 +3471,23 @@ router.post("/stock-requests/qpay/callback", async (req, res) => {
       return res.json({ message: "not yet paid" });
     }
 
-    await prisma.stockRequestPayment.update({
-      where: { id: paymentId },
-      data: {
-        status: PaymentStatus.PAID,
-        paidAmount: payment.totalAmount,
-        paidAt: new Date(),
-        paymentMethod: PaymentMethod.QPAY,
-        note: "QPay callback баталгаажуулалт",
-      },
+    const confirmedAt = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.stockRequestPayment.update({
+        where: { id: paymentId },
+        data: {
+          status: PaymentStatus.PAID,
+          paidAmount: payment.totalAmount,
+          paidAt: confirmedAt,
+          paymentMethod: PaymentMethod.QPAY,
+          confirmedAt,
+          note: "QPay callback баталгаажуулалт",
+        },
+      });
+      await tx.stockRequestPaymentEntry.update({
+        where: { transactionId: payment.transactionId! },
+        data: { status: PaymentStatus.PAID, confirmedAt },
+      });
     });
 
     return res.json({ message: "success" });
