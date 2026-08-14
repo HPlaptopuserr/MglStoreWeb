@@ -15,7 +15,15 @@ import {
   prisma,
 } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
-import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
+import {
+  checkSystemQrPayment,
+  createSystemQrInvoice,
+} from "../../services/systemqr";
+import {
+  getStockMinuPaymentAccount,
+  stockMinuPaymentNote,
+  StockMinuConfigurationError,
+} from "../../services/stock-minu-payment.service";
 import { canPayApprovedStockRequest } from "../../services/stock-payment.policy";
 import {
   getOutstandingStockPayments,
@@ -603,16 +611,20 @@ router.post(
     }
 
     try {
-      const qpayData = await createQPayInvoice({
-        orderId: payment.id,
-        orderNumber: payment.invoiceNumber,
-        amount,
-        description: `Агуулахын захиалга - ${payment.request.requestNumber}`,
-      });
+      const minuAccount = await getStockMinuPaymentAccount();
+      const qpayData = await createSystemQrInvoice(
+        {
+          merchantCode: minuAccount.merchantCode,
+          amount,
+          referenceNumber: payment.id,
+        },
+        minuAccount.username,
+        minuAccount.password,
+      );
       await prisma.stockRequestPayment.update({
         where: { id: payment.id },
         data: {
-          transactionId: qpayData.invoice_id,
+          transactionId: qpayData.invoiceId,
           paymentMethod: PaymentMethod.QPAY,
         },
       });
@@ -622,8 +634,8 @@ router.post(
           amount,
           method: PaymentMethod.QPAY,
           status: PaymentStatus.PENDING,
-          transactionId: qpayData.invoice_id,
-          note: "QPay хэсэгчилсэн төлбөр",
+          transactionId: qpayData.invoiceId,
+          note: stockMinuPaymentNote(minuAccount.merchantCode),
         },
       });
       void prisma.auditLog.create({
@@ -644,14 +656,16 @@ router.post(
         paymentId: payment.id,
         invoiceNumber: payment.invoiceNumber,
         amount,
-        qrText: qpayData.qr_text,
-        qrImage: qpayData.qr_image,
-        qpayInvoiceId: qpayData.invoice_id,
+        qrText: qpayData.qrText,
+        qrImage: "",
+        qpayInvoiceId: qpayData.invoiceId,
         deepLinks: qpayData.urls,
         expiresIn: 300,
       });
     } catch (error) {
       console.error("sales representative qpay invoice error", error);
+      if (error instanceof StockMinuConfigurationError)
+        return res.status(409).json({ message: error.message });
       return res
         .status(502)
         .json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
@@ -768,8 +782,18 @@ router.get(
       return res.json({ status: "PAID" });
     if (!payment.transactionId) return res.json({ status: "PENDING" });
     try {
-      const qpayCheck = await checkQPayPayment(payment.transactionId);
-      if (qpayCheck.count === 0) return res.json({ status: "PENDING" });
+      const minuAccount = await getStockMinuPaymentAccount(
+        payment.transactionId,
+      );
+      const paymentCheck = await checkSystemQrPayment(
+        {
+          merchantCode: minuAccount.merchantCode,
+          invoiceNumber: payment.transactionId,
+        },
+        minuAccount.username,
+        minuAccount.password,
+      );
+      if (!paymentCheck.paid) return res.json({ status: "PENDING" });
       const result = await confirmRepresentativeQPayEntry(
         payment.id,
         payment.transactionId,

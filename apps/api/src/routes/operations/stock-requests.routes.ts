@@ -32,7 +32,15 @@ import {
   assertOrgPermission,
   requireOrgPermission,
 } from "../../services/permission.service";
-import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
+import {
+  checkSystemQrPayment,
+  createSystemQrInvoice,
+} from "../../services/systemqr";
+import {
+  getStockMinuPaymentAccount,
+  stockMinuPaymentNote,
+  StockMinuConfigurationError,
+} from "../../services/stock-minu-payment.service";
 import { buildProcurementAdvice } from "../../services/procurement-ai.service";
 import {
   canPayApprovedStockRequest,
@@ -3182,18 +3190,22 @@ router.post(
         });
       }
 
-      const qpayData = await createQPayInvoice({
-        orderId: payment.id,
-        orderNumber: payment.invoiceNumber,
-        amount,
-        description: `Агуулхын захиалга - ${payment.request?.requestNumber || payment.invoiceNumber}`,
-      });
+      const minuAccount = await getStockMinuPaymentAccount();
+      const qpayData = await createSystemQrInvoice(
+        {
+          merchantCode: minuAccount.merchantCode,
+          amount,
+          referenceNumber: payment.id,
+        },
+        minuAccount.username,
+        minuAccount.password,
+      );
 
       // Store QPay invoice reference
       await prisma.stockRequestPayment.update({
         where: { id },
         data: {
-          transactionId: qpayData.invoice_id,
+          transactionId: qpayData.invoiceId,
           paymentMethod: PaymentMethod.QPAY,
         },
       });
@@ -3203,8 +3215,8 @@ router.post(
           amount,
           method: PaymentMethod.QPAY,
           status: PaymentStatus.PENDING,
-          transactionId: qpayData.invoice_id,
-          note: "QPay төлбөр",
+          transactionId: qpayData.invoiceId,
+          note: stockMinuPaymentNote(minuAccount.merchantCode),
         },
       });
 
@@ -3212,14 +3224,17 @@ router.post(
         paymentId: payment.id,
         invoiceNumber: payment.invoiceNumber,
         amount,
-        qrText: qpayData.qr_text,
-        qrImage: qpayData.qr_image,
-        qpayInvoiceId: qpayData.invoice_id,
+        qrText: qpayData.qrText,
+        qrImage: "",
+        qpayInvoiceId: qpayData.invoiceId,
         deepLinks: qpayData.urls,
         expiresIn: 300,
       });
     } catch (error) {
       console.error("qpay create invoice error", error);
+      if (error instanceof StockMinuConfigurationError) {
+        return res.status(409).json({ message: error.message });
+      }
       return res
         .status(502)
         .json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
@@ -3400,9 +3415,19 @@ router.get(
         return res.json({ status: "PENDING" });
       }
 
-      const qpayCheck = await checkQPayPayment(payment.transactionId);
+      const minuAccount = await getStockMinuPaymentAccount(
+        payment.transactionId,
+      );
+      const paymentCheck = await checkSystemQrPayment(
+        {
+          merchantCode: minuAccount.merchantCode,
+          invoiceNumber: payment.transactionId,
+        },
+        minuAccount.username,
+        minuAccount.password,
+      );
 
-      if (qpayCheck.count === 0) {
+      if (!paymentCheck.paid) {
         return res.json({ status: "PENDING" });
       }
 
@@ -3465,9 +3490,17 @@ router.post("/stock-requests/qpay/callback", async (req, res) => {
       return res.status(400).json({ message: "no provider ref" });
     }
 
-    const qpayCheck = await checkQPayPayment(payment.transactionId);
+    const minuAccount = await getStockMinuPaymentAccount(payment.transactionId);
+    const paymentCheck = await checkSystemQrPayment(
+      {
+        merchantCode: minuAccount.merchantCode,
+        invoiceNumber: payment.transactionId,
+      },
+      minuAccount.username,
+      minuAccount.password,
+    );
 
-    if (qpayCheck.count === 0) {
+    if (!paymentCheck.paid) {
       return res.json({ message: "not yet paid" });
     }
 
@@ -3481,7 +3514,7 @@ router.post("/stock-requests/qpay/callback", async (req, res) => {
           paidAt: confirmedAt,
           paymentMethod: PaymentMethod.QPAY,
           confirmedAt,
-          note: "QPay callback баталгаажуулалт",
+          note: "Minu Dynamic QR callback баталгаажуулалт",
         },
       });
       await tx.stockRequestPaymentEntry.update({
