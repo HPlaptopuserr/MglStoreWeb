@@ -200,6 +200,16 @@ services:
         sync: false
       - key: CORS_ORIGIN
         sync: false
+      - key: API_PUBLIC_URL
+        value: https://mgl-api.onrender.com
+      - key: QPAY_BASE_URL
+        value: https://merchant.qpay.mn/v2
+      - key: QPAY_CLIENT_ID
+        sync: false
+      - key: QPAY_CLIENT_SECRET
+        sync: false
+      - key: QPAY_INVOICE_CODE
+        sync: false
       - key: SYSTEMQR_ROOT_URL
         value: https://api.minu.mn
       - key: SYSTEMQR_BASE_URL
