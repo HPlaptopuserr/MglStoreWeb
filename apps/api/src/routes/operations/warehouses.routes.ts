@@ -49,6 +49,10 @@ import {
   scoreProductForSearch,
 } from "../../services/product-discovery.service";
 import { getSalesStoreLocationSources } from "../../services/sales-store-portfolio.service";
+import {
+  CONTRACT_PAYMENT_ACCOUNTS_SETTING_KEY,
+  readMinuPaymentAccounts,
+} from "../../services/upgrade-minu.service";
 
 const router: ExpressRouter = Router();
 
@@ -347,6 +351,49 @@ router.get("/warehouses", requireAuth, async (req, res) => {
     });
   }
 });
+
+// Warehouse operators may select an account, but never receive its password.
+router.get("/warehouses/payment-accounts", requireAuth, async (req, res) => {
+  const warehouseIds = await getAccessibleWarehouseIds(req);
+  if (warehouseIds.length === 0) {
+    return res.status(403).json({ message: "Агуулахын эрх олдсонгүй" });
+  }
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: CONTRACT_PAYMENT_ACCOUNTS_SETTING_KEY },
+    select: { value: true },
+  });
+  const accounts = readMinuPaymentAccounts(setting?.value).map((account) => ({
+    id: account.id,
+    merchantCode: account.merchantCode,
+  }));
+  return res.json({ accounts });
+});
+
+router.put(
+  "/warehouses/:id/payment-account",
+  requireAuth,
+  async (req, res) => {
+    const { id } = req.params;
+    if (!(await assertWarehouseMutationPermission(req, res, id))) return;
+    const accountId =
+      typeof req.body?.accountId === "string" ? req.body.accountId.trim() : "";
+    if (accountId) {
+      const setting = await prisma.siteSetting.findUnique({
+        where: { key: CONTRACT_PAYMENT_ACCOUNTS_SETTING_KEY },
+        select: { value: true },
+      });
+      if (!readMinuPaymentAccounts(setting?.value).some((a) => a.id === accountId)) {
+        return res.status(400).json({ message: "Сонгосон Minu данс олдсонгүй" });
+      }
+    }
+    const warehouse = await prisma.warehouse.update({
+      where: { id },
+      data: { paymentAccountId: accountId || null },
+      select: { id: true, paymentAccountId: true },
+    });
+    return res.json(warehouse);
+  },
+);
 
 // Unified delivery destinations for WMS operators. MGL Business registers
 // stores as SalesVisitLocation records, while admin-managed stores use Branch.

@@ -3120,7 +3120,12 @@ router.post(
         where: { id },
         include: {
           request: {
-            select: { id: true, requestNumber: true, status: true },
+            select: {
+              id: true,
+              requestNumber: true,
+              status: true,
+              warehouseId: true,
+            },
           },
         },
       });
@@ -3190,7 +3195,9 @@ router.post(
         });
       }
 
-      const minuAccount = await getStockMinuPaymentAccount();
+      const minuAccount = await getStockMinuPaymentAccount(
+        payment.request.warehouseId,
+      );
       const qpayData = await createSystemQrInvoice(
         {
           merchantCode: minuAccount.merchantCode,
@@ -3393,6 +3400,7 @@ router.get(
 
       const payment = await prisma.stockRequestPayment.findUnique({
         where: { id },
+        include: { request: { select: { warehouseId: true } } },
       });
 
       if (!payment) {
@@ -3416,6 +3424,7 @@ router.get(
       }
 
       const minuAccount = await getStockMinuPaymentAccount(
+        payment.request.warehouseId,
         payment.transactionId,
       );
       const paymentCheck = await checkSystemQrPayment(
@@ -3476,6 +3485,7 @@ router.post("/stock-requests/qpay/callback", async (req, res) => {
 
     const payment = await prisma.stockRequestPayment.findUnique({
       where: { id: paymentId },
+      include: { request: { select: { warehouseId: true } } },
     });
 
     if (!payment) {
@@ -3490,7 +3500,10 @@ router.post("/stock-requests/qpay/callback", async (req, res) => {
       return res.status(400).json({ message: "no provider ref" });
     }
 
-    const minuAccount = await getStockMinuPaymentAccount(payment.transactionId);
+    const minuAccount = await getStockMinuPaymentAccount(
+      payment.request.warehouseId,
+      payment.transactionId,
+    );
     const paymentCheck = await checkSystemQrPayment(
       {
         merchantCode: minuAccount.merchantCode,

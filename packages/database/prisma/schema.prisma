@@ -1770,6 +1770,7 @@ model Warehouse {
   city                 String                       @default("")
   district             String                       @default("")
   phone                String?
+  paymentAccountId     String?
   dispatches           StockDispatch[]              @relation("WarehouseDispatches")
   createdBy            User?                        @relation("WarehouseCreatedBy", fields: [createdById], references: [id])
   inventories          WarehouseInventory[]

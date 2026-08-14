@@ -91,7 +91,7 @@ export function resolveUpgradeMerchantCodeFromSettings(
   );
 }
 
-function readUpgradePaymentAccounts(
+export function readMinuPaymentAccounts(
   paymentAccountsValue: string | null | undefined,
 ): UpgradeMinuPaymentAccount[] {
   if (!paymentAccountsValue) return [];
@@ -129,7 +129,7 @@ export function findUpgradePaymentAccountByMerchantCode(
   if (!expectedCode) return null;
 
   return (
-    readUpgradePaymentAccounts(paymentAccountsValue).find(
+    readMinuPaymentAccounts(paymentAccountsValue).find(
       (account) => account.merchantCode.toLowerCase() === expectedCode,
     ) || null
   );
@@ -150,7 +150,7 @@ export function resolveUpgradePaymentAccountFromSettings(
     if (!accountId) return null;
 
     return (
-      readUpgradePaymentAccounts(paymentAccountsValue).find(
+      readMinuPaymentAccounts(paymentAccountsValue).find(
         (account) => account.id === accountId,
       ) || null
     );

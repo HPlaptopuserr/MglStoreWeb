@@ -478,7 +478,11 @@ async function representativePayment(
   if (!(await representativeVendorAccess(current, vendorId))) return null;
   return prisma.stockRequestPayment.findFirst({
     where: { id: paymentId, organizationId: vendorId },
-    include: { request: { select: { requestNumber: true, status: true } } },
+    include: {
+      request: {
+        select: { requestNumber: true, status: true, warehouseId: true },
+      },
+    },
   });
 }
 
@@ -611,7 +615,9 @@ router.post(
     }
 
     try {
-      const minuAccount = await getStockMinuPaymentAccount();
+      const minuAccount = await getStockMinuPaymentAccount(
+        payment.request.warehouseId,
+      );
       const qpayData = await createSystemQrInvoice(
         {
           merchantCode: minuAccount.merchantCode,
@@ -783,6 +789,7 @@ router.get(
     if (!payment.transactionId) return res.json({ status: "PENDING" });
     try {
       const minuAccount = await getStockMinuPaymentAccount(
+        payment.request.warehouseId,
         payment.transactionId,
       );
       const paymentCheck = await checkSystemQrPayment(

@@ -17,7 +17,6 @@ import {
 } from "../sections/contract/PaymentAccountPanels";
 
 const PRO_UPGRADE_PAYMENT_ACCOUNT_KEY = "pro-upgrade-payment-account";
-const STOCK_PAYMENT_ACCOUNT_KEY = "stock-request-payment-account";
 
 const readUpgradePaymentAccountId = (raw?: string | null) => {
   if (!raw) return "";
@@ -67,9 +66,6 @@ export function ContractPaymentAccountsSettings() {
   const [upgradePaymentAccountId, setUpgradePaymentAccountId] = useState("");
   const [savingUpgradeAccount, setSavingUpgradeAccount] = useState(false);
   const [upgradeAccountSaved, setUpgradeAccountSaved] = useState(false);
-  const [stockPaymentAccountId, setStockPaymentAccountId] = useState("");
-  const [savingStockAccount, setSavingStockAccount] = useState(false);
-  const [stockAccountSaved, setStockAccountSaved] = useState(false);
   const [systemQrCities, setSystemQrCities] = useState<SystemQrCity[]>([]);
   const [systemQrKhoroos, setSystemQrKhoroos] = useState<SystemQrKhoroo[]>([]);
   const [systemQrCategories, setSystemQrCategories] = useState<SystemQrCategory[]>([]);
@@ -84,24 +80,12 @@ export function ContractPaymentAccountsSettings() {
         const savedUpgradeAccountId = readUpgradePaymentAccountId(
           data[PRO_UPGRADE_PAYMENT_ACCOUNT_KEY],
         );
-        const savedStockAccountId = readUpgradePaymentAccountId(
-          data[STOCK_PAYMENT_ACCOUNT_KEY],
-        );
         setUpgradePaymentAccountId(savedUpgradeAccountId);
         setUpgradeAccountSaved(
           Boolean(
             savedUpgradeAccountId &&
               paymentAccounts.some(
                 (account) => account.id === savedUpgradeAccountId,
-              ),
-          ),
-        );
-        setStockPaymentAccountId(savedStockAccountId);
-        setStockAccountSaved(
-          Boolean(
-            savedStockAccountId &&
-              paymentAccounts.some(
-                (account) => account.id === savedStockAccountId,
               ),
           ),
         );
@@ -270,45 +254,6 @@ export function ContractPaymentAccountsSettings() {
     }
   };
 
-  const saveStockPaymentAccount = async () => {
-    setSavingStockAccount(true);
-    setStockAccountSaved(false);
-    try {
-      const account = (settings.paymentAccounts || []).find(
-        (item: ContractPaymentAccount) => item.id === stockPaymentAccountId,
-      );
-      if (stockPaymentAccountId && !account?.merchantCode) {
-        throw new Error("Сонгосон Minu дансны merchantCode дутуу байна");
-      }
-      const res = await adminFetch(
-        `${API}/site-settings/${STOCK_PAYMENT_ACCOUNT_KEY}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            value: JSON.stringify({
-              accountId: account?.id || "",
-              merchantCode: account?.merchantCode || "",
-              updatedAt: new Date().toISOString(),
-            }),
-          }),
-        },
-      );
-      if (!res.ok) {
-        throw new Error("Агуулахын төлбөрийн данс хадгалахад алдаа гарлаа");
-      }
-      setStockAccountSaved(true);
-    } catch (error) {
-      console.error("save stock payment account error", error);
-      alert(
-        error instanceof Error
-          ? error.message
-          : "Агуулахын төлбөрийн данс хадгалахад алдаа гарлаа",
-      );
-    } finally {
-      setSavingStockAccount(false);
-    }
-  };
-
   const updateSystemQr = (field: string, value: string | boolean) => {
     setSettings((prev: any) => ({
       ...prev,
@@ -456,16 +401,6 @@ export function ContractPaymentAccountsSettings() {
         await persistUpgradePaymentAccount("");
         setUpgradePaymentAccountId("");
         setUpgradeAccountSaved(false);
-      }
-      if (stockPaymentAccountId === accountId) {
-        await adminFetch(`${API}/site-settings/${STOCK_PAYMENT_ACCOUNT_KEY}`, {
-          method: "PUT",
-          body: JSON.stringify({
-            value: JSON.stringify({ accountId: "", merchantCode: "" }),
-          }),
-        });
-        setStockPaymentAccountId("");
-        setStockAccountSaved(false);
       }
       setSettings((prev: any) => ({
         ...prev,
@@ -637,83 +572,9 @@ export function ContractPaymentAccountsSettings() {
     (account: ContractPaymentAccount) =>
       account.id === upgradePaymentAccountId,
   );
-  const selectedStockAccount = (settings.paymentAccounts || []).find(
-    (account: ContractPaymentAccount) => account.id === stockPaymentAccountId,
-  );
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-5 shadow-sm">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white">
-            <CreditCard size={20} />
-          </div>
-          <div>
-            <h2 className="text-base font-black text-slate-900">
-              Агуулахын татан авалтын төлбөрийн данс
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-slate-600">
-              Эзэмшигч болон худалдааны төлөөлөгчийн агуулахын захиалгын Minu
-              Dynamic QR төлбөр энд сонгосон дансанд орно.
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-              Төлбөр хүлээн авах Minu данс
-            </span>
-            <select
-              value={stockPaymentAccountId}
-              onChange={(event) => {
-                setStockPaymentAccountId(event.target.value);
-                setStockAccountSaved(false);
-              }}
-              className="w-full rounded-xl border border-blue-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-            >
-              <option value="">Данс сонгоогүй — агуулахын QR төлбөр хаалттай</option>
-              {(settings.paymentAccounts || []).map(
-                (account: ContractPaymentAccount) => (
-                  <option key={account.id} value={account.id}>
-                    {account.label || account.merchantName} ·{" "}
-                    {getBankLabel(account.bankCode)} {account.accountNumber || "-"}
-                    {" · "}{account.merchantCode}
-                  </option>
-                ),
-              )}
-            </select>
-          </label>
-          <button
-            type="button"
-            onClick={saveStockPaymentAccount}
-            disabled={savingStockAccount}
-            className="mt-auto inline-flex h-[42px] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {savingStockAccount ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : stockAccountSaved ? (
-              <ShieldCheck size={16} />
-            ) : (
-              <Save size={16} />
-            )}
-            {savingStockAccount
-              ? "Хадгалж байна..."
-              : stockAccountSaved
-                ? "Хадгалагдсан"
-                : "Агуулахад хадгалах"}
-          </button>
-        </div>
-        {selectedStockAccount && (
-          <div className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
-            <CreditCard size={15} />
-            {selectedStockAccount.label || selectedStockAccount.merchantName}
-            {" · "}{getBankLabel(selectedStockAccount.bankCode)}
-            {" · "}{selectedStockAccount.accountNumber || "Дансны дугаар хадгалагдаагүй"}
-          </div>
-        )}
-      </section>
-
       <section className="rounded-2xl border border-orange-200 bg-orange-50/60 p-5 shadow-sm">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white">

@@ -9,6 +9,7 @@ import {
   Shield,
   Palette,
   Check,
+  CreditCard,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 
@@ -21,10 +22,20 @@ type Warehouse = {
   phone: string | null;
   capacity: number | null;
   isActive: boolean;
+  paymentAccountId: string | null;
+};
+
+type PaymentAccount = {
+  id: string;
+  merchantCode: string;
 };
 
 export default function SettingsPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>([]);
+  const [savingPaymentWarehouseId, setSavingPaymentWarehouseId] = useState<
+    string | null
+  >(null);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Warehouse>>({});
@@ -38,10 +49,17 @@ export default function SettingsPage() {
 
     const load = async () => {
       try {
-        const res = await wmsFetch(`${API}/warehouses`);
-        if (res.ok) {
-          const data = await res.json();
+        const [warehouseRes, accountRes] = await Promise.all([
+          wmsFetch(`${API}/warehouses`),
+          wmsFetch(`${API}/warehouses/payment-accounts`),
+        ]);
+        if (warehouseRes.ok) {
+          const data = await warehouseRes.json();
           setWarehouses(Array.isArray(data) ? data : data.warehouses || []);
+        }
+        if (accountRes.ok) {
+          const data = await accountRes.json();
+          setPaymentAccounts(Array.isArray(data.accounts) ? data.accounts : []);
         }
       } catch {
         /* ignore */
@@ -62,6 +80,43 @@ export default function SettingsPage() {
       phone: wh.phone || "",
       capacity: wh.capacity || 0,
     });
+  };
+
+  const savePaymentAccount = async (
+    warehouseId: string,
+    accountId: string,
+  ) => {
+    setSavingPaymentWarehouseId(warehouseId);
+    try {
+      const res = await wmsFetch(
+        `${API}/warehouses/${warehouseId}/payment-account`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ accountId }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.message || "Төлбөрийн данс хадгалахад алдаа гарлаа");
+      }
+      setWarehouses((current) =>
+        current.map((warehouse) =>
+          warehouse.id === warehouseId
+            ? { ...warehouse, paymentAccountId: data.paymentAccountId || null }
+            : warehouse,
+        ),
+      );
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Төлбөрийн данс хадгалахад алдаа гарлаа",
+      );
+    } finally {
+      setSavingPaymentWarehouseId(null);
+    }
   };
 
   const handleSave = async () => {
@@ -309,6 +364,50 @@ export default function SettingsPage() {
             <p className="py-6 text-center text-sm text-slate-400">
               Агуулах бүртгэгдээгүй байна
             </p>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-5">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-slate-900">
+          <CreditCard className="h-4 w-4 text-blue-600" />
+          Татан авалтын Minu төлбөрийн данс
+        </h2>
+        <p className="mb-4 text-xs leading-5 text-slate-500">
+          Эзэмшигч болон худалдааны төлөөлөгчийн QR төлбөр тухайн агуулахад
+          сонгосон Minu Dynamic QR дансанд орно.
+        </p>
+        <div className="space-y-3">
+          {warehouses.map((warehouse) => (
+            <div
+              key={warehouse.id}
+              className="rounded-lg border border-blue-100 bg-white p-4"
+            >
+              <p className="mb-2 text-sm font-semibold text-slate-900">
+                {warehouse.name}
+              </p>
+              <select
+                value={warehouse.paymentAccountId || ""}
+                disabled={savingPaymentWarehouseId === warehouse.id}
+                onChange={(event) =>
+                  savePaymentAccount(warehouse.id, event.target.value)
+                }
+                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 disabled:opacity-60"
+              >
+                <option value="">Данс сонгоогүй — QR төлбөр хаалттай</option>
+                {paymentAccounts.map((account) => (
+                  <option key={account.id} value={account.id}>
+                    Minu · {account.merchantCode}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+          {paymentAccounts.length === 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+              Холбосон Minu данс алга. System Admin → Төлбөрийн данс хэсэгт
+              эхлээд Minu Dynamic QR дансаа нэг удаа холбоно уу.
+            </div>
           )}
         </div>
       </div>
