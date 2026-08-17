@@ -565,7 +565,6 @@ router.get(
           },
         },
         orderBy: { updatedAt: "desc" },
-        take: 80,
       });
 
       return res.json(organizations.map(toBusinessAppControlPayload));
