@@ -473,7 +473,9 @@ async function sendPasswordResetOtpEmail(email: string, code: string) {
 }
 
 function normalizeWebIdentifier(email?: string, phone?: string) {
-  const identifier = (email || phone || "").trim();
+  // Verification requests include both fields. Prefer the supplied phone so
+  // Verify.mn never attempts to validate the email address as a phone number.
+  const identifier = (phone || email || "").trim();
   const isPhone =
     /^[0-9+\-\s()]{7,16}$/.test(identifier) && !identifier.includes("@");
   const digits = identifier.replace(/[^\d]/g, "");
