@@ -1544,6 +1544,7 @@ router.post("/pos/sales/:id/void", async (req, res) => {
           await adjustStock(tx, {
             productId: line.productId,
             warehouseId: warehouseId ?? undefined,
+            branchId: sale.branchId,
             change: line.qty, // positive = return to stock
             reason: InventoryReason.RETURN,
             note: `Void sale ${sale.receiptNo}`,

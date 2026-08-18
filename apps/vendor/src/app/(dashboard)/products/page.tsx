@@ -88,6 +88,15 @@ function formatExpiryDate(value?: string | null) {
   return date.toLocaleDateString("mn-MN");
 }
 
+function getDaysUntilExpiry(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((date.getTime() - today.getTime()) / 86_400_000);
+}
+
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<BusinessCategory[]>([]);
@@ -162,6 +171,7 @@ export default function ProductsPage() {
         organizationId: orgId,
         includeExpiredInventory: "1",
         includeInactive: "1",
+        includePosReceiptLots: "1",
       });
       const res = await authFetch(`${API}/products?${params.toString()}`, {
         cache: "no-store",
@@ -986,7 +996,7 @@ export default function ProductsPage() {
                   </div>
                   <div>
                     <div className="text-xs font-medium text-slate-500">
-                      Дуусах хугацаа
+                      Ойрын дуусах хугацаа
                     </div>
                     <div className="text-sm font-black text-slate-900">
                       {formatExpiryDate(selectedProduct.expiryDate)}
@@ -994,6 +1004,80 @@ export default function ProductsPage() {
                   </div>
                 </div>
               )}
+
+              {selectedProduct.supplyType !== "CHINA_PREORDER" &&
+                (selectedProduct.receiptLots?.length || 0) > 0 && (
+                  <div className="space-y-3 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-black text-slate-900">
+                          Хүлээн авалтын партууд
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          Дуусах хугацаа ойроосоо дараалсан
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-cyan-100 px-2.5 py-1 text-xs font-black text-cyan-800">
+                        {selectedProduct.receiptLots?.length} парт
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {selectedProduct.receiptLots?.map((lot) => {
+                        const daysUntilExpiry = getDaysUntilExpiry(
+                          lot.expiryDate,
+                        );
+                        return (
+                          <div
+                            key={lot.id}
+                            className="rounded-xl border border-slate-200 bg-white p-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-bold text-slate-500">
+                                  {lot.batchNumber
+                                    ? `Парт № ${lot.batchNumber}`
+                                    : "Партын дугааргүй"}
+                                </p>
+                                <p
+                                  className={`mt-0.5 text-sm font-black ${
+                                    daysUntilExpiry !== null &&
+                                    daysUntilExpiry < 0
+                                      ? "text-rose-600"
+                                      : daysUntilExpiry !== null &&
+                                          daysUntilExpiry <= 14
+                                        ? "text-amber-600"
+                                        : "text-slate-900"
+                                  }`}
+                                >
+                                  {lot.expiryDate
+                                    ? formatExpiryDate(lot.expiryDate)
+                                    : "Хугацаагүй"}
+                                </p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-sm font-black text-cyan-700">
+                                  {lot.remainingQuantity} үлдсэн
+                                </p>
+                                <p className="text-[11px] text-slate-400">
+                                  авсан {lot.quantity}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-2 border-t border-slate-100 pt-2 text-[11px] leading-relaxed text-slate-500">
+                              <p>{lot.supplierName}</p>
+                              <p>
+                                {lot.branchName} · {lot.receiptNo} ·{" "}
+                                {new Date(lot.receivedAt).toLocaleDateString(
+                                  "mn-MN",
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
               {selectedProduct.images.length > 1 && (
                 <div className="space-y-3">

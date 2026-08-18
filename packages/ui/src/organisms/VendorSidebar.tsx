@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   Megaphone,
   Package,
+  PackagePlus,
   PackageSearch,
   RotateCcw,
   ScanLine,
@@ -106,6 +107,13 @@ const VENDOR_NAV_GROUPS: Array<
             label: "Өөрийн бүтээгдэхүүн",
             href: "/products",
             icon: Package,
+          },
+          {
+            id: "goods-receipts",
+            label: "Бараа хүлээн авах",
+            href: "/goods-receipts",
+            icon: PackagePlus,
+            posOnly: true,
           },
           {
             id: "preorder-products",

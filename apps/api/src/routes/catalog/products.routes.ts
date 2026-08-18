@@ -1040,6 +1040,9 @@ router.get("/products", optionalAuth, async (req, res) => {
       : false;
     const isOwnOrganizationCatalog =
       Boolean(requestedOrganizationId) && canBypassRequestedOrg;
+    const includePosReceiptLots =
+      isOwnOrganizationCatalog &&
+      isTruthyQueryValue(req.query.includePosReceiptLots);
     const includeInactive =
       isTruthyQueryValue(req.query.includeInactive) &&
       (canBypassAllVisibility || canBypassRequestedOrg);
@@ -1247,13 +1250,75 @@ router.get("/products", optionalAuth, async (req, res) => {
       }
     }
 
+    const posReceiptLots =
+      productIds.length > 0 && includePosReceiptLots
+        ? await prisma.posGoodsReceiptItem.findMany({
+            where: {
+              productId: { in: productIds },
+              remainingQuantity: { gt: 0 },
+            },
+            select: {
+              id: true,
+              productId: true,
+              quantity: true,
+              remainingQuantity: true,
+              batchNumber: true,
+              expiryDate: true,
+              receipt: {
+                select: {
+                  receiptNo: true,
+                  supplierName: true,
+                  receivedAt: true,
+                  branch: { select: { name: true } },
+                },
+              },
+            },
+            orderBy: [
+              { expiryDate: { sort: "asc", nulls: "last" } },
+              { createdAt: "asc" },
+            ],
+          })
+        : [];
+
+    const receiptLotsByProductId = new Map<
+      string,
+      Array<(typeof posReceiptLots)[number]>
+    >();
+    for (const lot of posReceiptLots) {
+      receiptLotsByProductId.set(lot.productId, [
+        ...(receiptLotsByProductId.get(lot.productId) || []),
+        lot,
+      ]);
+    }
+
     let response = products
       .map((product) => {
-        const expiryDate = expiryByProductId.get(product.id) ?? null;
+        const receiptLots = receiptLotsByProductId.get(product.id) || [];
+        const expiryDate = [
+          expiryByProductId.get(product.id),
+          ...receiptLots.map((lot) => lot.expiryDate),
+        ]
+          .filter((value): value is Date => Boolean(value))
+          .sort((a, b) => a.getTime() - b.getTime())[0];
         return {
           ...product,
           images: product.images,
           expiryDate: expiryDate?.toISOString() ?? null,
+          ...(includePosReceiptLots
+            ? {
+                receiptLots: receiptLots.map((lot) => ({
+                  id: lot.id,
+                  quantity: lot.quantity,
+                  remainingQuantity: lot.remainingQuantity,
+                  batchNumber: lot.batchNumber,
+                  expiryDate: lot.expiryDate?.toISOString() ?? null,
+                  receiptNo: lot.receipt.receiptNo,
+                  supplierName: lot.receipt.supplierName,
+                  receivedAt: lot.receipt.receivedAt.toISOString(),
+                  branchName: lot.receipt.branch.name,
+                })),
+              }
+            : {}),
           searchScore: search ? scoreProductForSearch(product, search) : 0,
           interestScore: scoreProductForInterest(product, interestProfile),
         };

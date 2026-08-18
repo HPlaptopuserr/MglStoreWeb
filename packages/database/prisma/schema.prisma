@@ -77,6 +77,7 @@ model User {
   pushTokens                       PushToken[]
   posShifts                        PosShift[]                     @relation("PosShiftCashier")
   posSales                         PosSale[]                      @relation("PosSaleCashier")
+  receivedPosGoodsReceipts         PosGoodsReceipt[]              @relation("PosGoodsReceiptReceivedBy")
   posCreditSales                   PosCreditSale[]                @relation("PosCreditSaleCashier")
   posLoyaltyTransactions           PosLoyaltyTransaction[]        @relation("PosLoyaltyCustomer")
   openedRestaurantTickets          RestaurantTicket[]             @relation("RestaurantTicketOpenedBy")
@@ -445,6 +446,7 @@ model Organization {
   joinRequests                     OrgJoinRequest[]             @relation("OrgJoinRequests")
   posShifts                        PosShift[]
   posSales                         PosSale[]
+  posGoodsReceipts                 PosGoodsReceipt[]
   posCreditCustomers               PosCreditCustomer[]
   posCreditSales                   PosCreditSale[]
   posLoyaltyTransactions           PosLoyaltyTransaction[]
@@ -915,6 +917,7 @@ model Branch {
   posRegisters           PosRegister[]
   posShifts              PosShift[]
   posSales               PosSale[]
+  posGoodsReceipts       PosGoodsReceipt[]
   posCreditSales         PosCreditSale[]
   posLoyaltyTransactions PosLoyaltyTransaction[]
   restaurantTables       RestaurantTable[]
@@ -960,6 +963,7 @@ model PosRegister {
   qpayInvoices        QPayInvoice[]
   posShifts           PosShift[]
   posSales            PosSale[]
+  posGoodsReceipts    PosGoodsReceipt[]
   posCreditSales      PosCreditSale[]
 
   @@unique([organizationId, branchId, name])
@@ -1069,6 +1073,7 @@ model Product {
   warehouseInventories  WarehouseInventory[]
   stockRequestItems     WarehouseStockRequestItem[]   @relation("StockRequestProducts")
   posSaleLines          PosSaleLine[]
+  posGoodsReceiptItems  PosGoodsReceiptItem[]
   returnItems           DispatchReturnItem[]          @relation("ReturnProducts")
   productInteractions   ProductInteraction[]
   productInterestScores ProductInterestScore[]
@@ -2934,6 +2939,71 @@ model PosCashDrawerEvent {
   @@index([cashierId])
   @@index([type])
   @@index([createdAt])
+}
+
+/// Goods received directly for POS sale, separately from warehouse receiving.
+/// Every item is an inventory lot so different expiry dates are never overwritten.
+model PosGoodsReceipt {
+  id                 String                @id @default(uuid())
+  receiptNo          String                @unique
+  organizationId     String
+  branchId           String
+  registerId         String
+  receivedById       String
+  supplierName       String
+  supplierRegisterNo String?
+  documentNo         String?
+  note               String?
+  receivedAt         DateTime              @default(now())
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+  organization       Organization          @relation(fields: [organizationId], references: [id])
+  branch             Branch                @relation(fields: [branchId], references: [id])
+  register           PosRegister           @relation(fields: [registerId], references: [id])
+  receivedBy         User                  @relation("PosGoodsReceiptReceivedBy", fields: [receivedById], references: [id])
+  items              PosGoodsReceiptItem[]
+
+  @@index([organizationId, receivedAt])
+  @@index([branchId, receivedAt])
+  @@index([registerId, receivedAt])
+  @@index([receivedById, receivedAt])
+}
+
+/// A separately tracked batch/lot from one POS goods receipt.
+model PosGoodsReceiptItem {
+  id                String                      @id @default(uuid())
+  receiptId         String
+  productId         String
+  quantity          Int
+  remainingQuantity Int
+  batchNumber       String?
+  expiryDate        DateTime?                   @db.Date
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+  receipt           PosGoodsReceipt             @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product           Product                     @relation(fields: [productId], references: [id])
+  allocations       PosGoodsReceiptAllocation[]
+
+  @@index([receiptId])
+  @@index([productId, expiryDate])
+  @@index([productId, remainingQuantity, expiryDate])
+  @@index([batchNumber])
+}
+
+/// Records which receipt lot a POS sale consumed so a void restores the exact lot.
+model PosGoodsReceiptAllocation {
+  id            String              @id @default(uuid())
+  receiptItemId String
+  referenceId   String
+  referenceType String
+  quantity      Int
+  createdAt     DateTime            @default(now())
+  reversedAt    DateTime?
+  receiptItem   PosGoodsReceiptItem @relation(fields: [receiptItemId], references: [id], onDelete: Cascade)
+
+  @@index([receiptItemId])
+  @@index([referenceType, referenceId])
+  @@index([referenceType, referenceId, reversedAt])
 }
 
 /// Structured POS sale record.

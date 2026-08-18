@@ -1284,6 +1284,7 @@ router.post("/pos/sales", async (req, res) => {
           await adjustStock(tx, {
             productId,
             warehouseId: warehouseId ?? undefined,
+            branchId: body.branchId,
             change: -qty,
             reason: InventoryReason.ORDER,
             note: body.note || "POS sale",

@@ -28,6 +28,12 @@ function formatExpiryDate(value?: string | null) {
 }
 
 function toCatalogItem(product: Product): ProductCatalogItem {
+  const receiptLotCount = product.receiptLots?.length || 0;
+  const expiryDate =
+    product.supplyType !== "CHINA_PREORDER"
+      ? formatExpiryDate(product.expiryDate)
+      : null;
+
   return {
     id: product.id,
     name: product.name,
@@ -40,9 +46,10 @@ function toCatalogItem(product: Product): ProductCatalogItem {
     secondaryPrice: product.costPrice,
     stock: product.stock,
     expiry:
-      product.supplyType !== "CHINA_PREORDER"
-        ? formatExpiryDate(product.expiryDate)
-        : null,
+      expiryDate && receiptLotCount > 0
+        ? `${expiryDate} · ${receiptLotCount} парт`
+        : expiryDate ||
+          (receiptLotCount > 0 ? `${receiptLotCount} парт` : null),
     statusLabel: product.isActive ? "Идэвхтэй" : "Идэвхгүй",
     statusTone: product.isActive ? "success" : "neutral",
     badge:

@@ -12,6 +12,18 @@ export interface BusinessCategory {
   children?: BusinessCategory[];
 }
 
+export interface ProductReceiptLot {
+  id: string;
+  quantity: number;
+  remainingQuantity: number;
+  batchNumber: string | null;
+  expiryDate: string | null;
+  receiptNo: string;
+  supplierName: string;
+  receivedAt: string;
+  branchName: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -28,6 +40,7 @@ export interface Product {
   taxProductCode: string | null;
   stock: number;
   expiryDate?: string | null;
+  receiptLots?: ProductReceiptLot[];
   supplyType: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays: number | null;
   preorderNote: string | null;
