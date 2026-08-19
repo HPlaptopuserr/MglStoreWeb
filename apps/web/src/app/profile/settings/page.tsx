@@ -110,7 +110,7 @@ export default function ProfileSettingsPage() {
 }
 
 function ProfileSettingsContent() {
-  const { user, loading, updateUser, refreshUser, authFetch } = useAuth();
+  const { user, loading, updateUser, refreshUser, logout, authFetch } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [section, setSection] = useState<SettingsSection>("profile");
