@@ -305,7 +305,8 @@ function slugify(value: string) {
     .trim()
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 async function generateUniqueOrganizationSlug(name: string): Promise<string> {

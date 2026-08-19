@@ -363,7 +363,8 @@ type WebEmailOtpPurpose =
   | "web-email-login"
   | "web-password-reset"
   | "admin-password-reset"
-  | "vendor-password-reset";
+  | "vendor-password-reset"
+  | "account-deletion";
 
 type WebEmailOtpChallenge = {
   purpose: WebEmailOtpPurpose;
@@ -469,6 +470,13 @@ async function sendPasswordResetOtpEmail(email: string, code: string) {
   await emailService.send({
     to: email,
     template: authEmailTemplates.passwordResetOtp(code),
+  });
+}
+
+async function sendAccountDeletionOtpEmail(email: string, code: string) {
+  await emailService.send({
+    to: email,
+    template: authEmailTemplates.accountDeletionOtp(code),
   });
 }
 
@@ -2508,4 +2516,226 @@ router.put("/web/change-password", requireAuth, async (req, res) => {
   }
 });
 
+// ── Account Deletion Helpers & Endpoints ────────────────────────────────────
+
+async function performAccountDeletion(userId: string) {
+  const now = new Date();
+  const anonymizedEmail = `deleted_${userId}_${Date.now()}@mglstore.local`;
+
+  return prisma.$transaction(async (tx) => {
+    // 1. Delete active sessions and push tokens
+    await tx.pushToken.deleteMany({ where: { userId } });
+    await tx.userSession.deleteMany({ where: { userId } });
+    await tx.passwordResetToken.deleteMany({ where: { userId } });
+
+    // 2. Soft-delete addresses
+    await tx.address.updateMany({
+      where: { userId },
+      data: { deletedAt: now },
+    });
+
+    // 3. Deactivate & anonymize user record and profile
+    const updatedUser = await tx.user.update({
+      where: { id: userId },
+      data: {
+        deletedAt: now,
+        isActive: false,
+        email: anonymizedEmail,
+        registerNumber: null,
+        identitySubject: null,
+        profile: {
+          upsert: {
+            create: {
+              fullName: "Устгагдсан хэрэглэгч",
+              phoneNumber: null,
+              avatarUrl: null,
+            },
+            update: {
+              fullName: "Устгагдсан хэрэглэгч",
+              phoneNumber: null,
+              avatarUrl: null,
+            },
+          },
+        },
+      },
+    });
+
+    return updatedUser;
+  });
+}
+
+// ── DELETE /auth/account & DELETE /auth/web/account — Authenticated user deletion ─
+const handleAuthenticatedAccountDeletion = async (req: Request, res: any) => {
+  try {
+    const { userId } = (req as any).user as AuthPayload;
+    const { password } = req.body || {};
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user || user.deletedAt) {
+      return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
+    }
+
+    if (password && user.passwordHash) {
+      const isValid = await bcrypt.compare(password, user.passwordHash);
+      if (!isValid) {
+        return res.status(401).json({ message: "Нууц үг буруу байна" });
+      }
+    }
+
+    await performAccountDeletion(userId);
+
+    return res.json({
+      success: true,
+      message: "Таны бүртгэл болон хувийн мэдээлэл системээс амжилттай устгагдлаа",
+    });
+  } catch (error) {
+    console.error("[account deletion error]", error);
+    return res.status(500).json({ message: "Бүртгэл устгахад алдаа гарлаа" });
+  }
+};
+
+router.delete("/account", requireAuth, handleAuthenticatedAccountDeletion);
+router.delete("/web/account", requireAuth, handleAuthenticatedAccountDeletion);
+router.delete("/delete-account", requireAuth, handleAuthenticatedAccountDeletion);
+
+// ── POST /auth/account-deletion/request-otp — Public OTP Request for Deletion ─
+router.post("/account-deletion/request-otp", async (req: Request, res: any) => {
+  try {
+    const { identifier, email, phone } = req.body || {};
+    const normalized = normalizeWebIdentifier(email || identifier, phone);
+
+    if (!normalized.identifier) {
+      return res
+        .status(400)
+        .json({ message: "И-мэйл эсвэл утасны дугаараа оруулна уу" });
+    }
+
+    if (!normalized.isPhone) {
+      const user = await prisma.user.findUnique({
+        where: { email: normalized.identifier.toLowerCase() },
+      });
+
+      if (!user || user.deletedAt) {
+        return res.status(404).json({ message: "Бүртгэлтэй хэрэглэгч олдсонгүй" });
+      }
+
+      if (!emailService.isConfigured()) {
+        const challenge = createEmailOtpChallenge(
+          { id: user.id, email: user.email },
+          "account-deletion",
+        );
+        return res.json({
+          message: "Баталгаажуулах код үүслээ (Dev mode)",
+          channel: "emailOtp",
+          challengeToken: challenge.challengeToken,
+          emailMasked: maskEmail(user.email),
+          devCode: challenge.code,
+          expiresIn: challenge.expiresIn,
+        });
+      }
+
+      const challenge = createEmailOtpChallenge(
+        { id: user.id, email: user.email },
+        "account-deletion",
+      );
+      await sendAccountDeletionOtpEmail(user.email, challenge.code);
+
+      return res.json({
+        message: "Бүртгэл устгах баталгаажуулах код и-мэйл рүү илгээгдлээ",
+        channel: "emailOtp",
+        challengeToken: challenge.challengeToken,
+        emailMasked: maskEmail(user.email),
+        expiresIn: challenge.expiresIn,
+      });
+    }
+
+    const user = await findWebUserByIdentifier(normalized.identifier, true);
+    if (!user || user.deletedAt) {
+      return res.status(404).json({ message: "Бүртгэлтэй хэрэглэгч олдсонгүй" });
+    }
+
+    const session = await createVerifyMnSession(normalized.identifier);
+    return res.json({
+      message: "Verify.mn баталгаажуулалт эхэллээ",
+      channel: "verifyMn",
+      session,
+    });
+  } catch (error) {
+    console.error("[account-deletion/request-otp error]", error);
+    return res.status(500).json({ message: "Хүсэлт илгээхэд алдаа гарлаа" });
+  }
+});
+
+// ── POST /auth/account-deletion/confirm-otp — Confirm OTP and delete account ──
+router.post("/account-deletion/confirm-otp", async (req: Request, res: any) => {
+  try {
+    const { otpCode, challengeToken, sessionId, phone } = req.body || {};
+
+    if (challengeToken && otpCode) {
+      const challenge = verifyEmailOtpChallenge(
+        otpCode,
+        challengeToken,
+        "account-deletion",
+      );
+
+      const user = await prisma.user.findUnique({
+        where: { id: challenge.userId },
+      });
+
+      if (!user || user.deletedAt) {
+        return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
+      }
+
+      await performAccountDeletion(challenge.userId);
+
+      return res.json({
+        success: true,
+        message: "Таны бүртгэл болон хувийн мэдээлэл системээс амжилттай устгагдлаа",
+      });
+    }
+
+    if (sessionId && phone) {
+      const normalizedPhone = String(phone).replace(/[^\d]/g, "");
+      const user = await findWebUserByIdentifier(normalizedPhone, true);
+
+      if (!user || user.deletedAt) {
+        return res.status(404).json({ message: "Хэрэглэгч олдсонгүй" });
+      }
+
+      const status = await getVerifyMnSessionStatus(String(sessionId));
+      if (status.sessionStatus !== "VERIFIED") {
+        return res
+          .status(400)
+          .json({ message: "Утасны баталгаажуулалт амжилтгүй байна" });
+      }
+
+      await performAccountDeletion(user.id);
+
+      return res.json({
+        success: true,
+        message: "Таны бүртгэл болон хувийн мэдээлэл системээс амжилттай устгагдлаа",
+      });
+    }
+
+    return res
+      .status(400)
+      .json({ message: "Баталгаажуулалтын мэдээлэл дутуу байна" });
+  } catch (error: any) {
+    if (error.message === "EMAIL_OTP_INVALID_CODE") {
+      return res.status(400).json({ message: "Баталгаажуулах код буруу байна" });
+    }
+    if (error.message === "EMAIL_OTP_EXPIRED") {
+      return res
+        .status(400)
+        .json({ message: "Баталгаажуулах кодын хугацаа дууссан байна" });
+    }
+    console.error("[account-deletion/confirm-otp error]", error);
+    return res.status(500).json({ message: "Бүртгэл устгахад алдаа гарлаа" });
+  }
+});
+
 export default router;
+

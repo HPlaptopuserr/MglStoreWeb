@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { organizationPath } from "@/lib/organization-links";
 import { motion } from "framer-motion";
 import {
   ChevronLeft,
@@ -311,7 +312,7 @@ export function ServiceDetailOverlay({ postId, onClose }: Props) {
 
                 {post.organization && (
                   <Link
-                    href={`/organizations/${post.organization.id}`}
+                    href={organizationPath(post.organization)}
                     className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm transition-shadow hover:shadow-md"
                     onClick={onClose}
                   >
@@ -340,7 +341,7 @@ export function ServiceDetailOverlay({ postId, onClose }: Props) {
                 )}
 
                 <Link
-                  href={post.organization ? `/organizations/${post.organization.id}` : "/services"}
+                  href={post.organization ? organizationPath(post.organization) : "/services"}
                   onClick={onClose}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-black py-3 text-sm font-bold text-white shadow-lg shadow-black/10 transition-colors hover:bg-amber-500 hover:text-black"
                 >

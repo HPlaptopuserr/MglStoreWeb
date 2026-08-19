@@ -2561,6 +2561,7 @@ router.get(
                       id: true,
                       name: true,
                       sku: true,
+                      barcode: true,
                       price: true,
                       images: { take: 1, select: { url: true } },
                     },
@@ -2581,7 +2582,13 @@ router.get(
             },
           },
           warehouse: {
-            select: { id: true, name: true, address: true, phone: true },
+            select: {
+              id: true,
+              name: true,
+              address: true,
+              phone: true,
+              paymentAccountId: true,
+            },
           },
           organization: {
             select: { id: true, name: true, phone: true },
@@ -2629,6 +2636,7 @@ router.get("/stock-requests/dispatches/:id", requireAuth, async (req, res) => {
                     id: true,
                     name: true,
                     sku: true,
+                    barcode: true,
                     price: true,
                     images: { take: 1, select: { url: true } },
                   },
@@ -2649,7 +2657,13 @@ router.get("/stock-requests/dispatches/:id", requireAuth, async (req, res) => {
           },
         },
         warehouse: {
-          select: { id: true, name: true, address: true, phone: true },
+          select: {
+            id: true,
+            name: true,
+            address: true,
+            phone: true,
+            paymentAccountId: true,
+          },
         },
         organization: {
           select: { id: true, name: true, phone: true },

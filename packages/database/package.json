@@ -8,6 +8,7 @@
     "build": "pnpm db:generate && tsc -p tsconfig.json",
     "db:generate": "node scripts/with-root-env.cjs prisma generate",
     "db:migrate": "node scripts/with-root-env.cjs prisma migrate dev",
+    "db:push": "node scripts/with-root-env.cjs prisma db push",
     "db:studio": "node scripts/with-root-env.cjs prisma studio",
     "db:seed": "node scripts/with-root-env.cjs ts-node prisma/seed.ts",
     "db:seed-categories": "node scripts/with-root-env.cjs ts-node prisma/seed-categories.ts",

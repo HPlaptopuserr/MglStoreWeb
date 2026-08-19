@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Eye, Loader2, Megaphone, Phone, Send, Store,
 import { getServicePostCategories } from "@mgl/ui";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { organizationPath } from "@/lib/organization-links";
 
 interface ServicePost {
   id: string;
@@ -219,7 +220,7 @@ export default function ServiceDetailPage({
             </section>
 
             <Link
-              href={`/organizations/${post.organization.id}`}
+              href={organizationPath(post.organization)}
               className="flex items-center gap-3 rounded-xl bg-white p-3 shadow-sm transition-shadow hover:shadow-md"
             >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
@@ -241,7 +242,7 @@ export default function ServiceDetailPage({
             </Link>
 
             <Link
-              href={`/organizations/${post.organization.id}`}
+              href={organizationPath(post.organization)}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-black py-3.5 text-sm font-bold text-white shadow-lg shadow-black/10 transition-colors hover:bg-amber-500 hover:text-black"
             >
               <Phone className="h-4 w-4" />

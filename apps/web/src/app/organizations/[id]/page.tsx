@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
 import { API } from "@/lib/api";
 import {
@@ -374,11 +374,15 @@ export async function generateMetadata({
     organization.description ||
     "MGL Store платформ дахь байгууллагын хуудас.";
   const image = socialImageUrl(organization.logo);
-  const url = `${SITE_URL}/o/${encodeURIComponent(organization.slug || id)}`;
+  const canonicalHandle = organization.slug || id;
+  const url = `${SITE_URL}/organizations/${encodeURIComponent(canonicalHandle)}`;
 
   return {
     title,
     description,
+    alternates: {
+      canonical: url,
+    },
     openGraph: {
       type: "website",
       siteName: "MGL Store",
@@ -412,6 +416,14 @@ async function renderOrganizationDetailPage({
 
   if (!organization) {
     notFound();
+  }
+
+  // Keep old bookmarks and ID-based links working, while ensuring people see
+  // and share the readable public address instead of an internal UUID.
+  if (organization.slug && id !== organization.slug) {
+    permanentRedirect(
+      `/organizations/${encodeURIComponent(organization.slug)}`,
+    );
   }
 
   return <BusinessProfileClient data={organization} />;

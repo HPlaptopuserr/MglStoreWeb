@@ -15,10 +15,11 @@ import {
 } from "lucide-react";
 import { PolicySection } from "./_components/PolicySection";
 import { PrivacyPolicyNav } from "./_components/PrivacyPolicyNav";
+import { AccountDeletionForm } from "./_components/AccountDeletionForm";
 
 const POLICY_URL = "https://mglstore.mn/privacy-policy";
 const CONTACT_EMAIL = "bigservice1316@gmail.com";
-const DELETE_REQUEST_URL = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent("MGL Business — бүртгэл устгах хүсэлт")}`;
+
 
 export const metadata: Metadata = {
   title: "Нууцлалын бодлого | MGL Business",
@@ -299,36 +300,32 @@ export default function PrivacyPolicyPage() {
           </PolicySection>
 
           <PolicySection id="account-deletion" number="08" title="Бүртгэл болон мэдээлэл устгах">
-            <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
-              <h3 className="font-bold text-slate-950">MGL Store болон MGL Business мэдээлэл устгуулах хүсэлт</h3>
-              <p className="mt-2 text-slate-700">
-                Апп ашиглах боломжгүй эсвэл устгасан байсан ч доорх товчоор
-                хүсэлт илгээнэ үү. MGL Store эсвэл MGL Business аппын алинд
-                хамаарах, бүртгэлтэй и-мэйл/утас, устгуулах мэдээллийн төрлөө
-                тодорхой бичнэ. Нууц үг, OTP болон картын мэдээллээ и-мэйлээр
-                бүү илгээгээрэй.
-              </p>
-              <a
-                href={DELETE_REQUEST_URL}
-                className="mt-4 inline-flex items-center gap-2 rounded-xl bg-red-700 px-4 py-3 font-semibold text-white transition-colors hover:bg-red-800"
-              >
-                <Mail className="h-4 w-4" aria-hidden="true" />
-                Устгах хүсэлт илгээх
-              </a>
+            <p>
+              Apple App Store Guidelines болон хувийн мэдээлэл хамгаалах хуулийн хүрээнд
+              хэрэглэгч нь өөрийн бүртгэл болон түүнд хамаарах хувийн мэдээллийг хүссэн
+              үедээ системээс бүрмөсөн устгуулах бүрэн эрхтэй. Та доорх хэсэгт бүртгэлтэй
+              и-мэйл эсвэл утасны дугаараа оруулж, нэг удаагийн нууц кодоор баталгаажуулан
+              бүртгэлээ шууд автоматаар устгах боломжтой.
+            </p>
+
+            <div className="my-6">
+              <AccountDeletionForm />
             </div>
+
+            <h4 className="mt-6 font-bold text-slate-900">Устгах үйл явцын дараалал:</h4>
             <ol className="list-decimal space-y-2 pl-5 marker:font-semibold marker:text-slate-900">
-              <li>Бид хүсэлтийг хүлээн авч, account эзэмшигчийн эрхийг баталгаажуулна.</li>
-              <li>Баталгаажсаны дараа account-ийг идэвхгүй болгож, устгаж болох профайл, session, push token болон account-тэй холбоотой өгөгдлийг устгах ажиллагааг эхлүүлнэ.</li>
-              <li>Татвар, төлбөр, гэрээ, залилангаас сэргийлэх, аудит болон маргаантай холбоотой заавал хадгалах мэдээллийг зөвхөн шаардлагатай хугацаанд тусгаарлан хадгалж болно.</li>
-              <li>Хууль ёсны саадгүй хүсэлтийг боломжит богино хугацаанд шийдвэрлэж, үр дүнг бүртгэлтэй холбоо барих сувгаар мэдэгдэнэ.</li>
+              <li>Бүртгэл эзэмшигч нь и-мэйл эсвэл утсаар нэг удаагийн OTP кодоор эрхээ баталгаажуулна.</li>
+              <li>Баталгаажсан даруйд бүртгэл идэвхгүй болж, идэвхтэй нэвтрэх сессүүд, push notification token-ууд болон хувийн мэдээллүүд устгагдана.</li>
+              <li>Татвар, төлбөр тооцоо, нягтлан бодох, гэрээ болон хууль ёсны маргаан шийдвэрлэхэд заавал шаардлагатай түүхэн баримтуудыг зөвхөн хуульд заасан хугацаанд хувийн мэдээллээс нь салгаж (anonymized) хадгална.</li>
+              <li>Устгагдсан бүртгэлийн и-мэйл/утасны дугаар чөлөөлөгдөх тул дараа нь хүсвэл шинээр бүртгэл үүсгэх боломж нээлттэй үлдэнэ.</li>
             </ol>
             <p>
-              Account устгаснаар байгууллагын хамтын бүртгэл, бусад хэрэглэгчид
-              хамаарах хууль ёсны бизнесийн баримт автоматаар устахгүй байж болно.
-              Харин таны таних мэдээллийг боломжтой хэмжээнд салгах, нуух эсвэл
-              таних боломжгүй болгоно.
+              Account устгаснаар таны харьяалагдаж байсан байгууллагын хамтын бүртгэл болон
+              бусад ажилтнуудад хамаарах бизнесийн баримт устахгүй бөгөөд таны хувийн
+              таних мэдээлэл системээс бүрэн салгагдана.
             </p>
           </PolicySection>
+
 
           <PolicySection id="children" number="09" title="Хүүхдийн нууцлал">
             <p>

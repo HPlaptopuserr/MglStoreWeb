@@ -322,9 +322,9 @@ router.get("/warehouses", requireAuth, async (req, res) => {
     // Transform to include organizations array and optional lightweight stock summary.
     const result = warehouses.map((w: (typeof warehouses)[number]) => ({
       ...w,
-      organizations: w.organizations.map(
-        (wo: (typeof w.organizations)[number]) => wo.organization,
-      ),
+      organizations: (w.organizations || [])
+        .map((wo: (typeof w.organizations)[number]) => wo?.organization)
+        .filter(Boolean),
       ...(summary === "true"
         ? {
             summary: statsByWarehouse.get(w.id) ?? {
@@ -338,7 +338,7 @@ router.get("/warehouses", requireAuth, async (req, res) => {
       createdBy: w.createdBy
         ? {
             id: w.createdBy.id,
-            name: w.createdBy.profile?.fullName || w.createdBy.email,
+            name: w.createdBy.profile?.fullName || w.createdBy.email || "Ажилтан",
           }
         : null,
     }));
@@ -348,9 +348,26 @@ router.get("/warehouses", requireAuth, async (req, res) => {
     console.error("get warehouses error", error);
     res.status(500).json({
       message: "Агуулахуудыг авахад алдаа гарлаа",
+      error: error instanceof Error ? error.message : String(error),
     });
   }
 });
+
+
+const BANK_NAMES: Record<string, string> = {
+  "050000": "Хаан банк",
+  "150000": "Голомт банк",
+  "040000": "ХХБ (TDB)",
+  "320000": "ХасБанк",
+  "340000": "Төрийн банк",
+  "010000": "Монголбанк",
+  "300000": "Капитрон банк",
+  "380000": "Богд банк",
+  "290000": "ҮХОБ",
+  "360000": "Чингис хаан банк",
+  "210000": "Ариг банк",
+  "220000": "Тээвэр хөгжлийн банк",
+};
 
 // Warehouse operators may select an account, but never receive its password.
 router.get("/warehouses/payment-accounts", requireAuth, async (req, res) => {
@@ -362,10 +379,46 @@ router.get("/warehouses/payment-accounts", requireAuth, async (req, res) => {
     where: { key: CONTRACT_PAYMENT_ACCOUNTS_SETTING_KEY },
     select: { value: true },
   });
-  const accounts = readMinuPaymentAccounts(setting?.value).map((account) => ({
-    id: account.id,
-    merchantCode: account.merchantCode,
-  }));
+
+  let rawList: any[] = [];
+  try {
+    rawList = setting?.value ? JSON.parse(setting.value) : [];
+  } catch {
+    rawList = [];
+  }
+  if (!Array.isArray(rawList)) rawList = [];
+
+  const accounts = rawList
+    .map((item) => {
+      const id = String(item?.id || "").trim();
+      const merchantCode = String(item?.merchantCode || "").trim();
+      const bankCode = String(item?.bankCode || "050000").trim();
+      const bankName = BANK_NAMES[bankCode] || item?.bankName || "Банк";
+      const merchantName = String(item?.merchantName || item?.label || "").trim();
+      const corporateName = String(item?.corporateName || "").trim();
+      const label = String(item?.label || merchantName || bankName).trim();
+      const accountNumber = String(item?.accountNumber || "").trim();
+      const registerNumber = String(item?.registerNumber || "").trim();
+      const accountHolder =
+        corporateName ||
+        merchantName ||
+        [item?.lastName, item?.firstName].filter(Boolean).join(" ") ||
+        "Хүлээн авагч";
+
+      return {
+        id,
+        label,
+        merchantName,
+        merchantCode,
+        bankCode,
+        bankName,
+        accountNumber,
+        registerNumber,
+        accountHolder,
+      };
+    })
+    .filter((a) => a.id && (a.accountNumber || a.merchantCode));
+
   return res.json({ accounts });
 });
 

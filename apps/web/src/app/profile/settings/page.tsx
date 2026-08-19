@@ -293,6 +293,42 @@ function ProfileSettingsContent() {
     }
   };
 
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
+  const deleteAccount = async () => {
+    setDeletingAccount(true);
+    try {
+      const res = await authFetch(`${API_BASE}/api/auth/account`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: currentPassword.trim() || undefined }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setPasswordError(data?.message || "Бүртгэл устгахад алдаа гарлаа");
+        return;
+      }
+      logout();
+      router.push("/");
+    } catch {
+      setPasswordError("Сервертэй холбогдоход алдаа гарлаа");
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
+  const requestDeleteAccount = () => {
+    setPasswordError("");
+    setConfirmAction({
+      title: "Бүртгэлээ бүрмөсөн устгах уу?",
+      description:
+        "Таны хувийн мэдээлэл, хаяг, session болон хандах эрхүүд системээс бүрмөсөн устах бөгөөд сэргээх боломжгүй.",
+      confirmLabel: "Тийм, бүртгэл устгах",
+      tone: "danger",
+      onConfirm: deleteAccount,
+    });
+  };
+
   const requestPasswordChange = (event: FormEvent) => {
     event.preventDefault();
     setPasswordError("");
@@ -440,6 +476,8 @@ function ProfileSettingsContent() {
             onToggleCurrent={() => setShowCurrent((value) => !value)}
             onToggleNew={() => setShowNew((value) => !value)}
             onSubmit={requestPasswordChange}
+            onDeleteAccount={requestDeleteAccount}
+            deletingAccount={deletingAccount}
           />
         )}
 
