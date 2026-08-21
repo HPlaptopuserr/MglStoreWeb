@@ -1,5 +1,6 @@
 export * from "./api/get-pos-products";
 export * from "./api/get-own-products";
+export * from "./api/product-registration";
 export * from "./api/create-sale";
 export * from "./api/open-shift";
 export * from "./api/close-shift";
@@ -20,18 +21,21 @@ export * from "./components/PosCheckoutView";
 export * from "./components/PosCustomerDisplay";
 export * from "./components/ShiftOpenDialog";
 export * from "./components/ReceiptPreview";
+export * from "./components/UnknownBarcodeDialog";
 
 export * from "./hooks/usePosCart";
 export * from "./hooks/useCurrentShift";
 export * from "./hooks/usePosProducts";
 export * from "./hooks/useOwnProducts";
 export * from "./hooks/useCreateSale";
+export * from "./hooks/useUnknownBarcodeRegistration";
 
 export * from "./store/pos.store";
 
 export * from "./types/pos.types";
 export * from "./types/shift.types";
 export * from "./types/receipt.types";
+export * from "./types/product-registration.types";
 
 export * from "./utils/calculate-cart-total";
 export * from "./utils/group-cart-items";

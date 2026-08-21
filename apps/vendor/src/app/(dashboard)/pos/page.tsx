@@ -52,6 +52,8 @@ import {
   useOwnProducts,
   usePosProducts,
   useCurrentShift,
+  useUnknownBarcodeRegistration,
+  UnknownBarcodeDialog,
   type CartLine,
   type CartTotals,
   type PaymentMethod,
@@ -667,6 +669,7 @@ export default function PosDemoPage() {
   const { state, totals, addProduct, dispatch } = usePosCart();
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
   const { shift, loading: shiftLoading, load: loadShift, open: openShift, close: closeShiftFn } = useCurrentShift();
+  const unknownBarcode = useUnknownBarcodeRegistration();
   const shiftRegisterMismatch = Boolean(
     shift?.registerId &&
       registerConfig?.id &&
@@ -1714,6 +1717,24 @@ export default function PosDemoPage() {
     return addProduct(product);
   };
 
+  const handleRegisteredProduct = (product: (typeof products)[number]) => {
+    const result = addRegisterProduct(product);
+    if (!result.ok) {
+      setScanStatus("not-found");
+      setScanMessage(`Бараа бүртгэгдсэн ч үлдэгдэл хүрэлцэхгүй байна: ${product.name}`);
+      return;
+    }
+
+    unknownBarcode.close();
+    reloadProducts();
+    setSearchInput("");
+    setScanBuffer("");
+    setScanStatus("success");
+    setScanMessage(`Өөрийн санд оруулаад сагсанд нэмлээ: ${product.name}`);
+    scannerInputRef.current?.focus();
+    paymentSectionRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  };
+
   const handleSelectCreditRepayment = (credit: PosCreditListItem) => {
     const repaymentLines = buildCreditRepaymentCartLines(credit);
     if (repaymentLines.length === 0) {
@@ -1927,8 +1948,9 @@ export default function PosDemoPage() {
 
     if (!found) {
       setSearchInput(normalized);
-      setScanMessage(`Код олдсонгүй: ${normalized}`);
+      setScanMessage(`Танай санд бүртгэлгүй код: ${normalized}`);
       setScanStatus("not-found");
+      unknownBarcode.open(normalized);
       return;
     }
 
@@ -4871,6 +4893,16 @@ export default function PosDemoPage() {
       </div>
       </div>
     </div>
+    <UnknownBarcodeDialog
+      open={unknownBarcode.isOpen}
+      barcode={unknownBarcode.barcode}
+      organizationId={organizationId}
+      suggestions={unknownBarcode.suggestions}
+      lookupLoading={unknownBarcode.loading}
+      lookupError={unknownBarcode.lookupError}
+      onClose={unknownBarcode.close}
+      onCreated={handleRegisteredProduct}
+    />
     </>
   );
 }
