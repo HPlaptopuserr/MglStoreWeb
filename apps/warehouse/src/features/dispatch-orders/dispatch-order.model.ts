@@ -68,7 +68,13 @@ export type Dispatch = {
       note?: string | null;
     } | null;
   };
-  warehouse: { id: string; name: string; address?: string; phone?: string };
+  warehouse: {
+    id: string;
+    name: string;
+    address?: string;
+    phone?: string;
+    paymentAccountId?: string | null;
+  };
   organization: { id: string; name: string; phone?: string };
   driver?: {
     id: string;
@@ -222,5 +228,3 @@ export function paymentOutstanding(
     Number(payment.totalAmount || 0) - Number(payment.paidAmount || 0),
   );
 }
-
-

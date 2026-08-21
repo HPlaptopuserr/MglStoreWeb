@@ -27,7 +27,12 @@ type Warehouse = {
 
 type PaymentAccount = {
   id: string;
+  label: string;
+  merchantName: string;
   merchantCode: string;
+  bankName: string;
+  accountNumber: string;
+  accountHolder: string;
 };
 
 export default function SettingsPage() {
@@ -82,10 +87,7 @@ export default function SettingsPage() {
     });
   };
 
-  const savePaymentAccount = async (
-    warehouseId: string,
-    accountId: string,
-  ) => {
+  const savePaymentAccount = async (warehouseId: string, accountId: string) => {
     setSavingPaymentWarehouseId(warehouseId);
     try {
       const res = await wmsFetch(
@@ -97,7 +99,9 @@ export default function SettingsPage() {
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.message || "Төлбөрийн данс хадгалахад алдаа гарлаа");
+        throw new Error(
+          data.message || "Төлбөрийн данс хадгалахад алдаа гарлаа",
+        );
       }
       setWarehouses((current) =>
         current.map((warehouse) =>
@@ -397,7 +401,9 @@ export default function SettingsPage() {
                 <option value="">Данс сонгоогүй — QR төлбөр хаалттай</option>
                 {paymentAccounts.map((account) => (
                   <option key={account.id} value={account.id}>
-                    Minu · {account.merchantCode}
+                    {account.bankName} ·{" "}
+                    {account.accountNumber || account.merchantCode} ·{" "}
+                    {account.accountHolder}
                   </option>
                 ))}
               </select>

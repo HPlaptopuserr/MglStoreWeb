@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   Ban,
@@ -12,7 +13,12 @@ import {
   RotateCcw,
   Send,
   Truck,
+  Pencil,
+  Save,
+  History,
+  X,
 } from "lucide-react";
+import { API, wmsFetch } from "@/lib/api";
 import {
   type Dispatch,
   STATUS_MAP,
@@ -24,6 +30,26 @@ import {
   stepIndex,
 } from "./dispatch-order.model";
 
+type ItemEditLog = {
+  id: string;
+  createdAt: string;
+  user?: {
+    email?: string;
+    profile?: { fullName?: string | null } | null;
+  } | null;
+  meta?: {
+    actorEmail?: string;
+    actorRole?: string;
+    actorOrgRole?: string | null;
+    items?: Array<{
+      itemId: string;
+      productName: string;
+      oldQuantity: number;
+      newQuantity: number;
+    }>;
+  } | null;
+};
+
 export function DispatchDetail({
   dispatch: d,
   onConfirm,
@@ -33,6 +59,7 @@ export function DispatchDetail({
   onInvoice,
   onReturn,
   actionLoading,
+  onItemsUpdated,
 }: {
   dispatch: Dispatch;
   onConfirm: () => void;
@@ -42,7 +69,66 @@ export function DispatchDetail({
   onInvoice: () => void;
   onReturn: () => void;
   actionLoading: boolean;
+  onItemsUpdated: () => Promise<void>;
 }) {
+  const [editingItems, setEditingItems] = useState(false);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [savingItems, setSavingItems] = useState(false);
+  const [itemError, setItemError] = useState("");
+  const [editLogs, setEditLogs] = useState<ItemEditLog[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+    setQuantities(
+      Object.fromEntries(
+        d.request.items.map((item) => [
+          item.id,
+          item.approvedQuantity ?? item.quantity,
+        ]),
+      ),
+    );
+  }, [d]);
+
+  const loadEditLogs = async () => {
+    const response = await wmsFetch(
+      `${API}/stock-requests/dispatches/${d.id}/item-edit-logs`,
+    );
+    if (response.ok) {
+      const body = await response.json();
+      setEditLogs(Array.isArray(body.logs) ? (body.logs as ItemEditLog[]) : []);
+    }
+  };
+
+  const saveItems = async () => {
+    setSavingItems(true);
+    setItemError("");
+    try {
+      const response = await wmsFetch(
+        `${API}/stock-requests/dispatches/${d.id}/items`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            items: d.request.items.map((item) => ({
+              itemId: item.id,
+              quantity: quantities[item.id],
+            })),
+          }),
+        },
+      );
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok)
+        throw new Error(body.message || "Бараа засахад алдаа гарлаа");
+      setEditingItems(false);
+      await onItemsUpdated();
+      await loadEditLogs();
+    } catch (error) {
+      setItemError(
+        error instanceof Error ? error.message : "Бараа засахад алдаа гарлаа",
+      );
+    } finally {
+      setSavingItems(false);
+    }
+  };
   const st = STATUS_MAP[d.status];
   const StIcon = st?.icon || Clock;
   const totalQty = d.request.items.reduce(
@@ -202,9 +288,77 @@ export function DispatchDetail({
 
       {/* Items Table */}
       <div className="mt-5">
-        <h3 className="mb-3 text-sm font-bold uppercase text-slate-400">
-          Барааны жагсаалт
-        </h3>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h3 className="text-sm font-bold uppercase text-slate-400">
+            Барааны жагсаалт
+          </h3>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setShowHistory((current) => !current);
+                if (!showHistory) void loadEditLogs();
+              }}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            >
+              <History className="h-3.5 w-3.5" />
+              Засварын түүх
+            </button>
+            {d.status === "PENDING" && !editingItems && (
+              <button
+                onClick={() => setEditingItems(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Тоо засах
+              </button>
+            )}
+          </div>
+        </div>
+        {itemError && (
+          <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+            {itemError}
+          </div>
+        )}
+        {showHistory && (
+          <div className="mb-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            {editLogs.length === 0 ? (
+              <p className="text-xs text-slate-500">Засварын түүх алга.</p>
+            ) : (
+              editLogs.map((log) => (
+                <div
+                  key={log.id}
+                  className="rounded-lg bg-white px-3 py-2 text-xs text-slate-600"
+                >
+                  <div className="flex justify-between gap-3">
+                    <strong className="text-slate-800">
+                      {log.user?.profile?.fullName ||
+                        log.user?.email ||
+                        log.meta?.actorEmail ||
+                        "Ажилтан"}
+                    </strong>
+                    <span>
+                      {new Date(log.createdAt).toLocaleString("mn-MN")}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-slate-500">
+                    Эрх: {log.meta?.actorRole || "—"}
+                    {log.meta?.actorOrgRole
+                      ? ` / ${log.meta.actorOrgRole}`
+                      : ""}
+                  </p>
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                    {(log.meta?.items || []).map((item) => (
+                      <span key={item.itemId}>
+                        {item.productName}: <b>{item.oldQuantity}</b> →{" "}
+                        <b>{item.newQuantity}</b>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
         <div className="overflow-hidden rounded-lg border border-slate-200">
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
@@ -242,7 +396,23 @@ export function DispatchDetail({
                       {item.product.sku || "—"}
                     </td>
                     <td className="px-4 py-2.5 text-right font-bold text-slate-800">
-                      {qty}
+                      {editingItems ? (
+                        <input
+                          type="number"
+                          min={1}
+                          max={100000}
+                          value={quantities[item.id] ?? qty}
+                          onChange={(event) =>
+                            setQuantities((current) => ({
+                              ...current,
+                              [item.id]: Number(event.target.value),
+                            }))
+                          }
+                          className="h-8 w-20 rounded-md border border-blue-300 px-2 text-right outline-none focus:ring-2 focus:ring-blue-100"
+                        />
+                      ) : (
+                        qty
+                      )}
                     </td>
                     <td className="px-4 py-2.5 text-right text-slate-600">
                       ₮{Number(item.product.price).toLocaleString()}
@@ -273,6 +443,29 @@ export function DispatchDetail({
             </tfoot>
           </table>
         </div>
+        {editingItems && (
+          <div className="mt-3 flex justify-end gap-2">
+            <button
+              onClick={() => setEditingItems(false)}
+              disabled={savingItems}
+              className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600"
+            >
+              <X className="h-3.5 w-3.5" /> Цуцлах
+            </button>
+            <button
+              onClick={() => void saveItems()}
+              disabled={savingItems}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {savingItems ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}
+              Хадгалах
+            </button>
+          </div>
+        )}
       </div>
 
       {d.request.note && (
@@ -358,5 +551,3 @@ export function DispatchDetail({
     </div>
   );
 }
-
-

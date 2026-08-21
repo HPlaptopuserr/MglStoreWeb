@@ -16,6 +16,7 @@ import {
   PaymentMethod,
   ReturnStatus,
   WarehouseType,
+  AuditAction,
 } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import { Permission, hasPlatformPermission, isFullAdmin } from "@mgl/types";
@@ -234,8 +235,8 @@ async function assertStockRequestDecisionAccess(
   const actor = getActor(req);
   const canManagePlatformStock = Boolean(
     actor &&
-      (isFullAdmin(actor.role) ||
-        hasPlatformPermission(actor.role, Permission.MANAGE_STOCK)),
+    (isFullAdmin(actor.role) ||
+      hasPlatformPermission(actor.role, Permission.MANAGE_STOCK)),
   );
   if (canManagePlatformStock) return actor;
   if (actor && (await hasWarehouseAccess(actor, warehouseId))) return actor;
@@ -493,7 +494,13 @@ router.get("/stock-requests", requireAuth, async (req, res) => {
     res.json(
       includeOwnership
         ? requests
-        : requests.map(({ requestedBy: _requestedBy, reviewedBy: _reviewedBy, ...request }) => request),
+        : requests.map(
+            ({
+              requestedBy: _requestedBy,
+              reviewedBy: _reviewedBy,
+              ...request
+            }) => request,
+          ),
     );
   } catch (error) {
     console.error("get stock requests error", error);
@@ -2328,9 +2335,12 @@ router.patch(
         return res.status(400).json({ message: confirmation.message });
       }
 
-      const method = (paymentMethod || payment.paymentMethod) as PaymentMethod | null;
+      const method = (paymentMethod ||
+        payment.paymentMethod) as PaymentMethod | null;
       if (!method)
-        return res.status(400).json({ message: "Төлбөрийн хэлбэр шаардлагатай" });
+        return res
+          .status(400)
+          .json({ message: "Төлбөрийн хэлбэр шаардлагатай" });
       const entryAmount = confirmation.paidAmount - Number(payment.paidAmount);
       const confirmedAt = new Date();
       const updated = await prisma.$transaction(async (tx) => {
@@ -2691,6 +2701,189 @@ router.get("/stock-requests/dispatches/:id", requireAuth, async (req, res) => {
     });
   }
 });
+
+router.patch(
+  "/stock-requests/dispatches/:id/items",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const actor = getActor(req);
+      const { id } = req.params;
+      const inputItems: unknown[] = Array.isArray(req.body?.items)
+        ? req.body.items
+        : [];
+      if (!actor?.userId || inputItems.length === 0) {
+        return res
+          .status(400)
+          .json({ message: "Засах барааны мэдээлэл дутуу байна" });
+      }
+
+      const dispatch = await prisma.stockDispatch.findUnique({
+        where: { id },
+        include: {
+          request: {
+            include: {
+              items: {
+                include: {
+                  product: {
+                    select: { id: true, name: true, sku: true, price: true },
+                  },
+                },
+              },
+              payment: true,
+            },
+          },
+        },
+      });
+      if (!dispatch)
+        return res.status(404).json({ message: "Илгээмж олдсонгүй" });
+      if (!(await assertWarehouseAccess(req, res, dispatch.warehouseId)))
+        return;
+      if (dispatch.status !== "PENDING") {
+        return res
+          .status(409)
+          .json({ message: "Зөвхөн хүлээгдэж буй илгээмжийн барааг засна" });
+      }
+      if (Number(dispatch.request.payment?.paidAmount || 0) > 0) {
+        return res
+          .status(409)
+          .json({
+            message: "Төлбөр орсон нэхэмжлэхийн барааг засах боломжгүй",
+          });
+      }
+
+      const currentById = new Map(
+        dispatch.request.items.map((item) => [item.id, item]),
+      );
+      type CurrentItem = (typeof dispatch.request.items)[number];
+      const changes: Array<{ current: CurrentItem; quantity: number }> = [];
+      for (const input of inputItems) {
+        const candidate = input as { itemId?: unknown; quantity?: unknown };
+        const itemId = String(candidate.itemId || "");
+        const quantity = Number(candidate.quantity);
+        const current = currentById.get(itemId);
+        if (
+          !current ||
+          !Number.isInteger(quantity) ||
+          quantity < 1 ||
+          quantity > 100000
+        ) {
+          throw new Error("INVALID_ITEM_QUANTITY");
+        }
+        changes.push({ current, quantity });
+      }
+
+      const oldTotal = dispatch.request.items.reduce(
+        (sum, item) =>
+          sum +
+          Number(item.approvedQuantity ?? item.quantity) *
+            Number(item.product.price),
+        0,
+      );
+      const nextQuantityById = new Map(
+        changes.map(({ current, quantity }) => [current.id, quantity]),
+      );
+      const newTotal = dispatch.request.items.reduce(
+        (sum, item) =>
+          sum +
+          Number(
+            nextQuantityById.get(item.id) ??
+              item.approvedQuantity ??
+              item.quantity,
+          ) *
+            Number(item.product.price),
+        0,
+      );
+      const changedItems = changes.filter(
+        ({ current, quantity }) =>
+          Number(current.approvedQuantity ?? current.quantity) !== quantity,
+      );
+      if (changedItems.length === 0)
+        return res.json({ dispatch, unchanged: true });
+
+      await prisma.$transaction(async (tx) => {
+        for (const { current, quantity } of changedItems) {
+          await tx.warehouseStockRequestItem.update({
+            where: { id: current.id },
+            data: { approvedQuantity: quantity },
+          });
+        }
+        if (dispatch.request.payment) {
+          await tx.stockRequestPayment.update({
+            where: { id: dispatch.request.payment.id },
+            data: { totalAmount: newTotal },
+          });
+        }
+        await tx.auditLog.create({
+          data: {
+            userId: actor.userId,
+            action: AuditAction.STOCK_REQUEST_ITEMS_UPDATED,
+            ip: req.ip,
+            userAgent: req.get("user-agent") || null,
+            meta: {
+              dispatchId: dispatch.id,
+              requestId: dispatch.requestId,
+              warehouseId: dispatch.warehouseId,
+              actorEmail: actor.email,
+              actorRole: actor.role,
+              actorOrgRole: actor.orgRole || null,
+              oldTotal,
+              newTotal,
+              items: changedItems.map(({ current, quantity }) => ({
+                itemId: current.id,
+                productId: current.productId,
+                productName: current.product.name,
+                sku: current.product.sku,
+                oldQuantity: Number(
+                  current.approvedQuantity ?? current.quantity,
+                ),
+                newQuantity: quantity,
+              })),
+            },
+          },
+        });
+      });
+
+      return res.json({ success: true, changedCount: changedItems.length });
+    } catch (error) {
+      if (error instanceof Error && error.message === "INVALID_ITEM_QUANTITY") {
+        return res
+          .status(400)
+          .json({ message: "Барааны тоо 1-100000 бүхэл тоо байна" });
+      }
+      console.error("update pending dispatch items error", error);
+      return res.status(500).json({ message: "Бараа засахад алдаа гарлаа" });
+    }
+  },
+);
+
+router.get(
+  "/stock-requests/dispatches/:id/item-edit-logs",
+  requireAuth,
+  async (req, res) => {
+    const dispatch = await prisma.stockDispatch.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, warehouseId: true, requestId: true },
+    });
+    if (!dispatch)
+      return res.status(404).json({ message: "Илгээмж олдсонгүй" });
+    if (!(await assertWarehouseAccess(req, res, dispatch.warehouseId))) return;
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        action: AuditAction.STOCK_REQUEST_ITEMS_UPDATED,
+        meta: { path: ["dispatchId"], equals: dispatch.id },
+      },
+      include: {
+        user: {
+          select: { email: true, profile: { select: { fullName: true } } },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    });
+    return res.json({ logs });
+  },
+);
 
 // Confirm dispatch (Warehouse confirms → deducts inventory → CONFIRMED)
 router.patch(

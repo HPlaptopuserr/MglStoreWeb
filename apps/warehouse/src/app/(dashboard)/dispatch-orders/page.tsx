@@ -37,7 +37,10 @@ import {
   paymentStatusLabel,
   stepIndex,
 } from "@/features/dispatch-orders/dispatch-order.model";
-import { InvoiceView, PadaanView } from "@/features/dispatch-orders/DispatchPrintViews";
+import {
+  InvoiceView,
+  PadaanView,
+} from "@/features/dispatch-orders/DispatchPrintViews";
 import { DispatchDetail } from "@/features/dispatch-orders/DispatchDetail";
 
 export default function DispatchOrdersPage() {
@@ -306,6 +309,15 @@ export default function DispatchOrdersPage() {
   const openInvoice = (d: Dispatch) => {
     setSelectedDispatch(d);
     setShowInvoice(true);
+  };
+
+  const refreshSelectedDispatch = async () => {
+    if (!selectedDispatch) return;
+    const response = await wmsFetch(
+      `${API}/stock-requests/dispatches/${selectedDispatch.id}`,
+    );
+    if (response.ok) setSelectedDispatch(await response.json());
+    await fetchDispatches(true);
   };
 
   // ───── Returns ─────
@@ -1097,6 +1109,7 @@ export default function DispatchOrdersPage() {
               onInvoice={() => setShowInvoice(true)}
               onReturn={() => openReturnForm(selectedDispatch)}
               actionLoading={actionLoading}
+              onItemsUpdated={refreshSelectedDispatch}
             />
           </div>
         </div>
