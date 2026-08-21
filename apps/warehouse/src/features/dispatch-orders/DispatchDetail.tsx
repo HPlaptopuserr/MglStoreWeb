@@ -17,6 +17,9 @@ import {
   Save,
   History,
   X,
+  Plus,
+  Trash2,
+  Search,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 import {
@@ -42,12 +45,29 @@ type ItemEditLog = {
     actorRole?: string;
     actorOrgRole?: string | null;
     items?: Array<{
-      itemId: string;
+      itemId: string | null;
+      productId: string;
+      changeType?: "ADDED" | "REMOVED" | "UPDATED";
       productName: string;
       oldQuantity: number;
       newQuantity: number;
     }>;
   } | null;
+};
+
+type EditableProduct = {
+  id: string;
+  name: string;
+  sku: string | null;
+  barcode?: string | null;
+  price: number;
+  availableQuantity: number;
+};
+
+type EditableRow = {
+  key: string;
+  productId: string;
+  quantity: number;
 };
 
 export function DispatchDetail({
@@ -72,22 +92,75 @@ export function DispatchDetail({
   onItemsUpdated: () => Promise<void>;
 }) {
   const [editingItems, setEditingItems] = useState(false);
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [editableRows, setEditableRows] = useState<EditableRow[]>([]);
+  const [editableProducts, setEditableProducts] = useState<EditableProduct[]>(
+    [],
+  );
+  const [productSearch, setProductSearch] = useState("");
+  const [productsLoading, setProductsLoading] = useState(false);
   const [savingItems, setSavingItems] = useState(false);
   const [itemError, setItemError] = useState("");
   const [editLogs, setEditLogs] = useState<ItemEditLog[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
-    setQuantities(
-      Object.fromEntries(
-        d.request.items.map((item) => [
-          item.id,
-          item.approvedQuantity ?? item.quantity,
-        ]),
-      ),
+    setEditableRows(
+      d.request.items.map((item) => ({
+        key: item.id,
+        productId: item.productId,
+        quantity: item.approvedQuantity ?? item.quantity,
+      })),
     );
   }, [d]);
+
+  useEffect(() => {
+    if (!editingItems) return;
+    const timer = window.setTimeout(async () => {
+      setProductsLoading(true);
+      try {
+        const response = await wmsFetch(
+          `${API}/stock-requests/dispatches/${d.id}/editable-products?search=${encodeURIComponent(productSearch)}`,
+        );
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok)
+          throw new Error(
+            body.message || "Барааны жагсаалт авахад алдаа гарлаа",
+          );
+        const available = Array.isArray(body.products)
+          ? (body.products as EditableProduct[])
+          : [];
+        const currentProducts: EditableProduct[] = d.request.items.map(
+          (item) => ({
+            id: item.product.id,
+            name: item.product.name,
+            sku: item.product.sku,
+            barcode: item.product.barcode,
+            price: item.product.price,
+            availableQuantity: Number.MAX_SAFE_INTEGER,
+          }),
+        );
+        setEditableProducts(
+          Array.from(
+            new Map(
+              [...currentProducts, ...available].map((product) => [
+                product.id,
+                product,
+              ]),
+            ).values(),
+          ),
+        );
+      } catch (error) {
+        setItemError(
+          error instanceof Error
+            ? error.message
+            : "Барааны жагсаалт авахад алдаа гарлаа",
+        );
+      } finally {
+        setProductsLoading(false);
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [d.id, d.request.items, editingItems, productSearch]);
 
   const loadEditLogs = async () => {
     const response = await wmsFetch(
@@ -100,6 +173,13 @@ export function DispatchDetail({
   };
 
   const saveItems = async () => {
+    if (
+      editableRows.length === 0 ||
+      editableRows.some((row) => !row.productId || row.quantity < 1)
+    ) {
+      setItemError("Дор хаяж нэг бараа сонгож, зөв тоо оруулна уу");
+      return;
+    }
     setSavingItems(true);
     setItemError("");
     try {
@@ -108,9 +188,9 @@ export function DispatchDetail({
         {
           method: "PATCH",
           body: JSON.stringify({
-            items: d.request.items.map((item) => ({
-              itemId: item.id,
-              quantity: quantities[item.id],
+            items: editableRows.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
             })),
           }),
         },
@@ -138,6 +218,13 @@ export function DispatchDetail({
   const totalAmt = d.request.items.reduce(
     (s, i) => s + (i.approvedQuantity || i.quantity) * Number(i.product.price),
     0,
+  );
+  const paymentStarted = Boolean(
+    d.request.payment &&
+    (d.request.payment.status !== "PENDING" ||
+      Number(d.request.payment.paidAmount) > 0 ||
+      d.request.payment.transactionId ||
+      d.request.payment.paymentMethod),
   );
 
   return (
@@ -305,11 +392,21 @@ export function DispatchDetail({
             </button>
             {d.status === "PENDING" && !editingItems && (
               <button
-                onClick={() => setEditingItems(true)}
-                className="flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+                onClick={() => {
+                  setItemError("");
+                  setProductSearch("");
+                  setEditingItems(true);
+                }}
+                disabled={paymentStarted}
+                title={
+                  paymentStarted
+                    ? "Төлбөрийн үйлдэл эхэлсэн тул бараа засах боломжгүй"
+                    : "Барааны нэр төрөл болон тоо засах"
+                }
+                className="flex items-center gap-1.5 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
               >
                 <Pencil className="h-3.5 w-3.5" />
-                Тоо засах
+                Бараа засах
               </button>
             )}
           </div>
@@ -317,6 +414,13 @@ export function DispatchDetail({
         {itemError && (
           <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
             {itemError}
+          </div>
+        )}
+        {d.status === "PENDING" && paymentStarted && (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            QR эсвэл төлбөрийн үйлдэл эхэлсэн тул бараа нэмэх, хасах, солих
+            боломжгүй. Хуучин төлбөрийг санхүүгийн ажилтнаар шалгуулсны дараа
+            шийдвэрлэнэ.
           </div>
         )}
         {showHistory && (
@@ -348,7 +452,9 @@ export function DispatchDetail({
                   </p>
                   <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
                     {(log.meta?.items || []).map((item) => (
-                      <span key={item.itemId}>
+                      <span key={`${log.id}-${item.productId}`}>
+                        {item.changeType === "ADDED" && "Нэмсэн: "}
+                        {item.changeType === "REMOVED" && "Хассан: "}
                         {item.productName}: <b>{item.oldQuantity}</b> →{" "}
                         <b>{item.newQuantity}</b>
                       </span>
@@ -357,6 +463,130 @@ export function DispatchDetail({
                 </div>
               ))
             )}
+          </div>
+        )}
+        {editingItems && (
+          <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50/40 p-3">
+            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-800">
+                  Барааны нэр төрөл, тоо засах
+                </p>
+                <p className="text-xs text-slate-500">
+                  Бараа солих, шинээр нэмэх эсвэл жагсаалтаас хасах боломжтой.
+                </p>
+              </div>
+              <label className="relative block sm:w-64">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                <input
+                  value={productSearch}
+                  onChange={(event) => setProductSearch(event.target.value)}
+                  placeholder="Нэр, SKU, баркод хайх"
+                  className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                />
+              </label>
+            </div>
+            <div className="space-y-2">
+              {editableRows.map((row, index) => {
+                const product = editableProducts.find(
+                  (item) => item.id === row.productId,
+                );
+                return (
+                  <div
+                    key={row.key}
+                    className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 sm:grid-cols-[32px_minmax(0,1fr)_100px_40px] sm:items-center"
+                  >
+                    <span className="text-center text-xs font-bold text-slate-400">
+                      {index + 1}
+                    </span>
+                    <select
+                      value={row.productId}
+                      onChange={(event) =>
+                        setEditableRows((current) =>
+                          current.map((item) =>
+                            item.key === row.key
+                              ? { ...item, productId: event.target.value }
+                              : item,
+                          ),
+                        )
+                      }
+                      className="h-9 min-w-0 rounded-lg border border-slate-200 px-2 text-xs outline-none focus:border-blue-400"
+                    >
+                      <option value="">Бараа сонгох</option>
+                      {editableProducts.map((option) => (
+                        <option
+                          key={option.id}
+                          value={option.id}
+                          disabled={editableRows.some(
+                            (item) =>
+                              item.key !== row.key &&
+                              item.productId === option.id,
+                          )}
+                        >
+                          {option.name} · {option.sku || "SKU-гүй"} · үлдэгдэл{" "}
+                          {option.availableQuantity}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={1}
+                      max={product?.availableQuantity || 100000}
+                      value={row.quantity}
+                      onChange={(event) =>
+                        setEditableRows((current) =>
+                          current.map((item) =>
+                            item.key === row.key
+                              ? {
+                                  ...item,
+                                  quantity: Number(event.target.value),
+                                }
+                              : item,
+                          ),
+                        )
+                      }
+                      aria-label={`${product?.name || "Бараа"}-ны тоо`}
+                      className="h-9 rounded-lg border border-slate-200 px-2 text-right text-xs font-bold outline-none focus:border-blue-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditableRows((current) =>
+                          current.filter((item) => item.key !== row.key),
+                        )
+                      }
+                      disabled={editableRows.length === 1}
+                      aria-label="Бараа хасах"
+                      className="flex h-9 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-30"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setEditableRows((current) => [
+                  ...current,
+                  {
+                    key: `new-${crypto.randomUUID()}`,
+                    productId: "",
+                    quantity: 1,
+                  },
+                ])
+              }
+              disabled={productsLoading}
+              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+            >
+              {productsLoading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Plus className="h-3.5 w-3.5" />
+              )}
+              Бараа нэмэх
+            </button>
           </div>
         )}
         <div className="overflow-hidden rounded-lg border border-slate-200">
@@ -396,23 +626,7 @@ export function DispatchDetail({
                       {item.product.sku || "—"}
                     </td>
                     <td className="px-4 py-2.5 text-right font-bold text-slate-800">
-                      {editingItems ? (
-                        <input
-                          type="number"
-                          min={1}
-                          max={100000}
-                          value={quantities[item.id] ?? qty}
-                          onChange={(event) =>
-                            setQuantities((current) => ({
-                              ...current,
-                              [item.id]: Number(event.target.value),
-                            }))
-                          }
-                          className="h-8 w-20 rounded-md border border-blue-300 px-2 text-right outline-none focus:ring-2 focus:ring-blue-100"
-                        />
-                      ) : (
-                        qty
-                      )}
+                      {qty}
                     </td>
                     <td className="px-4 py-2.5 text-right text-slate-600">
                       ₮{Number(item.product.price).toLocaleString()}
@@ -446,7 +660,17 @@ export function DispatchDetail({
         {editingItems && (
           <div className="mt-3 flex justify-end gap-2">
             <button
-              onClick={() => setEditingItems(false)}
+              onClick={() => {
+                setEditableRows(
+                  d.request.items.map((item) => ({
+                    key: item.id,
+                    productId: item.productId,
+                    quantity: item.approvedQuantity ?? item.quantity,
+                  })),
+                );
+                setItemError("");
+                setEditingItems(false);
+              }}
               disabled={savingItems}
               className="flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-600"
             >

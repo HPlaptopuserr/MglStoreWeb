@@ -2297,6 +2297,61 @@ router.get("/stock-requests/payments/:id", requireAuth, async (req, res) => {
 });
 
 // Confirm payment (Admin marks as paid)
+router.get(
+  "/stock-requests/dispatches/:id/editable-products",
+  requireAuth,
+  async (req, res) => {
+    const dispatch = await prisma.stockDispatch.findUnique({
+      where: { id: req.params.id },
+      select: { warehouseId: true },
+    });
+    if (!dispatch)
+      return res.status(404).json({ message: "Илгээмж олдсонгүй" });
+    if (!(await assertWarehouseAccess(req, res, dispatch.warehouseId))) return;
+    const search = String(req.query.search || "").trim();
+    const products = await prisma.warehouseInventory.findMany({
+      where: {
+        warehouseId: dispatch.warehouseId,
+        quantity: { gt: 0 },
+        product: {
+          isActive: true,
+          deletedAt: null,
+          ...(search
+            ? {
+                OR: [
+                  { name: { contains: search, mode: "insensitive" } },
+                  { sku: { contains: search, mode: "insensitive" } },
+                  { barcode: { contains: search, mode: "insensitive" } },
+                ],
+              }
+            : {}),
+        },
+      },
+      select: {
+        productId: true,
+        quantity: true,
+        product: {
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            barcode: true,
+            price: true,
+          },
+        },
+      },
+      orderBy: { product: { name: "asc" } },
+      take: 100,
+    });
+    return res.json({
+      products: products.map((inventory) => ({
+        ...inventory.product,
+        availableQuantity: inventory.quantity,
+      })),
+    });
+  },
+);
+
 router.patch(
   "/stock-requests/payments/:id/confirm",
   requireAuth,
@@ -2787,7 +2842,7 @@ router.patch(
                   },
                 },
               },
-              payment: true,
+              payment: { include: { entries: true } },
             },
           },
         },
@@ -2806,26 +2861,70 @@ router.patch(
           message: "Төлбөр орсон нэхэмжлэхийн барааг засах боломжгүй",
         });
       }
+      if (
+        (dispatch.request.payment &&
+          dispatch.request.payment.status !== PaymentStatus.PENDING) ||
+        dispatch.request.payment?.transactionId ||
+        dispatch.request.payment?.paymentMethod ||
+        dispatch.request.payment?.entries.length
+      ) {
+        return res.status(409).json({
+          code: "PAYMENT_ALREADY_STARTED",
+          message:
+            "QR эсвэл төлбөрийн үйлдэл эхэлсэн тул барааны жагсаалтыг засах боломжгүй. Хуучин төлбөрийг санхүүгийн ажилтнаар шалгуулна уу.",
+        });
+      }
 
-      const currentById = new Map(
-        dispatch.request.items.map((item) => [item.id, item]),
-      );
-      type CurrentItem = (typeof dispatch.request.items)[number];
-      const changes: Array<{ current: CurrentItem; quantity: number }> = [];
+      const normalizedItems: Array<{ productId: string; quantity: number }> =
+        [];
+      const seenProductIds = new Set<string>();
       for (const input of inputItems) {
-        const candidate = input as { itemId?: unknown; quantity?: unknown };
-        const itemId = String(candidate.itemId || "");
+        const candidate = input as { productId?: unknown; quantity?: unknown };
+        const productId = String(candidate.productId || "").trim();
         const quantity = Number(candidate.quantity);
-        const current = currentById.get(itemId);
         if (
-          !current ||
+          !productId ||
+          seenProductIds.has(productId) ||
           !Number.isInteger(quantity) ||
           quantity < 1 ||
           quantity > 100000
         ) {
           throw new Error("INVALID_ITEM_QUANTITY");
         }
-        changes.push({ current, quantity });
+        seenProductIds.add(productId);
+        normalizedItems.push({ productId, quantity });
+      }
+
+      const availableProducts = await prisma.warehouseInventory.findMany({
+        where: {
+          warehouseId: dispatch.warehouseId,
+          productId: { in: normalizedItems.map((item) => item.productId) },
+          product: { isActive: true, deletedAt: null },
+        },
+        select: {
+          productId: true,
+          quantity: true,
+          product: { select: { id: true, name: true, sku: true, price: true } },
+        },
+      });
+      if (availableProducts.length !== normalizedItems.length) {
+        return res
+          .status(400)
+          .json({ message: "Сонгосон бараа агуулахад олдсонгүй" });
+      }
+      const availableByProductId = new Map(
+        availableProducts.map((inventory) => [inventory.productId, inventory]),
+      );
+      const unavailableItem = normalizedItems.find(
+        (item) =>
+          Number(availableByProductId.get(item.productId)?.quantity || 0) <
+          item.quantity,
+      );
+      if (unavailableItem) {
+        const inventory = availableByProductId.get(unavailableItem.productId);
+        return res.status(409).json({
+          message: `${inventory?.product.name || "Бараа"}-ны үлдэгдэл хүрэлцэхгүй (${inventory?.quantity || 0} ш)`,
+        });
       }
 
       const oldTotal = dispatch.request.items.reduce(
@@ -2835,32 +2934,100 @@ router.patch(
             Number(item.product.price),
         0,
       );
-      const nextQuantityById = new Map(
-        changes.map(({ current, quantity }) => [current.id, quantity]),
-      );
-      const newTotal = dispatch.request.items.reduce(
+      const newTotal = normalizedItems.reduce(
         (sum, item) =>
           sum +
-          Number(
-            nextQuantityById.get(item.id) ??
-              item.approvedQuantity ??
-              item.quantity,
-          ) *
-            Number(item.product.price),
+          item.quantity *
+            Number(
+              availableByProductId.get(item.productId)?.product.price || 0,
+            ),
         0,
       );
-      const changedItems = changes.filter(
-        ({ current, quantity }) =>
-          Number(current.approvedQuantity ?? current.quantity) !== quantity,
+      const currentByProductId = new Map(
+        dispatch.request.items.map((item) => [item.productId, item]),
       );
+      const nextByProductId = new Map(
+        normalizedItems.map((item) => [item.productId, item]),
+      );
+      const changedItems = [
+        ...dispatch.request.items.flatMap((current) => {
+          const next = nextByProductId.get(current.productId);
+          if (!next) {
+            return [
+              {
+                changeType: "REMOVED",
+                itemId: current.id,
+                productId: current.productId,
+                productName: current.product.name,
+                sku: current.product.sku,
+                oldQuantity: Number(
+                  current.approvedQuantity ?? current.quantity,
+                ),
+                newQuantity: 0,
+              },
+            ];
+          }
+          const oldQuantity = Number(
+            current.approvedQuantity ?? current.quantity,
+          );
+          return oldQuantity === next.quantity
+            ? []
+            : [
+                {
+                  changeType: "UPDATED",
+                  itemId: current.id,
+                  productId: current.productId,
+                  productName: current.product.name,
+                  sku: current.product.sku,
+                  oldQuantity,
+                  newQuantity: next.quantity,
+                },
+              ];
+        }),
+        ...normalizedItems.flatMap((next) => {
+          if (currentByProductId.has(next.productId)) return [];
+          const product = availableByProductId.get(next.productId)?.product;
+          return [
+            {
+              changeType: "ADDED",
+              itemId: null,
+              productId: next.productId,
+              productName: product?.name || "Бараа",
+              sku: product?.sku || null,
+              oldQuantity: 0,
+              newQuantity: next.quantity,
+            },
+          ];
+        }),
+      ];
       if (changedItems.length === 0)
         return res.json({ dispatch, unchanged: true });
 
       await prisma.$transaction(async (tx) => {
-        for (const { current, quantity } of changedItems) {
-          await tx.warehouseStockRequestItem.update({
-            where: { id: current.id },
-            data: { approvedQuantity: quantity },
+        await tx.warehouseStockRequestItem.deleteMany({
+          where: {
+            requestId: dispatch.requestId,
+            productId: { notIn: normalizedItems.map((item) => item.productId) },
+          },
+        });
+        for (const item of normalizedItems) {
+          await tx.warehouseStockRequestItem.upsert({
+            where: {
+              requestId_productId: {
+                requestId: dispatch.requestId,
+                productId: item.productId,
+              },
+            },
+            create: {
+              requestId: dispatch.requestId,
+              productId: item.productId,
+              quantity: item.quantity,
+              approvedQuantity: item.quantity,
+            },
+            update: {
+              quantity: item.quantity,
+              approvedQuantity: item.quantity,
+            },
           });
         }
         if (dispatch.request.payment) {
@@ -2884,16 +3051,7 @@ router.patch(
               actorOrgRole: actor.orgRole || null,
               oldTotal,
               newTotal,
-              items: changedItems.map(({ current, quantity }) => ({
-                itemId: current.id,
-                productId: current.productId,
-                productName: current.product.name,
-                sku: current.product.sku,
-                oldQuantity: Number(
-                  current.approvedQuantity ?? current.quantity,
-                ),
-                newQuantity: quantity,
-              })),
+              items: changedItems,
             },
           },
         });
