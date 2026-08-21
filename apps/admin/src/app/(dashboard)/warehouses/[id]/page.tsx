@@ -7,6 +7,7 @@ import { API, adminFetch, getApiErrorMessage } from "@/lib/api";
 import { ResponsibleEmployeesSection } from "@/components/warehouse/ResponsibleEmployeesSection";
 import { WarehouseInventorySummary } from "@/components/warehouse/WarehouseInventorySummary";
 import { WarehouseOperatorRegistrationModal } from "@/components/warehouse/WarehouseOperatorRegistrationModal";
+import { WarehousePaymentAccountSection } from "@/components/warehouse/WarehousePaymentAccountSection";
 import {
   WarehouseInfo,
   WarehouseStats,
@@ -144,6 +145,12 @@ export default function WarehouseDetailPage() {
       <WarehouseInfo
         warehouse={warehouse}
         onOpenOrganization={(id) => router.push(`/partners/${id}`)}
+      />
+      <WarehousePaymentAccountSection
+        warehouseId={warehouse.id}
+        warehouseName={warehouse.name}
+        paymentAccountId={warehouse.paymentAccountId}
+        onSaved={fetchWarehouse}
       />
       <ResponsibleEmployeesSection
         employees={warehouse.responsibleEmployees}

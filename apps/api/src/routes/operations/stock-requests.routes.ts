@@ -2548,7 +2548,7 @@ router.get(
   async (req, res) => {
     try {
       const { warehouseId } = req.params;
-      const { status } = req.query;
+      const { status, view, from, to } = req.query;
       if (!(await assertWarehouseAccess(req, res, warehouseId))) return;
 
       const where: Prisma.StockDispatchWhereInput = { warehouseId };
@@ -2557,6 +2557,29 @@ router.get(
         DISPATCH_STATUSES.includes(status as (typeof DISPATCH_STATUSES)[number])
       ) {
         where.status = status as (typeof DISPATCH_STATUSES)[number];
+      }
+      if (view === "cancelled") where.status = "CANCELLED";
+
+      const fromAt = typeof from === "string" ? new Date(from) : null;
+      const toAt = typeof to === "string" ? new Date(to) : null;
+      const hasValidRange =
+        fromAt &&
+        toAt &&
+        !Number.isNaN(fromAt.getTime()) &&
+        !Number.isNaN(toAt.getTime()) &&
+        fromAt < toAt;
+      if ((view === "today" || view === "history") && hasValidRange) {
+        const range = { gte: fromAt, lt: toAt };
+        const datedStatuses: Prisma.StockDispatchWhereInput[] = [
+          { status: "CONFIRMED", updatedAt: range },
+          { status: "DISPATCHED", dispatchedAt: range },
+          { status: "DELIVERED", deliveredAt: range },
+          { status: "CANCELLED", updatedAt: range },
+        ];
+        where.OR =
+          view === "today"
+            ? [{ status: "PENDING" }, ...datedStatuses]
+            : datedStatuses;
       }
 
       const dispatches = await prisma.stockDispatch.findMany({
@@ -2607,6 +2630,38 @@ router.get(
         orderBy: { createdAt: "desc" },
       });
 
+      const cancellationLogs =
+        view === "cancelled" && dispatches.length > 0
+          ? await prisma.auditLog.findMany({
+              where: {
+                action: AuditAction.STOCK_DISPATCH_CANCELLED,
+                OR: dispatches.map((dispatch) => ({
+                  meta: { path: ["dispatchId"], equals: dispatch.id },
+                })),
+              },
+              include: {
+                user: {
+                  select: {
+                    email: true,
+                    profile: { select: { fullName: true } },
+                  },
+                },
+              },
+              orderBy: { createdAt: "desc" },
+            })
+          : [];
+      const cancellationByDispatchId = new Map<
+        string,
+        (typeof cancellationLogs)[number]
+      >();
+      for (const log of cancellationLogs) {
+        const meta = log.meta as { dispatchId?: unknown } | null;
+        const dispatchId = String(meta?.dispatchId || "");
+        if (dispatchId && !cancellationByDispatchId.has(dispatchId)) {
+          cancellationByDispatchId.set(dispatchId, log);
+        }
+      }
+
       res.json(
         dispatches.map((dispatch) => ({
           ...dispatch,
@@ -2618,6 +2673,8 @@ router.get(
             dispatch.request.status === StockRequestStatus.COMPLETED
               ? dispatch.deliveredAt || dispatch.request.completedAt
               : dispatch.deliveredAt,
+          cancellationDecision:
+            cancellationByDispatchId.get(dispatch.id) || null,
         })),
       );
     } catch (error) {
@@ -2745,11 +2802,9 @@ router.patch(
           .json({ message: "Зөвхөн хүлээгдэж буй илгээмжийн барааг засна" });
       }
       if (Number(dispatch.request.payment?.paidAmount || 0) > 0) {
-        return res
-          .status(409)
-          .json({
-            message: "Төлбөр орсон нэхэмжлэхийн барааг засах боломжгүй",
-          });
+        return res.status(409).json({
+          message: "Төлбөр орсон нэхэмжлэхийн барааг засах боломжгүй",
+        });
       }
 
       const currentById = new Map(
@@ -3246,8 +3301,15 @@ router.patch(
   requireAuth,
   async (req, res) => {
     try {
+      const actor = getActor(req);
       const { id } = req.params;
-      const { note } = req.body;
+      const note = String(req.body?.note || "").trim();
+      if (!actor?.userId) {
+        return res.status(401).json({ message: "Нэвтрэх шаардлагатай" });
+      }
+      if (!note) {
+        return res.status(400).json({ message: "Цуцлах шалтгаан оруулна уу" });
+      }
 
       const dispatch = await prisma.stockDispatch.findUnique({
         where: { id },
@@ -3291,13 +3353,34 @@ router.patch(
             data: { status: StockRequestStatus.APPROVED },
           });
 
-          return tx.stockDispatch.update({
+          const cancelled = await tx.stockDispatch.update({
             where: { id },
             data: {
               status: "CANCELLED",
-              note: note || dispatch.note,
+              note,
             },
           });
+          await tx.auditLog.create({
+            data: {
+              userId: actor.userId,
+              action: AuditAction.STOCK_DISPATCH_CANCELLED,
+              ip: req.ip,
+              userAgent: req.get("user-agent") || null,
+              meta: {
+                dispatchId: dispatch.id,
+                dispatchNumber: dispatch.dispatchNumber,
+                requestId: dispatch.requestId,
+                warehouseId: dispatch.warehouseId,
+                organizationId: dispatch.organizationId,
+                previousStatus: dispatch.status,
+                reason: note,
+                actorEmail: actor.email,
+                actorRole: actor.role,
+                actorOrgRole: actor.orgRole || null,
+              },
+            },
+          });
+          return cancelled;
         },
       );
 

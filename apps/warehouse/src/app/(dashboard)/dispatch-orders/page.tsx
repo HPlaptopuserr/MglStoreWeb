@@ -18,6 +18,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   RefreshCw,
+  CalendarDays,
+  History,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 import { DeliveryPackageDialog, type DeliveryPackageDetails } from "@mgl/ui";
@@ -43,7 +45,16 @@ import {
 } from "@/features/dispatch-orders/DispatchPrintViews";
 import { DispatchDetail } from "@/features/dispatch-orders/DispatchDetail";
 
+const formatDateInput = (date: Date) =>
+  [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+
 export default function DispatchOrdersPage() {
+  const today = formatDateInput(new Date());
+  const sevenDaysAgo = formatDateInput(new Date(Date.now() - 6 * 86_400_000));
   const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
   const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
@@ -51,6 +62,9 @@ export default function DispatchOrdersPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+  const [boardView, setBoardView] = useState<"today" | "history">("today");
+  const [historyFrom, setHistoryFrom] = useState(sevenDaysAgo);
+  const [historyTo, setHistoryTo] = useState(today);
   const [warehouseLoadError, setWarehouseLoadError] = useState<string | null>(
     null,
   );
@@ -65,6 +79,11 @@ export default function DispatchOrdersPage() {
   const [showPadaan, setShowPadaan] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
   const [showDeliveredList, setShowDeliveredList] = useState(false);
+  const [showCancelledList, setShowCancelledList] = useState(false);
+  const [cancelledDispatches, setCancelledDispatches] = useState<Dispatch[]>(
+    [],
+  );
+  const [cancelledLoading, setCancelledLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   // Delivery network assignment
@@ -140,8 +159,18 @@ export default function DispatchOrdersPage() {
       else setLoading(true);
       try {
         setLoadError(null);
+        const params = new URLSearchParams({ view: boardView });
+        const rangeStart = new Date(
+          `${boardView === "history" ? historyFrom : today}T00:00:00`,
+        );
+        const rangeEnd = new Date(
+          `${boardView === "history" ? historyTo : today}T00:00:00`,
+        );
+        rangeEnd.setDate(rangeEnd.getDate() + 1);
+        params.set("from", rangeStart.toISOString());
+        params.set("to", rangeEnd.toISOString());
         const response = await wmsFetch(
-          `${API}/stock-requests/warehouse/${selectedWarehouseId}/dispatches`,
+          `${API}/stock-requests/warehouse/${selectedWarehouseId}/dispatches?${params}`,
         );
         const body = await response.json().catch(() => null);
         if (!response.ok) {
@@ -162,26 +191,26 @@ export default function DispatchOrdersPage() {
         setRefreshing(false);
       }
     },
-    [selectedWarehouseId],
+    [boardView, historyFrom, historyTo, selectedWarehouseId],
   );
 
   // Keep the warehouse queue live while admin approves new requests.
   useEffect(() => {
     if (!selectedWarehouseId) return;
     void fetchDispatches();
-    const interval = window.setInterval(
-      () => void fetchDispatches(true),
-      15_000,
-    );
+    const interval =
+      boardView === "today"
+        ? window.setInterval(() => void fetchDispatches(true), 15_000)
+        : undefined;
     const refreshOnFocus = () => {
       if (document.visibilityState === "visible") void fetchDispatches(true);
     };
     document.addEventListener("visibilitychange", refreshOnFocus);
     return () => {
-      window.clearInterval(interval);
+      if (interval) window.clearInterval(interval);
       document.removeEventListener("visibilitychange", refreshOnFocus);
     };
-  }, [fetchDispatches, selectedWarehouseId]);
+  }, [boardView, fetchDispatches, selectedWarehouseId]);
 
   // ───── Actions ─────
   const confirmDispatch = async (
@@ -274,14 +303,19 @@ export default function DispatchOrdersPage() {
   };
 
   const cancelDispatch = async (id: string) => {
-    if (!confirm("Илгээмжийг цуцлах уу?")) return;
+    const reason = window.prompt("Илгээмж цуцлах шалтгааныг оруулна уу");
+    if (reason === null) return;
+    if (!reason.trim()) {
+      alert("Цуцлах шалтгаан заавал оруулна");
+      return;
+    }
     setActionLoading(true);
     try {
       const res = await wmsFetch(
         `${API}/stock-requests/dispatches/${id}/cancel`,
         {
           method: "PATCH",
-          body: JSON.stringify({}),
+          body: JSON.stringify({ note: reason.trim() }),
         },
       );
       if (res.ok) {
@@ -295,6 +329,32 @@ export default function DispatchOrdersPage() {
       alert("Сүлжээний алдаа");
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const openCancelledList = async () => {
+    if (!selectedWarehouseId) return;
+    setShowCancelledList(true);
+    setCancelledLoading(true);
+    try {
+      const response = await wmsFetch(
+        `${API}/stock-requests/warehouse/${selectedWarehouseId}/dispatches?view=cancelled`,
+      );
+      const body = await response.json().catch(() => []);
+      if (!response.ok) {
+        throw new Error(
+          body?.message || "Цуцлагдсан хүсэлт авахад алдаа гарлаа",
+        );
+      }
+      setCancelledDispatches(Array.isArray(body) ? body : []);
+    } catch (error) {
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Цуцлагдсан хүсэлт авахад алдаа гарлаа",
+      );
+    } finally {
+      setCancelledLoading(false);
     }
   };
 
@@ -454,6 +514,18 @@ export default function DispatchOrdersPage() {
       0,
     );
 
+  const isOverduePending = (dispatch: Dispatch) =>
+    dispatch.status === "PENDING" &&
+    Date.now() - new Date(dispatch.createdAt).getTime() >= 86_400_000;
+
+  const pendingAgeLabel = (dispatch: Dispatch) => {
+    const hours = Math.floor(
+      (Date.now() - new Date(dispatch.createdAt).getTime()) / 3_600_000,
+    );
+    const days = Math.floor(hours / 24);
+    return days > 0 ? `${days} хоног хүлээгдсэн` : `${hours} цаг хүлээгдсэн`;
+  };
+
   // ───── Render ─────
   return (
     <div className="space-y-6">
@@ -568,6 +640,62 @@ export default function DispatchOrdersPage() {
         </button>
       </div>
 
+      {activeTab === "dispatches" && (
+        <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex rounded-lg bg-slate-100 p-1">
+            <button
+              type="button"
+              onClick={() => setBoardView("today")}
+              className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition ${
+                boardView === "today"
+                  ? "bg-white text-blue-700 shadow-sm"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <CalendarDays className="h-4 w-4" /> Өнөөдөр
+            </button>
+            <button
+              type="button"
+              onClick={() => setBoardView("history")}
+              className={`inline-flex items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition ${
+                boardView === "history"
+                  ? "bg-white text-blue-700 shadow-sm"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <History className="h-4 w-4" /> Түүх
+            </button>
+          </div>
+          {boardView === "history" ? (
+            <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-slate-500">
+              <label htmlFor="history-from">Эхлэх</label>
+              <input
+                id="history-from"
+                type="date"
+                value={historyFrom}
+                max={historyTo}
+                onChange={(event) => setHistoryFrom(event.target.value)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              />
+              <label htmlFor="history-to">Дуусах</label>
+              <input
+                id="history-to"
+                type="date"
+                value={historyTo}
+                min={historyFrom}
+                max={today}
+                onChange={(event) => setHistoryTo(event.target.value)}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+              />
+            </div>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Хүлээгдэж буй бүх ажил, бусад төлөвийн зөвхөн өнөөдрийн мэдээлэл
+            </p>
+          )}
+        </div>
+      )}
+
       {/* 4-Level Status Board */}
       {activeTab === "dispatches" &&
         (loading ? (
@@ -619,23 +747,37 @@ export default function DispatchOrdersPage() {
               })}
             </div>
 
-            {/* Cancelled count if any */}
-            {dispatches.filter((d) => d.status === "CANCELLED").length > 0 && (
-              <div className="flex items-center gap-2 rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">
-                <XCircle className="h-4 w-4" />
-                <span className="font-medium">
-                  {dispatches.filter((d) => d.status === "CANCELLED").length}{" "}
-                  цуцлагдсан илгээмж
-                </span>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => void openCancelledList()}
+              className="flex w-full items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-left text-sm text-red-700 transition hover:border-red-300 hover:bg-red-100"
+            >
+              <XCircle className="h-4 w-4" />
+              <span className="font-semibold">Цуцлагдсан хүсэлтүүд</span>
+              <span className="ml-auto text-xs font-bold">Түүх харах</span>
+              <ChevronRight className="h-4 w-4" />
+            </button>
 
             {/* 4-column pipeline board */}
             <div className="grid grid-cols-4 gap-4 items-start">
               {STEPS.map((step, colIdx) => {
-                const colDispatches = dispatches.filter(
-                  (d) => d.status === step.key,
-                );
+                const colDispatches = dispatches
+                  .filter((d) => d.status === step.key)
+                  .sort((a, b) => {
+                    if (step.key !== "PENDING") {
+                      return (
+                        new Date(b.createdAt).getTime() -
+                        new Date(a.createdAt).getTime()
+                      );
+                    }
+                    const overdueDifference =
+                      Number(isOverduePending(b)) - Number(isOverduePending(a));
+                    if (overdueDifference !== 0) return overdueDifference;
+                    return (
+                      new Date(a.createdAt).getTime() -
+                      new Date(b.createdAt).getTime()
+                    );
+                  });
                 const StIcon = step.icon;
                 const headerColors: Record<string, string> = {
                   amber: "bg-amber-500",
@@ -661,7 +803,7 @@ export default function DispatchOrdersPage() {
                     </div>
 
                     {/* Cards */}
-                    <div className="space-y-2.5 min-h-[120px]">
+                    <div className="min-h-[120px] max-h-[68vh] space-y-2.5 overflow-y-auto overscroll-contain pr-1">
                       {colDispatches.length === 0 ? (
                         <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 py-8">
                           <Package className="mb-2 h-8 w-8 text-slate-200" />
@@ -672,8 +814,18 @@ export default function DispatchOrdersPage() {
                           <div
                             key={d.id}
                             onClick={() => openDetail(d)}
-                            className="cursor-pointer rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition-all hover:border-blue-300 hover:shadow-md"
+                            className={`cursor-pointer rounded-xl border bg-white p-3.5 shadow-sm transition-all hover:shadow-md ${
+                              isOverduePending(d)
+                                ? "border-red-400 ring-1 ring-red-100 hover:border-red-500"
+                                : "border-slate-200 hover:border-blue-300"
+                            }`}
                           >
+                            {isOverduePending(d) && (
+                              <div className="mb-2 flex items-center gap-1.5 rounded-md bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700">
+                                <AlertTriangle className="h-3 w-3" />
+                                {pendingAgeLabel(d)}
+                              </div>
+                            )}
                             {/* Stepper mini */}
                             <div className="flex items-center gap-0.5 mb-2.5">
                               {STEPS.map((s, i) => {
@@ -928,6 +1080,164 @@ export default function DispatchOrdersPage() {
             )}
           </div>
         ))}
+
+      {/* ───── Cancelled requests history ───── */}
+      {showCancelledList && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setShowCancelledList(false)}
+        >
+          <div
+            className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-100 text-red-600">
+                  <XCircle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800">
+                    Цуцлагдсан хүсэлтүүд
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Шийдвэр гаргасан ажилтан болон бүрэн audit мэдээлэл
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCancelledList(false)}
+                aria-label="Цуцлагдсан хүсэлтийн түүх хаах"
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="overflow-y-auto p-6">
+              {cancelledLoading ? (
+                <div className="flex justify-center py-16">
+                  <Loader2 className="h-7 w-7 animate-spin text-red-500" />
+                </div>
+              ) : cancelledDispatches.length === 0 ? (
+                <div className="rounded-xl border-2 border-dashed border-slate-200 py-16 text-center">
+                  <Package className="mx-auto mb-2 h-9 w-9 text-slate-300" />
+                  <p className="text-sm font-medium text-slate-500">
+                    Цуцлагдсан хүсэлт алга
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {cancelledDispatches.map((dispatch) => {
+                    const decision = dispatch.cancellationDecision;
+                    const actorName =
+                      decision?.user?.profile?.fullName ||
+                      decision?.user?.email ||
+                      decision?.meta?.actorEmail;
+                    return (
+                      <article
+                        key={dispatch.id}
+                        className="rounded-xl border border-red-100 bg-white p-4 shadow-sm"
+                      >
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-bold text-slate-900">
+                                {dispatch.dispatchNumber}
+                              </span>
+                              <span className="rounded-full bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700">
+                                Цуцлагдсан
+                              </span>
+                            </div>
+                            <p className="mt-1 text-sm text-slate-600">
+                              {dispatch.request.organization.name} ·{" "}
+                              {dispatch.request.requestNumber} ·{" "}
+                              {totalItems(dispatch)} ш · ₮
+                              {totalAmount(dispatch).toLocaleString()}
+                            </p>
+                            <p className="mt-2 text-sm font-medium text-red-700">
+                              Шалтгаан:{" "}
+                              {decision?.meta?.reason ||
+                                dispatch.note ||
+                                "Тодорхойгүй"}
+                            </p>
+                          </div>
+                          <div className="grid shrink-0 gap-1 text-xs text-slate-500 lg:min-w-72">
+                            <p>
+                              <b className="text-slate-700">Шийдвэрлэсэн:</b>{" "}
+                              {actorName || "Хуучин бүртгэл — мэдээлэлгүй"}
+                            </p>
+                            <p>
+                              <b className="text-slate-700">Эрх:</b>{" "}
+                              {decision?.meta?.actorRole || "—"}
+                              {decision?.meta?.actorOrgRole
+                                ? ` / ${decision.meta.actorOrgRole}`
+                                : ""}
+                            </p>
+                            <p>
+                              <b className="text-slate-700">Огноо:</b>{" "}
+                              {new Date(
+                                decision?.createdAt ||
+                                  dispatch.updatedAt ||
+                                  dispatch.createdAt,
+                              ).toLocaleString("mn-MN")}
+                            </p>
+                            {decision?.ip && (
+                              <p>
+                                <b className="text-slate-700">IP:</b>{" "}
+                                {decision.ip}
+                              </p>
+                            )}
+                            {decision?.userAgent && (
+                              <p
+                                className="truncate"
+                                title={decision.userAgent}
+                              >
+                                <b className="text-slate-700">Төхөөрөмж:</b>{" "}
+                                {decision.userAgent}
+                              </p>
+                            )}
+                            <p>
+                              <b className="text-slate-700">Өмнөх төлөв:</b>{" "}
+                              {decision?.meta?.previousStatus || "—"}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                          {dispatch.request.items.slice(0, 4).map((item) => (
+                            <span
+                              key={item.id}
+                              className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-600"
+                            >
+                              {item.product.name} ×{" "}
+                              {item.approvedQuantity || item.quantity}
+                            </span>
+                          ))}
+                          {dispatch.request.items.length > 4 && (
+                            <span className="text-xs text-slate-400">
+                              +{dispatch.request.items.length - 4}
+                            </span>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowCancelledList(false);
+                              openDetail(dispatch);
+                            }}
+                            className="ml-auto rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600 hover:border-blue-300 hover:text-blue-700"
+                          >
+                            Дэлгэрэнгүй
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ───── Delivered List Modal ───── */}
       {showDeliveredList && (

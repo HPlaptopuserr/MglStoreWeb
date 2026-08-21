@@ -56,7 +56,7 @@ type PaymentAccountUpsertOptions = {
   trustedMerchantCode?: boolean;
 };
 
-export function ContractPaymentAccountsSettings() {
+export function ContractPaymentAccountsSettings({ accountsOnly = false }: { accountsOnly?: boolean } = {}) {
   const [settings, setSettings] = useState<any>({
     paymentAccounts: [] as ContractPaymentAccount[],
     systemQr: defaultSystemQr,
@@ -575,7 +575,7 @@ export function ContractPaymentAccountsSettings() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-orange-200 bg-orange-50/60 p-5 shadow-sm">
+      {!accountsOnly && <section className="rounded-2xl border border-orange-200 bg-orange-50/60 p-5 shadow-sm">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white">
             <ShieldCheck size={20} />
@@ -647,7 +647,7 @@ export function ContractPaymentAccountsSettings() {
             {" · "}{selectedUpgradeAccount.accountNumber || "Дансны дугаар хадгалагдаагүй"}
           </div>
         )}
-      </section>
+      </section>}
 
       <PaymentAccountsSettingsPanel
         settings={settings}

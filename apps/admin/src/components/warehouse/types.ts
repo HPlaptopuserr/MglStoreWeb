@@ -44,6 +44,7 @@ export interface WarehouseDetail {
   phone: string | null;
   capacity: number;
   isActive: boolean;
+  paymentAccountId: string | null;
   createdAt: string;
   organizations: WarehouseOrganization[];
   createdBy: {

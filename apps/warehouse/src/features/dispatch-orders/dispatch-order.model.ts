@@ -40,6 +40,24 @@ export type Dispatch = {
   dispatchedAt: string | null;
   deliveredAt: string | null;
   createdAt: string;
+  updatedAt?: string;
+  cancellationDecision?: {
+    id: string;
+    createdAt: string;
+    ip?: string | null;
+    userAgent?: string | null;
+    user?: {
+      email?: string;
+      profile?: { fullName?: string | null } | null;
+    } | null;
+    meta?: {
+      reason?: string;
+      previousStatus?: string;
+      actorEmail?: string;
+      actorRole?: string;
+      actorOrgRole?: string | null;
+    } | null;
+  } | null;
   request: {
     id: string;
     requestNumber: string;
