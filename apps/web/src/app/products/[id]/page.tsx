@@ -5,7 +5,10 @@ import Link from "next/link";
 import { API } from "@/lib/api";
 import { addToCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth-context";
-import { resolveMemberPricing } from "@/lib/member-pricing";
+import {
+  resolveMarketplacePricingAudience,
+  resolveMemberPricing,
+} from "@/lib/member-pricing";
 import { trackMetaCommerceEvent } from "@/lib/meta-events";
 import {
   appendProductVisitorId,
@@ -212,10 +215,15 @@ export default function ProductDetailPage({
   }, [authFetch, product]);
 
   const discount = product?.discounts?.[0];
-  const isMember = Boolean(user?.membership?.active || user?.isPrime);
+  const pricingAudience = resolveMarketplacePricingAudience(user);
   const pricing = product
-    ? resolveMemberPricing(product.price, product.discounts, isMember)
-    : resolveMemberPricing(0, [], false);
+    ? resolveMemberPricing(
+        product.price,
+        product.discounts,
+        pricingAudience,
+        product.supplyType,
+      )
+    : resolveMemberPricing(0, [], pricingAudience);
   const discountedPrice = pricing.price;
   const originalPrice = pricing.originalPrice;
   const savings = pricing.savings;
@@ -223,6 +231,7 @@ export default function ProductDetailPage({
   const images = product?.images ?? [];
   const isPreorder = product?.supplyType === "CHINA_PREORDER";
   const isOutOfStock = !isPreorder && product?.stock === 0;
+  const isPreorderFull = Boolean(isPreorder && product?.preorderIsFull);
 
   const toggleWishlist = () => {
     if (!product) return;
@@ -317,15 +326,17 @@ export default function ProductDetailPage({
       isOutOfStock={Boolean(isOutOfStock)}
       vendorProducts={vendorProducts}
       relatedProducts={relatedProducts}
-      isMember={isMember}
+      pricingAudience={pricingAudience}
       onAddToCart={(quantity) => {
-        if (isOutOfStock) return;
+        if (isOutOfStock || isPreorderFull) return;
         addToCart({
           id: product.id,
           name: product.name,
           price: discountedPrice,
+          basePrice: Number(product.price),
           originalPrice,
           memberDiscountPercent: pricing.active ? pricing.percent : null,
+          discountLabel: pricing.label,
           supplyType: product.supplyType,
           image: images[0]?.url,
           quantity,

@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { Heart, ImageIcon, Search, Sparkles, Store } from "lucide-react";
 import { resolveMemberPricing } from "@/lib/member-pricing";
+import type { MarketplacePricingAudience } from "@mgl/types";
 
 export type ProductResult = {
   id: string;
@@ -12,6 +13,10 @@ export type ProductResult = {
   stock?: number | null;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays?: number | null;
+  preorderCapacity?: number | null;
+  preorderParticipantCount?: number;
+  preorderRemaining?: number | null;
+  preorderIsFull?: boolean;
   rating?: number | null;
   reviewCount?: number | null;
   soldCount?: number | null;
@@ -32,7 +37,7 @@ type ProductResultsGridProps = {
   products: ProductResult[];
   loading: boolean;
   hasActiveFilters: boolean;
-  isMember: boolean;
+  pricingAudience: MarketplacePricingAudience;
   searchQuery: string;
   suggestions?: ProductSearchSuggestion[];
   onClearFilters: () => void;
@@ -69,7 +74,7 @@ export function ProductResultsGrid({
   products,
   loading,
   hasActiveFilters,
-  isMember,
+  pricingAudience,
   searchQuery,
   suggestions = [],
   onClearFilters,
@@ -166,7 +171,7 @@ export function ProductResultsGrid({
             <CatalogProductCard
               key={product.id}
               product={product}
-              isMember={isMember}
+              pricingAudience={pricingAudience}
               priority={index < 6}
             />
           ))}
@@ -178,22 +183,24 @@ export function ProductResultsGrid({
 
 export function CatalogProductCard({
   product,
-  isMember,
+  pricingAudience,
   priority = false,
   compact = false,
 }: {
   product: ProductResult;
-  isMember: boolean;
+  pricingAudience: MarketplacePricingAudience;
   priority?: boolean;
   compact?: boolean;
 }) {
   const pricing = resolveMemberPricing(
     product.price,
     product.discounts,
-    isMember,
+    pricingAudience,
+    product.supplyType,
   );
   const { price, originalPrice, label: memberLabel } = pricing;
   const isPreorder = product.supplyType === "CHINA_PREORDER";
+  const preorderIsFull = isPreorder && Boolean(product.preorderIsFull);
   const discountPercent = product.discounts?.[0]?.percent;
   const catalogImage = product.images?.[0]?.url
     ? getCatalogImageSource(product.images[0].url)
@@ -232,8 +239,12 @@ export function CatalogProductCard({
           )}
           <div className="absolute left-2 top-2 flex flex-wrap gap-1.5">
             {isPreorder && (
-              <span className="rounded-lg bg-emerald-500 px-2 py-1 text-[10px] font-black text-white shadow-sm">
-                Захиалгаар
+              <span
+                className={`rounded-lg px-2 py-1 text-[10px] font-black text-white shadow-sm ${
+                  preorderIsFull ? "bg-slate-800" : "bg-emerald-500"
+                }`}
+              >
+                {preorderIsFull ? "Дүүрсэн" : "Захиалгаар"}
               </span>
             )}
             {discountPercent && (
@@ -249,7 +260,9 @@ export function CatalogProductCard({
 
         <div
           className={
-            compact ? "px-0.5 pb-1 pt-2" : "px-0.5 pb-1.5 pt-2 sm:px-1 sm:pb-2 sm:pt-3"
+            compact
+              ? "px-0.5 pb-1 pt-2"
+              : "px-0.5 pb-1.5 pt-2 sm:px-1 sm:pb-2 sm:pt-3"
           }
         >
           <h3
@@ -289,6 +302,29 @@ export function CatalogProductCard({
                     ? "Бэлэн"
                     : "Нөөцгүй"}
               </span>
+            </div>
+          )}
+          {isPreorder && product.preorderCapacity && (
+            <div className={compact ? "mt-1.5" : "mt-2"}>
+              <div className="mb-1 flex justify-between text-[10px] font-bold text-slate-500">
+                <span>
+                  {product.preorderParticipantCount ?? 0}/
+                  {product.preorderCapacity} хүн
+                </span>
+                <span>
+                  {preorderIsFull
+                    ? "Дүүрсэн"
+                    : `${product.preorderRemaining ?? Math.max(0, product.preorderCapacity - (product.preorderParticipantCount ?? 0))} дутуу`}
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`h-full rounded-full ${preorderIsFull ? "bg-slate-700" : "bg-emerald-500"}`}
+                  style={{
+                    width: `${Math.min(100, ((product.preorderParticipantCount ?? 0) / product.preorderCapacity) * 100)}%`,
+                  }}
+                />
+              </div>
             </div>
           )}
           <div

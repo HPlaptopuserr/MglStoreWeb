@@ -61,50 +61,57 @@ export interface SetReelLikeInput {
   source?: string | null;
 }
 
-const reelInclude = {
-  organization: {
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      logoUrl: true,
-      isVerified: true,
+const createReelInclude = () =>
+  ({
+    organization: {
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        logoUrl: true,
+        isVerified: true,
+      },
     },
-  },
-  author: {
-    select: {
-      id: true,
-      profile: {
-        select: {
-          fullName: true,
-          avatarUrl: true,
+    author: {
+      select: {
+        id: true,
+        profile: {
+          select: {
+            fullName: true,
+            avatarUrl: true,
+          },
         },
       },
     },
-  },
-  businessCategory: {
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      icon: true,
+    businessCategory: {
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        icon: true,
+      },
     },
-  },
-  product: {
-    select: {
-      id: true,
-      name: true,
-      price: true,
-      images: {
-        take: 1,
-        select: {
-          url: true,
+    product: {
+      select: {
+        id: true,
+        name: true,
+        price: true,
+        supplyType: true,
+        discounts: {
+          where: { isActive: true, validUntil: { gte: new Date() } },
+          select: { percent: true, validUntil: true },
+          take: 1,
+        },
+        images: {
+          take: 1,
+          select: {
+            url: true,
+          },
         },
       },
     },
-  },
-  assets: true,
-} satisfies Prisma.ReelInclude;
+    assets: true,
+  }) satisfies Prisma.ReelInclude;
 
 function normalizeLimit(limit?: number) {
   if (!Number.isFinite(limit || NaN)) return 20;
@@ -200,7 +207,7 @@ export async function createReel(input: CreateReelInput) {
         },
       },
     },
-    include: reelInclude,
+    include: createReelInclude(),
   });
 }
 
@@ -223,7 +230,7 @@ export async function listReels(input: ListReelsInput) {
 
   const reels = await prisma.reel.findMany({
     where,
-    include: reelInclude,
+    include: createReelInclude(),
     orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
     take: limit + 1,
     ...(input.cursor
@@ -250,7 +257,7 @@ export async function getReelById(id: string, includePending = false) {
         ? {}
         : { reviewStatus: VendorContentReviewStatus.APPROVED }),
     },
-    include: reelInclude,
+    include: createReelInclude(),
   });
 }
 
@@ -269,7 +276,7 @@ export async function updateReel(
   return prisma.reel.update({
     where: { id },
     data,
-    include: reelInclude,
+    include: createReelInclude(),
   });
 }
 
@@ -295,7 +302,7 @@ export async function reviewReel(
       publishedAt:
         reviewStatus === VendorContentReviewStatus.APPROVED ? new Date() : null,
     },
-    include: reelInclude,
+    include: createReelInclude(),
   });
 }
 

@@ -11,4 +11,7 @@ export interface CarouselProduct {
   organization?: { name?: string | null } | null;
   supplyType?: string | null;
   preorderLeadTimeDays?: number | null;
+  preorderCapacity?: number | null;
+  preorderParticipantCount?: number;
+  preorderIsFull?: boolean;
 }

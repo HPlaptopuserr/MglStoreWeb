@@ -39,6 +39,7 @@ import {
   normalizeMasterName,
   resolveMasterProduct,
 } from "../../services/master-product.service";
+import { getPreorderCapacityProgress } from "../../services/preorder-capacity.service";
 import {
   extractExcelImages,
   optimizeProductImageBuffer,
@@ -349,6 +350,22 @@ const normalizePreorderLeadTimeDays = (value: unknown) => {
   const parsed = parseInt(String(value), 10);
   if (!Number.isFinite(parsed) || parsed < 0 || parsed > 365) return undefined;
   return parsed;
+};
+
+const normalizePreorderCapacity = (value: unknown) => {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 1_000_000) {
+    return undefined;
+  }
+  return parsed;
+};
+
+const normalizeSupplierDocumentImage = (value: unknown) => {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  const normalized = String(value).trim();
+  return normalized || null;
 };
 
 const PREORDER_PRODUCTS_FEATURE_KEY = "preorder-products-enabled";
@@ -963,6 +980,10 @@ router.get("/products/organization-catalog", optionalAuth, async (req, res) => {
             },
           },
         });
+        const preorderCapacityByProductId = await getPreorderCapacityProgress(
+          prisma,
+          products,
+        );
         return {
           organization: {
             id: organization.id,
@@ -974,7 +995,10 @@ router.get("/products/organization-catalog", optionalAuth, async (req, res) => {
             customerCount: organization.customerCount,
             productCount: organization._count.products,
           },
-          products,
+          products: products.map((product) => ({
+            ...product,
+            ...preorderCapacityByProductId.get(product.id),
+          })),
         };
       }),
     );
@@ -1173,6 +1197,9 @@ router.get("/products", optionalAuth, async (req, res) => {
       ...(productCandidateLimit > 0 ? { take: productCandidateLimit } : {}),
       include: {
         images: { select: { id: true, url: true }, take: 1 },
+        supplierDocument: {
+          select: { frontImageUrl: true, backImageUrl: true },
+        },
         businessCategory: {
           select: {
             id: true,
@@ -1200,6 +1227,10 @@ router.get("/products", optionalAuth, async (req, res) => {
     });
 
     const productIds = products.map((product) => product.id);
+    const preorderCapacityByProductId = await getPreorderCapacityProgress(
+      prisma,
+      products,
+    );
     const [inventoryExpiries, recommendationSignals, interestProfile] =
       productIds.length
         ? await Promise.all([
@@ -1293,6 +1324,7 @@ router.get("/products", optionalAuth, async (req, res) => {
 
     let response = products
       .map((product) => {
+        const { supplierDocument, ...visibleProduct } = product;
         const receiptLots = receiptLotsByProductId.get(product.id) || [];
         const expiryDate = [
           expiryByProductId.get(product.id),
@@ -1301,7 +1333,16 @@ router.get("/products", optionalAuth, async (req, res) => {
           .filter((value): value is Date => Boolean(value))
           .sort((a, b) => a.getTime() - b.getTime())[0];
         return {
-          ...product,
+          ...visibleProduct,
+          ...preorderCapacityByProductId.get(product.id),
+          ...(isOwnOrganizationCatalog
+            ? {
+                preorderSupplierFrontImageUrl:
+                  supplierDocument?.frontImageUrl ?? null,
+                preorderSupplierBackImageUrl:
+                  supplierDocument?.backImageUrl ?? null,
+              }
+            : {}),
           images: product.images,
           expiryDate: expiryDate?.toISOString() ?? null,
           ...(includePosReceiptLots
@@ -2906,6 +2947,9 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
       where: { id: req.params.id, deletedAt: null },
       include: {
         images: { select: { id: true, url: true } },
+        supplierDocument: {
+          select: { frontImageUrl: true, backImageUrl: true },
+        },
         businessCategory: { select: { id: true, name: true, slug: true } },
         organization: {
           select: {
@@ -2943,9 +2987,22 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
       return res.status(404).json({ message: "Бараа олдсонгүй" });
     }
 
-    const { organization, ...safeProduct } = product;
+    const { organization, supplierDocument, ...safeProduct } = product;
+    const preorderCapacityByProductId = await getPreorderCapacityProgress(
+      prisma,
+      [product],
+    );
     return res.json({
       ...safeProduct,
+      ...preorderCapacityByProductId.get(product.id),
+      ...(canBypassVisibility
+        ? {
+            preorderSupplierFrontImageUrl:
+              supplierDocument?.frontImageUrl ?? null,
+            preorderSupplierBackImageUrl:
+              supplierDocument?.backImageUrl ?? null,
+          }
+        : {}),
       organization: {
         id: organization.id,
         name: organization.name,
@@ -2991,6 +3048,9 @@ router.post(
         expiryDate,
         supplyType,
         preorderLeadTimeDays,
+        preorderCapacity,
+        preorderSupplierFrontImageUrl,
+        preorderSupplierBackImageUrl,
         preorderNote,
         marketplacePriority,
         businessCategoryId: inputCategoryId,
@@ -3107,6 +3167,29 @@ router.post(
         return res
           .status(400)
           .json({ message: "Ирэх хоног 0-365 хооронд байх ёстой" });
+      }
+      const normalizedPreorderCapacity =
+        normalizePreorderCapacity(preorderCapacity);
+      if (normalizedPreorderCapacity === undefined) {
+        return res.status(400).json({
+          message: "Дүүрэх хүний тоо 1-1,000,000 хооронд бүхэл тоо байх ёстой",
+        });
+      }
+      const normalizedSupplierFrontImage = normalizeSupplierDocumentImage(
+        preorderSupplierFrontImageUrl,
+      );
+      const normalizedSupplierBackImage = normalizeSupplierDocumentImage(
+        preorderSupplierBackImageUrl,
+      );
+      if (
+        normalizedSupplyType === "CHINA_PREORDER" &&
+        Boolean(normalizedSupplierFrontImage) !==
+          Boolean(normalizedSupplierBackImage)
+      ) {
+        return res.status(400).json({
+          message:
+            "Нийлүүлэгчийн мэдээллийн урд болон ард талын зургийг хоёуланг оруулна уу",
+        });
       }
       const normalizedMarketplacePriority =
         normalizeMarketplacePriority(marketplacePriority);
@@ -3230,6 +3313,10 @@ router.post(
               normalizedSupplyType === "CHINA_PREORDER"
                 ? normalizedLeadTimeDays
                 : null,
+            preorderCapacity:
+              normalizedSupplyType === "CHINA_PREORDER"
+                ? normalizedPreorderCapacity
+                : null,
             preorderNote:
               normalizedSupplyType === "CHINA_PREORDER" && preorderNote
                 ? String(preorderNote).trim()
@@ -3241,9 +3328,23 @@ router.post(
             images: {
               create: imageUrls.map((url) => ({ url })),
             },
+            supplierDocument:
+              normalizedSupplyType === "CHINA_PREORDER" &&
+              normalizedSupplierFrontImage &&
+              normalizedSupplierBackImage
+                ? {
+                    create: {
+                      frontImageUrl: normalizedSupplierFrontImage,
+                      backImageUrl: normalizedSupplierBackImage,
+                    },
+                  }
+                : undefined,
           },
           include: {
             images: { select: { id: true, url: true } },
+            supplierDocument: {
+              select: { frontImageUrl: true, backImageUrl: true },
+            },
             businessCategory: { select: { id: true, name: true, slug: true } },
           },
         });
@@ -3273,8 +3374,12 @@ router.post(
         });
 
         const currentExpiryDate = await findProductExpiryDate(tx, created.id);
+        const { supplierDocument, ...createdProduct } = created;
         return {
-          ...created,
+          ...createdProduct,
+          preorderSupplierFrontImageUrl:
+            supplierDocument?.frontImageUrl ?? null,
+          preorderSupplierBackImageUrl: supplierDocument?.backImageUrl ?? null,
           expiryDate: currentExpiryDate?.toISOString() ?? null,
         };
       });
@@ -3349,6 +3454,9 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       expiryDate,
       supplyType,
       preorderLeadTimeDays,
+      preorderCapacity,
+      preorderSupplierFrontImageUrl,
+      preorderSupplierBackImageUrl,
       preorderNote,
       marketplacePriority,
       businessCategoryId,
@@ -3358,6 +3466,11 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
 
     const existing = await prisma.product.findUnique({
       where: { id, deletedAt: null },
+      include: {
+        supplierDocument: {
+          select: { frontImageUrl: true, backImageUrl: true },
+        },
+      },
     });
     if (!existing) return res.status(404).json({ message: "Бараа олдсонгүй" });
 
@@ -3374,6 +3487,27 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
         : parseOptionalExpiryDate(expiryDate);
     if (expiryDate !== undefined && parsedExpiryDate === undefined) {
       return res.status(400).json({ message: "Дуусах хугацаа буруу байна" });
+    }
+    const supplierImagesProvided =
+      preorderSupplierFrontImageUrl !== undefined ||
+      preorderSupplierBackImageUrl !== undefined;
+    const nextSupplierFrontImage =
+      preorderSupplierFrontImageUrl !== undefined
+        ? normalizeSupplierDocumentImage(preorderSupplierFrontImageUrl)
+        : (existing.supplierDocument?.frontImageUrl ?? null);
+    const nextSupplierBackImage =
+      preorderSupplierBackImageUrl !== undefined
+        ? normalizeSupplierDocumentImage(preorderSupplierBackImageUrl)
+        : (existing.supplierDocument?.backImageUrl ?? null);
+    if (
+      nextSupplyType === "CHINA_PREORDER" &&
+      supplierImagesProvided &&
+      (!nextSupplierFrontImage || !nextSupplierBackImage)
+    ) {
+      return res.status(400).json({
+        message:
+          "Нийлүүлэгчийн мэдээллийн урд болон ард талын зургийг хоёуланг оруулна уу",
+      });
     }
 
     const data: Record<string, unknown> = {};
@@ -3506,6 +3640,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       data.supplyType = nextSupplyType;
       if (nextSupplyType !== "CHINA_PREORDER") {
         data.preorderLeadTimeDays = null;
+        data.preorderCapacity = null;
         data.preorderNote = null;
       }
     }
@@ -3517,6 +3652,16 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
           .json({ message: "Ирэх хоног 0-365 хооронд байх ёстой" });
       }
       data.preorderLeadTimeDays = leadTimeDays;
+    }
+    if (preorderCapacity !== undefined) {
+      const capacity = normalizePreorderCapacity(preorderCapacity);
+      if (capacity === undefined) {
+        return res.status(400).json({
+          message: "Дүүрэх хүний тоо 1-1,000,000 хооронд бүхэл тоо байх ёстой",
+        });
+      }
+      data.preorderCapacity =
+        nextSupplyType === "CHINA_PREORDER" ? capacity : null;
     }
     if (preorderNote !== undefined)
       data.preorderNote = preorderNote ? String(preorderNote).trim() : null;
@@ -3548,11 +3693,37 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
         data.images = { create: imageUrls.map((url: string) => ({ url })) };
       }
 
+      if (nextSupplyType !== "CHINA_PREORDER") {
+        await tx.productSupplierDocument.deleteMany({
+          where: { productId: id },
+        });
+      } else if (
+        supplierImagesProvided &&
+        nextSupplierFrontImage &&
+        nextSupplierBackImage
+      ) {
+        await tx.productSupplierDocument.upsert({
+          where: { productId: id },
+          create: {
+            productId: id,
+            frontImageUrl: nextSupplierFrontImage,
+            backImageUrl: nextSupplierBackImage,
+          },
+          update: {
+            frontImageUrl: nextSupplierFrontImage,
+            backImageUrl: nextSupplierBackImage,
+          },
+        });
+      }
+
       const updated = await tx.product.update({
         where: { id },
         data,
         include: {
           images: { select: { id: true, url: true } },
+          supplierDocument: {
+            select: { frontImageUrl: true, backImageUrl: true },
+          },
           businessCategory: { select: { id: true, name: true, slug: true } },
         },
       });
@@ -3568,8 +3739,11 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       });
 
       const currentExpiryDate = await findProductExpiryDate(tx, id);
+      const { supplierDocument, ...updatedProduct } = updated;
       return {
-        ...updated,
+        ...updatedProduct,
+        preorderSupplierFrontImageUrl: supplierDocument?.frontImageUrl ?? null,
+        preorderSupplierBackImageUrl: supplierDocument?.backImageUrl ?? null,
         expiryDate: currentExpiryDate?.toISOString() ?? null,
       };
     });

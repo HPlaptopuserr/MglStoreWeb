@@ -50,6 +50,11 @@ import { ServiceDetailOverlay } from "@/app/services/_components/ServiceDetailOv
 import { formatOrganizationRating } from "@/lib/organization-presentation";
 import { StorefrontProductCard } from "./_components/StorefrontProductCard";
 import { StoreUtilityBar } from "@/components/organisms/layouts/StoreUtilityBar";
+import { useAuth } from "@/lib/auth-context";
+import {
+  resolveMarketplacePricingAudience,
+  resolveMemberPricing,
+} from "@/lib/member-pricing";
 
 type ProductItem = OrganizationDetailData["products"][number] & {
   isAvailable?: boolean;
@@ -686,6 +691,8 @@ function UnifiedContentSection({
   data: OrganizationDetailData;
   hasOtherContent?: boolean;
 }) {
+  const { user } = useAuth();
+  const pricingAudience = resolveMarketplacePricingAudience(user);
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(
     null,
   );
@@ -745,6 +752,12 @@ function UnifiedContentSection({
           if (item.type === "product") {
             const product = item.product;
             const image = resolveApiAssetUrl(product.image);
+            const pricing = resolveMemberPricing(
+              product.price,
+              null,
+              pricingAudience,
+              product.supplyType,
+            );
             return (
               <Link
                 key={`product-${item.id}`}
@@ -768,8 +781,13 @@ function UnifiedContentSection({
                     {product.title}
                   </h3>
                   <p className="mt-2 text-base font-extrabold text-orange-500">
-                    {formatPrice(product.price)}
+                    {formatPrice(pricing.price)}
                   </p>
+                  {pricing.label && (
+                    <p className="mt-1 text-xs font-bold text-emerald-600">
+                      {pricing.label}
+                    </p>
+                  )}
                 </div>
               </Link>
             );
@@ -852,6 +870,8 @@ function ProductsSection({
   products: ProductItem[];
   hasOtherContent?: boolean;
 }) {
+  const { user } = useAuth();
+  const pricingAudience = resolveMarketplacePricingAudience(user);
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(
@@ -928,9 +948,17 @@ function ProductsSection({
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
           {filtered.map((product) => {
             const isPreorder = product.supplyType === "CHINA_PREORDER";
-            const available =
-              isPreorder ||
-              (typeof product.stock === "number" ? product.stock > 0 : true);
+            const pricing = resolveMemberPricing(
+              product.price,
+              null,
+              pricingAudience,
+              product.supplyType,
+            );
+            const available = isPreorder
+              ? !product.preorderIsFull
+              : typeof product.stock === "number"
+                ? product.stock > 0
+                : true;
             const preorderLabel = product.preorderLeadTimeDays
               ? `${product.preorderLeadTimeDays} хоног`
               : "Захиалгаар";
@@ -980,7 +1008,7 @@ function ProductsSection({
                     </h3>
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-extrabold text-orange-500">
-                        {formatPrice(product.price)}
+                        {formatPrice(pricing.price)}
                       </span>
                       <span
                         aria-hidden="true"
@@ -993,6 +1021,11 @@ function ProductsSection({
                         <ShoppingCart className="w-3.5 h-3.5" />
                       </span>
                     </div>
+                    {pricing.label && (
+                      <p className="mt-1 text-[10px] font-bold text-emerald-600">
+                        {pricing.label}
+                      </p>
+                    )}
                   </div>
                 </Link>
               </motion.div>

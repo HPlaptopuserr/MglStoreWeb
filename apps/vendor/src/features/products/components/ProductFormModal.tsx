@@ -733,7 +733,31 @@ export function ProductFormModal({
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[140px_1fr]">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[160px_140px_1fr]">
+                        <div className="space-y-2">
+                          <label className="text-sm font-semibold text-slate-700">
+                            Дүүрэх хүний тоо{" "}
+                            <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="1000000"
+                            step="1"
+                            required
+                            className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all"
+                            value={form.preorderCapacity}
+                            onChange={(e) =>
+                              setForm((f) => ({
+                                ...f,
+                                preorderCapacity: e.target.value,
+                              }))
+                            }
+                          />
+                          <p className="text-xs font-medium text-slate-500">
+                            Жишээ: 50 гэвэл 50 хүн захиалахад дүүрнэ.
+                          </p>
+                        </div>
                         <div className="space-y-2">
                           <label className="text-sm font-semibold text-slate-700">
                             Ирэх хоног
@@ -766,6 +790,56 @@ export function ProductFormModal({
                                 preorderNote: e.target.value,
                               }))
                             }
+                          />
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-blue-100 bg-white p-4">
+                        <div className="mb-4">
+                          <h4 className="text-sm font-bold text-slate-900">
+                            Нийлүүлэгчийн мэдээлэл
+                          </h4>
+                          <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
+                            Текст мэдээлэл оруулахгүй. Урд болон ард талын
+                            зургийг тус тусад нь оруулна.
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                          <ImageUploadGrid
+                            images={
+                              form.preorderSupplierFrontImageUrl
+                                ? [form.preorderSupplierFrontImageUrl]
+                                : []
+                            }
+                            onChange={(images) =>
+                              setForm((current) => ({
+                                ...current,
+                                preorderSupplierFrontImageUrl: images[0] || "",
+                              }))
+                            }
+                            maxImages={1}
+                            label="Урд талын зураг *"
+                            addLabel="Урд зураг нэмэх"
+                            primaryLabel="Урд тал"
+                            helperText="Нийлүүлэгчийн мэдээллийн урд талыг тод бүтнээр нь оруулна."
+                          />
+                          <ImageUploadGrid
+                            images={
+                              form.preorderSupplierBackImageUrl
+                                ? [form.preorderSupplierBackImageUrl]
+                                : []
+                            }
+                            onChange={(images) =>
+                              setForm((current) => ({
+                                ...current,
+                                preorderSupplierBackImageUrl: images[0] || "",
+                              }))
+                            }
+                            maxImages={1}
+                            label="Ард талын зураг *"
+                            addLabel="Ард зураг нэмэх"
+                            primaryLabel="Ард тал"
+                            helperText="Нийлүүлэгчийн мэдээллийн ард талыг тод бүтнээр нь оруулна."
                           />
                         </div>
                       </div>

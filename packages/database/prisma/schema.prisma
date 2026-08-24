@@ -1046,6 +1046,7 @@ model Product {
   preparationMinutes    Int?
   supplyType            ProductSupplyType             @default(IN_STOCK)
   preorderLeadTimeDays  Int?
+  preorderCapacity      Int?
   preorderNote          String?
   marketplacePriority   Int                           @default(0)
   rating                Float                         @default(0)
@@ -1069,6 +1070,7 @@ model Product {
   masterProduct         MasterProduct?                @relation(fields: [masterProductId], references: [id], onDelete: SetNull)
   managedByWarehouse    Warehouse?                    @relation("WarehouseManagedProducts", fields: [managedByWarehouseId], references: [id], onDelete: SetNull)
   images                ProductImage[]
+  supplierDocument      ProductSupplierDocument?
   productRequests       ProductRequest[]
   warehouseInventories  WarehouseInventory[]
   stockRequestItems     WarehouseStockRequestItem[]   @relation("StockRequestProducts")
@@ -1414,6 +1416,16 @@ model ProductImage {
   product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@index([productId])
+}
+
+model ProductSupplierDocument {
+  id            String   @id @default(uuid())
+  productId     String   @unique
+  frontImageUrl String
+  backImageUrl  String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
 model Discount {

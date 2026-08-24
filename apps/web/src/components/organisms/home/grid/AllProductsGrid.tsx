@@ -5,6 +5,7 @@ import { LoaderCircle } from "lucide-react";
 import { useInfiniteScroll } from "@mgl/ui";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { resolveMarketplacePricingAudience } from "@/lib/member-pricing";
 import { CatalogProductCard } from "@/app/products/_components/ProductResultsGrid";
 import type { ApiProduct } from "./productShowcase";
 import {
@@ -31,7 +32,7 @@ export function AllProductsGrid() {
   const [retryNonce, setRetryNonce] = useState(0);
 
   const hasMore = products.length < total;
-  const isMember = Boolean(user?.membership?.active || user?.isPrime);
+  const pricingAudience = resolveMarketplacePricingAudience(user);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,8 +53,12 @@ export function AllProductsGrid() {
           if (cancelled) return;
           setProducts((current) => {
             if (isFirstBatch) return payload.products;
-            const byId = new Map(current.map((product) => [product.id, product]));
-            payload.products.forEach((product) => byId.set(product.id, product));
+            const byId = new Map(
+              current.map((product) => [product.id, product]),
+            );
+            payload.products.forEach((product) =>
+              byId.set(product.id, product),
+            );
             return [...byId.values()];
           });
           setTotal(payload.total);
@@ -78,18 +83,14 @@ export function AllProductsGrid() {
 
         setProducts((current) => {
           if (isFirstBatch) return nextProducts;
-          const byId = new Map(
-            current.map((product) => [product.id, product]),
-          );
+          const byId = new Map(current.map((product) => [product.id, product]));
           nextProducts.forEach((product) => byId.set(product.id, product));
           return [...byId.values()];
         });
         setTotal(payload.total ?? nextProducts.length);
       } catch {
         if (!cancelled) {
-          setError(
-            "Нийт бараануудыг ачаалж чадсангүй. Дахин оролдоно уу.",
-          );
+          setError("Нийт бараануудыг ачаалж чадсангүй. Дахин оролдоно уу.");
         }
       } finally {
         if (!cancelled) {
@@ -147,7 +148,7 @@ export function AllProductsGrid() {
             <CatalogProductCard
               key={product.id}
               product={product}
-              isMember={isMember}
+              pricingAudience={pricingAudience}
               priority={index < 6}
             />
           ))}

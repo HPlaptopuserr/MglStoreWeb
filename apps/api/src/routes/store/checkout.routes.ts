@@ -15,6 +15,7 @@ import {
   InventoryReason,
   type Prisma,
 } from "@mgl/database";
+import { resolveMarketplaceProductPricing } from "@mgl/types";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import {
   adjustStock,
@@ -36,8 +37,16 @@ import {
   notifyNewOnlineOrderRequest,
   notifyNewPaidOrder,
 } from "../../services/order-notification.service";
+import { getPreorderParticipantIds } from "../../services/preorder-capacity.service";
 
 const router: ExpressRouter = Router();
+
+class PreorderCapacityFullError extends Error {
+  constructor(public readonly productName: string) {
+    super(`${productName} захиалгын бараа дүүрсэн байна`);
+    this.name = "PreorderCapacityFullError";
+  }
+}
 const JWT_SECRET =
   process.env.JWT_SECRET ||
   (process.env.NODE_ENV === "production"
@@ -66,6 +75,16 @@ const getCustomer = async (req: Request) => {
         deletedAt: true,
         isPrime: true,
         membershipExpiresAt: true,
+        organizationMemberships: {
+          where: {
+            role: "OWNER",
+            isActive: true,
+            deletedAt: null,
+            organization: { deletedAt: null },
+          },
+          select: { id: true },
+          take: 1,
+        },
       },
     });
   } catch {
@@ -82,15 +101,6 @@ const isActiveMember = (user: {
     (!user.membershipExpiresAt ||
       user.membershipExpiresAt.getTime() > Date.now()),
   );
-
-const applyMemberDiscount = (
-  price: number,
-  percent?: number | null,
-  eligible = false,
-) => {
-  if (!eligible || !percent || percent <= 0) return price;
-  return Math.max(0, Math.round(price * (1 - percent / 100)));
-};
 
 /* ── helpers ──────────────────────────────────────────── */
 const generateOrderNumber = () => {
@@ -887,6 +897,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         price: true,
         stock: true,
         supplyType: true,
+        preorderCapacity: true,
         organizationId: true,
         managedByWarehouseId: true,
         warehouseInventories: {
@@ -981,6 +992,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
           price: true,
           stock: true,
           supplyType: true,
+          preorderCapacity: true,
           organizationId: true,
           managedByWarehouseId: true,
           warehouseInventories: {
@@ -1005,6 +1017,10 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     }
 
     const productMap = new Map(products.map((p) => [p.id, p]));
+    const pricingAudience = {
+      isMember: isActiveMember(customer),
+      isStoreOwner: customer.organizationMemberships.length > 0,
+    };
 
     // Validate stock & build order items
     let subtotal = 0;
@@ -1043,11 +1059,11 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         });
       }
       const basePrice = Number(product.price);
-      const price = applyMemberDiscount(
-        basePrice,
-        product.discounts[0]?.percent,
-        isActiveMember(customer),
-      );
+      const price = resolveMarketplaceProductPricing(basePrice, {
+        ...pricingAudience,
+        supplyType: product.supplyType,
+        memberDiscountPercent: product.discounts[0]?.percent,
+      }).price;
       const lineTotal = price * qty;
       subtotal += lineTotal;
 
@@ -1088,10 +1104,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       normalizedCustomerLat !== null && normalizedCustomerLng !== null;
     const total = subtotal; // no delivery fee for now
 
-    if (
-      STORE_MINIMUM_ORDER_AMOUNT > 0 &&
-      total < STORE_MINIMUM_ORDER_AMOUNT
-    ) {
+    if (STORE_MINIMUM_ORDER_AMOUNT > 0 && total < STORE_MINIMUM_ORDER_AMOUNT) {
       return res.status(400).json({
         code: "MINIMUM_ORDER_AMOUNT",
         message: `Захиалгын доод дүн ${STORE_MINIMUM_ORDER_AMOUNT.toLocaleString()}₮ байна.`,
@@ -1103,6 +1116,32 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
 
     // One customer checkout is split atomically into one order per store.
     const createdOrders = await prisma.$transaction(async (tx) => {
+      const limitedPreorders = products
+        .filter(
+          (product) =>
+            product.supplyType === "CHINA_PREORDER" &&
+            product.preorderCapacity !== null,
+        )
+        .sort((a, b) => a.id.localeCompare(b.id));
+
+      // Serialize checkout for each limited preorder so concurrent requests
+      // cannot take the same final participant slot.
+      for (const product of limitedPreorders) {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`preorder-capacity:${product.id}`}))`;
+      }
+
+      const preorderParticipants = await getPreorderParticipantIds(
+        tx,
+        limitedPreorders.map((product) => product.id),
+      );
+      for (const product of limitedPreorders) {
+        const participantCount =
+          preorderParticipants.get(product.id)?.size ?? 0;
+        if (participantCount >= (product.preorderCapacity ?? 0)) {
+          throw new PreorderCapacityFullError(product.name);
+        }
+      }
+
       const results = [];
       for (const group of organizationGroups) {
         const order = await tx.order.create({
@@ -1170,10 +1209,10 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       orderResults.length > 1
         ? "MULTI_ORDER_CREATED"
         : !primary.isPreorderOnly && !hasCustomerCoordinates
-        ? "MANUAL_REVIEW"
-        : dispatch?.status === "NOT_STARTED" && !primary.isPreorderOnly
-        ? "MANUAL_REVIEW"
-        : dispatch?.status || "PREORDER_REGISTERED";
+          ? "MANUAL_REVIEW"
+          : dispatch?.status === "NOT_STARTED" && !primary.isPreorderOnly
+            ? "MANUAL_REVIEW"
+            : dispatch?.status || "PREORDER_REGISTERED";
 
     await Promise.all(
       orderResults.map(({ order }) =>
@@ -1220,6 +1259,12 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       ),
     });
   } catch (error) {
+    if (error instanceof PreorderCapacityFullError) {
+      return res.status(409).json({
+        code: "PREORDER_CAPACITY_FULL",
+        message: error.message,
+      });
+    }
     console.error("store checkout error", error);
     return res.status(500).json({ message: "Захиалга үүсгэхэд алдаа гарлаа" });
   }

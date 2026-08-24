@@ -25,7 +25,10 @@ import { API } from "@/lib/api";
 import { addToCart } from "@/lib/cart";
 import { useAuth } from "@/lib/auth-context";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
-import { resolveMemberPricing } from "@/lib/member-pricing";
+import {
+  resolveMarketplacePricingAudience,
+  resolveMemberPricing,
+} from "@/lib/member-pricing";
 import { organizationPath } from "@/lib/organization-links";
 import {
   findLocalCatalogProduct,
@@ -64,6 +67,10 @@ interface FullProduct {
   stock?: number | null;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays?: number | null;
+  preorderCapacity?: number | null;
+  preorderParticipantCount?: number;
+  preorderRemaining?: number | null;
+  preorderIsFull?: boolean;
   preorderNote?: string | null;
   images: ProductImage[];
   businessCategory?: BusinessCategory | null;
@@ -118,10 +125,15 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
   const [imgZoom, setImgZoom] = useState(false);
 
   const discount = product?.discounts?.[0];
-  const isMember = Boolean(user?.membership?.active || user?.isPrime);
+  const pricingAudience = resolveMarketplacePricingAudience(user);
   const pricing = product
-    ? resolveMemberPricing(product.price, product.discounts, isMember)
-    : resolveMemberPricing(0, [], false);
+    ? resolveMemberPricing(
+        product.price,
+        product.discounts,
+        pricingAudience,
+        product.supplyType,
+      )
+    : resolveMemberPricing(0, [], pricingAudience);
   const discountedPrice = pricing.price;
   const originalPrice = pricing.originalPrice;
   const savings = pricing.savings;
@@ -159,29 +171,47 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
   const images = product?.images ?? [];
   const isPreorder = product?.supplyType === "CHINA_PREORDER";
   const isOutOfStock = !isPreorder && product?.stock === 0;
-  const maxQty = Math.min(isPreorder ? 99 : product?.stock ?? 99, 99);
+  const isPreorderFull = Boolean(isPreorder && product?.preorderIsFull);
+  const unavailable = isOutOfStock || isPreorderFull;
+  const maxQty = Math.min(isPreorder ? 99 : (product?.stock ?? 99), 99);
 
   const handleAddToCart = useCallback(() => {
-    if (!product || isOutOfStock) return;
+    if (!product || unavailable) return;
     addToCart({
       id: product.id,
       name: product.name,
       price: discountedPrice,
+      basePrice: Number(product.price),
       originalPrice,
       memberDiscountPercent: pricing.active ? pricing.percent : null,
+      discountLabel: pricing.label,
       supplyType: product.supplyType,
       image: images[0]?.url,
       quantity,
     });
     setAddedToCart(true);
     setTimeout(() => setAddedToCart(false), 2000);
-  }, [product, isOutOfStock, discountedPrice, originalPrice, pricing.active, pricing.percent, images, quantity]);
+  }, [
+    product,
+    unavailable,
+    discountedPrice,
+    originalPrice,
+    pricing.active,
+    pricing.percent,
+    pricing.label,
+    images,
+    quantity,
+  ]);
 
   const handleShare = useCallback(async () => {
     if (!product) return;
     const url = `${window.location.origin}/products/${product.id}`;
     if (navigator.share) {
-      try { await navigator.share({ title: product.name, url }); } catch { /* cancelled */ }
+      try {
+        await navigator.share({ title: product.name, url });
+      } catch {
+        /* cancelled */
+      }
     } else {
       await navigator.clipboard.writeText(url);
     }
@@ -203,7 +233,9 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 md:px-6 py-3.5 border-b border-gray-100 shrink-0">
           <nav className="text-[13px] text-gray-400 flex items-center gap-2 truncate">
-            <Link href="/" className="hover:text-gray-600 transition-colors">Нүүр хуудас</Link>
+            <Link href="/" className="hover:text-gray-600 transition-colors">
+              Нүүр хуудас
+            </Link>
             <span className="text-gray-300">/</span>
             <span className="text-gray-800 font-medium line-clamp-1">
               {product?.name ?? "Уншиж байна..."}
@@ -278,14 +310,22 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                   {images.length > 1 && (
                     <>
                       <button
-                        onClick={(e) => { e.stopPropagation(); setActiveImg((p) => Math.max(0, p - 1)); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveImg((p) => Math.max(0, p - 1));
+                        }}
                         disabled={activeImg === 0}
                         className="absolute left-2.5 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/90 hover:bg-white text-gray-600 rounded-full flex items-center justify-center disabled:opacity-0 transition-all shadow-sm backdrop-blur-sm"
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); setActiveImg((p) => Math.min(images.length - 1, p + 1)); }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveImg((p) =>
+                            Math.min(images.length - 1, p + 1),
+                          );
+                        }}
                         disabled={activeImg === images.length - 1}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/90 hover:bg-white text-gray-600 rounded-full flex items-center justify-center disabled:opacity-0 transition-all shadow-sm backdrop-blur-sm"
                       >
@@ -308,7 +348,14 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                             : "ring-transparent hover:ring-gray-300"
                         }`}
                       >
-                        <Image src={img.url} alt="" fill className="object-cover" referrerPolicy="no-referrer" sizes="60px" />
+                        <Image
+                          src={img.url}
+                          alt=""
+                          fill
+                          className="object-cover"
+                          referrerPolicy="no-referrer"
+                          sizes="60px"
+                        />
                       </button>
                     ))}
                   </div>
@@ -347,7 +394,10 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                 <div className="flex items-center gap-2 mb-4">
                   <div className="flex items-center gap-0.5">
                     {[1, 2, 3, 4, 5].map((s) => (
-                      <Star key={s} className="w-3.5 h-3.5 fill-orange-400 text-orange-400" />
+                      <Star
+                        key={s}
+                        className="w-3.5 h-3.5 fill-orange-400 text-orange-400"
+                      />
                     ))}
                   </div>
                   <span className="text-xs text-gray-400">5.0</span>
@@ -372,21 +422,30 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                   )}
 
                   {/* Countdown */}
-                  {discount?.validUntil && (
+                  {!isPreorder && discount?.validUntil && (
                     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-orange-100/80">
                       <span className="text-[11px] text-gray-500 font-medium shrink-0">
-                        {isMember ? "Member хөнгөлөлт дуусахад:" : `Member бол -${discount.percent}%:`}
+                        {pricing.active
+                          ? `${pricing.label} хөнгөлөлт дуусахад:`
+                          : `Гишүүн бол -${discount.percent}%:`}
                       </span>
                       <div className="flex gap-1">
-                        {([
-                          { val: countdown.d, label: "Ө" },
-                          { val: countdown.h, label: "Ц" },
-                          { val: countdown.m, label: "М" },
-                          { val: countdown.s, label: "С" },
-                        ] as const).map(({ val, label }) => (
-                          <div key={label} className="bg-gray-900 text-white text-xs font-bold px-1.5 py-1 rounded-md min-w-[32px] text-center tabular-nums">
+                        {(
+                          [
+                            { val: countdown.d, label: "Ө" },
+                            { val: countdown.h, label: "Ц" },
+                            { val: countdown.m, label: "М" },
+                            { val: countdown.s, label: "С" },
+                          ] as const
+                        ).map(({ val, label }) => (
+                          <div
+                            key={label}
+                            className="bg-gray-900 text-white text-xs font-bold px-1.5 py-1 rounded-md min-w-[32px] text-center tabular-nums"
+                          >
                             {String(val).padStart(2, "0")}
-                            <span className="text-[9px] text-gray-400 ml-0.5">{label}</span>
+                            <span className="text-[9px] text-gray-400 ml-0.5">
+                              {label}
+                            </span>
                           </div>
                         ))}
                       </div>
@@ -398,18 +457,53 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                 {isPreorder ? (
                   <div className="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-800">
                     <p className="font-bold">Захиалгаар</p>
-                    <p className="mt-1">Ирэх хугацаа: {product.preorderLeadTimeDays ?? 14} хоног</p>
-                    {product.preorderNote && <p className="mt-1 text-blue-700">{product.preorderNote}</p>}
+                    <p className="mt-1">
+                      Ирэх хугацаа: {product.preorderLeadTimeDays ?? 14} хоног
+                    </p>
+                    {product.preorderCapacity && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between text-xs font-bold">
+                          <span>
+                            {product.preorderParticipantCount ?? 0}/
+                            {product.preorderCapacity} хүн
+                          </span>
+                          <span>
+                            {product.preorderIsFull
+                              ? "Дүүрсэн"
+                              : `${product.preorderRemaining ?? Math.max(0, product.preorderCapacity - (product.preorderParticipantCount ?? 0))} хүн дутуу`}
+                          </span>
+                        </div>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
+                          <div
+                            className={`h-full rounded-full ${product.preorderIsFull ? "bg-slate-700" : "bg-blue-500"}`}
+                            style={{
+                              width: `${Math.min(100, ((product.preorderParticipantCount ?? 0) / product.preorderCapacity) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {product.preorderNote && (
+                      <p className="mt-1 text-blue-700">
+                        {product.preorderNote}
+                      </p>
+                    )}
                   </div>
-                ) : product.stock != null && (
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className={`w-2 h-2 rounded-full ${product.stock > 0 ? "bg-green-500" : "bg-red-500"}`} />
-                    <span className={`text-sm font-medium ${product.stock > 0 ? "text-green-700" : "text-red-600"}`}>
-                      {product.stock > 0
-                        ? `Нөөцөд ${product.stock} ширхэг байна`
-                        : "Нөөц дууссан"}
-                    </span>
-                  </div>
+                ) : (
+                  product.stock != null && (
+                    <div className="flex items-center gap-2 mb-4">
+                      <div
+                        className={`w-2 h-2 rounded-full ${product.stock > 0 ? "bg-green-500" : "bg-red-500"}`}
+                      />
+                      <span
+                        className={`text-sm font-medium ${product.stock > 0 ? "text-green-700" : "text-red-600"}`}
+                      >
+                        {product.stock > 0
+                          ? `Нөөцөд ${product.stock} ширхэг байна`
+                          : "Нөөц дууссан"}
+                      </span>
+                    </div>
+                  )
                 )}
 
                 {/* Quantity + Cart */}
@@ -426,7 +520,9 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                       {quantity}
                     </span>
                     <button
-                      onClick={() => setQuantity((q) => Math.min(maxQty, q + 1))}
+                      onClick={() =>
+                        setQuantity((q) => Math.min(maxQty, q + 1))
+                      }
                       disabled={quantity >= maxQty}
                       className="w-10 h-10 flex items-center justify-center hover:bg-gray-50 transition-colors disabled:opacity-30"
                     >
@@ -435,18 +531,26 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                   </div>
 
                   <button
-                    disabled={isOutOfStock}
+                    disabled={unavailable}
                     onClick={handleAddToCart}
                     className={`flex-1 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-sm h-10 ${
                       addedToCart
                         ? "bg-green-500 text-white"
-                        : isOutOfStock
+                        : unavailable
                           ? "bg-gray-100 text-gray-400 cursor-not-allowed"
                           : "bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/20"
                     }`}
                   >
                     <ShoppingCart className="w-4 h-4" />
-                    {addedToCart ? "Нэмэгдлээ!" : isOutOfStock ? "Нөөц дууссан" : isPreorder ? "Захиалах" : "Сагсанд нэмэх"}
+                    {addedToCart
+                      ? "Нэмэгдлээ!"
+                      : unavailable
+                        ? isPreorder
+                          ? "Захиалга дүүрсэн"
+                          : "Нөөц дууссан"
+                        : isPreorder
+                          ? "Захиалах"
+                          : "Сагсанд нэмэх"}
                   </button>
 
                   <button
@@ -457,7 +561,9 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                         : "border-gray-200 text-gray-400 hover:text-red-400 hover:border-red-200"
                     }`}
                   >
-                    <Heart className={`w-4 h-4 ${wishlisted ? "fill-red-500" : ""}`} />
+                    <Heart
+                      className={`w-4 h-4 ${wishlisted ? "fill-red-500" : ""}`}
+                    />
                   </button>
 
                   <button
@@ -472,12 +578,25 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                 <div className="grid grid-cols-3 gap-2 mb-5">
                   {[
                     { icon: Truck, label: "Хүргэлттэй", sub: "Улаанбаатар" },
-                    { icon: Shield, label: "Баталгаатай", sub: "Чанарын баталгаа" },
-                    { icon: RotateCcw, label: "Буцаалт", sub: "7 хоногийн дотор" },
+                    {
+                      icon: Shield,
+                      label: "Баталгаатай",
+                      sub: "Чанарын баталгаа",
+                    },
+                    {
+                      icon: RotateCcw,
+                      label: "Буцаалт",
+                      sub: "7 хоногийн дотор",
+                    },
                   ].map(({ icon: Icon, label, sub }) => (
-                    <div key={label} className="flex flex-col items-center text-center py-2.5 bg-gray-50 rounded-xl">
+                    <div
+                      key={label}
+                      className="flex flex-col items-center text-center py-2.5 bg-gray-50 rounded-xl"
+                    >
                       <Icon className="w-4 h-4 text-gray-500 mb-1" />
-                      <p className="text-[11px] font-semibold text-gray-700">{label}</p>
+                      <p className="text-[11px] font-semibold text-gray-700">
+                        {label}
+                      </p>
                       <p className="text-[10px] text-gray-400">{sub}</p>
                     </div>
                   ))}
@@ -508,7 +627,9 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                     <p className="text-sm font-semibold text-gray-900 group-hover:text-orange-600 transition-colors truncate">
                       {product.organization.name}
                     </p>
-                    <p className="text-xs text-gray-400">Дэлгүүр рүү зочлох →</p>
+                    <p className="text-xs text-gray-400">
+                      Дэлгүүр рүү зочлох →
+                    </p>
                   </div>
                 </Link>
 

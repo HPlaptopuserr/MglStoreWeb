@@ -17,6 +17,8 @@ import {
 import { useInfiniteScroll } from "@mgl/ui";
 import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { resolveMarketplacePricingAudience } from "@/lib/member-pricing";
+import type { MarketplacePricingAudience } from "@mgl/types";
 import {
   appendProductVisitorId,
   trackProductInteraction,
@@ -70,6 +72,10 @@ export interface ApiProduct {
   stock?: number;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays?: number | null;
+  preorderCapacity?: number | null;
+  preorderParticipantCount?: number;
+  preorderRemaining?: number | null;
+  preorderIsFull?: boolean;
   preorderNote?: string | null;
   marketplacePriority?: number;
   images: { id: string; url: string }[];
@@ -374,7 +380,7 @@ function ProductsContent({
     ? (sortParam as SortKey)
     : "recommended";
   const initialDiscountOnly = discountParam === "1" || discountParam === "true";
-  const isMember = Boolean(user?.membership?.active || user?.isPrime);
+  const pricingAudience = resolveMarketplacePricingAudience(user);
 
   const [apiCategories, setApiCategories] = useState<ApiCategory[]>(
     initialData?.categories ?? [],
@@ -1155,7 +1161,7 @@ function ProductsContent({
             products={organizationProducts}
             loading={organizationProductsLoading}
             error={organizationProductsError}
-            isMember={isMember}
+            pricingAudience={pricingAudience}
             onRetry={() => setOrganizationProductsRetry((value) => value + 1)}
           />
         ) : (
@@ -1163,7 +1169,7 @@ function ProductsContent({
             products={displayProducts}
             loading={productsLoading}
             hasActiveFilters={activeFilterCount > 0}
-            isMember={isMember}
+            pricingAudience={pricingAudience}
             searchQuery={searchQuery}
             suggestions={searchSuggestions}
             onClearFilters={clearFilters}
@@ -1212,13 +1218,13 @@ function OrganizationProductGrid({
   products,
   loading,
   error,
-  isMember,
+  pricingAudience,
   onRetry,
 }: {
   products: ApiProduct[];
   loading: boolean;
   error: string | null;
-  isMember: boolean;
+  pricingAudience: MarketplacePricingAudience;
   onRetry: () => void;
 }) {
   const organizations = useMemo(() => {
@@ -1313,7 +1319,7 @@ function OrganizationProductGrid({
               key={organization.id}
               organization={organization}
               products={organizationProducts}
-              isMember={isMember}
+              pricingAudience={pricingAudience}
             />
           ),
         )}
@@ -1325,11 +1331,11 @@ function OrganizationProductGrid({
 function OrganizationProductRow({
   organization,
   products: initialProducts,
-  isMember,
+  pricingAudience,
 }: {
   organization: NonNullable<ApiProduct["organization"]>;
   products: ApiProduct[];
-  isMember: boolean;
+  pricingAudience: MarketplacePricingAudience;
 }) {
   const { authFetch } = useAuth();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -1533,7 +1539,7 @@ function OrganizationProductRow({
             <CatalogProductCard
               key={product.id}
               product={product}
-              isMember={isMember}
+              pricingAudience={pricingAudience}
               compact
             />
           ))}

@@ -28,6 +28,7 @@ import { vendorEmailTemplates } from "../../services/email/templates/vendor-emai
 import { shouldExposeOrgProductsOnWeb } from "../../services/product-visibility.service";
 import { syncOwnerPersonalMembershipFromActiveOrgPlan } from "../../services/owner-membership-sync.service";
 import { sendPushToUsers } from "../../services/push-notification.service";
+import { getPreorderCapacityProgress } from "../../services/preorder-capacity.service";
 
 const router: ExpressRouter = Router();
 const orgImagesDir = path.resolve(__dirname, "../../../uploads/organizations");
@@ -1853,6 +1854,7 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
                   stock: true,
                   supplyType: true,
                   preorderLeadTimeDays: true,
+                  preorderCapacity: true,
                   rating: true,
                   reviewCount: true,
                   soldCount: true,
@@ -1904,6 +1906,10 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
     const visibleProducts = canShowProducts
       ? sortProductsByExpiry(((partner as any).products || []) as any[])
       : [];
+    const preorderCapacityByProductId = await getPreorderCapacityProgress(
+      prisma,
+      visibleProducts,
+    );
 
     return res.json({
       id: partner.id,
@@ -1949,6 +1955,7 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
       },
       members,
       products: visibleProducts.map((p: any) => ({
+        ...preorderCapacityByProductId.get(p.id),
         id: p.id,
         title: p.name,
         name: p.name,
@@ -2591,6 +2598,10 @@ router.get("/partners/:slugOrId", optionalAuth, async (req, res) => {
 
     const canShowProducts = await shouldExposeOrgProductsOnWeb(req, partner.id);
     const visibleProducts = canShowProducts ? partner.products : [];
+    const preorderCapacityByProductId = await getPreorderCapacityProgress(
+      prisma,
+      visibleProducts,
+    );
 
     const result = {
       id: partner.id,
@@ -2647,6 +2658,7 @@ router.get("/partners/:slugOrId", optionalAuth, async (req, res) => {
         lastLoginAt: m.user.lastLoginAt,
       })),
       products: visibleProducts.map((p: any) => ({
+        ...preorderCapacityByProductId.get(p.id),
         id: p.id,
         name: p.name,
         title: p.name,

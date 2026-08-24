@@ -5,6 +5,11 @@ import Image from "next/image";
 import { Check, ShoppingBag, ShoppingCart, Store } from "lucide-react";
 import { useState } from "react";
 import { addToCart } from "@/lib/cart";
+import { useAuth } from "@/lib/auth-context";
+import {
+  resolveMarketplacePricingAudience,
+  resolveMemberPricing,
+} from "@/lib/member-pricing";
 import type { ReelItem } from "../_lib/reels.types";
 import { formatMnt, mediaUrl, parsePrice } from "../_lib/reels.utils";
 
@@ -14,9 +19,16 @@ type ReelCommercePanelProps = {
 };
 
 export function ReelCommercePanel({ item, orgSlug }: ReelCommercePanelProps) {
+  const { user } = useAuth();
   const [added, setAdded] = useState(false);
   const product = item.product;
-  const productPrice = parsePrice(product?.price);
+  const productPrice = parsePrice(product?.price) ?? 0;
+  const pricing = resolveMemberPricing(
+    productPrice,
+    product?.discounts,
+    resolveMarketplacePricingAudience(user),
+    product?.supplyType,
+  );
   const productImage = mediaUrl(product?.images?.[0]?.url);
 
   if (!product) {
@@ -44,11 +56,16 @@ export function ReelCommercePanel({ item, orgSlug }: ReelCommercePanelProps) {
   }
 
   const addProductToCart = () => {
-    if (!productPrice) return;
+    if (!pricing.price) return;
     addToCart({
       id: product.id,
       name: product.name,
-      price: productPrice,
+      price: pricing.price,
+      basePrice: productPrice,
+      originalPrice: pricing.originalPrice,
+      memberDiscountPercent: pricing.active ? pricing.percent : null,
+      discountLabel: pricing.label,
+      supplyType: product.supplyType || undefined,
       quantity: 1,
     });
     setAdded(true);
@@ -79,8 +96,13 @@ export function ReelCommercePanel({ item, orgSlug }: ReelCommercePanelProps) {
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-black">{product.name}</p>
           <p className="mt-0.5 text-base font-black text-orange-600">
-            {formatMnt(product.price)}
+            {formatMnt(pricing.price)}
           </p>
+          {pricing.label && (
+            <p className="text-[10px] font-bold text-emerald-600">
+              {pricing.label}
+            </p>
+          )}
         </div>
       </Link>
       <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
@@ -92,7 +114,7 @@ export function ReelCommercePanel({ item, orgSlug }: ReelCommercePanelProps) {
         </Link>
         <button
           type="button"
-          disabled={!productPrice}
+          disabled={!pricing.price}
           onClick={addProductToCart}
           className="flex h-10 min-w-11 items-center justify-center rounded-2xl bg-orange-500 px-3 text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300"
           aria-label="Сагсанд нэмэх"

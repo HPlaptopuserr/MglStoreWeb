@@ -61,6 +61,9 @@ const EMPTY_FORM: FormState = {
   expiryDate: "",
   supplyType: "IN_STOCK",
   preorderLeadTimeDays: "14",
+  preorderCapacity: "50",
+  preorderSupplierFrontImageUrl: "",
+  preorderSupplierBackImageUrl: "",
   preorderNote: "",
   marketplacePriority: "0",
   businessCategoryId: "",
@@ -73,6 +76,9 @@ const PREORDER_FORM: FormState = {
   expiryDate: "",
   supplyType: "CHINA_PREORDER",
   preorderLeadTimeDays: "14",
+  preorderCapacity: "50",
+  preorderSupplierFrontImageUrl: "",
+  preorderSupplierBackImageUrl: "",
   preorderNote: "",
 };
 
@@ -329,6 +335,10 @@ export default function ProductsPage() {
       supplyType: p.supplyType || "IN_STOCK",
       preorderLeadTimeDays:
         p.preorderLeadTimeDays != null ? String(p.preorderLeadTimeDays) : "14",
+      preorderCapacity:
+        p.preorderCapacity != null ? String(p.preorderCapacity) : "50",
+      preorderSupplierFrontImageUrl: p.preorderSupplierFrontImageUrl || "",
+      preorderSupplierBackImageUrl: p.preorderSupplierBackImageUrl || "",
       preorderNote: p.preorderNote || "",
       marketplacePriority: String(p.marketplacePriority ?? 0),
       businessCategoryId: p.businessCategoryId || "",
@@ -400,6 +410,29 @@ export default function ProductsPage() {
       return showToast("error", "Ирэх хоног 0-365 хооронд байх ёстой");
     }
 
+    const preorderCapacity = Number(form.preorderCapacity);
+    if (
+      form.supplyType === "CHINA_PREORDER" &&
+      (!Number.isInteger(preorderCapacity) ||
+        preorderCapacity < 1 ||
+        preorderCapacity > 1_000_000)
+    ) {
+      return showToast(
+        "error",
+        "Дүүрэх хүний тоо 1-1,000,000 хооронд бүхэл тоо байх ёстой",
+      );
+    }
+    if (
+      form.supplyType === "CHINA_PREORDER" &&
+      (!form.preorderSupplierFrontImageUrl ||
+        !form.preorderSupplierBackImageUrl)
+    ) {
+      return showToast(
+        "error",
+        "Нийлүүлэгчийн мэдээллийн урд болон ард талын зургийг оруулна уу",
+      );
+    }
+
     const cityTaxRate = form.cityTaxRate.trim()
       ? parseFloat(form.cityTaxRate)
       : 0;
@@ -442,6 +475,16 @@ export default function ProductsPage() {
         supplyType: form.supplyType,
         preorderLeadTimeDays:
           form.supplyType === "CHINA_PREORDER" ? leadTimeDays : null,
+        preorderCapacity:
+          form.supplyType === "CHINA_PREORDER" ? preorderCapacity : null,
+        preorderSupplierFrontImageUrl:
+          form.supplyType === "CHINA_PREORDER"
+            ? form.preorderSupplierFrontImageUrl
+            : null,
+        preorderSupplierBackImageUrl:
+          form.supplyType === "CHINA_PREORDER"
+            ? form.preorderSupplierBackImageUrl
+            : null,
         preorderNote:
           form.supplyType === "CHINA_PREORDER"
             ? form.preorderNote.trim() || null
@@ -967,6 +1010,46 @@ export default function ProductsPage() {
                     Ирэх хугацаа: {selectedProduct.preorderLeadTimeDays ?? 14}{" "}
                     хоног
                   </p>
+                  {selectedProduct.preorderCapacity && (
+                    <p className="mt-1 font-semibold">
+                      Захиалсан: {selectedProduct.preorderParticipantCount ?? 0}
+                      /{selectedProduct.preorderCapacity} хүн
+                      {selectedProduct.preorderIsFull
+                        ? " · Дүүрсэн"
+                        : selectedProduct.preorderRemaining != null
+                          ? ` · ${selectedProduct.preorderRemaining} хүн дутуу`
+                          : ""}
+                    </p>
+                  )}
+                  {selectedProduct.preorderSupplierFrontImageUrl &&
+                    selectedProduct.preorderSupplierBackImageUrl && (
+                      <div className="mt-3 grid grid-cols-2 gap-3">
+                        {[
+                          {
+                            label: "Урд тал",
+                            url: selectedProduct.preorderSupplierFrontImageUrl,
+                          },
+                          {
+                            label: "Ард тал",
+                            url: selectedProduct.preorderSupplierBackImageUrl,
+                          },
+                        ].map((image) => (
+                          <div
+                            key={image.label}
+                            className="overflow-hidden rounded-xl border border-blue-100 bg-white"
+                          >
+                            <img
+                              src={image.url}
+                              alt={`Нийлүүлэгчийн мэдээлэл · ${image.label}`}
+                              className="aspect-[4/3] w-full object-cover"
+                            />
+                            <p className="px-2 py-1.5 text-center text-xs font-bold text-blue-700">
+                              {image.label}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   {selectedProduct.preorderNote && (
                     <p className="mt-1 text-blue-700">
                       {selectedProduct.preorderNote}

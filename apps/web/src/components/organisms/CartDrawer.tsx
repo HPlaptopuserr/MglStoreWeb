@@ -154,7 +154,8 @@ export function CartDrawer({ open, onClose }: CartDrawerProps) {
                   </div>
                   {item.memberDiscountPercent ? (
                     <span className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-700">
-                      Member -{item.memberDiscountPercent}%
+                      {item.discountLabel ||
+                        `Гишүүн -${item.memberDiscountPercent}%`}
                     </span>
                   ) : null}
 

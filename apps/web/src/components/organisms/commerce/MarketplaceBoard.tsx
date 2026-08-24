@@ -16,6 +16,11 @@ import {
 } from "lucide-react";
 import { API } from "@/lib/api";
 import { AccountStatusPanel } from "./AccountStatusPanel";
+import { useAuth } from "@/lib/auth-context";
+import {
+  resolveMarketplacePricingAudience,
+  resolveMemberPricing,
+} from "@/lib/member-pricing";
 
 export type MarketplaceCategory = {
   id: string;
@@ -167,11 +172,7 @@ export function MarketplaceBoard({
 }: MarketplaceBoardProps) {
   const router = useRouter();
   const [localSearch, setLocalSearch] = useState(searchQuery);
-  const {
-    childrenByParent,
-    visibleCategories,
-    parentByChild,
-  } = useMemo(() => {
+  const { childrenByParent, visibleCategories, parentByChild } = useMemo(() => {
     const byParent = new Map<string, MarketplaceCategory[]>();
     const childToParent = new Map<string, string>();
 
@@ -498,7 +499,6 @@ export function MarketplaceBoard({
                       </CategoryLink>
                     );
                   })}
-
               </Fragment>
             );
           })}
@@ -1002,8 +1002,15 @@ function DealStrip({
 }
 
 function MiniDealProduct({ product }: { product: MarketplaceProduct }) {
+  const { user } = useAuth();
   const image = product.images?.[0]?.url;
   const discount = product.discounts?.[0]?.percent;
+  const pricing = resolveMemberPricing(
+    product.price,
+    product.discounts,
+    resolveMarketplacePricingAudience(user),
+    product.supplyType,
+  );
 
   return (
     <div className="min-w-0 rounded-xl bg-white/94 p-1.5 text-slate-950 shadow-sm ring-1 ring-white/60 xl:p-2">
@@ -1019,13 +1026,14 @@ function MiniDealProduct({ product }: { product: MarketplaceProduct }) {
           <Store className="h-6 w-6 text-slate-300" />
         )}
       </div>
-      {discount ? (
+      {pricing.active ||
+      (product.supplyType !== "CHINA_PREORDER" && discount) ? (
         <p className="mt-1 truncate text-center text-[9px] font-black leading-none text-emerald-600">
-          Member -{discount}%
+          {pricing.label || `Гишүүн -${discount}%`}
         </p>
       ) : null}
       <p className="mt-1 text-center text-[10px] font-black leading-none text-orange-600 xl:text-[11px]">
-        {formatCompactPrice(product.price)}
+        {formatCompactPrice(pricing.price)}
       </p>
     </div>
   );

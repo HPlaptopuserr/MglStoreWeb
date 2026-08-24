@@ -18,6 +18,9 @@ export interface ProductCardProps {
   stock?: number;
   isPreorder?: boolean;
   preorderLeadTimeDays?: number | null;
+  preorderCapacity?: number | null;
+  preorderParticipantCount?: number;
+  preorderIsFull?: boolean;
 
   storeName?: string;
 

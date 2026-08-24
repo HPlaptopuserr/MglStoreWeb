@@ -15,9 +15,21 @@ interface Props {
   images: string[];
   onChange: (images: string[]) => void;
   maxImages?: number;
+  label?: string;
+  addLabel?: string;
+  primaryLabel?: string | null;
+  helperText?: string;
 }
 
-export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
+export function ImageUploadGrid({
+  images,
+  onChange,
+  maxImages = 5,
+  label = "Зурагнууд",
+  addLabel = "Зураг нэмэх",
+  primaryLabel = "Үндсэн",
+  helperText = "Зурагнуудыг чирэх замаар дахин эрэмбэлж болно.",
+}: Props) {
   const [dragging, setDragging] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -119,7 +131,7 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <label className="text-sm font-semibold text-slate-700">
-          Зурагнууд{" "}
+          {label}{" "}
           <span className="text-slate-400 font-normal ml-1">
             ({images.length}/{maxImages})
           </span>
@@ -163,9 +175,9 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
                 {/* Overlay gradient */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-                {isFirst && (
+                {isFirst && primaryLabel && (
                   <div className="absolute top-2 left-2 bg-indigo-500 text-white text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded-md shadow-sm">
-                    Үндсэн
+                    {primaryLabel}
                   </div>
                 )}
 
@@ -213,7 +225,7 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
                       className="text-slate-400 group-hover:text-indigo-500"
                     />
                   </div>
-                  <span className="text-xs font-medium">Зураг нэмэх</span>
+                  <span className="text-xs font-medium">{addLabel}</span>
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/gif"
@@ -231,7 +243,7 @@ export function ImageUploadGrid({ images, onChange, maxImages = 5 }: Props) {
       </div>
       <p className="text-xs text-slate-500 flex items-center gap-1.5 bg-slate-50 p-2 rounded-lg border border-slate-100 inline-flex">
         <GripHorizontal size={14} className="text-slate-400" />
-        Зурагнуудыг чирэх замаар дахин эрэмбэлж болно.
+        {helperText}
       </p>
       {uploadError && (
         <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-medium text-amber-700">

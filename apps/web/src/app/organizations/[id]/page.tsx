@@ -38,6 +38,10 @@ interface BackendProduct {
   stock?: number;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays?: number | null;
+  preorderCapacity?: number | null;
+  preorderParticipantCount?: number;
+  preorderRemaining?: number | null;
+  preorderIsFull?: boolean;
   createdAt?: string;
 }
 
@@ -143,6 +147,10 @@ export interface OrganizationDetailData {
     soldCount?: number;
     supplyType?: "IN_STOCK" | "CHINA_PREORDER";
     preorderLeadTimeDays?: number | null;
+    preorderCapacity?: number | null;
+    preorderParticipantCount?: number;
+    preorderRemaining?: number | null;
+    preorderIsFull?: boolean;
     createdAt?: string;
   }[];
   investor?: {
@@ -234,6 +242,10 @@ function mapPartnerToDetailData(
           stock: product.stock,
           supplyType: product.supplyType,
           preorderLeadTimeDays: product.preorderLeadTimeDays,
+          preorderCapacity: product.preorderCapacity,
+          preorderParticipantCount: product.preorderParticipantCount,
+          preorderRemaining: product.preorderRemaining,
+          preorderIsFull: product.preorderIsFull,
           createdAt: product.createdAt,
         }))
       : [],

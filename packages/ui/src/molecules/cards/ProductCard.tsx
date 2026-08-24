@@ -30,6 +30,9 @@ export const ProductCard = ({
   stock,
   isPreorder = false,
   preorderLeadTimeDays,
+  preorderCapacity,
+  preorderParticipantCount = 0,
+  preorderIsFull = false,
   storeName,
   isPrime = false,
   wishlistActive = false,
@@ -38,15 +41,19 @@ export const ProductCard = ({
   onWishlistToggle,
   onAddToCart,
 }: ProductCardViewProps) => {
-  const [localWishlistActive, setLocalWishlistActive] = useState(wishlistActive);
+  const [localWishlistActive, setLocalWishlistActive] =
+    useState(wishlistActive);
   const [imageFailed, setImageFailed] = useState(false);
-  const hasDiscount = typeof originalPrice === "number" && originalPrice > price;
+  const hasDiscount =
+    typeof originalPrice === "number" && originalPrice > price;
   const isMemberDiscount = Boolean(memberDiscountLabel);
   const discountPercent = hasDiscount
     ? Math.round(((originalPrice - price) / originalPrice) * 100)
     : 0;
   const soldOut = !isPreorder && typeof stock === "number" && stock <= 0;
-  const lowStock = !isPreorder && typeof stock === "number" && stock > 0 && stock <= 5;
+  const unavailable = soldOut || (isPreorder && preorderIsFull);
+  const lowStock =
+    !isPreorder && typeof stock === "number" && stock > 0 && stock <= 5;
   const primaryTag = tag || tags?.[0];
   const hasCartAction = showCartAction && typeof onAddToCart === "function";
   const showImage = Boolean(image) && !imageFailed;
@@ -56,26 +63,32 @@ export const ProductCard = ({
     setImageFailed(false);
   }, [image]);
 
-  const badge = soldOut
-    ? { label: "Дууссан", className: "bg-black text-white" }
+  const badge = unavailable
+    ? {
+        label: isPreorder ? "Дүүрсэн" : "Дууссан",
+        className: "bg-black text-white",
+      }
     : memberDiscountLabel
       ? { label: memberDiscountLabel, className: "bg-emerald-600 text-white" }
-    : hasDiscount
-      ? { label: `-${discountPercent}%`, className: "bg-red-500 text-white" }
-    : isPreorder
-      ? {
-          label: preorderLeadTimeDays
-            ? `${preorderLeadTimeDays} хоног`
-            : "Захиалгаар",
-          className: "bg-blue-500 text-white",
-        }
-    : isPrime
-      ? { label: "PRIME", className: "bg-black text-white" }
-      : lowStock
-        ? { label: `${stock} үлдсэн`, className: "bg-amber-400 text-black" }
-        : primaryTag
-          ? { label: primaryTag, className: "bg-blue-500 text-white" }
-          : null;
+      : hasDiscount
+        ? { label: `-${discountPercent}%`, className: "bg-red-500 text-white" }
+        : isPreorder
+          ? {
+              label: preorderLeadTimeDays
+                ? `${preorderLeadTimeDays} хоног`
+                : "Захиалгаар",
+              className: "bg-blue-500 text-white",
+            }
+          : isPrime
+            ? { label: "PRIME", className: "bg-black text-white" }
+            : lowStock
+              ? {
+                  label: `${stock} үлдсэн`,
+                  className: "bg-amber-400 text-black",
+                }
+              : primaryTag
+                ? { label: primaryTag, className: "bg-blue-500 text-white" }
+                : null;
 
   const handleWishlistClick = () => {
     const nextValue = !localWishlistActive;
@@ -84,14 +97,17 @@ export const ProductCard = ({
   };
 
   const handleCartClick = () => {
-    if (soldOut) return;
+    if (unavailable) return;
     if (hasCartAction) onAddToCart?.();
     else window.location.href = href;
   };
 
   return (
     <article className="group relative isolate z-0 flex h-full min-h-[230px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-lg hover:shadow-orange-100/60 sm:min-h-[252px]">
-      <Link href={href} className="relative block aspect-[4/3] w-full overflow-hidden bg-slate-50">
+      <Link
+        href={href}
+        className="relative block aspect-[4/3] w-full overflow-hidden bg-slate-50"
+      >
         {showImage ? (
           <Image
             src={image as string}
@@ -117,7 +133,7 @@ export const ProductCard = ({
           </span>
         )}
 
-        {soldOut && (
+        {unavailable && (
           <div className="absolute inset-0 z-10 bg-slate-950/25" />
         )}
       </Link>
@@ -160,9 +176,33 @@ export const ProductCard = ({
         )}
 
         {isPreorder && (
-          <span className="mt-2 w-fit rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
-            Захиалгаар
-          </span>
+          <div className="mt-2">
+            <span className="w-fit rounded-full bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700">
+              Захиалгаар
+            </span>
+            {preorderCapacity && (
+              <div className="mt-2">
+                <div className="mb-1 flex items-center justify-between text-[10px] font-bold text-slate-500">
+                  <span>
+                    {preorderParticipantCount}/{preorderCapacity} хүн
+                  </span>
+                  <span>
+                    {preorderIsFull
+                      ? "Дүүрсэн"
+                      : `${Math.max(0, preorderCapacity - preorderParticipantCount)} дутуу`}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={`h-full rounded-full ${preorderIsFull ? "bg-slate-700" : "bg-blue-500"}`}
+                    style={{
+                      width: `${Math.min(100, (preorderParticipantCount / preorderCapacity) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         <div className="mt-auto flex items-end justify-between gap-2 pt-3">
@@ -172,13 +212,15 @@ export const ProductCard = ({
                 showQuotePrice
                   ? "text-slate-700"
                   : hasDiscount
-                  ? isMemberDiscount
-                    ? "text-emerald-600"
-                    : "text-red-500"
-                  : "text-slate-950"
+                    ? isMemberDiscount
+                      ? "text-emerald-600"
+                      : "text-red-500"
+                    : "text-slate-950"
               }`}
             >
-              {showQuotePrice ? "Үнэ тохиролцоно" : `₮${price.toLocaleString()}`}
+              {showQuotePrice
+                ? "Үнэ тохиролцоно"
+                : `₮${price.toLocaleString()}`}
             </span>
             {hasDiscount && !showQuotePrice && (
               <span className="block truncate text-xs text-slate-400 line-through">
@@ -196,22 +238,22 @@ export const ProductCard = ({
         {showCartAction && (
           <button
             type="button"
-            disabled={soldOut}
+            disabled={unavailable}
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               handleCartClick();
             }}
             className={`mt-3 flex h-10 w-full items-center justify-center gap-2 rounded-lg text-sm font-black shadow-sm transition ${
-              soldOut
+              unavailable
                 ? "cursor-not-allowed bg-slate-100 text-slate-300"
                 : "bg-slate-950 text-white hover:bg-orange-500"
             }`}
           >
-            {soldOut ? (
+            {unavailable ? (
               <>
                 <PackageCheck className="h-4 w-4" />
-                Дууссан
+                {isPreorder ? "Дүүрсэн" : "Дууссан"}
               </>
             ) : (
               <>

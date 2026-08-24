@@ -15,6 +15,7 @@ export * from "./domain/order";
 export * from "./domain/courier";
 export * from "./domain/delivery";
 export * from "./domain/pos";
+export * from "./domain/marketplace-pricing";
 
 export * from "./dto/auth.dto";
 export * from "./dto/product.dto";

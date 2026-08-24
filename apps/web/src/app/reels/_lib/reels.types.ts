@@ -25,6 +25,8 @@ export type ReelItem = {
     id: string;
     name: string;
     price?: number | string | null;
+    supplyType?: "IN_STOCK" | "CHINA_PREORDER" | null;
+    discounts?: Array<{ percent: number; validUntil?: string | null }>;
     images?: Array<{ url?: string | null }>;
   } | null;
 };

@@ -1,27 +1,47 @@
+import {
+  PUBLIC_MARKETPLACE_PRICING_AUDIENCE,
+  resolveMarketplaceProductPricing,
+  type MarketplacePricingAudience,
+} from "@mgl/types";
+
 export type MemberDiscount = {
   percent: number;
   validUntil?: string | null;
 };
 
+type MarketplacePricingUser = {
+  isPrime?: boolean;
+  membership?: { active?: boolean } | null;
+  orgRole?: string | null;
+  organizations?: Array<{ role?: string | null }> | null;
+} | null;
+
+export function resolveMarketplacePricingAudience(
+  user: MarketplacePricingUser,
+): MarketplacePricingAudience {
+  if (!user) return PUBLIC_MARKETPLACE_PRICING_AUDIENCE;
+
+  return {
+    isMember:
+      user.membership !== undefined
+        ? Boolean(user.membership?.active)
+        : Boolean(user.isPrime),
+    isStoreOwner: Boolean(
+      user.orgRole === "OWNER" ||
+      user.organizations?.some((organization) => organization.role === "OWNER"),
+    ),
+  };
+}
+
 export function resolveMemberPricing(
   price: number,
   discounts?: MemberDiscount[] | null,
-  isMember = false,
+  audience: MarketplacePricingAudience = PUBLIC_MARKETPLACE_PRICING_AUDIENCE,
+  supplyType?: string | null,
 ) {
-  const discount = discounts?.[0] || null;
-  const percent = discount?.percent && discount.percent > 0 ? discount.percent : 0;
-  const memberPrice = percent
-    ? Math.max(0, Math.round(price * (1 - percent / 100)))
-    : price;
-  const active = Boolean(isMember && percent > 0 && memberPrice < price);
-
-  return {
-    active,
-    percent,
-    price: active ? memberPrice : price,
-    memberPrice: percent ? memberPrice : null,
-    originalPrice: active ? price : null,
-    savings: active ? price - memberPrice : 0,
-    label: percent ? `Member -${percent}%` : null,
-  };
+  return resolveMarketplaceProductPricing(price, {
+    ...audience,
+    supplyType,
+    memberDiscountPercent: discounts?.[0]?.percent,
+  });
 }

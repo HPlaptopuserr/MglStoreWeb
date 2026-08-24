@@ -26,6 +26,9 @@ export type ApiProduct = {
   stock?: number | null;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays?: number | null;
+  preorderCapacity?: number | null;
+  preorderParticipantCount?: number;
+  preorderIsFull?: boolean;
   images: { id: string; url: string }[];
   organization: { id: string; name: string; logoUrl?: string } | null;
   discounts: { percent: number }[];

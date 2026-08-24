@@ -20,6 +20,7 @@ import type { LucideIcon } from "lucide-react";
 import { ProductCard } from "@mgl/ui";
 import { resolveMemberPricing } from "@/lib/member-pricing";
 import { organizationPath } from "@/lib/organization-links";
+import type { MarketplacePricingAudience } from "@mgl/types";
 
 export interface ProductImage {
   id: string;
@@ -51,6 +52,10 @@ export interface ProductDetailProduct {
   stock?: number | null;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays?: number | null;
+  preorderCapacity?: number | null;
+  preorderParticipantCount?: number;
+  preorderRemaining?: number | null;
+  preorderIsFull?: boolean;
   preorderNote?: string | null;
   rating?: number | null;
   reviewCount?: number | null;
@@ -85,7 +90,7 @@ type ProductDetailShellProps = {
   onShare: () => void;
   vendorProducts: ProductDetailProduct[];
   relatedProducts: ProductDetailProduct[];
-  isMember: boolean;
+  pricingAudience: MarketplacePricingAudience;
 };
 
 const FAQ_ITEMS = [
@@ -99,14 +104,18 @@ function formatPrice(value: number) {
   return `${value.toLocaleString("en-US")}₮`;
 }
 
-function recommendationGrid(items: ProductDetailProduct[], isMember: boolean) {
+function recommendationGrid(
+  items: ProductDetailProduct[],
+  pricingAudience: MarketplacePricingAudience,
+) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {items.map((item) => {
         const pricing = resolveMemberPricing(
           item.price,
           item.discounts,
-          isMember,
+          pricingAudience,
+          item.supplyType,
         );
 
         return (
@@ -123,6 +132,9 @@ function recommendationGrid(items: ProductDetailProduct[], isMember: boolean) {
             stock={item.stock ?? undefined}
             isPreorder={item.supplyType === "CHINA_PREORDER"}
             preorderLeadTimeDays={item.preorderLeadTimeDays}
+            preorderCapacity={item.preorderCapacity}
+            preorderParticipantCount={item.preorderParticipantCount}
+            preorderIsFull={item.preorderIsFull}
           />
         );
       })}
@@ -147,7 +159,7 @@ export function ProductDetailShell({
   onShare,
   vendorProducts,
   relatedProducts,
-  isMember,
+  pricingAudience,
 }: ProductDetailShellProps) {
   const images = product.images ?? [];
   const discount = product.discounts?.[0];
@@ -159,6 +171,8 @@ export function ProductDetailShell({
         Boolean(item?.label?.trim() && item?.value?.trim()),
       )
     : [];
+  const preorderIsFull = isPreorder && Boolean(product.preorderIsFull);
+  const unavailable = isOutOfStock || preorderIsFull;
 
   return (
     <div className="min-h-screen bg-white pb-24 lg:pb-10">
@@ -234,7 +248,7 @@ export function ProductDetailShell({
             countdown={countdown}
             wishlisted={wishlisted}
             shareCopied={shareCopied}
-            isMember={isMember}
+            pricingAudience={pricingAudience}
             isPreorder={isPreorder}
             isOutOfStock={isOutOfStock}
             onAddToCart={onAddToCart}
@@ -387,7 +401,7 @@ export function ProductDetailShell({
                 : "/products"
             }
           >
-            {recommendationGrid(relatedProducts, isMember)}
+            {recommendationGrid(relatedProducts, pricingAudience)}
           </ProductShelf>
         )}
 
@@ -397,7 +411,7 @@ export function ProductDetailShell({
             label="Vendor products"
             href={organizationPath(product.organization)}
           >
-            {recommendationGrid(vendorProducts, isMember)}
+            {recommendationGrid(vendorProducts, pricingAudience)}
           </ProductShelf>
         )}
       </main>
@@ -415,11 +429,17 @@ export function ProductDetailShell({
           <button
             type="button"
             onClick={() => onAddToCart(1)}
-            disabled={isOutOfStock}
+            disabled={unavailable}
             className="flex h-12 min-w-[150px] items-center justify-center gap-2 rounded-2xl bg-orange-500 px-5 text-sm font-black text-white disabled:bg-slate-200 disabled:text-slate-400"
           >
             <ShoppingCart className="h-4 w-4" />
-            {isOutOfStock ? "Дууссан" : isPreorder ? "Захиалах" : "Сагслах"}
+            {unavailable
+              ? isPreorder
+                ? "Дүүрсэн"
+                : "Дууссан"
+              : isPreorder
+                ? "Захиалах"
+                : "Сагслах"}
           </button>
         </div>
       </div>
@@ -509,7 +529,7 @@ function ProductCommercePanel({
   countdown,
   wishlisted,
   shareCopied,
-  isMember,
+  pricingAudience,
   isPreorder,
   isOutOfStock,
   onAddToCart,
@@ -520,11 +540,27 @@ function ProductCommercePanel({
   "activeImg" | "setActiveImg" | "vendorProducts" | "relatedProducts"
 >) {
   const discount = product.discounts?.[0];
+  const pricing = resolveMemberPricing(
+    product.price,
+    product.discounts,
+    pricingAudience,
+    product.supplyType,
+  );
   const [quantity, setQuantity] = useState(1);
   const maxQuantity =
     isPreorder || typeof product.stock !== "number"
       ? 99
       : Math.max(1, product.stock);
+  const preorderCapacity = product.preorderCapacity ?? null;
+  const preorderParticipantCount = Math.max(
+    0,
+    product.preorderParticipantCount ?? 0,
+  );
+  const preorderIsFull = isPreorder && Boolean(product.preorderIsFull);
+  const unavailable = isOutOfStock || preorderIsFull;
+  const preorderProgress = preorderCapacity
+    ? Math.min(100, (preorderParticipantCount / preorderCapacity) * 100)
+    : 0;
 
   return (
     <div className="flex min-w-0 flex-col lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pr-1">
@@ -559,38 +595,40 @@ function ProductCommercePanel({
         </span>
       </Link>
 
-      {discount && (
+      {(pricing.active || (!isPreorder && discount)) && (
         <div className="mb-4 flex items-center justify-between gap-3 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-3 text-white">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.12em] text-white/75">
               Онцлох хямдрал
             </p>
             <p className="mt-0.5 text-sm font-black">
-              {isMember
-                ? `Member -${discount.percent}% үнэ буурсан`
-                : `Member бол -${discount.percent}% хөнгөлнө`}
+              {pricing.active
+                ? `${pricing.label} үнэ үйлчилж байна`
+                : `Гишүүн бол -${discount?.percent}% хөнгөлнө`}
             </p>
           </div>
-          <div className="grid grid-cols-4 gap-1 text-center">
-            {[
-              { val: countdown.d, label: "өд" },
-              { val: countdown.h, label: "ц" },
-              { val: countdown.m, label: "м" },
-              { val: countdown.s, label: "с" },
-            ].map((item) => (
-              <span
-                key={item.label}
-                className="rounded-xl bg-white/16 px-2 py-1"
-              >
-                <span className="block text-sm font-black tabular-nums">
-                  {String(item.val).padStart(2, "0")}
+          {!isPreorder && discount && (
+            <div className="grid grid-cols-4 gap-1 text-center">
+              {[
+                { val: countdown.d, label: "өд" },
+                { val: countdown.h, label: "ц" },
+                { val: countdown.m, label: "м" },
+                { val: countdown.s, label: "с" },
+              ].map((item) => (
+                <span
+                  key={item.label}
+                  className="rounded-xl bg-white/16 px-2 py-1"
+                >
+                  <span className="block text-sm font-black tabular-nums">
+                    {String(item.val).padStart(2, "0")}
+                  </span>
+                  <span className="block text-[9px] font-bold text-white/70">
+                    {item.label}
+                  </span>
                 </span>
-                <span className="block text-[9px] font-bold text-white/70">
-                  {item.label}
-                </span>
-              </span>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -644,12 +682,40 @@ function ProductCommercePanel({
         <Benefit
           icon={PackageCheck}
           text={
-            isOutOfStock
-              ? "Нөөц дууссан"
-              : `Үлдэгдэл: ${product.stock ?? "боломжтой"}`
+            isPreorder && preorderCapacity
+              ? preorderIsFull
+                ? `${preorderParticipantCount}/${preorderCapacity} хүн · Дүүрсэн`
+                : `${preorderParticipantCount}/${preorderCapacity} хүн · ${product.preorderRemaining ?? Math.max(0, preorderCapacity - preorderParticipantCount)} хүн дутуу`
+              : isOutOfStock
+                ? "Нөөц дууссан"
+                : `Үлдэгдэл: ${product.stock ?? "боломжтой"}`
           }
         />
       </div>
+
+      {isPreorder && preorderCapacity && (
+        <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+          <div className="flex items-center justify-between gap-3 text-sm font-black">
+            <span className="text-blue-900">Захиалгын дүүргэлт</span>
+            <span
+              className={preorderIsFull ? "text-slate-700" : "text-blue-700"}
+            >
+              {preorderParticipantCount}/{preorderCapacity} хүн
+            </span>
+          </div>
+          <div className="mt-3 h-3 overflow-hidden rounded-full bg-white ring-1 ring-blue-100">
+            <div
+              className={`h-full rounded-full ${preorderIsFull ? "bg-slate-700" : "bg-blue-500"}`}
+              style={{ width: `${preorderProgress}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs font-bold text-blue-700">
+            {preorderIsFull
+              ? "Захиалга дүүрсэн байна."
+              : `${product.preorderRemaining ?? Math.max(0, preorderCapacity - preorderParticipantCount)} хүн нэмэгдэж захиалбал дүүрнэ.`}
+          </p>
+        </div>
+      )}
 
       {isPreorder && product.preorderNote && (
         <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-3 text-sm font-semibold leading-6 text-blue-800">
@@ -690,12 +756,14 @@ function ProductCommercePanel({
           <button
             type="button"
             onClick={() => onAddToCart(quantity)}
-            disabled={isOutOfStock}
+            disabled={unavailable}
             className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-orange-500 text-base font-black text-white shadow-lg shadow-orange-500/20 transition hover:bg-slate-950 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
           >
             <ShoppingCart className="h-5 w-5" />
-            {isOutOfStock
-              ? "Нөөц дууссан"
+            {unavailable
+              ? isPreorder
+                ? "Захиалга дүүрсэн"
+                : "Нөөц дууссан"
               : isPreorder
                 ? "Захиалах"
                 : "Сагслах"}

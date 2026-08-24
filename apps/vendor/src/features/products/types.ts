@@ -43,6 +43,12 @@ export interface Product {
   receiptLots?: ProductReceiptLot[];
   supplyType: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays: number | null;
+  preorderCapacity: number | null;
+  preorderParticipantCount?: number;
+  preorderRemaining?: number | null;
+  preorderIsFull?: boolean;
+  preorderSupplierFrontImageUrl: string | null;
+  preorderSupplierBackImageUrl: string | null;
   preorderNote: string | null;
   marketplacePriority: number;
   isActive: boolean;
@@ -70,6 +76,9 @@ export interface FormState {
   expiryDate: string;
   supplyType: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays: string;
+  preorderCapacity: string;
+  preorderSupplierFrontImageUrl: string;
+  preorderSupplierBackImageUrl: string;
   preorderNote: string;
   marketplacePriority: string;
   businessCategoryId: string;

@@ -3,7 +3,10 @@
 import { ProductCard } from "@mgl/ui";
 import { resolveApiAssetUrl } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { resolveMemberPricing } from "@/lib/member-pricing";
+import {
+  resolveMarketplacePricingAudience,
+  resolveMemberPricing,
+} from "@/lib/member-pricing";
 import type { CarouselProduct } from "./product-carousel.types";
 
 interface Props {
@@ -14,11 +17,11 @@ interface Props {
 export const ProductCarouselItem = ({ product, idx }: Props) => {
   const { user } = useAuth();
   const mainImage = resolveApiAssetUrl(product.images?.[0]?.url);
-  const isMember = Boolean(user?.membership?.active || user?.isPrime);
   const pricing = resolveMemberPricing(
     product.price,
     product.discounts,
-    isMember,
+    resolveMarketplacePricingAudience(user),
+    product.supplyType,
   );
 
   return (
@@ -38,6 +41,9 @@ export const ProductCarouselItem = ({ product, idx }: Props) => {
         stock={product.stock ?? 0}
         isPreorder={product.supplyType === "CHINA_PREORDER"}
         preorderLeadTimeDays={product.preorderLeadTimeDays}
+        preorderCapacity={product.preorderCapacity}
+        preorderParticipantCount={product.preorderParticipantCount}
+        preorderIsFull={product.preorderIsFull}
         isPrime={idx % 5 === 0}
         showCartAction={false}
       />
