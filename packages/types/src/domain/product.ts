@@ -34,6 +34,7 @@ export interface ProductImage {
   id: ID;
   productId: ID;
   url: URLString;
+  sortOrder: number;
 }
 
 export interface Discount {

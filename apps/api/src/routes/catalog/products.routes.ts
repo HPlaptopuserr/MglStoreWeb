@@ -39,6 +39,10 @@ import {
   normalizeMasterName,
   resolveMasterProduct,
 } from "../../services/master-product.service";
+import {
+  productImageOrderBy,
+  toOrderedProductImages,
+} from "../../lib/product-images";
 import { getPreorderCapacityProgress } from "../../services/preorder-capacity.service";
 import {
   extractExcelImages,
@@ -954,7 +958,11 @@ router.get("/products/organization-catalog", optionalAuth, async (req, res) => {
           orderBy: [{ marketplacePriority: "desc" }, { createdAt: "desc" }],
           take: limit,
           include: {
-            images: { select: { id: true, url: true }, take: 1 },
+            images: {
+              select: { id: true, url: true },
+              orderBy: productImageOrderBy(),
+              take: 1,
+            },
             businessCategory: {
               select: {
                 id: true,
@@ -1196,7 +1204,11 @@ router.get("/products", optionalAuth, async (req, res) => {
       ...(useDatabasePagination ? { skip: offset } : {}),
       ...(productCandidateLimit > 0 ? { take: productCandidateLimit } : {}),
       include: {
-        images: { select: { id: true, url: true }, take: 1 },
+        images: {
+          select: { id: true, url: true },
+          orderBy: productImageOrderBy(),
+          take: 1,
+        },
         supplierDocument: {
           select: { frontImageUrl: true, backImageUrl: true },
         },
@@ -1510,7 +1522,10 @@ router.get(
         take: 180,
         orderBy: { createdAt: "desc" },
         include: {
-          images: { select: { id: true, url: true } },
+          images: {
+            select: { id: true, url: true },
+            orderBy: productImageOrderBy(),
+          },
           businessCategory: {
             select: {
               id: true,
@@ -1591,7 +1606,11 @@ router.get("/products/trending", optionalAuth, async (req, res) => {
     }
 
     const trendingProductInclude = {
-      images: { select: { id: true, url: true }, take: 1 },
+      images: {
+        select: { id: true, url: true },
+        orderBy: productImageOrderBy(),
+        take: 1,
+      },
       businessCategory: {
         select: {
           id: true,
@@ -2413,7 +2432,7 @@ router.post(
                 ...(imageUrls.length > 0 && {
                   images: {
                     deleteMany: {},
-                    create: imageUrls.map((url) => ({ url })),
+                    create: toOrderedProductImages(imageUrls),
                   },
                 }),
               },
@@ -2424,7 +2443,7 @@ router.post(
                 barcode: masterProduct.barcode || normalizedBarcode,
                 masterProductId: masterProduct.id,
                 ...(imageUrls.length > 0 && {
-                  images: { create: imageUrls.map((url) => ({ url })) },
+                  images: { create: toOrderedProductImages(imageUrls) },
                 }),
               },
               select: {
@@ -2456,7 +2475,7 @@ router.post(
                 barcode: masterProduct.barcode || normalizedBarcode,
                 masterProductId: masterProduct.id,
                 ...(imageUrls.length > 0 && {
-                  images: { create: imageUrls.map((url) => ({ url })) },
+                  images: { create: toOrderedProductImages(imageUrls) },
                 }),
               },
               select: {
@@ -2623,7 +2642,11 @@ router.post(
           description: true,
           businessCategory: { select: { name: true } },
           category: { select: { name: true } },
-          images: { select: { url: true }, take: 1 },
+          images: {
+            select: { url: true },
+            orderBy: productImageOrderBy(),
+            take: 1,
+          },
         },
         orderBy: { createdAt: "asc" },
         take: 500,
@@ -2874,7 +2897,10 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
       take: 80,
       orderBy: { createdAt: "desc" },
       include: {
-        images: { select: { id: true, url: true } },
+        images: {
+          select: { id: true, url: true },
+          orderBy: productImageOrderBy(),
+        },
         businessCategory: {
           select: {
             id: true,
@@ -2946,7 +2972,10 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
     const product = await prisma.product.findUnique({
       where: { id: req.params.id, deletedAt: null },
       include: {
-        images: { select: { id: true, url: true } },
+        images: {
+          select: { id: true, url: true },
+          orderBy: productImageOrderBy(),
+        },
         supplierDocument: {
           select: { frontImageUrl: true, backImageUrl: true },
         },
@@ -3326,7 +3355,7 @@ router.post(
             isActive: true,
             ...reviewData,
             images: {
-              create: imageUrls.map((url) => ({ url })),
+              create: toOrderedProductImages(imageUrls),
             },
             supplierDocument:
               normalizedSupplyType === "CHINA_PREORDER" &&
@@ -3341,7 +3370,10 @@ router.post(
                 : undefined,
           },
           include: {
-            images: { select: { id: true, url: true } },
+            images: {
+              select: { id: true, url: true },
+              orderBy: productImageOrderBy(),
+            },
             supplierDocument: {
               select: { frontImageUrl: true, backImageUrl: true },
             },
@@ -3690,7 +3722,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       if (Array.isArray(images)) {
         const imageUrls = images.slice(0, 5);
         await tx.productImage.deleteMany({ where: { productId: id } });
-        data.images = { create: imageUrls.map((url: string) => ({ url })) };
+        data.images = { create: toOrderedProductImages(imageUrls) };
       }
 
       if (nextSupplyType !== "CHINA_PREORDER") {
@@ -3720,7 +3752,10 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
         where: { id },
         data,
         include: {
-          images: { select: { id: true, url: true } },
+          images: {
+            select: { id: true, url: true },
+            orderBy: productImageOrderBy(),
+          },
           supplierDocument: {
             select: { frontImageUrl: true, backImageUrl: true },
           },
@@ -3789,10 +3824,13 @@ router.patch("/products/:id/images", requireAuth, async (req, res) => {
     const product = await prisma.product.update({
       where: { id },
       data: {
-        images: { create: imageUrls.map((url: string) => ({ url })) },
+        images: { create: toOrderedProductImages(imageUrls) },
       },
       include: {
-        images: { select: { id: true, url: true } },
+        images: {
+          select: { id: true, url: true },
+          orderBy: productImageOrderBy(),
+        },
       },
     });
 
