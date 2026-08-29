@@ -6,6 +6,7 @@ import {
   ArrowRight,
   ArrowUp,
   ArrowUpRight,
+  Banknote,
   Boxes,
   CalendarDays,
   ChevronDown,
@@ -47,9 +48,14 @@ import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import type { BusinessCategory } from "@/types/category";
 import { QuickProductExcelImport } from "./QuickProductExcelImport";
 
-const ORG_URL = process.env.NEXT_PUBLIC_ORG_URL || "http://localhost:3004";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const ORG_URL =
+  process.env.NEXT_PUBLIC_ORG_URL ||
+  (IS_PRODUCTION ? "https://org.mglstore.mn" : "http://localhost:3004");
 const VENDOR_URL =
-  process.env.NEXT_PUBLIC_VENDOR_URL || "http://localhost:3002";
+  process.env.NEXT_PUBLIC_VENDOR_URL ||
+  (IS_PRODUCTION ? "https://vendor.mglstore.mn" : "http://localhost:3002");
+const VENDOR_BANK_ACCOUNT_URL = `${VENDOR_URL.replace(/\/$/, "")}/profile?tab=qpay`;
 
 type ManagedOrgDetails = {
   id: string;
@@ -1256,6 +1262,12 @@ export function ManagedOrganizationProfile({
                 label="Зар удирдах"
                 text="Санал, урамшуулал"
               />
+              <WidgetLink
+                href={VENDOR_BANK_ACCOUNT_URL}
+                icon={Banknote}
+                label="Банкны данс нэмэх"
+                text="Орлого хүлээн авах данс"
+              />
             </div>
           </WidgetCard>
 
@@ -1336,7 +1348,7 @@ export function ManagedOrganizationProfile({
             services={content.services}
           />
 
-          <aside className="grid gap-3 md:grid-cols-3">
+          <aside className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <PortalLink
               href={`${VENDOR_URL.replace(/\/$/, "")}/products`}
               icon={Boxes}
@@ -1351,6 +1363,11 @@ export function ManagedOrganizationProfile({
               href={`${ORG_URL.replace(/\/$/, "")}/dashboard`}
               icon={Store}
               label="Org dashboard"
+            />
+            <PortalLink
+              href={VENDOR_BANK_ACCOUNT_URL}
+              icon={Banknote}
+              label="Банкны данс нэмэх"
             />
           </aside>
         </div>
