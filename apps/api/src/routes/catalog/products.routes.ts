@@ -1259,6 +1259,35 @@ router.get("/products", optionalAuth, async (req, res) => {
       },
     });
 
+    if (compact) {
+      const totalCount = await totalCountPromise;
+      const compactProducts = products.map((product) => ({
+        id: product.id,
+        name: product.name,
+        price: product.price,
+        images: product.images,
+        organization: product.organization,
+        businessCategory: product.businessCategory,
+      }));
+      const payload = includeMeta
+        ? {
+            products: compactProducts,
+            total: totalCount ?? compactProducts.length,
+            limit,
+            offset,
+            hasMore:
+              limit > 0
+                ? offset + compactProducts.length <
+                  (totalCount ?? compactProducts.length)
+                : false,
+          }
+        : compactProducts;
+      productListCache.set(productCacheKey, payload);
+      setProductCacheHeaders(res, isPersonalized);
+      res.setHeader("X-MGL-Cache", "MISS");
+      return res.json(payload);
+    }
+
     const productIds = products.map((product) => product.id);
     const preorderCapacityByProductId = await getPreorderCapacityProgress(
       prisma,
@@ -1451,18 +1480,8 @@ router.get("/products", optionalAuth, async (req, res) => {
 
     if (includeMeta) {
       const totalCount = await totalCountPromise;
-      const serializedProducts = compact
-        ? response.map((product) => ({
-            id: product.id,
-            name: product.name,
-            price: product.price,
-            images: product.images,
-            organization: product.organization,
-            businessCategory: product.businessCategory,
-          }))
-        : response;
       const payload = {
-        products: serializedProducts,
+        products: response,
         total: totalCount ?? response.length,
         limit,
         offset,
