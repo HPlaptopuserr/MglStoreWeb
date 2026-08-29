@@ -71,8 +71,13 @@ function isOrganizationWebEnabled(
 
 async function fetchAllProducts(): Promise<Product[]> {
   const fetchPage = async (offset: number): Promise<ProductPageResponse> => {
-    const response = await adminFetch(
+    // This projection intentionally contains public, web-eligible products.
+    // Do not attach the active admin token: product visibility must be
+    // evaluated exactly as it is for a storefront visitor, and an admin
+    // session must not alter or break the public catalog query.
+    const response = await fetch(
       `${API}/products?limit=${PRODUCT_PAGE_SIZE}&offset=${offset}&meta=1&compact=1&webEligibleOnly=1`,
+      { cache: "no-store" },
     );
     if (!response.ok) {
       const payload = (await response.json().catch(() => null)) as {
