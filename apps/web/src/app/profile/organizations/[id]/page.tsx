@@ -1,20 +1,24 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Clock3, Loader2 } from "lucide-react";
 import { ACCOUNT_ROUTES } from "@/lib/account-routes";
 import { useAuth } from "@/lib/auth-context";
 import { ManagedOrganizationProfile } from "../../_components/ManagedOrganizationProfile";
 import { BankAccountSettingsPanel } from "../../_components/BankAccountSettingsPanel";
 import { ProfileDashboardShell } from "../../_components/ProfileDashboardShell";
+import { IncomingOrdersPanel } from "../../_components/IncomingOrdersPanel";
 import { getManagedOrganizations } from "../../_components/profileUtils";
 
 export default function ManagedOrganizationPage() {
   const { user, loading, refreshUser } = useAuth();
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const activeOrganizationId = decodeURIComponent(String(params.id || ""));
+  const linkedOrderId = searchParams.get("orderId") || undefined;
+  const openIncomingOrders = searchParams.get("incomingOrders") === "1";
 
   const organizations = useMemo(
     () => (user ? getManagedOrganizations(user) : []),
@@ -53,7 +57,17 @@ export default function ManagedOrganizationPage() {
   if (activeOrganization?.status === "PENDING") {
     return (
       <ProfileDashboardShell
-        bankAccountContent={<BankAccountSettingsPanel organizationId={activeOrganizationId} />}
+        bankAccountContent={
+          <BankAccountSettingsPanel organizationId={activeOrganizationId} />
+        }
+        incomingOrdersContent={
+          <IncomingOrdersPanel
+            initialOrderId={linkedOrderId}
+            organizationId={activeOrganizationId}
+            organizationName={activeOrganization.name}
+          />
+        }
+        openIncomingOrdersInitially={openIncomingOrders}
       >
         <section className="rounded-[28px] border border-amber-200 bg-amber-50 p-6 shadow-sm">
           <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-700">
@@ -81,14 +95,26 @@ export default function ManagedOrganizationPage() {
 
   return (
     <ProfileDashboardShell
-      bankAccountContent={<BankAccountSettingsPanel organizationId={activeOrganizationId} />}
+      bankAccountContent={
+        <BankAccountSettingsPanel organizationId={activeOrganizationId} />
+      }
+      incomingOrdersContent={
+        <IncomingOrdersPanel
+          initialOrderId={linkedOrderId}
+          organizationId={activeOrganizationId}
+          organizationName={activeOrganization?.name || "Байгууллага"}
+        />
+      }
+      openIncomingOrdersInitially={openIncomingOrders}
     >
       <ManagedOrganizationProfile
         activeOrganizationId={activeOrganizationId}
         organizations={organizations}
         onBackToPersonal={() => router.push(ACCOUNT_ROUTES.profile)}
         onSelectOrganization={(organizationId) =>
-          router.push(`/profile/organizations/${encodeURIComponent(organizationId)}`)
+          router.push(
+            `/profile/organizations/${encodeURIComponent(organizationId)}`,
+          )
         }
       />
     </ProfileDashboardShell>

@@ -45,6 +45,10 @@ const getVendorUser = async (req: Request) => {
       organizationId?: string;
     };
     if (!decoded?.userId || !decoded?.organizationId) return null;
+    const requestedOrganizationId = String(
+      req.query.organizationId || decoded.organizationId,
+    ).trim();
+    if (!requestedOrganizationId) return null;
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
@@ -61,13 +65,13 @@ const getVendorUser = async (req: Request) => {
 
     const [organization, membership] = await Promise.all([
       prisma.organization.findFirst({
-        where: { id: decoded.organizationId, deletedAt: null },
+        where: { id: requestedOrganizationId, deletedAt: null },
         select: { businessOrdersEnabled: true },
       }),
       prisma.organizationMember.findFirst({
         where: {
           userId: user.id,
-          organizationId: decoded.organizationId,
+          organizationId: requestedOrganizationId,
           isActive: true,
           deletedAt: null,
         },
@@ -80,7 +84,7 @@ const getVendorUser = async (req: Request) => {
 
     return {
       ...user,
-      organizationId: decoded.organizationId,
+      organizationId: requestedOrganizationId,
       ordersEnabled: organization.businessOrdersEnabled,
     };
   } catch {
@@ -736,10 +740,10 @@ router.patch(
               nextStatus === OrderStatus.PREPARING
                 ? "Барааг бэлтгэж эхэлсэн"
                 : nextStatus === OrderStatus.PREPARED
-                ? "Бараа бэлтгэгдсэн"
-                : nextStatus === OrderStatus.SHIPPING
-                  ? "Хүргэлтэнд гарсан"
-                  : undefined,
+                  ? "Бараа бэлтгэгдсэн"
+                  : nextStatus === OrderStatus.SHIPPING
+                    ? "Хүргэлтэнд гарсан"
+                    : undefined,
           },
         });
 
@@ -775,11 +779,9 @@ router.patch(
       if (nextStatus === OrderStatus.PREPARING) {
         await notifyCustomerOrderStage(order.id, "PREPARING", {
           email: true,
-        }).catch(
-          (error: unknown) => {
-            console.error("Preparing order notification failed", error);
-          },
-        );
+        }).catch((error: unknown) => {
+          console.error("Preparing order notification failed", error);
+        });
       }
 
       return res.json({

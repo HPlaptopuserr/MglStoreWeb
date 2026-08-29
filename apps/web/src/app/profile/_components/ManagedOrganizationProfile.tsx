@@ -49,7 +49,10 @@ import { ORG_PORTAL_URL, VENDOR_PORTAL_URL } from "@/lib/portal-links";
 import { QuickProductSupplyFields } from "./QuickProductSupplyFields";
 import { StorefrontVisibilityControl } from "./StorefrontVisibilityControl";
 import type {
+  PreorderCurrency,
   QuickProductFormState,
+  QuickProductSupplyType,
+  QuickProductSupplyValues,
   QuickProductTextField,
 } from "./quick-product.types";
 
@@ -85,6 +88,12 @@ type ManagedProduct = {
   description?: string | null;
   price?: number | string | null;
   stock?: number | null;
+  supplyType?: QuickProductSupplyType | null;
+  preorderPriceCurrency?: PreorderCurrency | null;
+  preorderPriceAmount?: number | string | null;
+  preorderLeadTimeDays?: number | null;
+  preorderCapacity?: number | null;
+  preorderNote?: string | null;
   images?: Array<{ url?: string | null }>;
   createdAt?: string | Date;
 };
@@ -157,7 +166,7 @@ type ManagedTimelineItem =
         price: string;
         stock: string;
         title: string;
-      };
+      } & QuickProductSupplyValues;
       href: string;
       createdAt?: string | Date;
     }
@@ -216,7 +225,7 @@ type ManagedTimelineItem =
       createdAt?: string | Date;
     };
 
-type TimelineEditForm = {
+type TimelineEditForm = QuickProductSupplyValues & {
   content: string;
   description: string;
   price: string;
@@ -851,8 +860,35 @@ export function ManagedOrganizationProfile({
             name: form.title.trim(),
             description: form.description.trim() || null,
             images: form.images,
-            price: Number(form.price || 0),
-            stock: Number(form.stock || 0),
+            price:
+              form.supplyType === "CHINA_PREORDER"
+                ? Number(form.preorderPriceAmount || 0)
+                : Number(form.price || 0),
+            stock:
+              form.supplyType === "CHINA_PREORDER"
+                ? 0
+                : Number(form.stock || 0),
+            supplyType: form.supplyType,
+            preorderPriceCurrency:
+              form.supplyType === "CHINA_PREORDER"
+                ? form.preorderPriceCurrency
+                : null,
+            preorderPriceAmount:
+              form.supplyType === "CHINA_PREORDER"
+                ? Number(form.preorderPriceAmount || 0)
+                : null,
+            preorderLeadTimeDays:
+              form.supplyType === "CHINA_PREORDER"
+                ? Number(form.preorderLeadTimeDays || 14)
+                : null,
+            preorderCapacity:
+              form.supplyType === "CHINA_PREORDER"
+                ? Number(form.preorderCapacity || 1)
+                : null,
+            preorderNote:
+              form.supplyType === "CHINA_PREORDER"
+                ? form.preorderNote.trim() || null
+                : null,
           }
         : item.kind === "service"
           ? {
@@ -1465,6 +1501,14 @@ function OrganizationContentFeed({
           price: String(product.price ?? ""),
           stock: String(product.stock ?? 0),
           title: product.name,
+          supplyType: product.supplyType || "IN_STOCK",
+          preorderPriceCurrency: product.preorderPriceCurrency || "MNT",
+          preorderPriceAmount: String(
+            product.preorderPriceAmount ?? product.price ?? "",
+          ),
+          preorderLeadTimeDays: String(product.preorderLeadTimeDays ?? 14),
+          preorderCapacity: String(product.preorderCapacity ?? 1),
+          preorderNote: product.preorderNote || "",
         },
         href: `/products/${encodeURIComponent(product.id)}`,
         createdAt: product.createdAt,
@@ -2741,12 +2785,30 @@ function TimelineEditModal({
     stock: item.kind === "product" ? item.edit.stock : "",
     title: item.kind !== "post" ? item.edit.title : item.title,
     type: item.kind === "post" ? item.edit.type : "GENERAL",
+    supplyType: item.kind === "product" ? item.edit.supplyType : "IN_STOCK",
+    preorderPriceCurrency:
+      item.kind === "product" ? item.edit.preorderPriceCurrency : "MNT",
+    preorderPriceAmount:
+      item.kind === "product" ? item.edit.preorderPriceAmount : "",
+    preorderLeadTimeDays:
+      item.kind === "product" ? item.edit.preorderLeadTimeDays : "14",
+    preorderCapacity:
+      item.kind === "product" ? item.edit.preorderCapacity : "1",
+    preorderNote: item.kind === "product" ? item.edit.preorderNote : "",
   });
   const [saving, setSaving] = useState(false);
   const [imageUploading, setImageUploading] = useState(false);
   const [error, setError] = useState("");
 
   const updateField = (field: keyof TimelineEditForm, value: string) => {
+    setError("");
+    setForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const updateSupplyField = <K extends keyof QuickProductSupplyValues>(
+    field: K,
+    value: QuickProductSupplyValues[K],
+  ) => {
     setError("");
     setForm((current) => ({ ...current, [field]: value }));
   };
@@ -2797,14 +2859,29 @@ function TimelineEditModal({
       return;
     }
     if (item.kind === "product") {
-      const price = Number(form.price || 0);
-      const stock = Number(form.stock || 0);
+      const isPreorder = form.supplyType === "CHINA_PREORDER";
+      const price = Number(
+        isPreorder ? form.preorderPriceAmount : form.price || 0,
+      );
+      const stock = Number(isPreorder ? 0 : form.stock || 0);
       if (!Number.isFinite(price) || price < 0) {
-        setError("Үнэ зөв тоо байх ёстой.");
+        setError("Үнэ зөв, тэгээс их тоо байх ёстой.");
         return;
       }
       if (!Number.isFinite(stock) || stock < 0) {
         setError("Нөөц зөв тоо байх ёстой.");
+        return;
+      }
+      if (isPreorder && price <= 0) {
+        setError("Захиалгын нэгж үнэ тэгээс их байх ёстой.");
+        return;
+      }
+      if (
+        isPreorder &&
+        (!Number.isInteger(Number(form.preorderCapacity)) ||
+          Number(form.preorderCapacity) < 1)
+      ) {
+        setError("Захиалга дүүрэх хүний тоог зөв оруулна уу.");
         return;
       }
     }
@@ -2905,18 +2982,29 @@ function TimelineEditModal({
               />
               {item.kind === "product" ? (
                 <>
-                  <TimelineInput
-                    label="Үнэ"
-                    value={form.price}
-                    inputMode="decimal"
-                    onChange={(value) => updateField("price", value)}
-                  />
-                  <TimelineInput
-                    label="Нөөц"
-                    value={form.stock}
-                    inputMode="numeric"
-                    onChange={(value) => updateField("stock", value)}
-                  />
+                  {form.supplyType === "IN_STOCK" && (
+                    <>
+                      <TimelineInput
+                        label="Үнэ"
+                        value={form.price}
+                        inputMode="decimal"
+                        onChange={(value) => updateField("price", value)}
+                      />
+                      <TimelineInput
+                        label="Нөөц"
+                        value={form.stock}
+                        inputMode="numeric"
+                        onChange={(value) => updateField("stock", value)}
+                      />
+                    </>
+                  )}
+                  <div className="sm:col-span-2">
+                    <QuickProductSupplyFields
+                      authFetch={authFetch}
+                      values={form}
+                      onChange={updateSupplyField}
+                    />
+                  </div>
                 </>
               ) : (
                 <TimelineInput

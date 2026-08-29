@@ -3,6 +3,13 @@ import { emailService } from "./email/email.service";
 import { orderEmailTemplates } from "./email/templates/order-email.templates";
 import { sendPushToUsers } from "./push-notification.service";
 
+const WEB_PUBLIC_URL = (
+  process.env.MGL_WEB_PUBLIC_URL || "https://mglstore.mn"
+).replace(/\/+$/, "");
+
+const getVendorOrderDetailUrl = (organizationId: string, orderId: string) =>
+  `${WEB_PUBLIC_URL}/profile/organizations/${encodeURIComponent(organizationId)}?incomingOrders=1&orderId=${encodeURIComponent(orderId)}`;
+
 export type CustomerOrderStage =
   | "ACCEPTED"
   | "PREPARING"
@@ -30,6 +37,7 @@ export async function notifyNewOnlineOrderRequest(
       },
       organization: {
         select: {
+          id: true,
           email: true,
           members: {
             where: {
@@ -85,8 +93,7 @@ export async function notifyNewOnlineOrderRequest(
         });
 
   const body = `#${order.orderNumber} • ${Number(order.total).toLocaleString()}₮`;
-  const customerName =
-    order.customer.profile?.fullName || order.customer.email;
+  const customerName = order.customer.profile?.fullName || order.customer.email;
   const customerPhone =
     order.phone || order.customer.profile?.phoneNumber || "Бүртгэгдээгүй";
   const emailTemplate = orderEmailTemplates.pickupRequest({
@@ -95,6 +102,7 @@ export async function notifyNewOnlineOrderRequest(
     customerPhone,
     pickupAddress: order.shippingAddress || "Салбар дээр тохиролцоно",
     total: Number(order.total),
+    detailUrl: getVendorOrderDetailUrl(order.organization.id, order.id),
   });
   await Promise.all([
     ...(options.pickupRequired
@@ -239,6 +247,8 @@ export async function notifyNewPaidOrder(orderId: string) {
     customerPhone,
     shippingAddress: order.shippingAddress,
     total: Number(order.total),
+    organizationName: order.organization.name,
+    detailUrl: getVendorOrderDetailUrl(order.organization.id, order.id),
   });
   const acceptedTemplate = orderEmailTemplates.customerStatus({
     subject: CUSTOMER_STAGE_CONTENT.ACCEPTED.title,

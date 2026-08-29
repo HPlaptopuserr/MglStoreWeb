@@ -20,12 +20,17 @@ test("new order template includes contact details and escapes HTML", () => {
     customerPhone: "99112233",
     shippingAddress: "БЗД <script>",
     total: 125000,
+    organizationName: "Nama",
+    detailUrl:
+      "https://mglstore.mn/profile/organizations/org-1?incomingOrders=1&orderId=order-1",
   });
 
   assert.match(template.text, /99112233/);
   assert.match(template.text, /125,000₮/);
   assert.doesNotMatch(template.html, /<script>/);
   assert.match(template.html, /&lt;script&gt;/);
+  assert.match(template.text, /Nama/);
+  assert.match(template.html, /incomingOrders=1&amp;orderId=order-1/);
 });
 
 test("vendor confirmation template preserves the confirmation URL", () => {

@@ -1,4 +1,4 @@
-import { emailLayout, infoRows, safe } from "../email-layout";
+import { emailLayout, infoRows, primaryButton, safe } from "../email-layout";
 import type { EmailTemplate } from "../email.types";
 
 export const orderEmailTemplates = {
@@ -8,6 +8,7 @@ export const orderEmailTemplates = {
     customerPhone: string;
     pickupAddress: string;
     total: number;
+    detailUrl: string;
   }): EmailTemplate {
     return {
       subject: `Салбараас авах шинэ хүсэлт — #${input.orderNumber}`,
@@ -20,6 +21,7 @@ export const orderEmailTemplates = {
         `Холбогдох утас: ${input.customerPhone}`,
         `Сонгосон байршил: ${input.pickupAddress}`,
         `Нийт дүн: ${input.total.toLocaleString()}₮`,
+        `Дэлгэрэнгүй: ${input.detailUrl}`,
         "",
         "Хүргэлтийн салбар баталгаажаагүй тохиолдолд барааг салбараас авахад бэлтгэнэ үү.",
         "",
@@ -38,7 +40,8 @@ export const orderEmailTemplates = {
             ["Холбогдох утас", input.customerPhone],
             ["Сонгосон байршил", input.pickupAddress],
             ["Нийт дүн", `${input.total.toLocaleString()}₮`],
-          ])}`,
+          ])}
+          ${primaryButton("Захиалгын дэлгэрэнгүй харах", input.detailUrl)}`,
       }),
     };
   },
@@ -49,6 +52,8 @@ export const orderEmailTemplates = {
     customerPhone: string;
     shippingAddress: string;
     total: number;
+    detailUrl: string;
+    organizationName: string;
   }): EmailTemplate {
     return {
       subject: `Шинэ захиалгын мэдэгдэл — #${input.orderNumber}`,
@@ -58,9 +63,11 @@ export const orderEmailTemplates = {
         "Дараах шинэ захиалгын төлбөр амжилттай баталгаажсаныг мэдэгдье.",
         "",
         `Захиалагч: ${input.customerName}`,
+        `Дэлгүүр: ${input.organizationName}`,
         `Холбогдох утас: ${input.customerPhone}`,
         `Хүргэх хаяг: ${input.shippingAddress}`,
         `Нийт дүн: ${input.total.toLocaleString()}₮`,
+        `Дэлгэрэнгүй: ${input.detailUrl}`,
         "",
         "Та захиалгын мэдээллийг хянан, бараа бэлтгэх ажиллагааг эхлүүлнэ үү.",
         "",
@@ -76,10 +83,12 @@ export const orderEmailTemplates = {
           ${infoRows([
             ["Захиалгын дугаар", `#${input.orderNumber}`],
             ["Захиалагч", input.customerName],
+            ["Дэлгүүр", input.organizationName],
             ["Холбогдох утас", input.customerPhone],
             ["Хүргэх хаяг", input.shippingAddress],
             ["Нийт дүн", `${input.total.toLocaleString()}₮`],
-          ])}`,
+          ])}
+          ${primaryButton("Захиалгын дэлгэрэнгүй харах", input.detailUrl)}`,
       }),
     };
   },

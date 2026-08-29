@@ -12,6 +12,7 @@ import {
   Heart,
   Home,
   Settings,
+  ShoppingBag,
   ShieldCheck,
   Truck,
   UserRound,
@@ -24,6 +25,8 @@ import type { AccountContract, AccountPurchase, ProfileOrder } from "./types";
 type ProfileDashboardShellProps = {
   children: ReactNode;
   bankAccountContent?: ReactNode;
+  incomingOrdersContent?: ReactNode;
+  openIncomingOrdersInitially?: boolean;
 };
 
 const settingsNav = [
@@ -47,11 +50,17 @@ const settingsNav = [
 export function ProfileDashboardShell({
   children,
   bankAccountContent,
+  incomingOrdersContent,
+  openIncomingOrdersInitially = false,
 }: ProfileDashboardShellProps) {
   const [isBankAccountOpen, setIsBankAccountOpen] = useState(false);
+  const [isIncomingOrdersOpen, setIsIncomingOrdersOpen] = useState(
+    openIncomingOrdersInitially,
+  );
+  const modalOpen = isBankAccountOpen || isIncomingOrdersOpen;
 
   useEffect(() => {
-    if (!isBankAccountOpen) return;
+    if (!modalOpen) return;
     const scrollY = window.scrollY;
     const root = document.documentElement;
     const previousRootOverflow = root.style.overflow;
@@ -67,7 +76,10 @@ export function ProfileDashboardShell({
     document.body.style.top = `-${scrollY}px`;
     document.body.style.width = "100%";
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsBankAccountOpen(false);
+      if (event.key === "Escape") {
+        setIsBankAccountOpen(false);
+        setIsIncomingOrdersOpen(false);
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => {
@@ -79,13 +91,22 @@ export function ProfileDashboardShell({
       window.scrollTo({ top: scrollY, left: 0, behavior: "instant" });
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [isBankAccountOpen]);
+  }, [modalOpen]);
 
   return (
     <>
       <main className="min-h-screen bg-[#f5f5f5] px-3 pb-28 pt-4 text-slate-950 md:px-6 md:pb-8 md:pt-8">
         <div className="mx-auto grid max-w-7xl items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
-          <ProfileNavigation onBankAccountOpen={bankAccountContent ? () => setIsBankAccountOpen(true) : undefined} />
+          <ProfileNavigation
+            onBankAccountOpen={
+              bankAccountContent ? () => setIsBankAccountOpen(true) : undefined
+            }
+            onIncomingOrdersOpen={
+              incomingOrdersContent
+                ? () => setIsIncomingOrdersOpen(true)
+                : undefined
+            }
+          />
           <div className="min-w-0 space-y-4 md:space-y-6">{children}</div>
         </div>
       </main>
@@ -96,7 +117,8 @@ export function ProfileDashboardShell({
           aria-modal="true"
           aria-label="Банкны дансны тохиргоо"
           onMouseDown={(event) => {
-            if (event.currentTarget === event.target) setIsBankAccountOpen(false);
+            if (event.currentTarget === event.target)
+              setIsBankAccountOpen(false);
           }}
         >
           <div className="relative w-full max-w-4xl overflow-visible rounded-t-[30px] bg-white p-3 shadow-2xl sm:rounded-[30px] sm:p-4">
@@ -109,6 +131,30 @@ export function ProfileDashboardShell({
               <X className="h-5 w-5" />
             </button>
             {bankAccountContent}
+          </div>
+        </div>
+      ) : null}
+      {isIncomingOrdersOpen && incomingOrdersContent ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-end justify-center overflow-hidden overscroll-none bg-slate-950/60 p-0 backdrop-blur-sm sm:items-center sm:p-5"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Ирсэн захиалга"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target)
+              setIsIncomingOrdersOpen(false);
+          }}
+        >
+          <div className="relative w-full max-w-5xl rounded-t-[30px] bg-white p-3 shadow-2xl sm:rounded-[30px] sm:p-4">
+            <button
+              type="button"
+              onClick={() => setIsIncomingOrdersOpen(false)}
+              className="absolute -right-2 -top-12 z-10 grid h-10 w-10 place-items-center rounded-full bg-white text-slate-600 shadow-lg transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus:ring-4 focus:ring-slate-200 sm:-right-3 sm:-top-3"
+              aria-label="Хаах"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            {incomingOrdersContent}
           </div>
         </div>
       ) : null}
@@ -141,14 +187,38 @@ const profileNavItems = [
   },
 ] as const;
 
-function ProfileNavigation({ onBankAccountOpen }: { onBankAccountOpen?: () => void }) {
-  const navigationItems = onBankAccountOpen
-    ? [
-        ...profileNavItems.slice(0, -1),
-        { label: "Банкны данс", href: "", icon: Banknote, onClick: onBankAccountOpen },
-        profileNavItems.at(-1)!,
-      ]
-    : profileNavItems;
+function ProfileNavigation({
+  onBankAccountOpen,
+  onIncomingOrdersOpen,
+}: {
+  onBankAccountOpen?: () => void;
+  onIncomingOrdersOpen?: () => void;
+}) {
+  const navigationItems = [
+    ...profileNavItems.slice(0, 2),
+    ...(onIncomingOrdersOpen
+      ? [
+          {
+            label: "Ирсэн захиалга",
+            href: "",
+            icon: ShoppingBag,
+            onClick: onIncomingOrdersOpen,
+          },
+        ]
+      : []),
+    ...profileNavItems.slice(2, -1),
+    ...(onBankAccountOpen
+      ? [
+          {
+            label: "Банкны данс",
+            href: "",
+            icon: Banknote,
+            onClick: onBankAccountOpen,
+          },
+        ]
+      : []),
+    profileNavItems.at(-1)!,
+  ];
 
   return (
     <aside className="sticky top-[9rem] hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:block">
@@ -161,8 +231,7 @@ function ProfileNavigation({ onBankAccountOpen }: { onBankAccountOpen?: () => vo
       <nav aria-label="Хэрэглэгчийн цэс" className="mt-2 space-y-1">
         {navigationItems.map((item, index) => {
           const Icon = item.icon;
-          return (
-            "onClick" in item ? (
+          return "onClick" in item ? (
             <button
               key={`${item.label}-${index}`}
               type="button"
@@ -172,7 +241,7 @@ function ProfileNavigation({ onBankAccountOpen }: { onBankAccountOpen?: () => vo
               <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span>{item.label}</span>
             </button>
-            ) : (
+          ) : (
             <Link
               key={`${item.label}-${index}`}
               href={item.href}
@@ -185,7 +254,6 @@ function ProfileNavigation({ onBankAccountOpen }: { onBankAccountOpen?: () => vo
               <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span>{item.label}</span>
             </Link>
-            )
           );
         })}
       </nav>
