@@ -8,6 +8,7 @@ import { useAuth } from "@/lib/auth-context";
 import { ManagedOrganizationProfile } from "../../_components/ManagedOrganizationProfile";
 import { ProfileDashboardShell } from "../../_components/ProfileDashboardShell";
 import { getManagedOrganizations } from "../../_components/profileUtils";
+import { VENDOR_BANK_ACCOUNT_URL } from "@/lib/portal-links";
 
 export default function ManagedOrganizationPage() {
   const { user, loading, refreshUser } = useAuth();
@@ -51,7 +52,7 @@ export default function ManagedOrganizationPage() {
 
   if (activeOrganization?.status === "PENDING") {
     return (
-      <ProfileDashboardShell>
+      <ProfileDashboardShell bankAccountHref={VENDOR_BANK_ACCOUNT_URL}>
         <section className="rounded-[28px] border border-amber-200 bg-amber-50 p-6 shadow-sm">
           <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-700">
             <Clock3 className="h-4 w-4" />
@@ -77,7 +78,7 @@ export default function ManagedOrganizationPage() {
   }
 
   return (
-    <ProfileDashboardShell>
+    <ProfileDashboardShell bankAccountHref={VENDOR_BANK_ACCOUNT_URL}>
       <ManagedOrganizationProfile
         activeOrganizationId={activeOrganizationId}
         organizations={organizations}

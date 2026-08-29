@@ -6,7 +6,6 @@ import {
   ArrowRight,
   ArrowUp,
   ArrowUpRight,
-  Banknote,
   Boxes,
   CalendarDays,
   ChevronDown,
@@ -46,16 +45,14 @@ import {
 import { normalizeOrganizationMetrics } from "@/lib/organization-presentation";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import type { BusinessCategory } from "@/types/category";
+import {
+  ORG_PORTAL_URL,
+  VENDOR_PORTAL_URL,
+} from "@/lib/portal-links";
 import { QuickProductExcelImport } from "./QuickProductExcelImport";
 
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
-const ORG_URL =
-  process.env.NEXT_PUBLIC_ORG_URL ||
-  (IS_PRODUCTION ? "https://org.mglstore.mn" : "http://localhost:3004");
-const VENDOR_URL =
-  process.env.NEXT_PUBLIC_VENDOR_URL ||
-  (IS_PRODUCTION ? "https://vendor.mglstore.mn" : "http://localhost:3002");
-const VENDOR_BANK_ACCOUNT_URL = `${VENDOR_URL.replace(/\/$/, "")}/profile?tab=qpay`;
+const ORG_URL = ORG_PORTAL_URL;
+const VENDOR_URL = VENDOR_PORTAL_URL;
 
 type ManagedOrgDetails = {
   id: string;
@@ -1242,7 +1239,7 @@ export function ManagedOrganizationProfile({
             </div>
           </WidgetCard>
 
-          <WidgetCard className="hidden lg:block" title="Page widgets">
+          <WidgetCard className="hidden lg:block" title="Хурдан холбоос">
             <div className="grid grid-cols-3 gap-2 sm:grid-cols-1">
               <WidgetLink
                 href={orgPublicHref(org || selectedOrg)}
@@ -1261,12 +1258,6 @@ export function ManagedOrganizationProfile({
                 icon={Megaphone}
                 label="Зар удирдах"
                 text="Санал, урамшуулал"
-              />
-              <WidgetLink
-                href={VENDOR_BANK_ACCOUNT_URL}
-                icon={Banknote}
-                label="Банкны данс нэмэх"
-                text="Орлого хүлээн авах данс"
               />
             </div>
           </WidgetCard>
@@ -1348,7 +1339,7 @@ export function ManagedOrganizationProfile({
             services={content.services}
           />
 
-          <aside className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <aside className="grid gap-3 md:grid-cols-3">
             <PortalLink
               href={`${VENDOR_URL.replace(/\/$/, "")}/products`}
               icon={Boxes}
@@ -1363,11 +1354,6 @@ export function ManagedOrganizationProfile({
               href={`${ORG_URL.replace(/\/$/, "")}/dashboard`}
               icon={Store}
               label="Org dashboard"
-            />
-            <PortalLink
-              href={VENDOR_BANK_ACCOUNT_URL}
-              icon={Banknote}
-              label="Банкны данс нэмэх"
             />
           </aside>
         </div>

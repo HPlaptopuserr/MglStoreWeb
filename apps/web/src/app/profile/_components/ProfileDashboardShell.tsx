@@ -4,6 +4,7 @@ import { type ReactNode } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
+  Banknote,
   Bell,
   Coins,
   FileArchive,
@@ -21,6 +22,7 @@ import type { AccountContract, AccountPurchase, ProfileOrder } from "./types";
 
 type ProfileDashboardShellProps = {
   children: ReactNode;
+  bankAccountHref?: string;
 };
 
 const settingsNav = [
@@ -43,11 +45,12 @@ const settingsNav = [
 
 export function ProfileDashboardShell({
   children,
+  bankAccountHref,
 }: ProfileDashboardShellProps) {
   return (
     <main className="min-h-screen bg-[#f5f5f5] px-3 pb-28 pt-4 text-slate-950 md:px-6 md:pb-8 md:pt-8">
       <div className="mx-auto grid max-w-7xl items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <ProfileNavigation />
+        <ProfileNavigation bankAccountHref={bankAccountHref} />
         <div className="min-w-0 space-y-4 md:space-y-6">{children}</div>
       </div>
     </main>
@@ -79,7 +82,15 @@ const profileNavItems = [
   },
 ] as const;
 
-function ProfileNavigation() {
+function ProfileNavigation({ bankAccountHref }: { bankAccountHref?: string }) {
+  const navigationItems = bankAccountHref
+    ? [
+        ...profileNavItems.slice(0, -1),
+        { label: "Банкны данс", href: bankAccountHref, icon: Banknote },
+        profileNavItems.at(-1)!,
+      ]
+    : profileNavItems;
+
   return (
     <aside className="sticky top-[9rem] hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:block">
       <div className="border-b border-slate-100 px-3 pb-3 pt-1">
@@ -89,7 +100,7 @@ function ProfileNavigation() {
         <h2 className="mt-1 text-lg font-black text-slate-950">Миний хэсэг</h2>
       </div>
       <nav aria-label="Хэрэглэгчийн цэс" className="mt-2 space-y-1">
-        {profileNavItems.map((item, index) => {
+        {navigationItems.map((item, index) => {
           const Icon = item.icon;
           return (
             <Link
