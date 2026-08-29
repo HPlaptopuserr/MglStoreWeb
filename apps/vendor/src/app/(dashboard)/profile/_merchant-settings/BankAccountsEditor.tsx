@@ -47,7 +47,7 @@ export function BankAccountsEditor({
         <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
           {managedBySystem
             ? "Minu merchantCode-д холбогдсон дансны мэдээлэл хадгалагдаагүй байна. Дансаа нэмээд дараа харах боломжтой."
-            : "Банкны данс бүртгэгдээгүй байна. QPay QR үүсгэхийн тулд данс нэмнэ үү."}
+            : "Банкны данс бүртгэгдээгүй байна. QR төлбөр үүсгэхийн тулд данс нэмнэ үү."}
         </div>
       )}
 

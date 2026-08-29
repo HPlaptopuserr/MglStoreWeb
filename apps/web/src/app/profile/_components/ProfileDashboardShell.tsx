@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -16,13 +16,14 @@ import {
   Truck,
   UserRound,
   WalletCards,
+  X,
 } from "lucide-react";
 import { ACCOUNT_ROUTES, PROFILE_SETTING_LINKS } from "@/lib/account-routes";
 import type { AccountContract, AccountPurchase, ProfileOrder } from "./types";
 
 type ProfileDashboardShellProps = {
   children: ReactNode;
-  bankAccountHref?: string;
+  bankAccountContent?: ReactNode;
 };
 
 const settingsNav = [
@@ -45,15 +46,73 @@ const settingsNav = [
 
 export function ProfileDashboardShell({
   children,
-  bankAccountHref,
+  bankAccountContent,
 }: ProfileDashboardShellProps) {
+  const [isBankAccountOpen, setIsBankAccountOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isBankAccountOpen) return;
+    const scrollY = window.scrollY;
+    const root = document.documentElement;
+    const previousRootOverflow = root.style.overflow;
+    const previousBodyStyles = {
+      overflow: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+    };
+    root.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsBankAccountOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      root.style.overflow = previousRootOverflow;
+      document.body.style.overflow = previousBodyStyles.overflow;
+      document.body.style.position = previousBodyStyles.position;
+      document.body.style.top = previousBodyStyles.top;
+      document.body.style.width = previousBodyStyles.width;
+      window.scrollTo({ top: scrollY, left: 0, behavior: "instant" });
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isBankAccountOpen]);
+
   return (
-    <main className="min-h-screen bg-[#f5f5f5] px-3 pb-28 pt-4 text-slate-950 md:px-6 md:pb-8 md:pt-8">
-      <div className="mx-auto grid max-w-7xl items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <ProfileNavigation bankAccountHref={bankAccountHref} />
-        <div className="min-w-0 space-y-4 md:space-y-6">{children}</div>
-      </div>
-    </main>
+    <>
+      <main className="min-h-screen bg-[#f5f5f5] px-3 pb-28 pt-4 text-slate-950 md:px-6 md:pb-8 md:pt-8">
+        <div className="mx-auto grid max-w-7xl items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <ProfileNavigation onBankAccountOpen={bankAccountContent ? () => setIsBankAccountOpen(true) : undefined} />
+          <div className="min-w-0 space-y-4 md:space-y-6">{children}</div>
+        </div>
+      </main>
+      {isBankAccountOpen && bankAccountContent ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-end justify-center overflow-hidden overscroll-none bg-slate-950/60 p-0 backdrop-blur-sm sm:items-center sm:p-5"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Банкны дансны тохиргоо"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) setIsBankAccountOpen(false);
+          }}
+        >
+          <div className="relative w-full max-w-4xl overflow-visible rounded-t-[30px] bg-white p-3 shadow-2xl sm:rounded-[30px] sm:p-4">
+            <button
+              type="button"
+              onClick={() => setIsBankAccountOpen(false)}
+              className="absolute -right-2 -top-12 z-10 grid h-10 w-10 place-items-center rounded-full bg-white text-slate-600 shadow-lg transition hover:bg-slate-100 hover:text-slate-950 focus:outline-none focus:ring-4 focus:ring-slate-200 sm:-right-3 sm:-top-3"
+              aria-label="Хаах"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            {bankAccountContent}
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -82,11 +141,11 @@ const profileNavItems = [
   },
 ] as const;
 
-function ProfileNavigation({ bankAccountHref }: { bankAccountHref?: string }) {
-  const navigationItems = bankAccountHref
+function ProfileNavigation({ onBankAccountOpen }: { onBankAccountOpen?: () => void }) {
+  const navigationItems = onBankAccountOpen
     ? [
         ...profileNavItems.slice(0, -1),
-        { label: "Банкны данс", href: bankAccountHref, icon: Banknote },
+        { label: "Банкны данс", href: "", icon: Banknote, onClick: onBankAccountOpen },
         profileNavItems.at(-1)!,
       ]
     : profileNavItems;
@@ -103,6 +162,17 @@ function ProfileNavigation({ bankAccountHref }: { bankAccountHref?: string }) {
         {navigationItems.map((item, index) => {
           const Icon = item.icon;
           return (
+            "onClick" in item ? (
+            <button
+              key={`${item.label}-${index}`}
+              type="button"
+              onClick={item.onClick}
+              className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
+            >
+              <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+              <span>{item.label}</span>
+            </button>
+            ) : (
             <Link
               key={`${item.label}-${index}`}
               href={item.href}
@@ -115,6 +185,7 @@ function ProfileNavigation({ bankAccountHref }: { bankAccountHref?: string }) {
               <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
               <span>{item.label}</span>
             </Link>
+            )
           );
         })}
       </nav>

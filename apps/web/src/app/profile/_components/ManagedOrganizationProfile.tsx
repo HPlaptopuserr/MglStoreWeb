@@ -1192,7 +1192,7 @@ export function ManagedOrganizationProfile({
       </div>
 
       <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <aside className="space-y-5 lg:sticky lg:top-24 lg:self-start">
+        <aside className="space-y-5 lg:self-start">
           <WidgetCard
             action={
               <button
@@ -1284,6 +1284,7 @@ export function ManagedOrganizationProfile({
         </aside>
 
         <div className="mx-auto w-full max-w-[820px] space-y-4">
+
           <OrganizationCreateHub
             authFetch={authFetch}
             createMode={createMode}

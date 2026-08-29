@@ -341,7 +341,7 @@ router.get("/vendor/merchant/systemqr/cities", requireAuth, async (_req, res) =>
     return res.json({ cities });
   } catch (error) {
     console.error("systemqr cities error", error);
-    return res.json({ cities: [] });
+    return res.status(502).json({ cities: [], message: "Minu Dynamic QR байршлын мэдээлэл авч чадсангүй. API нэвтрэх тохиргоог шалгана уу." });
   }
 });
 
@@ -351,7 +351,7 @@ router.get("/vendor/merchant/systemqr/khoroo/:districtId", requireAuth, async (r
     return res.json({ khoroos });
   } catch (error) {
     console.error("systemqr khoroo error", error);
-    return res.json({ khoroos: [] });
+    return res.status(502).json({ khoroos: [], message: "Minu Dynamic QR хорооны мэдээлэл авч чадсангүй." });
   }
 });
 
@@ -361,7 +361,7 @@ router.get("/vendor/merchant/systemqr/categories", requireAuth, async (_req, res
     return res.json({ categories });
   } catch (error) {
     console.error("systemqr categories error", error);
-    return res.json({ categories: [] });
+    return res.status(502).json({ categories: [], message: "Minu Dynamic QR ангиллын мэдээлэл авч чадсангүй. API нэвтрэх тохиргоог шалгана уу." });
   }
 });
 
@@ -571,4 +571,3 @@ router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, 
 });
 
 export default router;
-

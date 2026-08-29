@@ -89,7 +89,7 @@ export function ServiceQPayModal({
     const paid = await checkPayment();
     if (!paid) {
       setError(
-        "Ð¢Ó©Ð»Ð±Ó©Ñ€ Ñ…Ò¯Ð»ÑÑÐ³Ð´ÑÐ¶ Ð±Ð°Ð¹Ð½Ð°. QPay Ð°Ð¿Ð¿Ð°Ð°Ñ€ Ñ‚Ó©Ð»Ð±Ó©Ñ€Ó©Ó© Ñ‚Ó©Ð»Ð½Ó© Ò¯Ò¯.",
+        "Төлбөр хүлээгдэж байна. Банкны аппаар QR кодоо уншуулаад дахин шалгана уу.",
       );
     }
     setChecking(false);
@@ -112,7 +112,7 @@ export function ServiceQPayModal({
               <QrCode size={18} className="text-blue-600" />
             </div>
             <h2 className="text-base font-bold text-gray-900">
-              QPay Ñ‚Ó©Ð»Ð±Ó©Ñ€
+              QR төлбөр
             </h2>
           </div>
           {!confirmed && (
@@ -167,14 +167,14 @@ export function ServiceQPayModal({
                 <div className="max-w-full rounded-2xl border-2 border-gray-200 bg-white p-2">
                   <img
                     src={`data:image/png;base64,${qrImage}`}
-                    alt="QPay QR Code"
+                    alt="Төлбөрийн QR код"
                     className="h-[clamp(168px,54vw,220px)] w-[clamp(168px,54vw,220px)] rounded-xl sm:h-52 sm:w-52"
                   />
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <Smartphone size={14} />
                   <span>
-                    QPay Ð°Ð¿Ð¿Ð»Ð¸ÐºÐµÐ¹ÑˆÐ½ÑÑÑ€ ÑƒÐ½ÑˆÑƒÑƒÐ»Ð½Ð° ÑƒÑƒ
+                    Банкны аппликейшнээр QR кодоо уншуулна уу
                   </span>
                 </div>
               </div>

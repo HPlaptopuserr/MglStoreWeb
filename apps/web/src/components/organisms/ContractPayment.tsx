@@ -43,7 +43,7 @@ export function ContractPayment({
               <QrCode size={21} />
             </div>
             <div className="min-w-0">
-              <h2 className="text-xl font-black text-white">QPay</h2>
+              <h2 className="text-xl font-black text-white">QR төлбөр</h2>
               <p className="truncate text-xs text-white/55">
                 Гэрээний төлбөр
               </p>
@@ -78,7 +78,7 @@ export function ContractPayment({
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={qrImageSrc}
-                    alt="QPay QR"
+                    alt="Төлбөрийн QR код"
                     className="h-[clamp(168px,54vw,220px)] w-[clamp(168px,54vw,220px)] rounded-xl sm:h-[232px] sm:w-[232px]"
                   />
                 ) : qpayData.qrText ? (
@@ -97,7 +97,7 @@ export function ContractPayment({
               </div>
               <div className="flex items-center justify-center gap-2 text-center text-sm text-white/80">
                 <Smartphone size={18} className="shrink-0 text-white/60" />
-                <span>QPay аппликейшнээр уншуулна уу</span>
+                <span>Банкны аппликейшнээр QR кодоо уншуулна уу</span>
               </div>
             </div>
 

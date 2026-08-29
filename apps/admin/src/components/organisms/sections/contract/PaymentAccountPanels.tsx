@@ -8,6 +8,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
+import { FALLBACK_SYSTEMQR_CATEGORIES } from "@mgl/types";
 
 export const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
 
@@ -62,15 +63,6 @@ export const DEFAULT_SYSTEMQR_LOCATION = {
   gender: "M",
   subCategoryId: "36",
 };
-
-const FALLBACK_SYSTEMQR_CATEGORIES: SystemQrCategory[] = [
-  {
-    code: "36",
-    name: "Электрон бараа (Компьютер, гар утас)",
-    categoryName: "Бараа",
-  },
-  { code: "35", name: "Код 35" },
-];
 
 const FALLBACK_SYSTEMQR_CITIES: SystemQrCity[] = [
   {
@@ -292,7 +284,7 @@ export function PaymentAccountsSettingsPanel({
   const categoryOptions = withCurrentOption(
     systemQrCategories.length > 0
       ? systemQrCategories
-      : FALLBACK_SYSTEMQR_CATEGORIES,
+      : [...FALLBACK_SYSTEMQR_CATEGORIES],
     currentSubCategoryId,
     `Код ${currentSubCategoryId}`,
   );

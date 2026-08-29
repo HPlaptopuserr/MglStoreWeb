@@ -110,7 +110,7 @@ export function QPayModal({
     const paid = await checkPayment();
     if (!paid) {
       setError(
-        "Төлбөр хүлээгдэж байна. QPay аппаар төлбөрөө төлөөд дахин шалгана уу.",
+        "Төлбөр хүлээгдэж байна. Банкны аппаар QR кодоо уншуулаад дахин шалгана уу.",
       );
     }
     setChecking(false);
@@ -165,12 +165,12 @@ export function QPayModal({
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/95 text-blue-600 shadow-sm">
               <QrCode size={21} />
             </div>
-            <h2 className="text-xl font-black text-white">QPay</h2>
+            <h2 className="text-xl font-black text-white">QR төлбөр</h2>
           </div>
           {!confirmed && (
             <button
               onClick={onClose}
-              aria-label="QPay цонх хаах"
+              aria-label="QR төлбөрийн цонх хаах"
               className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
             >
               <X size={22} />
@@ -238,7 +238,7 @@ export function QPayModal({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={qrImageSrc}
-                      alt="QPay QR Code"
+                      alt="Төлбөрийн QR код"
                       className="h-[clamp(168px,54vw,220px)] w-[clamp(168px,54vw,220px)] rounded-xl sm:h-[232px] sm:w-[232px]"
                     />
                   ) : qrText ? (
@@ -257,7 +257,7 @@ export function QPayModal({
                 </div>
                 <div className="flex items-center justify-center gap-2 text-sm text-white/80">
                   <Smartphone size={18} className="text-white/60" />
-                  <span>QPay аппликейшнээр уншуулна уу</span>
+                  <span>Банкны аппликейшнээр QR кодоо уншуулна уу</span>
                 </div>
               </div>
 

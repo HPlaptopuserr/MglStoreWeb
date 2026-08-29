@@ -45,6 +45,9 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   try {
     const decoded = jwt.verify(token, jwtSecret) as AuthPayload;
     (req as any).user = decoded;
+    // Several legacy vendor routes read the authenticated subject directly.
+    // Keep the canonical payload on `user` and expose the alias consistently.
+    (req as any).userId = decoded.userId;
     void recordOrganizationActivity(decoded.organizationId);
     next();
   } catch {
@@ -68,6 +71,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   try {
     const decoded = jwt.verify(token, jwtSecret) as AuthPayload;
     (req as any).user = decoded;
+    (req as any).userId = decoded.userId;
   } catch {
     // Public endpoints should not fail solely because a stale token was sent.
   }

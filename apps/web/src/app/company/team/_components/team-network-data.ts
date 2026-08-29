@@ -54,7 +54,7 @@ export const NETWORK_COMPANIES: NetworkCompany[] = [
     name: "MGL Finance",
     label: "Payments",
     description:
-      "QPay, гэрээний төлбөр, байгууллагын тооцоо, санхүүгийн тайлангийн урсгалыг дэмжинэ.",
+      "QR төлбөр, гэрээний төлбөр, байгууллагын тооцоо, санхүүгийн тайлангийн урсгалыг дэмжинэ.",
     metric: "Баталгаат",
     tone: "from-violet-400 via-purple-500 to-fuchsia-600",
     icon: ShieldCheck,

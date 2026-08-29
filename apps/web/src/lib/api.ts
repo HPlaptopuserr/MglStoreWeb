@@ -14,6 +14,15 @@ export const API_BASE =
 
 export const API = `${API_BASE}/api`;
 
+/** Authenticated fetch used by shared merchant-setting components. */
+export async function authFetch(url: string | URL | Request, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  const token = typeof window !== "undefined" ? localStorage.getItem("mgl_web_access_token") : null;
+  if (token && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${token}`);
+  if (!headers.has("Content-Type") && typeof init?.body === "string") headers.set("Content-Type", "application/json");
+  return fetch(url, { ...init, headers });
+}
+
 export function resolveApiAssetUrl(url?: string | null) {
   if (!url) return "";
   if (/^(https?:|data:|blob:)/i.test(url)) return url;

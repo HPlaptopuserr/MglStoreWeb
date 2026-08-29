@@ -74,7 +74,7 @@ export const FAQIllustration = () => (
               <Headset className="w-4 h-4" />
             </div>
             <div className="bg-orange-500 p-4 rounded-2xl rounded-tr-none shadow-sm text-sm text-white max-w-[85%]">
-              Сайн байна уу! Та манай QPay, SocialPay болон бүх банкны картаар
+              Сайн байна уу! Та манай QR төлбөр, SocialPay болон бүх банкны картаар
               төлбөрөө хийх боломжтой.
             </div>
           </div>

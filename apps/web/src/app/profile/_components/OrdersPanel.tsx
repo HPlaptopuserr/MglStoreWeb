@@ -91,7 +91,7 @@ const PAYMENT_METHOD_LABEL: Record<string, string> = {
   CASH: "Бэлэн",
   CARD: "Карт",
   BANK_TRANSFER: "Данс",
-  QPAY: "QPay",
+  QPAY: "QR төлбөр",
   POS: "POS",
 };
 

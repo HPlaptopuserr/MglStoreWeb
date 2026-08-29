@@ -17,7 +17,7 @@ export function ConnectedMerchantStatusCard({
       <Check className="h-5 w-5 text-emerald-600 mt-0.5 shrink-0" />
       <div>
         <p className="font-semibold text-emerald-900">
-          {status.managedBySystem ? "Minu Dynamic QR холбогдсон" : "QPay мерчант холбогдсон"}
+          {status.managedBySystem ? "Minu Dynamic QR холбогдсон" : "QR төлбөрийн мерчант холбогдсон"}
         </p>
         <p className="text-sm text-emerald-700 mt-0.5">
           {status.managedBySystem ? "Merchant code" : "Мерчант ID"}:{" "}

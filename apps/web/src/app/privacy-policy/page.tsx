@@ -70,7 +70,7 @@ const dataGroups = [
     icon: WalletCards,
     title: "Арилжаа ба бизнесийн мэдээлэл",
     items:
-      "Захиалга, бүтээгдэхүүн, агуулах, борлуулалт, төлбөрийн арга ба төлөв, QPay нэхэмжлэлийн лавлагаа, буцаалт, байгууллага болон ажилтны үйл ажиллагааны мэдээлэл.",
+      "Захиалга, бүтээгдэхүүн, агуулах, борлуулалт, төлбөрийн арга ба төлөв, QR төлбөрийн нэхэмжлэлийн лавлагаа, буцаалт, байгууллага болон ажилтны үйл ажиллагааны мэдээлэл.",
   },
   {
     icon: Smartphone,
@@ -237,7 +237,7 @@ export default function PrivacyPolicyPage() {
             <p>Үйлчилгээ ажиллуулахад шаардлагатай хамгийн бага мэдээллийг дараах төрлийн үйлчилгээ үзүүлэгчидтэй дамжуулж болно:</p>
             <ul className="list-disc space-y-2 pl-5 marker:text-amber-500">
               <li><strong className="font-semibold text-slate-900">Google Firebase Cloud Messaging</strong> — төхөөрөмжийн push token, мэдэгдэл хүргэлт;</li>
-              <li><strong className="font-semibold text-slate-900">QPay болон сонгосон банк/төлбөрийн үйлчилгээ</strong> — нэхэмжлэл үүсгэх, төлбөрийн төлөв баталгаажуулах;</li>
+              <li><strong className="font-semibold text-slate-900">QR төлбөр болон сонгосон банк/төлбөрийн үйлчилгээ</strong> — нэхэмжлэл үүсгэх, төлбөрийн төлөв баталгаажуулах;</li>
               <li><strong className="font-semibold text-slate-900">Verify.mn</strong> — хэрэглэгчийн санаачилсан утас/таних баталгаажуулалт;</li>
               <li><strong className="font-semibold text-slate-900">Supabase болон hosting/database дэд бүтэц</strong> — сервер, өгөгдлийн сан, зураг/видео хадгалалт ба хүргэлт;</li>
               <li>и-мэйл, хүргэлт болон техникийн дэмжлэгийн үйлчилгээ үзүүлэгчид — тухайн үйлчилгээг гүйцэтгэхэд шаардлагатай мэдээлэл.</li>

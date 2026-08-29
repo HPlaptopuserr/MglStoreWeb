@@ -132,7 +132,7 @@ export function ProjectPaymentModal({
               <QrCode size={21} />
             </div>
             <div className="min-w-0">
-              <h2 className="text-xl font-black text-white">QPay</h2>
+              <h2 className="text-xl font-black text-white">QR төлбөр</h2>
               <p className="truncate text-xs font-semibold text-white/55">
                 {project.title}
               </p>
@@ -210,7 +210,7 @@ export function ProjectPaymentModal({
                 </div>
                 <div className="flex items-center justify-center gap-2 text-sm text-white/80">
                   <Smartphone size={18} className="text-white/60" />
-                  <span>Банкны апп эсвэл QPay-ээр уншуулна уу</span>
+                  <span>Банкны апп-аар QR кодоо уншуулна уу</span>
                 </div>
               </div>
 

@@ -150,7 +150,7 @@ export function ManualMerchantConnectionPanel({
                   onClick={() => onProviderChange("qpay")}
                   className={`min-h-11 rounded-xl border px-3 text-sm font-bold transition ${!isSystemQr ? "border-indigo-600 bg-indigo-50 text-indigo-700 ring-1 ring-indigo-600" : "border-slate-200 text-slate-600 hover:bg-slate-50"}`}
                 >
-                  QPay V2
+                  Бусад QR төлбөр
                 </button>
               </div>
             </div>

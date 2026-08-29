@@ -694,8 +694,8 @@ export default function PosDemoPage() {
       setScanStatus(qpayPaid ? "success" : "idle");
       setScanMessage(
         qpayPaid
-          ? "QPay төлбөр хүлээн авсан. “Гүйлгээ батлах” товчийг дарна уу."
-          : "Өмнөх QPay төлбөрийг сэргээж, төлөвийг шалгаж байна...",
+          ? "QR төлбөр хүлээн авсан. “Гүйлгээ батлах” товчийг дарна уу."
+          : "Өмнөх QR төлбөрийг сэргээж, төлөвийг шалгаж байна...",
       );
     }
     setCheckoutRecoveryScope(organizationId);
@@ -2350,7 +2350,7 @@ export default function PosDemoPage() {
         autoFinalizeRetryTimerRef.current = window.setTimeout(() => {
           autoFinalizeRetryTimerRef.current = null;
           setScanStatus("idle");
-          setScanMessage(`QPay борлуулалтыг дахин баталгаажуулж байна (${retryNumber}/3)...`);
+          setScanMessage(`QR төлбөрийн борлуулалтыг дахин баталгаажуулж байна (${retryNumber}/3)...`);
           setAutoCheckoutActive(true);
         }, retryDelay);
       }
@@ -2549,7 +2549,7 @@ export default function PosDemoPage() {
     if (safeAmount <= 0) return;
 
     try {
-      startProgressTicker("QPay төлбөр хүлээж байна");
+      startProgressTicker("QR төлбөр хүлээж байна");
       const invoice = await createQPayInvoice({
         amount: safeAmount,
         registerId: registerConfig?.id,
@@ -2586,13 +2586,13 @@ export default function PosDemoPage() {
       setQpayModal(modalPayload);
       setPaymentEntries(nextPaymentEntries);
       setScanStatus("idle");
-      setScanMessage("QPay invoice үүслээ. Баталгаажилт хүлээж байна");
+      setScanMessage("QR төлбөрийн нэхэмжлэл үүслээ. Баталгаажилт хүлээж байна");
     } catch (error) {
       console.warn("QPay invoice create failed", error);
       clearProgressTicker();
       setAutoCheckoutActive(false);
       setScanStatus("not-found");
-      setScanMessage(error instanceof Error ? error.message : "QPay invoice үүсгэхэд алдаа гарлаа");
+      setScanMessage(error instanceof Error ? error.message : "QR төлбөрийн нэхэмжлэл үүсгэхэд алдаа гарлаа");
     }
   };
 
@@ -2615,11 +2615,11 @@ export default function PosDemoPage() {
 
         clearProgressTicker();
         setScanStatus("success");
-        setScanMessage("QPay төлбөр хүлээн авлаа. “Гүйлгээ батлах” товчийг дарна уу.");
-        showSuccessOverlay("QPay төлбөр хүлээн авлаа");
+        setScanMessage("QR төлбөр хүлээн авлаа. “Гүйлгээ батлах” товчийг дарна уу.");
+        showSuccessOverlay("QR төлбөр хүлээн авлаа");
       } catch {
         setScanStatus("not-found");
-        setScanMessage("QPay баталгаажуулахад алдаа гарлаа");
+        setScanMessage("QR төлбөр баталгаажуулахад алдаа гарлаа");
       }
     })();
   };
@@ -2845,8 +2845,8 @@ export default function PosDemoPage() {
               }
               clearProgressTicker();
               setScanStatus("success");
-              setScanMessage("QPay төлбөр хүлээн авлаа. “Гүйлгээ батлах” товчийг дарна уу.");
-              showSuccessOverlay("QPay төлбөр хүлээн авлаа");
+              setScanMessage("QR төлбөр хүлээн авлаа. “Гүйлгээ батлах” товчийг дарна уу.");
+              showSuccessOverlay("QR төлбөр хүлээн авлаа");
             }
 
             if (status.status === "EXPIRED") {
@@ -2856,7 +2856,7 @@ export default function PosDemoPage() {
               }
               clearProgressTicker();
               setScanStatus("not-found");
-              setScanMessage("QPay invoice хугацаа дууссан");
+              setScanMessage("QR төлбөрийн нэхэмжлэлийн хугацаа дууссан");
             }
           } catch {
             // Keep polling; transient network errors should not break checkout flow.
@@ -3336,7 +3336,7 @@ export default function PosDemoPage() {
                 {[
                   ["Бэлэн", selectedShiftHistory.cashSales],
                   ["Карт", selectedShiftHistory.cardSales],
-                  ["QPay", selectedShiftHistory.qpaySales],
+                  ["QR төлбөр", selectedShiftHistory.qpaySales],
                   ["Зээл", selectedShiftHistory.creditSales],
                   ["Холимог баримт", selectedShiftHistory.mixedSales],
                 ].map(([label, amount]) => (
@@ -3623,7 +3623,7 @@ export default function PosDemoPage() {
                     <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Карт</span>
                   )}
                   {reg.qpayEnabled && (
-                    <span className="text-[10px] font-semibold bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full">QPay</span>
+                    <span className="text-[10px] font-semibold bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full">QR төлбөр</span>
                   )}
                 </div>
               </button>
@@ -3755,7 +3755,7 @@ export default function PosDemoPage() {
             <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2 text-xs text-slate-600">
                 <Info size={13} className="text-slate-400 shrink-0" />
-                <span>QPay төлбөр:</span>
+                <span>QR төлбөр:</span>
                 {registerConfig?.effectiveQpayEnabled ? (
                   <span className="font-semibold text-emerald-600">Идэвхтэй</span>
                 ) : (
@@ -3766,7 +3766,7 @@ export default function PosDemoPage() {
                 href="/dashboard/profile?tab=qpay"
                 className="text-xs font-semibold text-violet-600 hover:underline shrink-0"
               >
-                QPay тохиргоо →
+                QR төлбөрийн тохиргоо →
               </a>
             </div>
 
@@ -4172,7 +4172,7 @@ export default function PosDemoPage() {
               )}
               {registerConfig?.effectiveQpayEnabled && (
                 <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">
-                  QPay
+                  QR төлбөр
                 </span>
               )}
             </div>

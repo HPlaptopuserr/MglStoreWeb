@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../../../vendor/src/app/(dashboard)/profile/**/*.{ts,tsx}";
 
 :root {
   --background: #ffffff;

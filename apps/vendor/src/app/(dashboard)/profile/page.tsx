@@ -624,7 +624,7 @@ export default function ProfilePage() {
               : "text-slate-500 hover:text-slate-700"
             }`}
         >
-          QPay тохиргоо
+          QR төлбөрийн тохиргоо
         </button>
         <button
           type="button"
@@ -641,7 +641,7 @@ export default function ProfilePage() {
       {activeTab === "qpay" && (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
           <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-6">
-            QPay Multimerchant тохиргоо
+            QR төлбөрийн тохиргоо
           </h3>
           <MerchantSettingsSection organizationId={partner?.id} mode="qpay" />
         </div>

@@ -58,7 +58,7 @@ const TRANSACTION_METHOD_LABEL: Record<string, string> = {
   BANK_TRANSFER: "Данс",
   ONLINE: "Online",
   POS: "POS",
-  QPAY: "QPay",
+  QPAY: "QR төлбөр",
 };
 
 type TransactionFilter = "all" | "orders" | "access" | "paid" | "pending";
@@ -111,7 +111,7 @@ function PurchasePaymentSummary({ purchase }: { purchase: AccountPurchase }) {
             <CreditCard size={13} />
             Төлбөрийн хэсэг
           </span>
-          <span className="text-slate-950">QPay / Online</span>
+          <span className="text-slate-950">QR төлбөр / Онлайн</span>
         </div>
         <div className="flex items-center justify-between gap-3">
           <span className="text-slate-500">M point</span>
