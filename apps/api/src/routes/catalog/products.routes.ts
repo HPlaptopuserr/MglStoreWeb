@@ -1086,6 +1086,7 @@ router.get("/products", optionalAuth, async (req, res) => {
     const rawOffset = parseInt(String(req.query.offset || ""), 10);
     const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? rawOffset : 0;
     const includeMeta = isTruthyQueryValue(req.query.meta);
+    const compact = isTruthyQueryValue(req.query.compact);
     const webEligibleOnly = isTruthyQueryValue(req.query.webEligibleOnly);
     const canBypassAllVisibility = canBypassAllWebProductsVisibility(req);
     const canBypassRequestedOrg = requestedOrganizationId
@@ -1450,8 +1451,18 @@ router.get("/products", optionalAuth, async (req, res) => {
 
     if (includeMeta) {
       const totalCount = await totalCountPromise;
+      const serializedProducts = compact
+        ? response.map((product) => ({
+            id: product.id,
+            name: product.name,
+            price: product.price,
+            images: product.images,
+            organization: product.organization,
+            businessCategory: product.businessCategory,
+          }))
+        : response;
       const payload = {
-        products: response,
+        products: serializedProducts,
         total: totalCount ?? response.length,
         limit,
         offset,

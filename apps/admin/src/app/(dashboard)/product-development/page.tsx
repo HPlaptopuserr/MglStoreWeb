@@ -62,16 +62,26 @@ function isOrganizationWebEnabled(
 ) {
   if (!organizationId) return false;
   const value = settings[`${WEB_PRODUCTS_FEATURE_PREFIX}${organizationId}`];
-  return TRUE_SETTING_VALUES.has(String(value ?? "").trim().toLowerCase());
+  return TRUE_SETTING_VALUES.has(
+    String(value ?? "")
+      .trim()
+      .toLowerCase(),
+  );
 }
 
 async function fetchAllProducts(): Promise<Product[]> {
   const fetchPage = async (offset: number): Promise<ProductPageResponse> => {
     const response = await adminFetch(
-      `${API}/products?limit=${PRODUCT_PAGE_SIZE}&offset=${offset}&meta=1&webEligibleOnly=1`,
+      `${API}/products?limit=${PRODUCT_PAGE_SIZE}&offset=${offset}&meta=1&compact=1&webEligibleOnly=1`,
     );
     if (!response.ok) {
-      throw new Error("Барааны жагсаалт авахад алдаа гарлаа");
+      const payload = (await response.json().catch(() => null)) as {
+        message?: string;
+      } | null;
+      throw new Error(
+        payload?.message ||
+          `Барааны жагсаалт авахад алдаа гарлаа (HTTP ${response.status})`,
+      );
     }
 
     const payload: unknown = await response.json();
@@ -387,9 +397,7 @@ export default function ProductDevelopmentPage() {
     const payload = shelves.map((shelf) => ({
       ...shelf,
       title: shelf.title.trim(),
-      productIds: shelf.productIds.filter((id) =>
-        eligibleProductIds.has(id),
-      ),
+      productIds: shelf.productIds.filter((id) => eligibleProductIds.has(id)),
     }));
 
     try {

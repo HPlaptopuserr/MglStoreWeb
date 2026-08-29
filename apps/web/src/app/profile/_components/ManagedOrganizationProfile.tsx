@@ -47,6 +47,7 @@ import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import type { BusinessCategory } from "@/types/category";
 import { ORG_PORTAL_URL, VENDOR_PORTAL_URL } from "@/lib/portal-links";
 import { QuickProductSupplyFields } from "./QuickProductSupplyFields";
+import { StorefrontVisibilityControl } from "./StorefrontVisibilityControl";
 import type {
   QuickProductFormState,
   QuickProductTextField,
@@ -962,6 +963,13 @@ export function ManagedOrganizationProfile({
           />
         </label>
       </div>
+
+      {selectedOrg.role === "OWNER" && (
+        <StorefrontVisibilityControl
+          authFetch={authFetch}
+          organizationId={selectedOrg.id}
+        />
+      )}
 
       <MobileOrganizationHero
         category={category}

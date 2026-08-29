@@ -16,6 +16,7 @@ import {
   requireAuth,
   requirePlatformPermission,
 } from "../../middleware/auth";
+import { requireOrgPermission } from "../../services/permission.service";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 import { createPdfPreviewBuffer } from "../../lib/pdf-preview";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
@@ -81,6 +82,15 @@ const VENDOR_FEATURE_KEYS = new Set([
   "multi-price-sales-enabled",
   "contract-archive-enabled",
 ]);
+const WEB_PRODUCTS_FEATURE_KEY = "web-products-enabled";
+
+function isEnabledSetting(value?: string | null) {
+  return ["1", "true", "on", "yes"].includes(
+    String(value ?? "")
+      .trim()
+      .toLowerCase(),
+  );
+}
 
 function activePrimeUserWhere(userId: string): Prisma.UserWhereInput {
   return {
@@ -1749,6 +1759,61 @@ router.get(
 
 // Organization-scoped vendor feature switches.
 // These are managed by partner admins, not only site-content admins.
+router.get(
+  "/site-settings/organization-storefront/:organizationId",
+  requireAuth,
+  requireOrgPermission({ from: "params" }, Permission.MANAGE_ORG_SETTINGS),
+  async (req, res) => {
+    try {
+      const key = `${WEB_PRODUCTS_FEATURE_KEY}-${req.params.organizationId}`;
+      const setting = await prisma.siteSetting.findUnique({
+        where: { key },
+        select: { value: true },
+      });
+
+      res.json({
+        enabled:
+          setting?.value === undefined || setting.value === null
+            ? true
+            : isEnabledSetting(setting.value),
+      });
+    } catch (error) {
+      console.error("get organization storefront setting error", error);
+      res.status(500).json({
+        message: "Нийтийн дэлгүүрийн тохиргоог авахад алдаа гарлаа",
+      });
+    }
+  },
+);
+
+router.put(
+  "/site-settings/organization-storefront/:organizationId",
+  requireAuth,
+  requireOrgPermission({ from: "params" }, Permission.MANAGE_ORG_SETTINGS),
+  async (req, res) => {
+    const { enabled } = req.body as { enabled?: unknown };
+    if (typeof enabled !== "boolean") {
+      res.status(400).json({ message: "enabled boolean утга шаардлагатай" });
+      return;
+    }
+
+    try {
+      const key = `${WEB_PRODUCTS_FEATURE_KEY}-${req.params.organizationId}`;
+      await prisma.siteSetting.upsert({
+        where: { key },
+        update: { value: enabled ? "true" : "false" },
+        create: { key, value: enabled ? "true" : "false" },
+      });
+      res.json({ enabled });
+    } catch (error) {
+      console.error("put organization storefront setting error", error);
+      res.status(500).json({
+        message: "Нийтийн дэлгүүрийн тохиргоог хадгалахад алдаа гарлаа",
+      });
+    }
+  },
+);
+
 router.get(
   "/site-settings/vendor-features/:organizationId",
   requireAuth,
