@@ -6,6 +6,34 @@ import { hasOrgMembership } from "./permission.service";
 
 export const WEB_PRODUCTS_FEATURE_KEY = "web-products-enabled";
 
+/**
+ * Canonical publication state used by every public product projection.
+ * Review status is intentionally not part of storefront publication: an
+ * active product in an active storefront must remain reachable from its card.
+ */
+export const PUBLIC_PRODUCT_STATE_FILTER = {
+  isActive: true,
+  deletedAt: null,
+} as const;
+
+interface PublicProductState {
+  isActive: boolean;
+  deletedAt: Date | null;
+  organization: {
+    status: string;
+    deletedAt: Date | null;
+  };
+}
+
+export function hasPublicProductState(product: PublicProductState) {
+  return (
+    product.isActive &&
+    product.deletedAt === null &&
+    product.organization.status === "ACTIVE" &&
+    product.organization.deletedAt === null
+  );
+}
+
 const TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
 
 function isTruthySetting(value?: string | null) {

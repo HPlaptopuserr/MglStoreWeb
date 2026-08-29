@@ -16,12 +16,11 @@ import {
   canBypassAllWebProductsVisibility,
   canBypassWebProductsVisibility,
   getWebProductsEnabledOrganizationIds,
+  hasPublicProductState,
   isOrgWebProductsEnabled,
+  PUBLIC_PRODUCT_STATE_FILTER,
 } from "../../services/product-visibility.service";
-import {
-  getReviewStatusForVendorMutation,
-  isApprovedVendorContent,
-} from "../../services/vendor-content-review.service";
+import { getReviewStatusForVendorMutation } from "../../services/vendor-content-review.service";
 import {
   buildProductSearchWhere,
   scoreProductSimilarity,
@@ -945,9 +944,7 @@ router.get("/products/organization-catalog", optionalAuth, async (req, res) => {
         deletedAt: null,
         products: {
           some: {
-            isActive: true,
-            reviewStatus: "APPROVED",
-            deletedAt: null,
+            ...PUBLIC_PRODUCT_STATE_FILTER,
           },
         },
       },
@@ -964,9 +961,7 @@ router.get("/products/organization-catalog", optionalAuth, async (req, res) => {
           select: {
             products: {
               where: {
-                isActive: true,
-                reviewStatus: "APPROVED",
-                deletedAt: null,
+                ...PUBLIC_PRODUCT_STATE_FILTER,
               },
             },
           },
@@ -979,9 +974,7 @@ router.get("/products/organization-catalog", optionalAuth, async (req, res) => {
         const products = await prisma.product.findMany({
           where: {
             organizationId: organization.id,
-            isActive: true,
-            reviewStatus: "APPROVED",
-            deletedAt: null,
+            ...PUBLIC_PRODUCT_STATE_FILTER,
           },
           orderBy: [{ marketplacePriority: "desc" }, { createdAt: "desc" }],
           take: limit,
@@ -1112,8 +1105,7 @@ router.get("/products", optionalAuth, async (req, res) => {
       organization: { deletedAt: null, status: "ACTIVE" },
     };
     if (!isOwnOrganizationCatalog && !includeInactive) {
-      where.isActive = true;
-      where.reviewStatus = "APPROVED";
+      Object.assign(where, PUBLIC_PRODUCT_STATE_FILTER);
     }
     if (organizationId) where.organizationId = organizationId;
     if (restaurantMenuOnly) where.isRestaurantMenuItem = true;
@@ -2879,10 +2871,7 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
     }
 
     const sourceIsPubliclyVisible =
-      source.isActive &&
-      isApprovedVendorContent(source.reviewStatus) &&
-      source.organization.deletedAt === null &&
-      source.organization.status === "ACTIVE" &&
+      hasPublicProductState(source) &&
       (await isOrgWebProductsEnabled(source.organizationId));
 
     if (!canBypassVisibility && !sourceIsPubliclyVisible) {
@@ -2891,10 +2880,8 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
 
     const candidateWhere: any = {
       id: { not: source.id },
-      deletedAt: null,
+      ...PUBLIC_PRODUCT_STATE_FILTER,
       organization: { deletedAt: null, status: "ACTIVE" },
-      isActive: true,
-      reviewStatus: "APPROVED",
     };
 
     if (!canBypassAllWebProductsVisibility(req)) {
@@ -3034,9 +3021,7 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
     }
 
     const isPubliclyVisible =
-      product.isActive &&
-      product.organization.deletedAt === null &&
-      product.organization.status === "ACTIVE" &&
+      hasPublicProductState(product) &&
       (await isOrgWebProductsEnabled(product.organizationId));
 
     if (!canBypassVisibility && !isPubliclyVisible) {

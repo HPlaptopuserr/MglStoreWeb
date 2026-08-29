@@ -28,6 +28,7 @@ import { vendorEmailTemplates } from "../../services/email/templates/vendor-emai
 import { syncOwnerPersonalMembershipFromActiveOrgPlan } from "../../services/owner-membership-sync.service";
 import { sendPushToUsers } from "../../services/push-notification.service";
 import { getPreorderCapacityProgress } from "../../services/preorder-capacity.service";
+import { PUBLIC_PRODUCT_STATE_FILTER } from "../../services/product-visibility.service";
 
 const router: ExpressRouter = Router();
 const orgImagesDir = path.resolve(__dirname, "../../../uploads/organizations");
@@ -560,7 +561,7 @@ router.get(
           _count: {
             select: {
               members: {
-                where: { isActive: true, deletedAt: null },
+                where: PUBLIC_PRODUCT_STATE_FILTER,
               },
             },
           },
@@ -2567,10 +2568,7 @@ router.get("/partners/:slugOrId", optionalAuth, async (req, res) => {
           orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
         },
         products: {
-          where: {
-            isActive: true,
-            deletedAt: null,
-          },
+          where: PUBLIC_PRODUCT_STATE_FILTER,
           include: {
             images: true,
             category: true,
