@@ -130,6 +130,7 @@ function ProfileSettingsContent() {
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   useEffect(() => {
     const requested = searchParams.get("section") || searchParams.get("tab");
@@ -292,8 +293,6 @@ function ProfileSettingsContent() {
       setChangingPassword(false);
     }
   };
-
-  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const deleteAccount = async () => {
     setDeletingAccount(true);
