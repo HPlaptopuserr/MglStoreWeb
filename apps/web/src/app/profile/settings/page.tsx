@@ -110,7 +110,8 @@ export default function ProfileSettingsPage() {
 }
 
 function ProfileSettingsContent() {
-  const { user, loading, updateUser, refreshUser, logout, authFetch } = useAuth();
+  const { user, loading, updateUser, refreshUser, logout, authFetch } =
+    useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [section, setSection] = useState<SettingsSection>("profile");
@@ -119,7 +120,9 @@ function ProfileSettingsContent() {
   const [saved, setSaved] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(
+    null,
+  );
   const [confirming, setConfirming] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState("");
@@ -164,22 +167,37 @@ function ProfileSettingsContent() {
     setProfileError("");
   };
 
-  const saveProfile = async (options?: {
-    requireAddress?: boolean;
-    requireTerms?: boolean;
-  }) => {
-    const requireTerms = options?.requireTerms ?? true;
-
-    if (requireTerms && !form.acceptTerms) {
-      setProfileError("Үйлчилгээний нөхцөлийг зөвшөөрөх шаардлагатай.");
-      setSection("address");
-      return;
-    }
-    if (options?.requireAddress && !form.fullAddress.trim()) {
+  const saveProfile = async (target: "profile" | "address") => {
+    if (target === "address" && !form.fullAddress.trim()) {
       setProfileError("Хаягаа хадгалахын тулд дэлгэрэнгүй хаягаа бөглөнө үү.");
       setSection("address");
       return;
     }
+
+    const payload =
+      target === "profile"
+        ? {
+            fullName: form.fullName.trim(),
+            email: form.email.trim() || undefined,
+            phone: form.phone.trim() || undefined,
+            avatarUrl: form.avatarUrl || null,
+          }
+        : {
+            acceptTerms: form.acceptTerms,
+            marketingConsent: form.marketingConsent,
+            address: {
+              id: form.addressId || undefined,
+              fullAddress: form.fullAddress.trim(),
+              city: form.city.trim(),
+              district: form.district.trim(),
+              khoroo: form.khoroo.trim(),
+              entrance: form.entrance.trim(),
+              apartment: form.apartment.trim(),
+              lat: form.lat,
+              lng: form.lng,
+              isDefault: form.addressIsDefault,
+            },
+          };
 
     setSaving(true);
     setSaved(false);
@@ -187,26 +205,7 @@ function ProfileSettingsContent() {
     try {
       const res = await authFetch(`${API_BASE}/auth/web/profile`, {
         method: "PUT",
-        body: JSON.stringify({
-          fullName: form.fullName.trim(),
-          email: form.email.trim() || undefined,
-          phone: form.phone.trim() || undefined,
-          avatarUrl: form.avatarUrl || null,
-          acceptTerms: form.acceptTerms,
-          marketingConsent: form.marketingConsent,
-          address: {
-            id: form.addressId || undefined,
-            fullAddress: form.fullAddress,
-            city: form.city,
-            district: form.district,
-            khoroo: form.khoroo,
-            entrance: form.entrance,
-            apartment: form.apartment,
-            lat: form.lat,
-            lng: form.lng,
-            isDefault: form.addressIsDefault,
-          },
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -225,10 +224,10 @@ function ProfileSettingsContent() {
     }
   };
 
-  const requestSave = (event: FormEvent, target: SettingsSection) => {
+  const requestSave = (event: FormEvent, target: "profile" | "address") => {
     event.preventDefault();
     if (target === "address") {
-      void saveProfile({ requireAddress: true, requireTerms: false });
+      void saveProfile("address");
       return;
     }
 
@@ -242,7 +241,7 @@ function ProfileSettingsContent() {
           ? "Нэр, зураг болон холбоо барих мэдээлэл шинэчлэгдэнэ."
           : "Хүргэлтийн хаяг, үйлчилгээний нөхцөл болон мэдэгдлийн тохиргоо хадгалагдана.",
       confirmLabel: "Хадгалах",
-      onConfirm: () => saveProfile({ requireTerms: true }),
+      onConfirm: () => saveProfile(target),
     });
   };
 
@@ -388,8 +387,8 @@ function ProfileSettingsContent() {
               Тохиргоо
             </h1>
             <p className="mt-1 hidden text-sm font-semibold leading-5 text-slate-500 sm:block">
-              Account-ийн үндсэн мэдээлэл, хүргэлт, нууцлал болон удахгүй нэмэгдэх
-              төлбөрийн боломжууд.
+              Account-ийн үндсэн мэдээлэл, хүргэлт, нууцлал болон удахгүй
+              нэмэгдэх төлбөрийн боломжууд.
             </p>
           </div>
 
@@ -410,7 +409,9 @@ function ProfileSettingsContent() {
                 >
                   <span
                     className={`hidden h-7 w-7 shrink-0 items-center justify-center rounded-lg sm:flex sm:h-10 sm:w-10 sm:rounded-xl ${
-                      active ? "bg-orange-500 text-white" : "bg-transparent text-slate-500 sm:bg-white"
+                      active
+                        ? "bg-orange-500 text-white"
+                        : "bg-transparent text-slate-500 sm:bg-white"
                     }`}
                   >
                     <Icon size={15} className="sm:h-[18px] sm:w-[18px]" />
@@ -448,12 +449,17 @@ function ProfileSettingsContent() {
         {section === "address" && (
           <AddressConsentPanel
             form={form}
-            addresses={user.addresses || (user.defaultAddress ? [user.defaultAddress] : [])}
+            addresses={
+              user.addresses ||
+              (user.defaultAddress ? [user.defaultAddress] : [])
+            }
             saving={saving}
             saved={saved}
             error={profileError}
             onChange={updateForm}
-            onSelectAddress={(address) => updateForm(createAddressPatch(address))}
+            onSelectAddress={(address) =>
+              updateForm(createAddressPatch(address))
+            }
             onNewAddress={() => updateForm(createEmptyAddressPatch())}
             onSubmit={(event) => requestSave(event, "address")}
           />

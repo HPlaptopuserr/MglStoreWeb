@@ -2326,6 +2326,9 @@ router.put("/web/profile", requireAuth, async (req, res) => {
       }
     }
 
+    const hasProfilePatch =
+      fullName !== undefined || phone !== undefined || avatarUrl !== undefined;
+
     const updatedUser = await prisma.$transaction(async (tx) => {
       const savedUser = await tx.user.update({
         where: { id: userId },
@@ -2339,24 +2342,30 @@ router.put("/web/profile", requireAuth, async (req, res) => {
           ...(marketingConsent !== undefined
             ? { marketingConsent: Boolean(marketingConsent) }
             : {}),
-          profile: {
-            upsert: {
-              create: {
-                fullName: fullName?.trim() || "",
-                phoneNumber: phone?.trim() || "",
-                avatarUrl: avatarUrl?.trim() || null,
-              },
-              update: {
-                ...(fullName !== undefined
-                  ? { fullName: fullName.trim() }
-                  : {}),
-                ...(phone !== undefined ? { phoneNumber: phone.trim() } : {}),
-                ...(avatarUrl !== undefined
-                  ? { avatarUrl: avatarUrl?.trim() || null }
-                  : {}),
-              },
-            },
-          },
+          ...(hasProfilePatch
+            ? {
+                profile: {
+                  upsert: {
+                    create: {
+                      fullName: fullName?.trim() || "",
+                      phoneNumber: phone?.trim() || "",
+                      avatarUrl: avatarUrl?.trim() || null,
+                    },
+                    update: {
+                      ...(fullName !== undefined
+                        ? { fullName: fullName.trim() }
+                        : {}),
+                      ...(phone !== undefined
+                        ? { phoneNumber: phone.trim() }
+                        : {}),
+                      ...(avatarUrl !== undefined
+                        ? { avatarUrl: avatarUrl?.trim() || null }
+                        : {}),
+                    },
+                  },
+                },
+              }
+            : {}),
         },
         include: {
           profile: true,
@@ -2589,7 +2598,8 @@ const handleAuthenticatedAccountDeletion = async (req: Request, res: any) => {
 
     return res.json({
       success: true,
-      message: "Таны бүртгэл болон хувийн мэдээлэл системээс амжилттай устгагдлаа",
+      message:
+        "Таны бүртгэл болон хувийн мэдээлэл системээс амжилттай устгагдлаа",
     });
   } catch (error) {
     console.error("[account deletion error]", error);
@@ -2599,7 +2609,11 @@ const handleAuthenticatedAccountDeletion = async (req: Request, res: any) => {
 
 router.delete("/account", requireAuth, handleAuthenticatedAccountDeletion);
 router.delete("/web/account", requireAuth, handleAuthenticatedAccountDeletion);
-router.delete("/delete-account", requireAuth, handleAuthenticatedAccountDeletion);
+router.delete(
+  "/delete-account",
+  requireAuth,
+  handleAuthenticatedAccountDeletion,
+);
 
 // ── POST /auth/account-deletion/request-otp — Public OTP Request for Deletion ─
 router.post("/account-deletion/request-otp", async (req: Request, res: any) => {
@@ -2619,7 +2633,9 @@ router.post("/account-deletion/request-otp", async (req: Request, res: any) => {
       });
 
       if (!user || user.deletedAt) {
-        return res.status(404).json({ message: "Бүртгэлтэй хэрэглэгч олдсонгүй" });
+        return res
+          .status(404)
+          .json({ message: "Бүртгэлтэй хэрэглэгч олдсонгүй" });
       }
 
       if (!emailService.isConfigured()) {
@@ -2654,7 +2670,9 @@ router.post("/account-deletion/request-otp", async (req: Request, res: any) => {
 
     const user = await findWebUserByIdentifier(normalized.identifier, true);
     if (!user || user.deletedAt) {
-      return res.status(404).json({ message: "Бүртгэлтэй хэрэглэгч олдсонгүй" });
+      return res
+        .status(404)
+        .json({ message: "Бүртгэлтэй хэрэглэгч олдсонгүй" });
     }
 
     const session = await createVerifyMnSession(normalized.identifier);
@@ -2693,7 +2711,8 @@ router.post("/account-deletion/confirm-otp", async (req: Request, res: any) => {
 
       return res.json({
         success: true,
-        message: "Таны бүртгэл болон хувийн мэдээлэл системээс амжилттай устгагдлаа",
+        message:
+          "Таны бүртгэл болон хувийн мэдээлэл системээс амжилттай устгагдлаа",
       });
     }
 
@@ -2716,7 +2735,8 @@ router.post("/account-deletion/confirm-otp", async (req: Request, res: any) => {
 
       return res.json({
         success: true,
-        message: "Таны бүртгэл болон хувийн мэдээлэл системээс амжилттай устгагдлаа",
+        message:
+          "Таны бүртгэл болон хувийн мэдээлэл системээс амжилттай устгагдлаа",
       });
     }
 
@@ -2725,7 +2745,9 @@ router.post("/account-deletion/confirm-otp", async (req: Request, res: any) => {
       .json({ message: "Баталгаажуулалтын мэдээлэл дутуу байна" });
   } catch (error: any) {
     if (error.message === "EMAIL_OTP_INVALID_CODE") {
-      return res.status(400).json({ message: "Баталгаажуулах код буруу байна" });
+      return res
+        .status(400)
+        .json({ message: "Баталгаажуулах код буруу байна" });
     }
     if (error.message === "EMAIL_OTP_EXPIRED") {
       return res
@@ -2738,4 +2760,3 @@ router.post("/account-deletion/confirm-otp", async (req: Request, res: any) => {
 });
 
 export default router;
-
