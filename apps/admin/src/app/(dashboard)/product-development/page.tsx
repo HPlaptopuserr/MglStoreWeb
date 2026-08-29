@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 
+import { fetchAllProducts } from "./product-development.api";
+
 import {
   AUTH_LOGIN_BANNER_KEY,
   HOMEPAGE_FEATURED_PRODUCTS_KEY,
@@ -46,90 +48,6 @@ import {
   type ShelfKind,
 } from "./product-development.model";
 
-const PRODUCT_PAGE_SIZE = 100;
-const WEB_PRODUCTS_FEATURE_PREFIX = "web-products-enabled-";
-const TRUE_SETTING_VALUES = new Set(["1", "true", "on", "yes"]);
-
-type ProductPageResponse = {
-  products: Product[];
-  total: number;
-  hasMore: boolean;
-};
-
-function isOrganizationWebEnabled(
-  settings: Record<string, unknown>,
-  organizationId?: string,
-) {
-  if (!organizationId) return false;
-  const value = settings[`${WEB_PRODUCTS_FEATURE_PREFIX}${organizationId}`];
-  return TRUE_SETTING_VALUES.has(
-    String(value ?? "")
-      .trim()
-      .toLowerCase(),
-  );
-}
-
-async function fetchAllProducts(): Promise<Product[]> {
-  const fetchPage = async (offset: number): Promise<ProductPageResponse> => {
-    // This projection intentionally contains public, web-eligible products.
-    // Do not attach the active admin token: product visibility must be
-    // evaluated exactly as it is for a storefront visitor, and an admin
-    // session must not alter or break the public catalog query.
-    const response = await fetch(
-      `${API}/products?limit=${PRODUCT_PAGE_SIZE}&offset=${offset}&meta=1&compact=1&webEligibleOnly=1`,
-      { cache: "no-store" },
-    );
-    if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as {
-        message?: string;
-      } | null;
-      throw new Error(
-        payload?.message ||
-          `Барааны жагсаалт авахад алдаа гарлаа (HTTP ${response.status})`,
-      );
-    }
-
-    const payload: unknown = await response.json();
-    if (Array.isArray(payload)) {
-      return {
-        products: payload as Product[],
-        total: payload.length,
-        hasMore: false,
-      };
-    }
-
-    if (!payload || typeof payload !== "object") {
-      return { products: [], total: 0, hasMore: false };
-    }
-
-    const page = payload as Partial<ProductPageResponse>;
-    return {
-      products: Array.isArray(page.products) ? page.products : [],
-      total: Number.isFinite(page.total) ? Number(page.total) : 0,
-      hasMore: page.hasMore === true,
-    };
-  };
-
-  const firstPage = await fetchPage(0);
-  const offsets = Array.from(
-    {
-      length: Math.max(0, Math.ceil(firstPage.total / PRODUCT_PAGE_SIZE) - 1),
-    },
-    (_, index) => (index + 1) * PRODUCT_PAGE_SIZE,
-  );
-  const remainingPages = await Promise.all(offsets.map(fetchPage));
-  const productById = new Map<string, Product>();
-
-  for (const product of [
-    ...firstPage.products,
-    ...remainingPages.flatMap((page) => page.products),
-  ]) {
-    productById.set(product.id, product);
-  }
-
-  return [...productById.values()];
-}
-
 export default function ProductDevelopmentPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [shelves, setShelves] = useState<ProductShelf[]>([]);
@@ -152,24 +70,30 @@ export default function ProductDevelopmentPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    let mounted = true;
+    const controller = new AbortController();
     Promise.all([
-      adminFetch(`${API}/site-settings/admin`).then((res) => res.json()),
-      fetchAllProducts(),
+      adminFetch(`${API}/site-settings/admin`, {
+        signal: controller.signal,
+      }).then(async (response) => {
+        if (!response.ok) {
+          throw new Error(
+            `Тохиргоо авахад алдаа гарлаа (HTTP ${response.status})`,
+          );
+        }
+        return response.json() as Promise<Record<string, unknown>>;
+      }),
+      fetchAllProducts(controller.signal),
     ])
       .then(([settings, productData]) => {
-        if (!mounted) return;
-        const settingsRecord =
-          settings && typeof settings === "object"
-            ? (settings as Record<string, unknown>)
-            : {};
-        const eligibleProducts = productData.filter((product) =>
-          isOrganizationWebEnabled(settingsRecord, product.organization?.id),
-        );
+        const settingValue = (key: string): string | undefined => {
+          const value = settings[key];
+          return typeof value === "string" ? value : undefined;
+        };
+        const eligibleProducts = productData;
         const eligibleProductIds = new Set(
           eligibleProducts.map((product) => product.id),
         );
-        const parsedShelves = parseShelves(settings?.[SHOWCASE_KEY]);
+        const parsedShelves = parseShelves(settingValue(SHOWCASE_KEY));
         setShelves(
           parsedShelves.length
             ? parsedShelves.map((shelf) => ({
@@ -181,32 +105,32 @@ export default function ProductDevelopmentPage() {
             : [createShelf()],
         );
         setFeaturedProductIds(
-          parseProductIds(settings?.[HOMEPAGE_FEATURED_PRODUCTS_KEY]).filter(
+          parseProductIds(settingValue(HOMEPAGE_FEATURED_PRODUCTS_KEY)).filter(
             (id) => eligibleProductIds.has(id),
           ),
         );
-        setSideBanner(parseSideBanner(settings?.[MARKETPLACE_SIDE_BANNER_KEY]));
+        setSideBanner(
+          parseSideBanner(settingValue(MARKETPLACE_SIDE_BANNER_KEY)),
+        );
         setServicesPromo(
-          parseServicesPromo(settings?.[MARKETPLACE_SERVICES_PROMO_KEY]),
+          parseServicesPromo(settingValue(MARKETPLACE_SERVICES_PROMO_KEY)),
         );
         setAuthLoginBanner(
-          parseAuthLoginBanner(settings?.[AUTH_LOGIN_BANNER_KEY]),
+          parseAuthLoginBanner(settingValue(AUTH_LOGIN_BANNER_KEY)),
         );
         setProducts(eligibleProducts);
       })
       .catch((err) => {
-        if (!mounted) return;
+        if (controller.signal.aborted) return;
         setError(
           err instanceof Error ? err.message : "Өгөгдөл авахад алдаа гарлаа",
         );
       })
       .finally(() => {
-        if (mounted) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       });
 
-    return () => {
-      mounted = false;
-    };
+    return () => controller.abort();
   }, []);
 
   const filteredProducts = useMemo(() => {
