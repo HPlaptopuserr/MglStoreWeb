@@ -25,7 +25,6 @@ import {
 import { getSupabase, ORG_IMAGES_BUCKET } from "../../lib/supabase";
 import { emailService } from "../../services/email/email.service";
 import { vendorEmailTemplates } from "../../services/email/templates/vendor-email.templates";
-import { shouldExposeOrgProductsOnWeb } from "../../services/product-visibility.service";
 import { syncOwnerPersonalMembershipFromActiveOrgPlan } from "../../services/owner-membership-sync.service";
 import { sendPushToUsers } from "../../services/push-notification.service";
 import { getPreorderCapacityProgress } from "../../services/preorder-capacity.service";
@@ -1902,10 +1901,13 @@ router.get("/partners/:id", optionalAuth, async (req, res) => {
         prisma.branch.count({ where: { organizationId: partner.id } }),
         prisma.order.count({ where: { organizationId: partner.id } }),
       ]);
-    const canShowProducts = await shouldExposeOrgProductsOnWeb(req, partner.id);
-    const visibleProducts = canShowProducts
-      ? sortProductsByExpiry(((partner as any).products || []) as any[])
-      : [];
+    // The organization storefront is the public projection of the owner's
+    // catalog. Product-level publication rules are already enforced by the
+    // relation query above (active and not deleted), so an unrelated feature
+    // flag must not turn a populated store into an empty one.
+    const visibleProducts = sortProductsByExpiry(
+      ((partner as any).products || []) as any[],
+    );
     const preorderCapacityByProductId = await getPreorderCapacityProgress(
       prisma,
       visibleProducts,
@@ -2596,8 +2598,7 @@ router.get("/partners/:slugOrId", optionalAuth, async (req, res) => {
       return res.status(404).json({ message: "Түнш олдсонгүй" });
     }
 
-    const canShowProducts = await shouldExposeOrgProductsOnWeb(req, partner.id);
-    const visibleProducts = canShowProducts ? partner.products : [];
+    const visibleProducts = partner.products;
     const preorderCapacityByProductId = await getPreorderCapacityProgress(
       prisma,
       visibleProducts,

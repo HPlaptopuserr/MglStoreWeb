@@ -286,7 +286,7 @@ function getInitials(name: string) {
 
 function orgPublicHref(org: AuthOrganization | ManagedOrgDetails) {
   return "slug" in org && org.slug
-    ? `/o/${encodeURIComponent(org.slug)}`
+    ? `/organizations/${encodeURIComponent(org.slug)}`
     : `/organizations/${encodeURIComponent(org.id)}`;
 }
 

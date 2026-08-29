@@ -10,5 +10,7 @@ export function organizationHandle(organization: OrganizationLinkTarget) {
 export function organizationPath(organization: OrganizationLinkTarget) {
   const handle = organizationHandle(organization);
 
-  return handle ? `/o/${encodeURIComponent(handle)}` : "/organizations";
+  return handle
+    ? `/organizations/${encodeURIComponent(handle)}`
+    : "/organizations";
 }
