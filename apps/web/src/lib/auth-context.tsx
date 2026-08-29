@@ -1,6 +1,14 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { LogoutSuccessOverlay } from "@/components/molecules/LogoutSuccessOverlay";
 import { API_BASE } from "./api";
 
 export type AuthAddress = {
@@ -118,6 +126,8 @@ export function getToken(): string | null {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [logoutNoticeVisible, setLogoutNoticeVisible] = useState(false);
+  const logoutNoticeTimerRef = useRef<number | null>(null);
 
   // Hydrate from localStorage on mount
   useEffect(() => {
@@ -144,6 +154,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem(AUTH_USER_KEY);
     }
   }, [user]);
+
+  useEffect(
+    () => () => {
+      if (logoutNoticeTimerRef.current !== null) {
+        window.clearTimeout(logoutNoticeTimerRef.current);
+      }
+    },
+    [],
+  );
 
   const authFetch = useCallback(async (url: string, init?: RequestInit): Promise<Response> => {
     const token = getToken();
@@ -247,6 +266,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     localStorage.removeItem(AUTH_USER_KEY);
     setUser(null);
+
+    if (logoutNoticeTimerRef.current !== null) {
+      window.clearTimeout(logoutNoticeTimerRef.current);
+    }
+    setLogoutNoticeVisible(true);
+    logoutNoticeTimerRef.current = window.setTimeout(() => {
+      setLogoutNoticeVisible(false);
+      logoutNoticeTimerRef.current = null;
+    }, 2600);
   }, []);
 
   const updateUser = useCallback((data: Partial<AuthUser>) => {
@@ -272,6 +300,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, refreshUser, authFetch }}>
       {children}
+      <LogoutSuccessOverlay visible={logoutNoticeVisible} />
     </AuthContext.Provider>
   );
 }

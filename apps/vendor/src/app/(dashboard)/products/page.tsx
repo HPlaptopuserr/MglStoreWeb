@@ -65,6 +65,7 @@ const EMPTY_FORM: FormState = {
   preorderSupplierFrontImageUrl: "",
   preorderSupplierBackImageUrl: "",
   preorderNote: "",
+  preorderPriceCurrency: "MNT",
   marketplacePriority: "0",
   businessCategoryId: "",
   images: [],
@@ -322,9 +323,16 @@ export default function ProductsPage() {
       sku: p.sku || "",
       barcode: p.barcode || "",
       description: p.description || "",
-      price: String(p.price),
+      price: String(
+        p.supplyType === "CHINA_PREORDER"
+          ? (p.preorderPriceAmount ?? p.price)
+          : p.price,
+      ),
       wholesalePrice: p.wholesalePrice == null ? "" : String(p.wholesalePrice),
-      orderPrice: p.orderPrice == null ? "" : String(p.orderPrice),
+      orderPrice:
+        p.supplyType === "CHINA_PREORDER" || p.orderPrice == null
+          ? ""
+          : String(p.orderPrice),
       costPrice: p.costPrice != null ? String(p.costPrice) : "",
       taxType: p.taxType || "VAT_ABLE",
       cityTaxRate: p.cityTaxRate != null ? String(p.cityTaxRate) : "0",
@@ -340,6 +348,7 @@ export default function ProductsPage() {
       preorderSupplierFrontImageUrl: p.preorderSupplierFrontImageUrl || "",
       preorderSupplierBackImageUrl: p.preorderSupplierBackImageUrl || "",
       preorderNote: p.preorderNote || "",
+      preorderPriceCurrency: p.preorderPriceCurrency || "MNT",
       marketplacePriority: String(p.marketplacePriority ?? 0),
       businessCategoryId: p.businessCategoryId || "",
       images: p.images.map((img) => img.url),
@@ -464,7 +473,7 @@ export default function ProductsPage() {
         description: form.description.trim() || null,
         price,
         wholesalePrice,
-        orderPrice,
+        orderPrice: form.supplyType === "CHINA_PREORDER" ? null : orderPrice,
         costPrice,
         taxType: form.taxType,
         cityTaxRate,
@@ -489,6 +498,12 @@ export default function ProductsPage() {
           form.supplyType === "CHINA_PREORDER"
             ? form.preorderNote.trim() || null
             : null,
+        preorderPriceCurrency:
+          form.supplyType === "CHINA_PREORDER"
+            ? form.preorderPriceCurrency
+            : null,
+        preorderPriceAmount:
+          form.supplyType === "CHINA_PREORDER" ? price : null,
         marketplacePriority,
         businessCategoryId: form.businessCategoryId || null,
         images: form.images,

@@ -1048,6 +1048,12 @@ model Product {
   preorderLeadTimeDays  Int?
   preorderCapacity      Int?
   preorderNote          String?
+  preorderPriceCurrency String?                       @db.VarChar(3)
+  preorderPriceAmount   Decimal?                      @db.Decimal(18, 4)
+  preorderExchangeRate  Decimal?                      @db.Decimal(18, 6)
+  preorderMarkupPercent Decimal?                      @db.Decimal(5, 2)
+  preorderRateSource    String?
+  preorderRateFetchedAt DateTime?
   marketplacePriority   Int                           @default(0)
   rating                Float                         @default(0)
   reviewCount           Int                           @default(0)

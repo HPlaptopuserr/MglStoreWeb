@@ -45,11 +45,12 @@ import {
 import { normalizeOrganizationMetrics } from "@/lib/organization-presentation";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import type { BusinessCategory } from "@/types/category";
-import {
-  ORG_PORTAL_URL,
-  VENDOR_PORTAL_URL,
-} from "@/lib/portal-links";
-import { QuickProductExcelImport } from "./QuickProductExcelImport";
+import { ORG_PORTAL_URL, VENDOR_PORTAL_URL } from "@/lib/portal-links";
+import { QuickProductSupplyFields } from "./QuickProductSupplyFields";
+import type {
+  QuickProductFormState,
+  QuickProductTextField,
+} from "./quick-product.types";
 
 const ORG_URL = ORG_PORTAL_URL;
 const VENDOR_URL = VENDOR_PORTAL_URL;
@@ -224,17 +225,6 @@ type TimelineEditForm = {
   title: string;
   type: string;
 };
-
-type QuickProductFormState = {
-  businessCategoryId: string;
-  name: string;
-  price: string;
-  stock: string;
-  description: string;
-  images: string[];
-};
-
-type QuickProductTextField = Exclude<keyof QuickProductFormState, "images">;
 
 type ReelFormState = {
   linkMode: "store" | "product";
@@ -1284,7 +1274,6 @@ export function ManagedOrganizationProfile({
         </aside>
 
         <div className="mx-auto w-full max-w-[820px] space-y-4">
-
           <OrganizationCreateHub
             authFetch={authFetch}
             createMode={createMode}
@@ -3684,6 +3673,12 @@ function OrganizationCreateHub({
     stock: "0",
     description: "",
     images: [] as string[],
+    supplyType: "IN_STOCK",
+    preorderPriceCurrency: "MNT",
+    preorderPriceAmount: "",
+    preorderLeadTimeDays: "14",
+    preorderCapacity: "50",
+    preorderNote: "",
   });
   const [productSaving, setProductSaving] = useState(false);
   const [productMessage, setProductMessage] = useState("");
@@ -3763,11 +3758,14 @@ function OrganizationCreateHub({
   const createProduct = async () => {
     if (productSaving) return;
     const productName = productForm.name.trim();
-    const price = Number(productForm.price);
+    const isPreorder = productForm.supplyType === "CHINA_PREORDER";
+    const price = Number(
+      isPreorder ? productForm.preorderPriceAmount : productForm.price,
+    );
     const stock = Number(productForm.stock || 0);
 
-    if (!productName || !Number.isFinite(price) || price < 0) {
-      setProductMessage("Бүтээгдэхүүний нэр болон үнэ зөв оруулна уу.");
+    if (!productName || !Number.isFinite(price) || price <= 0) {
+      setProductMessage("Бүтээгдэхүүний нэр болон 0-ээс их үнэ оруулна уу.");
       return;
     }
     if (!productForm.businessCategoryId) {
@@ -3775,7 +3773,27 @@ function OrganizationCreateHub({
       return;
     }
     if (!Number.isFinite(stock) || stock < 0) {
-      setProductMessage("Нөөцийн тоо 0-ээс их байх ёстой.");
+      setProductMessage("Нөөцийн тоо 0 эсвэл түүнээс их байх ёстой.");
+      return;
+    }
+    const preorderCapacity = Number(productForm.preorderCapacity);
+    const preorderLeadTimeDays = Number(productForm.preorderLeadTimeDays);
+    if (
+      isPreorder &&
+      (!Number.isInteger(preorderCapacity) ||
+        preorderCapacity < 1 ||
+        preorderCapacity > 1_000_000)
+    ) {
+      setProductMessage("Захиалга дүүрэх хүний тоог зөв оруулна уу.");
+      return;
+    }
+    if (
+      isPreorder &&
+      (!Number.isInteger(preorderLeadTimeDays) ||
+        preorderLeadTimeDays < 0 ||
+        preorderLeadTimeDays > 365)
+    ) {
+      setProductMessage("Ирэх хугацааг 0-365 хоногийн хооронд оруулна уу.");
       return;
     }
 
@@ -3789,10 +3807,19 @@ function OrganizationCreateHub({
           businessCategoryId: productForm.businessCategoryId,
           name: productName,
           price,
-          stock,
+          stock: isPreorder ? 0 : stock,
           description: productForm.description.trim() || undefined,
           images: productForm.images,
-          supplyType: "IN_STOCK",
+          supplyType: productForm.supplyType,
+          preorderPriceCurrency: isPreorder
+            ? productForm.preorderPriceCurrency
+            : null,
+          preorderPriceAmount: isPreorder ? price : null,
+          preorderLeadTimeDays: isPreorder ? preorderLeadTimeDays : null,
+          preorderCapacity: isPreorder ? preorderCapacity : null,
+          preorderNote: isPreorder
+            ? productForm.preorderNote.trim() || null
+            : null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -3809,6 +3836,12 @@ function OrganizationCreateHub({
         stock: "0",
         description: "",
         images: [],
+        supplyType: "IN_STOCK",
+        preorderPriceCurrency: "MNT",
+        preorderPriceAmount: "",
+        preorderLeadTimeDays: "14",
+        preorderCapacity: "50",
+        preorderNote: "",
       });
       setProductMessage("Бүтээгдэхүүн амжилттай нэмэгдлээ.");
       await onContentChanged();
@@ -3999,8 +4032,6 @@ function OrganizationCreateHub({
             onProductFieldChange={updateProductField}
             onProductImagesChange={updateProductImages}
             onReelFieldChange={updateReelField}
-            onContentChanged={onContentChanged}
-            selectedOrganizationId={selectedOrganizationId}
           />
         )}
       </section>
@@ -4027,7 +4058,6 @@ function CreateContentModal({
   onProductFieldChange,
   onProductImagesChange,
   onReelFieldChange,
-  onContentChanged,
   onPublishPost,
   postText,
   postContact,
@@ -4043,7 +4073,6 @@ function CreateContentModal({
   reelForm,
   reelMessage,
   reelSaving,
-  selectedOrganizationId,
 }: {
   authFetch: (url: string, init?: RequestInit) => Promise<Response>;
   createMode: CreateMode;
@@ -4071,7 +4100,6 @@ function CreateContentModal({
     field: K,
     value: ReelFormState[K],
   ) => void;
-  onContentChanged: () => Promise<void>;
   onPublishPost: () => void;
   postContact: string;
   postImages: string[];
@@ -4087,7 +4115,6 @@ function CreateContentModal({
   reelForm: ReelFormState;
   reelMessage: string;
   reelSaving: boolean;
-  selectedOrganizationId: string;
 }) {
   const title =
     createMode === "post"
@@ -4468,8 +4495,6 @@ function CreateContentModal({
               onCreate={onCreateProduct}
               onFieldChange={onProductFieldChange}
               onImagesChange={onProductImagesChange}
-              onImported={onContentChanged}
-              organizationId={selectedOrganizationId}
               saving={productSaving}
             />
           )}
@@ -4975,8 +5000,6 @@ function QuickProductForm({
   onCreate,
   onFieldChange,
   onImagesChange,
-  onImported,
-  organizationId,
   saving,
 }: {
   authFetch: (url: string, init?: RequestInit) => Promise<Response>;
@@ -4985,8 +5008,6 @@ function QuickProductForm({
   onCreate: () => void;
   onFieldChange: (field: QuickProductTextField, value: string) => void;
   onImagesChange: (images: string[]) => void;
-  onImported: () => Promise<void>;
-  organizationId: string;
   saving: boolean;
 }) {
   const success = message.includes("амжилттай");
@@ -4994,12 +5015,6 @@ function QuickProductForm({
 
   return (
     <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 p-3 sm:p-4">
-      <QuickProductExcelImport
-        authFetch={authFetch}
-        onImported={onImported}
-        organizationId={organizationId}
-      />
-
       <ProductImageUploader
         authFetch={authFetch}
         images={form.images}
@@ -5013,7 +5028,19 @@ function QuickProductForm({
         onChange={(value) => onFieldChange("businessCategoryId", value)}
       />
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_176px_144px]">
+      <QuickProductSupplyFields
+        authFetch={authFetch}
+        values={form}
+        onChange={(field, value) => onFieldChange(field, value)}
+      />
+
+      <div
+        className={`mt-3 grid gap-3 ${
+          form.supplyType === "IN_STOCK"
+            ? "lg:grid-cols-[minmax(0,1fr)_176px_144px]"
+            : "grid-cols-1"
+        }`}
+      >
         <label className="min-w-0 flex-1">
           <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
             Бүтээгдэхүүний нэр
@@ -5026,31 +5053,35 @@ function QuickProductForm({
           />
         </label>
 
-        <label>
-          <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
-            Үнэ
-          </span>
-          <input
-            value={form.price}
-            onChange={(event) => onFieldChange("price", event.target.value)}
-            inputMode="decimal"
-            placeholder="0"
-            className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
-          />
-        </label>
+        {form.supplyType === "IN_STOCK" && (
+          <>
+            <label>
+              <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                Борлуулах үнэ (₮)
+              </span>
+              <input
+                value={form.price}
+                onChange={(event) => onFieldChange("price", event.target.value)}
+                inputMode="decimal"
+                placeholder="Жишээ: 25,000"
+                className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+              />
+            </label>
 
-        <label>
-          <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
-            Нөөц
-          </span>
-          <input
-            value={form.stock}
-            onChange={(event) => onFieldChange("stock", event.target.value)}
-            inputMode="numeric"
-            placeholder="0"
-            className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
-          />
-        </label>
+            <label>
+              <span className="mb-1.5 block text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+                Бэлэн нөөц
+              </span>
+              <input
+                value={form.stock}
+                onChange={(event) => onFieldChange("stock", event.target.value)}
+                inputMode="numeric"
+                placeholder="0"
+                className="h-12 w-full rounded-2xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+              />
+            </label>
+          </>
+        )}
       </div>
 
       <label className="mt-3 block">
@@ -5075,7 +5106,9 @@ function QuickProductForm({
             imageUploading ||
             !form.businessCategoryId ||
             !form.name.trim() ||
-            !form.price.trim()
+            !(form.supplyType === "CHINA_PREORDER"
+              ? form.preorderPriceAmount.trim()
+              : form.price.trim())
           }
           className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 text-sm font-black text-white shadow-lg shadow-emerald-500/20 transition hover:-translate-y-0.5 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0 sm:w-auto sm:min-w-40"
         >
@@ -5093,7 +5126,10 @@ function QuickProductForm({
           success ? "text-emerald-700" : "text-slate-500"
         }`}
       >
-        {message || "Barcode шаардлагагүй. Нэр, үнэ, нөөцөөр шууд нэмнэ."}
+        {message ||
+          (form.supplyType === "CHINA_PREORDER"
+            ? "Захиалгын үнэ сервер дээр дахин ханшаар баталгаажиж, төгрөгөөр хадгалагдана."
+            : "Barcode шаардлагагүй. Нэр, үнэ, нөөцөөр шууд нэмнэ.")}
       </p>
     </div>
   );

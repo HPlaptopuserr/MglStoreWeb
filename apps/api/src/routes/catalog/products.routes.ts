@@ -45,6 +45,13 @@ import {
 } from "../../lib/product-images";
 import { getPreorderCapacityProgress } from "../../services/preorder-capacity.service";
 import {
+  getKhanBankPreorderRates,
+  InvalidPreorderPriceError,
+  PREORDER_MARKUP_PERCENT,
+  resolvePreorderPrice,
+  toPreorderPriceMetadata,
+} from "../../services/khan-bank-exchange-rate.service";
+import {
   extractExcelImages,
   optimizeProductImageBuffer,
   uploadBufferToSupabase,
@@ -60,6 +67,27 @@ import {
 import { TtlCache } from "../../lib/ttl-cache";
 
 const router: ExpressRouter = Router();
+
+router.get(
+  "/vendor/preorder-exchange-rates",
+  requireAuth,
+  async (_req, res) => {
+    try {
+      const { rates, fetchedAt } = await getKhanBankPreorderRates();
+      return res.json({
+        rates,
+        fetchedAt: fetchedAt.toISOString(),
+        source: "KHAN_BANK_SELL_RATE",
+        markupPercent: PREORDER_MARKUP_PERCENT,
+      });
+    } catch (error) {
+      console.error("[preorder exchange rates]", error);
+      return res
+        .status(502)
+        .json({ message: "ХААН Банкны ханш татаж чадсангүй" });
+    }
+  },
+);
 const productListCache = new TtlCache<unknown>(250, 45_000);
 type RecommendationSignals = {
   purchasedQuantityByProductId: Map<string, number>;
@@ -3007,7 +3035,6 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
 
     const isPubliclyVisible =
       product.isActive &&
-      isApprovedVendorContent(product.reviewStatus) &&
       product.organization.deletedAt === null &&
       product.organization.status === "ACTIVE" &&
       (await isOrgWebProductsEnabled(product.organizationId));
@@ -3081,6 +3108,8 @@ router.post(
         preorderSupplierFrontImageUrl,
         preorderSupplierBackImageUrl,
         preorderNote,
+        preorderPriceCurrency,
+        preorderPriceAmount,
         marketplacePriority,
         businessCategoryId: inputCategoryId,
         images, // string[] — base64 or URL
@@ -3112,7 +3141,28 @@ router.post(
         }
       }
 
-      const priceNum = parseFloat(String(price));
+      const normalizedSupplyType = normalizeSupplyType(supplyType);
+      let preorderConversion = null;
+      if (normalizedSupplyType === "CHINA_PREORDER") {
+        try {
+          preorderConversion = await resolvePreorderPrice(
+            preorderPriceAmount ?? price,
+            preorderPriceCurrency,
+          );
+        } catch (error) {
+          if (error instanceof InvalidPreorderPriceError) {
+            return res.status(400).json({
+              message: "Захиалгын барааны валют эсвэл үнэ буруу байна",
+            });
+          }
+          console.error("[preorder price conversion]", error);
+          return res
+            .status(502)
+            .json({ message: "ХААН Банкны ханшаар үнэ тооцож чадсангүй" });
+        }
+      }
+      const priceNum =
+        preorderConversion?.priceMnt ?? parseFloat(String(price));
       if (isNaN(priceNum) || priceNum < 0) {
         return res.status(400).json({ message: "Үнэ буруу байна" });
       }
@@ -3142,7 +3192,6 @@ router.post(
           .json({ message: "Нөөц 0-2,147,483,647 хооронд байх ёстой" });
       }
 
-      const normalizedSupplyType = normalizeSupplyType(supplyType);
       const parsedExpiryDate =
         normalizedSupplyType === "CHINA_PREORDER"
           ? null
@@ -3350,6 +3399,16 @@ router.post(
               normalizedSupplyType === "CHINA_PREORDER" && preorderNote
                 ? String(preorderNote).trim()
                 : null,
+            ...(preorderConversion
+              ? toPreorderPriceMetadata(preorderConversion)
+              : {
+                  preorderPriceCurrency: null,
+                  preorderPriceAmount: null,
+                  preorderExchangeRate: null,
+                  preorderMarkupPercent: null,
+                  preorderRateSource: null,
+                  preorderRateFetchedAt: null,
+                }),
             marketplacePriority: normalizedMarketplacePriority,
             businessCategoryId: businessCategoryId || null,
             isActive: true,
@@ -3490,6 +3549,8 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       preorderSupplierFrontImageUrl,
       preorderSupplierBackImageUrl,
       preorderNote,
+      preorderPriceCurrency,
+      preorderPriceAmount,
       marketplacePriority,
       businessCategoryId,
       isActive,
@@ -3562,7 +3623,35 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (barcode !== undefined)
       data.barcode = barcode ? String(barcode).trim() : null;
     if (unit !== undefined) data.unit = unit ? String(unit).trim() : null;
-    if (price !== undefined) {
+    const shouldRefreshPreorderPrice =
+      nextSupplyType === "CHINA_PREORDER" &&
+      (price !== undefined ||
+        preorderPriceCurrency !== undefined ||
+        preorderPriceAmount !== undefined ||
+        supplyType !== undefined);
+    if (shouldRefreshPreorderPrice) {
+      try {
+        const conversion = await resolvePreorderPrice(
+          preorderPriceAmount ??
+            existing.preorderPriceAmount ??
+            price ??
+            existing.price,
+          preorderPriceCurrency ?? existing.preorderPriceCurrency ?? "MNT",
+        );
+        data.price = conversion.priceMnt;
+        Object.assign(data, toPreorderPriceMetadata(conversion));
+      } catch (error) {
+        if (error instanceof InvalidPreorderPriceError) {
+          return res.status(400).json({
+            message: "Захиалгын барааны валют эсвэл үнэ буруу байна",
+          });
+        }
+        console.error("[preorder price conversion]", error);
+        return res
+          .status(502)
+          .json({ message: "ХААН Банкны ханшаар үнэ тооцож чадсангүй" });
+      }
+    } else if (price !== undefined) {
       const p = parseFloat(String(price));
       if (isNaN(p) || p < 0)
         return res.status(400).json({ message: "Үнэ буруу байна" });
@@ -3674,6 +3763,12 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
         data.preorderLeadTimeDays = null;
         data.preorderCapacity = null;
         data.preorderNote = null;
+        data.preorderPriceCurrency = null;
+        data.preorderPriceAmount = null;
+        data.preorderExchangeRate = null;
+        data.preorderMarkupPercent = null;
+        data.preorderRateSource = null;
+        data.preorderRateFetchedAt = null;
       }
     }
     if (preorderLeadTimeDays !== undefined) {

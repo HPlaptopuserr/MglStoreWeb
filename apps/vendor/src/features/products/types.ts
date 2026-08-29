@@ -50,6 +50,12 @@ export interface Product {
   preorderSupplierFrontImageUrl: string | null;
   preorderSupplierBackImageUrl: string | null;
   preorderNote: string | null;
+  preorderPriceCurrency: PreorderCurrency | null;
+  preorderPriceAmount: number | null;
+  preorderExchangeRate: number | null;
+  preorderMarkupPercent: number | null;
+  preorderRateSource: string | null;
+  preorderRateFetchedAt: string | null;
   marketplacePriority: number;
   isActive: boolean;
   images: ProductImage[];
@@ -80,10 +86,13 @@ export interface FormState {
   preorderSupplierFrontImageUrl: string;
   preorderSupplierBackImageUrl: string;
   preorderNote: string;
+  preorderPriceCurrency: PreorderCurrency;
   marketplacePriority: string;
   businessCategoryId: string;
   images: string[];
 }
+
+export type PreorderCurrency = "MNT" | "USD" | "CNY" | "KRW" | "JPY";
 
 export interface MasterCatalogProduct {
   id: string;
