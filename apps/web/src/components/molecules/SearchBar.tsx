@@ -186,7 +186,7 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
 
       {/* 1. Normal Search Bar */}
       <div
-        className={`relative mx-auto flex h-14 w-full max-w-3xl items-center overflow-hidden rounded-full border transition-all duration-300 ${
+        className={`relative mx-auto flex h-12 w-full max-w-3xl items-center overflow-hidden rounded-full border transition-all duration-300 xl:h-14 ${
           isDark
             ? "border-[#24324A] bg-[#0B172A] shadow-[0_0_0_1px_rgba(37,99,235,0.12)] hover:border-[#2563EB]/70"
             : "border-2 border-orange-500 bg-white shadow-md"
@@ -198,7 +198,7 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
         onClick={() => setIsFocused(true)}
       >
         <div
-          className={`group flex h-full cursor-pointer items-center border-r px-4 transition-colors ${
+          className={`group flex h-full cursor-pointer items-center border-r px-3 transition-colors xl:px-4 ${
             isDark
               ? "border-[#24324A] hover:bg-[#111C31]"
               : "border-slate-200 hover:bg-slate-50"
@@ -221,12 +221,12 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
           />
         </div>
         <div
-          className={`flex-1 px-4 text-sm ${isDark ? "text-[#64748B]" : "text-slate-400"}`}
+          className={`min-w-0 flex-1 truncate px-3 text-sm xl:px-4 ${isDark ? "text-[#64748B]" : "text-slate-400"}`}
         >
           Хайх утгаа оруулна уу...
         </div>
         <div
-          className={`flex h-full items-center justify-center px-6 ${isDark ? "text-[#F8FAFC]" : "text-black"}`}
+          className={`flex h-full shrink-0 items-center justify-center px-4 xl:px-6 ${isDark ? "text-[#F8FAFC]" : "text-black"}`}
         >
           <Search size={20} strokeWidth={3} />
         </div>
@@ -341,7 +341,7 @@ export const SearchBar = ({ variant = "light" }: SearchBarProps) => {
                             <Search size={20} />
                           </div>
                           <span className="font-semibold text-slate-700">
-                            "{searchQuery}" хайх
+                            “{searchQuery}” хайх
                           </span>
                         </div>
                         <ArrowRight

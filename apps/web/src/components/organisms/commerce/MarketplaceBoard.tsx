@@ -224,7 +224,7 @@ export function MarketplaceBoard({
         {showSearch && (
           <form
             onSubmit={submitSearch}
-            className="mb-3 flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm lg:hidden"
+            className="mb-3 flex rounded-2xl border border-slate-200 bg-white p-1 shadow-sm xl:hidden"
           >
             <div className="relative min-w-0 flex-1">
               <Search className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
@@ -246,7 +246,7 @@ export function MarketplaceBoard({
         )}
 
         <div className="grid gap-3 xl:grid-cols-[280px_minmax(0,1fr)_280px]">
-          <aside className="hidden rounded-2xl border border-slate-100 bg-slate-50/80 p-4 shadow-sm lg:block">
+          <aside className="hidden rounded-2xl border border-slate-100 bg-slate-50/80 p-4 shadow-sm xl:block">
             <div className="mb-3 flex items-center justify-between">
               <span className="inline-flex items-center gap-2 text-base font-black text-slate-950">
                 <PackageSearch className="h-4 w-4 text-orange-500" />
@@ -365,11 +365,11 @@ export function MarketplaceBoard({
 
           <div className="grid gap-3">
             <div className="grid gap-3 min-[430px]:grid-cols-2 md:grid-cols-2">
-              <div className="lg:hidden">
+              <div className="xl:hidden">
                 <MglServicesPromoPanel promo={servicesPromo} />
               </div>
               <ProjectHeroBanner projects={projectBanners} />
-              <div className="hidden lg:block">
+              <div className="hidden xl:block">
                 {reels.length > 0 ? (
                   <ReelEntryCard reels={reels} />
                 ) : (
@@ -381,7 +381,7 @@ export function MarketplaceBoard({
               </div>
             </div>
 
-            <div className="hidden grid-cols-4 gap-3 lg:grid">
+            <div className="hidden grid-cols-4 gap-3 xl:grid">
               {reels.length > 0 && <CompactReelTile reel={reels[0]} />}
               <ServiceSpotlightTile promo={servicesPromo} />
               <SpotlightTile
@@ -426,7 +426,7 @@ export function MarketplaceBoard({
           </aside>
         </div>
 
-        <div className="scrollbar-hide mt-3 flex w-full max-w-full items-center gap-2 overflow-x-auto overscroll-x-contain pb-1 lg:hidden">
+        <div className="scrollbar-hide mt-3 flex w-full max-w-full items-center gap-2 overflow-x-auto overscroll-x-contain pb-1 xl:hidden">
           <CategoryLink
             href={allHref}
             onClick={onCategoryClick ? () => onCategoryClick(null) : undefined}

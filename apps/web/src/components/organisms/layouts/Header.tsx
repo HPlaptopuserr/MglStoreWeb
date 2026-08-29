@@ -175,7 +175,7 @@ export const Header = () => {
         <StoreUtilityBar />
         <div className="border-b border-slate-100">
           <div
-            className={`container mx-auto flex min-w-0 items-center justify-between gap-1.5 px-2.5 md:gap-6 md:px-4 ${
+            className={`container mx-auto flex min-w-0 items-center justify-between gap-1.5 px-2.5 md:gap-3 md:px-4 xl:gap-6 ${
               isCheckoutRoute ? "h-12 md:h-14" : "h-14 md:h-16"
             }`}
           >
@@ -202,7 +202,7 @@ export const Header = () => {
                   className={`h-auto object-contain ${
                     isCheckoutRoute
                       ? "w-[88px] min-[360px]:w-[96px] md:w-[120px]"
-                      : "w-[96px] min-[360px]:w-[112px] sm:w-[140px] md:w-[160px]"
+                      : "w-[96px] min-[360px]:w-[112px] sm:w-[140px] md:w-[120px] lg:w-[140px] xl:w-[160px]"
                   }`}
                   priority
                 />
@@ -211,7 +211,7 @@ export const Header = () => {
                 className={
                   isCheckoutRoute
                     ? "hidden"
-                    : "hidden items-center gap-8 py-3 sm:flex"
+                    : "hidden items-center gap-8 py-3 xl:flex"
                 }
               >
                 <div className="h-8 w-px bg-gradient-to-b from-transparent via-amber-400 to-transparent" />
@@ -247,12 +247,12 @@ export const Header = () => {
               <SearchBar />
             </div>
 
-            <div className="flex shrink-0 items-center gap-1 sm:gap-6">
+            <div className="flex shrink-0 items-center gap-1 sm:gap-2 xl:gap-6">
               <a
                 href={presentationPdfUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-700 shadow-sm transition active:scale-95 active:bg-emerald-100 sm:hidden"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-700 shadow-sm transition active:scale-95 active:bg-emerald-100 xl:hidden"
                 aria-label="MGL Business"
               >
                 <Building2 size={17} />
@@ -261,7 +261,7 @@ export const Header = () => {
               <button
                 type="button"
                 onClick={() => setCartOpen(true)}
-                className="relative flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full bg-amber-500 px-2.5 text-sm font-bold text-white shadow-md transition-colors hover:bg-amber-600 sm:h-auto sm:gap-2 sm:px-5 sm:py-2.5 sm:text-base"
+                className="relative flex h-9 min-w-9 items-center justify-center gap-1.5 rounded-full bg-amber-500 px-2.5 text-sm font-bold text-white shadow-md transition-colors hover:bg-amber-600 sm:h-auto sm:gap-2 sm:px-3 sm:py-2.5 sm:text-base lg:px-4 xl:px-5"
               >
                 <ShoppingCart size={16} className="sm:h-5 sm:w-5" />
                 <span className="hidden sm:inline">
@@ -286,7 +286,7 @@ export const Header = () => {
                         user.email?.[0]?.toUpperCase() ||
                         "?"}
                     </div>
-                    <span className="max-w-[140px] truncate">
+                    <span className="max-w-[80px] truncate lg:max-w-[110px] xl:max-w-[140px]">
                       {user.fullName?.trim() || user.email}
                     </span>
                   </button>
@@ -367,8 +367,8 @@ export const Header = () => {
 
         {!hideBrowseNav && (
           <div className="relative hidden border-t border-gray-100 md:block">
-            <div className="container mx-auto flex h-14 items-center gap-8 px-4">
-              <div className="flex h-12 items-center gap-8">
+            <div className="container mx-auto flex h-14 items-center gap-4 px-4 lg:gap-6 xl:gap-8">
+              <div className="flex h-12 items-center gap-4 lg:gap-6 xl:gap-8">
                 <MegaMenu />
                 <PartnerMenu />
                 <div className="relative shrink-0" ref={mglDropdownRef}>
