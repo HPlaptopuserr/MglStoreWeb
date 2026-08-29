@@ -19,9 +19,12 @@ import {
   X,
   Plus,
   Trash2,
-  Search,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
+import {
+  DispatchProductPicker,
+  type DispatchEditableProduct,
+} from "./DispatchProductPicker";
 import {
   type Dispatch,
   STATUS_MAP,
@@ -55,15 +58,6 @@ type ItemEditLog = {
   } | null;
 };
 
-type EditableProduct = {
-  id: string;
-  name: string;
-  sku: string | null;
-  barcode?: string | null;
-  price: number;
-  availableQuantity: number;
-};
-
 type EditableRow = {
   key: string;
   productId: string;
@@ -93,17 +87,28 @@ export function DispatchDetail({
 }) {
   const [editingItems, setEditingItems] = useState(false);
   const [editableRows, setEditableRows] = useState<EditableRow[]>([]);
-  const [editableProducts, setEditableProducts] = useState<EditableProduct[]>(
-    [],
-  );
+  const [editableProducts, setEditableProducts] = useState<
+    DispatchEditableProduct[]
+  >([]);
   const [productSearch, setProductSearch] = useState("");
   const [productsLoading, setProductsLoading] = useState(false);
+  const [productLoadError, setProductLoadError] = useState("");
   const [savingItems, setSavingItems] = useState(false);
   const [itemError, setItemError] = useState("");
   const [editLogs, setEditLogs] = useState<ItemEditLog[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
   useEffect(() => {
+    const currentProducts: DispatchEditableProduct[] = d.request.items.map(
+      (item) => ({
+        id: item.product.id,
+        name: item.product.name,
+        sku: item.product.sku,
+        barcode: item.product.barcode,
+        price: item.product.price,
+        availableQuantity: Number.MAX_SAFE_INTEGER,
+      }),
+    );
     setEditableRows(
       d.request.items.map((item) => ({
         key: item.id,
@@ -111,12 +116,14 @@ export function DispatchDetail({
         quantity: item.approvedQuantity ?? item.quantity,
       })),
     );
+    setEditableProducts(currentProducts);
   }, [d]);
 
   useEffect(() => {
     if (!editingItems) return;
     const timer = window.setTimeout(async () => {
       setProductsLoading(true);
+      setProductLoadError("");
       try {
         const response = await wmsFetch(
           `${API}/stock-requests/dispatches/${d.id}/editable-products?search=${encodeURIComponent(productSearch)}`,
@@ -127,9 +134,9 @@ export function DispatchDetail({
             body.message || "Барааны жагсаалт авахад алдаа гарлаа",
           );
         const available = Array.isArray(body.products)
-          ? (body.products as EditableProduct[])
+          ? (body.products as DispatchEditableProduct[])
           : [];
-        const currentProducts: EditableProduct[] = d.request.items.map(
+        const currentProducts: DispatchEditableProduct[] = d.request.items.map(
           (item) => ({
             id: item.product.id,
             name: item.product.name,
@@ -150,7 +157,7 @@ export function DispatchDetail({
           ),
         );
       } catch (error) {
-        setItemError(
+        setProductLoadError(
           error instanceof Error
             ? error.message
             : "Барааны жагсаалт авахад алдаа гарлаа",
@@ -219,6 +226,14 @@ export function DispatchDetail({
     (s, i) => s + (i.approvedQuantity || i.quantity) * Number(i.product.price),
     0,
   );
+  const editableTotalQty = editableRows.reduce(
+    (sum, row) => sum + (Number.isFinite(row.quantity) ? row.quantity : 0),
+    0,
+  );
+  const editableTotalAmt = editableRows.reduce((sum, row) => {
+    const product = editableProducts.find((item) => item.id === row.productId);
+    return sum + (product ? Number(product.price) * row.quantity : 0);
+  }, 0);
   const paymentStarted = Boolean(
     d.request.payment &&
     (d.request.payment.status !== "PENDING" ||
@@ -465,132 +480,22 @@ export function DispatchDetail({
             )}
           </div>
         )}
-        {editingItems && (
-          <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50/40 p-3">
-            <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <p className="text-sm font-bold text-slate-800">
-                  Барааны нэр төрөл, тоо засах
-                </p>
-                <p className="text-xs text-slate-500">
-                  Бараа солих, шинээр нэмэх эсвэл жагсаалтаас хасах боломжтой.
-                </p>
-              </div>
-              <label className="relative block sm:w-64">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                <input
-                  value={productSearch}
-                  onChange={(event) => setProductSearch(event.target.value)}
-                  placeholder="Нэр, SKU, баркод хайх"
-                  className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
-            </div>
-            <div className="space-y-2">
-              {editableRows.map((row, index) => {
-                const product = editableProducts.find(
-                  (item) => item.id === row.productId,
-                );
-                return (
-                  <div
-                    key={row.key}
-                    className="grid gap-2 rounded-lg border border-slate-200 bg-white p-2 sm:grid-cols-[32px_minmax(0,1fr)_100px_40px] sm:items-center"
-                  >
-                    <span className="text-center text-xs font-bold text-slate-400">
-                      {index + 1}
-                    </span>
-                    <select
-                      value={row.productId}
-                      onChange={(event) =>
-                        setEditableRows((current) =>
-                          current.map((item) =>
-                            item.key === row.key
-                              ? { ...item, productId: event.target.value }
-                              : item,
-                          ),
-                        )
-                      }
-                      className="h-9 min-w-0 rounded-lg border border-slate-200 px-2 text-xs outline-none focus:border-blue-400"
-                    >
-                      <option value="">Бараа сонгох</option>
-                      {editableProducts.map((option) => (
-                        <option
-                          key={option.id}
-                          value={option.id}
-                          disabled={editableRows.some(
-                            (item) =>
-                              item.key !== row.key &&
-                              item.productId === option.id,
-                          )}
-                        >
-                          {option.name} · {option.sku || "SKU-гүй"} · үлдэгдэл{" "}
-                          {option.availableQuantity}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      min={1}
-                      max={product?.availableQuantity || 100000}
-                      value={row.quantity}
-                      onChange={(event) =>
-                        setEditableRows((current) =>
-                          current.map((item) =>
-                            item.key === row.key
-                              ? {
-                                  ...item,
-                                  quantity: Number(event.target.value),
-                                }
-                              : item,
-                          ),
-                        )
-                      }
-                      aria-label={`${product?.name || "Бараа"}-ны тоо`}
-                      className="h-9 rounded-lg border border-slate-200 px-2 text-right text-xs font-bold outline-none focus:border-blue-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setEditableRows((current) =>
-                          current.filter((item) => item.key !== row.key),
-                        )
-                      }
-                      disabled={editableRows.length === 1}
-                      aria-label="Бараа хасах"
-                      className="flex h-9 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-30"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            <button
-              type="button"
-              onClick={() =>
-                setEditableRows((current) => [
-                  ...current,
-                  {
-                    key: `new-${crypto.randomUUID()}`,
-                    productId: "",
-                    quantity: 1,
-                  },
-                ])
-              }
-              disabled={productsLoading}
-              className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:opacity-50"
-            >
-              {productsLoading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Plus className="h-3.5 w-3.5" />
-              )}
-              Бараа нэмэх
-            </button>
-          </div>
-        )}
-        <div className="overflow-hidden rounded-lg border border-slate-200">
-          <table className="w-full text-sm">
+        <div
+          className={`rounded-lg border border-slate-200 ${editingItems ? "overflow-visible" : "overflow-hidden"}`}
+        >
+          <table
+            className={`w-full text-sm ${editingItems ? "table-fixed" : ""}`}
+          >
+            {editingItems && (
+              <colgroup>
+                <col className="w-12" />
+                <col />
+                <col className="w-24" />
+                <col className="w-24" />
+                <col className="w-28" />
+                <col className="w-12" />
+              </colgroup>
+            )}
             <thead className="bg-slate-50">
               <tr>
                 <th className="px-4 py-2.5 text-left font-medium text-slate-600">
@@ -599,9 +504,11 @@ export function DispatchDetail({
                 <th className="px-4 py-2.5 text-left font-medium text-slate-600">
                   Бүтээгдэхүүн
                 </th>
-                <th className="px-4 py-2.5 text-left font-medium text-slate-600">
-                  SKU
-                </th>
+                {!editingItems && (
+                  <th className="px-4 py-2.5 text-left font-medium text-slate-600">
+                    SKU
+                  </th>
+                )}
                 <th className="px-4 py-2.5 text-right font-medium text-slate-600">
                   Тоо
                 </th>
@@ -611,48 +518,162 @@ export function DispatchDetail({
                 <th className="px-4 py-2.5 text-right font-medium text-slate-600">
                   Нийт
                 </th>
+                {editingItems && <th className="w-12" aria-label="Үйлдэл" />}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {d.request.items.map((item, idx) => {
-                const qty = item.approvedQuantity || item.quantity;
-                return (
-                  <tr key={item.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-2.5 text-slate-500">{idx + 1}</td>
-                    <td className="px-4 py-2.5 font-medium text-slate-800">
-                      {item.product.name}
-                    </td>
-                    <td className="px-4 py-2.5 text-slate-500">
-                      {item.product.sku || "—"}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-bold text-slate-800">
-                      {qty}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-slate-600">
-                      ₮{Number(item.product.price).toLocaleString()}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-medium text-slate-800">
-                      ₮{(qty * Number(item.product.price)).toLocaleString()}
-                    </td>
-                  </tr>
-                );
-              })}
+              {editingItems
+                ? editableRows.map((row, idx) => {
+                    const product = editableProducts.find(
+                      (item) => item.id === row.productId,
+                    );
+                    return (
+                      <tr key={row.key} className="bg-white align-middle">
+                        <td className="px-4 py-3 text-slate-500">{idx + 1}</td>
+                        <td className="min-w-0 px-2 py-2">
+                          <DispatchProductPicker
+                            products={editableProducts}
+                            value={row.productId}
+                            loading={productsLoading}
+                            error={productLoadError}
+                            excludedIds={
+                              new Set(
+                                editableRows
+                                  .filter((item) => item.key !== row.key)
+                                  .map((item) => item.productId)
+                                  .filter(Boolean),
+                              )
+                            }
+                            onSearchChange={setProductSearch}
+                            onChange={(productId) =>
+                              setEditableRows((current) =>
+                                current.map((item) =>
+                                  item.key === row.key
+                                    ? { ...item, productId }
+                                    : item,
+                                ),
+                              )
+                            }
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <input
+                            type="number"
+                            min={1}
+                            max={product?.availableQuantity || 100000}
+                            value={row.quantity}
+                            onChange={(event) =>
+                              setEditableRows((current) =>
+                                current.map((item) =>
+                                  item.key === row.key
+                                    ? {
+                                        ...item,
+                                        quantity: Number(event.target.value),
+                                      }
+                                    : item,
+                                ),
+                              )
+                            }
+                            aria-label={`${product?.name || "Бараа"}-ны тоо`}
+                            className="h-10 w-20 rounded-lg border border-slate-200 px-2 text-right font-bold outline-none transition focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-right text-slate-600">
+                          {product
+                            ? `₮${Number(product.price).toLocaleString()}`
+                            : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium text-slate-800">
+                          {product
+                            ? `₮${(row.quantity * Number(product.price)).toLocaleString()}`
+                            : "—"}
+                        </td>
+                        <td className="px-2 py-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditableRows((current) =>
+                                current.filter((item) => item.key !== row.key),
+                              )
+                            }
+                            disabled={editableRows.length === 1}
+                            aria-label={`${product?.name || "Бараа"} хасах`}
+                            className="flex h-9 w-9 items-center justify-center rounded-lg text-red-500 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-30"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                : d.request.items.map((item, idx) => {
+                    const qty = item.approvedQuantity || item.quantity;
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-2.5 text-slate-500">
+                          {idx + 1}
+                        </td>
+                        <td className="px-4 py-2.5 font-medium text-slate-800">
+                          {item.product.name}
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-500">
+                          {item.product.sku || "—"}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-bold text-slate-800">
+                          {qty}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-slate-600">
+                          ₮{Number(item.product.price).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-medium text-slate-800">
+                          ₮{(qty * Number(item.product.price)).toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              {editingItems && (
+                <tr>
+                  <td colSpan={6} className="p-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setEditableRows((current) => [
+                          ...current,
+                          {
+                            key: `new-${crypto.randomUUID()}`,
+                            productId: "",
+                            quantity: 1,
+                          },
+                        ])
+                      }
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-blue-300 py-3 text-sm font-bold text-blue-700 transition hover:border-blue-500 hover:bg-blue-50"
+                    >
+                      <Plus className="h-4 w-4" /> Бараа нэмэх
+                    </button>
+                  </td>
+                </tr>
+              )}
             </tbody>
             <tfoot className="border-t-2 border-slate-200 bg-slate-50">
               <tr>
                 <td
-                  colSpan={3}
+                  colSpan={editingItems ? 2 : 3}
                   className="px-4 py-3 text-right font-bold text-slate-700"
                 >
                   Нийт:
                 </td>
                 <td className="px-4 py-3 text-right font-bold text-slate-800">
-                  {totalQty}
+                  {editingItems ? editableTotalQty : totalQty}
                 </td>
                 <td></td>
                 <td className="px-4 py-3 text-right font-bold text-blue-600">
-                  ₮{totalAmt.toLocaleString()}
+                  ₮
+                  {(editingItems
+                    ? editableTotalAmt
+                    : totalAmt
+                  ).toLocaleString()}
                 </td>
+                {editingItems && <td />}
               </tr>
             </tfoot>
           </table>

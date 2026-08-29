@@ -33,7 +33,6 @@ import {
   Store,
   Upload,
   Users,
-  Wrench,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -243,7 +242,7 @@ type ReelFormState = {
   video: File | null;
 };
 
-type CreateMode = "post" | "product" | "reel" | "service" | "ad";
+type CreateMode = "post" | "product" | "reel";
 type DatePreset = "all" | "today" | "7d" | "30d" | "custom";
 
 type OrgProfileFormState = {
@@ -3718,18 +3717,6 @@ function OrganizationCreateHub({
       label: "Reel",
       tone: "text-fuchsia-600 bg-fuchsia-50",
     },
-    {
-      id: "service" as const,
-      icon: Wrench,
-      label: "Үйлчилгээ",
-      tone: "text-blue-600 bg-blue-50",
-    },
-    {
-      id: "ad" as const,
-      icon: Megaphone,
-      label: "Зар",
-      tone: "text-orange-600 bg-orange-50",
-    },
   ];
 
   useLockBodyScroll(composerOpen);
@@ -3916,7 +3903,7 @@ function OrganizationCreateHub({
             onClick={() => openComposer("product")}
             className="min-w-0 flex-1 rounded-full bg-slate-100 px-5 py-3.5 text-left text-sm font-black text-slate-500 transition hover:bg-slate-200 sm:text-base"
           >
-            Бүтээгдэхүүн, үйлчилгээ эсвэл зар нэмэх
+            Бүтээгдэхүүн эсвэл Reel нэмэх
           </button>
 
           <div className="hidden items-center gap-2 sm:flex">
@@ -3943,7 +3930,7 @@ function OrganizationCreateHub({
 
         <div
           className={`mt-3 grid gap-2 ${
-            SHOW_POST_SECTION ? "grid-cols-5" : "grid-cols-4"
+            SHOW_POST_SECTION ? "grid-cols-3" : "grid-cols-2"
           }`}
         >
           {modes.map((mode) => {
@@ -3970,7 +3957,7 @@ function OrganizationCreateHub({
         </div>
 
         <p className="mt-3 hidden px-1 text-xs font-bold text-slate-400 sm:block">
-          Бүтээгдэхүүн, үйлчилгээ эсвэл зар оруулахдаа дээрээс сонгоно.
+          Бүтээгдэхүүн эсвэл Reel оруулахдаа дээрээс сонгоно.
         </p>
 
         {composerOpen && (
@@ -4103,13 +4090,7 @@ function CreateContentModal({
       ? "Пост үүсгэх"
       : createMode === "product"
         ? "Бүтээгдэхүүн оруулах"
-        : createMode === "reel"
-          ? "Reel оруулах"
-          : createMode === "service"
-            ? "Үйлчилгээ оруулах"
-            : "Зар үүсгэх";
-  const activeMode = modes.find((mode) => mode.id === createMode) || modes[0];
-  const ActiveIcon = activeMode.icon;
+        : "Reel оруулах";
   const isPostMode = createMode === "post";
   const canPublishPost = Boolean(
     postText.trim() ||
@@ -4260,7 +4241,7 @@ function CreateContentModal({
               </div>
               <div
                 className={`grid grid-cols-2 gap-2 ${
-                  SHOW_POST_SECTION ? "sm:grid-cols-5" : "sm:grid-cols-4"
+                  SHOW_POST_SECTION ? "sm:grid-cols-3" : "sm:grid-cols-2"
                 }`}
               >
                 {modes.map((mode) => {
@@ -4498,36 +4479,6 @@ function CreateContentModal({
               products={products}
               saving={reelSaving}
             />
-          )}
-
-          {(createMode === "service" || createMode === "ad") && (
-            <div className="mt-4 rounded-[22px] border border-slate-200 bg-slate-50 p-4">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-orange-500 shadow-sm">
-                    <ActiveIcon size={22} />
-                  </span>
-                  <div>
-                    <p className="text-sm font-black text-slate-950">
-                      {createMode === "service"
-                        ? "Үйлчилгээний мэдээлэл оруулах"
-                        : "Зар, урамшуулал удирдах"}
-                    </p>
-                    <p className="mt-1 text-xs font-bold text-slate-500">
-                      Нэр, зураг, тайлбар, идэвхтэй хугацааг vendor удирдлага
-                      дээр бөглөнө.
-                    </p>
-                  </div>
-                </div>
-                <a
-                  href={`${VENDOR_URL.replace(/\/$/, "")}/service-posts`}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-black text-white transition hover:-translate-y-0.5 hover:bg-slate-800"
-                >
-                  Нээх
-                  <ArrowUpRight size={15} />
-                </a>
-              </div>
-            </div>
           )}
         </div>
       </div>

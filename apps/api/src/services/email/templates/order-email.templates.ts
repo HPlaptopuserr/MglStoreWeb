@@ -2,6 +2,47 @@ import { emailLayout, infoRows, safe } from "../email-layout";
 import type { EmailTemplate } from "../email.types";
 
 export const orderEmailTemplates = {
+  pickupRequest(input: {
+    orderNumber: string;
+    customerName: string;
+    customerPhone: string;
+    pickupAddress: string;
+    total: number;
+  }): EmailTemplate {
+    return {
+      subject: `Салбараас авах шинэ хүсэлт — #${input.orderNumber}`,
+      text: [
+        "Сайн байна уу.",
+        "",
+        "Танай дэлгүүрийн бараатай шинэ захиалгын хүсэлт ирлээ.",
+        "",
+        `Захиалагч: ${input.customerName}`,
+        `Холбогдох утас: ${input.customerPhone}`,
+        `Сонгосон байршил: ${input.pickupAddress}`,
+        `Нийт дүн: ${input.total.toLocaleString()}₮`,
+        "",
+        "Хүргэлтийн салбар баталгаажаагүй тохиолдолд барааг салбараас авахад бэлтгэнэ үү.",
+        "",
+        "Хүндэтгэсэн,",
+        "MGL Store",
+      ].join("\n"),
+      html: emailLayout({
+        eyebrow: "Салбараас авах хүсэлт",
+        title: "Шинэ захиалгын хүсэлт ирлээ",
+        preview: `#${input.orderNumber} • ${input.customerName} • ${input.customerPhone}`,
+        content: `<p style="font-size:15px;line-height:1.7;color:#334155">Сайн байна уу.</p>
+          <p style="font-size:15px;line-height:1.7;color:#334155">Танай дэлгүүрийн бараатай шинэ захиалгын хүсэлт ирлээ. Хүргэлтийн салбар баталгаажаагүй тохиолдолд барааг салбараас авахад бэлтгэнэ үү.</p>
+          ${infoRows([
+            ["Захиалгын дугаар", `#${input.orderNumber}`],
+            ["Захиалагч", input.customerName],
+            ["Холбогдох утас", input.customerPhone],
+            ["Сонгосон байршил", input.pickupAddress],
+            ["Нийт дүн", `${input.total.toLocaleString()}₮`],
+          ])}`,
+      }),
+    };
+  },
+
   newOrder(input: {
     orderNumber: string;
     customerName: string;

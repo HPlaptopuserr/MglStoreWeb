@@ -10,22 +10,37 @@ export type CustomerOrderStage =
   | "OUT_FOR_DELIVERY"
   | "DELIVERED";
 
-export async function notifyNewOnlineOrderRequest(orderId: string) {
+export async function notifyNewOnlineOrderRequest(
+  orderId: string,
+  options: { pickupRequired?: boolean } = {},
+) {
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     select: {
       id: true,
       orderNumber: true,
       total: true,
+      phone: true,
+      shippingAddress: true,
+      customer: {
+        select: {
+          email: true,
+          profile: { select: { fullName: true, phoneNumber: true } },
+        },
+      },
       organization: {
         select: {
+          email: true,
           members: {
             where: {
               isActive: true,
               deletedAt: null,
               role: { in: [OrgRole.OWNER, OrgRole.ADMIN] },
             },
-            select: { userId: true },
+            select: {
+              userId: true,
+              user: { select: { email: true } },
+            },
           },
         },
       },
@@ -40,6 +55,14 @@ export async function notifyNewOnlineOrderRequest(orderId: string) {
 
   const vendorUserIds = order.organization.members.map(
     (member) => member.userId,
+  );
+  const vendorEmails = Array.from(
+    new Set(
+      [
+        order.organization.email,
+        ...order.organization.members.map((member) => member.user.email),
+      ].filter((email): email is string => Boolean(email)),
+    ),
   );
   const warehouseIds = Array.from(
     new Set(
@@ -62,13 +85,33 @@ export async function notifyNewOnlineOrderRequest(orderId: string) {
         });
 
   const body = `#${order.orderNumber} • ${Number(order.total).toLocaleString()}₮`;
+  const customerName =
+    order.customer.profile?.fullName || order.customer.email;
+  const customerPhone =
+    order.phone || order.customer.profile?.phoneNumber || "Бүртгэгдээгүй";
+  const emailTemplate = orderEmailTemplates.pickupRequest({
+    orderNumber: order.orderNumber,
+    customerName,
+    customerPhone,
+    pickupAddress: order.shippingAddress || "Салбар дээр тохиролцоно",
+    total: Number(order.total),
+  });
   await Promise.all([
+    ...(options.pickupRequired
+      ? vendorEmails.map((email) =>
+          sendEmailSafely({ to: email, template: emailTemplate }),
+        )
+      : []),
     sendPushToUsers({
       userIds: vendorUserIds,
-      title: "Online захиалгын хүсэлт",
+      title: options.pickupRequired
+        ? "Салбараас авах захиалгын хүсэлт"
+        : "Online захиалгын хүсэлт",
       body,
       data: {
-        type: "new_online_order_request",
+        type: options.pickupRequired
+          ? "new_pickup_order_request"
+          : "new_online_order_request",
         target: "vendor",
         orderId: order.id,
         orderNumber: order.orderNumber,

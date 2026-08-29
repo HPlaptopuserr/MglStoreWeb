@@ -19,7 +19,7 @@ export function ActiveCheckoutDispatchAlert() {
   const [session, setSession] = useState<DeliverySession | null>(null);
 
   useEffect(() => {
-    const sync = () => setSession(getActiveCheckoutDispatch());
+    const sync = () => setSession(getActiveCheckoutDispatch(user?.id));
     sync();
     window.addEventListener(ACTIVE_CHECKOUT_DISPATCH_EVENT, sync);
     window.addEventListener("storage", sync);
@@ -27,7 +27,7 @@ export function ActiveCheckoutDispatchAlert() {
       window.removeEventListener(ACTIVE_CHECKOUT_DISPATCH_EVENT, sync);
       window.removeEventListener("storage", sync);
     };
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user || !session?.orderId || session.canPay || session.status === "NO_BRANCH_AVAILABLE") {
@@ -37,9 +37,14 @@ export function ActiveCheckoutDispatchAlert() {
     const pollDispatch = async () => {
       try {
         const res = await authFetch(`${API}/store/checkout/${session.orderId}/dispatch-status`);
+        if (res.status === 403 || res.status === 404) {
+          setActiveCheckoutDispatch(user.id, null);
+          setSession(null);
+          return;
+        }
         if (!res.ok) return;
         const data = (await res.json()) as DeliverySession;
-        setActiveCheckoutDispatch(data);
+        setActiveCheckoutDispatch(user.id, data);
         setSession(data);
       } catch {
         // Keep the last known session; the next poll can recover.

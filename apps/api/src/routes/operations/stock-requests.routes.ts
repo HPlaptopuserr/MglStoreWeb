@@ -2301,54 +2301,63 @@ router.get(
   "/stock-requests/dispatches/:id/editable-products",
   requireAuth,
   async (req, res) => {
-    const dispatch = await prisma.stockDispatch.findUnique({
-      where: { id: req.params.id },
-      select: { warehouseId: true },
-    });
-    if (!dispatch)
-      return res.status(404).json({ message: "Илгээмж олдсонгүй" });
-    if (!(await assertWarehouseAccess(req, res, dispatch.warehouseId))) return;
-    const search = String(req.query.search || "").trim();
-    const products = await prisma.warehouseInventory.findMany({
-      where: {
-        warehouseId: dispatch.warehouseId,
-        quantity: { gt: 0 },
-        product: {
-          isActive: true,
-          deletedAt: null,
-          ...(search
-            ? {
-                OR: [
-                  { name: { contains: search, mode: "insensitive" } },
-                  { sku: { contains: search, mode: "insensitive" } },
-                  { barcode: { contains: search, mode: "insensitive" } },
-                ],
-              }
-            : {}),
-        },
-      },
-      select: {
-        productId: true,
-        quantity: true,
-        product: {
-          select: {
-            id: true,
-            name: true,
-            sku: true,
-            barcode: true,
-            price: true,
+    try {
+      const dispatch = await prisma.stockDispatch.findUnique({
+        where: { id: req.params.id },
+        select: { warehouseId: true },
+      });
+      if (!dispatch)
+        return res.status(404).json({ message: "Илгээмж олдсонгүй" });
+      if (!(await assertWarehouseAccess(req, res, dispatch.warehouseId)))
+        return;
+      const search = String(req.query.search || "").trim();
+      const products = await prisma.warehouseInventory.findMany({
+        where: {
+          warehouseId: dispatch.warehouseId,
+          quantity: { gt: 0 },
+          product: {
+            isActive: true,
+            deletedAt: null,
+            ...(search
+              ? {
+                  OR: [
+                    { name: { contains: search, mode: "insensitive" } },
+                    { sku: { contains: search, mode: "insensitive" } },
+                    { barcode: { contains: search, mode: "insensitive" } },
+                  ],
+                }
+              : {}),
           },
         },
-      },
-      orderBy: { product: { name: "asc" } },
-      take: 100,
-    });
-    return res.json({
-      products: products.map((inventory) => ({
-        ...inventory.product,
-        availableQuantity: inventory.quantity,
-      })),
-    });
+        select: {
+          productId: true,
+          quantity: true,
+          product: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              barcode: true,
+              price: true,
+            },
+          },
+        },
+        take: 100,
+      });
+      return res.json({
+        products: products
+          .map((inventory) => ({
+            ...inventory.product,
+            availableQuantity: inventory.quantity,
+          }))
+          .sort((first, second) => first.name.localeCompare(second.name, "mn")),
+      });
+    } catch (error) {
+      console.error("get editable dispatch products error", error);
+      return res.status(500).json({
+        message: "Барааны жагсаалт авахад алдаа гарлаа",
+      });
+    }
   },
 );
 

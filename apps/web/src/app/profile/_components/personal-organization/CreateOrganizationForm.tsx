@@ -105,10 +105,7 @@ export function CreateOrganizationForm(props: CreateOrganizationFormProps) {
         ) : null}
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <ShieldCheck className="h-4 w-4 text-emerald-500" />
-            Backend validation болон duplicate хамгаалалт идэвхтэй.
-          </div>
+          <div className="flex items-center gap-2 text-sm text-slate-500"></div>
           <button
             type="submit"
             disabled={props.submitting || props.hasPending || !props.formValid}

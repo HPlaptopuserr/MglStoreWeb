@@ -297,6 +297,7 @@ async function getCheckoutDispatchSnapshot(
     where: { id: orderId },
     select: {
       id: true,
+      createdAt: true,
       customerId: true,
       orderNumber: true,
       subtotal: true,
@@ -369,6 +370,12 @@ async function getCheckoutDispatchSnapshot(
   const hasAssignedDelivery = Boolean(order.delivery?.courierId);
   const hasAccepted = Boolean(order.branchId || hasAssignedDelivery);
   const activeZone = activeAttempt?.sequence || null;
+  const emptyRadarExpiresAt = new Date(
+    order.createdAt.getTime() + DISPATCH_WINDOW_SECONDS * 1000,
+  );
+  const isEmptyRadarPending =
+    order.dispatchAttempts.length === 0 &&
+    emptyRadarExpiresAt.getTime() > Date.now();
 
   return {
     orderId: order.id,
@@ -394,7 +401,9 @@ async function getCheckoutDispatchSnapshot(
           ? "QUEUED"
           : order.dispatchAttempts.length > 0
             ? "NO_BRANCH_AVAILABLE"
-            : "NOT_STARTED",
+            : isEmptyRadarPending
+              ? "SEARCHING"
+              : "NO_BRANCH_AVAILABLE",
     canPay: hasAccepted && order.paymentStatus !== PaymentStatus.PAID,
     autoAssignedDelivery: hasAssignedDelivery,
     acceptedBranch: order.branch,
@@ -409,7 +418,9 @@ async function getCheckoutDispatchSnapshot(
       ? (DISPATCH_RADIUS_ZONES_KM[activeZone - 1] ?? null)
       : null,
     activeAttemptId: activeAttempt?.id || null,
-    activeExpiresAt: activeAttempt?.expiresAt?.toISOString() || null,
+    activeExpiresAt:
+      activeAttempt?.expiresAt?.toISOString() ||
+      (isEmptyRadarPending ? emptyRadarExpiresAt.toISOString() : null),
     attempts: order.dispatchAttempts.map((attempt) => ({
       id: attempt.id,
       branchId: attempt.branchId,
@@ -1215,8 +1226,14 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
             : dispatch?.status || "PREORDER_REGISTERED";
 
     await Promise.all(
-      orderResults.map(({ order }) =>
-        notifyNewOnlineOrderRequest(order.id).catch((error: unknown) => {
+      orderResults.map(({ order, isPreorderOnly, dispatch }) =>
+        notifyNewOnlineOrderRequest(order.id, {
+          pickupRequired:
+            !isPreorderOnly &&
+            (!dispatch ||
+              dispatch.status === "NO_BRANCH_AVAILABLE" ||
+              dispatch.attempts.length === 0),
+        }).catch((error: unknown) => {
           console.error("Online order request notification failed", {
             orderId: order.id,
             error,

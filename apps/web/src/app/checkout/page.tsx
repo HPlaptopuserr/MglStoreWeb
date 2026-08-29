@@ -186,7 +186,7 @@ function AddressConfirmPanel({
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, total, clearCart } = useCart();
-  const { user, authFetch, login, register } = useAuth();
+  const { user, loading: authHydrating, authFetch, login, register } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -202,7 +202,7 @@ export default function CheckoutPage() {
   const [orderNote, setOrderNote] = useState("");
   const [deliveryUnavailable, setDeliveryUnavailable] = useState(false);
   const [deliverySession, setDeliverySession] =
-    useState<DeliverySession | null>(() => getActiveCheckoutDispatch());
+    useState<DeliverySession | null>(null);
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("idle");
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [cancellingOrder, setCancellingOrder] = useState(false);
@@ -247,14 +247,20 @@ export default function CheckoutPage() {
   }, []);
 
   useEffect(() => {
-    const activeDispatch = getActiveCheckoutDispatch();
-    if (!activeDispatch) return;
+    if (authHydrating) return;
+    const activeDispatch = getActiveCheckoutDispatch(user?.id);
+    if (!activeDispatch) {
+      setDeliverySession(null);
+      setDeliveryUnavailable(false);
+      setCheckoutStep("idle");
+      return;
+    }
     const isDifferentCart =
       items.length > 0 &&
       typeof activeDispatch.subtotal === "number" &&
       activeDispatch.subtotal !== total;
     if (isDifferentCart) {
-      setActiveCheckoutDispatch(null);
+      setActiveCheckoutDispatch(user?.id, null);
       setDeliverySession(null);
       setDeliveryUnavailable(false);
       setCheckoutStep("idle");
@@ -263,7 +269,7 @@ export default function CheckoutPage() {
     setDeliverySession(activeDispatch);
     setDeliveryUnavailable(activeDispatch.status === "NO_BRANCH_AVAILABLE");
     setCheckoutStep(activeDispatch.canPay ? "ready-to-pay" : "radar");
-  }, [items.length, total]);
+  }, [authHydrating, items.length, total, user?.id]);
 
   useEffect(() => {
     if (!selectedAddressId && selectedAddress?.id) {
@@ -310,13 +316,20 @@ export default function CheckoutPage() {
         const res = await authFetch(
           `${API}/store/checkout/${deliverySession.orderId}/dispatch-status`,
         );
+        if (res.status === 403 || res.status === 404) {
+          setActiveCheckoutDispatch(user?.id, null);
+          setDeliverySession(null);
+          setDeliveryUnavailable(false);
+          setCheckoutStep("idle");
+          return;
+        }
         if (!res.ok) return;
         const data = await res.json();
         const syncedSession: DeliverySession = {
           ...data,
           items: data.items?.length ? data.items : deliverySession.items,
         };
-        setActiveCheckoutDispatch(syncedSession);
+        setActiveCheckoutDispatch(user?.id, syncedSession);
         setDeliverySession(syncedSession);
         if (syncedSession.status === "NO_BRANCH_AVAILABLE") {
           setDeliveryUnavailable(true);
@@ -331,7 +344,7 @@ export default function CheckoutPage() {
 
     const poll = window.setInterval(syncDispatch, 5000);
     return () => window.clearInterval(poll);
-  }, [authFetch, deliverySession]);
+  }, [authFetch, deliverySession, user?.id]);
 
   useEffect(() => {
     if (!deliverySession?.orderId || deliverySession.items?.length) return;
@@ -377,7 +390,7 @@ export default function CheckoutPage() {
           })),
         };
         setDeliverySession(hydratedSession);
-        setActiveCheckoutDispatch(hydratedSession);
+        setActiveCheckoutDispatch(user?.id, hydratedSession);
       } catch {
         // The dispatch-status poll can still provide the item snapshot later.
       }
@@ -387,7 +400,7 @@ export default function CheckoutPage() {
     return () => {
       cancelled = true;
     };
-  }, [authFetch, deliverySession]);
+  }, [authFetch, deliverySession, user?.id]);
 
   const createPayment = async (session: Pick<DeliverySession, "orderId">) => {
     setLoading(true);
@@ -629,7 +642,7 @@ export default function CheckoutPage() {
               ? responseItems
               : cartCheckoutItems,
         };
-        setActiveCheckoutDispatch(dispatchSession);
+        setActiveCheckoutDispatch(user?.id, dispatchSession);
         setDeliverySession(dispatchSession);
         clearCart();
         setCheckoutStep(dispatchSession.canPay ? "ready-to-pay" : "radar");
@@ -663,7 +676,7 @@ export default function CheckoutPage() {
       const data = await res.json().catch(() => ({}));
       if (res.status === 404) {
         setDeliverySession(null);
-        setActiveCheckoutDispatch(null);
+        setActiveCheckoutDispatch(user?.id, null);
         setDeliveryUnavailable(false);
         setCheckoutStep("idle");
         return;
@@ -673,7 +686,7 @@ export default function CheckoutPage() {
         return;
       }
       setDeliverySession(null);
-      setActiveCheckoutDispatch(null);
+      setActiveCheckoutDispatch(user?.id, null);
       setDeliveryUnavailable(false);
       setCheckoutStep("idle");
     } catch {
@@ -699,7 +712,7 @@ export default function CheckoutPage() {
             : undefined,
       });
     }
-    setActiveCheckoutDispatch(null);
+    setActiveCheckoutDispatch(user?.id, null);
     if (!deliverySession) clearCart();
     router.push(ACCOUNT_ROUTES.orders);
   };
