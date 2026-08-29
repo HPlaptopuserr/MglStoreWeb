@@ -2905,8 +2905,11 @@ function TimelineEditModal({
         aria-label="Засах цонх хаах"
         onClick={onClose}
       />
-      <div className="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_34px_120px_rgba(15,23,42,0.38)]">
-        <div className="flex h-16 items-center justify-between border-b border-slate-100 px-5">
+      <div
+        onWheel={(event) => event.stopPropagation()}
+        className="relative flex h-[calc(100dvh-3rem)] min-h-0 w-full max-w-2xl flex-col overflow-hidden rounded-[28px] border border-white/80 bg-white shadow-[0_34px_120px_rgba(15,23,42,0.38)] sm:max-h-[900px]"
+      >
+        <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-100 px-5">
           <h2 className="text-lg font-black text-slate-950">
             {item.kind === "product"
               ? "Бүтээгдэхүүн засах"
@@ -2926,7 +2929,7 @@ function TimelineEditModal({
           </button>
         </div>
 
-        <div className="overflow-y-auto overscroll-contain p-5">
+        <div className="min-h-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-scroll overscroll-contain p-5 [-webkit-overflow-scrolling:touch]">
           {item.kind === "post" ? (
             <div className="grid gap-3">
               <label>
@@ -3029,7 +3032,7 @@ function TimelineEditModal({
           )}
         </div>
 
-        <div className="flex flex-col gap-3 border-t border-slate-100 p-4 sm:flex-row sm:items-center sm:justify-end">
+        <div className="flex shrink-0 flex-col gap-3 border-t border-slate-100 bg-white p-4 sm:flex-row sm:items-center sm:justify-end">
           <button
             type="button"
             onClick={onClose}
