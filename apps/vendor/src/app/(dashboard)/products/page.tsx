@@ -431,17 +431,6 @@ export default function ProductsPage() {
         "Дүүрэх хүний тоо 1-1,000,000 хооронд бүхэл тоо байх ёстой",
       );
     }
-    if (
-      form.supplyType === "CHINA_PREORDER" &&
-      (!form.preorderSupplierFrontImageUrl ||
-        !form.preorderSupplierBackImageUrl)
-    ) {
-      return showToast(
-        "error",
-        "Нийлүүлэгчийн мэдээллийн урд болон ард талын зургийг оруулна уу",
-      );
-    }
-
     const cityTaxRate = form.cityTaxRate.trim()
       ? parseFloat(form.cityTaxRate)
       : 0;

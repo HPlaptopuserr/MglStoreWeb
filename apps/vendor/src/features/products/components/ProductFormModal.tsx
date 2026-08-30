@@ -819,8 +819,8 @@ export function ProductFormModal({
                             Нийлүүлэгчийн мэдээлэл
                           </h4>
                           <p className="mt-1 text-xs font-medium leading-5 text-slate-500">
-                            Текст мэдээлэл оруулахгүй. Урд болон ард талын
-                            зургийг тус тусад нь оруулна.
+                            Заавал оруулах шаардлагагүй. Оруулах бол урд болон
+                            ард талын зургийг хамтад нь оруулна.
                           </p>
                         </div>
                         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
@@ -837,7 +837,7 @@ export function ProductFormModal({
                               }))
                             }
                             maxImages={1}
-                            label="Урд талын зураг *"
+                            label="Урд талын зураг"
                             addLabel="Урд зураг нэмэх"
                             primaryLabel="Урд тал"
                             helperText="Нийлүүлэгчийн мэдээллийн урд талыг тод бүтнээр нь оруулна."
@@ -855,7 +855,7 @@ export function ProductFormModal({
                               }))
                             }
                             maxImages={1}
-                            label="Ард талын зураг *"
+                            label="Ард талын зураг"
                             addLabel="Ард зураг нэмэх"
                             primaryLabel="Ард тал"
                             helperText="Нийлүүлэгчийн мэдээллийн ард талыг тод бүтнээр нь оруулна."

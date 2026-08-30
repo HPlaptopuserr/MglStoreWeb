@@ -3610,7 +3610,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (
       nextSupplyType === "CHINA_PREORDER" &&
       supplierImagesProvided &&
-      (!nextSupplierFrontImage || !nextSupplierBackImage)
+      Boolean(nextSupplierFrontImage) !== Boolean(nextSupplierBackImage)
     ) {
       return res.status(400).json({
         message:
@@ -3839,23 +3839,25 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
         await tx.productSupplierDocument.deleteMany({
           where: { productId: id },
         });
-      } else if (
-        supplierImagesProvided &&
-        nextSupplierFrontImage &&
-        nextSupplierBackImage
-      ) {
-        await tx.productSupplierDocument.upsert({
-          where: { productId: id },
-          create: {
-            productId: id,
-            frontImageUrl: nextSupplierFrontImage,
-            backImageUrl: nextSupplierBackImage,
-          },
-          update: {
-            frontImageUrl: nextSupplierFrontImage,
-            backImageUrl: nextSupplierBackImage,
-          },
-        });
+      } else if (supplierImagesProvided) {
+        if (nextSupplierFrontImage && nextSupplierBackImage) {
+          await tx.productSupplierDocument.upsert({
+            where: { productId: id },
+            create: {
+              productId: id,
+              frontImageUrl: nextSupplierFrontImage,
+              backImageUrl: nextSupplierBackImage,
+            },
+            update: {
+              frontImageUrl: nextSupplierFrontImage,
+              backImageUrl: nextSupplierBackImage,
+            },
+          });
+        } else {
+          await tx.productSupplierDocument.deleteMany({
+            where: { productId: id },
+          });
+        }
       }
 
       const updated = await tx.product.update({
