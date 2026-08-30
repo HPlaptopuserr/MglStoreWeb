@@ -1218,9 +1218,8 @@ router.get("/products", optionalAuth, async (req, res) => {
                     { createdAt: "desc" },
                   ]
                 : [
-                    { images: { _count: "desc" } },
-                    { marketplacePriority: "desc" },
                     { createdAt: "desc" },
+                    { marketplacePriority: "desc" },
                   ],
       ...(useDatabasePagination ? { skip: offset } : {}),
       ...(productCandidateLimit > 0 ? { take: productCandidateLimit } : {}),
