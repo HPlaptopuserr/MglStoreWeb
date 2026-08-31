@@ -1114,8 +1114,15 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     const hasCustomerCoordinates =
       normalizedCustomerLat !== null && normalizedCustomerLng !== null;
     const total = subtotal; // no delivery fee for now
+    const isPreorderOnlyCheckout = products.every(
+      (product) => product.supplyType === "CHINA_PREORDER",
+    );
 
-    if (STORE_MINIMUM_ORDER_AMOUNT > 0 && total < STORE_MINIMUM_ORDER_AMOUNT) {
+    if (
+      !isPreorderOnlyCheckout &&
+      STORE_MINIMUM_ORDER_AMOUNT > 0 &&
+      total < STORE_MINIMUM_ORDER_AMOUNT
+    ) {
       return res.status(400).json({
         code: "MINIMUM_ORDER_AMOUNT",
         message: `Захиалгын доод дүн ${STORE_MINIMUM_ORDER_AMOUNT.toLocaleString()}₮ байна.`,

@@ -435,7 +435,7 @@ export default function CheckoutPage() {
     }
 
     if (items.length === 0) return;
-    if (total < MINIMUM_ORDER_AMOUNT) {
+    if (!isPreorderCart && total < MINIMUM_ORDER_AMOUNT) {
       setMinimumOrderModalOpen(true);
       return;
     }
@@ -475,10 +475,6 @@ export default function CheckoutPage() {
       return;
     }
     if (items.length === 0) return;
-    if (total < MINIMUM_ORDER_AMOUNT) {
-      setMinimumOrderModalOpen(true);
-      return;
-    }
     if (!phone.trim()) {
       setError("Захиалга баталгаажуулах утасны дугаараа оруулна уу.");
       return;
@@ -536,7 +532,7 @@ export default function CheckoutPage() {
       setAuthOpen(true);
       return;
     }
-    if (total < MINIMUM_ORDER_AMOUNT) {
+    if (!isPreorderCart && total < MINIMUM_ORDER_AMOUNT) {
       setCheckoutStep("idle");
       setMinimumOrderModalOpen(true);
       return;
