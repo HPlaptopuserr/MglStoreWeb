@@ -1145,7 +1145,10 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       // Serialize checkout for each limited preorder so concurrent requests
       // cannot take the same final participant slot.
       for (const product of limitedPreorders) {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`preorder-capacity:${product.id}`}))`;
+        await tx.$queryRaw<Array<{ locked: number }>>`
+          SELECT 1 AS locked
+          FROM pg_advisory_xact_lock(hashtext(${`preorder-capacity:${product.id}`}))
+        `;
       }
 
       const preorderParticipants = await getPreorderParticipantIds(
