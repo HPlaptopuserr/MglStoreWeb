@@ -12,14 +12,17 @@ test("preorder capacity counts one customer once across multiple orders", async 
       findMany: async () => [
         {
           customerId: "customer-1",
+          createdAt: new Date("2026-08-01T00:00:00Z"),
           items: [{ productId: "product-1" }, { productId: "product-1" }],
         },
         {
           customerId: "customer-1",
+          createdAt: new Date("2026-08-02T00:00:00Z"),
           items: [{ productId: "product-1" }],
         },
         {
           customerId: "customer-2",
+          createdAt: new Date("2026-08-03T00:00:00Z"),
           items: [{ productId: "product-1" }],
         },
       ],
@@ -31,6 +34,35 @@ test("preorder capacity counts one customer once across multiple orders", async 
   assert.deepEqual([...(participants.get("product-1") ?? new Set())].sort(), [
     "customer-1",
     "customer-2",
+  ]);
+});
+
+test("preorder cycle ignores participants from earlier orders", async () => {
+  const db = {
+    order: {
+      findMany: async () => [
+        {
+          customerId: "old-customer",
+          createdAt: new Date("2026-08-01T00:00:00Z"),
+          items: [{ productId: "product-1" }],
+        },
+        {
+          customerId: "new-customer",
+          createdAt: new Date("2026-08-31T00:00:00Z"),
+          items: [{ productId: "product-1" }],
+        },
+      ],
+    },
+  } as unknown as PrismaClient;
+
+  const participants = await getPreorderParticipantIds(
+    db,
+    ["product-1"],
+    new Map([["product-1", new Date("2026-08-15T00:00:00Z")]]),
+  );
+
+  assert.deepEqual([...(participants.get("product-1") ?? new Set())], [
+    "new-customer",
   ]);
 });
 

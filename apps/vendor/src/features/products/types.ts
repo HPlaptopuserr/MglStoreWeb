@@ -44,6 +44,7 @@ export interface Product {
   supplyType: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays: number | null;
   preorderCapacity: number | null;
+  preorderCycleStartedAt?: string | null;
   preorderParticipantCount?: number;
   preorderRemaining?: number | null;
   preorderIsFull?: boolean;

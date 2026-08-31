@@ -3532,6 +3532,63 @@ router.post(
   },
 );
 
+/* ─── POST /products/:id/preorder-cycle/restart ─────────────────────── */
+router.post(
+  "/products/:id/preorder-cycle/restart",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const id = req.params.id as string;
+      const existing = await prisma.product.findUnique({
+        where: { id, deletedAt: null },
+      });
+      if (!existing) {
+        return res.status(404).json({ message: "Бараа олдсонгүй" });
+      }
+
+      const permission = await assertProductMutationPermission(
+        req,
+        res,
+        existing,
+      );
+      if (!permission) return;
+      if (
+        existing.supplyType !== "CHINA_PREORDER" ||
+        existing.preorderCapacity === null
+      ) {
+        return res.status(409).json({
+          message: "Зөвхөн багтаамжтай захиалгын барааг дахин эхлүүлнэ",
+        });
+      }
+
+      const preorderCycleStartedAt = new Date();
+      await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw<Array<{ locked: number }>>`
+          SELECT 1 AS locked
+          FROM pg_advisory_xact_lock(hashtext(${`preorder-capacity:${id}`}))
+        `;
+        await tx.product.update({
+          where: { id },
+          data: { preorderCycleStartedAt },
+        });
+      });
+
+      return res.json({
+        message: "Шинэ захиалгын мөчлөг эхэллээ",
+        preorderCycleStartedAt,
+        preorderParticipantCount: 0,
+        preorderRemaining: existing.preorderCapacity,
+        preorderIsFull: false,
+      });
+    } catch (error) {
+      console.error("restart preorder cycle error", error);
+      return res
+        .status(500)
+        .json({ message: "Захиалгыг дахин эхлүүлэхэд алдаа гарлаа" });
+    }
+  },
+);
+
 /* ─── PATCH /products/:id ───────────────────────────────────────────── */
 router.patch("/products/:id", requireAuth, async (req, res) => {
   try {

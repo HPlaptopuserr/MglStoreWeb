@@ -909,6 +909,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         stock: true,
         supplyType: true,
         preorderCapacity: true,
+        preorderCycleStartedAt: true,
         organizationId: true,
         managedByWarehouseId: true,
         warehouseInventories: {
@@ -1004,6 +1005,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
           stock: true,
           supplyType: true,
           preorderCapacity: true,
+          preorderCycleStartedAt: true,
           organizationId: true,
           managedByWarehouseId: true,
           warehouseInventories: {
@@ -1151,9 +1153,20 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         `;
       }
 
+      const currentPreorderCycles = await tx.product.findMany({
+        where: { id: { in: limitedPreorders.map((product) => product.id) } },
+        select: { id: true, preorderCycleStartedAt: true },
+      });
+
       const preorderParticipants = await getPreorderParticipantIds(
         tx,
         limitedPreorders.map((product) => product.id),
+        new Map(
+          currentPreorderCycles.map((product) => [
+            product.id,
+            product.preorderCycleStartedAt,
+          ]),
+        ),
       );
       for (const product of limitedPreorders) {
         const participantCount =

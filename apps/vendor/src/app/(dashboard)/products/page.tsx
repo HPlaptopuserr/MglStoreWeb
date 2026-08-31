@@ -21,6 +21,7 @@ import {
   Lock,
   AlertTriangle,
   Printer,
+  RotateCcw,
 } from "lucide-react";
 import { ProductLabelPrintDialog } from "@mgl/ui";
 import { API, authFetch } from "@/lib/api";
@@ -130,6 +131,9 @@ export default function ProductsPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [labelPrintOpen, setLabelPrintOpen] = useState(false);
+  const [restartingPreorderId, setRestartingPreorderId] = useState<
+    string | null
+  >(null);
 
   const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null);
 
@@ -162,6 +166,56 @@ export default function ProductsPage() {
   const showToast = (type: "success" | "error", msg: string) => {
     setToast({ type, msg });
     setTimeout(() => setToast(null), 3500);
+  };
+
+  const restartPreorderCycle = async (product: Product) => {
+    const confirmed = window.confirm(
+      `“${product.name}” барааны захиалгыг 0/${product.preorderCapacity ?? 0}-оос дахин эхлүүлэх үү? Өмнөх захиалгууд устахгүй.`,
+    );
+    if (!confirmed) return;
+
+    setRestartingPreorderId(product.id);
+    try {
+      const response = await authFetch(
+        `${API}/products/${product.id}/preorder-cycle/restart`,
+        { method: "POST" },
+      );
+      const data = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        preorderCycleStartedAt?: string;
+        preorderParticipantCount?: number;
+        preorderRemaining?: number;
+        preorderIsFull?: boolean;
+      };
+      if (!response.ok) {
+        throw new Error(data.message || "Захиалгыг дахин эхлүүлж чадсангүй");
+      }
+
+      const restartedProduct: Product = {
+        ...product,
+        preorderCycleStartedAt: data.preorderCycleStartedAt ?? null,
+        preorderParticipantCount: data.preorderParticipantCount ?? 0,
+        preorderRemaining:
+          data.preorderRemaining ?? product.preorderCapacity ?? null,
+        preorderIsFull: data.preorderIsFull ?? false,
+      };
+      setProducts((current) =>
+        current.map((item) =>
+          item.id === restartedProduct.id ? restartedProduct : item,
+        ),
+      );
+      setSelectedProduct(restartedProduct);
+      showToast("success", data.message || "Шинэ захиалгын мөчлөг эхэллээ");
+    } catch (error: unknown) {
+      showToast(
+        "error",
+        error instanceof Error
+          ? error.message
+          : "Захиалгыг дахин эхлүүлэхэд алдаа гарлаа",
+      );
+    } finally {
+      setRestartingPreorderId(null);
+    }
   };
 
   const fetchProducts = useCallback(async () => {
@@ -1015,15 +1069,43 @@ export default function ProductsPage() {
                     хоног
                   </p>
                   {selectedProduct.preorderCapacity && (
-                    <p className="mt-1 font-semibold">
-                      Захиалсан: {selectedProduct.preorderParticipantCount ?? 0}
-                      /{selectedProduct.preorderCapacity} хүн
-                      {selectedProduct.preorderIsFull
-                        ? " · Дүүрсэн"
-                        : selectedProduct.preorderRemaining != null
-                          ? ` · ${selectedProduct.preorderRemaining} хүн дутуу`
-                          : ""}
-                    </p>
+                    <>
+                      <p className="mt-1 font-semibold">
+                        Захиалсан:{" "}
+                        {selectedProduct.preorderParticipantCount ?? 0}/
+                        {selectedProduct.preorderCapacity} хүн
+                        {selectedProduct.preorderIsFull
+                          ? " · Дүүрсэн"
+                          : selectedProduct.preorderRemaining != null
+                            ? ` · ${selectedProduct.preorderRemaining} хүн дутуу`
+                            : ""}
+                      </p>
+                      {selectedProduct.preorderIsFull && (
+                        <div className="mt-4 rounded-xl border border-blue-200 bg-white p-3">
+                          <p className="text-xs leading-5 text-slate-600">
+                            Өмнөх захиалгуудыг хадгалж, тоолуурыг тэглэн шинэ
+                            мөчлөг эхлүүлнэ.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void restartPreorderCycle(selectedProduct)
+                            }
+                            disabled={
+                              restartingPreorderId === selectedProduct.id
+                            }
+                            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {restartingPreorderId === selectedProduct.id ? (
+                              <Loader2 size={15} className="animate-spin" />
+                            ) : (
+                              <RotateCcw size={15} />
+                            )}
+                            Шинэ захиалга эхлүүлэх
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                   {selectedProduct.preorderSupplierFrontImageUrl &&
                     selectedProduct.preorderSupplierBackImageUrl && (

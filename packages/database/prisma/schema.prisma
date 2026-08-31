@@ -1047,6 +1047,7 @@ model Product {
   supplyType            ProductSupplyType             @default(IN_STOCK)
   preorderLeadTimeDays  Int?
   preorderCapacity      Int?
+  preorderCycleStartedAt DateTime?
   preorderNote          String?
   preorderPriceCurrency String?                       @db.VarChar(3)
   preorderPriceAmount   Decimal?                      @db.Decimal(18, 4)

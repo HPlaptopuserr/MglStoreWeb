@@ -23,6 +23,7 @@ export type PreorderCapacityProgress = {
 export async function getPreorderParticipantIds(
   db: PreorderDatabaseClient,
   productIds: string[],
+  cycleStartedAtByProductId: ReadonlyMap<string, Date | null> = new Map(),
 ) {
   const uniqueProductIds = [...new Set(productIds)];
   const participantsByProductId = new Map<string, Set<string>>(
@@ -40,6 +41,7 @@ export async function getPreorderParticipantIds(
     },
     select: {
       customerId: true,
+      createdAt: true,
       items: {
         where: { productId: { in: uniqueProductIds } },
         select: { productId: true },
@@ -49,6 +51,8 @@ export async function getPreorderParticipantIds(
 
   for (const order of orders) {
     for (const item of order.items) {
+      const cycleStartedAt = cycleStartedAtByProductId.get(item.productId);
+      if (cycleStartedAt && order.createdAt < cycleStartedAt) continue;
       participantsByProductId.get(item.productId)?.add(order.customerId);
     }
   }
@@ -81,6 +85,7 @@ export async function getPreorderCapacityProgress(
     id: string;
     supplyType: string;
     preorderCapacity: number | null;
+    preorderCycleStartedAt?: Date | null;
   }>,
 ) {
   const preorderProducts = products.filter(
@@ -91,6 +96,12 @@ export async function getPreorderCapacityProgress(
   const participantIds = await getPreorderParticipantIds(
     db,
     preorderProducts.map((product) => product.id),
+    new Map(
+      preorderProducts.map((product) => [
+        product.id,
+        product.preorderCycleStartedAt ?? null,
+      ]),
+    ),
   );
 
   return new Map(
