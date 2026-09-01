@@ -32,7 +32,7 @@ test("product import column map resolves the current product fields", () => {
   assert.equal(resolveCol(row, PRODUCT_COL_MAP.marketplacePriority), 100);
 });
 
-test("template workbook receives category and tax type dropdowns", async () => {
+test("template workbook receives category, tax type, and tax code dropdowns", async () => {
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(
     workbook,
@@ -74,12 +74,13 @@ test("template workbook receives category and tax type dropdowns", async () => {
   const source = Buffer.from(
     XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }),
   );
-  const result = await addCategoryDropdownToWorkbook(source, 1, "L");
+  const result = await addCategoryDropdownToWorkbook(source, 1, "L", 51, "O");
   const zip = await JSZip.loadAsync(result);
   const sheetXml = await zip.file("xl/worksheets/sheet1.xml")!.async("text");
 
   assert.match(sheetXml, /sqref="D2:D1001"/);
   assert.match(sheetXml, /sqref="L2:L1001"/);
+  assert.match(sheetXml, /sqref="O2:O1001"/);
   assert.match(sheetXml, /Ангиллууд/);
   assert.match(sheetXml, /Татварын төрөл/);
 });

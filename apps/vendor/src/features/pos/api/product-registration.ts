@@ -41,7 +41,10 @@ export async function findSharedProductsByBarcode(
 
   if (!response.ok) {
     throw new Error(
-      await readApiError(response, "Нэгдсэн барааны сангаас хайхад алдаа гарлаа"),
+      await readApiError(
+        response,
+        "Нэгдсэн барааны сангаас хайхад алдаа гарлаа",
+      ),
     );
   }
 
@@ -66,13 +69,15 @@ export async function registerProductFromPos(
       supplyType: "IN_STOCK",
       taxType: "VAT_ABLE",
       cityTaxRate: 0,
-      classificationCode: "4711000",
+      classificationCode: "6212991",
       images: input.imageUrl ? [input.imageUrl] : [],
     }),
   });
 
   if (!response.ok) {
-    throw new Error(await readApiError(response, "Бараа бүртгэхэд алдаа гарлаа"));
+    throw new Error(
+      await readApiError(response, "Бараа бүртгэхэд алдаа гарлаа"),
+    );
   }
 
   const product = (await response.json()) as CreatedProduct;
@@ -89,11 +94,10 @@ export async function registerProductFromPos(
     taxType: product.taxType || "VAT_ABLE",
     taxRate: product.taxType === "VAT_ABLE" ? 10 : 0,
     cityTaxRate: Number(product.cityTaxRate) || 0,
-    classificationCode: product.classificationCode || "4711000",
+    classificationCode: product.classificationCode || "6212991",
     taxProductCode: product.taxProductCode || null,
     measureUnit: "pcs",
     isActive: true,
     categoryName: product.businessCategory?.name ?? null,
   };
 }
-

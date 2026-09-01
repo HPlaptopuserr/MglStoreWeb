@@ -259,7 +259,7 @@ router.get("/pos/products", async (req, res) => {
           taxType: p.taxType || "VAT_ABLE",
           taxRate: p.taxType === "VAT_ABLE" ? 10 : 0,
           cityTaxRate: Number(p.cityTaxRate || 0),
-          classificationCode: p.classificationCode || "4711000",
+          classificationCode: p.classificationCode || "6212991",
           taxProductCode: p.taxProductCode || null,
           measureUnit: "pcs",
           expiryDate: expiryDate?.toISOString() ?? null,
@@ -782,11 +782,9 @@ router.get("/pos/credit-customers", async (req, res) => {
       actor.role !== "ADMIN" &&
       !(await hasOrgMembership(actor.id, effectiveOrgId))
     ) {
-      return res
-        .status(403)
-        .json({
-          message: "Энэ байгууллагын зээлдэгчийн жагсаалт харах эрхгүй",
-        });
+      return res.status(403).json({
+        message: "Энэ байгууллагын зээлдэгчийн жагсаалт харах эрхгүй",
+      });
     }
 
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
@@ -887,14 +885,18 @@ router.post("/pos/credit-sales/pay-bulk", async (req, res) => {
       },
     });
     if (credits.length !== creditSaleIds.length) {
-      return res.status(404).json({ message: "Зарим зээлийн бүртгэл олдсонгүй" });
+      return res
+        .status(404)
+        .json({ message: "Зарим зээлийн бүртгэл олдсонгүй" });
     }
 
-    const organizationIds = new Set(credits.map((credit) => credit.organizationId));
+    const organizationIds = new Set(
+      credits.map((credit) => credit.organizationId),
+    );
     if (organizationIds.size !== 1) {
-      return res
-        .status(400)
-        .json({ message: "Нийт төлөлт зөвхөн нэг байгууллагын зээлүүд дээр хийгдэнэ" });
+      return res.status(400).json({
+        message: "Нийт төлөлт зөвхөн нэг байгууллагын зээлүүд дээр хийгдэнэ",
+      });
     }
     const organizationId = credits[0]!.organizationId;
     if (
@@ -980,7 +982,10 @@ router.post("/pos/credit-sales/pay-bulk", async (req, res) => {
             throw toApiError(409, "QPay төлбөр баталгаажаагүй байна");
           if (invoice.saleReference || invoice.consumedAt)
             throw toApiError(409, "QPay invoice аль хэдийн ашиглагдсан байна");
-          if (!invoice.organizationId || invoice.organizationId !== organizationId) {
+          if (
+            !invoice.organizationId ||
+            invoice.organizationId !== organizationId
+          ) {
             throw toApiError(400, "QPay invoice байгууллага зөрүүтэй байна");
           }
           if (!moneyMatches(Number(invoice.amount), paidAmount)) {
@@ -1007,7 +1012,10 @@ router.post("/pos/credit-sales/pay-bulk", async (req, res) => {
             throw toApiError(409, "Картын төлбөр баталгаажаагүй байна");
           if (attempt.saleReference || attempt.consumedAt)
             throw toApiError(409, "Card attempt аль хэдийн ашиглагдсан байна");
-          if (!attempt.organizationId || attempt.organizationId !== organizationId) {
+          if (
+            !attempt.organizationId ||
+            attempt.organizationId !== organizationId
+          ) {
             throw toApiError(400, "Card attempt байгууллага зөрүүтэй байна");
           }
           if (!moneyMatches(Number(attempt.amount), paidAmount)) {
@@ -1168,11 +1176,9 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
       normalizePaymentMethod(String(req.body.paymentMethod || "")) ||
       PaymentMethod.CASH;
     if (paymentMethod === PaymentMethod.CREDIT) {
-      return res
-        .status(400)
-        .json({
-          message: "Зээлийн төлөлтийг CREDIT хэлбэрээр бүртгэх боломжгүй",
-        });
+      return res.status(400).json({
+        message: "Зээлийн төлөлтийг CREDIT хэлбэрээр бүртгэх боломжгүй",
+      });
     }
 
     const payable = calculatePosCreditPayable({
@@ -1346,14 +1352,12 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
       },
     );
 
-    return res
-      .status(200)
-      .json({
-        credit: mapCreditSaleResponse({
-          ...updated,
-          createdAt: updated.sale.createdAt,
-        }),
-      });
+    return res.status(200).json({
+      credit: mapCreditSaleResponse({
+        ...updated,
+        createdAt: updated.sale.createdAt,
+      }),
+    });
   } catch (error) {
     const known = error as ApiError;
     if (known?.status && known?.message) {
@@ -1512,7 +1516,9 @@ router.post("/pos/sales/:id/void", async (req, res) => {
             data: {
               status: RestaurantTicketStatus.CANCELLED,
               closedAt: voidedAt,
-              note: existingNote ? `${existingNote}\nVOID: ${reason}` : `VOID: ${reason}`,
+              note: existingNote
+                ? `${existingNote}\nVOID: ${reason}`
+                : `VOID: ${reason}`,
             },
           });
 

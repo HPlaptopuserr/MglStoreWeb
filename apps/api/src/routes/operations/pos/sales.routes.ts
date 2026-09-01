@@ -533,11 +533,9 @@ router.post("/pos/loyalty/redeem-sessions", async (req, res) => {
       effectiveOrganizationId = register.organizationId;
       branchId = branchId || register.branchId;
       if (branchId !== register.branchId) {
-        return res
-          .status(400)
-          .json({
-            message: "Sale branchId нь register branch-тэй зөрүүтэй байна",
-          });
+        return res.status(400).json({
+          message: "Sale branchId нь register branch-тэй зөрүүтэй байна",
+        });
       }
     }
 
@@ -1325,7 +1323,9 @@ router.post("/pos/sales", async (req, res) => {
           select: { value: true },
         });
         const multiPriceEnabled = ["1", "true", "on", "yes"].includes(
-          String(multiPriceSetting?.value || "").trim().toLowerCase(),
+          String(multiPriceSetting?.value || "")
+            .trim()
+            .toLowerCase(),
         );
 
         const lineDetails = lines.map((line) => {
@@ -1350,7 +1350,10 @@ router.post("/pos/sales", async (req, res) => {
                 ? product?.orderPrice
                 : product?.price;
           if (configuredPrice == null) {
-            throw toApiError(400, `"${product?.name || line.productId}" бараанд сонгосон үнэ тохируулагдаагүй байна`);
+            throw toApiError(
+              400,
+              `"${product?.name || line.productId}" бараанд сонгосон үнэ тохируулагдаагүй байна`,
+            );
           }
           const unitPrice = Number(configuredPrice);
           if (!moneyMatches(Number(line.unitPrice), unitPrice)) {
@@ -1385,7 +1388,7 @@ router.post("/pos/sales", async (req, res) => {
             taxRate,
             cityTaxRate,
             cityTaxAmount,
-            classificationCode: product?.classificationCode || "4711000",
+            classificationCode: product?.classificationCode || "6212991",
             taxProductCode: product?.taxProductCode || null,
             measureUnit: "pcs",
             discount: discountTotal,

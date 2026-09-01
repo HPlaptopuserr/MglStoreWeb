@@ -22,7 +22,11 @@ export type RestaurantPosRegister = {
   cardTerminalId: string | null;
   terminalBridgeUrl: string | null;
   hasOwnCardTerminal?: boolean;
-  cardTerminalSource?: "REGISTER" | "ORG_REGISTER" | "CARD_TERMINAL_REQUEST" | null;
+  cardTerminalSource?:
+    | "REGISTER"
+    | "ORG_REGISTER"
+    | "CARD_TERMINAL_REQUEST"
+    | null;
   cardTerminalSourceRegisterId?: string | null;
   cardTerminalSourceRequestId?: string | null;
   qpayEnabled: boolean;
@@ -86,7 +90,14 @@ export type RestaurantTicket = {
   shiftId: string;
   tableId: string | null;
   orderMode: "DINE_IN" | "TO_GO" | "DELIVERY";
-  status: "OPEN" | "KITCHEN" | "READY" | "SERVED" | "PAID" | "CLOSED" | "CANCELLED";
+  status:
+    | "OPEN"
+    | "KITCHEN"
+    | "READY"
+    | "SERVED"
+    | "PAID"
+    | "CLOSED"
+    | "CANCELLED";
   guestCount: number;
   note: string | null;
   openedAt: string;
@@ -455,9 +466,13 @@ async function getRestaurantClientBridgeHealth(
       signal: controller.signal,
       cache: "no-store",
     });
-    const data = (await response.json().catch(() => ({}))) as RestaurantClientBridgeHealth;
+    const data = (await response
+      .json()
+      .catch(() => ({}))) as RestaurantClientBridgeHealth;
     if (!response.ok) {
-      throw new Error(String(data.message || `Bridge health HTTP ${response.status}`));
+      throw new Error(
+        String(data.message || `Bridge health HTTP ${response.status}`),
+      );
     }
     return data;
   } catch (error) {
@@ -489,7 +504,9 @@ export async function chargeRestaurantClientBridge(input: {
   }
 
   if (health.ok === false) {
-    throw new Error(health.message || "Android PGW terminal холбогдоогүй байна");
+    throw new Error(
+      health.message || "Android PGW terminal холбогдоогүй байна",
+    );
   }
 
   const controller = new AbortController();
@@ -752,7 +769,7 @@ export async function createRestaurantMenuProduct(input: {
       preparationMinutes: input.preparationMinutes,
       taxType: "VAT_ABLE",
       cityTaxRate: 0,
-      classificationCode: "4711000",
+      classificationCode: "6212991",
       images: [],
     }),
   });

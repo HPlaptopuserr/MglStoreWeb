@@ -880,7 +880,7 @@ router.get("/restaurant/menu/:token", async (req, res) => {
         taxType: product.taxType || "VAT_ABLE",
         taxRate: product.taxType === "VAT_ABLE" ? 10 : 0,
         cityTaxRate: Number(product.cityTaxRate || 0),
-        classificationCode: product.classificationCode || "4711000",
+        classificationCode: product.classificationCode || "6212991",
         taxProductCode: product.taxProductCode || null,
         menuCategory: product.menuCategory,
         kitchenStation: product.kitchenStation,

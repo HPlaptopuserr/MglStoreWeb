@@ -72,7 +72,7 @@ export async function getOwnProducts(
       taxType: item.taxType || "VAT_ABLE",
       taxRate: taxRateFromType(item.taxType || "VAT_ABLE"),
       cityTaxRate: Number(item.cityTaxRate) || 0,
-      classificationCode: item.classificationCode || "4711000",
+      classificationCode: item.classificationCode || "6212991",
       taxProductCode: item.taxProductCode || null,
       measureUnit: "pcs",
       isActive: item.isActive,

@@ -25,6 +25,12 @@ import {
   CreditCard,
 } from "lucide-react";
 import { ProductLabelPrintDialog } from "@mgl/ui";
+import {
+  EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
+  isValidEbarimtClassificationCode,
+  isValidEbarimtTaxProductCode,
+  requiresEbarimtTaxProductCode,
+} from "@mgl/types";
 import { API, authFetch } from "@/lib/api";
 import {
   isFeatureEnabled,
@@ -42,8 +48,9 @@ import {
 
 type TaxCodeFilter = "all" | "with-code" | "without-code";
 
-const hasTaxProductCode = (product: Product) =>
-  Boolean(product.taxProductCode?.trim());
+const hasCompleteEbarimtTaxSetup = (product: Product) =>
+  isValidEbarimtClassificationCode(product.classificationCode) &&
+  isValidEbarimtTaxProductCode(product.taxType, product.taxProductCode);
 
 const EMPTY_FORM: FormState = {
   masterProductId: "",
@@ -57,7 +64,7 @@ const EMPTY_FORM: FormState = {
   costPrice: "",
   taxType: "VAT_ABLE",
   cityTaxRate: "0",
-  classificationCode: "4711000",
+  classificationCode: EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
   taxProductCode: "",
   stock: "0",
   expiryDate: "",
@@ -419,7 +426,8 @@ export default function ProductsPage() {
       costPrice: p.costPrice != null ? String(p.costPrice) : "",
       taxType: p.taxType || "VAT_ABLE",
       cityTaxRate: p.cityTaxRate != null ? String(p.cityTaxRate) : "0",
-      classificationCode: p.classificationCode || "4711000",
+      classificationCode:
+        p.classificationCode || EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
       taxProductCode: p.taxProductCode || "",
       stock: String(p.stock),
       expiryDate: toDateInputValue(p.expiryDate),
@@ -520,6 +528,20 @@ export default function ProductsPage() {
     if (isNaN(cityTaxRate) || cityTaxRate < 0 || cityTaxRate > 100) {
       return showToast("error", "Хотын татвар 0-100 хооронд байх ёстой");
     }
+    if (!isValidEbarimtClassificationCode(form.classificationCode)) {
+      return showToast(
+        "error",
+        "Нэгдсэн ангиллын 7 оронтой зөв код сонгоно уу",
+      );
+    }
+    if (!isValidEbarimtTaxProductCode(form.taxType, form.taxProductCode)) {
+      return showToast(
+        "error",
+        form.taxType === "VAT_FREE"
+          ? "НӨАТ-аас чөлөөлөгдөх 3 оронтой татварын код сонгоно уу"
+          : "НӨАТ 0%-ийн 3 оронтой татварын код сонгоно уу",
+      );
+    }
     const marketplacePriority = form.marketplacePriority.trim()
       ? parseInt(form.marketplacePriority, 10)
       : 0;
@@ -549,8 +571,10 @@ export default function ProductsPage() {
         costPrice,
         taxType: form.taxType,
         cityTaxRate,
-        classificationCode: form.classificationCode.trim() || "4711000",
-        taxProductCode: form.taxProductCode.trim() || null,
+        classificationCode: form.classificationCode.trim(),
+        taxProductCode: requiresEbarimtTaxProductCode(form.taxType)
+          ? form.taxProductCode.trim()
+          : null,
         stock: stockNum,
         expiryDate,
         supplyType: form.supplyType,
@@ -686,7 +710,7 @@ export default function ProductsPage() {
         (statusFilter === "active" && p.isActive) ||
         (statusFilter === "inactive" && !p.isActive);
 
-      const hasTaxCode = hasTaxProductCode(p);
+      const hasTaxCode = hasCompleteEbarimtTaxSetup(p);
       const matchTaxCode =
         taxCodeFilter === "all" ||
         (taxCodeFilter === "with-code" && hasTaxCode) ||
@@ -951,7 +975,7 @@ export default function ProductsPage() {
           },
           {
             label: "Татварын кодтой",
-            value: visibleProducts.filter(hasTaxProductCode).length,
+            value: visibleProducts.filter(hasCompleteEbarimtTaxSetup).length,
             icon: Layers,
             color: "bg-blue-50 text-blue-600",
           },
@@ -1485,13 +1509,14 @@ export default function ProductsPage() {
                     {
                       key: "with-code",
                       label: "Татварын кодтой",
-                      count: visibleProducts.filter(hasTaxProductCode).length,
+                      count: visibleProducts.filter(hasCompleteEbarimtTaxSetup)
+                        .length,
                     },
                     {
                       key: "without-code",
                       label: "Татварын кодгүй",
                       count: visibleProducts.filter(
-                        (product) => !hasTaxProductCode(product),
+                        (product) => !hasCompleteEbarimtTaxSetup(product),
                       ).length,
                     },
                   ].map((button) => (

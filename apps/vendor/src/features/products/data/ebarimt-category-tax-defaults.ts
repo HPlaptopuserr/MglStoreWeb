@@ -1,6 +1,7 @@
 import type { BusinessCategory } from "../types";
+import { getEbarimtGroceryClassificationCode } from "@mgl/types";
 
-const CATEGORY_TAX_SEARCH_TERMS: Record<string, string[]> = {
+const CATEGORY_CLASSIFICATION_SEARCH_TERMS: Record<string, string[]> = {
   "fresh-produce": ["жимс", "хүнсний ногоо", "ногоо"],
   "meat-seafood": ["мах", "загас", "далайн бүтээгдэхүүн"],
   "dairy-products": ["сүү", "тараг", "цагаан идээ"],
@@ -19,11 +20,22 @@ const CATEGORY_TAX_SEARCH_TERMS: Record<string, string[]> = {
   "pet-food": ["амьтны хоол", "тэжээл"],
 };
 
-export function getCategoryTaxSearchText(category: BusinessCategory | null | undefined) {
+export function getCategoryClassificationSearchText(
+  category: BusinessCategory | null | undefined,
+) {
   if (!category) return "";
 
-  const explicitTerms = CATEGORY_TAX_SEARCH_TERMS[category.slug] ?? [];
+  const explicitTerms =
+    CATEGORY_CLASSIFICATION_SEARCH_TERMS[category.slug] ?? [];
   return [category.name, category.slug.replace(/-/g, " "), ...explicitTerms]
     .filter(Boolean)
     .join(" ");
+}
+
+export function getCategoryAutomaticClassificationCode(
+  category: BusinessCategory | null | undefined,
+  productName = "",
+) {
+  if (!category) return null;
+  return getEbarimtGroceryClassificationCode(category.slug, productName);
 }

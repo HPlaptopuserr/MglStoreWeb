@@ -544,6 +544,8 @@ export async function addCategoryDropdownToWorkbook(
   buffer: Buffer,
   categoryCount: number,
   taxTypeColumn = "J",
+  taxProductCodeCount = 0,
+  taxProductCodeColumn = "M",
 ): Promise<Buffer> {
   const zip = await JSZip.loadAsync(buffer);
   const sheetPath = "xl/worksheets/sheet1.xml";
@@ -562,6 +564,13 @@ export async function addCategoryDropdownToWorkbook(
     `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="Татварын төрөл буруу" error="Жагсаалтаас татварын төрлөө сонгоно уу" sqref="${taxTypeColumn}2:${taxTypeColumn}1001">` +
       `<formula1>&apos;Татварын төрөл&apos;!$A$2:$A$5</formula1>` +
       `</dataValidation>`,
+    ...(taxProductCodeCount > 0
+      ? [
+          `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorTitle="Татварын код буруу" error="Татварын кодууд хуудаснаас тохирох кодоо сонгоно уу" sqref="${taxProductCodeColumn}2:${taxProductCodeColumn}1001">` +
+            `<formula1>&apos;Татварын кодууд&apos;!$A$2:$A$${taxProductCodeCount + 1}</formula1>` +
+            `</dataValidation>`,
+        ]
+      : []),
   ];
   const validationXml =
     `<dataValidations count="${validations.length}">` +

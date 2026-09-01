@@ -24,7 +24,14 @@ import {
   EBARIMT_TAX_PRODUCT_CODES,
   type EbarimtTaxProductCode,
 } from "../data/ebarimt-tax-product-codes";
-import { getCategoryTaxSearchText } from "../data/ebarimt-category-tax-defaults";
+import {
+  getCategoryAutomaticClassificationCode,
+  getCategoryClassificationSearchText,
+} from "../data/ebarimt-category-tax-defaults";
+import {
+  getEbarimtTaxProductCodes,
+  requiresEbarimtTaxProductCode,
+} from "@mgl/types";
 
 interface Props {
   form: FormState;
@@ -39,17 +46,11 @@ interface Props {
 }
 
 const TAX_TYPE_OPTIONS = [
-  { value: "VAT_ABLE", label: "VAT_ABLE - НӨАТ-тэй" },
-  { value: "VAT_FREE", label: "VAT_FREE - НӨАТ-аас чөлөөлөгдсөн" },
+  { value: "VAT_ABLE", label: "VAT_ABLE - Ердийн борлуулалт" },
+  { value: "VAT_FREE", label: "VAT_FREE - Хуулиар чөлөөлөгдсөн" },
   { value: "VAT_ZERO", label: "VAT_ZERO - НӨАТ 0%" },
-  { value: "NOT_VAT", label: "NOT_VAT - НӨАТ ногдохгүй" },
+  { value: "NOT_VAT", label: "NOT_VAT - Монгол Улсын хилийн гаднах" },
 ] as const;
-
-const TAX_PRODUCT_CODE_REQUIRED_TYPES = new Set([
-  "VAT_FREE",
-  "VAT_ZERO",
-  "NOT_VAT",
-]);
 
 const TAX_CODE_SYNONYMS: Record<string, string[]> = {
   beef: ["үхрийн", "мах"],
@@ -139,7 +140,10 @@ function findBusinessCategoryByName(
   return null;
 }
 
-function scoreTaxProductCode(entry: EbarimtTaxProductCode, tokens: string[]) {
+function scoreClassificationCode(
+  entry: EbarimtTaxProductCode,
+  tokens: string[],
+) {
   if (!tokens.length) return 0;
 
   const fields = [
@@ -187,13 +191,13 @@ function scoreTaxProductCode(entry: EbarimtTaxProductCode, tokens: string[]) {
   }, 0);
 }
 
-function getTaxProductCodeSuggestions(query: string) {
+function getClassificationCodeSuggestions(query: string) {
   const tokens = getTaxSearchTokens(query);
   if (!tokens.length) return [];
 
   return EBARIMT_TAX_PRODUCT_CODES.map((entry) => ({
     entry,
-    score: scoreTaxProductCode(entry, tokens),
+    score: scoreClassificationCode(entry, tokens),
   }))
     .filter((item) => item.score > 0)
     .sort(
@@ -219,49 +223,68 @@ export function ProductFormModal({
     () => findBusinessCategory(categories, form.businessCategoryId),
     [categories, form.businessCategoryId],
   );
-  const selectedCategoryTaxSearchText = useMemo(
-    () => getCategoryTaxSearchText(selectedCategory),
+  const selectedCategoryClassificationSearchText = useMemo(
+    () => getCategoryClassificationSearchText(selectedCategory),
     [selectedCategory],
   );
-  const categoryDefaultTaxProductCode = useMemo(
-    () =>
-      getTaxProductCodeSuggestions(selectedCategoryTaxSearchText)[0] ?? null,
-    [selectedCategoryTaxSearchText],
+  const categoryAutomaticClassificationCode = useMemo(
+    () => getCategoryAutomaticClassificationCode(selectedCategory, form.name),
+    [selectedCategory, form.name],
   );
-  const taxProductCodeQuery = [
-    form.taxProductCode,
+  const classificationCodeQuery = [
+    form.classificationCode,
     form.name,
-    selectedCategoryTaxSearchText,
+    selectedCategoryClassificationSearchText,
   ]
     .filter(Boolean)
     .join(" ");
-  const taxProductCodeSuggestions = useMemo(
-    () => getTaxProductCodeSuggestions(taxProductCodeQuery),
-    [taxProductCodeQuery],
+  const classificationCodeSuggestions = useMemo(
+    () => getClassificationCodeSuggestions(classificationCodeQuery),
+    [classificationCodeQuery],
   );
-  const selectedTaxProductCode = useMemo(
+  const selectedClassificationCode = useMemo(
     () =>
       EBARIMT_TAX_PRODUCT_CODES.find(
-        (entry) => entry.code === form.taxProductCode.trim(),
+        (entry) => entry.code === form.classificationCode.trim(),
       ),
-    [form.taxProductCode],
+    [form.classificationCode],
   );
-  const isTaxProductCodeRequired = TAX_PRODUCT_CODE_REQUIRED_TYPES.has(
-    form.taxType,
+  const taxProductCodes = useMemo(
+    () => getEbarimtTaxProductCodes(form.taxType),
+    [form.taxType],
   );
+  const isTaxProductCodeRequired = requiresEbarimtTaxProductCode(form.taxType);
   const applyBusinessCategory = (id: string) => {
     const category = findBusinessCategory(categories, id);
-    const defaultTaxProductCode =
-      getTaxProductCodeSuggestions(getCategoryTaxSearchText(category))[0]
-        ?.code || "";
+    const automaticClassificationCode = getCategoryAutomaticClassificationCode(
+      category,
+      form.name,
+    );
 
     setForm((current) => ({
       ...current,
       businessCategoryId: id,
-      taxProductCode: current.taxProductCode.trim()
-        ? current.taxProductCode
-        : defaultTaxProductCode,
+      classificationCode:
+        automaticClassificationCode ?? current.classificationCode,
     }));
+  };
+  const applyProductName = (name: string) => {
+    setForm((current) => {
+      const previousAutomaticClassificationCode =
+        getCategoryAutomaticClassificationCode(selectedCategory, current.name);
+      const nextAutomaticClassificationCode =
+        getCategoryAutomaticClassificationCode(selectedCategory, name);
+      return {
+        ...current,
+        name,
+        masterProductId: "",
+        classificationCode:
+          nextAutomaticClassificationCode &&
+          current.classificationCode === previousAutomaticClassificationCode
+            ? nextAutomaticClassificationCode
+            : current.classificationCode,
+      };
+    });
   };
   const duplicateProduct =
     form.sku || form.barcode
@@ -322,13 +345,7 @@ export function ProductFormModal({
                       className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all placeholder:text-slate-400"
                       placeholder="Жишээ: Цэвэр ус 0.5л"
                       value={form.name}
-                      onChange={(e) =>
-                        setForm((f) => ({
-                          ...f,
-                          name: e.target.value,
-                          masterProductId: "",
-                        }))
-                      }
+                      onChange={(e) => applyProductName(e.target.value)}
                     />
                   </div>
 
@@ -423,6 +440,13 @@ export function ProductFormModal({
                           current.businessCategoryId ||
                           matchedCategory?.id ||
                           "",
+                        classificationCode:
+                          !current.businessCategoryId && matchedCategory
+                            ? (getCategoryAutomaticClassificationCode(
+                                matchedCategory,
+                                product.canonicalName,
+                              ) ?? current.classificationCode)
+                            : current.classificationCode,
                       }));
                     }}
                   />
@@ -593,17 +617,22 @@ export function ProductFormModal({
                     )}
                   </div>
 
-                  <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
-                    <div className="mb-3">
-                      <p className="text-sm font-bold text-emerald-800">
-                        eBarimt татварын тохиргоо
-                      </p>
-                      <p className="mt-0.5 text-xs font-medium text-emerald-700">
-                        POS дээр сагслахад татвар болон eBarimt payload-д
-                        ашиглагдана.
-                      </p>
-                    </div>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <details className="group rounded-2xl border border-slate-200 bg-slate-50/60">
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
+                      <span>
+                        <span className="block text-sm font-bold text-slate-800">
+                          eBarimt нэмэлт тохиргоо
+                        </span>
+                        <span className="mt-0.5 block text-xs font-medium text-slate-500">
+                          Ердийн бараанд автоматаар тохирно. Зөвхөн татварын
+                          тусгай нөхцөлтэй үед нээнэ.
+                        </span>
+                      </span>
+                      <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600 ring-1 ring-slate-200 group-open:bg-emerald-50 group-open:text-emerald-700 group-open:ring-emerald-200">
+                        {form.taxType === "VAT_ABLE" ? "Ердийн" : form.taxType}
+                      </span>
+                    </summary>
+                    <div className="grid grid-cols-1 gap-4 border-t border-slate-200 px-4 py-4 sm:grid-cols-2">
                       <div className="space-y-2">
                         <label className="text-sm font-semibold text-slate-700">
                           Татварын төрөл
@@ -617,6 +646,11 @@ export function ProductFormModal({
                             setForm((current) => ({
                               ...current,
                               taxType,
+                              taxProductCode: requiresEbarimtTaxProductCode(
+                                taxType,
+                              )
+                                ? current.taxProductCode
+                                : "",
                             }));
                           }}
                         >
@@ -648,13 +682,22 @@ export function ProductFormModal({
                         />
                       </div>
 
-                      <div className="space-y-2">
-                        <label className="text-sm font-semibold text-slate-700">
-                          Ангиллын код
-                        </label>
+                      <div className="space-y-2 sm:col-span-2">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <label className="text-sm font-semibold text-slate-700">
+                            Нэгдсэн ангилал (7 орон)
+                          </label>
+                          {selectedClassificationCode && (
+                            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                              {selectedClassificationCode.name}
+                            </span>
+                          )}
+                        </div>
                         <input
                           className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
-                          placeholder="4711000"
+                          inputMode="numeric"
+                          maxLength={7}
+                          placeholder="7 оронтой код"
                           value={form.classificationCode}
                           onChange={(e) =>
                             setForm((f) => ({
@@ -663,51 +706,26 @@ export function ProductFormModal({
                             }))
                           }
                         />
-                      </div>
-
-                      <div className="space-y-2 sm:col-span-2">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <label className="text-sm font-semibold text-slate-700">
-                            Татварын ангиллын код (Tax product code)
-                          </label>
-                          {selectedTaxProductCode && (
-                            <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                              {selectedTaxProductCode.name}
-                            </span>
-                          )}
-                        </div>
-                        <input
-                          className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
-                          placeholder="Код эсвэл нэрээр хайх"
-                          value={form.taxProductCode}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              taxProductCode: e.target.value,
-                            }))
-                          }
-                        />
-                        {isTaxProductCodeRequired &&
-                          !form.taxProductCode.trim() && (
-                            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
-                              Энэ татварын төрөлд taxProductCode шаардлагатай.
-                              Доорх саналуудаас хамгийн ойрыг нь сонгоно уу.
-                            </p>
-                          )}
-                        {taxProductCodeSuggestions.length > 0 && (
+                        {!/^\d{7}$/.test(form.classificationCode.trim()) && (
+                          <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
+                            eBarimt-д 7 оронтой нэгдсэн ангиллын код
+                            шаардлагатай. Доорх саналаас тохирохыг сонгоно уу.
+                          </p>
+                        )}
+                        {classificationCodeSuggestions.length > 0 && (
                           <div className="overflow-hidden rounded-xl border border-emerald-100 bg-white">
-                            {taxProductCodeSuggestions.map((entry) => (
+                            {classificationCodeSuggestions.map((entry) => (
                               <button
                                 key={entry.code}
                                 type="button"
                                 onClick={() =>
                                   setForm((f) => ({
                                     ...f,
-                                    taxProductCode: entry.code,
+                                    classificationCode: entry.code,
                                   }))
                                 }
                                 className={`flex w-full items-start gap-3 px-3 py-2.5 text-left transition-colors hover:bg-emerald-50 ${
-                                  form.taxProductCode.trim() === entry.code
+                                  form.classificationCode.trim() === entry.code
                                     ? "bg-emerald-50"
                                     : ""
                                 }`}
@@ -730,8 +748,45 @@ export function ProductFormModal({
                           </div>
                         )}
                       </div>
+
+                      {isTaxProductCodeRequired && (
+                        <div className="space-y-2 sm:col-span-2">
+                          <label className="text-sm font-semibold text-slate-700">
+                            Татварын код (3 орон)
+                          </label>
+                          <select
+                            className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
+                            value={form.taxProductCode}
+                            onChange={(event) =>
+                              setForm((current) => ({
+                                ...current,
+                                taxProductCode: event.target.value,
+                              }))
+                            }
+                            required
+                          >
+                            <option value="">
+                              Тохирох татварын код сонгох
+                            </option>
+                            {taxProductCodes.map((entry) => (
+                              <option key={entry.code} value={entry.code}>
+                                {entry.code} — {entry.name}
+                              </option>
+                            ))}
+                          </select>
+                          {!form.taxProductCode.trim() && (
+                            <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
+                              {form.taxType === "VAT_FREE"
+                                ? "НӨАТ-аас чөлөөлөгдөх"
+                                : "НӨАТ 0%"}{" "}
+                              бараанд албан жагсаалтын 3 оронтой татварын код
+                              заавал сонгоно.
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  </details>
                 </div>
 
                 {isPreorder && (
@@ -967,13 +1022,12 @@ export function ProductFormModal({
                       value={form.businessCategoryId}
                       onChange={applyBusinessCategory}
                     />
-                    {categoryDefaultTaxProductCode && (
+                    {categoryAutomaticClassificationCode && (
                       <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold leading-5 text-emerald-700">
-                        Ангиллын eBarimt default:{" "}
+                        eBarimt ангилал автоматаар тохирлоо:{" "}
                         <span className="font-black">
-                          {categoryDefaultTaxProductCode.code}
-                        </span>{" "}
-                        {categoryDefaultTaxProductCode.name}
+                          {categoryAutomaticClassificationCode}
+                        </span>
                       </p>
                     )}
                   </div>

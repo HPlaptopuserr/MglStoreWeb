@@ -192,7 +192,7 @@ const getColumnInfo = (mode: ImportMode) => [
   {
     col: "Ангиллын код (classificationCode)",
     req: false,
-    desc: "Хоосон бол 4711000",
+    desc: "Хоосон бол 6212991",
   },
   {
     col: "Татварын ангиллын код (taxProductCode)",

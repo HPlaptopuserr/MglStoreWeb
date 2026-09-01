@@ -16,6 +16,7 @@ export * from "./domain/courier";
 export * from "./domain/delivery";
 export * from "./domain/pos";
 export * from "./domain/marketplace-pricing";
+export * from "./domain/ebarimt";
 export * from "./domain/systemqr";
 
 export * from "./dto/auth.dto";

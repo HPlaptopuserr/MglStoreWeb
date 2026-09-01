@@ -5,7 +5,18 @@ import crypto from "crypto";
 import JSZip from "jszip";
 import { InventoryReason, WarehouseType, prisma } from "@mgl/database";
 import type { PrismaClient } from "@prisma/client";
-import { Permission, hasPlatformPermission, isFullAdmin } from "@mgl/types";
+import {
+  EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
+  EBARIMT_VAT_FREE_PRODUCT_CODES,
+  EBARIMT_VAT_ZERO_PRODUCT_CODES,
+  Permission,
+  hasPlatformPermission,
+  isEbarimtTaxType,
+  isFullAdmin,
+  isValidEbarimtClassificationCode,
+  isValidEbarimtTaxProductCode,
+  requiresEbarimtTaxProductCode,
+} from "@mgl/types";
 import { optionalAuth, requireAuth } from "../../middleware/auth";
 import {
   requireOrgPermission,
@@ -417,7 +428,7 @@ const normalizeTaxType = (value: unknown) => {
   const normalized = String(value || "VAT_ABLE")
     .trim()
     .toUpperCase();
-  return TAX_TYPES.has(normalized) ? normalized : "VAT_ABLE";
+  return isEbarimtTaxType(normalized) ? normalized : "VAT_ABLE";
 };
 
 const normalizePercent = (value: unknown, fallback = 0) => {
@@ -428,11 +439,29 @@ const normalizePercent = (value: unknown, fallback = 0) => {
 };
 
 const normalizeClassificationCode = (value: unknown) =>
-  String(value || "4711000").trim() || "4711000";
+  String(value || EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE).trim() ||
+  EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE;
 
 const normalizeOptionalText = (value: unknown) => {
   const text = String(value ?? "").trim();
   return text || null;
+};
+
+const normalizeTaxProductCode = (taxType: unknown, value: unknown) =>
+  requiresEbarimtTaxProductCode(taxType) ? normalizeOptionalText(value) : null;
+
+const getEbarimtTaxValidationError = (
+  taxType: unknown,
+  classificationCode: unknown,
+  taxProductCode: unknown,
+) => {
+  if (!isValidEbarimtClassificationCode(classificationCode)) {
+    return "Нэгдсэн ангиллын код 7 оронтой тоо байна";
+  }
+  if (!isValidEbarimtTaxProductCode(taxType, taxProductCode)) {
+    return `${taxType} төрөлд албан жагсаалтын 3 оронтой татварын код шаардлагатай`;
+  }
+  return null;
 };
 
 const normalizeRestaurantMenuCategory = (value: unknown) => {
@@ -1780,7 +1809,8 @@ router.get("/products/import-template", async (req, res) => {
             }),
         "Татварын төрөл (taxType)": "VAT_ABLE",
         "Хотын татвар (cityTaxRate)": 0,
-        "Ангиллын код (classificationCode)": "4711000",
+        "Ангиллын код (classificationCode)":
+          EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
         "Татварын ангиллын код (taxProductCode)": "",
         "Marketplace дараалал (marketplacePriority)": 0,
         "Тайлбар (description)": "Барааны тайлбар энд бичнэ",
@@ -1810,7 +1840,8 @@ router.get("/products/import-template", async (req, res) => {
             }),
         "Татварын төрөл (taxType)": "VAT_ABLE",
         "Хотын татвар (cityTaxRate)": 0,
-        "Ангиллын код (classificationCode)": "4711000",
+        "Ангиллын код (classificationCode)":
+          EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
         "Татварын ангиллын код (taxProductCode)": "",
         "Marketplace дараалал (marketplacePriority)": 0,
         "Тайлбар (description)": "",
@@ -1867,11 +1898,28 @@ router.get("/products/import-template", async (req, res) => {
     ]);
     taxTypeSheet["!cols"] = [{ wch: 20 }, { wch: 30 }];
     XLSX.utils.book_append_sheet(wb, taxTypeSheet, "Татварын төрөл");
+    const taxProductCodes = [
+      ...EBARIMT_VAT_FREE_PRODUCT_CODES.map((entry) => ({
+        Код: entry.code,
+        Төрөл: "VAT_FREE",
+        Тайлбар: entry.name,
+      })),
+      ...EBARIMT_VAT_ZERO_PRODUCT_CODES.map((entry) => ({
+        Код: entry.code,
+        Төрөл: "VAT_ZERO",
+        Тайлбар: entry.name,
+      })),
+    ];
+    const taxProductCodeSheet = XLSX.utils.json_to_sheet(taxProductCodes);
+    taxProductCodeSheet["!cols"] = [{ wch: 12 }, { wch: 16 }, { wch: 100 }];
+    XLSX.utils.book_append_sheet(wb, taxProductCodeSheet, "Татварын кодууд");
 
     const buf = await addCategoryDropdownToWorkbook(
       Buffer.from(XLSX.write(wb, { type: "buffer", bookType: "xlsx" })),
       categoryChoices.length,
       "L",
+      taxProductCodes.length,
+      "O",
     );
 
     res.setHeader(
@@ -2284,6 +2332,26 @@ router.post(
           continue;
         }
         const normalizedTaxType = rawTaxType || "VAT_ABLE";
+        const normalizedClassificationCode =
+          normalizeClassificationCode(classificationCode);
+        const normalizedTaxProductCode = normalizeTaxProductCode(
+          normalizedTaxType,
+          taxProductCode,
+        );
+        const taxValidationError = getEbarimtTaxValidationError(
+          normalizedTaxType,
+          normalizedClassificationCode,
+          normalizedTaxProductCode,
+        );
+        if (taxValidationError) {
+          const message = `Мөр ${rowNum}: ${taxValidationError}`;
+          results.errors.push(message);
+          results.errorRows.push(
+            toProductImportErrorRow(row, rowNum, message, colMap),
+          );
+          results.skipped++;
+          continue;
+        }
 
         const normalizedCityTaxRate = normalizePercent(cityTaxRate, 0);
         if (normalizedCityTaxRate === undefined) {
@@ -2412,8 +2480,8 @@ router.post(
             costPrice: costPriceNum,
             taxType: normalizedTaxType,
             cityTaxRate: normalizedCityTaxRate,
-            classificationCode: normalizeClassificationCode(classificationCode),
-            taxProductCode: normalizeOptionalText(taxProductCode),
+            classificationCode: normalizedClassificationCode,
+            taxProductCode: normalizedTaxProductCode,
             stock: isPreorderImport ? 0 : stockNum,
             supplyType: isPreorderImport
               ? ("CHINA_PREORDER" as const)
@@ -3216,6 +3284,20 @@ router.post(
         return res.status(400).json({ message: "Дуусах хугацаа буруу байна" });
       }
       const normalizedTaxType = normalizeTaxType(taxType);
+      const normalizedClassificationCode =
+        normalizeClassificationCode(classificationCode);
+      const normalizedTaxProductCode = normalizeTaxProductCode(
+        normalizedTaxType,
+        taxProductCode,
+      );
+      const taxValidationError = getEbarimtTaxValidationError(
+        normalizedTaxType,
+        normalizedClassificationCode,
+        normalizedTaxProductCode,
+      );
+      if (taxValidationError) {
+        return res.status(400).json({ message: taxValidationError });
+      }
       const normalizedCityTaxRate = normalizePercent(cityTaxRate, 0);
       if (normalizedCityTaxRate === undefined) {
         return res
@@ -3393,8 +3475,8 @@ router.post(
             costPrice: costPriceNum,
             taxType: normalizedTaxType,
             cityTaxRate: normalizedCityTaxRate,
-            classificationCode: normalizeClassificationCode(classificationCode),
-            taxProductCode: normalizeOptionalText(taxProductCode),
+            classificationCode: normalizedClassificationCode,
+            taxProductCode: normalizedTaxProductCode,
             isRestaurantMenuItem: restaurantMenuEnabled,
             menuCategory: normalizedMenuCategory,
             kitchenStation: normalizedKitchenStation,
@@ -3676,6 +3758,25 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       });
     }
 
+    const nextTaxType =
+      taxType !== undefined ? normalizeTaxType(taxType) : existing.taxType;
+    const nextClassificationCode =
+      classificationCode !== undefined
+        ? normalizeClassificationCode(classificationCode)
+        : existing.classificationCode;
+    const nextTaxProductCode = normalizeTaxProductCode(
+      nextTaxType,
+      taxProductCode !== undefined ? taxProductCode : existing.taxProductCode,
+    );
+    const taxValidationError = getEbarimtTaxValidationError(
+      nextTaxType,
+      nextClassificationCode,
+      nextTaxProductCode,
+    );
+    if (taxValidationError) {
+      return res.status(400).json({ message: taxValidationError });
+    }
+
     const data: Record<string, unknown> = {};
     let stockNumForInventory: number | undefined;
     if (name !== undefined) data.name = String(name).trim();
@@ -3747,7 +3848,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     }
     if (costPrice !== undefined)
       data.costPrice = costPrice ? parseFloat(String(costPrice)) : null;
-    if (taxType !== undefined) data.taxType = normalizeTaxType(taxType);
+    if (taxType !== undefined) data.taxType = nextTaxType;
     if (cityTaxRate !== undefined) {
       const normalizedCityTaxRate = normalizePercent(cityTaxRate, 0);
       if (normalizedCityTaxRate === undefined) {
@@ -3758,9 +3859,9 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       data.cityTaxRate = normalizedCityTaxRate;
     }
     if (classificationCode !== undefined)
-      data.classificationCode = normalizeClassificationCode(classificationCode);
-    if (taxProductCode !== undefined)
-      data.taxProductCode = normalizeOptionalText(taxProductCode);
+      data.classificationCode = nextClassificationCode;
+    if (taxType !== undefined || taxProductCode !== undefined)
+      data.taxProductCode = nextTaxProductCode;
     const nextRestaurantMenuEnabled =
       isRestaurantMenuItem !== undefined
         ? isTruthyQueryValue(isRestaurantMenuItem)

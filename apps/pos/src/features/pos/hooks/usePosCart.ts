@@ -53,7 +53,10 @@ function loadStoredPosState() {
         ...line,
         priceType: line.priceType || "UNIT",
         baseUnitPrice: line.baseUnitPrice ?? line.unitPrice,
-        qty: Math.min(Math.max(1, Math.floor(line.qty)), Math.max(1, Math.floor(line.stockQty))),
+        qty: Math.min(
+          Math.max(1, Math.floor(line.qty)),
+          Math.max(1, Math.floor(line.stockQty)),
+        ),
         stockQty: Math.max(0, Math.floor(line.stockQty)),
         unitPrice: Math.max(0, line.unitPrice),
         taxRate: Math.max(0, line.taxRate),
@@ -68,7 +71,11 @@ function loadStoredPosState() {
 }
 
 export function usePosCart() {
-  const [state, dispatch] = useReducer(posReducer, undefined, loadStoredPosState);
+  const [state, dispatch] = useReducer(
+    posReducer,
+    undefined,
+    loadStoredPosState,
+  );
   const storageKey = useMemo(() => resolveCartStorageKey(), []);
 
   const totals = useMemo(() => calculateCartTotal(state.cart), [state.cart]);
@@ -122,7 +129,7 @@ export function usePosCart() {
         taxType: product.taxType || "VAT_ABLE",
         taxRate: product.taxRate ?? 0,
         cityTaxRate: product.cityTaxRate ?? 0,
-        classificationCode: product.classificationCode || "4711000",
+        classificationCode: product.classificationCode || "6212991",
         taxProductCode: product.taxProductCode || null,
         measureUnit: product.measureUnit || "pcs",
         discountAmount: 0,

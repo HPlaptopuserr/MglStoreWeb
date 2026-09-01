@@ -113,7 +113,7 @@ const emptyForm: MenuForm = {
   imageUrl: "",
   taxType: "VAT_ABLE",
   cityTaxRate: "0",
-  classificationCode: "4711000",
+  classificationCode: "6212991",
   taxProductCode: "",
 };
 
@@ -227,7 +227,7 @@ export function RestaurantProductsScreen() {
       imageUrl: product.images[0]?.url || "",
       taxType: product.taxType || "VAT_ABLE",
       cityTaxRate: String(product.cityTaxRate ?? 0),
-      classificationCode: product.classificationCode || "4711000",
+      classificationCode: product.classificationCode || "6212991",
       taxProductCode: product.taxProductCode || "",
     });
     setFormOpen(true);
@@ -277,11 +277,7 @@ export function RestaurantProductsScreen() {
       showMessage("error", "Бэлтгэх хугацаа 0-1440 минут байна");
       return;
     }
-    if (
-      !Number.isFinite(cityTaxRate) ||
-      cityTaxRate < 0 ||
-      cityTaxRate > 100
-    ) {
+    if (!Number.isFinite(cityTaxRate) || cityTaxRate < 0 || cityTaxRate > 100) {
       showMessage("error", "Хотын татвар 0-100 хувь байна");
       return;
     }
@@ -309,8 +305,7 @@ export function RestaurantProductsScreen() {
             preparationMinutes,
             taxType: form.taxType,
             cityTaxRate,
-            classificationCode:
-              form.classificationCode.trim() || "4711000",
+            classificationCode: form.classificationCode.trim() || "6212991",
             taxProductCode: form.taxProductCode.trim() || null,
             images: form.imageUrl.trim() ? [form.imageUrl.trim()] : [],
           }),

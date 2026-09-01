@@ -1016,80 +1016,80 @@ model Category {
 }
 
 model Product {
-  id                    String                        @id @default(uuid())
-  organizationId        String
-  masterProductId       String?
-  managedByWarehouseId  String?
-  submittedById         String?
-  reviewedById          String?
-  name                  String
-  description           String?
-  specifications        Json?
-  sku                   String?
-  barcode               String?
-  unit                  String?
-  price                 Decimal                       @db.Decimal(18, 2)
-  wholesalePrice        Decimal?                      @db.Decimal(18, 2)
-  orderPrice            Decimal?                      @db.Decimal(18, 2)
-  costPrice             Decimal?                      @db.Decimal(18, 2)
+  id                     String                        @id @default(uuid())
+  organizationId         String
+  masterProductId        String?
+  managedByWarehouseId   String?
+  submittedById          String?
+  reviewedById           String?
+  name                   String
+  description            String?
+  specifications         Json?
+  sku                    String?
+  barcode                String?
+  unit                   String?
+  price                  Decimal                       @db.Decimal(18, 2)
+  wholesalePrice         Decimal?                      @db.Decimal(18, 2)
+  orderPrice             Decimal?                      @db.Decimal(18, 2)
+  costPrice              Decimal?                      @db.Decimal(18, 2)
   /// Denormalized cache. Canonical stock lives in WarehouseInventory.quantity.
   /// Updated by POS sales and inventory operations. Do not treat as source of truth
   /// when warehouse management is active for this product.
-  stock                 Int                           @default(0)
-  taxType               String                        @default("VAT_ABLE")
-  cityTaxRate           Decimal                       @default(0) @db.Decimal(5, 2)
-  classificationCode    String                        @default("4711000")
-  taxProductCode        String?
-  isRestaurantMenuItem  Boolean                       @default(false)
-  menuCategory          String?
-  kitchenStation        String?
-  preparationMinutes    Int?
-  supplyType            ProductSupplyType             @default(IN_STOCK)
-  preorderLeadTimeDays  Int?
-  preorderCapacity      Int?
+  stock                  Int                           @default(0)
+  taxType                String                        @default("VAT_ABLE")
+  cityTaxRate            Decimal                       @default(0) @db.Decimal(5, 2)
+  classificationCode     String                        @default("6212991")
+  taxProductCode         String?
+  isRestaurantMenuItem   Boolean                       @default(false)
+  menuCategory           String?
+  kitchenStation         String?
+  preparationMinutes     Int?
+  supplyType             ProductSupplyType             @default(IN_STOCK)
+  preorderLeadTimeDays   Int?
+  preorderCapacity       Int?
   preorderCycleStartedAt DateTime?
-  preorderNote          String?
-  preorderPriceCurrency String?                       @db.VarChar(3)
-  preorderPriceAmount   Decimal?                      @db.Decimal(18, 4)
-  preorderExchangeRate  Decimal?                      @db.Decimal(18, 6)
-  preorderMarkupPercent Decimal?                      @db.Decimal(5, 2)
-  preorderRateSource    String?
-  preorderRateFetchedAt DateTime?
-  marketplacePriority   Int                           @default(0)
-  rating                Float                         @default(0)
-  reviewCount           Int                           @default(0)
-  soldCount             Int                           @default(0)
-  isActive              Boolean                       @default(true)
-  reviewStatus          VendorContentReviewStatus     @default(APPROVED)
-  reviewedAt            DateTime?
-  categoryId            String?
-  createdAt             DateTime                      @default(now())
-  updatedAt             DateTime                      @updatedAt
-  deletedAt             DateTime?
-  businessCategoryId    String?
-  discounts             Discount[]
-  inventoryLogs         InventoryLedger[]
-  orderItems            OrderItem[]
-  reviews               ProductReview[]
-  businessCategory      BusinessCategory?             @relation(fields: [businessCategoryId], references: [id])
-  category              Category?                     @relation(fields: [categoryId], references: [id])
-  organization          Organization                  @relation(fields: [organizationId], references: [id])
-  masterProduct         MasterProduct?                @relation(fields: [masterProductId], references: [id], onDelete: SetNull)
-  managedByWarehouse    Warehouse?                    @relation("WarehouseManagedProducts", fields: [managedByWarehouseId], references: [id], onDelete: SetNull)
-  images                ProductImage[]
-  supplierDocument      ProductSupplierDocument?
-  productRequests       ProductRequest[]
-  warehouseInventories  WarehouseInventory[]
-  stockRequestItems     WarehouseStockRequestItem[]   @relation("StockRequestProducts")
-  posSaleLines          PosSaleLine[]
-  posGoodsReceiptItems  PosGoodsReceiptItem[]
-  returnItems           DispatchReturnItem[]          @relation("ReturnProducts")
-  productInteractions   ProductInteraction[]
-  productInterestScores ProductInterestScore[]
-  restaurantTicketItems RestaurantTicketItem[]
-  kitchenTicketItems    KitchenTicketItem[]
-  reels                 Reel[]
-  manualDispatchItems   WarehouseManualDispatchItem[]
+  preorderNote           String?
+  preorderPriceCurrency  String?                       @db.VarChar(3)
+  preorderPriceAmount    Decimal?                      @db.Decimal(18, 4)
+  preorderExchangeRate   Decimal?                      @db.Decimal(18, 6)
+  preorderMarkupPercent  Decimal?                      @db.Decimal(5, 2)
+  preorderRateSource     String?
+  preorderRateFetchedAt  DateTime?
+  marketplacePriority    Int                           @default(0)
+  rating                 Float                         @default(0)
+  reviewCount            Int                           @default(0)
+  soldCount              Int                           @default(0)
+  isActive               Boolean                       @default(true)
+  reviewStatus           VendorContentReviewStatus     @default(APPROVED)
+  reviewedAt             DateTime?
+  categoryId             String?
+  createdAt              DateTime                      @default(now())
+  updatedAt              DateTime                      @updatedAt
+  deletedAt              DateTime?
+  businessCategoryId     String?
+  discounts              Discount[]
+  inventoryLogs          InventoryLedger[]
+  orderItems             OrderItem[]
+  reviews                ProductReview[]
+  businessCategory       BusinessCategory?             @relation(fields: [businessCategoryId], references: [id])
+  category               Category?                     @relation(fields: [categoryId], references: [id])
+  organization           Organization                  @relation(fields: [organizationId], references: [id])
+  masterProduct          MasterProduct?                @relation(fields: [masterProductId], references: [id], onDelete: SetNull)
+  managedByWarehouse     Warehouse?                    @relation("WarehouseManagedProducts", fields: [managedByWarehouseId], references: [id], onDelete: SetNull)
+  images                 ProductImage[]
+  supplierDocument       ProductSupplierDocument?
+  productRequests        ProductRequest[]
+  warehouseInventories   WarehouseInventory[]
+  stockRequestItems      WarehouseStockRequestItem[]   @relation("StockRequestProducts")
+  posSaleLines           PosSaleLine[]
+  posGoodsReceiptItems   PosGoodsReceiptItem[]
+  returnItems            DispatchReturnItem[]          @relation("ReturnProducts")
+  productInteractions    ProductInteraction[]
+  productInterestScores  ProductInterestScore[]
+  restaurantTicketItems  RestaurantTicketItem[]
+  kitchenTicketItems     KitchenTicketItem[]
+  reels                  Reel[]
+  manualDispatchItems    WarehouseManualDispatchItem[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, isActive])
@@ -3226,7 +3226,7 @@ model PosSaleLine {
   taxRate            Decimal @default(10) @db.Decimal(5, 2)
   cityTaxRate        Decimal @default(0) @db.Decimal(5, 2)
   cityTaxAmount      Decimal @default(0) @db.Decimal(18, 2)
-  classificationCode String  @default("4711000")
+  classificationCode String  @default("6212991")
   taxProductCode     String?
   measureUnit        String  @default("pcs")
   discount           Decimal @db.Decimal(18, 2)
