@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Banknote,
   Bell,
+  Building2,
   Coins,
   FileArchive,
   FileText,
@@ -27,6 +28,10 @@ type ProfileDashboardShellProps = {
   bankAccountContent?: ReactNode;
   incomingOrdersContent?: ReactNode;
   openIncomingOrdersInitially?: boolean;
+  organizationContext?: {
+    id: string;
+    name: string;
+  };
 };
 
 const settingsNav = [
@@ -52,6 +57,7 @@ export function ProfileDashboardShell({
   bankAccountContent,
   incomingOrdersContent,
   openIncomingOrdersInitially = false,
+  organizationContext,
 }: ProfileDashboardShellProps) {
   const [isBankAccountOpen, setIsBankAccountOpen] = useState(false);
   const [isIncomingOrdersOpen, setIsIncomingOrdersOpen] = useState(
@@ -98,6 +104,7 @@ export function ProfileDashboardShell({
       <main className="min-h-screen bg-[#f5f5f5] px-3 pb-28 pt-4 text-slate-950 md:px-6 md:pb-8 md:pt-8">
         <div className="mx-auto grid max-w-7xl items-start gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
           <ProfileNavigation
+            organizationContext={organizationContext}
             onBankAccountOpen={
               bankAccountContent ? () => setIsBankAccountOpen(true) : undefined
             }
@@ -190,10 +197,93 @@ const profileNavItems = [
 function ProfileNavigation({
   onBankAccountOpen,
   onIncomingOrdersOpen,
+  organizationContext,
 }: {
   onBankAccountOpen?: () => void;
   onIncomingOrdersOpen?: () => void;
+  organizationContext?: {
+    id: string;
+    name: string;
+  };
 }) {
+  if (organizationContext) {
+    const organizationHref = `/profile/organizations/${encodeURIComponent(
+      organizationContext.id,
+    )}`;
+    const organizationItems = [
+      {
+        label: "Байгууллагын нүүр",
+        href: organizationHref,
+        icon: Building2,
+      },
+      ...(onIncomingOrdersOpen
+        ? [
+            {
+              label: "Ирсэн захиалга",
+              icon: ShoppingBag,
+              onClick: onIncomingOrdersOpen,
+            },
+          ]
+        : []),
+      ...(onBankAccountOpen
+        ? [
+            {
+              label: "Төлбөрийн данс",
+              icon: Banknote,
+              onClick: onBankAccountOpen,
+            },
+          ]
+        : []),
+    ];
+
+    return (
+      <aside className="sticky top-[9rem] hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:block">
+        <div className="border-b border-slate-100 px-3 pb-3 pt-1">
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-600">
+            MGL Business
+          </p>
+          <h2 className="mt-1 truncate text-lg font-black text-slate-950">
+            {organizationContext.name}
+          </h2>
+          <p className="mt-1 text-[11px] font-bold text-slate-400">
+            Байгууллагын удирдлага
+          </p>
+        </div>
+        <nav aria-label="Байгууллагын цэс" className="mt-2 space-y-1">
+          {organizationItems.map((item) => {
+            const Icon = item.icon;
+            return "onClick" in item ? (
+              <button
+                key={item.label}
+                type="button"
+                onClick={item.onClick}
+                className="flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-bold text-slate-600 transition hover:bg-emerald-50 hover:text-emerald-800"
+              >
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{item.label}</span>
+              </button>
+            ) : (
+              <Link
+                key={item.label}
+                href={item.href}
+                className="flex min-h-11 items-center gap-3 rounded-xl bg-emerald-50 px-3 text-sm font-bold text-emerald-800"
+              >
+                <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{item.label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+        <Link
+          href={ACCOUNT_ROUTES.profile}
+          className="mt-3 flex min-h-11 items-center justify-center rounded-xl border border-slate-200 px-3 text-sm font-black text-slate-700 transition hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700"
+        >
+          Хувийн хэсэг рүү буцах
+        </Link>
+      </aside>
+    );
+  }
+
   const navigationItems = [
     ...profileNavItems.slice(0, 2),
     ...(onIncomingOrdersOpen

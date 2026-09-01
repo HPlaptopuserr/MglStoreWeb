@@ -57,6 +57,10 @@ export default function ManagedOrganizationPage() {
   if (activeOrganization?.status === "PENDING") {
     return (
       <ProfileDashboardShell
+        organizationContext={{
+          id: activeOrganizationId,
+          name: activeOrganization.name,
+        }}
         bankAccountContent={
           <BankAccountSettingsPanel organizationId={activeOrganizationId} />
         }
@@ -95,6 +99,10 @@ export default function ManagedOrganizationPage() {
 
   return (
     <ProfileDashboardShell
+      organizationContext={{
+        id: activeOrganizationId,
+        name: activeOrganization?.name || "Байгууллага",
+      }}
       bankAccountContent={
         <BankAccountSettingsPanel organizationId={activeOrganizationId} />
       }
