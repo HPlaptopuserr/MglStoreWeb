@@ -16,13 +16,13 @@ import {
   adjustStock,
   resolveOrgWarehouse,
 } from "../../../services/inventory.service";
-import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
 import {
   requirePosUser,
   requireAdminUser,
+  canAccessPosOrganization,
   normalizePaymentMethod,
   normalizeRegisterName,
   roundMoney,
@@ -54,6 +54,10 @@ import {
   summarizeShiftSales,
   type ShiftSaleAccountingInput,
 } from "./shift-accounting";
+import {
+  buildCurrentShiftScope,
+  buildOpenShiftConflictScopes,
+} from "./shift-organization-scope";
 
 const router: ExpressRouter = Router();
 
@@ -350,20 +354,10 @@ router.post("/pos/shifts/open", async (req, res) => {
       }
     }
 
-    if (!isAdminActor(actor)) {
-      const membership = await prisma.organizationMember.findFirst({
-        where: {
-          userId: actor.id,
-          organizationId: branch.organizationId,
-          isActive: true,
-        },
-        select: { id: true },
-      });
-      if (!membership) {
-        return res
-          .status(403)
-          .json({ message: "Энэ байгууллагад хандах эрхгүй" });
-      }
+    if (!canAccessPosOrganization(actor, branch.organizationId)) {
+      return res
+        .status(403)
+        .json({ message: "Энэ байгууллагад хандах эрхгүй" });
     }
 
     const result = await prisma.$transaction(
@@ -387,10 +381,11 @@ router.post("/pos/shifts/open", async (req, res) => {
         const existingOpen = await tx.posShift.findFirst({
           where: {
             status: ShiftStatus.OPEN,
-            OR: [
-              { cashierId: actor.id },
-              ...(registerId ? [{ registerId }] : []),
-            ],
+            OR: buildOpenShiftConflictScopes(
+              actor.id,
+              branch.organizationId,
+              registerId,
+            ),
           },
           select: { id: true, cashierId: true, registerId: true },
         });
@@ -468,15 +463,18 @@ router.post("/pos/shifts/close", async (req, res) => {
 
     const shiftForAccess = await prisma.posShift.findUnique({
       where: { id: shiftId },
-      select: { id: true, cashierId: true },
+      select: { id: true, cashierId: true, organizationId: true },
     });
     if (!shiftForAccess) {
       return res.status(404).json({ message: "Ээлж олдсонгүй" });
     }
-    if (shiftForAccess.cashierId !== actor.id && !isAdminActor(actor)) {
+    if (
+      !canAccessPosOrganization(actor, shiftForAccess.organizationId) ||
+      (shiftForAccess.cashierId !== actor.id && !isAdminActor(actor))
+    ) {
       return res
         .status(403)
-        .json({ message: "Зөвхөн өөрийн ээлжийг хааж болно" });
+        .json({ message: "Энэ ээлжийг хаах эрхгүй" });
     }
 
     const updatedShift = await prisma.$transaction(
@@ -569,7 +567,10 @@ router.get("/pos/shifts/current", async (req, res) => {
     if (!actor) return;
 
     const shift = await prisma.posShift.findFirst({
-      where: { cashierId: actor.id, status: ShiftStatus.OPEN },
+      where: {
+        ...buildCurrentShiftScope(actor),
+        status: ShiftStatus.OPEN,
+      },
       include: {
         cashier: { select: { id: true, email: true } },
         branch: { select: { id: true, name: true } },
@@ -614,11 +615,7 @@ router.get("/pos/shifts/:shiftId/drawer", async (req, res) => {
     if (!shift) {
       return res.status(404).json({ message: "Ээлж олдсонгүй" });
     }
-    if (
-      shift.cashierId !== actor.id &&
-      !isAdminActor(actor) &&
-      !(await hasOrgMembership(actor.id, shift.organizationId))
-    ) {
+    if (!canAccessPosOrganization(actor, shift.organizationId)) {
       return res
         .status(403)
         .json({ message: "Энэ шургуулгын тайлан харах эрхгүй" });
@@ -687,11 +684,7 @@ router.post("/pos/shifts/drawer-events", async (req, res) => {
           message: "Хаагдсан ээлж дээр шургуулгын хөдөлгөөн хийх боломжгүй",
         });
     }
-    if (
-      shift.cashierId !== actor.id &&
-      !isAdminActor(actor) &&
-      !(await hasOrgMembership(actor.id, shift.organizationId))
-    ) {
+    if (!canAccessPosOrganization(actor, shift.organizationId)) {
       return res
         .status(403)
         .json({ message: "Энэ шургуулга дээр хөдөлгөөн хийх эрхгүй" });
@@ -761,10 +754,7 @@ router.get("/pos/shifts/history", async (req, res) => {
       if (!branch) {
         return res.status(404).json({ message: "Салбар олдсонгүй" });
       }
-      if (
-        !isAdminActor(actor) &&
-        !(await hasOrgMembership(actor.id, branch.organizationId))
-      ) {
+      if (!canAccessPosOrganization(actor, branch.organizationId)) {
         return res
           .status(403)
           .json({ message: "Энэ байгууллагын хаалтын түүх харах эрхгүй" });
