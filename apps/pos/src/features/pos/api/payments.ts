@@ -25,5 +25,9 @@ export {
 
 export type { QPayInvoice, QPayInvoiceStatus } from "./qpay";
 
-export { fetchRegisterConfig } from "./register";
+export {
+  fetchRegisterConfig,
+  getPosRegisterIdKey,
+  POS_REGISTER_ID_KEY,
+} from "./register";
 export type { RegisterConfig } from "./register";

@@ -227,12 +227,25 @@ export const getAuthUser = async (req: Request): Promise<AuthUser | null> => {
   if (!user) return null;
 
   const membership = await prisma.organizationMember.findFirst({
-    where: { userId: user.id, isActive: true, isPrimary: true },
+    where: {
+      userId: user.id,
+      isActive: true,
+      deletedAt: null,
+      ...(claims.organizationId
+        ? { organizationId: claims.organizationId }
+        : { isPrimary: true }),
+      organization: { status: "ACTIVE", deletedAt: null },
+    },
     select: { organizationId: true, role: true },
   });
-  const fallback = !membership
+  const fallback = !claims.organizationId && !membership
     ? await prisma.organizationMember.findFirst({
-        where: { userId: user.id, isActive: true },
+        where: {
+          userId: user.id,
+          isActive: true,
+          deletedAt: null,
+          organization: { status: "ACTIVE", deletedAt: null },
+        },
         orderBy: { createdAt: "asc" },
         select: { organizationId: true, role: true },
       })
@@ -248,6 +261,14 @@ export const getAuthUser = async (req: Request): Promise<AuthUser | null> => {
     orgRole: org?.role || null,
   };
 };
+
+export const canAccessPosOrganization = (
+  actor: Pick<AuthUser, "role" | "organizationId">,
+  organizationId: string,
+) =>
+  actor.role === "ADMIN" ||
+  actor.role === "SUPER_ADMIN" ||
+  actor.organizationId === organizationId;
 
 export const requireAdminUser = async (req: Request, res: Response) => {
   const actor = await getAuthUser(req);
@@ -268,7 +289,11 @@ export const requirePosUser = async (req: Request, res: Response) => {
     res.status(401).json({ message: "Нэвтрэлт шаардлагатай" });
     return null;
   }
-  if (actor.role !== "ADMIN" && !actor.organizationId) {
+  if (
+    actor.role !== "ADMIN" &&
+    actor.role !== "SUPER_ADMIN" &&
+    !actor.organizationId
+  ) {
     res.status(403).json({ message: "POS ашиглах эрх хүрэлцэхгүй" });
     return null;
   }

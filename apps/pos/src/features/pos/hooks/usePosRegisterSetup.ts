@@ -5,6 +5,7 @@ import {
   fetchBranches,
   fetchOrgRegisters,
   fetchRegisterConfig,
+  getPosRegisterIdKey,
   POS_REGISTER_ID_KEY,
   selfClaimRegister,
   type Branch,
@@ -32,40 +33,71 @@ export function usePosRegisterSetup({ organizationId, posEnabled }: Options) {
   const [setupRegistering, setSetupRegistering] = useState(false);
   const [setupError, setSetupError] = useState("");
   const [setupExistingId, setSetupExistingId] = useState("");
+  const registerStorageKey = getPosRegisterIdKey(organizationId);
 
   useEffect(() => {
-    if (!posEnabled) return;
+    setOrgRegisters([]);
+    setShowRegisterPicker(false);
+    if (!posEnabled || !organizationId) {
+      setRegisterConfig(null);
+      return;
+    }
 
-    const registerId = localStorage.getItem(POS_REGISTER_ID_KEY);
+    let cancelled = false;
+    setRegisterConfig((current) =>
+      current?.organizationId === organizationId ? current : null,
+    );
+
+    const registerId =
+      localStorage.getItem(registerStorageKey) ||
+      localStorage.getItem(POS_REGISTER_ID_KEY);
     if (!registerId) return;
 
     fetchRegisterConfig(registerId)
-      .then(setRegisterConfig)
+      .then((config) => {
+        if (config.organizationId !== organizationId) {
+          throw new Error("POS register байгууллага зөрүүтэй байна");
+        }
+        if (cancelled) return;
+        localStorage.setItem(registerStorageKey, config.id);
+        localStorage.removeItem(POS_REGISTER_ID_KEY);
+        setRegisterConfig(config);
+      })
       .catch(() => {
+        if (cancelled) return;
+        localStorage.removeItem(registerStorageKey);
         localStorage.removeItem(POS_REGISTER_ID_KEY);
         setRegisterConfig(null);
       });
-  }, [posEnabled]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId, posEnabled, registerStorageKey]);
 
   useEffect(() => {
     if (!posEnabled || registerConfig || !organizationId) return;
 
     fetchOrgRegisters()
       .then((list) => {
-        if (!Array.isArray(list) || list.length === 0) return;
-        if (list.length === 1) {
-          localStorage.setItem(POS_REGISTER_ID_KEY, list[0].id);
-          setRegisterConfig(list[0]);
+        const ownRegisters = Array.isArray(list)
+          ? list.filter((register) => register.organizationId === organizationId)
+          : [];
+        if (ownRegisters.length === 0) return;
+        if (ownRegisters.length === 1) {
+          localStorage.setItem(registerStorageKey, ownRegisters[0].id);
+          localStorage.removeItem(POS_REGISTER_ID_KEY);
+          setRegisterConfig(ownRegisters[0]);
           return;
         }
 
-        setOrgRegisters(list);
+        setOrgRegisters(ownRegisters);
         setShowRegisterPicker(true);
       })
       .catch(() => {
         setOrgRegisters([]);
       });
-  }, [organizationId, posEnabled, registerConfig]);
+  }, [organizationId, posEnabled, registerConfig, registerStorageKey]);
 
   useEffect(() => {
     if (!showSetupPanel || !organizationId) return;
@@ -96,7 +128,8 @@ export function usePosRegisterSetup({ organizationId, posEnabled }: Options) {
         branchId: setupBranchId,
         name: setupName.trim(),
       });
-      localStorage.setItem(POS_REGISTER_ID_KEY, created.id);
+      localStorage.setItem(registerStorageKey, created.id);
+      localStorage.removeItem(POS_REGISTER_ID_KEY);
       setRegisterConfig(created);
       setShowSetupPanel(false);
       setSetupName("");
@@ -109,7 +142,7 @@ export function usePosRegisterSetup({ organizationId, posEnabled }: Options) {
     } finally {
       setSetupRegistering(false);
     }
-  }, [organizationId, setupBranchId, setupName]);
+  }, [organizationId, registerStorageKey, setupBranchId, setupName]);
 
   const handleConnectExisting = useCallback(() => {
     const id = setupExistingId.trim();
@@ -117,32 +150,42 @@ export function usePosRegisterSetup({ organizationId, posEnabled }: Options) {
 
     setSetupRegistering(true);
     setSetupError("");
-    localStorage.setItem(POS_REGISTER_ID_KEY, id);
     fetchRegisterConfig(id)
       .then((config) => {
+        if (config.organizationId !== organizationId) {
+          throw new Error("Өөр байгууллагын POS register холбох боломжгүй");
+        }
+        localStorage.setItem(registerStorageKey, config.id);
+        localStorage.removeItem(POS_REGISTER_ID_KEY);
         setRegisterConfig(config);
         setShowSetupPanel(false);
         setSetupExistingId("");
       })
       .catch(() => {
-        localStorage.removeItem(POS_REGISTER_ID_KEY);
+        localStorage.removeItem(registerStorageKey);
         setSetupError("Register ID олдсонгүй эсвэл идэвхгүй байна.");
       })
       .finally(() => setSetupRegistering(false));
-  }, [setupExistingId]);
+  }, [organizationId, registerStorageKey, setupExistingId]);
 
   const handleDisconnectRegister = useCallback(() => {
+    localStorage.removeItem(registerStorageKey);
     localStorage.removeItem(POS_REGISTER_ID_KEY);
     setRegisterConfig(null);
     setShowSetupPanel(false);
     setSetupError("");
-  }, []);
+  }, [registerStorageKey]);
 
-  const selectRegister = useCallback((register: RegisterConfig) => {
-    localStorage.setItem(POS_REGISTER_ID_KEY, register.id);
-    setRegisterConfig(register);
-    setShowRegisterPicker(false);
-  }, []);
+  const selectRegister = useCallback(
+    (register: RegisterConfig) => {
+      if (register.organizationId !== organizationId) return;
+      localStorage.setItem(registerStorageKey, register.id);
+      localStorage.removeItem(POS_REGISTER_ID_KEY);
+      setRegisterConfig(register);
+      setShowRegisterPicker(false);
+    },
+    [organizationId, registerStorageKey],
+  );
 
   return {
     registerConfig,

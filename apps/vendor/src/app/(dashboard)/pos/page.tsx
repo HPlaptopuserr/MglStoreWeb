@@ -73,6 +73,8 @@ import {
   createLoyaltyRedeemSession,
   getLoyaltyRedeemSessionStatus,
   fetchRegisterConfig,
+  getPosRegisterIdKey,
+  POS_REGISTER_ID_KEY,
   createCashDrawerEvent,
   getCashDrawerSummary,
   getReceipts,
@@ -661,6 +663,7 @@ export default function PosDemoPage() {
   const ebarimtSendDataInFlightRef = useRef(false);
 
   const posEnabled = posAccess === "enabled";
+  const registerStorageKey = getPosRegisterIdKey(organizationId);
   const registerBranchId = posEnabled ? (registerConfig?.branchId ?? "") : "";
   const posProductsState = usePosProducts(registerBranchId);
   const ownProductsState = useOwnProducts(registerBranchId || !posEnabled ? "" : organizationId);
@@ -1369,18 +1372,44 @@ export default function PosDemoPage() {
   const [showRegisterPicker, setShowRegisterPicker] = useState(false);
 
   useEffect(() => {
-    if (!posEnabled) return;
-    const registerId = localStorage.getItem("pos_register_id");
-    if (registerId) {
-      fetchRegisterConfig(registerId)
-        .then(setRegisterConfig)
-        .catch(() => {
-          // Saved ID is stale/invalid — clear it and try org registers
-          localStorage.removeItem("pos_register_id");
-          setRegisterConfig(null);
-        });
+    setOrgRegisters([]);
+    setShowRegisterPicker(false);
+    if (!posEnabled || !organizationId) {
+      setRegisterConfig(null);
+      return;
     }
-  }, [posEnabled]);
+
+    let cancelled = false;
+    setRegisterConfig((current) =>
+      current?.organizationId === organizationId ? current : null,
+    );
+
+    const registerId =
+      localStorage.getItem(registerStorageKey) ||
+      localStorage.getItem(POS_REGISTER_ID_KEY);
+    if (!registerId) return;
+
+    fetchRegisterConfig(registerId)
+      .then((config) => {
+        if (config.organizationId !== organizationId) {
+          throw new Error("POS register belongs to another organization");
+        }
+        if (cancelled) return;
+        localStorage.setItem(registerStorageKey, config.id);
+        localStorage.removeItem(POS_REGISTER_ID_KEY);
+        setRegisterConfig(config);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        localStorage.removeItem(registerStorageKey);
+        localStorage.removeItem(POS_REGISTER_ID_KEY);
+        setRegisterConfig(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [organizationId, posEnabled, registerStorageKey]);
 
   // Auto-discover org registers when no register is loaded yet
   useEffect(() => {
@@ -1395,19 +1424,23 @@ export default function PosDemoPage() {
     })
       .then((r) => (r.ok ? r.json() : []))
       .then((list: RegisterConfig[]) => {
-        if (!Array.isArray(list) || list.length === 0) return;
-        if (list.length === 1) {
+        const ownRegisters = Array.isArray(list)
+          ? list.filter((register) => register.organizationId === organizationId)
+          : [];
+        if (ownRegisters.length === 0) return;
+        if (ownRegisters.length === 1) {
           // Only one register — auto-connect
-          localStorage.setItem("pos_register_id", list[0].id);
-          setRegisterConfig(list[0]);
+          localStorage.setItem(registerStorageKey, ownRegisters[0].id);
+          localStorage.removeItem(POS_REGISTER_ID_KEY);
+          setRegisterConfig(ownRegisters[0]);
         } else {
           // Multiple registers — let vendor choose
-          setOrgRegisters(list);
+          setOrgRegisters(ownRegisters);
           setShowRegisterPicker(true);
         }
       })
       .catch(() => {});
-  }, [organizationId, posEnabled, registerConfig]);
+  }, [organizationId, posEnabled, registerConfig, registerStorageKey]);
 
 
   // Load branches whenever setup panel opens
@@ -1454,7 +1487,8 @@ export default function PosDemoPage() {
         return;
       }
       const created = await res.json();
-      localStorage.setItem("pos_register_id", created.id);
+      localStorage.setItem(registerStorageKey, created.id);
+      localStorage.removeItem(POS_REGISTER_ID_KEY);
       setRegisterConfig(created);
       setShowSetupPanel(false);
       setSetupName("");
@@ -1470,19 +1504,26 @@ export default function PosDemoPage() {
     if (!id) return;
     setSetupRegistering(true);
     setSetupError("");
-    localStorage.setItem("pos_register_id", id);
     fetchRegisterConfig(id)
       .then((cfg) => {
+        if (cfg.organizationId !== organizationId) {
+          throw new Error("Register ID нь өөр байгууллагад харьяалагдаж байна.");
+        }
+        localStorage.setItem(registerStorageKey, cfg.id);
+        localStorage.removeItem(POS_REGISTER_ID_KEY);
         setRegisterConfig(cfg);
         setShowSetupPanel(false);
         setSetupExistingId("");
       })
-      .catch(() => setSetupError("Register ID олдсонгүй эсвэл идэвхгүй байна."))
+      .catch((error: Error) =>
+        setSetupError(error.message || "Register ID олдсонгүй эсвэл идэвхгүй байна."),
+      )
       .finally(() => setSetupRegistering(false));
   };
 
   const handleDisconnectRegister = () => {
-    localStorage.removeItem("pos_register_id");
+    localStorage.removeItem(registerStorageKey);
+    localStorage.removeItem(POS_REGISTER_ID_KEY);
     setRegisterConfig(null);
     setShowSetupPanel(false);
     setSetupError("");
@@ -3605,7 +3646,9 @@ export default function PosDemoPage() {
                 key={reg.id}
                 type="button"
                 onClick={() => {
-                  localStorage.setItem("pos_register_id", reg.id);
+                  if (reg.organizationId !== organizationId) return;
+                  localStorage.setItem(registerStorageKey, reg.id);
+                  localStorage.removeItem(POS_REGISTER_ID_KEY);
                   setRegisterConfig(reg);
                   setShowRegisterPicker(false);
                 }}

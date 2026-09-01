@@ -2,12 +2,11 @@ import { Router, type Router as ExpressRouter } from "express";
 import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus, CardTerminalRequestStatus } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
-import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
 import {
-  requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
+  requirePosUser, requireAdminUser, canAccessPosOrganization, normalizePaymentMethod, normalizeRegisterName,
   roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
   parseBridgeResultStatus, parseQPaySuccess, parseOptionalDate,
   makePushEcrReferral, pushEcrHeaders, pushEcrBaseUrl,
@@ -233,7 +232,7 @@ router.get("/pos/register-config", async (req, res) => {
     if (!register) {
       return res.status(404).json({ message: "POS олдсонгүй" });
     }
-    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, register.organizationId))) {
+    if (!canAccessPosOrganization(actor, register.organizationId)) {
       return res.status(403).json({ message: "Өөр байгууллагын POS config харах боломжгүй" });
     }
     if (!register.isActive || register.activationStatus !== PosActivationStatus.APPROVED) {
@@ -567,7 +566,7 @@ router.post("/pos/registers/:id/card-terminal/connect", async (req, res) => {
     if (!register || register.deletedAt) {
       return res.status(404).json({ message: "POS register олдсонгүй" });
     }
-    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, register.organizationId))) {
+    if (!canAccessPosOrganization(actor, register.organizationId)) {
       return res.status(403).json({ message: "Өөр байгууллагын POS terminal холбох боломжгүй" });
     }
     if (!register.isActive || register.activationStatus !== PosActivationStatus.APPROVED) {
