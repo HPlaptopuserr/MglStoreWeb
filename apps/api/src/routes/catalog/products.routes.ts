@@ -1217,10 +1217,7 @@ router.get("/products", optionalAuth, async (req, res) => {
                     { discounts: { _count: "desc" } },
                     { createdAt: "desc" },
                   ]
-                : [
-                    { createdAt: "desc" },
-                    { marketplacePriority: "desc" },
-                  ],
+                : [{ createdAt: "desc" }, { marketplacePriority: "desc" }],
       ...(useDatabasePagination ? { skip: offset } : {}),
       ...(productCandidateLimit > 0 ? { take: productCandidateLimit } : {}),
       include: {
@@ -3031,6 +3028,8 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
             logoUrl: true,
             status: true,
             deletedAt: true,
+            qpayEnabled: true,
+            qpayMerchantId: true,
           },
         },
         discounts: {
@@ -3077,6 +3076,9 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
         id: organization.id,
         name: organization.name,
         logoUrl: organization.logoUrl,
+        paymentConfigured: Boolean(
+          organization.qpayEnabled && organization.qpayMerchantId,
+        ),
       },
     });
   } catch (error) {

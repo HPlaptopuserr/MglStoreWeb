@@ -157,15 +157,12 @@ async function getLegacyStorePaymentAccount(merchantCode: string) {
     const accounts = JSON.parse(setting.value);
     if (!Array.isArray(accounts)) return null;
     const matched = accounts.find(
-      (account) =>
-        String(account?.merchantCode || "").trim() === merchantCode,
+      (account) => String(account?.merchantCode || "").trim() === merchantCode,
     );
     if (!matched) return null;
     return {
       merchantCode,
-      username: String(
-        matched?.username || matched?.merchantCode || "",
-      ).trim(),
+      username: String(matched?.username || matched?.merchantCode || "").trim(),
       password: String(matched?.password || "").trim(),
     } satisfies LegacyStorePaymentAccount;
   } catch {
@@ -424,7 +421,7 @@ async function createStorePaymentInvoice(params: {
       {
         merchantCode: systemQrConfig.merchantCode,
         amount: params.amount,
-        referenceNumber: params.orderId,
+        referenceNumber: params.orderNumber,
         webhook: getStoreQPayCallbackUrl(params.orderId),
       },
       systemQrConfig.username,
@@ -440,7 +437,13 @@ async function createStorePaymentInvoice(params: {
       },
       rawPayload: {
         provider: "SYSTEMQR",
+        orderId: params.orderId,
+        orderNumber: params.orderNumber,
+        referenceNumber: params.orderNumber,
         merchantCode: systemQrConfig.merchantCode,
+        order_id: params.orderId,
+        order_number: params.orderNumber,
+        reference_number: params.orderNumber,
         invoice_id: systemQr.invoiceId,
         qr_text: systemQr.qrText,
         qr_image: "",
@@ -471,6 +474,9 @@ async function createStorePaymentInvoice(params: {
         },
         rawPayload: {
           provider: "LOCAL_DEV",
+          orderId: params.orderId,
+          orderNumber: params.orderNumber,
+          referenceNumber: params.orderNumber,
           invoice_id: invoiceId,
           qr_text: qrText,
           qr_image: "",
@@ -492,6 +498,9 @@ async function createStorePaymentInvoice(params: {
     data: qpayData,
     rawPayload: {
       provider: "QPAY",
+      orderId: params.orderId,
+      orderNumber: params.orderNumber,
+      referenceNumber: params.orderNumber,
       invoice_id: qpayData.invoice_id,
       qr_text: qpayData.qr_text,
       qr_image: qpayData.qr_image,
@@ -715,12 +724,21 @@ async function confirmPaidOrderAndCreateDelivery(
     // that atomically claims the unpaid order may deduct stock and create work.
     if (claimed.count === 0) return null;
 
+    const existingPayment = await tx.paymentAttempt.findUnique({
+      where: { id: paymentId },
+      select: { rawPayload: true },
+    });
     await tx.paymentAttempt.update({
       where: { id: paymentId },
       data: {
         status: PaymentStatus.PAID,
         paidAt: new Date(),
-        rawPayload: JSON.parse(JSON.stringify(rawPayload)),
+        rawPayload: JSON.parse(
+          JSON.stringify({
+            ...asRecord(existingPayment?.rawPayload),
+            paymentCheck: rawPayload,
+          }),
+        ),
       },
     });
 
@@ -871,6 +889,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         preorderCapacity: true,
         preorderCycleStartedAt: true,
         organizationId: true,
+        organization: { select: { name: true } },
         managedByWarehouseId: true,
         warehouseInventories: {
           select: {
@@ -967,6 +986,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
           preorderCapacity: true,
           preorderCycleStartedAt: true,
           organizationId: true,
+          organization: { select: { name: true } },
           managedByWarehouseId: true,
           warehouseInventories: {
             select: {
@@ -1063,6 +1083,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       );
       return {
         organizationId,
+        organizationName: groupProducts[0]?.organization.name || "Дэлгүүр",
         items,
         subtotal: items.reduce((sum, item) => sum + item.subtotal, 0),
         isPreorderOnly: groupProducts.every(
@@ -1197,20 +1218,27 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
             customerLng: order.customerLng,
           });
         }
-        results.push({ order, isPreorderOnly: group.isPreorderOnly });
+        results.push({
+          order,
+          organizationName: group.organizationName,
+          isPreorderOnly: group.isPreorderOnly,
+        });
       }
       return results;
     });
 
     const orderResults = await Promise.all(
-      createdOrders.map(async ({ order, isPreorderOnly }) => ({
-        order,
-        isPreorderOnly,
-        dispatch:
-          !isPreorderOnly && hasCustomerCoordinates
-            ? await getCheckoutDispatchSnapshot(order.id, customer.id)
-            : null,
-      })),
+      createdOrders.map(
+        async ({ order, organizationName, isPreorderOnly }) => ({
+          order,
+          organizationName,
+          isPreorderOnly,
+          dispatch:
+            !isPreorderOnly && hasCustomerCoordinates
+              ? await getCheckoutDispatchSnapshot(order.id, customer.id)
+              : null,
+        }),
+      ),
     );
     const primary = orderResults[0];
     if (!primary) {
@@ -1247,18 +1275,29 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       orderId: primary.order.id,
       orderNumber: primary.order.orderNumber,
       orderCount: orderResults.length,
-      orders: orderResults.map(({ order, isPreorderOnly, dispatch }) => ({
-        orderId: order.id,
-        orderNumber: order.orderNumber,
-        organizationId: order.organizationId,
-        total: Number(order.total),
-        subtotal: Number(order.subtotal),
-        preorderOrder: isPreorderOnly,
-        dispatchStatus:
-          !isPreorderOnly && !hasCustomerCoordinates
-            ? "MANUAL_REVIEW"
-            : dispatch?.status || "PREORDER_REGISTERED",
-      })),
+      orders: orderResults.map(
+        ({ order, organizationName, isPreorderOnly, dispatch }) => ({
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          organizationId: order.organizationId,
+          organizationName,
+          total: Number(order.total),
+          subtotal: Number(order.subtotal),
+          preorderOrder: isPreorderOnly,
+          canPay: isPreorderOnly || Boolean(dispatch?.canPay),
+          items: order.items.map((item) => ({
+            productId: item.productId,
+            name: item.productName,
+            qty: item.quantity,
+            price: Number(item.price),
+            subtotal: Number(item.subtotal),
+          })),
+          dispatchStatus:
+            !isPreorderOnly && !hasCustomerCoordinates
+              ? "MANUAL_REVIEW"
+              : dispatch?.status || "PREORDER_REGISTERED",
+        }),
+      ),
       total,
       subtotal,
       paymentId: null,

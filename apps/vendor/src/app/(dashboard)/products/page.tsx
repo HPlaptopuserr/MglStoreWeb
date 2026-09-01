@@ -804,7 +804,7 @@ export default function ProductsPage() {
             </p>
           </div>
           <a
-            href="/profile"
+            href="/profile?tab=qpay"
             className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-amber-600 px-4 text-xs font-bold text-white transition hover:bg-amber-700"
           >
             QR данс холбох

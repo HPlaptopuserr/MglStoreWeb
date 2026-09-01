@@ -26,6 +26,10 @@ import {
 import { LoginModal } from "@/components/organisms/auth/LoginModal";
 import { QPayModal } from "@/components/organisms/checkout/QPayModal";
 import { MinimumOrderModal } from "@/components/organisms/checkout/MinimumOrderModal";
+import {
+  CheckoutStoreGroups,
+  type CheckoutStoreGroup,
+} from "@/components/organisms/checkout/CheckoutStoreGroups";
 import { trackMetaCommerceEvent } from "@/lib/meta-events";
 
 const MINIMUM_ORDER_AMOUNT = 50_000;
@@ -64,6 +68,50 @@ interface CheckoutResult {
   deepLinks: DeepLink[];
   expiresIn: number;
 }
+
+interface CheckoutCreatedOrderResponse {
+  orderId: string;
+  orderNumber: string;
+  organizationId: string;
+  organizationName: string;
+  total: number;
+  preorderOrder: boolean;
+  canPay: boolean;
+  dispatchStatus: string;
+  items: Array<{
+    productId: string;
+    name: string;
+    qty: number;
+    price: number;
+    subtotal: number;
+  }>;
+}
+
+const toCreatedStoreGroups = (
+  orders: CheckoutCreatedOrderResponse[] | undefined,
+): CheckoutStoreGroup[] =>
+  Array.isArray(orders)
+    ? orders.map((order) => ({
+        organizationId: order.organizationId,
+        organizationName: order.organizationName || "Дэлгүүр",
+        orderId: order.orderId,
+        orderNumber: order.orderNumber,
+        total: Number(order.total),
+        preorderOrder: Boolean(order.preorderOrder),
+        canPay: Boolean(order.canPay),
+        dispatchStatus: order.dispatchStatus,
+        paid: false,
+        items: Array.isArray(order.items)
+          ? order.items.map((item) => ({
+              productId: item.productId,
+              name: item.name,
+              quantity: item.qty,
+              price: Number(item.price),
+              subtotal: Number(item.subtotal),
+            }))
+          : [],
+      }))
+    : [];
 
 type CheckoutStep =
   | "idle"
@@ -186,7 +234,13 @@ function AddressConfirmPanel({
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, total, clearCart } = useCart();
-  const { user, loading: authHydrating, authFetch, login, register } = useAuth();
+  const {
+    user,
+    loading: authHydrating,
+    authFetch,
+    login,
+    register,
+  } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -207,7 +261,18 @@ export default function CheckoutPage() {
   const [selectedAddressId, setSelectedAddressId] = useState("");
   const [cancellingOrder, setCancellingOrder] = useState(false);
   const [minimumOrderModalOpen, setMinimumOrderModalOpen] = useState(false);
+  const [cartStoreGroups, setCartStoreGroups] = useState<CheckoutStoreGroup[]>(
+    [],
+  );
+  const [createdStoreOrders, setCreatedStoreOrders] = useState<
+    CheckoutStoreGroup[]
+  >([]);
+  const [loadingOrderId, setLoadingOrderId] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const cartItemsRef = useRef(items);
+  const createdStoreOrdersRef = useRef(createdStoreOrders);
+  cartItemsRef.current = items;
+  createdStoreOrdersRef.current = createdStoreOrders;
   const didPrefillPhone = useRef(false);
   const didPrefillEmail = useRef(false);
   const didTrackCheckout = useRef(false);
@@ -240,6 +305,85 @@ export default function CheckoutPage() {
   const isPreorderCart =
     items.length > 0 &&
     items.every((item) => item.supplyType === "CHINA_PREORDER");
+  const cartHydrationKey = items
+    .map((item) => `${item.id}:${item.quantity}:${item.price}`)
+    .join("|");
+  const pendingStoreDispatchKey = createdStoreOrders
+    .filter(
+      (order) =>
+        order.orderId && !order.paid && !order.canPay && !order.preorderOrder,
+    )
+    .map((order) => `${order.orderId}:${order.dispatchStatus || ""}`)
+    .join("|");
+
+  useEffect(() => {
+    const currentItems = cartItemsRef.current;
+    if (currentItems.length === 0) {
+      setCartStoreGroups([]);
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      currentItems.map(async (item) => {
+        if (item.id.startsWith("local-product-")) {
+          return {
+            item,
+            organization: {
+              id: "local-development-store",
+              name: "Туршилтын дэлгүүр",
+              paymentConfigured: true,
+            },
+          };
+        }
+        try {
+          const response = await fetch(
+            `${API}/products/${encodeURIComponent(item.id)}`,
+            { cache: "no-store" },
+          );
+          if (!response.ok) return null;
+          const product = (await response.json()) as {
+            organization?: {
+              id?: string;
+              name?: string;
+              paymentConfigured?: boolean;
+            };
+          };
+          if (!product.organization?.id) return null;
+          return { item, organization: product.organization };
+        } catch {
+          return null;
+        }
+      }),
+    ).then((resolvedItems) => {
+      if (cancelled) return;
+      const groups = new Map<string, CheckoutStoreGroup>();
+      for (const resolved of resolvedItems) {
+        if (!resolved) continue;
+        const organizationId = resolved.organization.id || "unknown-store";
+        const current = groups.get(organizationId) ?? {
+          organizationId,
+          organizationName: resolved.organization.name || "Дэлгүүр",
+          paymentConfigured: resolved.organization.paymentConfigured,
+          items: [],
+          total: 0,
+        };
+        const subtotal = resolved.item.price * resolved.item.quantity;
+        current.items.push({
+          productId: resolved.item.id,
+          name: resolved.item.name,
+          quantity: resolved.item.quantity,
+          price: resolved.item.price,
+          subtotal,
+        });
+        current.total += subtotal;
+        groups.set(organizationId, current);
+      }
+      setCartStoreGroups([...groups.values()]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [cartHydrationKey]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
@@ -402,8 +546,53 @@ export default function CheckoutPage() {
     };
   }, [authFetch, deliverySession, user?.id]);
 
+  useEffect(() => {
+    const pendingDispatchOrders = createdStoreOrdersRef.current.filter(
+      (order) =>
+        order.orderId && !order.paid && !order.canPay && !order.preorderOrder,
+    );
+    if (pendingDispatchOrders.length === 0) return;
+
+    const syncStoreDispatches = async () => {
+      const updates = await Promise.all(
+        pendingDispatchOrders.map(async (order) => {
+          try {
+            const response = await authFetch(
+              `${API}/store/checkout/${order.orderId}/dispatch-status`,
+            );
+            if (!response.ok) return null;
+            const data = (await response.json()) as {
+              canPay?: boolean;
+              status?: string;
+            };
+            return {
+              orderId: order.orderId,
+              canPay: Boolean(data.canPay),
+              dispatchStatus: data.status || order.dispatchStatus,
+            };
+          } catch {
+            return null;
+          }
+        }),
+      );
+      setCreatedStoreOrders((current) =>
+        current.map((order) => {
+          const update = updates.find(
+            (candidate) => candidate?.orderId === order.orderId,
+          );
+          return update ? { ...order, ...update } : order;
+        }),
+      );
+    };
+
+    void syncStoreDispatches();
+    const timer = window.setInterval(syncStoreDispatches, 5000);
+    return () => window.clearInterval(timer);
+  }, [authFetch, pendingStoreDispatchKey]);
+
   const createPayment = async (session: Pick<DeliverySession, "orderId">) => {
     setLoading(true);
+    setLoadingOrderId(session.orderId);
     setError("");
 
     try {
@@ -425,6 +614,7 @@ export default function CheckoutPage() {
       setError("Сүлжээний алдаа гарлаа");
     } finally {
       setLoading(false);
+      setLoadingOrderId(null);
     }
   };
 
@@ -519,6 +709,12 @@ export default function CheckoutPage() {
         return;
       }
 
+      const storeOrders = toCreatedStoreGroups(data.orders);
+      if (storeOrders.length > 1) {
+        setCreatedStoreOrders(storeOrders);
+        clearCart();
+        return;
+      }
       await createPayment({ orderId: data.orderId });
     } catch {
       setError("Сүлжээний алдаа гарлаа");
@@ -605,6 +801,14 @@ export default function CheckoutPage() {
           setCheckoutStep("confirm-location");
         }
         setLoading(false);
+        return;
+      }
+
+      const storeOrders = toCreatedStoreGroups(data.orders);
+      if (storeOrders.length > 1) {
+        setCreatedStoreOrders(storeOrders);
+        clearCart();
+        setCheckoutStep("radar");
         return;
       }
 
@@ -708,12 +912,32 @@ export default function CheckoutPage() {
             : undefined,
       });
     }
+    if (checkoutResult && createdStoreOrders.length > 0) {
+      const completedOrderId = checkoutResult.orderId;
+      const remainingOrders = createdStoreOrders.filter(
+        (order) => order.orderId !== completedOrderId && !order.paid,
+      );
+      setCreatedStoreOrders((current) =>
+        current.map((order) =>
+          order.orderId === completedOrderId
+            ? { ...order, paid: true, canPay: false }
+            : order,
+        ),
+      );
+      setCheckoutResult(null);
+      if (remainingOrders.length > 0) return;
+    }
     setActiveCheckoutDispatch(user?.id, null);
     if (!deliverySession) clearCart();
     router.push(ACCOUNT_ROUTES.orders);
   };
 
-  if (items.length === 0 && !checkoutResult && !deliverySession) {
+  if (
+    items.length === 0 &&
+    !checkoutResult &&
+    !deliverySession &&
+    createdStoreOrders.length === 0
+  ) {
     return (
       <div className="container mx-auto flex flex-col items-center justify-center gap-6 px-4 py-20">
         <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gray-100">
@@ -750,119 +974,129 @@ export default function CheckoutPage() {
       <div className="grid items-start gap-4 lg:grid-cols-3">
         {/* Order summary */}
         <div className="space-y-3 lg:col-span-2">
-          {items.length > 0 && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-4">
-            <h2 className="mb-2 text-base font-bold text-gray-900">
-              Сагсны бараа
-            </h2>
-            <div className="divide-y divide-gray-100">
-              {items.map((item) => (
-                <div key={item.id} className="flex items-center gap-3 py-2">
-                  <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
-                    {item.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center">
-                        <ShoppingCart size={20} className="text-gray-300" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 line-clamp-1">
-                      {item.name}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {item.quantity} ширхэг × ₮{item.price.toLocaleString()}
-                    </p>
-                  </div>
-                  <p className="text-sm font-bold text-gray-900 tabular-nums">
-                    ₮{(item.price * item.quantity).toLocaleString()}
-                  </p>
-                </div>
-              ))}
+          {items.length > 0 && cartStoreGroups.length > 0 && (
+            <div className="rounded-2xl border border-gray-200 bg-white p-4">
+              <CheckoutStoreGroups
+                groups={cartStoreGroups}
+                paymentPhase={false}
+              />
             </div>
-          </div>
+          )}
+          {items.length > 0 && cartStoreGroups.length === 0 && (
+            <div className="rounded-2xl border border-gray-200 bg-white p-4">
+              <h2 className="mb-2 text-base font-bold text-gray-900">
+                Сагсны бараа
+              </h2>
+              <div className="divide-y divide-gray-100">
+                {items.map((item) => (
+                  <div key={item.id} className="flex items-center gap-3 py-2">
+                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-gray-50">
+                      {item.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={item.image}
+                          alt={item.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center">
+                          <ShoppingCart size={20} className="text-gray-300" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 line-clamp-1">
+                        {item.name}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {item.quantity} ширхэг × ₮{item.price.toLocaleString()}
+                      </p>
+                    </div>
+                    <p className="text-sm font-bold text-gray-900 tabular-nums">
+                      ₮{(item.price * item.quantity).toLocaleString()}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Order information */}
-          <div className="rounded-2xl border border-gray-200 bg-white p-4">
-            <h2 className="mb-3 text-base font-bold text-gray-900">
-              Захиалгын мэдээлэл
-            </h2>
-            <div className="space-y-3">
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {createdStoreOrders.length === 0 && (
+            <div className="rounded-2xl border border-gray-200 bg-white p-4">
+              <h2 className="mb-3 text-base font-bold text-gray-900">
+                Захиалгын мэдээлэл
+              </h2>
+              <div className="space-y-3">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-gray-700">
+                      Утасны дугаар <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={phone}
+                      onChange={(e) => {
+                        setPhone(e.target.value);
+                        if (error) setError("");
+                      }}
+                      required
+                      placeholder="99112233"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-gray-700">
+                      Имэйл хаяг
+                    </label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (error) setError("");
+                      }}
+                      autoComplete="email"
+                      inputMode="email"
+                      placeholder="name@example.com"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs font-bold text-gray-700">
+                      Нэмэлт дугаар
+                    </label>
+                    <input
+                      type="tel"
+                      value={secondaryPhone}
+                      onChange={(e) => setSecondaryPhone(e.target.value)}
+                      placeholder="Байвал оруулна уу"
+                      className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
+                    />
+                  </div>
+                </div>
+
                 <div>
                   <label className="mb-1 block text-xs font-bold text-gray-700">
-                    Утасны дугаар <span className="text-red-500">*</span>
+                    Нэмэлт мэдээлэл
                   </label>
-                  <input
-                    type="tel"
-                    value={phone}
+                  <textarea
+                    value={orderNote}
                     onChange={(e) => {
-                      setPhone(e.target.value);
+                      setOrderNote(e.target.value);
                       if (error) setError("");
                     }}
+                    rows={2}
                     required
-                    placeholder="99112233"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
+                    placeholder="Жишээ: Орцны код, хүргэлтийн цаг, авах хүний нэр..."
+                    className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
                   />
                 </div>
-
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-gray-700">
-                    Имэйл хаяг
-                  </label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => {
-                      setEmail(e.target.value);
-                      if (error) setError("");
-                    }}
-                    autoComplete="email"
-                    inputMode="email"
-                    placeholder="name@example.com"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1 block text-xs font-bold text-gray-700">
-                    Нэмэлт дугаар
-                  </label>
-                  <input
-                    type="tel"
-                    value={secondaryPhone}
-                    onChange={(e) => setSecondaryPhone(e.target.value)}
-                    placeholder="Байвал оруулна уу"
-                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-xs font-bold text-gray-700">
-                  Нэмэлт мэдээлэл
-                </label>
-                <textarea
-                  value={orderNote}
-                  onChange={(e) => {
-                    setOrderNote(e.target.value);
-                    if (error) setError("");
-                  }}
-                  rows={2}
-                  required
-                  placeholder="Жишээ: Орцны код, хүргэлтийн цаг, авах хүний нэр..."
-                  className="w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm font-semibold outline-none transition-colors focus:border-amber-400 focus:bg-white"
-                />
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Payment sidebar */}
@@ -882,6 +1116,19 @@ export default function CheckoutPage() {
                 paying={loading}
                 onCancel={() => void cancelDeliverySearch()}
                 onPay={() => void handleCheckout()}
+              />
+            )}
+
+            {createdStoreOrders.length > 0 && (
+              <CheckoutStoreGroups
+                groups={createdStoreOrders}
+                paymentPhase
+                loadingOrderId={loadingOrderId}
+                onPay={(order) => {
+                  if (order.orderId) {
+                    void createPayment({ orderId: order.orderId });
+                  }
+                }}
               />
             )}
 
@@ -922,71 +1169,81 @@ export default function CheckoutPage() {
                 />
               )}
 
-            {!deliverySession && checkoutItems.length > 0 && (
-              <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-2">
-                {checkoutItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-2 rounded-lg bg-white p-2"
-                  >
-                    {item.imageUrl ? (
-                      <img
-                        src={resolveApiAssetUrl(item.imageUrl)}
-                        alt=""
-                        className="h-9 w-9 shrink-0 rounded-lg object-cover"
-                      />
-                    ) : (
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xs font-black text-gray-400">
-                        {item.quantity}
+            {!deliverySession &&
+              createdStoreOrders.length === 0 &&
+              checkoutItems.length > 0 && (
+                <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-2">
+                  {checkoutItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center gap-2 rounded-lg bg-white p-2"
+                    >
+                      {item.imageUrl ? (
+                        <img
+                          src={resolveApiAssetUrl(item.imageUrl)}
+                          alt=""
+                          className="h-9 w-9 shrink-0 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-xs font-black text-gray-400">
+                          {item.quantity}
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-black text-gray-800">
+                          {item.name}
+                        </p>
+                        <p className="mt-0.5 text-[10px] font-semibold text-gray-400">
+                          {item.quantity} {item.unit || "ш"} × ₮
+                          {item.price.toLocaleString()}
+                          {item.sku ? ` · ${item.sku}` : ""}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-xs font-black tabular-nums text-gray-900">
+                        ₮{item.subtotal.toLocaleString()}
                       </span>
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-black text-gray-800">
-                        {item.name}
-                      </p>
-                      <p className="mt-0.5 text-[10px] font-semibold text-gray-400">
-                        {item.quantity} {item.unit || "ш"} × ₮
-                        {item.price.toLocaleString()}
-                        {item.sku ? ` · ${item.sku}` : ""}
-                      </p>
                     </div>
-                    <span className="shrink-0 text-xs font-black tabular-nums text-gray-900">
-                      ₮{item.subtotal.toLocaleString()}
-                    </span>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              )}
+
+            {!deliverySession && createdStoreOrders.length === 0 && (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between text-gray-500">
+                  <span>
+                    Бүтээгдэхүүн (
+                    {checkoutItems.reduce(
+                      (sum, item) => sum + item.quantity,
+                      0,
+                    )}
+                    )
+                  </span>
+                  <span className="tabular-nums">
+                    ₮{displaySubtotal.toLocaleString()}
+                  </span>
+                </div>
+                <div className="flex justify-between text-gray-500">
+                  <span>Хүргэлт</span>
+                  <span className="font-medium text-green-600">
+                    {checkoutStep === "confirm-location"
+                      ? "Байршил шалгана"
+                      : isPreorderCart
+                        ? "Байршил шаардахгүй"
+                        : deliveryUnavailable
+                          ? "Салбараас авна"
+                          : "Үнэгүй"}
+                  </span>
+                </div>
+                <div className="border-t border-gray-100 pt-2 flex justify-between">
+                  <span className="text-base font-bold text-gray-900">
+                    Нийт
+                  </span>
+                  <span className="text-xl font-black text-gray-900 tabular-nums">
+                    ₮{displayTotal.toLocaleString()}
+                  </span>
+                </div>
               </div>
             )}
-
-            {!deliverySession && <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-gray-500">
-                <span>
-                  Бүтээгдэхүүн (
-                  {checkoutItems.reduce((sum, item) => sum + item.quantity, 0)})
-                </span>
-                <span className="tabular-nums">
-                  ₮{displaySubtotal.toLocaleString()}
-                </span>
-              </div>
-              <div className="flex justify-between text-gray-500">
-                <span>Хүргэлт</span>
-                <span className="font-medium text-green-600">
-                  {checkoutStep === "confirm-location"
-                    ? "Байршил шалгана"
-                    : isPreorderCart
-                      ? "Байршил шаардахгүй"
-                      : deliveryUnavailable
-                        ? "Салбараас авна"
-                        : "Үнэгүй"}
-                </span>
-              </div>
-              <div className="border-t border-gray-100 pt-2 flex justify-between">
-                <span className="text-base font-bold text-gray-900">Нийт</span>
-                <span className="text-xl font-black text-gray-900 tabular-nums">
-                  ₮{displayTotal.toLocaleString()}
-                </span>
-              </div>
-            </div>}
 
             {error && (
               <div className="flex items-start gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">
@@ -995,40 +1252,42 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {!deliverySession && <button
-              onClick={handleCheckout}
-              disabled={
-                loading ||
-                cancellingOrder ||
-                items.length === 0 ||
-                !phone.trim() ||
-                !orderNote.trim() ||
-                (!isPreorderCart && deliveryUnavailable) ||
-                (!isPreorderCart && checkoutStep === "confirm-location")
-              }
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-sm font-bold text-white transition-colors hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  Түр хүлээнэ үү...
-                </>
-              ) : !isPreorderCart && deliveryUnavailable ? (
-                "Салбар дээрээс авах"
-              ) : !isPreorderCart && checkoutStep === "confirm-location" ? (
-                "Байршлаа баталгаажуулна уу"
-              ) : !phone.trim() ? (
-                "Утасны дугаар оруулна уу"
-              ) : !orderNote.trim() ? (
-                "Нэмэлт мэдээлэл оруулна уу"
-              ) : user && isPreorderCart ? (
-                "Захиалга бүртгэж төлөх"
-              ) : user ? (
-                "Захиалга өгөх"
-              ) : (
-                "Нэвтэрч захиалга өгөх"
-              )}
-            </button>}
+            {!deliverySession && createdStoreOrders.length === 0 && (
+              <button
+                onClick={handleCheckout}
+                disabled={
+                  loading ||
+                  cancellingOrder ||
+                  items.length === 0 ||
+                  !phone.trim() ||
+                  !orderNote.trim() ||
+                  (!isPreorderCart && deliveryUnavailable) ||
+                  (!isPreorderCart && checkoutStep === "confirm-location")
+                }
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 py-3.5 text-sm font-bold text-white transition-colors hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Түр хүлээнэ үү...
+                  </>
+                ) : !isPreorderCart && deliveryUnavailable ? (
+                  "Салбар дээрээс авах"
+                ) : !isPreorderCart && checkoutStep === "confirm-location" ? (
+                  "Байршлаа баталгаажуулна уу"
+                ) : !phone.trim() ? (
+                  "Утасны дугаар оруулна уу"
+                ) : !orderNote.trim() ? (
+                  "Нэмэлт мэдээлэл оруулна уу"
+                ) : user && isPreorderCart ? (
+                  "Захиалга бүртгэж төлөх"
+                ) : user ? (
+                  "Захиалга өгөх"
+                ) : (
+                  "Нэвтэрч захиалга өгөх"
+                )}
+              </button>
+            )}
 
             {!user && (
               <p className="text-center text-xs text-gray-400">
