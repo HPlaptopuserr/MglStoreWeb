@@ -129,8 +129,6 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     : {};
 
 const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
-const STORE_CHECKOUT_ACCOUNT_REF =
-  process.env.STORE_CHECKOUT_PAYMENT_ACCOUNT_REF?.trim() || "9999";
 const configuredMinimumOrderAmount = Number(
   process.env.STORE_MINIMUM_ORDER_AMOUNT || 0,
 );
@@ -140,33 +138,15 @@ const STORE_MINIMUM_ORDER_AMOUNT =
     ? Math.floor(configuredMinimumOrderAmount)
     : 0;
 
-type StorePaymentAccount = {
-  id?: string;
-  label?: string;
-  merchantName?: string;
-  merchantCode?: string;
-  username?: string;
-  password?: string;
-  accountNumber?: string;
+type LegacyStorePaymentAccount = {
+  merchantCode: string;
+  username: string;
+  password: string;
 };
 
-function accountMatchesStoreCheckoutRef(account: StorePaymentAccount) {
-  const ref = STORE_CHECKOUT_ACCOUNT_REF.toLowerCase();
-  return [
-    account.id,
-    account.label,
-    account.merchantCode,
-    account.accountNumber,
-  ]
-    .map((value) =>
-      String(value || "")
-        .trim()
-        .toLowerCase(),
-    )
-    .some((value) => value === ref || value.includes(ref));
-}
-
-async function getStoreCheckoutPaymentAccount() {
+/** Existing invoices created before seller-only routing must remain verifiable. */
+async function getLegacyStorePaymentAccount(merchantCode: string) {
+  if (!merchantCode) return null;
   const setting = await prisma.siteSetting.findUnique({
     where: { key: CONTRACT_PAYMENT_ACCOUNTS_KEY },
     select: { value: true },
@@ -174,28 +154,20 @@ async function getStoreCheckoutPaymentAccount() {
   if (!setting?.value) return null;
 
   try {
-    const parsed = JSON.parse(setting.value);
-    if (!Array.isArray(parsed)) return null;
-    return (
-      parsed
-        .map(
-          (account): StorePaymentAccount => ({
-            id: String(account?.id || "").trim(),
-            label: String(account?.label || "").trim(),
-            merchantName: String(account?.merchantName || "").trim(),
-            merchantCode: String(account?.merchantCode || "").trim(),
-            username: String(
-              account?.username || account?.merchantCode || "",
-            ).trim(),
-            password: String(account?.password || "").trim(),
-            accountNumber: String(account?.accountNumber || "").trim(),
-          }),
-        )
-        .find(
-          (account) =>
-            account.merchantCode && accountMatchesStoreCheckoutRef(account),
-        ) || null
+    const accounts = JSON.parse(setting.value);
+    if (!Array.isArray(accounts)) return null;
+    const matched = accounts.find(
+      (account) =>
+        String(account?.merchantCode || "").trim() === merchantCode,
     );
+    if (!matched) return null;
+    return {
+      merchantCode,
+      username: String(
+        matched?.username || matched?.merchantCode || "",
+      ).trim(),
+      password: String(matched?.password || "").trim(),
+    } satisfies LegacyStorePaymentAccount;
   } catch {
     return null;
   }
@@ -442,40 +414,10 @@ async function createStorePaymentInvoice(params: {
   orderNumber: string;
   amount: number;
 }) {
-  const storePaymentAccount = await getStoreCheckoutPaymentAccount();
-  if (storePaymentAccount?.merchantCode) {
-    const systemQr = await createSystemQrInvoice(
-      {
-        merchantCode: storePaymentAccount.merchantCode,
-        amount: params.amount,
-        referenceNumber: params.orderId,
-        webhook: getStoreQPayCallbackUrl(params.orderId),
-      },
-      storePaymentAccount.username || undefined,
-      storePaymentAccount.password || undefined,
-    );
-
-    return {
-      data: {
-        invoice_id: systemQr.invoiceId,
-        qr_text: systemQr.qrText,
-        qr_image: "",
-        urls: systemQr.urls,
-      },
-      rawPayload: {
-        provider: "SYSTEMQR",
-        source: "ADMIN_PAYMENT_ACCOUNT",
-        accountRef: STORE_CHECKOUT_ACCOUNT_REF,
-        merchantCode: storePaymentAccount.merchantCode,
-        invoice_id: systemQr.invoiceId,
-        qr_text: systemQr.qrText,
-        qr_image: "",
-        urls: systemQr.urls,
-      },
-    };
-  }
-
-  const systemQrConfig = await getVendorSystemQrConfig(params.organizationId);
+  const systemQrConfig = await getVendorSystemQrConfig(
+    params.organizationId,
+    "POS",
+  );
 
   if (systemQrConfig) {
     const systemQr = await createSystemQrInvoice(
@@ -507,7 +449,10 @@ async function createStorePaymentInvoice(params: {
     };
   }
 
-  const merchantRes = await getVendorMerchantConfig(params.organizationId);
+  const merchantRes = await getVendorMerchantConfig(
+    params.organizationId,
+    "POS",
+  );
   if (!merchantRes.success || !merchantRes.config) {
     if (
       process.env.NODE_ENV !== "production" &&
@@ -555,6 +500,19 @@ async function createStorePaymentInvoice(params: {
   };
 }
 
+async function hasSellerStorePaymentConfig(organizationId: string) {
+  if (
+    process.env.NODE_ENV !== "production" &&
+    process.env.MGL_LOCAL_DEV === "true"
+  ) {
+    return true;
+  }
+  const systemQrConfig = await getVendorSystemQrConfig(organizationId, "POS");
+  if (systemQrConfig) return true;
+  const merchantResult = await getVendorMerchantConfig(organizationId, "POS");
+  return Boolean(merchantResult.success && merchantResult.config);
+}
+
 async function checkStorePayment(params: {
   organizationId: string;
   providerRef: string;
@@ -565,13 +523,15 @@ async function checkStorePayment(params: {
 
   if (provider === "SYSTEMQR") {
     const resolved = await getVendorSystemQrConfig(params.organizationId);
-    const adminAccount =
+    const legacyAccount =
       String(rawPayload.source || "").toUpperCase() === "ADMIN_PAYMENT_ACCOUNT"
-        ? await getStoreCheckoutPaymentAccount()
+        ? await getLegacyStorePaymentAccount(
+            String(rawPayload.merchantCode || "").trim(),
+          )
         : null;
     const merchantCode = String(
       rawPayload.merchantCode ||
-        adminAccount?.merchantCode ||
+        legacyAccount?.merchantCode ||
         resolved?.merchantCode ||
         "",
     ).trim();
@@ -583,9 +543,9 @@ async function checkStorePayment(params: {
 
     const check = await checkSystemQrPayment(
       { merchantCode, invoiceNumber: params.providerRef },
-      String(adminAccount?.username || resolved?.username || "").trim() ||
+      String(legacyAccount?.username || resolved?.username || "").trim() ||
         undefined,
-      String(adminAccount?.password || resolved?.password || "").trim() ||
+      String(legacyAccount?.password || resolved?.password || "").trim() ||
         undefined,
     );
 
@@ -1131,6 +1091,24 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         minimumAmount: STORE_MINIMUM_ORDER_AMOUNT,
         currentAmount: total,
         remainingAmount: STORE_MINIMUM_ORDER_AMOUNT - total,
+      });
+    }
+
+    const sellerPaymentReadiness = await Promise.all(
+      orgIds.map(async (organizationId) => ({
+        organizationId,
+        configured: await hasSellerStorePaymentConfig(organizationId),
+      })),
+    );
+    const unconfiguredSellerIds = sellerPaymentReadiness
+      .filter((seller) => !seller.configured)
+      .map((seller) => seller.organizationId);
+    if (unconfiguredSellerIds.length > 0) {
+      return res.status(409).json({
+        code: "SELLER_PAYMENT_NOT_CONFIGURED",
+        message:
+          "Бараа нийлүүлэгч төлбөр хүлээн авах QR дансаа холбоогүй байна. Данс холбогдсоны дараа захиалга өгөх боломжтой.",
+        organizationIds: unconfiguredSellerIds,
       });
     }
 

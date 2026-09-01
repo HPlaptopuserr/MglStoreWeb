@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   Printer,
   RotateCcw,
+  CreditCard,
 } from "lucide-react";
 import { ProductLabelPrintDialog } from "@mgl/ui";
 import { API, authFetch } from "@/lib/api";
@@ -136,6 +137,9 @@ export default function ProductsPage() {
   >(null);
 
   const [planStatus, setPlanStatus] = useState<PlanStatus | null>(null);
+  const [sellerPaymentConfigured, setSellerPaymentConfigured] = useState<
+    boolean | null
+  >(null);
 
   const isPlanActive = planStatus?.isActive ?? true;
   const daysLeft = planStatus?.planExpiresAt
@@ -289,9 +293,34 @@ export default function ProductsPage() {
     }
   }, []);
 
+  const fetchSellerPaymentStatus = useCallback(async () => {
+    const orgId = getOrgId();
+    if (!orgId) {
+      setSellerPaymentConfigured(false);
+      return;
+    }
+    try {
+      const params = new URLSearchParams({ organizationId: orgId });
+      const response = await authFetch(
+        `${API}/vendor/merchant/status?${params.toString()}`,
+        { cache: "no-store" },
+      );
+      const data = (await response.json().catch(() => ({}))) as {
+        success?: boolean;
+        isConnected?: boolean;
+      };
+      setSellerPaymentConfigured(
+        response.ok && data.success === true && data.isConnected === true,
+      );
+    } catch {
+      setSellerPaymentConfigured(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchProducts();
     fetchCategories();
+    fetchSellerPaymentStatus();
     const orgId = getOrgId();
     if (orgId) {
       authFetch(`${API}/site-settings`)
@@ -325,7 +354,7 @@ export default function ProductsPage() {
         }
       })
       .catch(() => {});
-  }, [fetchProducts, fetchCategories]);
+  }, [fetchProducts, fetchCategories, fetchSellerPaymentStatus]);
 
   useEffect(() => {
     if (
@@ -757,6 +786,30 @@ export default function ProductsPage() {
             </div>
           )}
         </>
+      )}
+
+      {sellerPaymentConfigured === false && (
+        <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 sm:flex-row sm:items-center">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white text-amber-600 shadow-sm">
+            <CreditCard size={19} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-black text-amber-900">
+              Онлайн төлбөр идэвхгүй байна
+            </p>
+            <p className="mt-1 text-xs leading-5 text-amber-700">
+              QR төлбөрийн дансаа холбоогүй тул таны бараанд захиалга, төлбөр
+              хүлээн авахгүй. Дансаа холбоход төлбөр зөвхөн таны бүртгүүлсэн
+              дансанд орно.
+            </p>
+          </div>
+          <a
+            href="/profile"
+            className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl bg-amber-600 px-4 text-xs font-bold text-white transition hover:bg-amber-700"
+          >
+            QR данс холбох
+          </a>
+        </div>
       )}
 
       {/* Header */}
