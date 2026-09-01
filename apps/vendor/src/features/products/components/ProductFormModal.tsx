@@ -617,6 +617,26 @@ export function ProductFormModal({
                     )}
                   </div>
 
+                  <div
+                    role="note"
+                    className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900"
+                  >
+                    <AlertTriangle
+                      size={18}
+                      className="mt-0.5 shrink-0 text-amber-600"
+                    />
+                    <div>
+                      <p className="text-sm font-bold">
+                        НӨАТ төлөгч биш бол “НӨАТ-аас чөлөөлөгдсөн” гэж сонгохгүй.
+                      </p>
+                      <p className="mt-1 text-xs font-medium leading-5 text-amber-800">
+                        Ердийн хүнсний бараанд “Ердийн борлуулалт” тохиргоог
+                        хэвээр үлдээнэ. Баримтын НӨАТ-ын дүн дэлгүүрийн eBarimt
+                        бүртгэлээс хамаарч автоматаар 0₮ гарна.
+                      </p>
+                    </div>
+                  </div>
+
                   <details className="group rounded-2xl border border-slate-200 bg-slate-50/60">
                     <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:hidden">
                       <span>
