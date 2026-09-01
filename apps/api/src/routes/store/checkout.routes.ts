@@ -38,6 +38,7 @@ import {
   notifyNewPaidOrder,
 } from "../../services/order-notification.service";
 import { getPreorderParticipantIds } from "../../services/preorder-capacity.service";
+import { isStoreQPayPaymentComplete } from "../../services/store-payment-validation.service";
 
 const router: ExpressRouter = Router();
 
@@ -455,6 +456,7 @@ async function createStorePaymentInvoice(params: {
   const merchantRes = await getVendorMerchantConfig(
     params.organizationId,
     "POS",
+    { allowCentralFallback: false },
   );
   if (!merchantRes.success || !merchantRes.config) {
     if (
@@ -518,13 +520,16 @@ async function hasSellerStorePaymentConfig(organizationId: string) {
   }
   const systemQrConfig = await getVendorSystemQrConfig(organizationId, "POS");
   if (systemQrConfig) return true;
-  const merchantResult = await getVendorMerchantConfig(organizationId, "POS");
+  const merchantResult = await getVendorMerchantConfig(organizationId, "POS", {
+    allowCentralFallback: false,
+  });
   return Boolean(merchantResult.success && merchantResult.config);
 }
 
 async function checkStorePayment(params: {
   organizationId: string;
   providerRef: string;
+  expectedAmount: number;
   rawPayload?: unknown;
 }) {
   const rawPayload = asRecord(params.rawPayload);
@@ -564,15 +569,35 @@ async function checkStorePayment(params: {
     };
   }
 
-  const merchantRes = await getVendorMerchantConfig(params.organizationId);
+  const merchantRes = await getVendorMerchantConfig(
+    params.organizationId,
+    "POS",
+    { allowCentralFallback: false },
+  );
+  if (!merchantRes.success || !merchantRes.config) {
+    return {
+      paid: false,
+      payload: {
+        provider: "QPAY",
+        missingSellerMerchantConfig: true,
+      },
+    };
+  }
   const qpayCheck = await checkQPayPayment(
     params.providerRef,
-    merchantRes.config ?? undefined,
+    merchantRes.config,
   );
 
   return {
-    paid: qpayCheck.count > 0,
-    payload: qpayCheck,
+    paid: isStoreQPayPaymentComplete({
+      paymentCount: qpayCheck.count,
+      paidAmount: Number(qpayCheck.paid_amount),
+      expectedAmount: params.expectedAmount,
+    }),
+    payload: {
+      ...qpayCheck,
+      expectedAmount: params.expectedAmount,
+    },
   };
 }
 
@@ -1466,6 +1491,7 @@ router.post(
   "/store/checkout/:orderId/payment",
   async (req: Request, res: Response) => {
     try {
+      await cancelExpiredStoreCheckouts();
       const customer = await getCustomer(req);
       if (!customer || !customer.isActive || customer.deletedAt) {
         return res.status(401).json({ message: "Нэвтэрнэ үү" });
@@ -1500,6 +1526,14 @@ router.post(
         return res.status(404).json({ message: "Захиалга олдсонгүй" });
       if (order.customerId !== customer.id) {
         return res.status(403).json({ message: "Энэ захиалгад хандах эрхгүй" });
+      }
+      if (
+        order.status === OrderStatus.CANCELLED ||
+        order.paymentStatus === PaymentStatus.CANCELLED
+      ) {
+        return res.status(410).json({
+          message: "Төлбөрийн хугацаа дууссан тул захиалга цуцлагдсан",
+        });
       }
       if (order.paymentStatus === PaymentStatus.PAID) {
         return res
@@ -1675,6 +1709,7 @@ router.post(
       const paymentCheck = await checkStorePayment({
         organizationId: order.organizationId,
         providerRef: payment.providerRef,
+        expectedAmount: Number(order.total),
         rawPayload: payment.rawPayload,
       });
 
@@ -1736,6 +1771,7 @@ router.get(
           customerLng: true,
           paymentStatus: true,
           orderNumber: true,
+          total: true,
           payments: {
             where: { method: PaymentMethod.QPAY },
             select: {
@@ -1774,6 +1810,7 @@ router.get(
       const paymentCheck = await checkStorePayment({
         organizationId: order.organizationId,
         providerRef: payment.providerRef,
+        expectedAmount: Number(order.total),
         rawPayload: payment.rawPayload,
       });
 
@@ -1908,6 +1945,7 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
         customerLng: true,
         paymentStatus: true,
         orderNumber: true,
+        total: true,
         payments: {
           where: { method: PaymentMethod.QPAY },
           select: {
@@ -1943,6 +1981,7 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
     const paymentCheck = await checkStorePayment({
       organizationId: order.organizationId,
       providerRef: payment.providerRef,
+      expectedAmount: Number(order.total),
       rawPayload: payment.rawPayload,
     });
 
