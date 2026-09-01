@@ -44,7 +44,7 @@ services:
         - turbo.json
         - render.yaml
     buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/admin
-    startCommand: HOST=0.0.0.0 PORT=$PORT node apps/admin/.next/standalone/apps/admin/server.js
+    startCommand: HOSTNAME=0.0.0.0 PORT=$PORT node apps/admin/.next/standalone/apps/admin/server.js
     envVars:
       - key: NODE_ENV
         value: production
