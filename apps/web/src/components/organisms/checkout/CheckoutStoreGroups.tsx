@@ -32,7 +32,7 @@ export interface CheckoutStoreGroup {
 
 function paymentStatusLabel(group: CheckoutStoreGroup) {
   if (group.paid) return "Төлөгдсөн";
-  if (group.canPay) return "Төлөхөд бэлэн";
+  if (group.orderId) return "Төлөхөд бэлэн";
   if (group.dispatchStatus === "NO_BRANCH_AVAILABLE")
     return "Салбар шалгаж байна";
   if (group.dispatchStatus === "MANUAL_REVIEW")
@@ -88,6 +88,7 @@ export function CheckoutStoreGroups({
         {groups.map((group, index) => {
           const paymentUnavailable = group.paymentConfigured === false;
           const paying = loadingOrderId === group.orderId;
+          const paymentReady = Boolean(group.orderId) && !group.paid;
           return (
             <article
               key={group.orderId || group.organizationId}
@@ -112,7 +113,7 @@ export function CheckoutStoreGroups({
                     className={`text-[10px] font-black ${
                       group.paid
                         ? "text-emerald-600"
-                        : group.canPay
+                        : paymentReady
                           ? "text-blue-600"
                           : "text-amber-600"
                     }`}
@@ -158,7 +159,7 @@ export function CheckoutStoreGroups({
                   <button
                     type="button"
                     onClick={() => onPay?.(group)}
-                    disabled={!group.canPay || paying}
+                    disabled={!paymentReady || paying}
                     className="mt-1 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 text-xs font-black text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500"
                   >
                     {paying ? (
@@ -166,7 +167,7 @@ export function CheckoutStoreGroups({
                     ) : (
                       <CreditCard size={16} />
                     )}
-                    {group.canPay
+                    {paymentReady
                       ? "Энэ дэлгүүрийн төлбөрийг төлөх"
                       : "Төлбөр хүлээгдэж байна"}
                   </button>

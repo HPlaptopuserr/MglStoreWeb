@@ -619,7 +619,7 @@ export default function CheckoutPage() {
   };
 
   const handleCheckout = async () => {
-    if (deliverySession?.canPay) {
+    if (deliverySession) {
       await createPayment(deliverySession);
       return;
     }

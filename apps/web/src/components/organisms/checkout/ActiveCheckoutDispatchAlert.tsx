@@ -83,12 +83,12 @@ export function ActiveCheckoutDispatchAlert() {
         </span>
         <span className="min-w-0 flex-1">
           <span className="block truncate text-xs font-black md:text-sm">
-            {isReady ? "Хүргэлт авах салбар олдлоо" : "Хүргэлтийн хүсэлт шалгагдаж байна"}
+            {isReady ? "Хүргэлт авах салбар олдлоо" : "Төлбөр хийхэд бэлэн"}
           </span>
           <span className="mt-0.5 hidden truncate text-xs font-bold opacity-70 sm:block">
             {isReady
               ? "Дарж төлбөрөө үргэлжлүүлнэ үү."
-              : "Та бусад цэсээр орж, сагсаа үргэлжлүүлэн ашиглаж болно."}
+              : "Дарж QPay төлбөрөө үргэлжлүүлж болно."}
           </span>
         </span>
         <Navigation size={16} className="shrink-0 opacity-70 md:size-[18px]" />

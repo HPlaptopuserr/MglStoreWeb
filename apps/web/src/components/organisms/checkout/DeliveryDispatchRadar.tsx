@@ -135,7 +135,7 @@ export function DeliveryDispatchRadarPopup({
     ? "Хүргэлтийн салбар баталгаажлаа"
     : session.status === "NO_BRANCH_AVAILABLE"
       ? "Хүргэлт баталгаажаагүй"
-      : "Хүргэлтийн хүсэлт илгээж байна";
+      : "Хүргэлтийн салбар хайж байна";
 
   useEffect(() => setMounted(true), []);
 
@@ -197,12 +197,12 @@ export function DeliveryDispatchRadarPopup({
                   <p className="text-xs font-black text-slate-950">
                     {session.canPay
                       ? "Хүргэлт баталгаажлаа"
-                      : "Хүргэлтийн хариу хүлээж байна"}
+                      : "Төлбөр хийхэд бэлэн"}
                   </p>
                   <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">
                     {session.canPay
                       ? `${session.acceptedBranch?.name ?? "Салбар"} · Төлбөр хийхэд бэлэн`
-                      : "Салбар олдмогц төлбөрийн товч идэвхжинэ"}
+                      : "Салбарын хуваарилалт төлбөрийн дараа үргэлжилнэ"}
                   </p>
                 </div>
               </div>
@@ -212,14 +212,12 @@ export function DeliveryDispatchRadarPopup({
                   setOpen(false);
                   onPay();
                 }}
-                disabled={!session.canPay || cancelling || paying}
+                disabled={cancelling || paying}
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-3.5 text-sm font-black text-white shadow-lg shadow-orange-200 transition hover:-translate-y-0.5 hover:shadow-xl disabled:translate-y-0 disabled:cursor-not-allowed disabled:from-orange-200 disabled:to-amber-200 disabled:shadow-none"
               >
                 {paying
                   ? "QR үүсгэж байна..."
-                  : session.canPay
-                    ? "Төлбөр төлөх"
-                    : "Хариу хүлээж байна"}
+                  : "Төлбөр төлөх"}
               </button>
               <button
                 type="button"
@@ -303,7 +301,7 @@ export function DeliveryDispatchRadar({
       : "Хүргэлт авах салбар олдлоо"
     : isFinishedWithoutBranch
       ? "5 салбарын хайлт дууслаа"
-      : "Хүргэлтийн хүсэлт илгээж байна";
+      : "Хүргэлтийн салбар хайж байна";
 
   const description = session.canPay
     ? wasAutoAssigned
@@ -314,8 +312,8 @@ export function DeliveryDispatchRadar({
     : isFinishedWithoutBranch
       ? "Хамгийн ойр салбарууд руу хүсэлт явуулсан ч хүргэлт авах боломжтой салбар олдсонгүй."
       : activeAttempt
-        ? `${formatZoneLabel(activeAttempt.sequence, radiusZones)} бүсийн ${activeZoneAttempts.length} салбар руу notification зэрэг илгээгдсэн. 10 секундэд хэн ч авахгүй бол хүргэлтийн компанийн ажилтанд автоматаар онооно.`
-        : "Хэрэглэгчийн координат дээр үндэслэн radius бүсүүдээр салбаруудыг зэрэг шалгаж байна.";
+        ? `${formatZoneLabel(activeAttempt.sequence, radiusZones)} бүсийн ${activeZoneAttempts.length} салбар руу хүсэлт илгээгдсэн. Төлбөрөө одоо үргэлжлүүлж болно; салбарын хуваарилалт төлбөрийн дараа үргэлжилнэ.`
+        : "Төлбөрөө үргэлжлүүлсний дараа дэлгүүр хүргэлтийн салбарыг хуваарилна.";
 
   if (isFinishedWithoutBranch) {
     return (
