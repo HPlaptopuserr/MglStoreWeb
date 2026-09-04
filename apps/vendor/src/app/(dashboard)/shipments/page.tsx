@@ -40,7 +40,10 @@ import {
   WarehouseRecommendations,
   type RecommendedWarehouseItem,
 } from "@/components/organisms/WarehouseRecommendations";
-import { DeliveryLocationSelector } from "@/features/shipments";
+import {
+  DeliveryLocationSelector,
+  StockPaymentQrSection,
+} from "@/features/shipments";
 
 type StockRequestStatus =
   | "PENDING"
@@ -2318,6 +2321,20 @@ export default function StockRequestsPage() {
                         </div>
                       </div>
                     </div>
+
+                    {selectedPayment.status !== "PAID" &&
+                      selectedPayment.status !== "CANCELLED" && (
+                        <StockPaymentQrSection
+                          paymentId={selectedPayment.id}
+                          onPaid={async () => {
+                            await Promise.all([
+                              openPaymentDetail(selectedPayment.id),
+                              fetchPayments(),
+                              fetchData(),
+                            ]);
+                          }}
+                        />
+                      )}
 
                     {IS_LOCAL_DEVELOPMENT &&
                       selectedPayment.status !== "PAID" &&
