@@ -35,5 +35,6 @@ export type SystemQrCategory = {
 };
 
 export type MerchantSettingsMode = "qpay" | "terminal";
+export type MerchantSettingsChannel = "POS" | "WEB";
 export type ManualPaymentProvider = "qpay" | "systemqr";
 export type MerchantMessage = { type: "success" | "error"; text: string };

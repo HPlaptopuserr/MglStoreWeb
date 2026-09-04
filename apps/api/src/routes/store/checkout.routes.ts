@@ -24,6 +24,7 @@ import {
 import {
   getVendorMerchantConfig,
   getVendorSystemQrConfig,
+  type MerchantChannel,
 } from "../../services/vendor-merchant.service";
 import {
   checkSystemQrPayment,
@@ -130,6 +131,8 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     : {};
 
 const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
+const STORE_PAYMENT_MERCHANT_CHANNEL: MerchantChannel = "WEB";
+const LEGACY_STORE_PAYMENT_MERCHANT_CHANNEL: MerchantChannel = "POS";
 const configuredMinimumOrderAmount = Number(
   process.env.STORE_MINIMUM_ORDER_AMOUNT || 0,
 );
@@ -414,7 +417,7 @@ async function createStorePaymentInvoice(params: {
 }) {
   const systemQrConfig = await getVendorSystemQrConfig(
     params.organizationId,
-    "POS",
+    STORE_PAYMENT_MERCHANT_CHANNEL,
   );
 
   if (systemQrConfig) {
@@ -438,6 +441,7 @@ async function createStorePaymentInvoice(params: {
       },
       rawPayload: {
         provider: "SYSTEMQR",
+        merchantChannel: STORE_PAYMENT_MERCHANT_CHANNEL,
         orderId: params.orderId,
         orderNumber: params.orderNumber,
         referenceNumber: params.orderNumber,
@@ -455,7 +459,7 @@ async function createStorePaymentInvoice(params: {
 
   const merchantRes = await getVendorMerchantConfig(
     params.organizationId,
-    "POS",
+    STORE_PAYMENT_MERCHANT_CHANNEL,
     { allowCentralFallback: false },
   );
   if (!merchantRes.success || !merchantRes.config) {
@@ -476,6 +480,7 @@ async function createStorePaymentInvoice(params: {
         },
         rawPayload: {
           provider: "LOCAL_DEV",
+          merchantChannel: STORE_PAYMENT_MERCHANT_CHANNEL,
           orderId: params.orderId,
           orderNumber: params.orderNumber,
           referenceNumber: params.orderNumber,
@@ -500,6 +505,7 @@ async function createStorePaymentInvoice(params: {
     data: qpayData,
     rawPayload: {
       provider: "QPAY",
+      merchantChannel: STORE_PAYMENT_MERCHANT_CHANNEL,
       orderId: params.orderId,
       orderNumber: params.orderNumber,
       referenceNumber: params.orderNumber,
@@ -518,11 +524,16 @@ async function hasSellerStorePaymentConfig(organizationId: string) {
   ) {
     return true;
   }
-  const systemQrConfig = await getVendorSystemQrConfig(organizationId, "POS");
+  const systemQrConfig = await getVendorSystemQrConfig(
+    organizationId,
+    STORE_PAYMENT_MERCHANT_CHANNEL,
+  );
   if (systemQrConfig) return true;
-  const merchantResult = await getVendorMerchantConfig(organizationId, "POS", {
-    allowCentralFallback: false,
-  });
+  const merchantResult = await getVendorMerchantConfig(
+    organizationId,
+    STORE_PAYMENT_MERCHANT_CHANNEL,
+    { allowCentralFallback: false },
+  );
   return Boolean(merchantResult.success && merchantResult.config);
 }
 
@@ -534,9 +545,18 @@ async function checkStorePayment(params: {
 }) {
   const rawPayload = asRecord(params.rawPayload);
   const provider = String(rawPayload.provider || "").toUpperCase();
+  // Invoices created before WEB/POS isolation used the POS merchant. Preserve
+  // their verification path while all newly created invoices are tagged WEB.
+  const merchantChannel: MerchantChannel =
+    String(rawPayload.merchantChannel || "").toUpperCase() === "WEB"
+      ? STORE_PAYMENT_MERCHANT_CHANNEL
+      : LEGACY_STORE_PAYMENT_MERCHANT_CHANNEL;
 
   if (provider === "SYSTEMQR") {
-    const resolved = await getVendorSystemQrConfig(params.organizationId);
+    const resolved = await getVendorSystemQrConfig(
+      params.organizationId,
+      merchantChannel,
+    );
     const legacyAccount =
       String(rawPayload.source || "").toUpperCase() === "ADMIN_PAYMENT_ACCOUNT"
         ? await getLegacyStorePaymentAccount(
@@ -571,7 +591,7 @@ async function checkStorePayment(params: {
 
   const merchantRes = await getVendorMerchantConfig(
     params.organizationId,
-    "POS",
+    merchantChannel,
     { allowCentralFallback: false },
   );
   if (!merchantRes.success || !merchantRes.config) {

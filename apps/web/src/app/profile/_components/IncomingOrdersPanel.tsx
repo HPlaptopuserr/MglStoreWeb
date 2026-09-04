@@ -153,7 +153,10 @@ export function IncomingOrdersPanel({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-5">
+      <div
+        className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable] sm:p-5"
+        data-lenis-prevent="true"
+      >
         {loading ? (
           <div className="grid min-h-72 place-items-center text-slate-500">
             <Loader2 className="h-8 w-8 animate-spin text-orange-500" />

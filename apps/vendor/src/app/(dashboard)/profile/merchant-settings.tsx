@@ -25,6 +25,7 @@ import type {
   Khoroo,
   ManualPaymentProvider,
   MerchantMessage,
+  MerchantSettingsChannel,
   MerchantSettingsMode,
   MerchantStatus,
   MinuAgentStatus,
@@ -48,9 +49,11 @@ import { FALLBACK_SYSTEMQR_CATEGORIES } from "@mgl/types";
 export function MerchantSettingsSection({
   organizationId,
   mode = "qpay",
+  channel = "POS",
 }: {
   organizationId?: string;
   mode?: MerchantSettingsMode;
+  channel?: MerchantSettingsChannel;
 }) {
   const [merchantStatus, setMerchantStatus] = useState<MerchantStatus | null>(
     null,
@@ -130,7 +133,7 @@ export function MerchantSettingsSection({
     loadCities();
     loadSystemQrCategories();
     loadBankAccounts();
-  }, [mode, organizationId]);
+  }, [channel, mode, organizationId]);
 
   useEffect(() => {
     if (city) loadDistricts(city);
@@ -168,6 +171,7 @@ export function MerchantSettingsSection({
 
   const merchantQueryParams = new URLSearchParams();
   if (organizationId) merchantQueryParams.set("organizationId", organizationId);
+  merchantQueryParams.set("channel", channel);
   const orgQuery = merchantQueryParams.toString()
     ? `?${merchantQueryParams.toString()}`
     : "";
@@ -385,6 +389,7 @@ export function MerchantSettingsSection({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...body,
+          channel,
           ...(organizationId ? { organizationId } : {}),
         }),
       });
@@ -443,6 +448,7 @@ export function MerchantSettingsSection({
             : invoiceCode
               ? { invoiceCode }
               : {}),
+          channel,
           ...(organizationId ? { organizationId } : {}),
         }),
       });
@@ -502,7 +508,10 @@ export function MerchantSettingsSection({
       const res = await authFetch(`${API}/vendor/merchant/disconnect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(organizationId ? { organizationId } : {}),
+        body: JSON.stringify({
+          channel,
+          ...(organizationId ? { organizationId } : {}),
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -656,6 +665,7 @@ export function MerchantSettingsSection({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bank_accounts: valid,
+          channel,
           organizationId: organizationId || undefined,
         }),
       });
