@@ -27,6 +27,7 @@ import {
   canBypassAllWebProductsVisibility,
   canBypassWebProductsVisibility,
   getWebProductsEnabledOrganizationIds,
+  hasPublicProductCatalogQuality,
   hasPublicProductState,
   isOrgWebProductsEnabled,
   PUBLIC_PRODUCT_STATE_FILTER,
@@ -75,6 +76,11 @@ import {
   resolveBusinessCategoryIdFromChoices,
 } from "../../lib/excel-import";
 import { TtlCache } from "../../lib/ttl-cache";
+import { orderRecommendedProductFeed } from "../../services/product-feed-ordering.service";
+import {
+  invalidatePublicProductListCache,
+  productListCache,
+} from "../../services/product-list-cache.service";
 
 const router: ExpressRouter = Router();
 
@@ -98,7 +104,6 @@ router.get(
     }
   },
 );
-const productListCache = new TtlCache<unknown>(250, 45_000);
 type RecommendationSignals = {
   purchasedQuantityByProductId: Map<string, number>;
   recentInteractionsByProductId: Map<string, number>;
@@ -170,7 +175,7 @@ router.use("/products", (req, res, next) => {
   if (req.method !== "GET" && !isTrackingEvent) {
     res.once("finish", () => {
       if (res.statusCode >= 200 && res.statusCode < 400) {
-        productListCache.clear();
+        invalidatePublicProductListCache();
         recommendationSignalCache.clear();
       }
     });
@@ -1092,6 +1097,22 @@ router.get("/products", optionalAuth, async (req, res) => {
     const priceMin = Number(req.query.priceMin);
     const priceMax = Number(req.query.priceMax);
     const visitorId = String(req.query.visitorId || "").trim();
+    const requestedProductIds = [
+      ...new Set(
+        String(req.query.ids || "")
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    ].slice(0, 100);
+    const requestedOrganizationIds = [
+      ...new Set(
+        String(req.query.organizationIds || "")
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    ].slice(0, 20);
     const isPersonalized = Boolean(
       visitorId ||
       (req as typeof req & { user?: { userId?: string } }).user?.userId,
@@ -1138,6 +1159,10 @@ router.get("/products", optionalAuth, async (req, res) => {
       Object.assign(where, PUBLIC_PRODUCT_STATE_FILTER);
     }
     if (organizationId) where.organizationId = organizationId;
+    if (!organizationId && requestedOrganizationIds.length > 0) {
+      where.organizationId = { in: requestedOrganizationIds };
+    }
+    if (requestedProductIds.length > 0) where.id = { in: requestedProductIds };
     if (restaurantMenuOnly) where.isRestaurantMenuItem = true;
     if (supplyType === "stock") where.supplyType = { not: "CHINA_PREORDER" };
     if (supplyType === "preorder") where.supplyType = "CHINA_PREORDER";
@@ -1196,7 +1221,14 @@ router.get("/products", optionalAuth, async (req, res) => {
             return res.json([]);
           }
         } else {
-          where.organizationId = { in: visibleOrganizationIds };
+          where.organizationId = {
+            in:
+              requestedOrganizationIds.length > 0
+                ? requestedOrganizationIds.filter((id) =>
+                    visibleOrganizationIds.includes(id),
+                  )
+                : visibleOrganizationIds,
+          };
         }
       }
     }
@@ -1214,7 +1246,7 @@ router.get("/products", optionalAuth, async (req, res) => {
           : search
             ? Math.min(Math.max(offset + limit, limit * 3), 240)
             : useRecommendationRanking
-              ? Math.min(Math.max(offset + limit * 6, 120), 600)
+              ? 10_000
               : offset + limit
         : 0;
 
@@ -1496,6 +1528,21 @@ router.get("/products", optionalAuth, async (req, res) => {
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
         );
       });
+
+    if (useRecommendationRanking) {
+      response = orderRecommendedProductFeed(response, (product) =>
+        productRecommendationScore(
+          product,
+          {
+            purchasedQuantity:
+              purchasedQuantityByProductId.get(product.id) || 0,
+            recentInteractions:
+              recentInteractionsByProductId.get(product.id) || 0,
+          },
+          recommendationSeed,
+        ),
+      );
+    }
 
     if (limit > 0 && !useDatabasePagination) {
       response = response.slice(offset, offset + limit);
@@ -2935,6 +2982,11 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
     const source = await prisma.product.findUnique({
       where: { id: req.params.id, deletedAt: null },
       include: {
+        images: {
+          select: { id: true, url: true },
+          orderBy: productImageOrderBy(),
+          take: 1,
+        },
         businessCategory: {
           select: {
             id: true,
@@ -2966,6 +3018,7 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
 
     const sourceIsPubliclyVisible =
       hasPublicProductState(source) &&
+      hasPublicProductCatalogQuality(source) &&
       (await isOrgWebProductsEnabled(source.organizationId));
 
     if (!canBypassVisibility && !sourceIsPubliclyVisible) {
@@ -3118,6 +3171,7 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
 
     const isPubliclyVisible =
       hasPublicProductState(product) &&
+      hasPublicProductCatalogQuality(product) &&
       (await isOrgWebProductsEnabled(product.organizationId));
 
     if (!canBypassVisibility && !isPubliclyVisible) {

@@ -8,14 +8,18 @@ import { AllProductsGrid } from "./AllProductsGrid";
 import {
   buildFallbackShelves,
   HOMEPAGE_FEATURED_PRODUCTS_KEY,
+  HOMEPAGE_FEATURED_ORGANIZATIONS_KEY,
   MARKETPLACE_SERVICES_PROMO_KEY,
   MARKETPLACE_SIDE_BANNER_KEY,
   parseMarketplaceSideBanner,
   parseMarketplaceServicesPromo,
+  parseHomepageFeaturedProductIds,
+  parseHomepageFeaturedOrganizationIds,
   parseShowcaseShelves,
   resolveProjectBanners,
   resolveConfiguredShelves,
   resolveHomepageFeaturedProducts,
+  prioritizeFeaturedOrganizations,
   SHOWCASE_KEY,
   type ApiProduct,
   type MarketplaceServicesPromoConfig,
@@ -46,6 +50,9 @@ export const ProductGrid = () => {
     [],
   );
   const [featuredProducts, setFeaturedProducts] = useState<ApiProduct[]>([]);
+  const [featuredOrganizationIds, setFeaturedOrganizationIds] = useState<
+    string[]
+  >([]);
   const [sideBanner, setSideBanner] =
     useState<MarketplaceSideBannerConfig | null>(null);
   const [servicesPromo, setServicesPromo] =
@@ -59,7 +66,7 @@ export const ProductGrid = () => {
     if (LOCAL_MOCK_CATALOG_ENABLED) return;
 
     Promise.all([
-      fetch(`${API}/products?limit=100`).then((res) =>
+      fetch(`${API}/products?limit=100&sort=recommended`).then((res) =>
         res.ok ? res.json() : [],
       ),
       fetch(`${API}/reels?limit=6`).then((res) =>
@@ -72,10 +79,63 @@ export const ProductGrid = () => {
         res.ok ? res.json() : { projects: [] },
       ),
     ])
-      .then(([productData, reelData, settings, projectData]) => {
-        const nextProducts = Array.isArray(productData)
+      .then(async ([productData, reelData, settings, projectData]) => {
+        let nextProducts = Array.isArray(productData)
           ? productData.slice(0, 100)
           : [];
+        const nextFeaturedOrganizationIds =
+          parseHomepageFeaturedOrganizationIds(
+            settings?.[HOMEPAGE_FEATURED_ORGANIZATIONS_KEY],
+          );
+        const configuredIds = [
+          ...parseHomepageFeaturedProductIds(
+            settings?.[HOMEPAGE_FEATURED_PRODUCTS_KEY],
+          ),
+          ...parseShowcaseShelves(settings?.[SHOWCASE_KEY]).flatMap(
+            (shelf) => shelf.productIds,
+          ),
+        ];
+        const loadedIds = new Set(nextProducts.map((product) => product.id));
+        const missingIds = [...new Set(configuredIds)].filter(
+          (id) => !loadedIds.has(id),
+        );
+        if (missingIds.length > 0) {
+          try {
+            const configuredResponse = await fetch(
+              `${API}/products?ids=${encodeURIComponent(missingIds.join(","))}&limit=100`,
+            );
+            if (configuredResponse.ok) {
+              const configuredProducts = await configuredResponse.json();
+              if (Array.isArray(configuredProducts)) {
+                nextProducts = [...nextProducts, ...configuredProducts];
+              }
+            }
+          } catch {
+            // Keep the main catalog usable if the optional configured-product
+            // lookup is temporarily unavailable.
+          }
+        }
+        if (nextFeaturedOrganizationIds.length > 0) {
+          try {
+            const organizationResponse = await fetch(
+              `${API}/products?organizationIds=${encodeURIComponent(nextFeaturedOrganizationIds.join(","))}&limit=100&sort=recommended`,
+            );
+            if (organizationResponse.ok) {
+              const organizationProducts = await organizationResponse.json();
+              if (Array.isArray(organizationProducts)) {
+                const byId = new Map(
+                  nextProducts.map((product) => [product.id, product]),
+                );
+                organizationProducts.forEach((product) =>
+                  byId.set(product.id, product),
+                );
+                nextProducts = [...byId.values()];
+              }
+            }
+          } catch {
+            // The main feed remains available if this optional lookup fails.
+          }
+        }
         setReels(
           Array.isArray(reelData?.items) ? reelData.items.slice(0, 6) : [],
         );
@@ -90,6 +150,7 @@ export const ProductGrid = () => {
             nextProducts,
           ),
         );
+        setFeaturedOrganizationIds(nextFeaturedOrganizationIds);
         setSideBanner(
           parseMarketplaceSideBanner(settings?.[MARKETPLACE_SIDE_BANNER_KEY]),
         );
@@ -112,9 +173,22 @@ export const ProductGrid = () => {
 
   const shelves = useMemo(() => {
     const featuredIds = new Set(featuredProducts.map((product) => product.id));
+    const organizationProducts = prioritizeFeaturedOrganizations(
+      products,
+      featuredOrganizationIds,
+      featuredIds,
+    );
+    const organizationProductIds = new Set(
+      organizationProducts.map((product) => product.id),
+    );
     const orderedProducts = [
       ...featuredProducts,
-      ...products.filter((product) => !featuredIds.has(product.id)),
+      ...organizationProducts,
+      ...products.filter(
+        (product) =>
+          !featuredIds.has(product.id) &&
+          !organizationProductIds.has(product.id),
+      ),
     ];
     const secondaryShelves =
       configuredShelves.length > 0
@@ -134,7 +208,7 @@ export const ProductGrid = () => {
           ...secondaryShelves,
         ]
       : secondaryShelves;
-  }, [configuredShelves, featuredProducts, products]);
+  }, [configuredShelves, featuredOrganizationIds, featuredProducts, products]);
 
   return (
     <>

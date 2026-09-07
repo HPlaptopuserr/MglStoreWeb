@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { hasPublicProductState } from "./product-visibility.service";
+import {
+  hasPublicProductCatalogQuality,
+  hasPublicProductState,
+} from "./product-visibility.service";
 
 const activeOrganization = { status: "ACTIVE", deletedAt: null };
 
@@ -37,6 +40,41 @@ test("inactive, deleted, or closed storefront products are not public", () => {
       isActive: true,
       deletedAt: null,
       organization: { status: "SUSPENDED", deletedAt: null },
+    }),
+    false,
+  );
+});
+
+test("public catalog requires a usable name, price, and image", () => {
+  assert.equal(
+    hasPublicProductCatalogQuality({
+      name: "Бүтээгдэхүүн",
+      price: 5_000,
+      images: [{ id: "image-1" }],
+    }),
+    true,
+  );
+  assert.equal(
+    hasPublicProductCatalogQuality({
+      name: "   ",
+      price: 5_000,
+      images: [{ id: "image-1" }],
+    }),
+    false,
+  );
+  assert.equal(
+    hasPublicProductCatalogQuality({
+      name: "Бүтээгдэхүүн",
+      price: 5_000,
+      images: [],
+    }),
+    false,
+  );
+  assert.equal(
+    hasPublicProductCatalogQuality({
+      name: "Бүтээгдэхүүн",
+      price: 0,
+      images: [{ id: "image-1" }],
     }),
     false,
   );

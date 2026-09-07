@@ -21,11 +21,15 @@ import {
 import { API, adminFetch } from "@/lib/api";
 
 import { fetchAllProducts } from "./product-development.api";
+import { FeaturedProductsSection } from "./FeaturedProductsSection";
+import { FeaturedOrganizationsSection } from "./FeaturedOrganizationsSection";
 
 import {
   AUTH_LOGIN_BANNER_KEY,
   HOMEPAGE_FEATURED_PRODUCTS_KEY,
   HOMEPAGE_FEATURED_PRODUCTS_LIMIT,
+  HOMEPAGE_FEATURED_ORGANIZATIONS_KEY,
+  HOMEPAGE_FEATURED_ORGANIZATIONS_LIMIT,
   MARKETPLACE_SERVICES_PROMO_KEY,
   MARKETPLACE_SIDE_BANNER_KEY,
   SHELF_KIND_OPTIONS,
@@ -36,6 +40,7 @@ import {
   createSideBanner,
   parseAuthLoginBanner,
   parseProductIds,
+  parseOrganizationIds,
   parseServicesPromo,
   parseShelves,
   parseSideBanner,
@@ -52,6 +57,9 @@ export default function ProductDevelopmentPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [shelves, setShelves] = useState<ProductShelf[]>([]);
   const [featuredProductIds, setFeaturedProductIds] = useState<string[]>([]);
+  const [featuredOrganizationIds, setFeaturedOrganizationIds] = useState<
+    string[]
+  >([]);
   const [sideBanner, setSideBanner] = useState<MarketplaceSideBanner>(() =>
     createSideBanner(),
   );
@@ -109,6 +117,16 @@ export default function ProductDevelopmentPage() {
             (id) => eligibleProductIds.has(id),
           ),
         );
+        const eligibleOrganizationIds = new Set(
+          eligibleProducts.flatMap((product) =>
+            product.organization ? [product.organization.id] : [],
+          ),
+        );
+        setFeaturedOrganizationIds(
+          parseOrganizationIds(
+            settingValue(HOMEPAGE_FEATURED_ORGANIZATIONS_KEY),
+          ).filter((id) => eligibleOrganizationIds.has(id)),
+        );
         setSideBanner(
           parseSideBanner(settingValue(MARKETPLACE_SIDE_BANNER_KEY)),
         );
@@ -162,6 +180,33 @@ export default function ProductDevelopmentPage() {
       .map((id) => productById.get(id))
       .filter((product): product is Product => Boolean(product));
   }, [featuredProductIds, products]);
+  const organizations = useMemo(() => {
+    const byId = new Map<
+      string,
+      { id: string; name: string; productCount: number }
+    >();
+    for (const product of products) {
+      if (!product.organization) continue;
+      const current = byId.get(product.organization.id);
+      byId.set(product.organization.id, {
+        ...product.organization,
+        productCount: (current?.productCount ?? 0) + 1,
+      });
+    }
+    return [...byId.values()].sort((left, right) =>
+      left.name.localeCompare(right.name, "mn"),
+    );
+  }, [products]);
+  const selectedFeaturedOrganizations = useMemo(() => {
+    const byId = new Map(
+      organizations.map((organization) => [organization.id, organization]),
+    );
+    return featuredOrganizationIds
+      .map((id) => byId.get(id))
+      .filter((organization): organization is (typeof organizations)[number] =>
+        Boolean(organization),
+      );
+  }, [featuredOrganizationIds, organizations]);
   const configuredBannerCount = [
     servicesPromo.imageUrl,
     sideBanner.imageUrl,
@@ -201,6 +246,17 @@ export default function ProductDevelopmentPage() {
       return current.length >= HOMEPAGE_FEATURED_PRODUCTS_LIMIT
         ? current
         : [...current, productId];
+    });
+    setSaved(false);
+  };
+
+  const toggleFeaturedOrganization = (organizationId: string) => {
+    setFeaturedOrganizationIds((current) => {
+      if (current.includes(organizationId))
+        return current.filter((id) => id !== organizationId);
+      return current.length >= HOMEPAGE_FEATURED_ORGANIZATIONS_LIMIT
+        ? current
+        : [...current, organizationId];
     });
     setSaved(false);
   };
@@ -355,6 +411,27 @@ export default function ProductDevelopmentPage() {
         const body = await featuredRes.json().catch(() => ({}));
         throw new Error(
           body?.message || "Нүүр хуудасны сонголтыг хадгалахад алдаа гарлаа",
+        );
+      }
+      const featuredOrganizationsRes = await adminFetch(
+        `${API}/site-settings/${HOMEPAGE_FEATURED_ORGANIZATIONS_KEY}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            value: JSON.stringify(
+              featuredOrganizationIds.slice(
+                0,
+                HOMEPAGE_FEATURED_ORGANIZATIONS_LIMIT,
+              ),
+            ),
+          }),
+        },
+      );
+      if (!featuredOrganizationsRes.ok) {
+        const body = await featuredOrganizationsRes.json().catch(() => ({}));
+        throw new Error(
+          body?.message ||
+            "Нүүр хуудасны байгууллагуудыг хадгалахад алдаа гарлаа",
         );
       }
       const bannerRes = await adminFetch(
@@ -562,104 +639,27 @@ export default function ProductDevelopmentPage() {
       {activePanel === "shelves" ? (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-4">
-            <section className="rounded-2xl border border-orange-200 bg-white p-4 shadow-sm ring-4 ring-orange-50">
-              <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <div className="inline-flex items-center gap-2 rounded-full bg-orange-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-orange-600">
-                    <Sparkles className="h-4 w-4" />
-                    Нүүр хуудасны урд хэсэг
-                  </div>
-                  <h3 className="mt-3 text-lg font-black text-slate-950">
-                    Нүүр хуудасны эхний бараанууд
-                  </h3>
-                  <p className="mt-1 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
-                    Энд сонгосон {HOMEPAGE_FEATURED_PRODUCTS_LIMIT} хүртэлх
-                    бараа web-ийн нүүр хуудасны жагсаалтын эхэнд сонгосон
-                    дарааллаараа байрлана. Бусад бүх бараа араас нь үргэлжлэн
-                    харагдана.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFeaturedProductIds([]);
-                    setSaved(false);
-                  }}
-                  disabled={featuredProductIds.length === 0}
-                  className="text-xs font-black text-slate-400 transition hover:text-red-500 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  Сонголт цэвэрлэх
-                </button>
-              </div>
+            <FeaturedProductsSection
+              products={filteredProducts}
+              selectedProducts={selectedFeaturedProducts}
+              selectedIds={featuredProductIds}
+              onToggle={toggleFeaturedProduct}
+              onClear={() => {
+                setFeaturedProductIds([]);
+                setSaved(false);
+              }}
+            />
 
-              {selectedFeaturedProducts.length > 0 && (
-                <div className="mb-4 grid gap-2 rounded-xl bg-orange-50/60 p-3 sm:grid-cols-2">
-                  {selectedFeaturedProducts.map((product, index) => (
-                    <div
-                      key={product.id}
-                      className="flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm font-bold text-slate-700 ring-1 ring-orange-100"
-                    >
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500 text-xs font-black text-white">
-                        {index + 1}
-                      </span>
-                      <span className="truncate">{product.name}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <div className="grid max-h-[360px] gap-2 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50 p-3 md:grid-cols-2">
-                {filteredProducts.map((product) => {
-                  const selectedIndex = featuredProductIds.indexOf(product.id);
-                  const selected = selectedIndex >= 0;
-                  const selectionDisabled =
-                    !selected &&
-                    featuredProductIds.length >=
-                      HOMEPAGE_FEATURED_PRODUCTS_LIMIT;
-
-                  return (
-                    <button
-                      key={product.id}
-                      type="button"
-                      onClick={() => toggleFeaturedProduct(product.id)}
-                      disabled={selectionDisabled}
-                      className={`flex items-center gap-3 rounded-xl border bg-white p-2 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
-                        selected
-                          ? "border-orange-300 ring-2 ring-orange-100"
-                          : "border-slate-100 hover:border-slate-200"
-                      }`}
-                    >
-                      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-100">
-                        {product.images?.[0]?.url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={product.images[0].url}
-                            alt={product.name}
-                            className="h-full w-full object-contain"
-                          />
-                        ) : (
-                          <PackageSearch className="m-3 h-6 w-6 text-slate-300" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold text-slate-800">
-                          {product.name}
-                        </p>
-                        <p className="truncate text-xs font-semibold text-slate-400">
-                          {product.organization?.name || "MGL Store"} · ₮
-                          {product.price.toLocaleString()}
-                        </p>
-                      </div>
-                      {selected && (
-                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-orange-500 text-xs font-black text-white">
-                          {selectedIndex + 1}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+            <FeaturedOrganizationsSection
+              organizations={organizations}
+              selectedOrganizations={selectedFeaturedOrganizations}
+              selectedIds={featuredOrganizationIds}
+              onToggle={toggleFeaturedOrganization}
+              onClear={() => {
+                setFeaturedOrganizationIds([]);
+                setSaved(false);
+              }}
+            />
 
             {shelves.map((shelf, shelfIndex) => (
               <section

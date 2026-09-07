@@ -17,6 +17,7 @@ import {
   requirePlatformPermission,
 } from "../../middleware/auth";
 import { requireOrgPermission } from "../../services/permission.service";
+import { invalidatePublicProductListCache } from "../../services/product-list-cache.service";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 import { createPdfPreviewBuffer } from "../../lib/pdf-preview";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
@@ -1772,10 +1773,7 @@ router.get(
       });
 
       res.json({
-        enabled:
-          setting?.value === undefined || setting.value === null
-            ? true
-            : isEnabledSetting(setting.value),
+        enabled: setting?.value ? isEnabledSetting(setting.value) : false,
       });
     } catch (error) {
       console.error("get organization storefront setting error", error);
@@ -1804,6 +1802,7 @@ router.put(
         update: { value: enabled ? "true" : "false" },
         create: { key, value: enabled ? "true" : "false" },
       });
+      invalidatePublicProductListCache();
       res.json({ enabled });
     } catch (error) {
       console.error("put organization storefront setting error", error);
@@ -1880,6 +1879,10 @@ router.put(
         create: { key: settingKey, value },
       });
 
+      if (featureKey === WEB_PRODUCTS_FEATURE_KEY) {
+        invalidatePublicProductListCache();
+      }
+
       res.json(setting);
     } catch (error) {
       console.error("put vendor feature setting error", error);
@@ -1920,6 +1923,12 @@ router.put(
         update: { value },
         create: { key, value },
       });
+      if (
+        key === WEB_PRODUCTS_FEATURE_KEY ||
+        key.startsWith(`${WEB_PRODUCTS_FEATURE_KEY}-`)
+      ) {
+        invalidatePublicProductListCache();
+      }
       res.json(setting);
     } catch (error) {
       console.error("put site-settings error", error);
@@ -1950,6 +1959,15 @@ router.put(
           }),
         );
       await Promise.all(ops);
+      if (
+        Object.keys(updates).some(
+          (key) =>
+            key === WEB_PRODUCTS_FEATURE_KEY ||
+            key.startsWith(`${WEB_PRODUCTS_FEATURE_KEY}-`),
+        )
+      ) {
+        invalidatePublicProductListCache();
+      }
       res.json({ message: "Хадгалагдлаа" });
     } catch (error) {
       console.error("bulk site-settings error", error);

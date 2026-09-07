@@ -14,6 +14,9 @@ export const WEB_PRODUCTS_FEATURE_KEY = "web-products-enabled";
 export const PUBLIC_PRODUCT_STATE_FILTER = {
   isActive: true,
   deletedAt: null,
+  name: { not: "" },
+  price: { gte: 100 },
+  images: { some: {} },
 } as const;
 
 interface PublicProductState {
@@ -25,12 +28,28 @@ interface PublicProductState {
   };
 }
 
+interface PublicProductCatalogQuality {
+  name: string;
+  price: number | { toString(): string };
+  images: Array<{ id?: string; url?: string }>;
+}
+
 export function hasPublicProductState(product: PublicProductState) {
   return (
     product.isActive &&
     product.deletedAt === null &&
     product.organization.status === "ACTIVE" &&
     product.organization.deletedAt === null
+  );
+}
+
+export function hasPublicProductCatalogQuality(
+  product: PublicProductCatalogQuality,
+) {
+  return (
+    product.name.trim().length > 0 &&
+    Number(product.price) >= 100 &&
+    product.images.some((image) => String(image.url ?? image.id ?? "").trim())
   );
 }
 
@@ -75,16 +94,9 @@ export async function isOrgWebProductsEnabled(organizationId: string) {
     select: { value: true },
   });
 
-  // Organizations are storefronts by default. An explicit false value is the
-  // opt-out switch; a missing setting must not silently hide every product the
-  // owner just published.
-  if (
-    setting?.value === undefined ||
-    setting.value === null ||
-    setting.value === ""
-  ) {
-    return true;
-  }
+  // Public marketplace publication is explicit opt-in. Operational/POS
+  // products must never leak into the online catalog because a setting is absent.
+  if (!setting?.value) return false;
   return isTruthySetting(setting?.value);
 }
 
@@ -115,22 +127,23 @@ export async function shouldExposeOrgProductsOnWeb(
 }
 
 export async function getWebProductsEnabledOrganizationIds() {
-  const disabledSettings = await prisma.siteSetting.findMany({
+  const enabledSettings = await prisma.siteSetting.findMany({
     where: { key: { startsWith: `${WEB_PRODUCTS_FEATURE_KEY}-` } },
     select: { key: true, value: true },
   });
 
-  const disabledOrganizationIds = disabledSettings
-    .filter((setting) => !isTruthySetting(setting.value))
+  const enabledOrganizationIds = enabledSettings
+    .filter((setting) => isTruthySetting(setting.value))
     .map((setting) => getOrganizationIdFromSettingKey(setting.key))
     .filter(Boolean);
+
+  if (enabledOrganizationIds.length === 0) return [];
 
   const organizations = await prisma.organization.findMany({
     where: {
       deletedAt: null,
-      ...(disabledOrganizationIds.length
-        ? { id: { notIn: disabledOrganizationIds } }
-        : {}),
+      status: "ACTIVE",
+      id: { in: enabledOrganizationIds },
     },
     select: { id: true },
   });

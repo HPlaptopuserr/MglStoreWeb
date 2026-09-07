@@ -1,6 +1,9 @@
 export const SHOWCASE_KEY = "product-showcase-shelves";
 export const HOMEPAGE_FEATURED_PRODUCTS_KEY = "homepage-featured-products";
 export const HOMEPAGE_FEATURED_PRODUCTS_LIMIT = 20;
+export const HOMEPAGE_FEATURED_ORGANIZATIONS_KEY =
+  "homepage-featured-organizations";
+export const HOMEPAGE_FEATURED_ORGANIZATIONS_LIMIT = 20;
 export const MARKETPLACE_SIDE_BANNER_KEY = "marketplace-side-banner";
 export const MARKETPLACE_SERVICES_PROMO_KEY = "marketplace-services-promo";
 export const AUTH_LOGIN_BANNER_KEY = "auth-login-banner";
@@ -116,6 +119,23 @@ export function parseProductIds(raw?: string): string[] {
           .filter(Boolean),
       ),
     ].slice(0, HOMEPAGE_FEATURED_PRODUCTS_LIMIT);
+  } catch {
+    return [];
+  }
+}
+
+export function parseOrganizationIds(raw?: string): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return [
+      ...new Set(
+        parsed
+          .map((id) => (typeof id === "string" ? id.trim() : ""))
+          .filter(Boolean),
+      ),
+    ].slice(0, HOMEPAGE_FEATURED_ORGANIZATIONS_LIMIT);
   } catch {
     return [];
   }
