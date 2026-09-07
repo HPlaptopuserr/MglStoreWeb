@@ -439,7 +439,7 @@ const normalizeTaxType = (value: unknown) => {
 const normalizePercent = (value: unknown, fallback = 0) => {
   if (value === undefined || value === null || value === "") return fallback;
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return undefined;
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 2) return undefined;
   return parsed;
 };
 
@@ -2402,7 +2402,7 @@ router.post(
 
         const normalizedCityTaxRate = normalizePercent(cityTaxRate, 0);
         if (normalizedCityTaxRate === undefined) {
-          const message = `Мөр ${rowNum}: Хотын татвар 0-100 хооронд байх ёстой`;
+          const message = `Мөр ${rowNum}: Хотын татвар 0-2% хооронд байх ёстой`;
           results.errors.push(message);
           results.errorRows.push(
             toProductImportErrorRow(row, rowNum, message, colMap),
@@ -3356,7 +3356,7 @@ router.post(
       if (normalizedCityTaxRate === undefined) {
         return res
           .status(400)
-          .json({ message: "Хотын татвар 0-100 хооронд байх ёстой" });
+          .json({ message: "Хотын татвар 0-2% хооронд байх ёстой" });
       }
       const normalizedPreparationMinutes =
         normalizePreparationMinutes(preparationMinutes);
@@ -3908,7 +3908,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       if (normalizedCityTaxRate === undefined) {
         return res
           .status(400)
-          .json({ message: "Хотын татвар 0-100 хооронд байх ёстой" });
+          .json({ message: "Хотын татвар 0-2% хооронд байх ёстой" });
       }
       data.cityTaxRate = normalizedCityTaxRate;
     }

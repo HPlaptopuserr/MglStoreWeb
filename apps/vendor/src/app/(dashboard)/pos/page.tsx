@@ -101,6 +101,7 @@ import {
   loadQPayCheckoutRecovery,
   saveQPayCheckoutRecovery,
 } from "@/features/pos/utils/qpay-checkout-recovery";
+import { printThermalDocument } from "@/features/pos/utils/print-thermal-document";
 import { API, authFetch } from "@/lib/api";
 import {
   isFeatureEnabled,
@@ -527,41 +528,21 @@ const renderEbarimtQrMarkup = (value?: string | null) => {
 const printReceipt = (receipt: PosReceipt) => {
   if (typeof window === "undefined") return;
 
-  const popup = window.open("", "_blank", "width=420,height=760");
-  if (!popup) return;
-
   const content = escapeHtml(formatReceipt(receipt));
   const ebarimtQrData =
     receipt.ebarimt?.status === "SUCCESS" && receipt.ebarimt.qrData
       ? receipt.ebarimt.qrData
       : "";
   const qrMarkup = renderEbarimtQrMarkup(ebarimtQrData);
-  popup.document.write(`
-    <html>
-      <head>
-        <title>Receipt ${receipt.receiptNo}</title>
-        <style>
-          body { font-family: monospace; margin: 0; padding: 12px; color: #111; }
-          pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.45; }
-          .ebarimt-qr { margin-top: 10px; text-align: center; }
-          .ebarimt-qr svg { width: 160px; height: 160px; }
-          .ebarimt-qr-title { margin: 0 0 6px; font-family: sans-serif; font-size: 12px; font-weight: 700; }
-          .ebarimt-qr-fallback { white-space: normal; word-break: break-all; font-family: monospace; font-size: 10px; }
-        </style>
-      </head>
-      <body>
-        <pre>${content}</pre>
-        ${ebarimtQrData ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR</p>${qrMarkup || `<p class="ebarimt-qr-fallback">${escapeHtml(ebarimtQrData)}</p>`}</div>` : ""}
-        <script>
-          window.onload = function () {
-            window.print();
-            setTimeout(function () { window.close(); }, 350);
-          }
-        </script>
-      </body>
-    </html>
-  `);
-  popup.document.close();
+  printThermalDocument({
+    bodyHtml: `<pre>${content}</pre>${ebarimtQrData ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR</p>${qrMarkup || `<p class="ebarimt-qr-fallback">${escapeHtml(ebarimtQrData)}</p>`}</div>` : ""}`,
+    extraCss: `
+      .ebarimt-qr { margin-top: 3mm; text-align: center; }
+      .ebarimt-qr svg { width: 42mm; height: 42mm; }
+      .ebarimt-qr-title { margin: 0 0 2mm; font-family: sans-serif; font-size: 9pt; font-weight: 700; }
+      .ebarimt-qr-fallback { white-space: normal; overflow-wrap: anywhere; font-size: 8pt; }
+    `,
+  });
 };
 
 export default function PosDemoPage() {
@@ -1239,29 +1220,9 @@ export default function PosDemoPage() {
 
   const printPlainReport = (title: string, lines: string[]) => {
     if (typeof window === "undefined") return;
-    const popup = window.open("", "_blank", "width=420,height=720");
-    if (!popup) return;
-    popup.document.write(`
-      <html>
-        <head>
-          <title>${escapeHtml(title)}</title>
-          <style>
-            body { font-family: monospace; margin: 0; padding: 12px; color: #111; }
-            pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.45; }
-          </style>
-        </head>
-        <body>
-          <pre>${escapeHtml(lines.join("\n"))}</pre>
-          <script>
-            window.onload = function () {
-              window.print();
-              setTimeout(function () { window.close(); }, 350);
-            }
-          </script>
-        </body>
-      </html>
-    `);
-    popup.document.close();
+    printThermalDocument({
+      bodyHtml: `<pre>${escapeHtml([title, "", ...lines].join("\n"))}</pre>`,
+    });
   };
 
   const printCashDrawerReport = (summary = drawerSummary) => {

@@ -427,6 +427,18 @@ export function PosRegistersSection({
       }
     }
     if (
+      form.ebarimtEnabled &&
+      (!form.ebarimtPosApiUrl.trim() ||
+        !form.ebarimtMerchantTin.trim() ||
+        !form.ebarimtPosNo.trim() ||
+        !form.ebarimtMerchantName.trim())
+    ) {
+      setError(
+        "eBarimt идэвхтэй үед PosAPI URL, Merchant TIN, POS дугаар, Merchant нэрийг бүрэн бөглөнө үү.",
+      );
+      return;
+    }
+    if (
       form.ebarimtMerchantTin.trim() &&
       !/^\d+$/.test(form.ebarimtMerchantTin.trim())
     ) {
@@ -1016,8 +1028,8 @@ export function PosRegistersSection({
                           )}
                         </div>
                         <p className="mt-1 text-[11px] text-slate-400">
-                          Касс дахь локал bridge server хаяг (хоосон бол mock
-                          simulation хэрэглэнэ)
+                          Касс дахь локал bridge server хаяг. Bridge provider
+                          сонгосон үед заавал бөглөнө.
                         </p>
                       </Field>
                     )}
@@ -1098,7 +1110,7 @@ export function PosRegistersSection({
                         http://localhost:7080 хэвээр байна.
                       </p>
                     </Field>
-                    <Field label="Merchant TIN (дараа нөхнө)">
+                    <Field label="Merchant TIN">
                       <input
                         value={form.ebarimtMerchantTin}
                         onChange={(e) =>
@@ -1109,7 +1121,7 @@ export function PosRegistersSection({
                       />
                     </Field>
                     <Field
-                      label="Merchant нэр (дараа нөхнө)"
+                      label="Merchant нэр"
                       className="col-span-2"
                     >
                       <input

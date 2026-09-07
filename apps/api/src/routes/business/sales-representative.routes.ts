@@ -216,6 +216,27 @@ export function exactPhoneCandidates(value: string) {
   return [...candidates].filter(Boolean);
 }
 
+export function salesOrganizationSearchFilter(
+  query: string,
+): Prisma.OrganizationWhereInput {
+  const value = query.trim();
+  if (!value) return {};
+  const phoneDigits = value.replace(/\D/g, "");
+  return {
+    OR: [
+      { name: { contains: value, mode: "insensitive" } },
+      { taxId: { contains: value, mode: "insensitive" } },
+      { email: { contains: value, mode: "insensitive" } },
+      ...(phoneDigits.length >= 4
+        ? [
+            { phone: { contains: phoneDigits } },
+            { phone: { in: exactPhoneCandidates(value) } },
+          ]
+        : []),
+    ],
+  };
+}
+
 export type SalesStoreRegion = "ULAANBAATAR" | "LOCAL";
 
 export function salesStoreRegion(
@@ -378,6 +399,92 @@ router.post(
   },
 );
 
+router.get(
+  "/sales-representative/organization-search",
+  requireAuth,
+  async (req, res) => {
+    const actor = (req as any).user as AuthPayload;
+    const current = await membership(actor);
+    if (!current || !canRegisterSalesVendor(current.role, current.capabilities))
+      return res
+        .status(403)
+        .json({ message: "Байгууллага хайх эрх шаардлагатай" });
+
+    const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (query.length < 2)
+      return res
+        .status(400)
+        .json({ message: "Хайх утга хамгийн багадаа 2 тэмдэгт байна" });
+
+    const organizations = await prisma.organization.findMany({
+      where: {
+        id: { not: current.organizationId },
+        status: OrgStatus.ACTIVE,
+        deletedAt: null,
+        ...salesOrganizationSearchFilter(query),
+      },
+      select: {
+        id: true,
+        name: true,
+        taxId: true,
+        email: true,
+        phone: true,
+        address: true,
+        businessCategory: true,
+      },
+      orderBy: [{ name: "asc" }, { createdAt: "desc" }],
+      take: 20,
+    });
+    const locations = await prisma.salesVisitLocation.findMany({
+      where: {
+        vendorOrganizationId: { in: organizations.map(({ id }) => id) },
+      },
+      select: {
+        vendorOrganizationId: true,
+        organizationId: true,
+        isActive: true,
+        assignments: {
+          where: { memberId: current.id },
+          select: { memberId: true },
+        },
+      },
+    });
+    const locationByVendorId = new Map(
+      locations.map((location) => [location.vendorOrganizationId, location]),
+    );
+
+    void prisma.auditLog.create({
+      data: {
+        userId: actor.userId,
+        action: AuditAction.SALES_REP_VENDOR_LOOKUP,
+        ip: req.ip,
+        userAgent: req.get("user-agent") || null,
+        meta: {
+          representativeOrganizationId: current.organizationId,
+          lookupType: "SEARCH",
+          resultCount: organizations.length,
+        },
+      },
+    });
+
+    return res.json(
+      organizations.map((vendor) => {
+        const location = locationByVendorId.get(vendor.id);
+        return {
+          vendor,
+          assigned:
+            location?.organizationId === current.organizationId &&
+            location.isActive &&
+            location.assignments.length > 0,
+          available:
+            location === undefined ||
+            location.organizationId === current.organizationId,
+        };
+      }),
+    );
+  },
+);
+
 router.get("/sales-representative/vendors", requireAuth, async (req, res) => {
   const current = await membership((req as any).user as AuthPayload);
   if (!current || !canRegisterSalesVendor(current.role, current.capabilities))
@@ -490,55 +597,61 @@ async function confirmRepresentativeQPayEntry(
   paymentId: string,
   transactionId: string,
 ) {
-  return prisma.$transaction(async (tx) => {
-    const entry = await tx.stockRequestPaymentEntry.findUnique({
-      where: { transactionId },
-    });
-    if (!entry || entry.paymentId !== paymentId)
-      throw new Error("QPAY_ENTRY_NOT_FOUND");
-    const payment = await tx.stockRequestPayment.findUniqueOrThrow({
-      where: { id: paymentId },
-    });
-    if (entry.status === PaymentStatus.PAID) {
+  return prisma.$transaction(
+    async (tx) => {
+      const entry = await tx.stockRequestPaymentEntry.findUnique({
+        where: { transactionId },
+      });
+      if (!entry || entry.paymentId !== paymentId)
+        throw new Error("QPAY_ENTRY_NOT_FOUND");
+      const payment = await tx.stockRequestPayment.findUniqueOrThrow({
+        where: { id: paymentId },
+      });
+      if (entry.status === PaymentStatus.PAID) {
+        return {
+          status: PaymentStatus.PAID,
+          paymentStatus: payment.status,
+          paidAmount: Number(payment.paidAmount),
+          outstandingAmount: Math.max(
+            0,
+            Number(payment.totalAmount) - Number(payment.paidAmount),
+          ),
+        };
+      }
+      const validation = validatePartialPaymentAmount(payment, entry.amount);
+      if (!validation.ok)
+        throw new Error(`PAYMENT_VALIDATION:${validation.message}`);
+      const paidAmount = Number(payment.paidAmount) + validation.amount;
+      const confirmedAt = new Date();
+      await tx.stockRequestPayment.update({
+        where: { id: paymentId },
+        data: {
+          status: validation.fullyPaid
+            ? PaymentStatus.PAID
+            : PaymentStatus.PENDING,
+          paidAmount,
+          paidAt: validation.fullyPaid ? confirmedAt : null,
+          paymentMethod: PaymentMethod.QPAY,
+          confirmedById: null,
+          confirmedAt,
+          note: "Дэлгүүрийн QPay төлбөр — автоматаар баталгаажсан",
+        },
+      });
+      await tx.stockRequestPaymentEntry.update({
+        where: { id: entry.id },
+        data: { status: PaymentStatus.PAID, confirmedAt },
+      });
       return {
         status: PaymentStatus.PAID,
-        paymentStatus: payment.status,
-        paidAmount: Number(payment.paidAmount),
-        outstandingAmount: Math.max(
-          0,
-          Number(payment.totalAmount) - Number(payment.paidAmount),
-        ),
-      };
-    }
-    const validation = validatePartialPaymentAmount(payment, entry.amount);
-    if (!validation.ok) throw new Error(`PAYMENT_VALIDATION:${validation.message}`);
-    const paidAmount = Number(payment.paidAmount) + validation.amount;
-    const confirmedAt = new Date();
-    await tx.stockRequestPayment.update({
-      where: { id: paymentId },
-      data: {
-        status: validation.fullyPaid ? PaymentStatus.PAID : PaymentStatus.PENDING,
+        paymentStatus: validation.fullyPaid
+          ? PaymentStatus.PAID
+          : PaymentStatus.PENDING,
         paidAmount,
-        paidAt: validation.fullyPaid ? confirmedAt : null,
-        paymentMethod: PaymentMethod.QPAY,
-        confirmedById: null,
-        confirmedAt,
-        note: "Дэлгүүрийн QPay төлбөр — автоматаар баталгаажсан",
-      },
-    });
-    await tx.stockRequestPaymentEntry.update({
-      where: { id: entry.id },
-      data: { status: PaymentStatus.PAID, confirmedAt },
-    });
-    return {
-      status: PaymentStatus.PAID,
-      paymentStatus: validation.fullyPaid
-        ? PaymentStatus.PAID
-        : PaymentStatus.PENDING,
-      paidAmount,
-      outstandingAmount: validation.outstandingBefore - validation.amount,
-    };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        outstandingAmount: validation.outstandingBefore - validation.amount,
+      };
+    },
+    { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+  );
 }
 
 router.post(
@@ -568,7 +681,9 @@ router.post(
       return res.status(409).json({ message: "Төлбөр цуцлагдсан байна" });
     const validation = validatePartialPaymentAmount(payment, req.body?.amount);
     if (!validation.ok)
-      return res.status(validation.status).json({ message: validation.message });
+      return res
+        .status(validation.status)
+        .json({ message: validation.message });
     const amount = validation.amount;
 
     if (process.env.MGL_LOCAL_DEV === "true") {
@@ -711,7 +826,9 @@ router.post(
         ? req.body.idempotencyKey.trim()
         : "";
     if (!/^[a-zA-Z0-9-]{16,80}$/.test(idempotencyKey))
-      return res.status(400).json({ message: "Төлбөрийн хүсэлтийн ID буруу байна" });
+      return res
+        .status(400)
+        .json({ message: "Төлбөрийн хүсэлтийн ID буруу байна" });
 
     const validation = validatePartialPaymentAmount(payment, req.body?.amount);
     if (!validation.ok)
@@ -731,9 +848,13 @@ router.post(
     } catch (error) {
       const message = error instanceof Error ? error.message : "";
       if (message === "PAYMENT_BALANCE_CHANGED")
-        return res.status(409).json({ message: "Үлдэгдэл өөрчлөгдсөн тул дахин оролдоно уу" });
+        return res
+          .status(409)
+          .json({ message: "Үлдэгдэл өөрчлөгдсөн тул дахин оролдоно уу" });
       if (message === "IDEMPOTENCY_KEY_CONFLICT")
-        return res.status(409).json({ message: "Төлбөрийн хүсэлт давхардсан байна" });
+        return res
+          .status(409)
+          .json({ message: "Төлбөрийн хүсэлт давхардсан байна" });
       if (message.startsWith("PAYMENT_VALIDATION:"))
         return res.status(409).json({ message: message.slice(19) });
       throw error;

@@ -9,6 +9,7 @@ import { voidPushEcr } from "../api/payments";
 import { returnLocalEbarimtReceipt, sendLocalEbarimtData } from "../api/ebarimt";
 import { voidSale } from "../api/void-sale";
 import { formatReceipt } from "../utils/format-receipt";
+import { printThermalDocument } from "../utils/print-thermal-document";
 
 type Props = {
   receipt: PosReceipt | null;
@@ -36,9 +37,6 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
       : "";
 
   const handlePrint = () => {
-    const popup = window.open("", "_blank", "width=420,height=760");
-    if (!popup) return;
-
     const content = formatReceipt(receipt)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
@@ -46,32 +44,14 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
     const qrMarkup = ebarimtQrRef.current?.innerHTML || "";
-
-    popup.document.write(`
-      <html>
-        <head>
-          <title>Receipt ${receipt.receiptNo}</title>
-          <style>
-            body { font-family: monospace; margin: 0; padding: 12px; color: #111; }
-            pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.45; }
-            .ebarimt-qr { margin-top: 10px; text-align: center; }
-            .ebarimt-qr svg { width: 160px; height: 160px; }
-            .ebarimt-qr-title { margin: 0 0 6px; font-family: sans-serif; font-size: 12px; font-weight: 700; }
-          </style>
-        </head>
-        <body>
-          <pre>${content}</pre>
-          ${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR</p>${qrMarkup}</div>` : ""}
-          <script>
-            window.onload = function () {
-              window.print();
-              setTimeout(function () { window.close(); }, 350);
-            }
-          </script>
-        </body>
-      </html>
-    `);
-    popup.document.close();
+    printThermalDocument({
+      bodyHtml: `<pre>${content}</pre>${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR</p>${qrMarkup}</div>` : ""}`,
+      extraCss: `
+        .ebarimt-qr { margin-top: 3mm; text-align: center; }
+        .ebarimt-qr svg { width: 42mm; height: 42mm; }
+        .ebarimt-qr-title { margin: 0 0 2mm; font-family: sans-serif; font-size: 9pt; font-weight: 700; }
+      `,
+    });
   };
 
   const handleTerminalVoid = async () => {

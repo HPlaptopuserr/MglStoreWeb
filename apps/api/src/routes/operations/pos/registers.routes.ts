@@ -15,6 +15,7 @@ import {
   type AuthUser, type ApiError, type SaleLineInput, type SalePaymentLineInput,
   type CreateSaleBody, type PushEcrPurchaseResponse, toApiError, parseAuthClaims, runtimeEnv,
 } from "./_shared";
+import { validateEnabledEbarimtConfig } from "./ebarimt-config.validation";
 
 const router: ExpressRouter = Router();
 const BRIDGE_CARD_PROVIDERS = new Set(["ANDROID_PGW", "QPOSLANE", "GANTIGO", "IDPAY"]);
@@ -932,6 +933,17 @@ router.post("/admin/pos-registers", async (req, res) => {
     return res.status(400).json({ message: ebarimtPosNoError });
   }
 
+  const ebarimtConfigError = validateEnabledEbarimtConfig({
+    enabled: Boolean(ebarimtEnabled),
+    posApiUrl: normalizedEbarimtPosApiUrl,
+    merchantTin: normalizedEbarimtMerchantTin,
+    posNo: normalizedEbarimtPosNo,
+    merchantName: normalizedEbarimtMerchantName,
+  });
+  if (ebarimtConfigError) {
+    return res.status(400).json({ message: ebarimtConfigError });
+  }
+
   if (cardEnabled === true && !normalizedCardProviderType) {
     return res.status(400).json({ message: "cardEnabled=true үед cardProviderType шаардлагатай" });
   }
@@ -1208,6 +1220,29 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
           ? qpayTerminalId || null
           : existing.qpayTerminalId;
     const nextEbarimtEnabled = ebarimtEnabled !== undefined ? Boolean(ebarimtEnabled) : existing.ebarimtEnabled;
+
+    const ebarimtConfigError = validateEnabledEbarimtConfig({
+      enabled: nextEbarimtEnabled,
+      posApiUrl:
+        normalizedInputEbarimtPosApiUrl !== undefined
+          ? normalizedInputEbarimtPosApiUrl
+          : existing.ebarimtPosApiUrl,
+      merchantTin:
+        normalizedInputEbarimtMerchantTin !== undefined
+          ? normalizedInputEbarimtMerchantTin
+          : existing.ebarimtMerchantTin,
+      posNo:
+        normalizedInputEbarimtPosNo !== undefined
+          ? normalizedInputEbarimtPosNo
+          : existing.ebarimtPosNo,
+      merchantName:
+        normalizedInputEbarimtMerchantName !== undefined
+          ? normalizedInputEbarimtMerchantName
+          : existing.ebarimtMerchantName,
+    });
+    if (ebarimtConfigError) {
+      return res.status(400).json({ message: ebarimtConfigError });
+    }
 
     if (nextQpayEnabled && (!nextQpayMerchantId || !nextQpayTerminalId)) {
       return res.status(400).json({ message: "QPay идэвхтэй үед merchant болон terminal заавал байна" });

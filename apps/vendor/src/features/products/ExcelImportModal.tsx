@@ -187,7 +187,7 @@ const getColumnInfo = (mode: ImportMode) => [
   {
     col: "Хотын татвар (cityTaxRate)",
     req: false,
-    desc: "0-100 хувь; хоосон бол 0",
+    desc: "0-2 хувь; хоосон бол 0",
   },
   {
     col: "Ангиллын код (classificationCode)",

@@ -7,6 +7,7 @@ import {
   distanceMeters,
   exactPhoneCandidates,
   salesProductSearchFilter,
+  salesOrganizationSearchFilter,
   salesStoreRegion,
   salesVendorDetails,
 } from "./sales-representative.routes";
@@ -62,6 +63,26 @@ test("vendor lookup supports common Mongolian phone formats exactly", () => {
     "97699112233",
     "+97699112233",
   ]);
+});
+
+test("organization search covers admin organization identity fields", () => {
+  assert.deepEqual(salesOrganizationSearchFilter(" Төгс хурц "), {
+    OR: [
+      { name: { contains: "Төгс хурц", mode: "insensitive" } },
+      { taxId: { contains: "Төгс хурц", mode: "insensitive" } },
+      { email: { contains: "Төгс хурц", mode: "insensitive" } },
+    ],
+  });
+  assert.deepEqual(salesOrganizationSearchFilter("9911"), {
+    OR: [
+      { name: { contains: "9911", mode: "insensitive" } },
+      { taxId: { contains: "9911", mode: "insensitive" } },
+      { email: { contains: "9911", mode: "insensitive" } },
+      { phone: { contains: "9911" } },
+      { phone: { in: ["9911", "+9911"] } },
+    ],
+  });
+  assert.deepEqual(salesOrganizationSearchFilter(""), {});
 });
 
 test("store regions use explicit Mongolian address before coordinates", () => {

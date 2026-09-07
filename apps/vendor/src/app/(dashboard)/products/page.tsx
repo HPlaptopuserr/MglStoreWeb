@@ -525,8 +525,8 @@ export default function ProductsPage() {
     const cityTaxRate = form.cityTaxRate.trim()
       ? parseFloat(form.cityTaxRate)
       : 0;
-    if (isNaN(cityTaxRate) || cityTaxRate < 0 || cityTaxRate > 100) {
-      return showToast("error", "Хотын татвар 0-100 хооронд байх ёстой");
+    if (isNaN(cityTaxRate) || cityTaxRate < 0 || cityTaxRate > 2) {
+      return showToast("error", "Хотын татвар 0-2% хооронд байх ёстой");
     }
     if (!isValidEbarimtClassificationCode(form.classificationCode)) {
       return showToast(

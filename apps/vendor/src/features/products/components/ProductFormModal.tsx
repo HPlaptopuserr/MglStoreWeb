@@ -689,7 +689,7 @@ export function ProductFormModal({
                         <input
                           type="number"
                           min="0"
-                          max="100"
+                          max="2"
                           step="0.01"
                           className="w-full h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10"
                           value={form.cityTaxRate}
@@ -700,6 +700,10 @@ export function ProductFormModal({
                             }))
                           }
                         />
+                        <p className="text-xs font-medium leading-5 text-slate-500">
+                          НХАТ ногдохгүй бол 0, хуульд хамрагдах бараа эсвэл
+                          үйлчилгээнд баталгаажсан хувийг оруулна (дээд тал нь 2%).
+                        </p>
                       </div>
 
                       <div className="space-y-2 sm:col-span-2">
