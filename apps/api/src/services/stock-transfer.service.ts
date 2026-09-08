@@ -10,7 +10,7 @@ export async function transferStockToVendor(
   }[],
 ) {
   for (const item of items) {
-    const quantity = item.approvedQuantity || item.quantity;
+    const quantity = item.approvedQuantity ?? item.quantity;
     if (quantity <= 0) continue;
     const sourceProduct = await tx.product.findUnique({
       where: { id: item.productId },

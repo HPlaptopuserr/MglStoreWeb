@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Capability } from "@mgl/database";
 import {
+  canUseSalesRepresentativeOperations,
   canRegisterSalesVendor,
   canRepresentativeAccessVendor,
   distanceMeters,
@@ -11,6 +12,23 @@ import {
   salesStoreRegion,
   salesVendorDetails,
 } from "./sales-representative.routes";
+
+test("sales operations allow managers without representative capability", () => {
+  assert.equal(canUseSalesRepresentativeOperations("OWNER", []), true);
+  assert.equal(canUseSalesRepresentativeOperations("ADMIN", []), true);
+  assert.equal(canUseSalesRepresentativeOperations("MANAGER", []), true);
+});
+
+test("sales operations still require an authorized role or capability", () => {
+  assert.equal(
+    canUseSalesRepresentativeOperations("STAFF", [
+      Capability.SALES_REPRESENTATIVE,
+    ]),
+    true,
+  );
+  assert.equal(canUseSalesRepresentativeOperations("STAFF", []), false);
+  assert.equal(canUseSalesRepresentativeOperations(null, []), false);
+});
 
 test("owners, managers, and representatives can register stores", () => {
   assert.equal(canRegisterSalesVendor("OWNER"), true);

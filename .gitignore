@@ -40,6 +40,11 @@ apps/api/uploads/reels/
 # Testing
 coverage
 
+# Local database backups must never be committed or deployed.
+tmp/database-backups/
+/mglstore_backup_before_drift_fix.sql
+/mglstore_backup_before_migration_fix.sql
+
 # Debug
 .cache
 

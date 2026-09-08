@@ -23,6 +23,7 @@ import {
   vendorSetupRoutes,
   warehouseSetupRoutes,
   salesRepresentativeRoutes,
+  qualityRoutes,
   businessCategoriesRoutes,
   productsRoutes,
   reelsRoutes,
@@ -169,6 +170,7 @@ app.use("/api", vendorContentReviewRoutes);
 app.use("/api", formRoutes);
 app.use("/api", attendanceRoutes);
 app.use("/api", salesRepresentativeRoutes);
+app.use("/api", qualityRoutes);
 app.use("/api", chatRoutes);
 app.use("/api", dmRoutes);
 app.use("/api", storeCheckoutRoutes);

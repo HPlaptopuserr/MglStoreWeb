@@ -26,3 +26,40 @@ html {
 :target {
   scroll-margin-top: 100px;
 }
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 12mm;
+  }
+
+  body {
+    background: white;
+  }
+
+  aside,
+  header:has(button[aria-label="Цэс нээх"]),
+  .print-hidden {
+    display: none !important;
+  }
+
+  .lg\:pl-72 {
+    padding-left: 0 !important;
+  }
+
+  .workforce-report {
+    color: #0f172a;
+  }
+
+  .workforce-report table {
+    width: 100%;
+    font-size: 9px;
+  }
+
+  .workforce-report article,
+  .workforce-report table,
+  .workforce-report tr {
+    break-inside: avoid;
+    box-shadow: none !important;
+  }
+}

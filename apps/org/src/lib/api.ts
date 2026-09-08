@@ -13,6 +13,7 @@ export type OrgUser = {
   orgRole?: string | null;
   organizationId?: string | null;
   organizationName?: string | null;
+  capabilities?: string[];
 };
 
 export function getStoredOrgUser(): OrgUser | null {
@@ -49,7 +50,11 @@ export async function authFetch(input: string | URL, init?: RequestInit) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  if (!headers.has("Content-Type") && init?.body && typeof init.body === "string") {
+  if (
+    !headers.has("Content-Type") &&
+    init?.body &&
+    typeof init.body === "string"
+  ) {
     headers.set("Content-Type", "application/json");
   }
 

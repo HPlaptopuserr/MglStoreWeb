@@ -11,3 +11,4 @@ export { default as personalOrganizationRoutes } from "./personal-organization.r
 export { default as vendorSetupRoutes } from "./vendor-setup.routes";
 export { default as warehouseSetupRoutes } from "./warehouse-setup.routes";
 export { default as salesRepresentativeRoutes } from "./sales-representative.routes";
+export { default as qualityRoutes } from "./quality.routes";

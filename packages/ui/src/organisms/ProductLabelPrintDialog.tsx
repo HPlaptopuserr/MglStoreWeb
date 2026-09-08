@@ -1,7 +1,8 @@
 "use client";
 
-import { Minus, PackageSearch, Plus, Printer, Search, Trash2, X } from "lucide-react";
+import { Minus, PackageSearch, Plus, Printer, Search, Settings2, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 
 type ProductLabelDraft = {
   productId: string;
@@ -28,8 +29,35 @@ type ProductLabelPrintDialogProps = {
   onClose: () => void;
 };
 
-const LABELS_PER_PAGE = 6;
 const MAX_QTY = 999;
+const MIN_LABEL_SIZE_MM = 20;
+const MAX_LABEL_SIZE_MM = 300;
+const PAPER_PRESETS = {
+  A4: { width: 210, height: 297 },
+  A5: { width: 148, height: 210 },
+  LETTER: { width: 215.9, height: 279.4 },
+} as const;
+
+type PaperPreset = keyof typeof PAPER_PRESETS;
+type PaperOrientation = "portrait" | "landscape";
+
+type LabelPrintSettings = {
+  paperPreset: PaperPreset;
+  orientation: PaperOrientation;
+  labelWidth: number;
+  labelHeight: number;
+  margin: number;
+  gap: number;
+};
+
+const DEFAULT_PRINT_SETTINGS: LabelPrintSettings = {
+  paperPreset: "A4",
+  orientation: "landscape",
+  labelWidth: 144.5,
+  labelHeight: 67.3,
+  margin: 4,
+  gap: 0,
+};
 const CODE128_B_START = 104;
 const CODE128_PATTERNS = [
   "212222",
@@ -157,6 +185,7 @@ export function ProductLabelPrintDialog({
 }: ProductLabelPrintDialogProps) {
   const [labelSearch, setLabelSearch] = useState("");
   const [drafts, setDrafts] = useState<ProductLabelDraft[]>([]);
+  const [printSettings, setPrintSettings] = useState<LabelPrintSettings>(DEFAULT_PRINT_SETTINGS);
 
   useEffect(() => {
     if (!open) return;
@@ -190,8 +219,9 @@ export function ProductLabelPrintDialog({
   );
 
   const selectedLabelCount = labels.length;
+  const printLayout = useMemo(() => calculatePrintLayout(printSettings), [printSettings]);
   const pageCount =
-    selectedLabelCount === 0 ? 0 : Math.ceil(selectedLabelCount / LABELS_PER_PAGE);
+    selectedLabelCount === 0 ? 0 : Math.ceil(selectedLabelCount / printLayout.labelsPerPage);
 
   const addProduct = (product: ProductLabelProduct) => {
     setDrafts((current) => {
@@ -225,7 +255,11 @@ export function ProductLabelPrintDialog({
   };
 
   const handlePrint = () => {
-    printProductLabels(labels);
+    if (!printLayout.fitsOnPage) {
+      window.alert("Шошгоны хэмжээ цаасны хэвлэх талбайгаас том байна.");
+      return;
+    }
+    printProductLabels(labels, printSettings);
   };
 
   if (!open) return null;
@@ -268,7 +302,7 @@ export function ProductLabelPrintDialog({
             <button
               type="button"
               onClick={handlePrint}
-              disabled={selectedLabelCount === 0}
+              disabled={selectedLabelCount === 0 || !printLayout.fitsOnPage}
               className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#002b52] px-4 text-sm font-black text-white transition hover:bg-[#013765] disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Printer size={16} />
@@ -284,6 +318,12 @@ export function ProductLabelPrintDialog({
             </button>
           </div>
         </div>
+
+        <PrintSettingsBar
+          settings={printSettings}
+          layout={printLayout}
+          onChange={setPrintSettings}
+        />
 
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px_340px]">
           <section className="flex min-h-0 flex-col border-r border-slate-200">
@@ -312,6 +352,7 @@ export function ProductLabelPrintDialog({
                   {filteredProducts.map((product) => {
                     const selectedQty =
                       drafts.find((draft) => draft.productId === product.id)?.qty ?? 0;
+                    const labelCode = resolveProductLabelCode(product);
 
                     return (
                       <button
@@ -325,7 +366,7 @@ export function ProductLabelPrintDialog({
                             {product.name}
                           </p>
                           <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
-                            Barcode {product.barcode || "-"} · {formatLabelPrice(product.price)}
+                            {labelCode.label} {labelCode.value || "-"} · {formatLabelPrice(product.price)}
                           </p>
                         </div>
                         <span
@@ -441,11 +482,15 @@ export function ProductLabelPrintDialog({
                   <p className="text-sm font-bold text-slate-500">Сонгосон шошго байхгүй</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-1">
+                <div
+                  className="grid gap-1"
+                  style={{ gridTemplateColumns: `repeat(${Math.min(printLayout.columns, 3)}, minmax(0, 1fr))` }}
+                >
                   {labels.map((label, index) => (
                     <LabelPreviewCard
                       key={`${label.productId}-${index}`}
                       label={label}
+                      aspectRatio={printSettings.labelWidth / printSettings.labelHeight}
                     />
                   ))}
                 </div>
@@ -455,6 +500,147 @@ export function ProductLabelPrintDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+function PrintSettingsBar({
+  settings,
+  layout,
+  onChange,
+}: {
+  settings: LabelPrintSettings;
+  layout: ReturnType<typeof calculatePrintLayout>;
+  onChange: (settings: LabelPrintSettings) => void;
+}) {
+  const update = <Key extends keyof LabelPrintSettings>(
+    key: Key,
+    value: LabelPrintSettings[Key],
+  ) => onChange({ ...settings, [key]: value });
+
+  const labelPreset = getLabelPreset(settings.labelWidth, settings.labelHeight);
+
+  return (
+    <div className="flex shrink-0 flex-wrap items-end gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
+      <div className="mb-1 flex items-center gap-2 self-center text-slate-700">
+        <Settings2 size={16} />
+        <span className="text-xs font-black">Хэвлэх тохиргоо</span>
+      </div>
+      <SettingsField label="Цаас">
+        <select
+          value={settings.paperPreset}
+          onChange={(event) => update("paperPreset", event.target.value as PaperPreset)}
+          className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        >
+          <option value="A4">A4</option>
+          <option value="A5">A5</option>
+          <option value="LETTER">Letter</option>
+        </select>
+      </SettingsField>
+      <SettingsField label="Чиглэл">
+        <select
+          value={settings.orientation}
+          onChange={(event) => update("orientation", event.target.value as PaperOrientation)}
+          className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        >
+          <option value="portrait">Босоо</option>
+          <option value="landscape">Хэвтээ</option>
+        </select>
+      </SettingsField>
+      <SettingsField label="Шошгоны загвар">
+        <select
+          value={labelPreset}
+          onChange={(event) => {
+            const [width, height] = event.target.value.split("x").map(Number);
+            if (width && height) onChange({ ...settings, labelWidth: width, labelHeight: height });
+          }}
+          className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        >
+          <option value="144.5x67.3">Том (144.5 × 67.3)</option>
+          <option value="100x50">Дунд (100 × 50)</option>
+          <option value="70x40">Жижиг (70 × 40)</option>
+          <option value="50x30">Мини (50 × 30)</option>
+          <option value="custom" disabled>Тусгай хэмжээ</option>
+        </select>
+      </SettingsField>
+      <SettingsNumberField
+        label="Өргөн"
+        value={settings.labelWidth}
+        min={MIN_LABEL_SIZE_MM}
+        max={MAX_LABEL_SIZE_MM}
+        onChange={(value) => update("labelWidth", value)}
+      />
+      <SettingsNumberField
+        label="Өндөр"
+        value={settings.labelHeight}
+        min={MIN_LABEL_SIZE_MM}
+        max={MAX_LABEL_SIZE_MM}
+        onChange={(value) => update("labelHeight", value)}
+      />
+      <SettingsNumberField
+        label="Зах"
+        value={settings.margin}
+        min={0}
+        max={20}
+        onChange={(value) => update("margin", value)}
+      />
+      <SettingsNumberField
+        label="Зай"
+        value={settings.gap}
+        min={0}
+        max={20}
+        onChange={(value) => update("gap", value)}
+      />
+      <div
+        className={`mb-0.5 ml-auto rounded-lg px-3 py-2 text-xs font-black ${
+          layout.fitsOnPage ? "bg-sky-100 text-sky-800" : "bg-rose-100 text-rose-700"
+        }`}
+      >
+        {layout.fitsOnPage
+          ? `${layout.columns} × ${layout.rows} · ${layout.labelsPerPage} шошго/хуудас`
+          : "Шошго цаасанд багтахгүй байна"}
+      </div>
+    </div>
+  );
+}
+
+function SettingsField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function SettingsNumberField({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <SettingsField label={`${label} (мм)`}>
+      <input
+        type="number"
+        inputMode="decimal"
+        value={value}
+        min={min}
+        max={max}
+        step="0.1"
+        onChange={(event) => {
+          const nextValue = Number(event.target.value);
+          if (Number.isFinite(nextValue)) onChange(Math.max(min, Math.min(max, nextValue)));
+        }}
+        className="h-9 w-20 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold tabular-nums text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+      />
+    </SettingsField>
   );
 }
 
@@ -483,9 +669,18 @@ function LabelInput({
   );
 }
 
-function LabelPreviewCard({ label }: { label: ProductLabelValue | null }) {
+function LabelPreviewCard({
+  label,
+  aspectRatio,
+}: {
+  label: ProductLabelValue | null;
+  aspectRatio: number;
+}) {
   return (
-    <div className="overflow-hidden rounded-[3px] border border-[#002b52] bg-white shadow-sm">
+    <div
+      className="overflow-hidden rounded-[3px] border border-[#002b52] bg-white shadow-sm"
+      style={{ aspectRatio }}
+    >
       <div className="flex h-7 items-center bg-[#002b52] px-2">
         <MglLabelLogo className="h-4 w-[50px]" />
       </div>
@@ -573,10 +768,56 @@ function createDraft(product: ProductLabelProduct): ProductLabelDraft {
   return {
     productId: product.id,
     name: product.name,
-    code: product.barcode || "",
+    code: resolveProductLabelCode(product).value,
     priceText: formatLabelPrice(product.price),
     qty: 1,
   };
+}
+
+function getLabelPreset(width: number, height: number) {
+  const presets = ["144.5x67.3", "100x50", "70x40", "50x30"];
+  return presets.find((preset) => {
+    const [presetWidth, presetHeight] = preset.split("x").map(Number);
+    return presetWidth === width && presetHeight === height;
+  }) ?? "custom";
+}
+
+function calculatePrintLayout(settings: LabelPrintSettings) {
+  const preset = PAPER_PRESETS[settings.paperPreset];
+  const paperWidth = settings.orientation === "landscape" ? preset.height : preset.width;
+  const paperHeight = settings.orientation === "landscape" ? preset.width : preset.height;
+  const printableWidth = Math.max(1, paperWidth - settings.margin * 2);
+  const printableHeight = Math.max(1, paperHeight - settings.margin * 2);
+  const columns = Math.max(
+    1,
+    Math.floor((printableWidth + settings.gap) / (settings.labelWidth + settings.gap)),
+  );
+  const rows = Math.max(
+    1,
+    Math.floor((printableHeight + settings.gap) / (settings.labelHeight + settings.gap)),
+  );
+
+  return {
+    paperWidth,
+    paperHeight,
+    printableWidth,
+    printableHeight,
+    columns,
+    rows,
+    labelsPerPage: columns * rows,
+    fitsOnPage:
+      settings.labelWidth <= printableWidth && settings.labelHeight <= printableHeight,
+  };
+}
+
+function resolveProductLabelCode(product: ProductLabelProduct) {
+  const sku = product.sku?.trim();
+  if (sku) return { label: "SKU", value: sku } as const;
+
+  const barcode = product.barcode?.trim();
+  if (barcode) return { label: "Barcode", value: barcode } as const;
+
+  return { label: "Код", value: "" } as const;
 }
 
 function clampQty(value: number) {
@@ -590,7 +831,7 @@ function formatLabelPrice(value: number | string | null | undefined) {
   return `${Number.isInteger(amount) ? amount.toFixed(0) : amount.toFixed(1)}₮`;
 }
 
-function printProductLabels(labels: ProductLabelValue[]) {
+function printProductLabels(labels: ProductLabelValue[], settings: LabelPrintSettings) {
   if (typeof window === "undefined" || labels.length === 0) return;
 
   const popup = window.open("", "_blank", "width=1120,height=780");
@@ -599,15 +840,20 @@ function printProductLabels(labels: ProductLabelValue[]) {
     return;
   }
 
-  const pages = chunkLabels(labels, LABELS_PER_PAGE);
+  const layout = calculatePrintLayout(settings);
+  const pages = chunkLabels(labels, layout.labelsPerPage);
   const pageMarkup = pages.map((page) => renderPrintPage(page)).join("");
+  const labelScale = Math.max(
+    0.42,
+    Math.min(1.5, settings.labelWidth / 144.5, settings.labelHeight / 67.3),
+  );
 
   popup.document.write(`
     <html>
       <head>
         <title>MGL price labels</title>
         <style>
-          @page { size: A4 landscape; margin: 4mm; }
+          @page { size: ${layout.paperWidth}mm ${layout.paperHeight}mm; margin: ${settings.margin}mm; }
           * { box-sizing: border-box; }
           html {
             print-color-adjust: exact;
@@ -622,18 +868,22 @@ function printProductLabels(labels: ProductLabelValue[]) {
             -webkit-print-color-adjust: exact;
           }
           .sheet {
-            width: 289mm;
-            height: 202mm;
+            width: ${layout.printableWidth}mm;
+            height: ${layout.printableHeight}mm;
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            grid-template-rows: repeat(3, minmax(0, 1fr));
-            gap: 0;
+            grid-template-columns: repeat(${layout.columns}, ${settings.labelWidth}mm);
+            grid-auto-rows: ${settings.labelHeight}mm;
+            align-content: start;
+            justify-content: start;
+            gap: ${settings.gap}mm;
             margin: 0 auto;
             background: #ffffff;
             page-break-after: always;
           }
           .sheet:last-child { page-break-after: auto; }
           .label {
+            width: ${settings.labelWidth}mm;
+            height: ${settings.labelHeight}mm;
             min-width: 0;
             min-height: 0;
             display: flex;
@@ -645,10 +895,10 @@ function printProductLabels(labels: ProductLabelValue[]) {
             -webkit-print-color-adjust: exact;
           }
           .brand {
-            height: 13.5mm;
+            height: ${13.5 * labelScale}mm;
             display: flex;
             align-items: center;
-            padding: 0 6mm;
+            padding: 0 ${6 * labelScale}mm;
             background: #002b52;
             background-color: #002b52;
             box-shadow: inset 0 0 0 1000px #002b52;
@@ -657,14 +907,14 @@ function printProductLabels(labels: ProductLabelValue[]) {
           }
           .logo {
             display: block;
-            width: 31mm;
+            width: ${31 * labelScale}mm;
             height: auto;
             print-color-adjust: exact;
             -webkit-print-color-adjust: exact;
           }
           .logo svg {
             display: block;
-            width: 31mm;
+            width: ${31 * labelScale}mm;
             height: auto;
             print-color-adjust: exact;
             -webkit-print-color-adjust: exact;
@@ -674,30 +924,30 @@ function printProductLabels(labels: ProductLabelValue[]) {
             min-height: 0;
             flex: 1;
             flex-direction: column;
-            padding: 1.5mm 2.8mm 2.4mm;
+            padding: ${1.5 * labelScale}mm ${2.8 * labelScale}mm ${2.4 * labelScale}mm;
             color: #002b52;
           }
           .field-title {
             font-family: Georgia, "Times New Roman", serif;
-            font-size: 5mm;
+            font-size: ${5 * labelScale}mm;
             font-weight: 900;
             line-height: 1;
-            letter-spacing: 0.18mm;
+            letter-spacing: ${0.18 * labelScale}mm;
           }
           .name-box,
           .small-box {
             display: flex;
             align-items: center;
             justify-content: center;
-            border: 1.35mm solid #002b52;
-            border-radius: 3mm;
+            border: ${1.35 * labelScale}mm solid #002b52;
+            border-radius: ${3 * labelScale}mm;
             color: #1a1a1a;
             overflow: hidden;
           }
           .name-box {
-            height: 9.5mm;
-            margin-top: 1.1mm;
-            padding: 0 2mm;
+            height: ${9.5 * labelScale}mm;
+            margin-top: ${1.1 * labelScale}mm;
+            padding: 0 ${2 * labelScale}mm;
           }
           .name-value {
             max-width: 100%;
@@ -705,34 +955,34 @@ function printProductLabels(labels: ProductLabelValue[]) {
             text-align: center;
             text-overflow: ellipsis;
             white-space: nowrap;
-            font-size: 4.6mm;
+            font-size: ${4.6 * labelScale}mm;
             font-weight: 900;
             line-height: 1;
           }
           .split-title {
             display: grid;
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: 6mm;
-            margin-top: 1.5mm;
+            gap: ${6 * labelScale}mm;
+            margin-top: ${1.5 * labelScale}mm;
           }
           .small-boxes {
             display: grid;
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: 6mm;
-            margin-top: 1.1mm;
+            gap: ${6 * labelScale}mm;
+            margin-top: ${1.1 * labelScale}mm;
           }
           .small-box {
-            height: 14.5mm;
-            padding: 0 2mm;
+            height: ${14.5 * labelScale}mm;
+            padding: 0 ${2 * labelScale}mm;
           }
           .barcode-box {
             flex-direction: column;
-            gap: 0.9mm;
+            gap: ${0.9 * labelScale}mm;
           }
           .barcode-svg {
             display: block;
             width: 100%;
-            height: 7.3mm;
+            height: ${7.3 * labelScale}mm;
           }
           .barcode-svg rect {
             fill: #111111;
@@ -742,7 +992,7 @@ function printProductLabels(labels: ProductLabelValue[]) {
             max-width: 100%;
             overflow: hidden;
             color: #111111;
-            font-size: 3.1mm;
+            font-size: ${3.1 * labelScale}mm;
             font-weight: 900;
             line-height: 1;
             text-align: center;
@@ -759,8 +1009,8 @@ function printProductLabels(labels: ProductLabelValue[]) {
             font-weight: 900;
             line-height: 1;
           }
-          .code-value { font-size: 3.6mm; }
-          .price-value { font-size: 4.6mm; }
+          .code-value { font-size: ${3.6 * labelScale}mm; }
+          .price-value { font-size: ${4.6 * labelScale}mm; }
           .label.empty .name-value,
           .label.empty .code-value,
           .label.empty .price-value { color: transparent; }

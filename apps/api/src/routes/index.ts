@@ -14,6 +14,7 @@ export {
   vendorSetupRoutes,
   warehouseSetupRoutes,
   salesRepresentativeRoutes,
+  qualityRoutes,
 } from "./business";
 
 export { businessCategoriesRoutes, productsRoutes } from "./catalog";

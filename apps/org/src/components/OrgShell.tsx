@@ -15,7 +15,10 @@ export default function OrgShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { ready, user, logout } = useOrgSession();
   const features = useOrgFeatures(user?.organizationId);
-  const navItems = useMemo(() => getOrgNavItems(features), [features]);
+  const navItems = useMemo(
+    () => getOrgNavItems(features, user),
+    [features, user],
+  );
   const isRestaurantWorkspace =
     pathname.startsWith("/dashboard/restaurant-pos") ||
     pathname.startsWith("/dashboard/kitchen-display");

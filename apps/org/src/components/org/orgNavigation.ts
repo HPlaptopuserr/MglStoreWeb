@@ -10,9 +10,12 @@ import {
   Megaphone,
   Package,
   Settings,
+  TimerReset,
   Users,
 } from "lucide-react";
+import { OrgUser } from "@/lib/api";
 import { OrgFeatureState } from "@/lib/org-types";
+import { canViewWorkforceReport } from "@/lib/workforce-api";
 
 export type OrgNavItem = {
   label: string;
@@ -21,7 +24,10 @@ export type OrgNavItem = {
   enabled?: boolean;
 };
 
-export function getOrgNavItems(features: OrgFeatureState): OrgNavItem[] {
+export function getOrgNavItems(
+  features: OrgFeatureState,
+  user?: OrgUser | null,
+): OrgNavItem[] {
   return [
     { label: "Хяналтын самбар", href: "/dashboard", icon: LayoutDashboard },
     {
@@ -30,6 +36,12 @@ export function getOrgNavItems(features: OrgFeatureState): OrgNavItem[] {
       icon: Building2,
     },
     { label: "Ажилтан ба эрх", href: "/dashboard/members", icon: Users },
+    {
+      label: "Цаг бүртгэлийн тайлан",
+      href: "/dashboard/workforce/attendance",
+      icon: TimerReset,
+      enabled: canViewWorkforceReport(user?.orgRole, user?.capabilities),
+    },
     {
       label: "Үйлчилгээний пост",
       href: "/dashboard/service-posts",

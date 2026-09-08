@@ -1,5 +1,6 @@
 import { Router, type Router as ExpressRouter } from "express";
 import crypto from "crypto";
+import { canReserveStock, reservedStock } from "../../services/stock-reservation.service";
 import {
   Capability,
   AuditAction,
@@ -29,7 +30,7 @@ import {
   getOutstandingStockPayments,
   serializeOutstandingPayment,
 } from "../../services/outstanding-stock-payment.service";
-import { getSalesStoreLocationSources } from "../../services/sales-store-portfolio.service";
+import { getSalesStoreLocationSources, isMongoliaStoreCoordinate } from "../../services/sales-store-portfolio.service";
 import { notifyNewSalesRepresentativeStockRequest } from "../../services/stock-request-notification.service";
 import {
   confirmRepresentativeCashPayment,
@@ -181,11 +182,15 @@ function requireRepresentative(
   current: Awaited<ReturnType<typeof membership>>,
 ) {
   return Boolean(
-    current?.capabilities.includes(Capability.SALES_REPRESENTATIVE),
+    current &&
+      canUseSalesRepresentativeOperations(
+        current.role,
+        current.capabilities,
+      ),
   );
 }
 
-export function canRegisterSalesVendor(
+export function canUseSalesRepresentativeOperations(
   role: string | null | undefined,
   capabilities: readonly Capability[] = [],
 ) {
@@ -193,6 +198,13 @@ export function canRegisterSalesVendor(
     (role && MANAGER_ROLES.has(role)) ||
     capabilities.includes(Capability.SALES_REPRESENTATIVE),
   );
+}
+
+export function canRegisterSalesVendor(
+  role: string | null | undefined,
+  capabilities: readonly Capability[] = [],
+) {
+  return canUseSalesRepresentativeOperations(role, capabilities);
 }
 
 function normalizedSlug(name: string) {
@@ -307,11 +319,11 @@ async function representativeVendorAccess(
         organizationId: current.organizationId,
         vendorOrganizationId: vendorId,
         isActive: true,
-        assignments: { some: { memberId: current.id } },
       },
     }),
   ]);
   if (!vendor) return null;
+  if (MANAGER_ROLES.has(current.role)) return { vendor, location };
   if (
     !canRepresentativeAccessVendor(
       ownerOrganization?.salesRepVendorRestrictionEnabled ?? false,
@@ -491,13 +503,11 @@ router.get("/sales-representative/vendors", requireAuth, async (req, res) => {
     return res
       .status(403)
       .json({ message: "Дэлгүүрийн мэдээлэл харах эрх шаардлагатай" });
-  const manager = MANAGER_ROLES.has(current!.role);
   const rows = await prisma.salesVisitLocation.findMany({
     where: {
       organizationId: current!.organizationId,
       isActive: true,
       vendorOrganizationId: { not: null },
-      ...(!manager && { assignments: { some: { memberId: current!.id } } }),
     },
     include: {
       vendorOrganization: {
@@ -989,7 +999,6 @@ router.patch(
         organizationId: current.organizationId,
         vendorOrganizationId: req.params.vendorId,
         isActive: true,
-        assignments: { some: { memberId: current.id } },
       },
       select: { id: true },
     });
@@ -1367,7 +1376,13 @@ router.get(
       orderBy: { product: { name: "asc" } },
       take: 200,
     });
-    return res.json(rows);
+    const reserved = await reservedStock(warehouse.id, rows.map((row) => row.productId));
+    return res.json(rows.map((row) => ({
+      ...row,
+      physicalQuantity: row.quantity,
+      reservedQuantity: reserved.get(row.productId) ?? 0,
+      quantity: Math.max(0, row.quantity - (reserved.get(row.productId) ?? 0)),
+    })));
   },
 );
 
@@ -1452,7 +1467,7 @@ router.post(
     if (!requireRepresentative(current))
       return res
         .status(403)
-        .json({ message: "Худалдааны төлөөлөгчийн эрх шаардлагатай" });
+        .json({ message: "Захиалга үүсгэх эрх хүрэлцэхгүй байна" });
     const access = await representativeVendorAccess(
       current!,
       req.params.vendorId,
@@ -1549,6 +1564,7 @@ router.post(
     const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
     const order = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
+        if (!await canReserveStock(tx, warehouse.id, items)) return null;
         const created = await tx.warehouseStockRequest.create({
           data: {
             requestNumber: `SR-${suffix}`,
@@ -1588,6 +1604,7 @@ router.post(
         });
       },
     );
+    if (!order) return res.status(409).json({ message: "Барааны боломжит үлдэгдэл хүрэлцэхгүй байна. Өөр захиалгад нөөцлөгдсөн байж болно. Барааны жагсаалтыг шинэчилнэ үү." });
     void prisma.auditLog.create({
       data: {
         userId: actor.userId,
@@ -1631,7 +1648,6 @@ router.get("/sales-representative/locations", requireAuth, async (req, res) => {
     where: {
       organizationId: current.organizationId,
       isActive: true,
-      ...(!manager && { assignments: { some: { memberId: current.id } } }),
     },
     include: {
       assignments: { select: { memberId: true } },
@@ -1879,7 +1895,7 @@ router.post(
     const point = coordinates(req.body);
     if (
       !current ||
-      !current.capabilities.includes(Capability.SALES_REPRESENTATIVE)
+      !canUseSalesRepresentativeOperations(current.role, current.capabilities)
     ) {
       return res
         .status(403)
@@ -1887,44 +1903,115 @@ router.post(
     }
     if (!point)
       return res.status(400).json({ message: "GPS байршил шаардлагатай" });
-    const location = await prisma.salesVisitLocation.findFirst({
-      where: {
-        id: req.params.locationId,
-        organizationId: current.organizationId,
-        isActive: true,
-        assignments: { some: { memberId: current.id } },
-      },
+    const requestedId = req.params.locationId;
+    const branch = requestedId.startsWith("branch:")
+      ? await prisma.branch.findFirst({
+          where: {
+            id: requestedId.slice(7),
+            deletedAt: null,
+            organization: { type: OrgType.VENDOR, status: OrgStatus.ACTIVE, deletedAt: null },
+          },
+        })
+      : null;
+    let location = await prisma.salesVisitLocation.findFirst({
+      where: branch
+        ? { vendorOrganizationId: branch.organizationId }
+        : {
+            id: requestedId,
+            isActive: true,
+            OR: [
+              { organizationId: current.organizationId },
+              { vendorOrganization: { is: { type: OrgType.VENDOR, status: OrgStatus.ACTIVE, deletedAt: null } } },
+            ],
+          },
     });
-    if (!location)
-      return res.status(404).json({ message: "Оноосон дэлгүүр олдсонгүй" });
+    // The map identifies admin branches separately from sales visit locations.
+    // Validate the selected branch's coordinates, not another branch's location.
+    const target = branch && branch.lat !== null && branch.lng !== null &&
+      isMongoliaStoreCoordinate(branch.lat, branch.lng)
+      ? { latitude: branch.lat, longitude: branch.lng, radiusMeters: location?.radiusMeters ?? 150 }
+      : branch ? null : location;
+    if (!target || (location && !location.isActive))
+      return res.status(404).json({ message: "Энэ байгууллагад идэвхтэй дэлгүүр олдсонгүй" });
     const distance = distanceMeters(
       point.latitude,
       point.longitude,
-      location.latitude,
-      location.longitude,
+      target.latitude,
+      target.longitude,
     );
-    if (distance > location.radiusMeters) {
+    if (distance > target.radiusMeters) {
       return res.status(409).json({
         message: `Дэлгүүрийн бүсээс гадуур байна (${Math.round(distance)}м)`,
         distanceMeters: Math.round(distance),
-        requiredRadiusMeters: location.radiusMeters,
+        requiredRadiusMeters: target.radiusMeters,
       });
     }
-    const openVisit = await prisma.salesVisit.findFirst({
-      where: { userId: user.userId, checkedOutAt: null },
-    });
-    if (openVisit)
-      return res
-        .status(409)
-        .json({ message: "Өмнөх айлчлалаа эхлээд дуусгана уу" });
-    const visit = await prisma.salesVisit.create({
-      data: {
+    // Only materialize a missing visit location after successful GPS validation.
+    // Upsert preserves existing ownership, coordinates and assignment records.
+    if (!location && branch) {
+      location = await prisma.salesVisitLocation.upsert({
+        where: { vendorOrganizationId: branch.organizationId },
+        update: {},
+        create: {
+          organizationId: current.organizationId,
+          vendorOrganizationId: branch.organizationId,
+          name: branch.name,
+          address: branch.address,
+          ...target,
+        },
+      });
+    }
+    if (!location || !location.isActive) {
+      return res.status(404).json({ message: "Идэвхтэй айлчлалын байршил олдсонгүй" });
+    }
+    const now = new Date();
+    const ulaanbaatarOffsetMs = 8 * 60 * 60 * 1_000;
+    const localNow = new Date(now.getTime() + ulaanbaatarOffsetMs);
+    const localDayStartAsUtc = Date.UTC(
+      localNow.getUTCFullYear(),
+      localNow.getUTCMonth(),
+      localNow.getUTCDate(),
+    );
+    const dayStart = new Date(localDayStartAsUtc - ulaanbaatarOffsetMs);
+    const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1_000);
+    const existingArrival = await prisma.salesVisit.findFirst({
+      where: {
         organizationId: current.organizationId,
         locationId: location.id,
         userId: user.userId,
-        checkedInLatitude: point.latitude,
-        checkedInLongitude: point.longitude,
+        checkedInAt: { gte: dayStart, lt: dayEnd },
       },
+    });
+    if (existingArrival) {
+      // Re-verification still passes the current GPS and access checks above.
+      // Reuse today's arrival so app restarts/retries can continue safely.
+      return res.json(existingArrival);
+    }
+    const visit = await prisma.$transaction(async (tx) => {
+      // Close legacy open records created by the former check-in/check-out
+      // workflow. Arrival registration is now a single, completed event.
+      await tx.salesVisit.updateMany({
+        where: {
+          organizationId: current.organizationId,
+          userId: user.userId,
+          checkedOutAt: null,
+        },
+        data: { checkedOutAt: now, durationMinutes: 0 },
+      });
+      return tx.salesVisit.create({
+        data: {
+          organizationId: current.organizationId,
+          locationId: location.id,
+          userId: user.userId,
+          checkedInAt: now,
+          checkedInLatitude: point.latitude,
+          checkedInLongitude: point.longitude,
+          checkedOutAt: now,
+          checkedOutLatitude: point.latitude,
+          checkedOutLongitude: point.longitude,
+          durationMinutes: 0,
+        },
+      });
     });
     return res.status(201).json(visit);
   },

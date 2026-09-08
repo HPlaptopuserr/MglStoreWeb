@@ -1,6 +1,11 @@
-import { Router, type Router as ExpressRouter } from "express";
+import { Router, type Response, type Router as ExpressRouter } from "express";
 import { prisma, type Prisma } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
+import {
+  canManageAttendance,
+  canViewWorkforceAttendance,
+} from "./attendance-access.policy";
+import { sendAttendanceError } from "./attendance-error";
 
 const router: ExpressRouter = Router();
 type AttendanceMethod = "FINGERPRINT" | "FACE" | "PIN" | "AUTO";
@@ -9,6 +14,7 @@ type AttendanceContext = {
   userId: string;
   organizationId: string;
   orgRole: string | null;
+  capabilities: string[];
 };
 type AttendanceTeamMember = {
   id: string;
@@ -26,7 +32,6 @@ type AttendanceTeamMember = {
   };
 };
 
-const MANAGER_ROLES = new Set(["OWNER", "ADMIN", "CEO", "MANAGER", "HR"]);
 const ATTENDANCE_UTC_OFFSET_MINUTES = Number(
   process.env.ATTENDANCE_UTC_OFFSET_MINUTES ?? 480,
 );
@@ -43,7 +48,7 @@ async function resolveAttendanceContext(
   const tokenMembership = user.organizationId
     ? await prisma.organizationMember.findFirst({
         where: { ...baseWhere, organizationId: user.organizationId },
-        select: { organizationId: true, role: true },
+        select: { organizationId: true, role: true, capabilities: true },
       })
     : null;
 
@@ -52,7 +57,7 @@ async function resolveAttendanceContext(
     (await prisma.organizationMember.findFirst({
       where: baseWhere,
       orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
-      select: { organizationId: true, role: true },
+      select: { organizationId: true, role: true, capabilities: true },
     }));
 
   if (!membership) return null;
@@ -61,7 +66,12 @@ async function resolveAttendanceContext(
     userId: user.userId,
     organizationId: membership.organizationId,
     orgRole: membership.role,
+    capabilities: membership.capabilities,
   };
+}
+
+function rejectAttendanceManagement(res: Response) {
+  return res.status(403).json({ message: "Ирц удирдах эрх хүрэлцэхгүй" });
 }
 
 function parseAttendanceMethod(method: unknown): AttendanceMethod {
@@ -206,6 +216,9 @@ router.post("/attendance/zones", requireAuth, async (req, res) => {
         .status(400)
         .json({ message: "Байгууллага холбогдоогүй байна" });
     }
+    if (!canManageAttendance(context)) {
+      return rejectAttendanceManagement(res);
+    }
 
     const { name, lat, lng, radiusMeters, branchId } = req.body;
 
@@ -246,6 +259,9 @@ router.patch("/attendance/zones/:id", requireAuth, async (req, res) => {
         .status(400)
         .json({ message: "Байгууллага холбогдоогүй байна" });
     }
+    if (!canManageAttendance(context)) {
+      return rejectAttendanceManagement(res);
+    }
 
     const zone = await prisma.attendanceZone.findFirst({
       where: { id: req.params.id, organizationId: context.organizationId },
@@ -280,6 +296,9 @@ router.delete("/attendance/zones/:id", requireAuth, async (req, res) => {
       return res
         .status(400)
         .json({ message: "Байгууллага холбогдоогүй байна" });
+    }
+    if (!canManageAttendance(context)) {
+      return rejectAttendanceManagement(res);
     }
 
     const zone = await prisma.attendanceZone.findFirst({
@@ -502,7 +521,7 @@ router.get("/attendance/history", requireAuth, async (req, res) => {
 
     // Managers can view any user; staff can only view their own
     const targetUserId =
-      userId && context.orgRole && MANAGER_ROLES.has(context.orgRole)
+      userId && canViewWorkforceAttendance(context)
         ? String(userId)
         : context.userId;
 
@@ -550,7 +569,7 @@ router.get("/attendance/team/today", requireAuth, async (req, res) => {
         .status(400)
         .json({ message: "Байгууллага холбогдоогүй байна" });
     }
-    if (!context.orgRole || !MANAGER_ROLES.has(context.orgRole)) {
+    if (!canViewWorkforceAttendance(context)) {
       return res
         .status(403)
         .json({ message: "Ирцийн самбар харах эрх хүрэлцэхгүй" });
@@ -636,6 +655,205 @@ router.get("/attendance/team/today", requireAuth, async (req, res) => {
     return res
       .status(500)
       .json({ message: "Нийт ирцийн мэдээлэл авахад алдаа гарлаа" });
+  }
+});
+
+// ── GET /attendance/team/report ─────────────────────────────────────────────
+router.get("/attendance/team/report", requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user as AuthPayload;
+    const context = await resolveAttendanceContext(user);
+    if (!context) {
+      return sendAttendanceError(res, {
+        status: 400,
+        code: "ATTENDANCE_ORGANIZATION_REQUIRED",
+        message: "Ирцийн тайлан гаргах байгууллага тодорхойгүй байна.",
+        action: "Байгууллагаа дахин сонгоод тайланг нээнэ үү.",
+      });
+    }
+    if (!canViewWorkforceAttendance(context)) {
+      return sendAttendanceError(res, {
+        status: 403,
+        code: "ATTENDANCE_REPORT_FORBIDDEN",
+        message: "Танд нийт ажилтны цагийн тайлан харах эрх олгогдоогүй байна.",
+        action:
+          "Байгууллагын эзэмшигч эсвэл админаас WORKFORCE_ATTENDANCE_VIEW эрх авна уу.",
+      });
+    }
+
+    const page = Math.max(
+      1,
+      Number.parseInt(String(req.query.page ?? "1"), 10) || 1,
+    );
+    const pageSize = Math.min(
+      100,
+      Math.max(
+        10,
+        Number.parseInt(String(req.query.pageSize ?? "25"), 10) || 25,
+      ),
+    );
+    const from = parseClientDate(req.query.from);
+    const to = parseClientDate(req.query.to);
+    if (!from || !to || from > to) {
+      return sendAttendanceError(res, {
+        status: 400,
+        code: "ATTENDANCE_DATE_RANGE_INVALID",
+        message: "Тайлангийн эхлэх болон дуусах огноо буруу байна.",
+        action:
+          "Хоёр огноог бүрэн сонгож, эхлэх огноо дуусах огнооноос өмнө байгаа эсэхийг шалгана уу.",
+        fields: {
+          from: !from ? "Эхлэх огноо хүчингүй байна." : "",
+          to: !to ? "Дуусах огноо хүчингүй байна." : "",
+        },
+      });
+    }
+
+    const department = String(req.query.department ?? "").trim();
+    const search = String(req.query.search ?? "").trim();
+    const memberWhere: Prisma.OrganizationMemberWhereInput = {
+      organizationId: context.organizationId,
+      isActive: true,
+      deletedAt: null,
+      ...(department ? { department } : {}),
+      ...(search
+        ? {
+            OR: [
+              { department: { contains: search, mode: "insensitive" } },
+              {
+                user: {
+                  email: { contains: search, mode: "insensitive" },
+                },
+              },
+              {
+                user: {
+                  profile: {
+                    fullName: { contains: search, mode: "insensitive" },
+                  },
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+
+    const members = await prisma.organizationMember.findMany({
+      where: memberWhere,
+      select: {
+        userId: true,
+        department: true,
+        role: true,
+        user: {
+          select: {
+            email: true,
+            profile: { select: { fullName: true } },
+          },
+        },
+      },
+    });
+    const memberByUserId = new Map(
+      members.map((member) => [member.userId, member]),
+    );
+    const userIds = members.map((member) => member.userId);
+    const status = String(req.query.status ?? "ALL").toUpperCase();
+    const recordWhere: Prisma.AttendanceRecordWhereInput = {
+      organizationId: context.organizationId,
+      userId: { in: userIds },
+      clockIn: { gte: from, lte: to },
+      ...(status === "OPEN"
+        ? { clockOut: null }
+        : status === "CLOSED"
+          ? { clockOut: { not: null } }
+          : {}),
+    };
+
+    const [
+      total,
+      records,
+      aggregate,
+      employeeGroups,
+      openSessions,
+      departments,
+    ] = await Promise.all([
+      prisma.attendanceRecord.count({ where: recordWhere }),
+      prisma.attendanceRecord.findMany({
+        where: recordWhere,
+        include: { zone: { select: { id: true, name: true } } },
+        orderBy: { clockIn: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.attendanceRecord.aggregate({
+        where: recordWhere,
+        _sum: { totalMinutes: true },
+      }),
+      prisma.attendanceRecord.groupBy({
+        by: ["userId"],
+        where: recordWhere,
+      }),
+      prisma.attendanceRecord.count({
+        where: { ...recordWhere, clockOut: null },
+      }),
+      prisma.organizationMember.findMany({
+        where: {
+          organizationId: context.organizationId,
+          isActive: true,
+          deletedAt: null,
+          department: { not: null },
+        },
+        distinct: ["department"],
+        select: { department: true },
+        orderBy: { department: "asc" },
+      }),
+    ]);
+
+    return res.json({
+      range: { from, to },
+      summary: {
+        records: total,
+        employees: employeeGroups.length,
+        totalMinutes: aggregate._sum.totalMinutes ?? 0,
+        openSessions,
+      },
+      filters: {
+        departments: departments
+          .map((item) => item.department)
+          .filter((item): item is string => Boolean(item)),
+      },
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / pageSize)),
+      },
+      rows: records.map((record) => {
+        const member = memberByUserId.get(record.userId);
+        return {
+          id: record.id,
+          userId: record.userId,
+          employeeName:
+            member?.user.profile?.fullName || member?.user.email || "Ажилтан",
+          email: member?.user.email ?? "",
+          department: member?.department || "Хэлтэсгүй",
+          role: member?.role ?? "STAFF",
+          clockIn: record.clockIn,
+          clockOut: record.clockOut,
+          totalMinutes: record.totalMinutes,
+          status: record.clockOut ? "CLOSED" : "OPEN",
+          zone: record.zone,
+          method: record.clockInMethod,
+        };
+      }),
+    });
+  } catch (error) {
+    console.error("team attendance report error", error);
+    return sendAttendanceError(res, {
+      status: 500,
+      code: "ATTENDANCE_REPORT_FAILED",
+      message: "Сервер ирцийн тайланг боловсруулж чадсангүй.",
+      action:
+        "Түр хүлээгээд дахин оролдоно уу. Алдаа давтагдвал алдааны кодыг системийн админд дамжуулна уу.",
+      retryable: true,
+    });
   }
 });
 

@@ -5,6 +5,7 @@ import express, {
   type Router as ExpressRouter,
 } from "express";
 import crypto from "crypto";
+import { canReserveStock } from "../../services/stock-reservation.service";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
@@ -828,6 +829,7 @@ router.post(
       // Create stock request with payment record in transaction
       const request = await prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
+          if (!await canReserveStock(tx, warehouseId, normalizedItems)) return null;
           const stockRequest = await tx.warehouseStockRequest.create({
             data: {
               requestNumber,
@@ -902,6 +904,7 @@ router.post(
         },
       );
 
+      if (!request) return res.status(409).json({ message: "Барааны боломжит үлдэгдэл хүрэлцэхгүй байна. Жагсаалтыг шинэчилнэ үү." });
       res.status(201).json(request);
     } catch (error) {
       console.error("create stock request error", error);
@@ -959,6 +962,11 @@ router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
       });
     }
 
+    // Approval may release reserved units, but must not silently reserve more.
+    if (items && items.some((item: { productId: string; approvedQuantity: number }) => {
+      const original = request.items.find((row) => row.productId === item.productId);
+      return !original || !Number.isSafeInteger(item.approvedQuantity) || item.approvedQuantity < 0 || item.approvedQuantity > original.quantity;
+    })) return res.status(400).json({ message: "Батлах тоо 0-ээс захиалсан тооны хооронд бүхэл тоо байх ёстой" });
     // Update request and items with approved quantities
     const updated = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
@@ -1187,7 +1195,8 @@ router.patch("/stock-requests/:id/complete", requireAuth, async (req, res) => {
       async (tx: Prisma.TransactionClient) => {
         // Reduce inventory for each item via inventory service
         for (const item of request.items) {
-          const quantity = item.approvedQuantity || item.quantity;
+          const quantity = item.approvedQuantity ?? item.quantity;
+          if (quantity === 0) continue;
 
           await adjustStock(tx, {
             productId: item.productId,

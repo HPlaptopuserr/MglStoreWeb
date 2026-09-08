@@ -100,6 +100,8 @@ model User {
   assignedWarehouseCouriers        WarehouseCourierAssignment[]   @relation("WarehouseCourierAssignedBy")
   deliveryDriverProfile            DeliveryDriverProfile?
   salesVisits                      SalesVisit[]
+  createdQualityChecklistTemplates QualityChecklistTemplate[]     @relation("QualityTemplateCreator")
+  qualityInspections               QualityInspection[]
 
   @@index([role])
   @@index([isPrime])
@@ -471,6 +473,8 @@ model Organization {
   salesVisitLocations              SalesVisitLocation[]         @relation("SalesLocationOwner")
   representedSalesLocations        SalesVisitLocation[]         @relation("SalesLocationVendor")
   salesVisits                      SalesVisit[]
+  qualityChecklistTemplates        QualityChecklistTemplate[]
+  qualityInspections               QualityInspection[]
 
   @@index([type])
   @@index([status])
@@ -705,9 +709,53 @@ model SalesVisitLocation {
   vendorOrganization   Organization?                  @relation("SalesLocationVendor", fields: [vendorOrganizationId], references: [id], onDelete: SetNull)
   assignments          SalesVisitLocationAssignment[]
   visits               SalesVisit[]
+  qualityInspections   QualityInspection[]
 
   @@index([organizationId, isActive])
   @@index([vendorOrganizationId])
+}
+
+model QualityChecklistTemplate {
+  id             String              @id @default(uuid())
+  organizationId String
+  name           String
+  version        Int                 @default(1)
+  schema         Json
+  isActive       Boolean             @default(true)
+  createdById    String
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User                @relation("QualityTemplateCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  inspections    QualityInspection[]
+
+  @@unique([organizationId, version])
+  @@index([organizationId, isActive])
+}
+
+model QualityInspection {
+  id               String                   @id @default(uuid())
+  organizationId   String
+  locationId       String
+  inspectorId      String
+  templateId       String
+  templateVersion  Int
+  templateSnapshot Json
+  answers          Json
+  scoreEarned      Int
+  scorePossible    Int
+  scorePercent     Float
+  result           String
+  submittedAt      DateTime                 @default(now())
+  createdAt        DateTime                 @default(now())
+  organization     Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location         SalesVisitLocation       @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  inspector        User                     @relation(fields: [inspectorId], references: [id], onDelete: Restrict)
+  template         QualityChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, submittedAt])
+  @@index([locationId, submittedAt])
+  @@index([inspectorId, submittedAt])
 }
 
 model SalesVisitLocationAssignment {
@@ -2375,6 +2423,12 @@ enum Capability {
   STOCK_MANAGER
   ORDER_PROCESSOR
   SALES_REPRESENTATIVE
+  WORKFORCE_ATTENDANCE_VIEW
+  WORKFORCE_REPORT_EXPORT
+  QUALITY_INSPECTION_PERFORM
+  QUALITY_INSPECTION_REVIEW
+  QUALITY_TEMPLATE_MANAGE
+  QUALITY_REPORT_VIEW
 }
 
 enum PlatformRole {
