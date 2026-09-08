@@ -469,6 +469,7 @@ router.get("/stock-requests", requireAuth, async (req, res) => {
             entries: {
               where: { status: PaymentStatus.PAID },
               include: {
+                receipt: { select: { id: true, name: true } },
                 confirmedBy: {
                   select: {
                     id: true,
@@ -2370,10 +2371,31 @@ router.get(
   },
 );
 
+router.get("/stock-requests/payment-receipts/:id", requireAuth, async (req, res) => {
+  try {
+    const metadata = await prisma.stockPaymentReceipt.findUnique({
+      where: { id: req.params.id },
+      select: { entry: { select: { payment: { select: { request: { select: { warehouseId: true } } } } } } },
+    });
+    if (!metadata) return res.status(404).json({ message: "Баримт олдсонгүй" });
+    if (!await assertStockRequestDecisionAccess(req, res, metadata.entry.payment.request.warehouseId)) return;
+    const receipt = await prisma.stockPaymentReceipt.findUniqueOrThrow({ where: { id: req.params.id } });
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(receipt.name)}`);
+    res.type(receipt.mimeType).send(receipt.content);
+  } catch { res.status(500).json({ message: "Төлбөрийн баримт татаж чадсангүй" }); }
+});
+
 router.patch(
   "/stock-requests/payments/:id/confirm",
   requireAuth,
-  requirePlatformPermission(Permission.MANAGE_STOCK),
+  (req, res, next) => {
+    padaanImageUpload.single("receipt")(req, res, (error) => {
+      if (error) return res.status(400).json({ message: "Баримт JPG, PNG, WebP эсвэл GIF зураг, 10MB-аас бага байх ёстой" });
+      next();
+    });
+  },
   async (req, res) => {
     try {
       const { id } = req.params;
@@ -2382,10 +2404,16 @@ router.patch(
 
       const payment = await prisma.stockRequestPayment.findUnique({
         where: { id },
+        include: { request: { select: { warehouseId: true, status: true } } },
       });
 
       if (!payment) {
         return res.status(404).json({ message: "Төлбөр олдсонгүй" });
+      }
+
+      if (!await assertStockRequestDecisionAccess(req, res, payment.request.warehouseId)) return;
+      if (["REJECTED", "CANCELLED"].includes(payment.request.status)) {
+        return res.status(409).json({ message: "Цуцлагдсан эсвэл татгалзсан хүсэлтэд төлөлт бүртгэх боломжгүй" });
       }
 
       if (payment.status === PaymentStatus.PAID) {
@@ -2415,8 +2443,15 @@ router.patch(
           .status(400)
           .json({ message: "Төлбөрийн хэлбэр шаардлагатай" });
       const entryAmount = confirmation.paidAmount - Number(payment.paidAmount);
+      if (entryAmount <= 0) return res.status(409).json({ message: "Энэ дүн бүртгэгдсэн байна. Төлбөрийг шинэчилж шалгана уу" });
       const confirmedAt = new Date();
       const updated = await prisma.$transaction(async (tx) => {
+        // Compare-and-set prevents concurrent confirmations from overwriting a payment.
+        const claimed = await tx.stockRequestPayment.updateMany({
+          where: { id, paidAmount: payment.paidAmount, status: payment.status },
+          data: { paidAmount: confirmation.paidAmount },
+        });
+        if (claimed.count !== 1) return null;
         const result = await tx.stockRequestPayment.update({
           where: { id },
           data: {
@@ -2445,12 +2480,26 @@ router.patch(
             transactionId: transactionId || `MANUAL-${id}-${Date.now()}`,
             confirmedById: actor?.userId || null,
             confirmedAt,
-            note: note || "Админ баталгаажуулсан төлбөр",
+            note: note || "Эрх бүхий ажилтан баталгаажуулсан төлбөр",
+            ...(req.file ? { receipt: { create: {
+              name: req.file.originalname.slice(0, 255),
+              mimeType: req.file.mimetype,
+              content: req.file.buffer,
+            } } } : {}),
           },
         });
-        return result;
+        const entries = await tx.stockRequestPaymentEntry.findMany({
+          where: { paymentId: id, status: PaymentStatus.PAID },
+          orderBy: { confirmedAt: "asc" },
+          include: {
+            receipt: { select: { id: true, name: true } },
+            confirmedBy: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
+          },
+        });
+        return { ...result, entries };
       });
 
+      if (!updated) return res.status(409).json({ message: "Төлбөр өөрчлөгдсөн байна. Шинэчилж шалгаад дахин оролдоно уу" });
       res.json(updated);
     } catch (error) {
       console.error("confirm payment error", error);

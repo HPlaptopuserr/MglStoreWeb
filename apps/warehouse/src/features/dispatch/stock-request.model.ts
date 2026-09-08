@@ -20,6 +20,7 @@ export interface RequestItem {
 }
 
 export interface StockRequest {
+  payment?: RequestPayment | null;
   id: string;
   requestNumber: string;
   status: RequestStatus;
@@ -29,6 +30,26 @@ export interface StockRequest {
   organization: { id: string; name: string };
   warehouse: { id: string; name: string };
   items: RequestItem[];
+}
+
+export interface PaymentLogEntry {
+  id: string;
+  amount: number | string;
+  method: string;
+  confirmedAt: string | null;
+  transactionId: string | null;
+  note: string | null;
+  confirmedBy: { id: string; email: string; profile: { fullName: string | null } | null } | null;
+  receipt?: { id: string; name: string } | null;
+}
+
+export interface RequestPayment {
+  entries?: PaymentLogEntry[];
+  id: string;
+  totalAmount: number | string;
+  paidAmount: number | string;
+  status: string;
+  paymentMethod: string | null;
 }
 
 export const VISIBLE_REQUEST_STATUSES = [

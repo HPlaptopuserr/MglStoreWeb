@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { RequestPaymentPanel } from "./RequestPaymentPanel";
 import {
   AlertCircle,
   Building2,
@@ -269,12 +270,24 @@ export function WarehouseStockRequestQueue({
               <button
                 type="button"
                 onClick={close}
+                disabled={submitting}
+                aria-label="Хаах"
                 className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-5 p-5">
+              <RequestPaymentPanel
+                key={selected.id}
+                request={selected}
+                onBusy={setSubmitting}
+                onSaved={(payment) => {
+                  setSelected((current) => current ? { ...current, payment } : current);
+                  void load(true);
+                  onDecision();
+                }}
+              />
               <div className="space-y-2">
                 {selected.items.map((item) => (
                   <div
@@ -331,6 +344,7 @@ export function WarehouseStockRequestQueue({
                       <button
                         type="button"
                         onClick={() => setAction("reject")}
+                        disabled={submitting}
                         className="rounded-xl border border-red-200 py-3 text-sm font-black text-red-700 hover:bg-red-50"
                       >
                         Татгалзах
@@ -338,6 +352,7 @@ export function WarehouseStockRequestQueue({
                       <button
                         type="button"
                         onClick={() => setAction("approve")}
+                        disabled={submitting}
                         className="rounded-xl bg-emerald-600 py-3 text-sm font-black text-white hover:bg-emerald-700"
                       >
                         Зөвшөөрөх
