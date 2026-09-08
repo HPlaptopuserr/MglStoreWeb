@@ -2,12 +2,24 @@ import type { PosReceipt } from "../types/receipt.types";
 
 const formatMoney = (value: number) => `₮${Math.round(value).toLocaleString("mn-MN")}`;
 
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: "Бэлэн мөнгө",
+  CARD: "Карт",
+  QPAY: "QPay",
+  QR: "QR төлбөр",
+  CREDIT: "Зээл",
+  MIXED: "Хосолсон төлбөр",
+};
+
+const formatPaymentMethod = (method: string) =>
+  PAYMENT_METHOD_LABELS[method.toUpperCase()] || method;
+
 export function formatReceipt(receipt: PosReceipt): string {
   const header = [
-    `Receipt: ${receipt.receiptNo}`,
-    `Branch: ${receipt.branchName}`,
-    `Cashier: ${receipt.cashierName}`,
-    `Date: ${new Date(receipt.createdAt).toLocaleString()}`,
+    `Баримтын дугаар: ${receipt.receiptNo}`,
+    `Салбар: ${receipt.branchName}`,
+    `Кассчин: ${receipt.cashierName}`,
+    `Огноо: ${new Date(receipt.createdAt).toLocaleString("mn-MN")}`,
     "--------------------------------",
   ];
 
@@ -17,19 +29,20 @@ export function formatReceipt(receipt: PosReceipt): string {
 
   const footer = [
     "--------------------------------",
-    `Subtotal: ${formatMoney(receipt.subTotal)}`,
-    `Tax: ${formatMoney(receipt.taxTotal)}`,
-    `Discount: -${formatMoney(receipt.discountTotal)}`,
-    `TOTAL: ${formatMoney(receipt.grandTotal)}`,
-    `Payment: ${receipt.paymentMethod}`,
+    `Барааны дүн: ${formatMoney(receipt.subTotal)}`,
+    `Татвар: ${formatMoney(receipt.taxTotal)}`,
+    `Хөнгөлөлт: -${formatMoney(receipt.discountTotal)}`,
+    `НИЙТ ДҮН: ${formatMoney(receipt.grandTotal)}`,
+    `Төлбөрийн хэлбэр: ${formatPaymentMethod(receipt.paymentMethod)}`,
   ];
 
   const breakdown =
     receipt.paymentBreakdown && receipt.paymentBreakdown.length > 0
       ? [
-          "Payment Breakdown:",
+          "Төлбөрийн задаргаа:",
           ...receipt.paymentBreakdown.map(
-            (item) => `- ${item.method}: ${formatMoney(item.amount)}`,
+            (item) =>
+              `- ${formatPaymentMethod(item.method)}: ${formatMoney(item.amount)}`,
           ),
         ]
       : [];
@@ -38,15 +51,26 @@ export function formatReceipt(receipt: PosReceipt): string {
     receipt.ebarimt?.status === "SUCCESS"
       ? [
           "--------------------------------",
-          "eBarimt: SUCCESS",
-          receipt.ebarimt.lottery ? `Lottery: ${receipt.ebarimt.lottery}` : "",
-          receipt.ebarimt.billId ? `Bill ID: ${receipt.ebarimt.billId}` : "",
+          "eBarimt: Амжилттай",
+          receipt.ebarimt.receiptType === "B2B" && receipt.ebarimt.customerName
+            ? `Худалдан авагч: ${receipt.ebarimt.customerName}`
+            : "",
+          receipt.ebarimt.receiptType === "B2B" && receipt.ebarimt.customerRegNo
+            ? `Байгууллагын РД: ${receipt.ebarimt.customerRegNo}`
+            : "",
+          receipt.ebarimt.receiptType === "B2B" && receipt.ebarimt.customerTin
+            ? `Байгууллагын TIN: ${receipt.ebarimt.customerTin}`
+            : "",
+          receipt.ebarimt.lottery ? `Сугалаа: ${receipt.ebarimt.lottery}` : "",
+          receipt.ebarimt.billId
+            ? `eBarimt баримтын ID: ${receipt.ebarimt.billId}`
+            : "",
         ].filter(Boolean)
       : receipt.ebarimt?.status === "FAILED"
         ? [
             "--------------------------------",
-            "eBarimt: FAILED",
-            receipt.ebarimt.error ? `Error: ${receipt.ebarimt.error}` : "",
+            "eBarimt: Амжилтгүй",
+            receipt.ebarimt.error ? `Алдаа: ${receipt.ebarimt.error}` : "",
           ].filter(Boolean)
         : [];
 

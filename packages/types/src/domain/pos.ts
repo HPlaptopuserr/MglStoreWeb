@@ -338,6 +338,10 @@ export interface PosReceipt {
     date?: string | null;
     error?: string | null;
     syncedAt?: string | null;
+    receiptType?: "B2C" | "B2B" | null;
+    customerName?: string | null;
+    customerTin?: string | null;
+    customerRegNo?: string | null;
   } | null;
   paymentBreakdown?: Array<{
     method: string;

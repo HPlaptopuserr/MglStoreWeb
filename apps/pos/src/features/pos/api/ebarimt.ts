@@ -70,6 +70,7 @@ export type EbarimtBuyer =
 export type EbarimtTinLookupResult = {
   regNo: string;
   tin: string;
+  name: string;
 };
 
 export type AttachEbarimtPayload = {
@@ -81,6 +82,10 @@ export type AttachEbarimtPayload = {
   date?: string | null;
   error?: string | null;
   payload?: unknown;
+  receiptType?: "B2C" | "B2B" | null;
+  customerName?: string | null;
+  customerTin?: string | null;
+  customerRegNo?: string | null;
 };
 
 export type EbarimtReturnReceiptResult = {
@@ -243,9 +248,17 @@ async function lookupEbarimtTinFromBridge(
         );
       }
 
+      const name = pickText(payload.name);
+      if (!name) {
+        // Older bridge builds returned only TIN. Continue with the server
+        // lookup so the official taxpayer name can still be resolved.
+        continue;
+      }
+
       return {
         regNo: String(payload.regNo || regNo).replace(/\D/g, "") || regNo,
         tin,
+        name,
       };
     } catch (error) {
       if (error instanceof BridgeTinLookupError && error.final) throw error;
@@ -458,7 +471,19 @@ export async function lookupEbarimtTin(
     );
   }
 
-  return payload as EbarimtTinLookupResult;
+  const result = payload as Partial<EbarimtTinLookupResult>;
+  const tin = normalizeTin(result.tin);
+  const name = pickText(result.name);
+  if (!isValidTin(tin) || !name) {
+    throw new Error("Байгууллагын TIN эсвэл нэрийн мэдээлэл дутуу ирлээ");
+  }
+
+  return {
+    regNo:
+      String(result.regNo || normalized).replace(/\D/g, "") || normalized,
+    tin,
+    name,
+  };
 }
 
 export async function getLocalEbarimtInvalidReceipts(
@@ -848,6 +873,10 @@ export async function issueLocalEbarimtReceipt(
     lottery,
     date: pickText(content.date),
     payload: content,
+    receiptType: buyer.type,
+    customerName: buyer.type === "B2B" ? pickText(buyer.name) : null,
+    customerTin: buyer.type === "B2B" ? buyer.tin : null,
+    customerRegNo: buyer.type === "B2B" ? pickText(buyer.regNo) : null,
   };
 }
 

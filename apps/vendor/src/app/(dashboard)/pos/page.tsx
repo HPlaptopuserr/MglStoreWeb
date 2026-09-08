@@ -253,6 +253,10 @@ function mapEbarimtPayload(payload: AttachEbarimtPayload): NonNullable<PosReceip
     date: payload.date ?? null,
     error: payload.error ?? null,
     syncedAt: new Date().toISOString(),
+    receiptType: payload.receiptType ?? null,
+    customerName: payload.customerName ?? null,
+    customerTin: payload.customerTin ?? null,
+    customerRegNo: payload.customerRegNo ?? null,
   };
 }
 
@@ -535,7 +539,7 @@ const printReceipt = (receipt: PosReceipt) => {
       : "";
   const qrMarkup = renderEbarimtQrMarkup(ebarimtQrData);
   printThermalDocument({
-    bodyHtml: `<pre>${content}</pre>${ebarimtQrData ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR</p>${qrMarkup || `<p class="ebarimt-qr-fallback">${escapeHtml(ebarimtQrData)}</p>`}</div>` : ""}`,
+    bodyHtml: `<pre>${content}</pre>${ebarimtQrData ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR код</p>${qrMarkup || `<p class="ebarimt-qr-fallback">${escapeHtml(ebarimtQrData)}</p>`}</div>` : ""}`,
     extraCss: `
       .ebarimt-qr { margin-top: 3mm; text-align: center; }
       .ebarimt-qr svg { width: 42mm; height: 42mm; }
@@ -623,6 +627,7 @@ export default function PosDemoPage() {
   const [ebarimtBuyerMode, setEbarimtBuyerMode] = useState<"B2C" | "B2B">("B2C");
   const [ebarimtCompanyRegNo, setEbarimtCompanyRegNo] = useState("");
   const [ebarimtCompanyTin, setEbarimtCompanyTin] = useState("");
+  const [ebarimtCompanyName, setEbarimtCompanyName] = useState("");
   const [ebarimtCompanyLookupLoading, setEbarimtCompanyLookupLoading] = useState(false);
   const [ebarimtBuyerSubmitting, setEbarimtBuyerSubmitting] = useState(false);
   const [ebarimtBuyerError, setEbarimtBuyerError] = useState("");
@@ -2048,6 +2053,7 @@ export default function PosDemoPage() {
     setEbarimtBuyerMode("B2C");
     setEbarimtCompanyRegNo("");
     setEbarimtCompanyTin("");
+    setEbarimtCompanyName("");
     setEbarimtBuyerError("");
     setEbarimtCompanyLookupLoading(false);
     setEbarimtBuyerSubmitting(false);
@@ -2064,10 +2070,13 @@ export default function PosDemoPage() {
 
     setEbarimtCompanyLookupLoading(true);
     setEbarimtBuyerError("");
+    setEbarimtCompanyTin("");
+    setEbarimtCompanyName("");
     try {
       const result = await lookupEbarimtTin(regNo, registerConfig);
       setEbarimtCompanyRegNo(result.regNo);
       setEbarimtCompanyTin(result.tin);
+      setEbarimtCompanyName(result.name);
       return result;
     } finally {
       setEbarimtCompanyLookupLoading(false);
@@ -2088,10 +2097,19 @@ export default function PosDemoPage() {
       if (mode === "B2B") {
         const normalizedRegNo = ebarimtCompanyRegNo.replace(/\D/g, "");
         const tin = normalizeEbarimtTin(ebarimtCompanyTin);
-        if (!isValidEbarimtTin(tin)) {
-          throw new Error("B2B eBarimt үүсгэхийн тулд 11-14 оронтой TIN оруулна уу.");
+        const name = ebarimtCompanyName.trim();
+        if (!name) {
+          throw new Error("Эхлээд байгууллагын регистрийг шалгана уу.");
         }
-        buyer = { type: "B2B", tin, regNo: normalizedRegNo || undefined };
+        if (!isValidEbarimtTin(tin)) {
+          throw new Error("Байгууллагын TIN мэдээлэл буруу байна.");
+        }
+        buyer = {
+          type: "B2B",
+          tin,
+          regNo: normalizedRegNo || undefined,
+          name,
+        };
       }
 
       setScanStatus("idle");
@@ -2270,6 +2288,7 @@ export default function PosDemoPage() {
         setEbarimtBuyerMode("B2C");
         setEbarimtCompanyRegNo("");
         setEbarimtCompanyTin("");
+        setEbarimtCompanyName("");
         setEbarimtBuyerError("");
         setView("register");
         setScanStatus("success");
@@ -3468,7 +3487,7 @@ export default function PosDemoPage() {
                   }`}
                 >
                   <p className="text-sm font-black text-slate-950">Байгууллага</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-500">TIN оруулаад B2B_RECEIPT үүснэ. Регистрээр шалгах нь нэмэлт.</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">Регистрээр нэр, TIN-ийг автоматаар шалгаад B2B_RECEIPT үүсгэнэ.</p>
                 </button>
               </div>
 
@@ -3483,6 +3502,7 @@ export default function PosDemoPage() {
                       onChange={(event) => {
                         setEbarimtCompanyRegNo(event.target.value.replace(/\D/g, "").slice(0, 7));
                         setEbarimtCompanyTin("");
+                        setEbarimtCompanyName("");
                         setEbarimtBuyerError("");
                       }}
                       inputMode="numeric"
@@ -3494,37 +3514,24 @@ export default function PosDemoPage() {
                       type="button"
                       onClick={() => {
                         void lookupCompanyTinForEbarimt().catch((error: any) => {
-                          setEbarimtBuyerError(error?.message || "TIN шалгахад алдаа гарлаа");
+                          setEbarimtBuyerError(error?.message || "Байгууллагын мэдээлэл шалгахад алдаа гарлаа");
                         });
                       }}
                       disabled={ebarimtCompanyLookupLoading || ebarimtCompanyRegNo.length !== 7}
                       className="inline-flex h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {ebarimtCompanyLookupLoading ? <Loader2 size={15} className="animate-spin" /> : null}
-                      TIN шалгах
+                      Мэдээлэл шалгах
                     </button>
                   </div>
-                  {ebarimtCompanyTin && (
-                    <p className="mt-2 rounded-xl bg-white px-3 py-2 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
-                      TIN баталгаажсан: {ebarimtCompanyTin}
-                    </p>
+                  {ebarimtCompanyName && ebarimtCompanyTin && (
+                    <div className="mt-3 rounded-xl bg-white px-3 py-2 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
+                      <p>Байгууллага: {ebarimtCompanyName}</p>
+                      <p className="mt-1">TIN: {ebarimtCompanyTin}</p>
+                    </div>
                   )}
-                  <label className="mt-4 block text-xs font-black uppercase tracking-wide text-emerald-700">
-                    Худалдан авагчийн TIN
-                  </label>
-                  <input
-                    value={ebarimtCompanyTin}
-                    onChange={(event) => {
-                      setEbarimtCompanyTin(normalizeEbarimtTin(event.target.value));
-                      setEbarimtBuyerError("");
-                    }}
-                    inputMode="numeric"
-                    maxLength={14}
-                    placeholder="11-14 оронтой TIN"
-                    className="mt-2 h-11 w-full rounded-xl border border-emerald-200 bg-white px-3 text-sm font-black tracking-wide text-slate-950 outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100"
-                  />
                   <p className="mt-2 text-xs font-semibold text-emerald-800">
-                    TIN lookup эрх шаардлагагүй. Худалдан авагчийн TIN-г мэдэж байвал шууд оруулаад хэвлэнэ.
+                    7 оронтой регистрээ оруулаад шалгахад байгууллагын нэр болон TIN автоматаар гарна.
                   </p>
                 </div>
               )}
@@ -3551,7 +3558,9 @@ export default function PosDemoPage() {
                 disabled={
                   ebarimtBuyerSubmitting ||
                   ebarimtCompanyLookupLoading ||
-                  (ebarimtBuyerMode === "B2B" && !isValidEbarimtTin(ebarimtCompanyTin))
+                  (ebarimtBuyerMode === "B2B" &&
+                    (!ebarimtCompanyName.trim() ||
+                      !isValidEbarimtTin(ebarimtCompanyTin)))
                 }
                 className="inline-flex min-w-44 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -4868,7 +4877,7 @@ export default function PosDemoPage() {
                   </>
                 ) : (
                   <div className="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4">
-                    <p className="text-sm font-black text-slate-700">eBarimt QR</p>
+                    <p className="text-sm font-black text-slate-700">eBarimt QR код</p>
                     <p className="truncate text-right text-xs font-semibold text-slate-500">
                       {ebarimtStatusText}
                     </p>

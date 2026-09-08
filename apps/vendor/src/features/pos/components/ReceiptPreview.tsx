@@ -45,7 +45,7 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
       .replace(/'/g, "&#39;");
     const qrMarkup = ebarimtQrRef.current?.innerHTML || "";
     printThermalDocument({
-      bodyHtml: `<pre>${content}</pre>${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR</p>${qrMarkup}</div>` : ""}`,
+      bodyHtml: `<pre>${content}</pre>${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR код</p>${qrMarkup}</div>` : ""}`,
       extraCss: `
         .ebarimt-qr { margin-top: 3mm; text-align: center; }
         .ebarimt-qr svg { width: 42mm; height: 42mm; }
@@ -56,7 +56,7 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
 
   const handleTerminalVoid = async () => {
     if (!cardLine?.traceno || !cardLine?.terminalId) return;
-    if (!confirm(`Картын terminal буцаалт хийх үү?\nReceipt: ${receipt.receiptNo}`)) return;
+    if (!confirm(`Картын terminal буцаалт хийх үү?\nБаримтын дугаар: ${receipt.receiptNo}`)) return;
 
     setTerminalVoiding(true);
     setTerminalVoidResult(null);
@@ -78,7 +78,7 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
 
   const handleSaleVoid = async () => {
     const reason = window.prompt(
-      `Буцаалт хийх шалтгаанаа оруулна уу.\nReceipt: ${receipt.receiptNo}`,
+      `Буцаалт хийх шалтгаанаа оруулна уу.\nБаримтын дугаар: ${receipt.receiptNo}`,
       cardLine ? "Картын буцаалт хийсэн" : "Бараа буцаалт",
     );
     if (!reason?.trim()) return;
@@ -130,7 +130,7 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h3 className="text-sm font-semibold text-slate-900">Receipt Preview</h3>
+            <h3 className="text-sm font-semibold text-slate-900">Баримтын харагдац</h3>
             {isVoided && (
               <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600">
                 Буцаагдсан
@@ -204,7 +204,7 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
 
       {ebarimtQrData && (
         <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-center">
-          <p className="mb-2 text-xs font-bold text-emerald-700">eBarimt QR</p>
+          <p className="mb-2 text-xs font-bold text-emerald-700">eBarimt QR код</p>
           <div ref={ebarimtQrRef} className="inline-flex rounded-lg bg-white p-2">
             <QRCodeSVG value={ebarimtQrData} size={152} level="M" includeMargin />
           </div>
