@@ -404,27 +404,55 @@ type PosSaleEbarimtFields = {
   ebarimtLottery: string | null;
   ebarimtDate: Date | null;
   ebarimtError: string | null;
+  ebarimtPayload: Prisma.JsonValue | null;
   ebarimtSyncedAt: Date | null;
 };
 
-const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) =>
-  sale.ebarimtStatus ||
-  sale.ebarimtBillId ||
-  sale.ebarimtReceiptId ||
-  sale.ebarimtQrData ||
-  sale.ebarimtLottery ||
-  sale.ebarimtError
-    ? {
-        status: sale.ebarimtStatus,
-        billId: sale.ebarimtBillId,
-        receiptId: sale.ebarimtReceiptId,
-        qrData: sale.ebarimtQrData,
-        lottery: sale.ebarimtLottery,
-        date: sale.ebarimtDate?.toISOString() ?? null,
-        error: sale.ebarimtError,
-        syncedAt: sale.ebarimtSyncedAt?.toISOString() ?? null,
-      }
-    : null;
+const readEbarimtBuyerMetadata = (payload: Prisma.JsonValue | null) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return {};
+  }
+
+  const source = payload as Record<string, Prisma.JsonValue>;
+  const text = (key: string) => {
+    const value = source[key];
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  };
+  const storedType = text("receiptType")?.toUpperCase();
+
+  return {
+    receiptType:
+      storedType === "B2B" || storedType === "B2C" ? storedType : null,
+    customerName: text("customerName"),
+    customerTin: text("customerTin"),
+    customerRegNo: text("customerRegNo"),
+  };
+};
+
+const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) => {
+  if (
+    !sale.ebarimtStatus &&
+    !sale.ebarimtBillId &&
+    !sale.ebarimtReceiptId &&
+    !sale.ebarimtQrData &&
+    !sale.ebarimtLottery &&
+    !sale.ebarimtError
+  ) {
+    return null;
+  }
+
+  return {
+    status: sale.ebarimtStatus,
+    billId: sale.ebarimtBillId,
+    receiptId: sale.ebarimtReceiptId,
+    qrData: sale.ebarimtQrData,
+    lottery: sale.ebarimtLottery,
+    date: sale.ebarimtDate?.toISOString() ?? null,
+    error: sale.ebarimtError,
+    syncedAt: sale.ebarimtSyncedAt?.toISOString() ?? null,
+    ...readEbarimtBuyerMetadata(sale.ebarimtPayload),
+  };
+};
 
 const parseEbarimtDate = (value: unknown): Date | null => {
   if (!value) return null;
@@ -1993,6 +2021,10 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
       lottery?: string | null;
       date?: string | null;
       error?: string | null;
+      receiptType?: string | null;
+      customerName?: string | null;
+      customerTin?: string | null;
+      customerRegNo?: string | null;
       payload?: unknown;
     };
 
@@ -2003,6 +2035,24 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
     const status =
       cleanText(body.status)?.toUpperCase() ||
       (body.error ? "FAILED" : "SUCCESS");
+    const requestedReceiptType = cleanText(body.receiptType)?.toUpperCase();
+    const receiptType =
+      requestedReceiptType === "B2B" || requestedReceiptType === "B2C"
+        ? requestedReceiptType
+        : null;
+    const storedPayload = {
+      ...(body.payload !== undefined ? { response: body.payload } : {}),
+      ...(receiptType ? { receiptType } : {}),
+      ...(cleanText(body.customerName)
+        ? { customerName: cleanText(body.customerName)!.slice(0, 200) }
+        : {}),
+      ...(cleanText(body.customerTin)
+        ? { customerTin: cleanText(body.customerTin)!.slice(0, 14) }
+        : {}),
+      ...(cleanText(body.customerRegNo)
+        ? { customerRegNo: cleanText(body.customerRegNo)!.slice(0, 7) }
+        : {}),
+    };
 
     const updated = await prisma.posSale.update({
       where: { id: sale.id },
@@ -2014,8 +2064,8 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
         ebarimtLottery: cleanText(body.lottery),
         ebarimtDate: parseEbarimtDate(body.date),
         ebarimtError: cleanText(body.error),
-        ...(body.payload !== undefined
-          ? { ebarimtPayload: body.payload as Prisma.InputJsonValue }
+        ...(Object.keys(storedPayload).length > 0
+          ? { ebarimtPayload: storedPayload as Prisma.InputJsonValue }
           : {}),
         ebarimtSyncedAt: new Date(),
       },
@@ -2027,6 +2077,7 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
         ebarimtLottery: true,
         ebarimtDate: true,
         ebarimtError: true,
+        ebarimtPayload: true,
         ebarimtSyncedAt: true,
       },
     });

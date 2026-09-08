@@ -80,6 +80,15 @@ type TinLookupResponse = {
   data?: string | number | null;
 };
 
+type TaxpayerInfoResponse = {
+  status?: number;
+  msg?: string;
+  data?: {
+    name?: string | null;
+    found?: boolean;
+  } | null;
+};
+
 const signPayload = (payload: string) =>
   crypto.createHmac("sha256", BRIDGE_SHARED_SECRET).update(payload).digest("hex");
 
@@ -97,14 +106,24 @@ function positiveIntEnv(name: string, fallback: number) {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-function buildTinLookupUrl(rawBaseUrl: string, regNo: string) {
+function buildInfoApiUrl(rawBaseUrl: string, endpointName: string) {
   const trimmed = rawBaseUrl.trim().replace(/\/+$/, "");
   const configured = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-  const endpoint = configured.includes("/api/info/check/getTinInfo")
-    ? configured
-    : `${configured}/api/info/check/getTinInfo`;
-  const url = new URL(endpoint);
+  const baseUrl = configured.includes("/api/info/check/")
+    ? configured.replace(/\/api\/info\/check\/[^/?#]+.*$/i, "")
+    : configured;
+  return new URL(`${baseUrl}/api/info/check/${endpointName}`);
+}
+
+function buildTinLookupUrl(rawBaseUrl: string, regNo: string) {
+  const url = buildInfoApiUrl(rawBaseUrl, "getTinInfo");
   url.searchParams.set("regNo", regNo);
+  return url;
+}
+
+function buildTaxpayerInfoUrl(rawBaseUrl: string, tin: string) {
+  const url = buildInfoApiUrl(rawBaseUrl, "getInfo");
+  url.searchParams.set("tin", tin);
   return url;
 }
 
@@ -226,7 +245,35 @@ app.get("/ebarimt/tin", async (req: Request, res: Response) => {
       return;
     }
 
-    res.json({ regNo, tin });
+    const infoUpstream = await requestText(
+      buildTaxpayerInfoUrl(EBARIMT_INFO_API_URL, tin),
+      EBARIMT_TIN_LOOKUP_TIMEOUT_MS,
+    );
+    let infoPayload: TaxpayerInfoResponse;
+    try {
+      infoPayload = JSON.parse(infoUpstream.body) as TaxpayerInfoResponse;
+    } catch {
+      res.status(502).json({
+        message: `Organization name lookup returned non-JSON (HTTP ${infoUpstream.statusCode})`,
+      });
+      return;
+    }
+
+    const name = String(infoPayload.data?.name ?? "").trim();
+    if (
+      infoUpstream.statusCode < 200 ||
+      infoUpstream.statusCode >= 300 ||
+      infoPayload.status !== 200 ||
+      infoPayload.data?.found === false ||
+      !name
+    ) {
+      res.status(404).json({
+        message: infoPayload.msg || `Organization name not found for TIN ${tin}`,
+      });
+      return;
+    }
+
+    res.json({ regNo, tin, name });
   } catch (error) {
     res.status(502).json({
       message: "eBarimt TIN lookup failed",

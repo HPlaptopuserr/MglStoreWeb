@@ -71,27 +71,55 @@ type PosSaleEbarimtFields = {
   ebarimtLottery: string | null;
   ebarimtDate: Date | null;
   ebarimtError: string | null;
+  ebarimtPayload: Prisma.JsonValue | null;
   ebarimtSyncedAt: Date | null;
 };
 
-const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) =>
-  sale.ebarimtStatus ||
-  sale.ebarimtBillId ||
-  sale.ebarimtReceiptId ||
-  sale.ebarimtQrData ||
-  sale.ebarimtLottery ||
-  sale.ebarimtError
-    ? {
-        status: sale.ebarimtStatus,
-        billId: sale.ebarimtBillId,
-        receiptId: sale.ebarimtReceiptId,
-        qrData: sale.ebarimtQrData,
-        lottery: sale.ebarimtLottery,
-        date: sale.ebarimtDate?.toISOString() ?? null,
-        error: sale.ebarimtError,
-        syncedAt: sale.ebarimtSyncedAt?.toISOString() ?? null,
-      }
-    : null;
+const readEbarimtBuyerMetadata = (payload: Prisma.JsonValue | null) => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return {};
+  }
+
+  const source = payload as Record<string, Prisma.JsonValue>;
+  const text = (key: string) => {
+    const value = source[key];
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  };
+  const storedType = text("receiptType")?.toUpperCase();
+
+  return {
+    receiptType:
+      storedType === "B2B" || storedType === "B2C" ? storedType : null,
+    customerName: text("customerName"),
+    customerTin: text("customerTin"),
+    customerRegNo: text("customerRegNo"),
+  };
+};
+
+const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) => {
+  if (
+    !sale.ebarimtStatus &&
+    !sale.ebarimtBillId &&
+    !sale.ebarimtReceiptId &&
+    !sale.ebarimtQrData &&
+    !sale.ebarimtLottery &&
+    !sale.ebarimtError
+  ) {
+    return null;
+  }
+
+  return {
+    status: sale.ebarimtStatus,
+    billId: sale.ebarimtBillId,
+    receiptId: sale.ebarimtReceiptId,
+    qrData: sale.ebarimtQrData,
+    lottery: sale.ebarimtLottery,
+    date: sale.ebarimtDate?.toISOString() ?? null,
+    error: sale.ebarimtError,
+    syncedAt: sale.ebarimtSyncedAt?.toISOString() ?? null,
+    ...readEbarimtBuyerMetadata(sale.ebarimtPayload),
+  };
+};
 
 const mapCreditSaleResponse = (creditSale: {
   id: string;
@@ -343,6 +371,7 @@ router.get("/pos/receipts", async (req, res) => {
         ebarimtLottery: true,
         ebarimtDate: true,
         ebarimtError: true,
+        ebarimtPayload: true,
         ebarimtSyncedAt: true,
         subtotal: true,
         taxTotal: true,

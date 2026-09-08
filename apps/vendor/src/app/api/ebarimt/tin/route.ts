@@ -6,13 +6,32 @@ type TinLookupResponse = {
   data?: string | number | null;
 };
 
-function buildTinLookupUrl(rawBaseUrl: string, regNo: string) {
+type TaxpayerInfoResponse = {
+  status?: number;
+  msg?: string;
+  data?: {
+    name?: string | null;
+    found?: boolean;
+  } | null;
+};
+
+function buildInfoApiUrl(rawBaseUrl: string, endpointName: string) {
   const configured = rawBaseUrl.trim().replace(/\/+$/, "");
-  const endpoint = configured.includes("/api/info/check/getTinInfo")
-    ? configured
-    : `${configured}/api/info/check/getTinInfo`;
-  const url = new URL(endpoint);
+  const baseUrl = configured.includes("/api/info/check/")
+    ? configured.replace(/\/api\/info\/check\/[^/?#]+.*$/i, "")
+    : configured;
+  return new URL(`${baseUrl}/api/info/check/${endpointName}`);
+}
+
+function buildTinLookupUrl(rawBaseUrl: string, regNo: string) {
+  const url = buildInfoApiUrl(rawBaseUrl, "getTinInfo");
   url.searchParams.set("regNo", regNo);
+  return url;
+}
+
+function buildTaxpayerInfoUrl(rawBaseUrl: string, tin: string) {
+  const url = buildInfoApiUrl(rawBaseUrl, "getInfo");
+  url.searchParams.set("tin", tin);
   return url;
 }
 
@@ -29,13 +48,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const baseUrl = String(process.env.EBARIMT_INFO_API_URL || "").trim();
-  if (!baseUrl) {
-    return NextResponse.json(
-      { message: "eBarimt TIN лавлагааны хаяг тохируулагдаагүй байна" },
-      { status: 503 },
-    );
-  }
+  const baseUrl = String(
+    process.env.EBARIMT_INFO_API_URL || "https://api.ebarimt.mn",
+  ).trim();
 
   try {
     const lookupUrl = buildTinLookupUrl(baseUrl, regNo);
@@ -60,7 +75,40 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ regNo, tin });
+    const infoResponse = await fetch(buildTaxpayerInfoUrl(baseUrl, tin), {
+      cache: "no-store",
+    });
+    const infoText = await infoResponse.text();
+    let infoPayload: TaxpayerInfoResponse;
+    try {
+      infoPayload = JSON.parse(infoText) as TaxpayerInfoResponse;
+    } catch {
+      return NextResponse.json(
+        {
+          message: `Байгууллагын нэрийн лавлагаа JSON бус хариу өглөө (HTTP ${infoResponse.status})`,
+        },
+        { status: 502 },
+      );
+    }
+
+    const name = String(infoPayload.data?.name ?? "").trim();
+    if (
+      !infoResponse.ok ||
+      infoPayload.status !== 200 ||
+      infoPayload.data?.found === false ||
+      !name
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            infoPayload.msg ||
+            `Байгууллагын нэр олдсонгүй (HTTP ${infoResponse.status})`,
+        },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({ regNo, tin, name });
   } catch (error) {
     console.error("eBarimt TIN lookup error", error);
     const detail = error instanceof Error ? error.message : "unknown error";
