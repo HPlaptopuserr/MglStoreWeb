@@ -1977,6 +1977,7 @@ model StockRequestPayment {
 /// Immutable payment ledger. A stock invoice may be settled through multiple
 /// cash/QPay entries while StockRequestPayment keeps the aggregate balance.
 model StockRequestPaymentEntry {
+  receipt       StockPaymentReceipt?
   id            String              @id @default(uuid())
   paymentId     String
   amount        Decimal             @db.Decimal(18, 2)
@@ -1993,6 +1994,16 @@ model StockRequestPaymentEntry {
 
   @@index([paymentId, status])
   @@index([createdAt])
+}
+
+model StockPaymentReceipt {
+  id        String @id @default(uuid())
+  entryId   String @unique
+  name      String
+  mimeType  String
+  content   Bytes
+  createdAt DateTime @default(now())
+  entry     StockRequestPaymentEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
 }
 
 /// Dispatch order created when admin approves a stock request.
