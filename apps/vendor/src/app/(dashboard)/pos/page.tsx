@@ -627,7 +627,6 @@ export default function PosDemoPage() {
   const [ebarimtBuyerMode, setEbarimtBuyerMode] = useState<"B2C" | "B2B">("B2C");
   const [ebarimtCompanyRegNo, setEbarimtCompanyRegNo] = useState("");
   const [ebarimtCompanyTin, setEbarimtCompanyTin] = useState("");
-  const [ebarimtCompanyName, setEbarimtCompanyName] = useState("");
   const [ebarimtCompanyLookupLoading, setEbarimtCompanyLookupLoading] = useState(false);
   const [ebarimtBuyerSubmitting, setEbarimtBuyerSubmitting] = useState(false);
   const [ebarimtBuyerError, setEbarimtBuyerError] = useState("");
@@ -2053,7 +2052,6 @@ export default function PosDemoPage() {
     setEbarimtBuyerMode("B2C");
     setEbarimtCompanyRegNo("");
     setEbarimtCompanyTin("");
-    setEbarimtCompanyName("");
     setEbarimtBuyerError("");
     setEbarimtCompanyLookupLoading(false);
     setEbarimtBuyerSubmitting(false);
@@ -2071,12 +2069,10 @@ export default function PosDemoPage() {
     setEbarimtCompanyLookupLoading(true);
     setEbarimtBuyerError("");
     setEbarimtCompanyTin("");
-    setEbarimtCompanyName("");
     try {
       const result = await lookupEbarimtTin(regNo, registerConfig);
       setEbarimtCompanyRegNo(result.regNo);
       setEbarimtCompanyTin(result.tin);
-      setEbarimtCompanyName(result.name);
       return result;
     } finally {
       setEbarimtCompanyLookupLoading(false);
@@ -2097,10 +2093,6 @@ export default function PosDemoPage() {
       if (mode === "B2B") {
         const normalizedRegNo = ebarimtCompanyRegNo.replace(/\D/g, "");
         const tin = normalizeEbarimtTin(ebarimtCompanyTin);
-        const name = ebarimtCompanyName.trim();
-        if (!name) {
-          throw new Error("Эхлээд байгууллагын регистрийг шалгана уу.");
-        }
         if (!isValidEbarimtTin(tin)) {
           throw new Error("Байгууллагын TIN мэдээлэл буруу байна.");
         }
@@ -2108,7 +2100,6 @@ export default function PosDemoPage() {
           type: "B2B",
           tin,
           regNo: normalizedRegNo || undefined,
-          name,
         };
       }
 
@@ -2288,7 +2279,6 @@ export default function PosDemoPage() {
         setEbarimtBuyerMode("B2C");
         setEbarimtCompanyRegNo("");
         setEbarimtCompanyTin("");
-        setEbarimtCompanyName("");
         setEbarimtBuyerError("");
         setView("register");
         setScanStatus("success");
@@ -3502,7 +3492,6 @@ export default function PosDemoPage() {
                       onChange={(event) => {
                         setEbarimtCompanyRegNo(event.target.value.replace(/\D/g, "").slice(0, 7));
                         setEbarimtCompanyTin("");
-                        setEbarimtCompanyName("");
                         setEbarimtBuyerError("");
                       }}
                       inputMode="numeric"
@@ -3524,14 +3513,13 @@ export default function PosDemoPage() {
                       Мэдээлэл шалгах
                     </button>
                   </div>
-                  {ebarimtCompanyName && ebarimtCompanyTin && (
+                  {ebarimtCompanyTin && (
                     <div className="mt-3 rounded-xl bg-white px-3 py-2 text-xs font-black text-emerald-700 ring-1 ring-emerald-100">
-                      <p>Байгууллага: {ebarimtCompanyName}</p>
-                      <p className="mt-1">TIN: {ebarimtCompanyTin}</p>
+                      <p>TIN: {ebarimtCompanyTin}</p>
                     </div>
                   )}
                   <p className="mt-2 text-xs font-semibold text-emerald-800">
-                    7 оронтой регистрээ оруулаад шалгахад байгууллагын нэр болон TIN автоматаар гарна.
+                    7 оронтой регистрээ оруулаад шалгахад TIN автоматаар гарна.
                   </p>
                 </div>
               )}
@@ -3559,8 +3547,7 @@ export default function PosDemoPage() {
                   ebarimtBuyerSubmitting ||
                   ebarimtCompanyLookupLoading ||
                   (ebarimtBuyerMode === "B2B" &&
-                    (!ebarimtCompanyName.trim() ||
-                      !isValidEbarimtTin(ebarimtCompanyTin)))
+                    !isValidEbarimtTin(ebarimtCompanyTin))
                 }
                 className="inline-flex min-w-44 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >

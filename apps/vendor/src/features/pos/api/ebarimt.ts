@@ -70,7 +70,7 @@ export type EbarimtBuyer =
 export type EbarimtTinLookupResult = {
   regNo: string;
   tin: string;
-  name: string;
+  name?: string | null;
 };
 
 export type AttachEbarimtPayload = {
@@ -248,17 +248,10 @@ async function lookupEbarimtTinFromBridge(
         );
       }
 
-      const name = pickText(payload.name);
-      if (!name) {
-        // Older bridge builds returned only TIN. Continue with the server
-        // lookup so the official taxpayer name can still be resolved.
-        continue;
-      }
-
       return {
         regNo: String(payload.regNo || regNo).replace(/\D/g, "") || regNo,
         tin,
-        name,
+        name: pickText(payload.name),
       };
     } catch (error) {
       if (error instanceof BridgeTinLookupError && error.final) throw error;
@@ -474,8 +467,8 @@ export async function lookupEbarimtTin(
   const result = payload as Partial<EbarimtTinLookupResult>;
   const tin = normalizeTin(result.tin);
   const name = pickText(result.name);
-  if (!isValidTin(tin) || !name) {
-    throw new Error("Байгууллагын TIN эсвэл нэрийн мэдээлэл дутуу ирлээ");
+  if (!isValidTin(tin)) {
+    throw new Error("Байгууллагын TIN мэдээлэл дутуу ирлээ");
   }
 
   return {

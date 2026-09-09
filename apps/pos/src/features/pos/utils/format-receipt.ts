@@ -52,9 +52,6 @@ export function formatReceipt(receipt: PosReceipt): string {
       ? [
           "--------------------------------",
           "eBarimt: Амжилттай",
-          receipt.ebarimt.receiptType === "B2B" && receipt.ebarimt.customerName
-            ? `Худалдан авагч: ${receipt.ebarimt.customerName}`
-            : "",
           receipt.ebarimt.receiptType === "B2B" && receipt.ebarimt.customerRegNo
             ? `Байгууллагын РД: ${receipt.ebarimt.customerRegNo}`
             : "",
