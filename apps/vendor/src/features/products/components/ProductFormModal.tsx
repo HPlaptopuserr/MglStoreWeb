@@ -1052,6 +1052,14 @@ export function ProductFormModal({
                         <span className="font-black">
                           {categoryAutomaticClassificationCode}
                         </span>
+                        {["building-materials", "-building-material"].includes(
+                          selectedCategory?.slug ?? "",
+                        ) && (
+                          <span className="mt-1 block font-medium text-emerald-600">
+                            Ердийн борлуулалтад VAT_ABLE ашиглана. 3 оронтой
+                            taxProductCode шаардлагагүй.
+                          </span>
+                        )}
                       </p>
                     )}
                   </div>
