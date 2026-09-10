@@ -20,6 +20,7 @@ export type {
 export {
   createQPayInvoice,
   getQPayInvoiceStatus,
+  cancelQPayInvoice,
   confirmQPayInvoice,
 } from "./qpay";
 

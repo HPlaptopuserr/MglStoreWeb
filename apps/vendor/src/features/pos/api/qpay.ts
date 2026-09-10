@@ -22,6 +22,13 @@ export function getQPayInvoiceStatus(invoiceId: string): Promise<QPayInvoice> {
   return posRequest<QPayInvoice>(`/pos/payments/qpay/status/${invoiceId}`);
 }
 
+export function cancelQPayInvoice(invoiceId: string): Promise<QPayInvoice> {
+  return posRequest<QPayInvoice>("/pos/payments/qpay/cancel", {
+    method: "POST",
+    body: { invoiceId },
+  });
+}
+
 export function confirmQPayInvoice(invoiceId: string): Promise<QPayInvoice> {
   return posRequest<QPayInvoice>("/pos/payments/qpay/confirm", {
     method: "POST",
