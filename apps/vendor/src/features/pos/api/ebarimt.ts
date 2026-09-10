@@ -3,6 +3,8 @@ import type { RegisterConfig, SalePaymentLine } from "../types/pos.types";
 import {
   EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
   isValidEbarimtTaxProductCode,
+  normalizePosMeasureUnit,
+  POS_WEIGHT_STEP_KG,
 } from "@mgl/types";
 import { posRequest } from "./_pos-client";
 
@@ -472,8 +474,7 @@ export async function lookupEbarimtTin(
   }
 
   return {
-    regNo:
-      String(result.regNo || normalized).replace(/\D/g, "") || normalized,
+    regNo: String(result.regNo || normalized).replace(/\D/g, "") || normalized,
     tin,
     name,
   };
@@ -753,7 +754,9 @@ export async function issueLocalEbarimtReceipt(
       ? normalizedReceiptTaxType(line.taxType)
       : "VAT_ABLE";
     const totalAmount = money(line.lineTotal);
-    const qty = Math.max(1, Number(line.qty) || 1);
+    const measureUnit = normalizePosMeasureUnit(line.measureUnit);
+    const minimumQty = measureUnit === "kg" ? POS_WEIGHT_STEP_KG : 1;
+    const qty = Math.max(minimumQty, Number(line.qty) || minimumQty);
     const taxProductCode = getLineTaxProductCode(line, receiptTaxType);
     const item = {
       name: line.name,
@@ -763,7 +766,7 @@ export async function issueLocalEbarimtReceipt(
         line.classificationCode ||
         getEbarimtConfig("CLASSIFICATION_CODE", DEFAULT_CLASSIFICATION_CODE),
       ...(taxProductCode ? { taxProductCode } : {}),
-      measureUnit: line.measureUnit || "pcs",
+      measureUnit,
       qty,
       unitPrice: money(totalAmount / qty),
       totalAmount,

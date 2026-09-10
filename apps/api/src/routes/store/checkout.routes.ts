@@ -15,7 +15,12 @@ import {
   InventoryReason,
   type Prisma,
 } from "@mgl/database";
-import { resolveMarketplaceProductPricing } from "@mgl/types";
+import {
+  formatPosQuantity,
+  fromPosStoredStockQuantity,
+  resolveMarketplaceProductPricing,
+  toPosStoredStockQuantity,
+} from "@mgl/types";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import {
   adjustStock,
@@ -825,7 +830,7 @@ async function decrementOrderStock(
         select: {
           productId: true,
           quantity: true,
-          product: { select: { supplyType: true } },
+          product: { select: { supplyType: true, unit: true } },
         },
       },
     },
@@ -842,7 +847,10 @@ async function decrementOrderStock(
     await adjustStock(tx, {
       productId: item.productId,
       warehouseId: warehouseId ?? undefined,
-      change: -item.quantity,
+      change: -toPosStoredStockQuantity(
+        item.quantity,
+        item.product?.unit,
+      ),
       reason: InventoryReason.ORDER,
       note: "Онлайн захиалга төлбөр баталгаажсан",
       createdById: customerId,
@@ -930,6 +938,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
         sku: true,
         price: true,
         stock: true,
+        unit: true,
         supplyType: true,
         preorderCapacity: true,
         preorderCycleStartedAt: true,
@@ -1027,6 +1036,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
           sku: true,
           price: true,
           stock: true,
+          unit: true,
           supplyType: true,
           preorderCapacity: true,
           preorderCycleStartedAt: true,
@@ -1087,13 +1097,21 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
               0,
             )
           : product.stock;
-      if (!isPreorder && warehouseStock < qty) {
+      const requestedStock = toPosStoredStockQuantity(qty, product.unit);
+      const availableStock = fromPosStoredStockQuantity(
+        warehouseStock,
+        product.unit,
+      );
+      if (!isPreorder && warehouseStock < requestedStock) {
         return res.status(400).json({
           code: "INSUFFICIENT_STOCK",
           productId: product.id,
-          availableStock: warehouseStock,
+          availableStock,
           requestedQuantity: qty,
-          message: `${product.name} барааны нөөц хүрэлцэхгүй (${warehouseStock} ширхэг)`,
+          message: `${product.name} барааны нөөц хүрэлцэхгүй (${formatPosQuantity(
+            availableStock,
+            product.unit,
+          )})`,
         });
       }
       const basePrice = Number(product.price);

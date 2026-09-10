@@ -2,6 +2,11 @@ import { useEffect, useMemo, useReducer } from "react";
 import { calculateCartTotal } from "../utils/calculate-cart-total";
 import { initialPosState, posReducer } from "../store/pos.store";
 import type { CartLine, PosProduct } from "../types/pos.types";
+import {
+  normalizePosMeasureUnit,
+  POS_WEIGHT_STEP_KG,
+  roundPosQuantity,
+} from "@mgl/types";
 
 const POS_CART_STORAGE_PREFIX = "mglstore.vendor.pos.cart.v1";
 
@@ -49,19 +54,28 @@ function loadStoredPosState() {
 
     const cart = parsed
       .filter(isCartLine)
-      .map((line) => ({
-        ...line,
-        priceType: line.priceType || "UNIT",
-        baseUnitPrice: line.baseUnitPrice ?? line.unitPrice,
-        qty: Math.min(
-          Math.max(1, Math.floor(line.qty)),
-          Math.max(1, Math.floor(line.stockQty)),
-        ),
-        stockQty: Math.max(0, Math.floor(line.stockQty)),
-        unitPrice: Math.max(0, line.unitPrice),
-        taxRate: Math.max(0, line.taxRate),
-        discountAmount: Math.max(0, line.discountAmount),
-      }))
+      .map((line) => {
+        const measureUnit = normalizePosMeasureUnit(line.measureUnit);
+        const minimumQty = measureUnit === "kg" ? POS_WEIGHT_STEP_KG : 1;
+        const stockQty = Math.max(
+          0,
+          roundPosQuantity(line.stockQty, measureUnit),
+        );
+        return {
+          ...line,
+          measureUnit,
+          priceType: line.priceType || "UNIT",
+          baseUnitPrice: line.baseUnitPrice ?? line.unitPrice,
+          qty: Math.min(
+            Math.max(minimumQty, roundPosQuantity(line.qty, measureUnit)),
+            stockQty,
+          ),
+          stockQty,
+          unitPrice: Math.max(0, line.unitPrice),
+          taxRate: Math.max(0, line.taxRate),
+          discountAmount: Math.max(0, line.discountAmount),
+        };
+      })
       .filter((line) => line.stockQty > 0 && line.qty > 0);
 
     return { ...initialPosState, cart };
@@ -113,13 +127,15 @@ export function usePosCart() {
       return { ok: false as const, reason: "stock-limit" as const };
     }
 
+    const initialQty =
+      product.measureUnit === "kg" ? Math.min(1, product.stockQty) : 1;
     dispatch({
       type: "add-line",
       payload: {
         productId: product.id,
         name: product.name,
         imageUrl: product.imageUrl ?? null,
-        qty: 1,
+        qty: roundPosQuantity(initialQty, product.measureUnit),
         stockQty: product.stockQty,
         unitPrice: product.price,
         priceType: "UNIT",

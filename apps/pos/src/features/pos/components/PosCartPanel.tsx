@@ -1,12 +1,17 @@
 import { Minus, Plus, ReceiptText, Trash2 } from "lucide-react";
 import type { CartLine, CartTotals } from "../types/pos.types";
+import { formatPosQuantity, POS_WEIGHT_STEP_KG } from "@mgl/types";
 
 type Props = {
   lines: CartLine[];
   totals?: CartTotals;
   onRemove: (productId: string) => void;
   onSetQty: (productId: string, qty: number) => void;
-  onSetPrice?: (productId: string, priceType: CartLine["priceType"], unitPrice: number) => void;
+  onSetPrice?: (
+    productId: string,
+    priceType: CartLine["priceType"],
+    unitPrice: number,
+  ) => void;
   onClear?: () => void;
   className?: string;
 };
@@ -23,8 +28,16 @@ function money(value: number) {
   return `₮${value.toLocaleString()}`;
 }
 
-function PosCartLineRow({ line, index, onRemove, onSetQty, onSetPrice }: CartLineRowProps) {
+function PosCartLineRow({
+  line,
+  index,
+  onRemove,
+  onSetQty,
+  onSetPrice,
+}: CartLineRowProps) {
   const lineTotal = line.qty * line.unitPrice;
+  const quantityStep = line.measureUnit === "kg" ? 0.1 : 1;
+  const minimumQty = line.measureUnit === "kg" ? POS_WEIGHT_STEP_KG : 1;
 
   return (
     <article className="rounded-lg border border-[#273647] bg-[#122131] px-3 py-2 transition hover:border-[#75d1ff]/60">
@@ -34,10 +47,14 @@ function PosCartLineRow({ line, index, onRemove, onSetQty, onSetPrice }: CartLin
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[#051424] text-[11px] font-black text-[#92d9ff]">
               {index + 1}
             </span>
-            <p className="truncate text-sm font-black leading-tight text-[#d4e4fa]">{line.name}</p>
+            <p className="truncate text-sm font-black leading-tight text-[#d4e4fa]">
+              {line.name}
+            </p>
           </div>
           <p className="mt-1 truncate pl-8 text-[11px] font-semibold text-[#86929a]">
-            Нэгж {money(line.unitPrice)} · Нөөц {line.stockQty}
+            Нэгж {money(line.unitPrice)} /{" "}
+            {line.measureUnit === "kg" ? "кг" : "ш"} · Нөөц{" "}
+            {formatPosQuantity(line.stockQty, line.measureUnit)}
           </p>
           {onSetPrice ? (
             <select
@@ -50,13 +67,20 @@ function PosCartLineRow({ line, index, onRemove, onSetQty, onSetPrice }: CartLin
                     : priceType === "ORDER"
                       ? line.orderPrice
                       : line.baseUnitPrice;
-                if (unitPrice != null) onSetPrice(line.productId, priceType, unitPrice);
+                if (unitPrice != null)
+                  onSetPrice(line.productId, priceType, unitPrice);
               }}
               className="ml-8 mt-1 h-7 rounded-md border border-[#3d484f] bg-[#051424] px-2 text-[10px] font-bold text-[#d4e4fa] outline-none focus:border-[#00c2ff]"
             >
-              <option value="UNIT">Ширхэгийн үнэ</option>
-              {line.wholesalePrice != null ? <option value="WHOLESALE">Бөөний үнэ</option> : null}
-              {line.orderPrice != null ? <option value="ORDER">Захиалгын үнэ</option> : null}
+              <option value="UNIT">
+                {line.measureUnit === "kg" ? "1 кг-ийн үнэ" : "Ширхэгийн үнэ"}
+              </option>
+              {line.wholesalePrice != null ? (
+                <option value="WHOLESALE">Бөөний үнэ</option>
+              ) : null}
+              {line.orderPrice != null ? (
+                <option value="ORDER">Захиалгын үнэ</option>
+              ) : null}
             </select>
           ) : null}
         </div>
@@ -74,7 +98,7 @@ function PosCartLineRow({ line, index, onRemove, onSetQty, onSetPrice }: CartLin
         <div className="flex h-8 items-center justify-center overflow-hidden rounded-lg border border-[#3d484f] bg-[#051424]">
           <button
             type="button"
-            onClick={() => onSetQty(line.productId, line.qty - 1)}
+            onClick={() => onSetQty(line.productId, line.qty - quantityStep)}
             className="flex h-full w-8 items-center justify-center text-[#bcc8d1] transition hover:bg-[#1c2b3c]"
             aria-label="Тоо бууруулах"
           >
@@ -82,20 +106,21 @@ function PosCartLineRow({ line, index, onRemove, onSetQty, onSetPrice }: CartLin
           </button>
           <input
             type="number"
-            min={1}
+            min={minimumQty}
             max={line.stockQty}
+            step={line.measureUnit === "kg" ? POS_WEIGHT_STEP_KG : 1}
             value={line.qty}
             onChange={(event) => {
               const parsed = Number(event.target.value);
-              if (Number.isFinite(parsed) && parsed >= 1) {
-                onSetQty(line.productId, Math.floor(parsed));
+              if (Number.isFinite(parsed) && parsed >= minimumQty) {
+                onSetQty(line.productId, parsed);
               }
             }}
             className="h-full w-10 border-x border-[#3d484f] bg-[#0d1c2d] text-center text-sm font-black text-[#d4e4fa] outline-none"
           />
           <button
             type="button"
-            onClick={() => onSetQty(line.productId, line.qty + 1)}
+            onClick={() => onSetQty(line.productId, line.qty + quantityStep)}
             disabled={line.qty >= line.stockQty}
             className="flex h-full w-8 items-center justify-center text-[#bcc8d1] transition hover:bg-[#1c2b3c] disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Тоо нэмэх"
@@ -105,38 +130,50 @@ function PosCartLineRow({ line, index, onRemove, onSetQty, onSetPrice }: CartLin
         </div>
 
         <div className="text-right">
-          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#86929a]">Мөрийн дүн</p>
-          <p className="text-lg font-black leading-tight tabular-nums text-[#92d9ff]">{money(lineTotal)}</p>
+          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#86929a]">
+            Мөрийн дүн
+          </p>
+          <p className="text-lg font-black leading-tight tabular-nums text-[#92d9ff]">
+            {money(lineTotal)}
+          </p>
         </div>
       </div>
     </article>
   );
 }
 
-function PosCartSummary({ lines, totals }: { lines: CartLine[]; totals?: CartTotals }) {
-  const totalQty = lines.reduce((sum, line) => sum + line.qty, 0);
-
+function PosCartSummary({
+  lines,
+  totals,
+}: {
+  lines: CartLine[];
+  totals?: CartTotals;
+}) {
   return (
     <div className="shrink-0 border-t border-[#273647] bg-[#0d1c2d] px-3 py-3">
       <div className="mb-2 flex items-center justify-between rounded-lg bg-[#051424] px-3 py-2 text-xs font-black text-[#bcc8d1]">
         <span>Захиалгын мөр</span>
-        <span className="tabular-nums">
-          {lines.length} мөр · {totalQty} ширхэг
-        </span>
+        <span className="tabular-nums">{lines.length} мөр</span>
       </div>
 
       <div className="space-y-1.5 text-xs font-bold text-[#bcc8d1]">
         <div className="flex justify-between gap-3">
           <span>Барааны дүн</span>
-          <span className="tabular-nums text-[#d4e4fa]">{money(totals?.subTotal ?? 0)}</span>
+          <span className="tabular-nums text-[#d4e4fa]">
+            {money(totals?.subTotal ?? 0)}
+          </span>
         </div>
         <div className="flex justify-between gap-3">
           <span>Хөнгөлөлт</span>
-          <span className="tabular-nums text-[#d4e4fa]">-{money(totals?.discountTotal ?? 0)}</span>
+          <span className="tabular-nums text-[#d4e4fa]">
+            -{money(totals?.discountTotal ?? 0)}
+          </span>
         </div>
         <div className="flex justify-between gap-3">
           <span>Татвар</span>
-          <span className="tabular-nums text-[#d4e4fa]">{money(totals?.taxTotal ?? 0)}</span>
+          <span className="tabular-nums text-[#d4e4fa]">
+            {money(totals?.taxTotal ?? 0)}
+          </span>
         </div>
       </div>
 
@@ -150,9 +187,19 @@ function PosCartSummary({ lines, totals }: { lines: CartLine[]; totals?: CartTot
   );
 }
 
-export function PosCartPanel({ lines, totals, onRemove, onSetQty, onSetPrice, onClear, className = "" }: Props) {
+export function PosCartPanel({
+  lines,
+  totals,
+  onRemove,
+  onSetQty,
+  onSetPrice,
+  onClear,
+  className = "",
+}: Props) {
   return (
-    <section className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-[#273647] bg-[#0d1c2d] shadow-sm ${className}`}>
+    <section
+      className={`flex min-h-0 flex-col overflow-hidden rounded-xl border border-[#273647] bg-[#0d1c2d] shadow-sm ${className}`}
+    >
       <div className="flex shrink-0 items-center justify-between border-b border-[#273647] px-4 py-3">
         <h3 className="inline-flex items-center gap-2 text-lg font-black text-[#d4e4fa]">
           <ReceiptText size={22} className="text-[#92d9ff]" />
@@ -175,7 +222,9 @@ export function PosCartPanel({ lines, totals, onRemove, onSetQty, onSetPrice, on
           <div>
             <ReceiptText className="mx-auto mb-3 h-12 w-12 rounded-full border border-dashed border-[#3d484f] p-3 text-[#86929a]" />
             <p className="text-base font-black text-[#d4e4fa]">Сагс хоосон</p>
-            <p className="mt-1 text-sm font-semibold text-[#86929a]">Захиалга үүсгэхийн тулд менюгээс сонгоно уу</p>
+            <p className="mt-1 text-sm font-semibold text-[#86929a]">
+              Захиалга үүсгэхийн тулд менюгээс сонгоно уу
+            </p>
           </div>
         </div>
       ) : (

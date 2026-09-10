@@ -8,6 +8,7 @@ import {
 import { hasOrgMembership } from "../../../services/permission.service";
 import { requirePosUser } from "./_shared";
 import { parsePosGoodsReceiptInput } from "./goods-receipt";
+import { fromPosStoredStockQuantity } from "@mgl/types";
 
 const router: ExpressRouter = Router();
 
@@ -61,7 +62,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
         isActive: true,
         deletedAt: null,
       },
-      select: { id: true, name: true, sku: true, barcode: true },
+      select: { id: true, name: true, sku: true, barcode: true, unit: true },
     });
     if (products.length !== productIds.length) {
       return res.status(400).json({
@@ -179,10 +180,13 @@ router.post("/pos/goods-receipts", async (req, res) => {
           name: product.name,
           sku: product.sku,
           barcode: product.barcode,
-          quantity: item.quantity,
+          quantity: fromPosStoredStockQuantity(item.quantity, product.unit),
           batchNumber: item.batchNumber,
           expiryDate: item.expiryDate?.toISOString().slice(0, 10) || null,
-          stockQty: stockByProduct.get(item.productId) || 0,
+          stockQty: fromPosStoredStockQuantity(
+            stockByProduct.get(item.productId) || 0,
+            product.unit,
+          ),
         };
       }),
     });

@@ -1,5 +1,6 @@
 import { Check, PackageSearch, Plus } from "lucide-react";
 import type { CartLine, PosProduct } from "../types/pos.types";
+import { formatPosQuantity } from "@mgl/types";
 
 type Props = {
   products: PosProduct[];
@@ -14,7 +15,9 @@ export function PosProductGrid({ products, cartLines = [], onSelect }: Props) {
         <div>
           <PackageSearch className="mx-auto mb-3 h-10 w-10 text-slate-300" />
           <p className="text-sm font-bold text-slate-700">Бараа олдсонгүй</p>
-          <p className="mt-1 text-xs text-slate-500">Нэр, SKU эсвэл barcode-оо шалгаарай</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Нэр, SKU эсвэл barcode-оо шалгаарай
+          </p>
         </div>
       </div>
     );
@@ -23,8 +26,10 @@ export function PosProductGrid({ products, cartLines = [], onSelect }: Props) {
   return (
     <div className="grid min-h-0 flex-1 auto-rows-[172px] grid-cols-2 content-start gap-3 overflow-y-auto pr-1 lg:grid-cols-3 2xl:grid-cols-4">
       {products.map((product) => {
-        const inCartQty = cartLines.find((line) => line.productId === product.id)?.qty ?? 0;
-        const isOutOfStock = product.stockQty <= 0 || inCartQty >= product.stockQty;
+        const inCartQty =
+          cartLines.find((line) => line.productId === product.id)?.qty ?? 0;
+        const isOutOfStock =
+          product.stockQty <= 0 || inCartQty >= product.stockQty;
 
         return (
           <button
@@ -33,13 +38,15 @@ export function PosProductGrid({ products, cartLines = [], onSelect }: Props) {
             onClick={() => onSelect(product)}
             disabled={isOutOfStock}
             className={`group relative flex h-full min-h-0 flex-col rounded-xl border bg-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-amber-300 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 ${
-              inCartQty > 0 ? "border-amber-400 ring-2 ring-amber-100" : "border-slate-200"
+              inCartQty > 0
+                ? "border-amber-400 ring-2 ring-amber-100"
+                : "border-slate-200"
             }`}
           >
             {inCartQty > 0 ? (
               <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-black text-black shadow-sm">
                 <Check size={10} />
-                {inCartQty}
+                {formatPosQuantity(inCartQty, product.measureUnit)}
               </span>
             ) : null}
 
@@ -56,22 +63,31 @@ export function PosProductGrid({ products, cartLines = [], onSelect }: Props) {
                       : "bg-emerald-50 text-emerald-700"
                 }`}
               >
-                {product.stockQty}
+                {formatPosQuantity(product.stockQty, product.measureUnit)}
               </span>
             </div>
 
             <div className="mt-2 min-w-0 space-y-0.5">
-              <p className="truncate text-[11px] font-medium text-slate-500">SKU: {product.sku}</p>
+              <p className="truncate text-[11px] font-medium text-slate-500">
+                SKU: {product.sku}
+              </p>
               {product.barcode ? (
-                <p className="truncate text-[11px] text-slate-400">Barcode: {product.barcode}</p>
+                <p className="truncate text-[11px] text-slate-400">
+                  Barcode: {product.barcode}
+                </p>
               ) : null}
             </div>
 
             <div className="mt-auto flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2">
               <div className="min-w-0">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Үнэ</p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                  Үнэ
+                </p>
                 <p className="text-xl font-black leading-none tabular-nums text-slate-950">
                   ₮{product.price.toLocaleString()}
+                  {product.measureUnit === "kg" ? (
+                    <span className="text-xs">/кг</span>
+                  ) : null}
                 </p>
               </div>
               <span

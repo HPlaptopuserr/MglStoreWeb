@@ -1,6 +1,8 @@
 import type { PosReceipt } from "../types/receipt.types";
+import { formatPosQuantity } from "@mgl/types";
 
-const formatMoney = (value: number) => `₮${Math.round(value).toLocaleString("mn-MN")}`;
+const formatMoney = (value: number) =>
+  `₮${Math.round(value).toLocaleString("mn-MN")}`;
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: "Бэлэн мөнгө",
@@ -24,7 +26,8 @@ export function formatReceipt(receipt: PosReceipt): string {
   ];
 
   const lines = receipt.lines.map(
-    (line) => `${line.name} x${line.qty}  ${formatMoney(line.lineTotal)}`,
+    (line) =>
+      `${line.name} ${formatPosQuantity(line.qty, line.measureUnit)}  ${formatMoney(line.lineTotal)}`,
   );
 
   const footer = [

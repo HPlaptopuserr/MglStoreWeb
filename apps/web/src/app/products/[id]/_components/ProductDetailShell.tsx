@@ -20,7 +20,10 @@ import type { LucideIcon } from "lucide-react";
 import { ProductCard } from "@mgl/ui";
 import { resolveMemberPricing } from "@/lib/member-pricing";
 import { organizationPath } from "@/lib/organization-links";
-import type { MarketplacePricingAudience } from "@mgl/types";
+import {
+  formatPosQuantity,
+  type MarketplacePricingAudience,
+} from "@mgl/types";
 
 export interface ProductImage {
   id: string;
@@ -50,6 +53,7 @@ export interface ProductDetailProduct {
   sku?: string | null;
   price: number;
   stock?: number | null;
+  unit?: string | null;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays?: number | null;
   preorderCapacity?: number | null;
@@ -550,7 +554,7 @@ function ProductCommercePanel({
   const maxQuantity =
     isPreorder || typeof product.stock !== "number"
       ? 99
-      : Math.max(1, product.stock);
+      : Math.max(1, Math.floor(product.stock));
   const preorderCapacity = product.preorderCapacity ?? null;
   const preorderParticipantCount = Math.max(
     0,
@@ -688,7 +692,11 @@ function ProductCommercePanel({
                 : `${preorderParticipantCount}/${preorderCapacity} хүн · ${product.preorderRemaining ?? Math.max(0, preorderCapacity - preorderParticipantCount)} хүн дутуу`
               : isOutOfStock
                 ? "Нөөц дууссан"
-                : `Үлдэгдэл: ${product.stock ?? "боломжтой"}`
+                : `Үлдэгдэл: ${
+                    product.stock == null
+                      ? "боломжтой"
+                      : formatPosQuantity(product.stock, product.unit)
+                  }`
           }
         />
       </div>
@@ -725,7 +733,9 @@ function ProductCommercePanel({
 
       <div className="mt-auto pt-3">
         <div className="mb-3 flex items-center justify-between border-y border-slate-100 py-3">
-          <span className="text-xs font-black text-slate-500">Тоо ширхэг</span>
+          <span className="text-xs font-black text-slate-500">
+            {product.unit === "kg" ? "Тоо (кг)" : "Тоо ширхэг"}
+          </span>
           <div className="flex items-center rounded-xl border border-slate-200">
             <button
               type="button"

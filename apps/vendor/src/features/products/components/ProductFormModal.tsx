@@ -30,6 +30,7 @@ import {
 } from "../data/ebarimt-category-tax-defaults";
 import {
   getEbarimtTaxProductCodes,
+  normalizePosMeasureUnit,
   requiresEbarimtTaxProductCode,
 } from "@mgl/types";
 
@@ -428,6 +429,7 @@ export function ProductFormModal({
                         ...current,
                         masterProductId: product.id,
                         name: product.canonicalName,
+                        unit: normalizePosMeasureUnit(product.unit),
                         barcode: product.barcode || current.barcode,
                         description: current.description.trim()
                           ? current.description
@@ -459,6 +461,43 @@ export function ProductFormModal({
                   </h3>
 
                   <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                    {!isPreorder && (
+                      <div className="space-y-2 sm:col-span-2">
+                        <label className="text-sm font-semibold text-slate-700">
+                          Борлуулах нэгж
+                        </label>
+                        <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+                          {(
+                            [
+                              ["pcs", "Ширхэгээр"],
+                              ["kg", "Жингээр (кг)"],
+                            ] as const
+                          ).map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() =>
+                                setForm((current) => ({
+                                  ...current,
+                                  unit: value,
+                                }))
+                              }
+                              className={`h-10 rounded-lg text-sm font-bold transition-colors ${
+                                form.unit === value
+                                  ? "bg-white text-indigo-700 shadow-sm"
+                                  : "text-slate-500 hover:text-slate-800"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Жингээр сонговол үнэ нь 1 кг-д, нөөц нь кг-аар
+                          бүртгэгдэнэ.
+                        </p>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <label className="text-sm font-semibold text-slate-700">
                         Авсан үнэ (₮)
@@ -543,7 +582,9 @@ export function ProductFormModal({
                     ) : (
                       <div className="space-y-2">
                         <label className="text-sm font-semibold text-slate-700">
-                          Ширхэгийн үнэ (₮){" "}
+                          {form.unit === "kg"
+                            ? "1 кг-ийн үнэ (₮)"
+                            : "Ширхэгийн үнэ (₮)"}{" "}
                           <span className="text-red-500">*</span>
                         </label>
                         <div className="relative">
@@ -569,7 +610,7 @@ export function ProductFormModal({
                     {!isPreorder && (
                       <div className="space-y-2">
                         <label className="text-sm font-semibold text-slate-700">
-                          Нөөц (ширхэг)
+                          Нөөц ({form.unit === "kg" ? "кг" : "ширхэг"})
                         </label>
                         <div className="relative">
                           <BarChart2
@@ -579,7 +620,10 @@ export function ProductFormModal({
                           <input
                             type="number"
                             min="0"
-                            max="2147483647"
+                            max={
+                              form.unit === "kg" ? "2147483.647" : "2147483647"
+                            }
+                            step={form.unit === "kg" ? "0.001" : "1"}
                             className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all font-medium"
                             placeholder="0"
                             value={form.stock}
@@ -627,7 +671,8 @@ export function ProductFormModal({
                     />
                     <div>
                       <p className="text-sm font-bold">
-                        НӨАТ төлөгч биш бол “НӨАТ-аас чөлөөлөгдсөн” гэж сонгохгүй.
+                        НӨАТ төлөгч биш бол “НӨАТ-аас чөлөөлөгдсөн” гэж
+                        сонгохгүй.
                       </p>
                       <p className="mt-1 text-xs font-medium leading-5 text-amber-800">
                         Ердийн хүнсний бараанд “Ердийн борлуулалт” тохиргоог
@@ -702,7 +747,8 @@ export function ProductFormModal({
                         />
                         <p className="text-xs font-medium leading-5 text-slate-500">
                           НХАТ ногдохгүй бол 0, хуульд хамрагдах бараа эсвэл
-                          үйлчилгээнд баталгаажсан хувийг оруулна (дээд тал нь 2%).
+                          үйлчилгээнд баталгаажсан хувийг оруулна (дээд тал нь
+                          2%).
                         </p>
                       </div>
 

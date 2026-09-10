@@ -230,7 +230,9 @@ export default function ProductDetailPage({
   const countdown = useCountdown(discount?.validUntil);
   const images = product?.images ?? [];
   const isPreorder = product?.supplyType === "CHINA_PREORDER";
-  const isOutOfStock = !isPreorder && product?.stock === 0;
+  const isOutOfStock =
+    !isPreorder &&
+    (product?.stock ?? 0) < (product?.unit === "kg" ? 1 : 0.000001);
   const isPreorderFull = Boolean(isPreorder && product?.preorderIsFull);
 
   const toggleWishlist = () => {

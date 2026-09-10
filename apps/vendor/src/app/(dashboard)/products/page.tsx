@@ -27,8 +27,10 @@ import {
 import { ProductLabelPrintDialog } from "@mgl/ui";
 import {
   EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
+  formatPosQuantity,
   isValidEbarimtClassificationCode,
   isValidEbarimtTaxProductCode,
+  normalizePosMeasureUnit,
   requiresEbarimtTaxProductCode,
 } from "@mgl/types";
 import { API, authFetch } from "@/lib/api";
@@ -52,6 +54,14 @@ const hasCompleteEbarimtTaxSetup = (product: Product) =>
   isValidEbarimtClassificationCode(product.classificationCode) &&
   isValidEbarimtTaxProductCode(product.taxType, product.taxProductCode);
 
+const normalizeProductForDisplay = (product: Product): Product => {
+  const unit = normalizePosMeasureUnit(product.unit);
+  return {
+    ...product,
+    unit,
+  };
+};
+
 const EMPTY_FORM: FormState = {
   masterProductId: "",
   name: "",
@@ -67,6 +77,7 @@ const EMPTY_FORM: FormState = {
   classificationCode: EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
   taxProductCode: "",
   stock: "0",
+  unit: "pcs",
   expiryDate: "",
   supplyType: "IN_STOCK",
   preorderLeadTimeDays: "14",
@@ -272,13 +283,12 @@ export default function ProductsPage() {
         throw new Error(`${message} (HTTP ${res.status})`);
       }
       const data = await res.json();
-      setProducts(
-        Array.isArray(data)
-          ? data
-          : Array.isArray(data.products)
-            ? data.products
-            : [],
-      );
+      const productRows: Product[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data.products)
+          ? data.products
+          : [];
+      setProducts(productRows.map(normalizeProductForDisplay));
     } catch (error: unknown) {
       showToast(
         "error",
@@ -430,6 +440,7 @@ export default function ProductsPage() {
         p.classificationCode || EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
       taxProductCode: p.taxProductCode || "",
       stock: String(p.stock),
+      unit: normalizePosMeasureUnit(p.unit),
       expiryDate: toDateInputValue(p.expiryDate),
       supplyType: p.supplyType || "IN_STOCK",
       preorderLeadTimeDays:
@@ -462,7 +473,12 @@ export default function ProductsPage() {
     if (!form.name.trim()) return showToast("error", "Барааны нэр оруулна уу");
     const price = parseFloat(form.price);
     if (isNaN(price) || price < 0)
-      return showToast("error", "Ширхэгийн үнэ буруу байна");
+      return showToast(
+        "error",
+        form.unit === "kg"
+          ? "1 кг-ийн үнэ буруу байна"
+          : "Ширхэгийн үнэ буруу байна",
+      );
     const wholesalePrice = form.wholesalePrice.trim()
       ? Number(form.wholesalePrice)
       : null;
@@ -488,9 +504,23 @@ export default function ProductsPage() {
     }
 
     const stockNum =
-      form.supplyType === "CHINA_PREORDER" ? 0 : parseInt(form.stock) || 0;
-    if (stockNum < 0 || stockNum > 2_147_483_647)
-      return showToast("error", "Нөөц 0-2,147,483,647 хооронд байх ёстой");
+      form.supplyType === "CHINA_PREORDER" ? 0 : Number(form.stock || 0);
+    if (
+      !Number.isFinite(stockNum) ||
+      stockNum < 0 ||
+      (form.unit === "pcs" && !Number.isInteger(stockNum)) ||
+      (form.unit === "kg" &&
+        Math.abs(stockNum * 1_000 - Math.round(stockNum * 1_000)) >
+          0.000001) ||
+      stockNum > (form.unit === "kg" ? 2_147_483.647 : 2_147_483_647)
+    ) {
+      return showToast(
+        "error",
+        form.unit === "kg"
+          ? "Нөөцийг 0.001 кг нарийвчлалтай зөв оруулна уу"
+          : "Нөөцийг бүхэл ширхэгээр зөв оруулна уу",
+      );
+    }
 
     const expiryDate =
       form.supplyType === "CHINA_PREORDER"
@@ -576,6 +606,7 @@ export default function ProductsPage() {
           ? form.taxProductCode.trim()
           : null,
         stock: stockNum,
+        unit: form.supplyType === "CHINA_PREORDER" ? "pcs" : form.unit,
         expiryDate,
         supplyType: form.supplyType,
         preorderLeadTimeDays:
@@ -621,9 +652,12 @@ export default function ProductsPage() {
         throw new Error(err.message || "Алдаа гарлаа");
       }
 
-      const savedProduct = (await res
+      const savedProductResponse = (await res
         .json()
         .catch(() => null)) as Product | null;
+      const savedProduct = savedProductResponse
+        ? normalizeProductForDisplay(savedProductResponse)
+        : null;
       if (savedProduct?.id) {
         setProducts((current) => {
           const exists = current.some(
@@ -1104,6 +1138,9 @@ export default function ProductsPage() {
                 </div>
                 <span className="text-3xl font-black text-indigo-600">
                   ₮{Number(selectedProduct.price).toLocaleString()}
+                  {selectedProduct.unit === "kg" ? (
+                    <span className="text-sm">/кг</span>
+                  ) : null}
                 </span>
               </div>
 
@@ -1230,7 +1267,10 @@ export default function ProductsPage() {
                     Үлдэгдэл нөөц
                   </div>
                   <div className="text-sm font-black text-slate-900">
-                    {selectedProduct.stock} ширхэг
+                    {formatPosQuantity(
+                      selectedProduct.stock,
+                      selectedProduct.unit,
+                    )}
                   </div>
                 </div>
               </div>
@@ -1302,10 +1342,18 @@ export default function ProductsPage() {
                               </div>
                               <div className="text-right">
                                 <p className="text-sm font-black text-cyan-700">
-                                  {lot.remainingQuantity} үлдсэн
+                                  {formatPosQuantity(
+                                    lot.remainingQuantity,
+                                    selectedProduct.unit,
+                                  )}{" "}
+                                  үлдсэн
                                 </p>
                                 <p className="text-[11px] text-slate-400">
-                                  авсан {lot.quantity}
+                                  авсан{" "}
+                                  {formatPosQuantity(
+                                    lot.quantity,
+                                    selectedProduct.unit,
+                                  )}
                                 </p>
                               </div>
                             </div>

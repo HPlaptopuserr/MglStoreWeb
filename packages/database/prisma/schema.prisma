@@ -3229,7 +3229,7 @@ model PosSaleLine {
   productName        String
   productSku         String?
   productBarcode     String?
-  qty                Int
+  qty                Decimal @db.Decimal(18, 3)
   unitPrice          Decimal @db.Decimal(18, 2)
   priceType          String  @default("UNIT")
   taxAmount          Decimal @db.Decimal(18, 2)

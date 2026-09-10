@@ -34,6 +34,7 @@ import {
   findLocalCatalogProduct,
   LOCAL_MOCK_CATALOG_ENABLED,
 } from "@/lib/local-product-catalog";
+import { formatPosQuantity } from "@mgl/types";
 
 interface ProductImage {
   id: string;
@@ -65,6 +66,7 @@ interface FullProduct {
   sku?: string | null;
   price: number;
   stock?: number | null;
+  unit?: string | null;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays?: number | null;
   preorderCapacity?: number | null;
@@ -170,10 +172,15 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
 
   const images = product?.images ?? [];
   const isPreorder = product?.supplyType === "CHINA_PREORDER";
-  const isOutOfStock = !isPreorder && product?.stock === 0;
+  const isOutOfStock =
+    !isPreorder &&
+    (product?.stock ?? 0) < (product?.unit === "kg" ? 1 : 0.000001);
   const isPreorderFull = Boolean(isPreorder && product?.preorderIsFull);
   const unavailable = isOutOfStock || isPreorderFull;
-  const maxQty = Math.min(isPreorder ? 99 : (product?.stock ?? 99), 99);
+  const maxQty = Math.min(
+    isPreorder ? 99 : Math.floor(product?.stock ?? 99),
+    99,
+  );
 
   const handleAddToCart = useCallback(() => {
     if (!product || unavailable) return;
@@ -408,6 +415,7 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                   <div className="flex items-end gap-3 flex-wrap">
                     <span className="text-3xl font-extrabold text-orange-600 tracking-tight">
                       {formatPrice(discountedPrice)}
+                      {product.unit === "kg" ? "/кг" : ""}
                     </span>
                     {originalPrice && (
                       <span className="text-base text-gray-400 line-through mb-0.5">
@@ -499,7 +507,7 @@ export function ProductDetailOverlay({ productId, onClose }: Props) {
                         className={`text-sm font-medium ${product.stock > 0 ? "text-green-700" : "text-red-600"}`}
                       >
                         {product.stock > 0
-                          ? `Нөөцөд ${product.stock} ширхэг байна`
+                          ? `Нөөцөд ${formatPosQuantity(product.stock, product.unit)} байна`
                           : "Нөөц дууссан"}
                       </span>
                     </div>

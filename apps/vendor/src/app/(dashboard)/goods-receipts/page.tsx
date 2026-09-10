@@ -14,6 +14,14 @@ import {
   Trash2,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
+import {
+  formatPosQuantity,
+  normalizePosMeasureUnit,
+  POS_WEIGHT_STEP_KG,
+  roundPosQuantity,
+  toPosStoredStockQuantity,
+  type PosMeasureUnit,
+} from "@mgl/types";
 
 type ProductOption = {
   id: string;
@@ -21,6 +29,7 @@ type ProductOption = {
   sku?: string | null;
   barcode?: string | null;
   stock: number;
+  unit?: PosMeasureUnit | string | null;
   isActive?: boolean;
   supplyType?: string;
 };
@@ -186,7 +195,12 @@ export default function GoodsReceiptsPage() {
       .slice(0, 12);
   }, [normalizedSearch, products]);
 
-  const totalQuantity = lines.reduce((total, line) => total + line.quantity, 0);
+  const totalPieces = lines
+    .filter((line) => normalizePosMeasureUnit(line.product.unit) === "pcs")
+    .reduce((total, line) => total + line.quantity, 0);
+  const totalWeight = lines
+    .filter((line) => normalizePosMeasureUnit(line.product.unit) === "kg")
+    .reduce((total, line) => total + line.quantity, 0);
 
   const createReceiptLine = (product: ProductOption): ReceiptLine => ({
     id: `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -200,9 +214,16 @@ export default function GoodsReceiptsPage() {
     setLines((current) => {
       const existing = current.find((line) => line.product.id === product.id);
       if (existing) {
+        const step = normalizePosMeasureUnit(product.unit) === "kg" ? 0.1 : 1;
         return current.map((line) =>
           line.id === existing.id
-            ? { ...line, quantity: Math.min(1_000_000, line.quantity + 1) }
+            ? {
+                ...line,
+                quantity: Math.min(
+                  1_000_000,
+                  roundPosQuantity(line.quantity + step, product.unit),
+                ),
+              }
             : line,
         );
       }
@@ -221,14 +242,20 @@ export default function GoodsReceiptsPage() {
   };
 
   const setQuantity = (lineId: string, quantity: number) => {
-    const safeQuantity = Math.min(
-      1_000_000,
-      Math.max(1, Math.floor(Number(quantity) || 1)),
-    );
     setLines((current) =>
-      current.map((line) =>
-        line.id === lineId ? { ...line, quantity: safeQuantity } : line,
-      ),
+      current.map((line) => {
+        if (line.id !== lineId) return line;
+        const unit = normalizePosMeasureUnit(line.product.unit);
+        const minimum = unit === "kg" ? POS_WEIGHT_STEP_KG : 1;
+        const safeQuantity = Math.min(
+          1_000_000,
+          Math.max(
+            minimum,
+            roundPosQuantity(Number(quantity) || minimum, unit),
+          ),
+        );
+        return { ...line, quantity: safeQuantity };
+      }),
     );
   };
 
@@ -291,7 +318,10 @@ export default function GoodsReceiptsPage() {
           note: note.trim() || undefined,
           items: lines.map((line) => ({
             productId: line.product.id,
-            quantity: line.quantity,
+            quantity: toPosStoredStockQuantity(
+              line.quantity,
+              line.product.unit,
+            ),
             batchNumber: line.batchNumber.trim() || undefined,
             expiryDate: line.expiryDate || undefined,
           })),
@@ -374,8 +404,7 @@ export default function GoodsReceiptsPage() {
           <div>
             <p className="text-sm font-black">Бараа амжилттай хүлээн авлаа</p>
             <p className="mt-0.5 text-xs font-semibold">
-              {success.supplierName} · {success.totalItems} төрөл ·{" "}
-              {success.totalQuantity.toLocaleString("mn-MN")} ширхэг · №
+              {success.supplierName} · {success.totalItems} төрөл · №
               {success.referenceNo}
             </p>
           </div>
@@ -541,8 +570,9 @@ export default function GoodsReceiptsPage() {
                             <p className="truncate text-[11px] text-slate-500">
                               {product.sku || product.barcode || "Кодгүй"} ·
                               Одоо{" "}
-                              {Number(product.stock || 0).toLocaleString(
-                                "mn-MN",
+                              {formatPosQuantity(
+                                Number(product.stock || 0),
+                                product.unit,
                               )}
                             </p>
                           </div>
@@ -590,8 +620,9 @@ export default function GoodsReceiptsPage() {
                               line.product.barcode ||
                               "Кодгүй"}{" "}
                             · Одоогийн үлдэгдэл{" "}
-                            {Number(line.product.stock || 0).toLocaleString(
-                              "mn-MN",
+                            {formatPosQuantity(
+                              Number(line.product.stock || 0),
+                              line.product.unit,
                             )}
                           </p>
                         </div>
@@ -600,7 +631,15 @@ export default function GoodsReceiptsPage() {
                             type="button"
                             aria-label={`${line.product.name} тоо хасах`}
                             onClick={() =>
-                              setQuantity(line.id, line.quantity - 1)
+                              setQuantity(
+                                line.id,
+                                line.quantity -
+                                  (normalizePosMeasureUnit(
+                                    line.product.unit,
+                                  ) === "kg"
+                                    ? 0.1
+                                    : 1),
+                              )
                             }
                             className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
                           >
@@ -608,8 +647,19 @@ export default function GoodsReceiptsPage() {
                           </button>
                           <input
                             type="number"
-                            min={1}
+                            min={
+                              normalizePosMeasureUnit(line.product.unit) ===
+                              "kg"
+                                ? POS_WEIGHT_STEP_KG
+                                : 1
+                            }
                             max={1_000_000}
+                            step={
+                              normalizePosMeasureUnit(line.product.unit) ===
+                              "kg"
+                                ? POS_WEIGHT_STEP_KG
+                                : 1
+                            }
                             value={line.quantity}
                             onChange={(event) =>
                               setQuantity(line.id, Number(event.target.value))
@@ -620,7 +670,15 @@ export default function GoodsReceiptsPage() {
                             type="button"
                             aria-label={`${line.product.name} тоо нэмэх`}
                             onClick={() =>
-                              setQuantity(line.id, line.quantity + 1)
+                              setQuantity(
+                                line.id,
+                                line.quantity +
+                                  (normalizePosMeasureUnit(
+                                    line.product.unit,
+                                  ) === "kg"
+                                    ? 0.1
+                                    : 1),
+                              )
                             }
                             className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
                           >
@@ -716,10 +774,19 @@ export default function GoodsReceiptsPage() {
                 </div>
                 <div className="flex items-center justify-between border-t border-slate-100 pt-3">
                   <span className="text-sm font-bold text-slate-700">
-                    Нийт тоо ширхэг
+                    Нийт хүлээн авах
                   </span>
                   <span className="text-xl font-black text-slate-950">
-                    {totalQuantity.toLocaleString("mn-MN")}
+                    {[
+                      totalPieces > 0
+                        ? formatPosQuantity(totalPieces, "pcs")
+                        : "",
+                      totalWeight > 0
+                        ? formatPosQuantity(totalWeight, "kg")
+                        : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || "0"}
                   </span>
                 </div>
               </div>

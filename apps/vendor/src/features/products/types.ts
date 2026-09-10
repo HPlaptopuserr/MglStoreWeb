@@ -1,3 +1,5 @@
+import type { PosMeasureUnit } from "@mgl/types";
+
 export interface ProductImage {
   id: string;
   url: string;
@@ -39,6 +41,7 @@ export interface Product {
   classificationCode: string;
   taxProductCode: string | null;
   stock: number;
+  unit: PosMeasureUnit | null;
   expiryDate?: string | null;
   receiptLots?: ProductReceiptLot[];
   supplyType: "IN_STOCK" | "CHINA_PREORDER";
@@ -80,6 +83,7 @@ export interface FormState {
   classificationCode: string;
   taxProductCode: string;
   stock: string;
+  unit: PosMeasureUnit;
   expiryDate: string;
   supplyType: "IN_STOCK" | "CHINA_PREORDER";
   preorderLeadTimeDays: string;

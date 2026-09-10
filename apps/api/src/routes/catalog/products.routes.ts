@@ -15,7 +15,10 @@ import {
   isFullAdmin,
   isValidEbarimtClassificationCode,
   isValidEbarimtTaxProductCode,
+  fromPosStoredStockQuantity,
+  normalizePosMeasureUnit,
   requiresEbarimtTaxProductCode,
+  toPosStoredStockQuantity,
 } from "@mgl/types";
 import { optionalAuth, requireAuth } from "../../middleware/auth";
 import {
@@ -296,7 +299,7 @@ async function buildMasterCatalogDataset(search = "", take?: number) {
     })),
     ...posSales.map((row) => ({
       productId: row.productId,
-      quantity: row._sum.qty || 0,
+      quantity: Number(row._sum.qty || 0),
     })),
   ]);
   const requests = aggregate(
@@ -1060,6 +1063,7 @@ router.get("/products/organization-catalog", optionalAuth, async (req, res) => {
           },
           products: products.map((product) => ({
             ...product,
+            stock: fromPosStoredStockQuantity(product.stock, product.unit),
             ...preorderCapacityByProductId.get(product.id),
           })),
         };
@@ -1180,7 +1184,16 @@ router.get("/products", optionalAuth, async (req, res) => {
       ];
     } else if (stockFilter === "low_stock") {
       where.supplyType = { not: "CHINA_PREORDER" };
-      where.stock = { gt: 0, lte: 5 };
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : []),
+        {
+          OR: [
+            { unit: "kg", stock: { gt: 0, lte: 5_000 } },
+            { unit: null, stock: { gt: 0, lte: 5 } },
+            { unit: { not: "kg" }, stock: { gt: 0, lte: 5 } },
+          ],
+        },
+      ];
     } else if (stockFilter === "sold_out") {
       where.supplyType = { not: "CHINA_PREORDER" };
       where.stock = { lte: 0 };
@@ -1453,6 +1466,7 @@ router.get("/products", optionalAuth, async (req, res) => {
           .sort((a, b) => a.getTime() - b.getTime())[0];
         return {
           ...visibleProduct,
+          stock: fromPosStoredStockQuantity(product.stock, product.unit),
           ...preorderCapacityByProductId.get(product.id),
           ...(isOwnOrganizationCatalog
             ? {
@@ -1468,8 +1482,14 @@ router.get("/products", optionalAuth, async (req, res) => {
             ? {
                 receiptLots: receiptLots.map((lot) => ({
                   id: lot.id,
-                  quantity: lot.quantity,
-                  remainingQuantity: lot.remainingQuantity,
+                  quantity: fromPosStoredStockQuantity(
+                    lot.quantity,
+                    product.unit,
+                  ),
+                  remainingQuantity: fromPosStoredStockQuantity(
+                    lot.remainingQuantity,
+                    product.unit,
+                  ),
                   batchNumber: lot.batchNumber,
                   expiryDate: lot.expiryDate?.toISOString() ?? null,
                   receiptNo: lot.receipt.receiptNo,
@@ -1684,7 +1704,10 @@ router.get(
         .slice(0, limit);
 
       return res.json({
-        products: ranked,
+        products: ranked.map((product) => ({
+          ...product,
+          stock: fromPosStoredStockQuantity(product.stock, product.unit),
+        })),
         personalized: interestProfile.hasSignals,
       });
     } catch (error) {
@@ -1807,6 +1830,7 @@ router.get("/products/trending", optionalAuth, async (req, res) => {
     const products = [...rankedProducts, ...fallbackProducts].map(
       (product) => ({
         ...product,
+        stock: fromPosStoredStockQuantity(product.stock, product.unit),
         images: product.images,
         trendScore: popularWeightById.get(product.id) || 0,
       }),
@@ -3117,8 +3141,14 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
       .slice(0, Math.min(6, limit));
 
     return res.json({
-      relatedProducts: related,
-      vendorProducts: vendor,
+      relatedProducts: related.map((product) => ({
+        ...product,
+        stock: fromPosStoredStockQuantity(product.stock, product.unit),
+      })),
+      vendorProducts: vendor.map((product) => ({
+        ...product,
+        stock: fromPosStoredStockQuantity(product.stock, product.unit),
+      })),
     });
   } catch (error) {
     console.error("get product recommendations error", error);
@@ -3185,6 +3215,7 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
     );
     return res.json({
       ...safeProduct,
+      stock: fromPosStoredStockQuantity(product.stock, product.unit),
       ...preorderCapacityByProductId.get(product.id),
       ...(canBypassVisibility
         ? {
@@ -3280,6 +3311,10 @@ router.post(
       }
 
       const normalizedSupplyType = normalizeSupplyType(supplyType);
+      const normalizedUnit =
+        normalizedSupplyType === "CHINA_PREORDER"
+          ? "pcs"
+          : normalizePosMeasureUnit(unit);
       let preorderConversion = null;
       if (normalizedSupplyType === "CHINA_PREORDER") {
         try {
@@ -3323,8 +3358,22 @@ router.post(
         return res.status(400).json({ message: "Өртөг үнэ буруу байна" });
       }
 
-      const stockNum = stock ? parseInt(String(stock)) : 0;
-      if (isNaN(stockNum) || stockNum < 0 || stockNum > 2_147_483_647) {
+      const displayStockNum =
+        stock === undefined || stock === "" ? 0 : Number(stock);
+      const stockNum = toPosStoredStockQuantity(
+        displayStockNum,
+        normalizedUnit,
+      );
+      if (
+        !Number.isFinite(displayStockNum) ||
+        displayStockNum < 0 ||
+        (normalizedUnit === "pcs" && !Number.isInteger(displayStockNum)) ||
+        (normalizedUnit === "kg" &&
+          Math.abs(
+            displayStockNum * 1_000 - Math.round(displayStockNum * 1_000),
+          ) > 0.000001) ||
+        stockNum > 2_147_483_647
+      ) {
         return res
           .status(400)
           .json({ message: "Нөөц 0-2,147,483,647 хооронд байх ёстой" });
@@ -3503,7 +3552,7 @@ router.post(
           masterProductId: masterProductId ? String(masterProductId) : null,
           name: String(name),
           barcode: normalizedBarcode,
-          unit: unit ? String(unit) : null,
+          unit: normalizedUnit,
           description: description ? String(description) : null,
           imageUrl: imageUrls[0] || null,
           categoryName: businessCategoryName,
@@ -3522,7 +3571,7 @@ router.post(
             specifications: normalizedSpecifications,
             sku: normalizedSku,
             barcode: masterProduct.barcode || normalizedBarcode,
-            unit: masterProduct.unit || (unit ? String(unit).trim() : null),
+            unit: normalizedUnit,
             price: priceNum,
             wholesalePrice: wholesalePriceNum,
             orderPrice: orderPriceNum,
@@ -3620,6 +3669,7 @@ router.post(
         const { supplierDocument, ...createdProduct } = created;
         return {
           ...createdProduct,
+          stock: fromPosStoredStockQuantity(created.stock, created.unit),
           preorderSupplierFrontImageUrl:
             supplierDocument?.frontImageUrl ?? null,
           preorderSupplierBackImageUrl: supplierDocument?.backImageUrl ?? null,
@@ -3783,6 +3833,12 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       supplyType !== undefined
         ? normalizeSupplyType(supplyType)
         : existing.supplyType;
+    const nextUnit =
+      nextSupplyType === "CHINA_PREORDER"
+        ? "pcs"
+        : unit !== undefined
+          ? normalizePosMeasureUnit(unit)
+          : normalizePosMeasureUnit(existing.unit);
     const parsedExpiryDate =
       nextSupplyType === "CHINA_PREORDER"
         ? null
@@ -3850,7 +3906,9 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (sku !== undefined) data.sku = sku ? String(sku).trim() : null;
     if (barcode !== undefined)
       data.barcode = barcode ? String(barcode).trim() : null;
-    if (unit !== undefined) data.unit = unit ? String(unit).trim() : null;
+    if (unit !== undefined || nextSupplyType === "CHINA_PREORDER") {
+      data.unit = nextUnit;
+    }
     const shouldRefreshPreorderPrice =
       nextSupplyType === "CHINA_PREORDER" &&
       (price !== undefined ||
@@ -3966,13 +4024,45 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
         : null;
     }
     if (stock !== undefined) {
-      const s = parseInt(String(stock));
-      if (isNaN(s) || s < 0 || s > 2_147_483_647)
+      const displayStock = Number(stock);
+      const s = toPosStoredStockQuantity(displayStock, nextUnit);
+      if (
+        !Number.isFinite(displayStock) ||
+        displayStock < 0 ||
+        (nextUnit === "pcs" && !Number.isInteger(displayStock)) ||
+        (nextUnit === "kg" &&
+          Math.abs(
+            displayStock * 1_000 - Math.round(displayStock * 1_000),
+          ) > 0.000001) ||
+        s > 2_147_483_647
+      )
         return res
           .status(400)
           .json({ message: "Нөөц 0-2,147,483,647 хооронд байх ёстой" });
       data.stock = s;
       stockNumForInventory = s;
+    } else if (
+      (unit !== undefined || nextSupplyType === "CHINA_PREORDER") &&
+      nextUnit !== normalizePosMeasureUnit(existing.unit)
+    ) {
+      const displayStock = fromPosStoredStockQuantity(
+        existing.stock,
+        existing.unit,
+      );
+      if (nextUnit === "pcs" && !Number.isInteger(displayStock)) {
+        return res.status(400).json({
+          message:
+            "Жингийн үлдэгдлийг ширхэгийн нэгж рүү шилжүүлэхийн өмнө бүхэл тоо болгоно уу",
+        });
+      }
+      const convertedStock = toPosStoredStockQuantity(displayStock, nextUnit);
+      if (convertedStock > 2_147_483_647) {
+        return res
+          .status(400)
+          .json({ message: "Нөөц зөвшөөрөгдөх хэмжээнээс их байна" });
+      }
+      data.stock = convertedStock;
+      stockNumForInventory = convertedStock;
     }
     if (supplyType !== undefined) {
       if (
@@ -4102,6 +4192,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       const { supplierDocument, ...updatedProduct } = updated;
       return {
         ...updatedProduct,
+        stock: fromPosStoredStockQuantity(updated.stock, updated.unit),
         preorderSupplierFrontImageUrl: supplierDocument?.frontImageUrl ?? null,
         preorderSupplierBackImageUrl: supplierDocument?.backImageUrl ?? null,
         expiryDate: currentExpiryDate?.toISOString() ?? null,

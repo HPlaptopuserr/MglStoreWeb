@@ -96,6 +96,7 @@ import {
 } from "@/features/pos/utils/qpay-checkout-recovery";
 import { API, authFetch } from "@/lib/api";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
+import { formatPosQuantity } from "@mgl/types";
 
 type PosView = "register" | "checkout" | "history";
 
@@ -171,6 +172,7 @@ type PosCreditListLine = {
   unitPrice: number;
   taxAmount: number;
   discount: number;
+  measureUnit: string | null;
   lineTotal: number;
 };
 
@@ -291,7 +293,7 @@ function buildCreditRepaymentCartLines(credit: PosCreditListItem): CartLine[] {
 
     return {
       productId: `credit:${credit.id}:${line.id}`,
-      name: `${line.productName} (${line.qty}ш) - ${credit.employeeName || credit.borrowerName}`,
+      name: `${line.productName} (${formatPosQuantity(line.qty, line.measureUnit)}) - ${credit.employeeName || credit.borrowerName}`,
       imageUrl: null,
       qty: 1,
       stockQty: 1,
@@ -325,8 +327,9 @@ function buildCreditRepaymentEbarimtReceipt({
       productId: line.productId,
       name: line.productName,
       qty: line.qty,
-      unitPrice: roundMoney(lineTotal / Math.max(1, line.qty)),
+      unitPrice: roundMoney(lineTotal / Math.max(0.001, line.qty)),
       taxAmount: 0,
+      measureUnit: line.measureUnit || undefined,
       lineTotal,
     };
   });
@@ -4053,7 +4056,12 @@ export default function PosDemoPage() {
                   </div>
                   <div className="rounded-xl bg-white border border-slate-200 px-3 py-2">
                     <p className="text-[11px] uppercase tracking-wider text-slate-500">Нөөц</p>
-                    <p className="mt-1 text-xl font-black text-slate-800">{selectedByCode.stockQty}</p>
+                    <p className="mt-1 text-xl font-black text-slate-800">
+                      {formatPosQuantity(
+                        selectedByCode.stockQty,
+                        selectedByCode.measureUnit,
+                      )}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -4226,6 +4234,13 @@ export default function PosDemoPage() {
                           expandedCreditCustomerKey === group.key ||
                           group.rows.some(({ credit }) => selectedCreditRepayment?.id === credit.id);
                         const totalQty = group.rows.reduce((sum, row) => sum + row.line.qty, 0);
+                        const quantityUnits = new Set(
+                          group.rows.map((row) => row.line.measureUnit || "pcs"),
+                        );
+                        const totalQtyLabel =
+                          quantityUnits.size === 1
+                            ? formatPosQuantity(totalQty, quantityUnits.values().next().value)
+                            : "Холимог";
 
                         return (
                           <Fragment key={group.key}>
@@ -4264,7 +4279,7 @@ export default function PosDemoPage() {
                                 {group.rows.length} мөр
                               </td>
                               <td className="px-2 py-3 text-right font-black tabular-nums text-slate-900">
-                                {totalQty}
+                                {totalQtyLabel}
                               </td>
                               <td className="px-2 py-3 text-right">
                                 <p className="font-black tabular-nums text-amber-700">
@@ -4300,7 +4315,7 @@ export default function PosDemoPage() {
                                     </p>
                                   </td>
                                   <td className="px-2 py-2.5 text-right font-black tabular-nums text-slate-900">
-                                    {line.qty}
+                                    {formatPosQuantity(line.qty, line.measureUnit)}
                                   </td>
                                   <td className="px-2 py-2.5 text-right">
                                     <p className="font-black tabular-nums text-slate-950">
@@ -4362,7 +4377,7 @@ export default function PosDemoPage() {
                       >
                         {inCartQty > 0 ? (
                           <span className="absolute right-2 top-2 z-10 rounded-full bg-[#00c2ff] px-2 py-0.5 text-[10px] font-black text-[#003548]">
-                            {inCartQty}x
+                            {formatPosQuantity(inCartQty, product.measureUnit)}
                           </span>
                         ) : null}
                         <div className="relative h-[82px] shrink-0 bg-[#1c2b3c]">
@@ -4393,6 +4408,7 @@ export default function PosDemoPage() {
                               <p className="text-[10px] font-bold uppercase tracking-wide text-[#86929a]">Үнэ</p>
                               <p className="text-lg font-black leading-none tabular-nums text-[#92d9ff]">
                                 ₮{product.price.toLocaleString()}
+                                {product.measureUnit === "kg" ? "/кг" : ""}
                               </p>
                             </div>
                             <span
@@ -4404,7 +4420,10 @@ export default function PosDemoPage() {
                                     : "bg-[#10b981]/15 text-[#6ee7b7]"
                               }`}
                             >
-                              {product.stockQty}
+                              {formatPosQuantity(
+                                product.stockQty,
+                                product.measureUnit,
+                              )}
                             </span>
                           </div>
                         </div>

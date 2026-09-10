@@ -1,5 +1,6 @@
 import { API, authFetch } from "@/lib/api";
 import type { PosProduct } from "../types/pos.types";
+import { normalizePosMeasureUnit } from "@mgl/types";
 
 type RawProduct = {
   id: string;
@@ -16,6 +17,7 @@ type RawProduct = {
   classificationCode?: string | null;
   taxProductCode?: string | null;
   stock: number;
+  unit?: string | null;
   supplyType?: "IN_STOCK" | "CHINA_PREORDER";
   isActive: boolean;
 };
@@ -74,7 +76,7 @@ export async function getOwnProducts(
       cityTaxRate: Number(item.cityTaxRate) || 0,
       classificationCode: item.classificationCode || "6212991",
       taxProductCode: item.taxProductCode || null,
-      measureUnit: "pcs",
+      measureUnit: normalizePosMeasureUnit(item.unit),
       isActive: item.isActive,
     }));
 }

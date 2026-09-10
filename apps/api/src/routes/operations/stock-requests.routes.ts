@@ -1640,7 +1640,7 @@ router.get(
         addSales(row.productSku, row.productName, row._sum.quantity || 0),
       );
       posSales.forEach((row) =>
-        addSales(row.productSku, row.productName, row._sum.qty || 0),
+        addSales(row.productSku, row.productName, Number(row._sum.qty || 0)),
       );
 
       const normalizeIdentity = (value: string) =>
@@ -1709,7 +1709,7 @@ router.get(
         addSystemSales(row.productId, row._sum.quantity || 0),
       );
       systemPosSales.forEach((row) =>
-        addSystemSales(row.productId, row._sum.qty || 0),
+        addSystemSales(row.productId, Number(row._sum.qty || 0)),
       );
       const systemRequestsByIdentity = new Map<string, number>();
       systemStockRequests.forEach((row) => {
