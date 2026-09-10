@@ -7,7 +7,7 @@ import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
-import { checkSystemQrPayment, createSystemQrInvoice } from "../../../services/systemqr";
+import { cancelSystemQrInvoice, checkSystemQrPayment, createSystemQrInvoice } from "../../../services/systemqr";
 import {
   requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
   roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
@@ -308,6 +308,108 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
     console.error("qpay invoice create error", error);
     const msg = error instanceof Error ? error.message : "QPay invoice үүсгэхэд алдаа гарлаа";
     return res.status(500).json({ message: msg });
+  }
+});
+
+router.post("/pos/payments/qpay/cancel", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const id = String(req.body?.invoiceId || "").trim();
+  if (!id) return res.status(400).json({ message: "QPay invoiceId шаардлагатай" });
+
+  try {
+    const invoice = await prisma.qPayInvoice.findUnique({
+      where: { id },
+      include: {
+        register: {
+          select: {
+            id: true,
+            organizationId: true,
+            qpayEnabled: true,
+            qpayMerchantId: true,
+            qpayTerminalId: true,
+          },
+        },
+      },
+    });
+    if (!invoice) return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+    if (actor.role !== "ADMIN" && invoice.organizationId && !(await hasOrgMembership(actor.id, invoice.organizationId))) {
+      return res.status(403).json({ message: "Өөр байгууллагын QPay invoice цуцлах боломжгүй" });
+    }
+    if (invoice.status === PosQPayStatus.PAID) {
+      return res.status(409).json({ message: "Төлөгдсөн QPay invoice-ийг цуцлах боломжгүй" });
+    }
+    if (invoice.status !== PosQPayStatus.PENDING) {
+      return res.status(409).json({
+        message: `QPay invoice төлөв ${invoice.status} тул дахин үүсгэх боломжгүй`,
+      });
+    }
+
+    const payload = (invoice.webhookPayload || {}) as Record<string, unknown>;
+    const provider = String(payload.provider || "").trim().toUpperCase();
+    const providerInvoiceId = String(payload.providerInvoiceId || "").trim();
+    if (provider !== "SYSTEMQR" || !providerInvoiceId) {
+      return res.status(400).json({ message: "QR дахин үүсгэх нь одоогоор Minu SystemQR дээр дэмжигдэнэ" });
+    }
+
+    const registerConfig = invoice.register
+      ? {
+          qpayEnabled: invoice.register.qpayEnabled,
+          qpayMerchantId: invoice.register.qpayMerchantId,
+          qpayTerminalId: invoice.register.qpayTerminalId,
+        }
+      : null;
+    const systemQrConfig = await resolveSystemQrConfig(invoice.organizationId, registerConfig);
+    if (!systemQrConfig) {
+      return res.status(400).json({ message: "Minu SystemQR merchant тохиргоо олдсонгүй" });
+    }
+
+    try {
+      await cancelSystemQrInvoice(
+        { invoiceNumber: providerInvoiceId },
+        systemQrConfig.username,
+        systemQrConfig.password,
+      );
+    } catch (systemQrError) {
+      const message = systemQrError instanceof Error ? systemQrError.message : String(systemQrError);
+      if (!systemQrConfig.password || !/SystemQR Login Error|username or password|credential|unauthorized|401|403/i.test(message)) {
+        throw systemQrError;
+      }
+      console.warn("[SystemQR] subMerchant cancel auth failed; trying master token", message);
+      await cancelSystemQrInvoice({ invoiceNumber: providerInvoiceId });
+    }
+
+    const cancelledAt = new Date();
+    const updated = await prisma.qPayInvoice.updateMany({
+      where: { id, status: PosQPayStatus.PENDING },
+      data: {
+        status: PosQPayStatus.EXPIRED,
+        expiresAt: cancelledAt,
+        webhookPayload: {
+          ...payload,
+          cancelledAt: cancelledAt.toISOString(),
+          cancelledById: actor.id,
+        } as unknown as Prisma.JsonObject,
+      },
+    });
+    if (updated.count !== 1) {
+      return res.status(409).json({ message: "QPay invoice төлөв өөрчлөгдсөн тул шинэ QR үүсгэсэнгүй" });
+    }
+
+    return res.json({
+      invoiceId: invoice.id,
+      amount: Number(invoice.amount),
+      qrText: invoice.qrText,
+      qrImage: "",
+      status: PosQPayStatus.EXPIRED,
+      expiresAt: cancelledAt.toISOString(),
+      createdAt: invoice.createdAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("qpay cancel error", error);
+    const message = error instanceof Error ? error.message : "QPay invoice цуцлахад алдаа гарлаа";
+    return res.status(502).json({ message });
   }
 });
 
