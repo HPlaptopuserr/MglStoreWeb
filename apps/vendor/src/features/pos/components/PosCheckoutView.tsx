@@ -44,7 +44,6 @@ type Props = {
     credit?: SaleCreditPaymentMeta,
   ) => void | Promise<void>;
   onRequestQPay: (amount: number) => void | Promise<void>;
-  onRefreshQPay: (id: string) => void | Promise<void>;
   onMarkQPayPaid: (id: string) => void;
   onRemovePayment: (id: string) => void;
   onResetPayments: () => void;
@@ -139,7 +138,6 @@ export function PosCheckoutView({
   remaining,
   onAddPayment,
   onRequestQPay,
-  onRefreshQPay,
   onMarkQPayPaid,
   onRemovePayment,
   onResetPayments,
@@ -166,7 +164,6 @@ export function PosCheckoutView({
   >("ASK");
   const [pendingPaymentAmount, setPendingPaymentAmount] = useState(0);
   const [creditDialogOpen, setCreditDialogOpen] = useState(false);
-  const [qpayRefreshLoading, setQpayRefreshLoading] = useState(false);
 
   const parsedAmount = parseFloat(enteredAmount.replace(/,/g, "")) || 0;
   const pendingTotal = paymentEntries
@@ -237,16 +234,6 @@ export function PosCheckoutView({
     }
 
     setEnteredAmount("");
-  };
-
-  const handleQPayRefresh = async () => {
-    if (!qpayModal?.invoiceId || qpayRefreshLoading) return;
-    setQpayRefreshLoading(true);
-    try {
-      await onRefreshQPay(qpayModal.invoiceId);
-    } finally {
-      setQpayRefreshLoading(false);
-    }
   };
 
   const handlePrimaryAction = () => {
@@ -569,23 +556,6 @@ export function PosCheckoutView({
                       minute: "2-digit",
                     })}
                   </p>
-                  <p className="mt-3 max-w-xs text-xs leading-5 text-zinc-400">
-                    Эхний уншилтыг хаасан бол ижил QR-ийг дахин уншуулахын оронд шинэ QR үүсгэнэ үү.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => void handleQPayRefresh()}
-                    disabled={qpayRefreshLoading || disabled}
-                    className="mt-3 inline-flex items-center gap-2 rounded-lg border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-xs font-black text-amber-200 hover:bg-amber-400/20 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <RefreshCw size={14} className={qpayRefreshLoading ? "animate-spin" : ""} />
-                    {qpayRefreshLoading ? "Шинэчилж байна..." : "QR дахин үүсгэх"}
-                  </button>
-                  {statusTone === "not-found" && statusMessage ? (
-                    <p className="mt-3 max-w-sm rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold leading-5 text-rose-200">
-                      {statusMessage}
-                    </p>
-                  ) : null}
                 </div>
               </div>
             </div>

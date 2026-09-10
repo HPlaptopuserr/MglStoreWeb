@@ -69,7 +69,6 @@ import {
   cancelPushEcr,
   createQPayInvoice,
   getQPayInvoiceStatus,
-  cancelQPayInvoice,
   confirmQPayInvoice,
   createLoyaltyRedeemSession,
   getLoyaltyRedeemSessionStatus,
@@ -2559,7 +2558,7 @@ export default function PosDemoPage() {
     ]);
   };
 
-  const requestQPay = async (amount: number, replaceInvoiceId?: string) => {
+  const requestQPay = async (amount: number) => {
     const safeAmount = roundMoney(Math.max(0, Math.min(amount, remaining)));
     if (safeAmount <= 0) return;
 
@@ -2588,10 +2587,7 @@ export default function PosDemoPage() {
         status: "pending",
         invoiceId: invoice.invoiceId,
       };
-      const nextPaymentEntries = [
-        ...paymentEntries.filter((item) => item.id !== replaceInvoiceId),
-        qpayEntry,
-      ];
+      const nextPaymentEntries = [...paymentEntries, qpayEntry];
 
       saveQPayCheckoutRecovery(organizationId, {
         clientSaleId: clientSaleIdRef.current,
@@ -2611,42 +2607,6 @@ export default function PosDemoPage() {
       setAutoCheckoutActive(false);
       setScanStatus("not-found");
       setScanMessage(error instanceof Error ? error.message : "QR төлбөрийн нэхэмжлэл үүсгэхэд алдаа гарлаа");
-    }
-  };
-
-  const refreshQPay = async (id: string) => {
-    const target = paymentEntries.find(
-      (item) => item.id === id && item.method === "QR" && item.status === "pending",
-    );
-    if (!target) return;
-
-    try {
-      setScanStatus("idle");
-      setScanMessage("Хуучин QR-ийг цуцалж байна...");
-      await cancelQPayInvoice(id);
-
-      const remainingEntries = paymentEntries.filter((item) => item.id !== id);
-      setPaymentEntries(remainingEntries);
-      if (qpayModal?.invoiceId === id) setQpayModal(null);
-
-      if (clientSaleIdRef.current) {
-        saveQPayCheckoutRecovery(organizationId, {
-          clientSaleId: clientSaleIdRef.current,
-          paymentEntries: remainingEntries,
-          qpayModal: null,
-          loyalty,
-          loyaltyRedeemSession,
-        });
-      }
-
-      await requestQPay(target.amount, id);
-    } catch (error) {
-      clearProgressTicker();
-      setAutoCheckoutActive(false);
-      setScanStatus("not-found");
-      setScanMessage(
-        error instanceof Error ? error.message : "Хуучин QR-ийг цуцлахад алдаа гарлаа",
-      );
     }
   };
 
@@ -4089,7 +4049,6 @@ export default function PosDemoPage() {
           creditBorrowers={creditBorrowers}
           onAddPayment={addPaymentEntry}
           onRequestQPay={requestQPay}
-          onRefreshQPay={refreshQPay}
           onMarkQPayPaid={markQPayPaid}
           onRemovePayment={removePaymentEntry}
           onResetPayments={resetPaymentEntries}

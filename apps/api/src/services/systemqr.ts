@@ -45,10 +45,6 @@ interface SystemQrCheckInvoiceParams {
   invoiceNumber: string;
 }
 
-interface SystemQrCancelInvoiceParams {
-  invoiceNumber: string;
-}
-
 export interface SystemQrRegisterSubMerchantParams {
   merchantName: string;
   accountNumber: string;
@@ -457,42 +453,6 @@ export async function checkSystemQrPayment(params: SystemQrCheckInvoiceParams, u
     return { paid: false };
   } catch (error: any) {
     console.error("SystemQR checkInvoice error:", error.message);
-    throw error;
-  }
-}
-
-export async function cancelSystemQrInvoice(
-  params: SystemQrCancelInvoiceParams,
-  username?: string,
-  password?: string,
-) {
-  const { qrpayBaseUrl } = systemQrEnv();
-
-  try {
-    const data = await fetchSystemQrJsonWithTokenRetry<any>((token) => fetch(`${qrpayBaseUrl}/cancelQr`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ invoiceNumber: params.invoiceNumber }),
-    }), username, password);
-
-    if (data.status !== "000") {
-      throw new Error(
-        `Minu SystemQR cancelQr failed (${data.status || "unknown"}): ${
-          data.message || "SystemQR invoice cancellation failed"
-        }`,
-      );
-    }
-
-    return {
-      cancelled: true,
-      status: String(data.status),
-      message: data.message ? String(data.message) : null,
-    };
-  } catch (error: any) {
-    console.error("SystemQR cancelQr error:", error.message);
     throw error;
   }
 }
