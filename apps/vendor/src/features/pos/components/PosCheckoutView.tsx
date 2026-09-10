@@ -581,6 +581,11 @@ export function PosCheckoutView({
                     <RefreshCw size={14} className={qpayRefreshLoading ? "animate-spin" : ""} />
                     {qpayRefreshLoading ? "Шинэчилж байна..." : "QR дахин үүсгэх"}
                   </button>
+                  {statusTone === "not-found" && statusMessage ? (
+                    <p className="mt-3 max-w-sm rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold leading-5 text-rose-200">
+                      {statusMessage}
+                    </p>
+                  ) : null}
                 </div>
               </div>
             </div>

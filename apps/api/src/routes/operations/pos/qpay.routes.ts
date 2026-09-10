@@ -6,7 +6,7 @@ import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.se
 import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
-import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
+import { getVendorMerchantConfig, getVendorSystemQrConfig } from "../../../services/vendor-merchant.service";
 import { cancelSystemQrInvoice, checkSystemQrPayment, createSystemQrInvoice } from "../../../services/systemqr";
 import {
   requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
@@ -24,12 +24,6 @@ const router: ExpressRouter = Router();
 const isSystemQrMarker = (value?: string | null) =>
   String(value || "").trim().toUpperCase() === "SYSTEMQR" ||
   String(value || "").trim().toLowerCase().startsWith("systemqr");
-
-const getSystemQrPassword = (value?: string | null) => {
-  const marker = String(value || "").trim();
-  if (!marker.toLowerCase().startsWith("systemqr:")) return undefined;
-  return marker.slice("systemqr:".length) || undefined;
-};
 
 const isPublicCallbackBaseUrl = (value?: string | null) => {
   if (!value) return false;
@@ -54,34 +48,28 @@ async function resolveSystemQrConfig(
     qpayTerminalId: string | null;
   } | null,
 ) {
-  if (
+  const registerMerchantCode =
     registerQpayConfig?.qpayEnabled &&
     registerQpayConfig.qpayMerchantId &&
     isSystemQrMarker(registerQpayConfig.qpayTerminalId)
-  ) {
-    return { merchantCode: registerQpayConfig.qpayMerchantId.trim() };
+      ? registerQpayConfig.qpayMerchantId.trim()
+      : null;
+
+  const organizationConfig = organizationId
+    ? await getVendorSystemQrConfig(organizationId, "POS")
+    : null;
+
+  if (registerMerchantCode) {
+    // Register settings identify the receiving merchant, while the encrypted
+    // sub-merchant password is kept on the organization. Preserve the register
+    // merchant selection and attach credentials only when both point to the
+    // same account.
+    return organizationConfig?.merchantCode === registerMerchantCode
+      ? organizationConfig
+      : { merchantCode: registerMerchantCode };
   }
 
-  if (!organizationId) return null;
-
-  const org = await prisma.organization.findUnique({
-    where: { id: organizationId },
-    select: {
-      qpayEnabled: true,
-      qpayMerchantId: true,
-      qpayMerchantKey: true,
-      qpayInvoiceCode: true,
-    },
-  });
-
-  if (!org?.qpayEnabled || !org.qpayMerchantId) return null;
-  if (!isSystemQrMarker(org.qpayInvoiceCode) && !isSystemQrMarker(org.qpayMerchantKey)) return null;
-
-  return {
-    merchantCode: org.qpayMerchantId.trim(),
-    username: org.qpayMerchantId.trim(),
-    password: getSystemQrPassword(org.qpayMerchantKey),
-  };
+  return organizationConfig;
 }
 
 router.post("/pos/payments/qpay/invoice", async (req, res) => {
