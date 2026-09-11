@@ -438,15 +438,30 @@ export function ProductFormModal({
                             : [product.imageUrl],
                         businessCategoryId:
                           current.businessCategoryId ||
+                          product.businessCategoryId ||
                           matchedCategory?.id ||
                           "",
+                        sku: current.sku || product.suggestedSku || "",
+                        price:
+                          current.price ||
+                          (product.suggestedPrice !== null
+                            ? String(product.suggestedPrice)
+                            : ""),
+                        taxType: product.taxType || current.taxType,
+                        cityTaxRate:
+                          product.cityTaxRate !== null
+                            ? String(product.cityTaxRate)
+                            : current.cityTaxRate,
+                        taxProductCode:
+                          product.taxProductCode || current.taxProductCode,
                         classificationCode:
-                          !current.businessCategoryId && matchedCategory
+                          product.classificationCode ||
+                          (!current.businessCategoryId && matchedCategory
                             ? (getCategoryAutomaticClassificationCode(
                                 matchedCategory,
                                 product.canonicalName,
                               ) ?? current.classificationCode)
-                            : current.classificationCode,
+                            : current.classificationCode),
                       }));
                     }}
                   />
@@ -627,7 +642,8 @@ export function ProductFormModal({
                     />
                     <div>
                       <p className="text-sm font-bold">
-                        НӨАТ төлөгч биш бол “НӨАТ-аас чөлөөлөгдсөн” гэж сонгохгүй.
+                        НӨАТ төлөгч биш бол “НӨАТ-аас чөлөөлөгдсөн” гэж
+                        сонгохгүй.
                       </p>
                       <p className="mt-1 text-xs font-medium leading-5 text-amber-800">
                         Ердийн хүнсний бараанд “Ердийн борлуулалт” тохиргоог
@@ -702,7 +718,8 @@ export function ProductFormModal({
                         />
                         <p className="text-xs font-medium leading-5 text-slate-500">
                           НХАТ ногдохгүй бол 0, хуульд хамрагдах бараа эсвэл
-                          үйлчилгээнд баталгаажсан хувийг оруулна (дээд тал нь 2%).
+                          үйлчилгээнд баталгаажсан хувийг оруулна (дээд тал нь
+                          2%).
                         </p>
                       </div>
 

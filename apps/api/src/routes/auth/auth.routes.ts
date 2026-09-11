@@ -185,6 +185,9 @@ function toMembershipPayload(user: any) {
 
 type AuthOrgContext = {
   organizationId: string;
+  organizationType?: string | null;
+  businessCategory?: string | null;
+  vendorId?: string | null;
   orgRole: string;
   organizationName?: string | null;
   businessOrdersEnabled?: boolean;
@@ -237,6 +240,7 @@ async function listUserOrganizations(
           slug: true,
           logoUrl: true,
           type: true,
+          businessCategory: true,
           status: true,
           isVerified: true,
           businessOrdersEnabled: true,
@@ -259,6 +263,7 @@ async function listUserOrganizations(
     isPrimary: membership.isPrimary,
     capabilities: membership.capabilities,
     type: membership.organization.type,
+    businessCategory: membership.organization.businessCategory,
     status: membership.organization.status,
     isVerified: membership.organization.isVerified,
     businessOrdersEnabled: membership.organization.businessOrdersEnabled,
@@ -719,6 +724,8 @@ async function resolveVendorLoginMembership(userId: string) {
       organization: {
         select: {
           name: true,
+          type: true,
+          businessCategory: true,
           businessOrdersEnabled: true,
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
@@ -747,6 +754,8 @@ async function resolveVendorLoginMembership(userId: string) {
       organization: {
         select: {
           name: true,
+          type: true,
+          businessCategory: true,
           businessOrdersEnabled: true,
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
@@ -768,6 +777,12 @@ async function resolveLoginOrganization(
         organizationId: membership.organizationId,
         orgRole: membership.role,
         organizationName: membership.organization?.name || null,
+        organizationType: membership.organization?.type || null,
+        businessCategory: membership.organization?.businessCategory || null,
+        vendorId:
+          membership.organization?.type === "VENDOR"
+            ? membership.organizationId
+            : null,
         businessOrdersEnabled:
           membership.organization?.businessOrdersEnabled ?? true,
         businessInventoryEnabled:
@@ -805,6 +820,8 @@ async function resolveTokenOrganization(
         organization: {
           select: {
             name: true,
+            type: true,
+            businessCategory: true,
             businessOrdersEnabled: true,
             businessInventoryEnabled: true,
             businessAttendanceEnabled: true,
@@ -821,6 +838,12 @@ async function resolveTokenOrganization(
         organizationId: membership.organizationId,
         orgRole: membership.role,
         organizationName: membership.organization?.name || null,
+        organizationType: membership.organization?.type || null,
+        businessCategory: membership.organization?.businessCategory || null,
+        vendorId:
+          membership.organization?.type === "VENDOR"
+            ? membership.organizationId
+            : null,
         businessOrdersEnabled:
           membership.organization?.businessOrdersEnabled ?? true,
         businessInventoryEnabled:
@@ -863,6 +886,9 @@ function toWebAuthResponse(
       phone: user.profile?.phoneNumber || null,
       organizationId: orgInfo?.organizationId || null,
       organizationName: orgInfo?.organizationName || null,
+      organizationType: orgInfo?.organizationType || null,
+      businessCategory: orgInfo?.businessCategory || null,
+      vendorId: orgInfo?.vendorId || null,
       businessOrdersEnabled: orgInfo?.businessOrdersEnabled ?? true,
       businessInventoryEnabled: orgInfo?.businessInventoryEnabled ?? true,
       businessAttendanceEnabled: orgInfo?.businessAttendanceEnabled ?? true,

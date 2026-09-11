@@ -2945,6 +2945,70 @@ router.get("/products/master-catalog/search", requireAuth, async (req, res) => {
       take: 40,
     });
 
+    const masterIds = products.map((product) => product.id);
+    const sourceProducts = masterIds.length
+      ? await prisma.product.findMany({
+          where: {
+            deletedAt: null,
+            isActive: true,
+            reviewStatus: "APPROVED",
+            OR: [
+              { masterProductId: { in: masterIds } },
+              ...(barcode ? [{ barcode }] : []),
+            ],
+          },
+          select: {
+            id: true,
+            masterProductId: true,
+            name: true,
+            sku: true,
+            barcode: true,
+            unit: true,
+            description: true,
+            price: true,
+            taxType: true,
+            cityTaxRate: true,
+            classificationCode: true,
+            taxProductCode: true,
+            updatedAt: true,
+            images: {
+              select: { url: true },
+              orderBy: productImageOrderBy(),
+              take: 1,
+            },
+            businessCategory: { select: { id: true, name: true } },
+          },
+        })
+      : [];
+
+    const completenessScore = (product: (typeof sourceProducts)[number]) =>
+      1 +
+      (product.name.trim() ? 2 : 0) +
+      (product.images[0]?.url ? 3 : 0) +
+      (product.description?.trim() ? 2 : 0) +
+      (product.unit?.trim() ? 1 : 0) +
+      (product.businessCategory ? 2 : 0) +
+      (product.sku?.trim() ? 1 : 0) +
+      (Number(product.price) > 0 ? 1 : 0) +
+      (product.taxProductCode?.trim() ? 1 : 0) +
+      (product.classificationCode.trim() !== "6212991" ? 1 : 0);
+
+    const bestSourceByMasterId = new Map<
+      string,
+      (typeof sourceProducts)[number]
+    >();
+    for (const source of sourceProducts) {
+      const masterId = source.masterProductId;
+      if (!masterId || !masterIds.includes(masterId)) continue;
+      const current = bestSourceByMasterId.get(masterId);
+      const isBetter =
+        !current ||
+        completenessScore(source) > completenessScore(current) ||
+        (completenessScore(source) === completenessScore(current) &&
+          source.updatedAt > current.updatedAt);
+      if (isBetter) bestSourceByMasterId.set(masterId, source);
+    }
+
     const seen = new Set<string>();
     return res.json(
       products
@@ -2957,11 +3021,29 @@ router.get("/products/master-catalog/search", requireAuth, async (req, res) => {
           return true;
         })
         .slice(0, 12)
-        .map(({ _count, ...product }) => ({
-          ...product,
-          usageCount: _count.products,
-          exactBarcodeMatch: Boolean(barcode && product.barcode === barcode),
-        })),
+        .map(({ _count, ...product }) => {
+          const source = bestSourceByMasterId.get(product.id);
+          return {
+            ...product,
+            canonicalName: source?.name || product.canonicalName,
+            barcode: source?.barcode || product.barcode,
+            unit: source?.unit || product.unit,
+            description: source?.description || product.description,
+            imageUrl: source?.images[0]?.url || product.imageUrl,
+            categoryName:
+              source?.businessCategory?.name || product.categoryName,
+            businessCategoryId: source?.businessCategory?.id ?? null,
+            suggestedSku: source?.sku ?? null,
+            suggestedPrice: source ? Number(source.price) : null,
+            taxType: source?.taxType ?? null,
+            cityTaxRate: source ? Number(source.cityTaxRate) : null,
+            classificationCode: source?.classificationCode ?? null,
+            taxProductCode: source?.taxProductCode ?? null,
+            sourceCompleteness: source ? completenessScore(source) : 0,
+            usageCount: _count.products,
+            exactBarcodeMatch: Boolean(barcode && product.barcode === barcode),
+          };
+        }),
     );
   } catch (error) {
     console.error("search master products error", error);

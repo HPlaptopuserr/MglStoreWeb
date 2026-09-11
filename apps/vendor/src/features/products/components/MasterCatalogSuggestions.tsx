@@ -68,6 +68,14 @@ export function MasterCatalogSuggestions({
     };
   }, [disabled, normalizedBarcode, normalizedName]);
 
+  useEffect(() => {
+    if (!normalizedBarcode || selectedId || products.length === 0) return;
+    const bestExactMatch = products.find(
+      (product) => product.exactBarcodeMatch,
+    );
+    if (bestExactMatch) onSelect(bestExactMatch);
+  }, [normalizedBarcode, onSelect, products, selectedId]);
+
   if (disabled || (!loading && products.length === 0)) return null;
 
   return (

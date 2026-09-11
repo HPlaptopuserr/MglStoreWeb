@@ -51,7 +51,8 @@ export function UnknownBarcodeDialog({
   const [saveError, setSaveError] = useState("");
 
   const selectedSuggestion = useMemo(
-    () => suggestions.find((suggestion) => suggestion.id === selectedId) ?? null,
+    () =>
+      suggestions.find((suggestion) => suggestion.id === selectedId) ?? null,
     [selectedId, suggestions],
   );
 
@@ -66,9 +67,11 @@ export function UnknownBarcodeDialog({
   }, [barcode, open]);
 
   useEffect(() => {
-    if (suggestions.length !== 1 || selectedId) return;
+    if (suggestions.length === 0 || selectedId) return;
     setSelectedId(suggestions[0].id);
     setName(suggestions[0].canonicalName);
+    if (suggestions[0].suggestedPrice !== null)
+      setPrice(String(suggestions[0].suggestedPrice));
   }, [selectedId, suggestions]);
 
   if (!open) return null;
@@ -76,18 +79,23 @@ export function UnknownBarcodeDialog({
   const selectSuggestion = (suggestion: SharedCatalogSuggestion) => {
     setSelectedId(suggestion.id);
     setName(suggestion.canonicalName);
+    if (suggestion.suggestedPrice !== null)
+      setPrice(String(suggestion.suggestedPrice));
     setSaveError("");
   };
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     const parsedPrice = toNonNegativeNumber(price);
-    const parsedCostPrice = costPrice.trim() ? toNonNegativeNumber(costPrice) : null;
+    const parsedCostPrice = costPrice.trim()
+      ? toNonNegativeNumber(costPrice)
+      : null;
     const parsedStock = toNonNegativeNumber(stock);
 
     if (!organizationId) return setSaveError("Байгууллагын мэдээлэл олдсонгүй");
     if (!name.trim()) return setSaveError("Барааны нэр оруулна уу");
-    if (parsedPrice === null) return setSaveError("Борлуулах үнэ зөв оруулна уу");
+    if (parsedPrice === null)
+      return setSaveError("Борлуулах үнэ зөв оруулна уу");
     if (costPrice.trim() && parsedCostPrice === null)
       return setSaveError("Өртөг үнэ зөв оруулна уу");
     if (parsedStock === null || !Number.isInteger(parsedStock))
@@ -105,10 +113,20 @@ export function UnknownBarcodeDialog({
         costPrice: parsedCostPrice,
         stock: parsedStock,
         imageUrl: selectedSuggestion?.imageUrl ?? null,
+        unit: selectedSuggestion?.unit ?? null,
+        description: selectedSuggestion?.description ?? null,
+        businessCategoryId: selectedSuggestion?.businessCategoryId ?? null,
+        suggestedSku: selectedSuggestion?.suggestedSku ?? null,
+        taxType: selectedSuggestion?.taxType ?? null,
+        cityTaxRate: selectedSuggestion?.cityTaxRate ?? null,
+        classificationCode: selectedSuggestion?.classificationCode ?? null,
+        taxProductCode: selectedSuggestion?.taxProductCode ?? null,
       });
       onCreated(product);
     } catch (error: unknown) {
-      setSaveError(error instanceof Error ? error.message : "Бараа бүртгэхэд алдаа гарлаа");
+      setSaveError(
+        error instanceof Error ? error.message : "Бараа бүртгэхэд алдаа гарлаа",
+      );
     } finally {
       setSaving(false);
     }
@@ -128,7 +146,10 @@ export function UnknownBarcodeDialog({
               <PackagePlus size={22} />
             </span>
             <div>
-              <h2 id="unknown-barcode-title" className="text-xl font-black text-slate-950">
+              <h2
+                id="unknown-barcode-title"
+                className="text-xl font-black text-slate-950"
+              >
                 Бараа танай санд бүртгэлгүй байна
               </h2>
               <p className="mt-1 flex items-center gap-1.5 text-sm font-semibold text-slate-500">
@@ -152,12 +173,15 @@ export function UnknownBarcodeDialog({
             <section>
               <div className="mb-3 flex items-center gap-2">
                 <Database size={17} className="text-indigo-600" />
-                <h3 className="text-sm font-black text-slate-900">Нэгдсэн сангийн санал</h3>
+                <h3 className="text-sm font-black text-slate-900">
+                  Нэгдсэн сангийн санал
+                </h3>
               </div>
 
               {lookupLoading ? (
                 <div className="flex min-h-36 items-center justify-center rounded-2xl border border-indigo-100 bg-indigo-50/60 text-sm font-bold text-indigo-700">
-                  <Loader2 size={18} className="mr-2 animate-spin" /> Barcode хайж байна…
+                  <Loader2 size={18} className="mr-2 animate-spin" /> Barcode
+                  хайж байна…
                 </div>
               ) : lookupError ? (
                 <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-700">
@@ -165,8 +189,12 @@ export function UnknownBarcodeDialog({
                 </div>
               ) : suggestions.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center">
-                  <p className="text-sm font-black text-slate-800">Нэгдсэн сангаас олдсонгүй</p>
-                  <p className="mt-1 text-xs text-slate-500">Нэрийг гараар оруулж шинэ ерөнхий мэдээлэл үүсгэнэ.</p>
+                  <p className="text-sm font-black text-slate-800">
+                    Нэгдсэн сангаас олдсонгүй
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Нэрийг гараар оруулж шинэ ерөнхий мэдээлэл үүсгэнэ.
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -186,19 +214,35 @@ export function UnknownBarcodeDialog({
                       >
                         <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-white">
                           {suggestion.imageUrl ? (
-                            <img src={suggestion.imageUrl} alt="" className="h-full w-full object-cover" />
+                            <img
+                              src={suggestion.imageUrl}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
                           ) : (
                             <ImageIcon size={19} className="text-slate-300" />
                           )}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-black text-slate-950">{suggestion.canonicalName}</span>
-                          <span className="block truncate text-xs font-medium text-slate-500">
-                            {[suggestion.brand, suggestion.unit, suggestion.categoryName].filter(Boolean).join(" · ") || "Ерөнхий мэдээлэл"}
+                          <span className="block truncate text-sm font-black text-slate-950">
+                            {suggestion.canonicalName}
                           </span>
-                          <span className="mt-1 block text-[11px] font-bold text-indigo-600">{suggestion.usageCount} дэлгүүр ашиглаж байна</span>
+                          <span className="block truncate text-xs font-medium text-slate-500">
+                            {[
+                              suggestion.brand,
+                              suggestion.unit,
+                              suggestion.categoryName,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ") || "Ерөнхий мэдээлэл"}
+                          </span>
+                          <span className="mt-1 block text-[11px] font-bold text-indigo-600">
+                            {suggestion.usageCount} дэлгүүр ашиглаж байна
+                          </span>
                         </span>
-                        <span className={`flex h-7 w-7 items-center justify-center rounded-full ${selected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-400"}`}>
+                        <span
+                          className={`flex h-7 w-7 items-center justify-center rounded-full ${selected ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-400"}`}
+                        >
                           <Check size={15} />
                         </span>
                       </button>
@@ -208,13 +252,19 @@ export function UnknownBarcodeDialog({
               )}
 
               <p className="mt-3 text-[11px] leading-relaxed text-slate-500">
-                Энд бусад байгууллагын үнэ, өртөг, үлдэгдэл харагдахгүй. Зөвхөн бүтээгдэхүүний нийтлэг мэдээллийг ашиглана.
+                Нийтийн зарах үнийг зөвхөн санал болгон бөглөнө. Бусад
+                байгууллагын өртөг, үлдэгдлийг дамжуулахгүй.
               </p>
             </section>
 
             <section className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
               <div>
-                <label htmlFor="quick-product-name" className="mb-1.5 block text-xs font-black text-slate-700">Барааны нэр *</label>
+                <label
+                  htmlFor="quick-product-name"
+                  className="mb-1.5 block text-xs font-black text-slate-700"
+                >
+                  Барааны нэр *
+                </label>
                 <input
                   id="quick-product-name"
                   value={name}
@@ -229,30 +279,84 @@ export function UnknownBarcodeDialog({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label htmlFor="quick-product-price" className="mb-1.5 block text-xs font-black text-slate-700">Зарах үнэ *</label>
-                  <input id="quick-product-price" inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" />
+                  <label
+                    htmlFor="quick-product-price"
+                    className="mb-1.5 block text-xs font-black text-slate-700"
+                  >
+                    Зарах үнэ *
+                  </label>
+                  <input
+                    id="quick-product-price"
+                    inputMode="decimal"
+                    value={price}
+                    onChange={(event) => setPrice(event.target.value)}
+                    placeholder="0"
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+                  />
                 </div>
                 <div>
-                  <label htmlFor="quick-product-cost" className="mb-1.5 block text-xs font-black text-slate-700">Өртөг үнэ</label>
-                  <input id="quick-product-cost" inputMode="decimal" value={costPrice} onChange={(event) => setCostPrice(event.target.value)} placeholder="0" className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" />
+                  <label
+                    htmlFor="quick-product-cost"
+                    className="mb-1.5 block text-xs font-black text-slate-700"
+                  >
+                    Өртөг үнэ
+                  </label>
+                  <input
+                    id="quick-product-cost"
+                    inputMode="decimal"
+                    value={costPrice}
+                    onChange={(event) => setCostPrice(event.target.value)}
+                    placeholder="0"
+                    className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+                  />
                 </div>
               </div>
               <div>
-                <label htmlFor="quick-product-stock" className="mb-1.5 block text-xs font-black text-slate-700">Эхний үлдэгдэл *</label>
-                <input id="quick-product-stock" inputMode="numeric" value={stock} onChange={(event) => setStock(event.target.value)} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100" />
+                <label
+                  htmlFor="quick-product-stock"
+                  className="mb-1.5 block text-xs font-black text-slate-700"
+                >
+                  Эхний үлдэгдэл *
+                </label>
+                <input
+                  id="quick-product-stock"
+                  inputMode="numeric"
+                  value={stock}
+                  onChange={(event) => setStock(event.target.value)}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold tabular-nums outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+                />
               </div>
               {saveError ? (
-                <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700">
-                  <AlertCircle size={16} className="mt-0.5 shrink-0" /> {saveError}
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold text-rose-700"
+                >
+                  <AlertCircle size={16} className="mt-0.5 shrink-0" />{" "}
+                  {saveError}
                 </div>
               ) : null}
             </section>
           </div>
 
           <footer className="flex items-center justify-end gap-3 border-t border-slate-100 bg-white px-6 py-4">
-            <button type="button" onClick={onClose} disabled={saving} className="h-11 rounded-xl px-5 text-sm font-bold text-slate-600 transition hover:bg-slate-100 disabled:opacity-50">Алгасах</button>
-            <button type="submit" disabled={saving || lookupLoading} className="inline-flex h-11 items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-black text-white shadow-lg transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50">
-              {saving ? <Loader2 size={17} className="mr-2 animate-spin" /> : <PackagePlus size={17} className="mr-2" />}
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="h-11 rounded-xl px-5 text-sm font-bold text-slate-600 transition hover:bg-slate-100 disabled:opacity-50"
+            >
+              Алгасах
+            </button>
+            <button
+              type="submit"
+              disabled={saving || lookupLoading}
+              className="inline-flex h-11 items-center justify-center rounded-xl bg-slate-950 px-5 text-sm font-black text-white shadow-lg transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving ? (
+                <Loader2 size={17} className="mr-2 animate-spin" />
+              ) : (
+                <PackagePlus size={17} className="mr-2" />
+              )}
               Өөрийн санд оруулах
             </button>
           </footer>

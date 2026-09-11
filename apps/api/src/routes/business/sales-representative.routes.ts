@@ -1,6 +1,9 @@
 import { Router, type Router as ExpressRouter } from "express";
 import crypto from "crypto";
-import { canReserveStock, reservedStock } from "../../services/stock-reservation.service";
+import {
+  canReserveStock,
+  reservedStock,
+} from "../../services/stock-reservation.service";
 import {
   Capability,
   AuditAction,
@@ -30,12 +33,48 @@ import {
   getOutstandingStockPayments,
   serializeOutstandingPayment,
 } from "../../services/outstanding-stock-payment.service";
-import { getSalesStoreLocationSources, isMongoliaStoreCoordinate } from "../../services/sales-store-portfolio.service";
+
+import {
+  getSalesStoreLocationSources,
+  isMongoliaStoreCoordinate,
+} from "../../services/sales-store-portfolio.service";
 import { notifyNewSalesRepresentativeStockRequest } from "../../services/stock-request-notification.service";
 import {
   confirmRepresentativeCashPayment,
   validatePartialPaymentAmount,
 } from "../../services/sales-representative-cash-payment.service";
+
+const storePosSettingKey = (organizationId: string) =>
+  `pos-enabled-${organizationId}`;
+
+/** Keep POS visibility and the mobile store experience synchronized. */
+async function enableStorePos(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+) {
+  await tx.siteSetting.upsert({
+    where: { key: storePosSettingKey(organizationId) },
+    update: { value: "true" },
+    create: { key: storePosSettingKey(organizationId), value: "true" },
+  });
+
+  const owners = await tx.organizationMember.findMany({
+    where: { organizationId, role: "OWNER", isActive: true },
+    select: { id: true, capabilities: true },
+  });
+  await Promise.all(
+    owners.map((owner) =>
+      tx.organizationMember.update({
+        where: { id: owner.id },
+        data: {
+          capabilities: Array.from(
+            new Set([...owner.capabilities, Capability.POS_CASHIER]),
+          ),
+        },
+      }),
+    ),
+  );
+}
 
 const router: ExpressRouter = Router();
 const MANAGER_ROLES = new Set(["OWNER", "ADMIN", "CEO", "MANAGER"]);
@@ -183,10 +222,7 @@ function requireRepresentative(
 ) {
   return Boolean(
     current &&
-      canUseSalesRepresentativeOperations(
-        current.role,
-        current.capabilities,
-      ),
+    canUseSalesRepresentativeOperations(current.role, current.capabilities),
   );
 }
 
@@ -1035,6 +1071,7 @@ router.patch(
               contactPhone: details.ownerPhone,
             },
           });
+          await enableStorePos(tx, vendor.id);
           return { vendor, location: updatedLocation, inviteLink: null };
         },
       );
@@ -1170,6 +1207,7 @@ router.post("/sales-representative/vendors", requireAuth, async (req, res) => {
                 }),
               },
             });
+        await enableStorePos(tx, vendor.id);
         return { vendor, location, inviteLink: null };
       },
     );
@@ -1260,6 +1298,7 @@ router.post("/sales-representative/vendors", requireAuth, async (req, res) => {
             role: "OWNER",
             isPrimary: owner.organizationMemberships.length === 0,
             isActive: true,
+            capabilities: [Capability.POS_CASHIER],
           },
         });
         if (inviteToken && expiresAt)
@@ -1267,6 +1306,7 @@ router.post("/sales-representative/vendors", requireAuth, async (req, res) => {
             data: { userId: owner.id, token: inviteToken, expiresAt },
           });
       }
+      await enableStorePos(tx, vendor.id);
       const location = await tx.salesVisitLocation.create({
         data: {
           organizationId: current!.organizationId,
@@ -1376,13 +1416,21 @@ router.get(
       orderBy: { product: { name: "asc" } },
       take: 200,
     });
-    const reserved = await reservedStock(warehouse.id, rows.map((row) => row.productId));
-    return res.json(rows.map((row) => ({
-      ...row,
-      physicalQuantity: row.quantity,
-      reservedQuantity: reserved.get(row.productId) ?? 0,
-      quantity: Math.max(0, row.quantity - (reserved.get(row.productId) ?? 0)),
-    })));
+    const reserved = await reservedStock(
+      warehouse.id,
+      rows.map((row) => row.productId),
+    );
+    return res.json(
+      rows.map((row) => ({
+        ...row,
+        physicalQuantity: row.quantity,
+        reservedQuantity: reserved.get(row.productId) ?? 0,
+        quantity: Math.max(
+          0,
+          row.quantity - (reserved.get(row.productId) ?? 0),
+        ),
+      })),
+    );
   },
 );
 
@@ -1564,7 +1612,7 @@ router.post(
     const suffix = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
     const order = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
-        if (!await canReserveStock(tx, warehouse.id, items)) return null;
+        if (!(await canReserveStock(tx, warehouse.id, items))) return null;
         const created = await tx.warehouseStockRequest.create({
           data: {
             requestNumber: `SR-${suffix}`,
@@ -1604,7 +1652,13 @@ router.post(
         });
       },
     );
-    if (!order) return res.status(409).json({ message: "Барааны боломжит үлдэгдэл хүрэлцэхгүй байна. Өөр захиалгад нөөцлөгдсөн байж болно. Барааны жагсаалтыг шинэчилнэ үү." });
+    if (!order)
+      return res
+        .status(409)
+        .json({
+          message:
+            "Барааны боломжит үлдэгдэл хүрэлцэхгүй байна. Өөр захиалгад нөөцлөгдсөн байж болно. Барааны жагсаалтыг шинэчилнэ үү.",
+        });
     void prisma.auditLog.create({
       data: {
         userId: actor.userId,
@@ -1909,7 +1963,11 @@ router.post(
           where: {
             id: requestedId.slice(7),
             deletedAt: null,
-            organization: { type: OrgType.VENDOR, status: OrgStatus.ACTIVE, deletedAt: null },
+            organization: {
+              type: OrgType.VENDOR,
+              status: OrgStatus.ACTIVE,
+              deletedAt: null,
+            },
           },
         })
       : null;
@@ -1921,18 +1979,37 @@ router.post(
             isActive: true,
             OR: [
               { organizationId: current.organizationId },
-              { vendorOrganization: { is: { type: OrgType.VENDOR, status: OrgStatus.ACTIVE, deletedAt: null } } },
+              {
+                vendorOrganization: {
+                  is: {
+                    type: OrgType.VENDOR,
+                    status: OrgStatus.ACTIVE,
+                    deletedAt: null,
+                  },
+                },
+              },
             ],
           },
     });
     // The map identifies admin branches separately from sales visit locations.
     // Validate the selected branch's coordinates, not another branch's location.
-    const target = branch && branch.lat !== null && branch.lng !== null &&
+    const target =
+      branch &&
+      branch.lat !== null &&
+      branch.lng !== null &&
       isMongoliaStoreCoordinate(branch.lat, branch.lng)
-      ? { latitude: branch.lat, longitude: branch.lng, radiusMeters: location?.radiusMeters ?? 150 }
-      : branch ? null : location;
+        ? {
+            latitude: branch.lat,
+            longitude: branch.lng,
+            radiusMeters: location?.radiusMeters ?? 150,
+          }
+        : branch
+          ? null
+          : location;
     if (!target || (location && !location.isActive))
-      return res.status(404).json({ message: "Энэ байгууллагад идэвхтэй дэлгүүр олдсонгүй" });
+      return res
+        .status(404)
+        .json({ message: "Энэ байгууллагад идэвхтэй дэлгүүр олдсонгүй" });
     const distance = distanceMeters(
       point.latitude,
       point.longitude,
@@ -1962,7 +2039,9 @@ router.post(
       });
     }
     if (!location || !location.isActive) {
-      return res.status(404).json({ message: "Идэвхтэй айлчлалын байршил олдсонгүй" });
+      return res
+        .status(404)
+        .json({ message: "Идэвхтэй айлчлалын байршил олдсонгүй" });
     }
     const now = new Date();
     const ulaanbaatarOffsetMs = 8 * 60 * 60 * 1_000;

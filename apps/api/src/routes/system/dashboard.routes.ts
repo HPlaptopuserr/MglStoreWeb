@@ -18,6 +18,7 @@ import {
   shiftActivityDate,
   toActivityDate,
 } from "../../services/organization-activity.service";
+import { requirePosUser } from "../operations/pos/_shared";
 
 const router: RouterType = Router();
 
@@ -274,6 +275,50 @@ function startOfToday() {
 
 function round1(value: number) {
   return Math.round(value * 10) / 10;
+}
+
+type GroceryDashboardPeriod = "day" | "month" | "quarter";
+type GroceryDashboardShift = "all" | "open" | "closed";
+
+const ULAANBAATAR_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function groceryDashboardWindow(
+  period: GroceryDashboardPeriod,
+  now = new Date(),
+) {
+  const local = new Date(now.getTime() + ULAANBAATAR_OFFSET_MS);
+  const year = local.getUTCFullYear();
+  const month = local.getUTCMonth();
+  const day = local.getUTCDate();
+  const startMonth = period === "quarter" ? Math.floor(month / 3) * 3 : month;
+  const startLocal =
+    period === "day"
+      ? Date.UTC(year, month, day)
+      : Date.UTC(year, startMonth, 1);
+  const endLocal =
+    period === "day"
+      ? startLocal + DAY_MS
+      : period === "month"
+        ? Date.UTC(year, month + 1, 1)
+        : Date.UTC(year, startMonth + 3, 1);
+  const duration = endLocal - startLocal;
+  const toUtc = (value: number) => new Date(value - ULAANBAATAR_OFFSET_MS);
+  return {
+    start: toUtc(startLocal),
+    end: toUtc(endLocal),
+    previousStart: toUtc(startLocal - duration),
+  };
+}
+
+function groceryTrendLabel(date: Date, period: GroceryDashboardPeriod) {
+  const local = new Date(date.getTime() + ULAANBAATAR_OFFSET_MS);
+  if (period === "day") {
+    return `${String(local.getUTCHours()).padStart(2, "0")}:00`;
+  }
+  if (period === "month") {
+    return `${local.getUTCMonth() + 1}/${local.getUTCDate()}`;
+  }
+  return `${local.getUTCMonth() + 1}-р сар`;
 }
 
 function getExpiryRiskLevel(score: number, daysUntilExpiry: number) {
@@ -1534,6 +1579,209 @@ router.get(
     }
   },
 );
+
+/* ─── GET /grocery-store/dashboard ────────────────────── */
+router.get("/grocery-store/dashboard", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const requestedOrganizationId = String(req.query.organizationId || "").trim();
+  const organizationId =
+    actor.role === "ADMIN" || actor.role === "SUPER_ADMIN"
+      ? requestedOrganizationId || actor.organizationId
+      : actor.organizationId;
+  if (!organizationId) {
+    return res.status(400).json({ message: "Байгууллагын мэдээлэл олдсонгүй" });
+  }
+
+  const periodValue = String(req.query.period || "day").toLowerCase();
+  const shiftValue = String(req.query.shift || "all").toLowerCase();
+  if (
+    !(["day", "month", "quarter"] as const).includes(
+      periodValue as GroceryDashboardPeriod,
+    )
+  ) {
+    return res.status(400).json({ message: "period утга буруу байна" });
+  }
+  if (
+    !(["all", "open", "closed"] as const).includes(
+      shiftValue as GroceryDashboardShift,
+    )
+  ) {
+    return res.status(400).json({ message: "shift утга буруу байна" });
+  }
+
+  const period = periodValue as GroceryDashboardPeriod;
+  const shift = shiftValue as GroceryDashboardShift;
+  const window = groceryDashboardWindow(period);
+  const shiftStatus =
+    shift === "all" ? undefined : (shift.toUpperCase() as "OPEN" | "CLOSED");
+  const saleWhere = {
+    organizationId,
+    status: "COMPLETED" as const,
+    createdAt: { gte: window.start, lt: window.end },
+    ...(shiftStatus ? { shift: { status: shiftStatus } } : {}),
+  };
+  const previousSaleWhere = {
+    organizationId,
+    status: "COMPLETED" as const,
+    createdAt: { gte: window.previousStart, lt: window.start },
+    ...(shiftStatus ? { shift: { status: shiftStatus } } : {}),
+  };
+
+  try {
+    const expiryLimit = new Date();
+    expiryLimit.setUTCDate(expiryLimit.getUTCDate() + 30);
+
+    const [totalProducts, sales, previousSales, activeShift, expiringLots] =
+      await Promise.all([
+        prisma.product.count({
+          where: { organizationId, deletedAt: null, isActive: true },
+        }),
+        prisma.posSale.findMany({
+          where: saleWhere,
+          orderBy: { createdAt: "asc" },
+          select: {
+            createdAt: true,
+            lines: {
+              select: {
+                qty: true,
+                unitPrice: true,
+                discount: true,
+                lineTotal: true,
+                product: { select: { costPrice: true } },
+              },
+            },
+          },
+        }),
+        prisma.posSale.aggregate({
+          where: previousSaleWhere,
+          _sum: { grandTotal: true },
+        }),
+        prisma.posShift.findFirst({
+          where: { organizationId, status: "OPEN" },
+          orderBy: { openedAt: "desc" },
+          select: {
+            id: true,
+            openedAt: true,
+            register: { select: { name: true } },
+            cashier: {
+              select: {
+                email: true,
+                profile: { select: { fullName: true } },
+              },
+            },
+          },
+        }),
+        prisma.posGoodsReceiptItem.findMany({
+          where: {
+            remainingQuantity: { gt: 0 },
+            expiryDate: { not: null, lte: expiryLimit },
+            receipt: { organizationId },
+          },
+          orderBy: { expiryDate: "asc" },
+          take: 12,
+          select: {
+            id: true,
+            remainingQuantity: true,
+            batchNumber: true,
+            expiryDate: true,
+            product: { select: { name: true } },
+          },
+        }),
+      ]);
+
+    let soldItems = 0;
+    let revenue = 0;
+    let cost = 0;
+    const cashierSaleLines: Array<{
+      quantity: number;
+      saleUnitPrice: number;
+      costUnitPrice: number;
+      discount: number;
+      refundedQuantity: number;
+      soldAt: string;
+    }> = [];
+    const trendBuckets = new Map<
+      string,
+      { amount: number; profit: number; soldItems: number }
+    >();
+
+    for (const sale of sales) {
+      const label = groceryTrendLabel(sale.createdAt, period);
+      const bucket = trendBuckets.get(label) ?? {
+        amount: 0,
+        profit: 0,
+        soldItems: 0,
+      };
+      for (const line of sale.lines) {
+        const quantity = line.qty;
+        const lineRevenue = Number(line.lineTotal);
+        const lineCost = Number(line.product.costPrice ?? 0) * quantity;
+        soldItems += quantity;
+        revenue += lineRevenue;
+        cost += lineCost;
+        bucket.amount += lineRevenue;
+        bucket.profit += lineRevenue - lineCost;
+        bucket.soldItems += quantity;
+        cashierSaleLines.push({
+          quantity,
+          saleUnitPrice: Number(line.unitPrice),
+          costUnitPrice: Number(line.product.costPrice ?? 0),
+          discount: Number(line.discount),
+          refundedQuantity: 0,
+          soldAt: sale.createdAt.toISOString(),
+        });
+      }
+      trendBuckets.set(label, bucket);
+    }
+
+    const profit = revenue - cost;
+    const previousRevenue = Number(previousSales._sum.grandTotal ?? 0);
+    const salesChangePercent =
+      previousRevenue > 0
+        ? ((revenue - previousRevenue) / previousRevenue) * 100
+        : revenue > 0
+          ? 100
+          : 0;
+
+    return res.json({
+      totalProducts,
+      soldItems,
+      revenue,
+      profit,
+      profitMargin: revenue > 0 ? (profit / revenue) * 100 : 0,
+      salesChangePercent: round1(salesChangePercent),
+      activeShift: activeShift
+        ? {
+            id: activeShift.id,
+            name: activeShift.register?.name ?? "POS ээлж",
+            openedAt: activeShift.openedAt.toISOString(),
+            cashierName:
+              activeShift.cashier.profile?.fullName ??
+              activeShift.cashier.email,
+          }
+        : null,
+      trend: Array.from(trendBuckets, ([label, values]) => ({
+        label,
+        ...values,
+      })),
+      expiringProducts: expiringLots.map((lot) => ({
+        id: lot.id,
+        name: lot.product.name,
+        quantity: lot.remainingQuantity,
+        expiresAt: lot.expiryDate?.toISOString(),
+        batchNumber: lot.batchNumber,
+      })),
+      cashierSaleLines,
+    });
+  } catch (error) {
+    console.error("[grocery store dashboard error]", error);
+    return res.status(500).json({
+      message: "Дэлгүүрийн хяналтын мэдээлэл ачаалахад алдаа гарлаа",
+    });
+  }
+});
 
 /* ─── GET /vendor/dashboard/stats?organizationId=xxx ─── */
 router.get(

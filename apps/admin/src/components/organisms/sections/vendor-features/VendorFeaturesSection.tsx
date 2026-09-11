@@ -56,8 +56,9 @@ const FEATURES = [
   },
   {
     suffix: "pos-enabled",
-    label: "POS касс",
-    description: "POS дэлгэц болон кассын өдөр тутмын ажиллагааг нээнэ.",
+    label: "POS касс / Дэлгүүрийн горим",
+    description:
+      "POS кассыг нээхэд байгууллага дэлгүүрээр ангилагдаж, MGL Business дээр дэлгүүрийн интерфэйс ашиглана.",
     group: "channels",
     icon: ScanLine,
     defaultEnabled: false,
