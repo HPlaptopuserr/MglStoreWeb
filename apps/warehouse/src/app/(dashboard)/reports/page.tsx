@@ -18,10 +18,9 @@ import {
   X,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
+import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
-type WarehouseOption = { id: string; name: string };
-
 type InventoryItem = {
   id: string;
   quantity: number;
@@ -139,11 +138,14 @@ function fmtMoney(n: number) {
 
 /* ─── Component ───────────────────────────────────────────────────────── */
 export default function ReportsPage() {
+  const {
+    warehouses,
+    selectedWarehouse,
+    selectedWarehouseId: warehouseId,
+  } = useWarehouseScope();
   const [tab, setTab] = useState<"inventory" | "dispatch" | "ledger">(
     "inventory",
   );
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
-  const [warehouseId, setWarehouseId] = useState("");
   const [detail, setDetail] = useState<WarehouseDetail | null>(null);
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
@@ -152,28 +154,6 @@ export default function ReportsPage() {
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [showCustom, setShowCustom] = useState(false);
-  /* Load warehouses once */
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await wmsFetch(`${API}/warehouses`);
-        if (res.ok) {
-          const data = await res.json();
-          const list: WarehouseOption[] = Array.isArray(data)
-            ? data
-            : data.warehouses || [];
-          setWarehouses(list);
-          if (list.length > 0) setWarehouseId(list[0].id);
-        }
-      } catch {
-        /* ignore */
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
-
   /* Load inventory detail */
   const fetchDetail = useCallback(async () => {
     if (!warehouseId) return;
@@ -653,8 +633,7 @@ export default function ReportsPage() {
     );
   }
 
-  const whName =
-    warehouses.find((w) => w.id === warehouseId)?.name || "Агуулах";
+  const whName = selectedWarehouse?.name || "Агуулах";
 
   return (
     <>
@@ -662,22 +641,6 @@ export default function ReportsPage() {
         {/* ── Top bar ── */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
-            {/* Warehouse */}
-            <div className="relative">
-              <select
-                value={warehouseId}
-                onChange={(e) => setWarehouseId(e.target.value)}
-                className="h-9 appearance-none rounded-lg border border-slate-200 bg-white pl-3 pr-8 text-sm font-medium outline-none focus:border-blue-400"
-              >
-                {warehouses.map((wh) => (
-                  <option key={wh.id} value={wh.id}>
-                    {wh.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-            </div>
-
             {/* Period pills — only for dispatch/ledger tabs */}
             {tab !== "inventory" && (
               <div className="flex flex-wrap items-center gap-1">

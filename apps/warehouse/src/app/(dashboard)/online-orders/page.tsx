@@ -21,6 +21,7 @@ import {
   useOnlineOrders,
   useDeliveryAssignment,
 } from "@/features/online-orders";
+import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 
 const FILTERS: Array<{
   value: OnlineOrderStatus | "";
@@ -35,6 +36,7 @@ const FILTERS: Array<{
 ];
 
 export default function OnlineOrdersPage() {
+  const { selectedWarehouseId } = useWarehouseScope();
   const [status, setStatus] = useState<OnlineOrderStatus | "">("");
   const [search, setSearch] = useState("");
   const [confirmOrder, setConfirmOrder] = useState<OnlineOrder | null>(null);
@@ -43,7 +45,7 @@ export default function OnlineOrdersPage() {
     null,
   );
   const { orders, loading, actionOrderId, error, refresh, advance } =
-    useOnlineOrders(status, search);
+    useOnlineOrders(status, search, selectedWarehouseId);
   const deliveryAssignment = useDeliveryAssignment(refresh);
 
   const requestAdvance = (order: OnlineOrder) => {

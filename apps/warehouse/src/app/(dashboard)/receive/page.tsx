@@ -23,6 +23,7 @@ import {
   WarehouseVendorProductResults,
   type WarehouseVendorProduct,
 } from "@/features/receive/WarehouseVendorProductResults";
+import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 
 type Product = WarehouseVendorProduct;
 
@@ -34,8 +35,6 @@ type ReceiveItem = {
   cost: number;
   isNew?: boolean; // locally created product
 };
-
-type WarehouseOption = { id: string; name: string };
 
 // ───── New Product Form State ─────
 type NewProductForm = {
@@ -77,8 +76,7 @@ const emptyProductForm: NewProductForm = {
 };
 
 export default function ReceivePage() {
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
+  const { selectedWarehouse, selectedWarehouseId } = useWarehouseScope();
   const [productSearch, setProductSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [searching, setSearching] = useState(false);
@@ -105,35 +103,15 @@ export default function ReceivePage() {
   // Excel import modal
   const [showImportModal, setShowImportModal] = useState(false);
 
-  // Load warehouses + organization name
+  // Resolve the organization name for SKU generation from the active scope.
   useEffect(() => {
-    const load = async () => {
-      try {
-        const user = JSON.parse(localStorage.getItem("wms_user") || "{}");
-        if (user.organizationName) setOrganizationName(user.organizationName);
-        const res = await wmsFetch(`${API}/warehouses`);
-        const data = res.ok ? await res.json() : null;
-        const list = Array.isArray(data) ? data : data?.warehouses || [];
-
-        if (res.ok) {
-          setWarehouses(list);
-          if (list.length > 0) setSelectedWarehouseId(list[0].id);
-          // Try to get org name from warehouse data if not in user
-          if (!user.organizationName && list.length > 0) {
-            const wh = list[0];
-            const orgName =
-              wh.organizations?.[0]?.organization?.name ||
-              wh.organizationName ||
-              "";
-            if (orgName) setOrganizationName(orgName);
-          }
-        }
-      } catch {
-        /* ignore */
-      }
+    const user = JSON.parse(localStorage.getItem("wms_user") || "{}") as {
+      organizationName?: string;
     };
-    load();
-  }, []);
+    setOrganizationName(
+      user.organizationName || selectedWarehouse?.organizations?.[0]?.name || "",
+    );
+  }, [selectedWarehouse]);
 
   // Product search with debounce
   useEffect(() => {
@@ -386,19 +364,8 @@ export default function ReceivePage() {
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Агуулах
                 </label>
-                <div className="relative">
-                  <select
-                    value={selectedWarehouseId}
-                    onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                    className="h-11 w-full appearance-none rounded-lg border border-slate-300 bg-white px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  >
-                    {warehouses.map((wh) => (
-                      <option key={wh.id} value={wh.id}>
-                        {wh.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <div className="flex h-11 items-center rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-800">
+                  {selectedWarehouse?.name || "Агуулах сонгогдоогүй"}
                 </div>
               </div>
               <div>

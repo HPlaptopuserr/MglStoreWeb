@@ -30,7 +30,6 @@ import { WarehouseStockRequestQueue } from "@/features/dispatch/WarehouseStockRe
 import {
   type Dispatch,
   type DispatchReturnType,
-  type WarehouseOption,
   STATUS_MAP,
   STEPS,
   formatMoney,
@@ -44,6 +43,7 @@ import {
   PadaanView,
 } from "@/features/dispatch-orders/DispatchPrintViews";
 import { DispatchDetail } from "@/features/dispatch-orders/DispatchDetail";
+import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 
 const formatDateInput = (date: Date) =>
   [
@@ -53,10 +53,12 @@ const formatDateInput = (date: Date) =>
   ].join("-");
 
 export default function DispatchOrdersPage() {
+  const {
+    selectedWarehouseId,
+    error: warehouseLoadError,
+  } = useWarehouseScope();
   const today = formatDateInput(new Date());
   const sevenDaysAgo = formatDateInput(new Date(Date.now() - 6 * 86_400_000));
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -65,9 +67,6 @@ export default function DispatchOrdersPage() {
   const [boardView, setBoardView] = useState<"today" | "history">("today");
   const [historyFrom, setHistoryFrom] = useState(sevenDaysAgo);
   const [historyTo, setHistoryTo] = useState(today);
-  const [warehouseLoadError, setWarehouseLoadError] = useState<string | null>(
-    null,
-  );
 
   // Detail / action modals
   const [selectedDispatch, setSelectedDispatch] = useState<Dispatch | null>(
@@ -124,33 +123,6 @@ export default function DispatchOrdersPage() {
   const [selectedReturn, setSelectedReturn] =
     useState<DispatchReturnType | null>(null);
   const [showReturnDetail, setShowReturnDetail] = useState(false);
-
-  // ───── Load warehouses ─────
-  useEffect(() => {
-    setWarehouseLoadError(null);
-    wmsFetch(`${API}/warehouses`)
-      .then(async (response) => {
-        const body = await response.json().catch(() => null);
-        if (!response.ok) {
-          throw new Error(
-            body?.message || "Агуулахын мэдээлэл авахад алдаа гарлаа",
-          );
-        }
-        return body;
-      })
-      .then((data) => {
-        const list = Array.isArray(data) ? data : data.warehouses || [];
-        setWarehouses(list);
-        if (list.length > 0) setSelectedWarehouseId(list[0].id);
-      })
-      .catch((error: unknown) => {
-        setWarehouseLoadError(
-          error instanceof Error
-            ? error.message
-            : "Агуулахын мэдээлэл авахад алдаа гарлаа",
-        );
-      });
-  }, []);
 
   const fetchDispatches = useCallback(
     async (silent = false) => {
@@ -561,19 +533,6 @@ export default function DispatchOrdersPage() {
             />
             Шинэчлэх
           </button>
-          {warehouses.length > 1 && (
-            <select
-              value={selectedWarehouseId}
-              onChange={(e) => setSelectedWarehouseId(e.target.value)}
-              className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm focus:border-blue-500 focus:outline-none"
-            >
-              {warehouses.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
-          )}
         </div>
       </div>
 

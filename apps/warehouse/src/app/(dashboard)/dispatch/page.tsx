@@ -3,7 +3,6 @@
 import { useEffect, useState, useMemo } from "react";
 import {
   Loader2,
-  ChevronDown,
   PackageMinus,
   AlertTriangle,
   Check,
@@ -19,8 +18,7 @@ import {
   type DispatchLineItem,
 } from "@/features/dispatch/DispatchItemsSection";
 import type { DispatchDestination } from "@/features/dispatch/types";
-
-type WarehouseOption = { id: string; name: string };
+import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 
 const emptyDestination = (): DispatchDestination => ({
   address: "",
@@ -31,8 +29,7 @@ const emptyDestination = (): DispatchDestination => ({
 });
 
 export default function DispatchPage() {
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState("");
+  const { selectedWarehouse, selectedWarehouseId } = useWarehouseScope();
   const [items, setItems] = useState<DispatchLineItem[]>([]);
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
@@ -42,24 +39,6 @@ export default function DispatchPage() {
   const [destination, setDestination] =
     useState<DispatchDestination>(emptyDestination);
   const [submitError, setSubmitError] = useState("");
-
-  // Load warehouses
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await wmsFetch(`${API}/warehouses`);
-        if (res.ok) {
-          const data = await res.json();
-          const list = Array.isArray(data) ? data : data.warehouses || [];
-          setWarehouses(list);
-          if (list.length > 0) setSelectedWarehouseId(list[0].id);
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-    load();
-  }, []);
 
   // Reset the draft when the source warehouse changes.
   useEffect(() => {
@@ -212,19 +191,8 @@ export default function DispatchPage() {
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
                   Агуулах
                 </label>
-                <div className="relative">
-                  <select
-                    value={selectedWarehouseId}
-                    onChange={(e) => setSelectedWarehouseId(e.target.value)}
-                    className="h-11 w-full appearance-none rounded-lg border border-slate-300 bg-white px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  >
-                    {warehouses.map((wh) => (
-                      <option key={wh.id} value={wh.id}>
-                        {wh.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <div className="flex h-11 items-center rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-800">
+                  {selectedWarehouse?.name || "Агуулах сонгогдоогүй"}
                 </div>
               </div>
               <div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Check,
   AlertTriangle,
@@ -12,13 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
-
-type Warehouse = {
-  id: string;
-  name: string;
-  address: string;
-  organizations: { id: string; name: string }[];
-};
+import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 
 type Provider = {
   id: string;
@@ -58,8 +52,12 @@ function ResponseMessage({ message }: { message: string }) {
 }
 
 export default function DeliveryNetworkPage() {
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [warehouseId, setWarehouseId] = useState("");
+  const {
+    selectedWarehouse,
+    selectedWarehouseId: warehouseId,
+    isLoading: isWarehouseLoading,
+    error: warehouseError,
+  } = useWarehouseScope();
   const [providers, setProviders] = useState<Provider[]>([]);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [couriersByPartnership, setCouriersByPartnership] = useState<Record<string, Courier[]>>({});
@@ -71,11 +69,6 @@ export default function DeliveryNetworkPage() {
   } | null>(null);
   const [requestTarget, setRequestTarget] = useState<Provider | null>(null);
   const [error, setError] = useState("");
-
-  const selectedWarehouse = useMemo(
-    () => warehouses.find((warehouse) => warehouse.id === warehouseId),
-    [warehouseId, warehouses],
-  );
 
   const loadScope = useCallback(async () => {
     if (!warehouseId) return;
@@ -110,32 +103,13 @@ export default function DeliveryNetworkPage() {
   }, [warehouseId]);
 
   useEffect(() => {
-    const loadWarehouses = async () => {
-      try {
-        const response = await wmsFetch(`${API}/warehouses`);
-        if (!response.ok) throw new Error("Агуулахын мэдээлэл авахад алдаа гарлаа");
-        const payload = await response.json();
-        const next = (Array.isArray(payload) ? payload : payload.warehouses || []) as Warehouse[];
-        setWarehouses(next);
-        const first = next[0];
-        if (first) {
-          setWarehouseId(first.id);
-        }
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Тодорхойгүй алдаа");
-        setLoading(false);
-      }
-    };
-    void loadWarehouses();
-  }, []);
+    if (warehouseError) setError(warehouseError);
+    if (!isWarehouseLoading && !warehouseId) setLoading(false);
+  }, [isWarehouseLoading, warehouseError, warehouseId]);
 
   useEffect(() => {
     void loadScope();
   }, [loadScope]);
-
-  const chooseWarehouse = (nextWarehouseId: string) => {
-    setWarehouseId(nextWarehouseId);
-  };
 
   const requestPartnership = async () => {
     if (!requestTarget) return;
@@ -227,13 +201,11 @@ export default function DeliveryNetworkPage() {
               зөвшөөрөгдсөний дараа тухайн компанийн жолоочийг агуулахад бүртгэнэ.
             </p>
           </div>
-          <div>
-            <label className="text-xs font-bold text-slate-300">
-              Агуулах
-              <select value={warehouseId} onChange={(event) => chooseWarehouse(event.target.value)} className="mt-1 block h-11 min-w-56 rounded-xl border border-white/15 bg-white/10 px-3 text-sm text-white outline-none">
-                {warehouses.map((warehouse) => <option className="text-slate-900" key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>)}
-              </select>
-            </label>
+          <div className="rounded-xl border border-white/15 bg-white/10 px-4 py-2.5">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Агуулах</p>
+            <p className="mt-0.5 text-sm font-bold text-white">
+              {selectedWarehouse?.name || "Сонгогдоогүй"}
+            </p>
           </div>
         </div>
       </header>
