@@ -29,6 +29,8 @@ import { syncOwnerPersonalMembershipFromActiveOrgPlan } from "../../services/own
 import { sendPushToUsers } from "../../services/push-notification.service";
 import { getPreorderCapacityProgress } from "../../services/preorder-capacity.service";
 import { PUBLIC_PRODUCT_STATE_FILTER } from "../../services/product-visibility.service";
+import { randomUUID } from "node:crypto";
+import { QUALITY_SETTINGS_PREFIX, qualityOrganizationKey, isOrganizationQualityEnabled } from "../../services/quality-network-settings";
 
 const router: ExpressRouter = Router();
 const orgImagesDir = path.resolve(__dirname, "../../../uploads/organizations");
@@ -561,7 +563,7 @@ router.get(
           _count: {
             select: {
               members: {
-                where: PUBLIC_PRODUCT_STATE_FILTER,
+                where: { isActive: true, deletedAt: null },
               },
             },
           },
@@ -569,7 +571,15 @@ router.get(
         orderBy: { updatedAt: "desc" },
       });
 
-      return res.json(organizations.map(toBusinessAppControlPayload));
+      const checklistSettings = await prisma.siteSetting.findMany({
+        where: { key: { in: organizations.map((org) => qualityOrganizationKey(org.id)) } },
+        select: { key: true, value: true },
+      });
+      const enabledKeys = new Set(checklistSettings.filter((setting) => setting.value === "true").map((setting) => setting.key));
+      return res.json(organizations.map((organization) => {
+        const payload = toBusinessAppControlPayload(organization);
+        return { ...payload, features: { ...payload.features, checklist: enabledKeys.has(qualityOrganizationKey(organization.id)) } };
+      }));
     } catch (error) {
       console.error("get business app controls error", error);
       return res
@@ -589,6 +599,7 @@ router.patch(
       const body = req.body as {
         maxMembers?: number;
         features?: {
+          checklist?: boolean;
           orders?: boolean;
           inventory?: boolean;
           attendance?: boolean;
@@ -611,6 +622,9 @@ router.patch(
       };
 
       const data: Prisma.OrganizationUpdateInput = {};
+      if (body.features?.checklist !== undefined && typeof body.features.checklist !== "boolean") {
+        return res.status(400).json({ message: "Checklist тохиргоо boolean утгатай байх ёстой." });
+      }
       if (body.maxMembers !== undefined) {
         const nextMaxMembers = Number(body.maxMembers);
         if (!Number.isInteger(nextMaxMembers) || nextMaxMembers < 1) {
@@ -684,11 +698,12 @@ router.patch(
         }
       }
 
-      if (Object.keys(data).length === 0) {
+      if (Object.keys(data).length === 0 && body.features?.checklist === undefined) {
         return res.status(400).json({ message: "Өөрчлөх тохиргоо алга" });
       }
 
-      const organization = await prisma.organization.update({
+      const organization = await prisma.$transaction(async (tx) => {
+      const updated = await tx.organization.update({
         where: { id },
         data,
         select: {
@@ -743,7 +758,23 @@ router.patch(
         },
       });
 
-      return res.json(toBusinessAppControlPayload(organization));
+      if (body.features?.checklist !== undefined) {
+        const key = qualityOrganizationKey(id);
+        const previous = await tx.siteSetting.findUnique({ where: { key } });
+        const value = String(body.features.checklist);
+        await tx.siteSetting.upsert({ where: { key }, create: { key, value }, update: { value } });
+        if (previous?.value !== value) {
+          const user = (req as unknown as { user: AuthPayload }).user;
+          await tx.siteSetting.create({ data: {
+            key: `${QUALITY_SETTINGS_PREFIX}audit-${randomUUID()}`,
+            value: JSON.stringify({ organizationId: id, userId: user.userId, previousEnabled: previous?.value === "true", enabled: body.features.checklist, changedAt: new Date().toISOString() }),
+          } });
+        }
+      }
+      return updated;
+      });
+      const payload = toBusinessAppControlPayload(organization);
+      return res.json({ ...payload, features: { ...payload.features, checklist: await isOrganizationQualityEnabled(id) } });
     } catch (error) {
       console.error("update business app controls error", error);
       return res

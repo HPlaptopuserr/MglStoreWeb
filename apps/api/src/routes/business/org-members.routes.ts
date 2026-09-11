@@ -161,6 +161,7 @@ router.post(
       password,
       role,
       department,
+      capabilities = [],
     } = req.body as {
       organizationId: string;
       fullName?: string;
@@ -169,10 +170,14 @@ router.post(
       password?: string;
       role?: string;
       department?: string;
+      capabilities?: Capability[];
     };
 
     if (!fullName?.trim()) {
       return res.status(400).json({ message: "Нэр шаардлагатай" });
+    }
+    if (!Array.isArray(capabilities) || capabilities.some((item) => !Object.values(Capability).includes(item))) {
+      return res.status(400).json({ message: "Ажлын эрхийн утга буруу байна" });
     }
     const normalizedEmail = email?.trim().toLowerCase();
     if (!normalizedEmail || !normalizedEmail.includes("@")) {
@@ -205,10 +210,13 @@ router.post(
     try {
       const org = await prisma.organization.findUnique({
         where: { id: organizationId },
-        select: { id: true, maxMembers: true },
+        select: { id: true, maxMembers: true, businessDeliveryEnabled: true },
       });
       if (!org)
         return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+      if (capabilities.includes(Capability.DELIVERY_DRIVER) && !org.businessDeliveryEnabled) {
+        return res.status(409).json({ message: "App Control дээр хүргэлтийн модулийг эхлээд идэвхжүүлнэ үү" });
+      }
 
       const currentCount = await prisma.organizationMember.count({
         where: { organizationId, isActive: true },
@@ -276,6 +284,7 @@ router.post(
               userId: targetUser.id,
               organizationId,
               role: targetRole,
+              capabilities: [...new Set(capabilities)],
               department: cleanOptionalText(department),
               isActive: true,
             },

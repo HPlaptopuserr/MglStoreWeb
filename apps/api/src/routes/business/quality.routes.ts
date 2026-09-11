@@ -1,24 +1,25 @@
+import { parseSchema } from "../../services/quality-checklist-schema";
 import { Router, type Router as ExpressRouter } from "express";
 import { Capability, Prisma, prisma } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
+import { isOrganizationQualityEnabled } from "../../services/quality-network-settings";
 
 // Quality routes rely on the generated Prisma client; restart the API after a
 // schema migration so newly generated model delegates are loaded.
 const router: ExpressRouter = Router();
 const MANAGER_ROLES = new Set(["OWNER", "ADMIN", "CEO", "MANAGER"]);
 
-type ChecklistQuestion = {
-  id: string;
-  text: string;
-  weight: number;
-  required: boolean;
-};
-
-type ChecklistSection = {
-  id: string;
-  title: string;
-  questions: ChecklistQuestion[];
-};
+router.use("/quality", requireAuth, async (req, res, next) => {
+  const user = (req as unknown as { user: AuthPayload }).user;
+  const current = await membership(user);
+  const enabled = Boolean(current && await isOrganizationQualityEnabled(current.organizationId));
+  if (req.method === "GET" && req.path === "/access") return res.json({ enabled });
+  if (!enabled) return res.status(403).json({
+    code: "QUALITY_NETWORK_REQUIRED",
+    message: "Танай байгууллагын checklist идэвхгүй байна. Платформын админ App Control → MGL Business хэсгээс идэвхжүүлнэ.",
+  });
+  return next();
+});
 
 async function membership(user: AuthPayload) {
   if (!user.organizationId) return null;
@@ -55,51 +56,6 @@ function startOfUlaanbaatarDay(now: Date): Date {
       localNow.getUTCDate(),
     ) - offsetMs,
   );
-}
-
-function parseSchema(value: unknown): ChecklistSection[] | null {
-  if (!Array.isArray(value) || value.length === 0 || value.length > 30)
-    return null;
-  const ids = new Set<string>();
-  const sections: ChecklistSection[] = [];
-  for (const rawSection of value) {
-    if (!rawSection || typeof rawSection !== "object") return null;
-    const section = rawSection as Record<string, unknown>;
-    const id = typeof section.id === "string" ? section.id.trim() : "";
-    const title = typeof section.title === "string" ? section.title.trim() : "";
-    if (!id || !title || ids.has(id) || !Array.isArray(section.questions))
-      return null;
-    ids.add(id);
-    const questions: ChecklistQuestion[] = [];
-    for (const rawQuestion of section.questions) {
-      if (!rawQuestion || typeof rawQuestion !== "object") return null;
-      const question = rawQuestion as Record<string, unknown>;
-      const questionId =
-        typeof question.id === "string" ? question.id.trim() : "";
-      const text =
-        typeof question.text === "string" ? question.text.trim() : "";
-      const weight =
-        typeof question.weight === "number" ? Math.round(question.weight) : 1;
-      if (
-        !questionId ||
-        !text ||
-        ids.has(questionId) ||
-        weight < 1 ||
-        weight > 100
-      )
-        return null;
-      ids.add(questionId);
-      questions.push({
-        id: questionId,
-        text,
-        weight,
-        required: question.required !== false,
-      });
-    }
-    if (questions.length === 0 || questions.length > 100) return null;
-    sections.push({ id, title, questions });
-  }
-  return sections;
 }
 
 async function resolveLocationId(
@@ -236,12 +192,13 @@ router.put("/quality/checklists/active", requireAuth, async (req, res) => {
         message: "Стандартын нэр, бүлэг болон асуултууд бүрэн биш байна",
       });
   }
-  const latest = await prisma.qualityChecklistTemplate.findFirst({
-    where: { organizationId: current.organizationId },
-    orderBy: { version: "desc" },
-    select: { version: true },
-  });
   const template = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`quality-template:${current.organizationId}`}))`;
+    const latest = await tx.qualityChecklistTemplate.findFirst({
+      where: { organizationId: current.organizationId },
+      orderBy: { version: "desc" },
+      select: { version: true },
+    });
     await tx.qualityChecklistTemplate.updateMany({
       where: { organizationId: current.organizationId, isActive: true },
       data: { isActive: false },
