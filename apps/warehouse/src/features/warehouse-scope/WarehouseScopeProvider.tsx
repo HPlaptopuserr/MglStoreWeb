@@ -11,7 +11,20 @@ import {
 } from "react";
 import { API, wmsFetch } from "@/lib/api";
 
-const STORAGE_KEY = "wms_selected_warehouse_id";
+const LEGACY_STORAGE_KEY = "wms_selected_warehouse_id";
+
+function getSelectionStorageKey() {
+  try {
+    const user = JSON.parse(window.localStorage.getItem("wms_user") || "{}") as {
+      id?: string;
+    };
+    return user.id
+      ? `${LEGACY_STORAGE_KEY}:${user.id}`
+      : LEGACY_STORAGE_KEY;
+  } catch {
+    return LEGACY_STORAGE_KEY;
+  }
+}
 
 export interface AccessibleWarehouse {
   id: string;
@@ -62,12 +75,19 @@ export function WarehouseScopeProvider({ children }: { children: ReactNode }) {
           : []) as AccessibleWarehouse[];
       setWarehouses(list);
       setSelectedWarehouseId((current) => {
-        const stored = window.localStorage.getItem(STORAGE_KEY) || "";
+        const storageKey = getSelectionStorageKey();
+        const stored =
+          window.localStorage.getItem(storageKey) ||
+          window.localStorage.getItem(LEGACY_STORAGE_KEY) ||
+          "";
         const next = [current, stored].find((id) =>
           list.some((warehouse) => warehouse.id === id),
         ) ?? list[0]?.id ?? "";
-        if (next) window.localStorage.setItem(STORAGE_KEY, next);
-        else window.localStorage.removeItem(STORAGE_KEY);
+        if (next) window.localStorage.setItem(storageKey, next);
+        else window.localStorage.removeItem(storageKey);
+        if (storageKey !== LEGACY_STORAGE_KEY) {
+          window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+        }
         return next;
       });
     } catch (loadError) {
@@ -91,7 +111,7 @@ export function WarehouseScopeProvider({ children }: { children: ReactNode }) {
     (warehouseId: string) => {
       if (!warehouses.some((warehouse) => warehouse.id === warehouseId)) return;
       setSelectedWarehouseId(warehouseId);
-      window.localStorage.setItem(STORAGE_KEY, warehouseId);
+      window.localStorage.setItem(getSelectionStorageKey(), warehouseId);
     },
     [warehouses],
   );

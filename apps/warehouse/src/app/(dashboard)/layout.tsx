@@ -47,7 +47,6 @@ export default function DashboardLayout({
   const handleLogout = () => {
     localStorage.removeItem("wms_token");
     localStorage.removeItem("wms_user");
-    localStorage.removeItem("wms_selected_warehouse_id");
     router.replace("/login");
   };
 
