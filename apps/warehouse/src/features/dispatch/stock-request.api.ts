@@ -14,11 +14,21 @@ async function parseResponse<T>(
 
 export async function fetchWarehouseStockRequests(warehouseId: string) {
   const response = await wmsFetch(
-    `${API}/stock-requests?warehouseId=${encodeURIComponent(warehouseId)}`,
+    `${API}/stock-requests?warehouseId=${encodeURIComponent(warehouseId)}&view=warehouse-overview`,
   );
   const body = await parseResponse<unknown>(response, LOAD_ERROR);
   if (!Array.isArray(body)) throw new Error(LOAD_ERROR);
   return body as StockRequest[];
+}
+
+export async function fetchWarehouseStockRequestDetail(requestId: string) {
+  const response = await wmsFetch(
+    `${API}/stock-requests/${encodeURIComponent(requestId)}`,
+  );
+  return parseResponse<StockRequest>(
+    response,
+    "Хүсэлтийн дэлгэрэнгүйг авахад алдаа гарлаа",
+  );
 }
 
 interface DecideStockRequestInput {

@@ -2,15 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { RequestPaymentPanel } from "./RequestPaymentPanel";
-import {
-  AlertCircle,
-  Building2,
-  ChevronRight,
-  Loader2,
-  Package,
-  RefreshCw,
-  X,
-} from "lucide-react";
+import { StockRequestOverview } from "./StockRequestOverview";
+import { AlertCircle, Loader2, Package, RefreshCw, X } from "lucide-react";
 import {
   countRequestsByStatus,
   initialApprovedQuantities,
@@ -23,6 +16,7 @@ import {
 } from "./stock-request.model";
 import {
   decideStockRequest,
+  fetchWarehouseStockRequestDetail,
   fetchWarehouseStockRequests,
 } from "./stock-request.api";
 
@@ -36,7 +30,7 @@ export function WarehouseStockRequestQueue({
   onDecision,
 }: WarehouseStockRequestQueueProps) {
   const [requests, setRequests] = useState<StockRequest[]>([]);
-  const [filter, setFilter] = useState<StatusFilter>("PENDING");
+  const [filter, setFilter] = useState<StatusFilter>("ALL");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,6 +39,7 @@ export function WarehouseStockRequestQueue({
   const [note, setNote] = useState("");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
 
   const load = useCallback(
     async (silent = false) => {
@@ -82,11 +77,24 @@ export function WarehouseStockRequestQueue({
     [filter, requests],
   );
 
-  const open = (request: StockRequest) => {
-    setSelected(request);
-    setAction(null);
-    setNote("");
-    setQuantities(initialApprovedQuantities(request));
+  const open = async (request: StockRequest) => {
+    setDetailLoadingId(request.id);
+    try {
+      setError(null);
+      const detail = await fetchWarehouseStockRequestDetail(request.id);
+      setSelected(detail);
+      setAction(null);
+      setNote("");
+      setQuantities(initialApprovedQuantities(detail));
+    } catch (detailError) {
+      setError(
+        detailError instanceof Error
+          ? detailError.message
+          : "Хүсэлтийн дэлгэрэнгүйг авахад алдаа гарлаа",
+      );
+    } finally {
+      setDetailLoadingId(null);
+    }
   };
 
   const close = () => {
@@ -125,7 +133,7 @@ export function WarehouseStockRequestQueue({
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-black text-slate-900">
-              Бараа татах хүсэлт
+              Нийт захиалга, хүсэлт
             </h2>
             {counts.PENDING > 0 && (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-black text-amber-700">
@@ -134,7 +142,8 @@ export function WarehouseStockRequestQueue({
             )}
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            Admin болон агуулах нэг төлөв, нэг шийдвэрлэх урсгал ашиглана.
+            Захиалагч, төлбөр болон гүйцэтгэлийн төлөвийг нэг дороос хянах
+            жагсаалт.
           </p>
         </div>
         <button
@@ -150,7 +159,24 @@ export function WarehouseStockRequestQueue({
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+        <button
+          type="button"
+          onClick={() => setFilter("ALL")}
+          className={`flex items-center gap-2 rounded-xl border p-3 text-left transition ${
+            filter === "ALL"
+              ? "border-indigo-200 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-100"
+              : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          <Package className="h-4 w-4 shrink-0" />
+          <span className="min-w-0">
+            <span className="block text-lg font-black">{requests.length}</span>
+            <span className="block truncate text-[11px] font-bold opacity-75">
+              Бүх хүсэлт
+            </span>
+          </span>
+        </button>
         {VISIBLE_REQUEST_STATUSES.map((status) => {
           const config = REQUEST_STATUS_CONFIG[status];
           const Icon = config.icon;
@@ -158,7 +184,7 @@ export function WarehouseStockRequestQueue({
             <button
               key={status}
               type="button"
-              onClick={() => setFilter(filter === status ? "ALL" : status)}
+              onClick={() => setFilter(status)}
               className={`flex items-center gap-2 rounded-xl border p-3 text-left transition ${
                 filter === status
                   ? `${REQUEST_TONE_CLASS[config.tone]} ring-2 ring-offset-1`
@@ -190,69 +216,12 @@ export function WarehouseStockRequestQueue({
         <div className="flex h-36 items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
         </div>
-      ) : visible.length === 0 ? (
-        <div className="flex h-32 flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 text-slate-400">
-          <Package className="mb-2 h-7 w-7" />
-          <p className="text-sm font-semibold">Энэ төлөвт хүсэлт байхгүй</p>
-        </div>
       ) : (
-        <div className="space-y-2">
-          {visible.slice(0, 20).map((request) => {
-            const config = REQUEST_STATUS_CONFIG[request.status];
-            const Icon = config.icon;
-            return (
-              <button
-                key={request.id}
-                type="button"
-                onClick={() => open(request)}
-                className="flex w-full flex-col gap-3 rounded-xl border border-slate-200 p-3 text-left transition hover:border-indigo-300 hover:bg-indigo-50/30 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="flex min-w-0 items-start gap-3">
-                  <div
-                    className={`rounded-lg border p-2 ${REQUEST_TONE_CLASS[config.tone]}`}
-                  >
-                    <Icon className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-black text-slate-900">
-                        {request.requestNumber}
-                      </p>
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${REQUEST_TONE_CLASS[config.tone]}`}
-                      >
-                        {config.label}
-                      </span>
-                    </div>
-                    <p className="mt-1 flex items-center gap-1 truncate text-xs font-semibold text-slate-500">
-                      <Building2 className="h-3.5 w-3.5" />
-                      {request.organization.name}
-                    </p>
-                    <p className="mt-1 text-[11px] text-slate-400">
-                      {request.items.length} төрөл ·{" "}
-                      {request.items.reduce(
-                        (sum, item) => sum + item.quantity,
-                        0,
-                      )}{" "}
-                      ширхэг
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between gap-3 sm:justify-end">
-                  <span className="text-xs text-slate-400">
-                    {new Date(request.requestedAt).toLocaleDateString("mn-MN")}
-                  </span>
-                  {request.status === "PENDING" && (
-                    <span className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white">
-                      Шийдвэрлэх
-                    </span>
-                  )}
-                  <ChevronRight className="h-4 w-4 text-slate-400" />
-                </div>
-              </button>
-            );
-          })}
-        </div>
+        <StockRequestOverview
+          requests={visible}
+          loadingRequestId={detailLoadingId}
+          onSelect={(request) => void open(request)}
+        />
       )}
 
       {selected && (
@@ -283,7 +252,9 @@ export function WarehouseStockRequestQueue({
                 request={selected}
                 onBusy={setSubmitting}
                 onSaved={(payment) => {
-                  setSelected((current) => current ? { ...current, payment } : current);
+                  setSelected((current) =>
+                    current ? { ...current, payment } : current,
+                  );
                   void load(true);
                   onDecision();
                 }}

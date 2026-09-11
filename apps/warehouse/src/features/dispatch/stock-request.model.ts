@@ -25,10 +25,24 @@ export interface StockRequest {
   requestNumber: string;
   status: RequestStatus;
   requestedAt: string;
+  deliveryPhone?: string | null;
   note: string | null;
   reviewNote: string | null;
-  organization: { id: string; name: string };
+  organization: {
+    id: string;
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+  };
   warehouse: { id: string; name: string };
+  requestedBy?: {
+    id: string;
+    email: string;
+    profile: {
+      fullName: string | null;
+      phoneNumber?: string | null;
+    } | null;
+  } | null;
   items: RequestItem[];
 }
 
@@ -50,6 +64,7 @@ export interface RequestPayment {
   paidAmount: number | string;
   status: string;
   paymentMethod: string | null;
+  dueDate?: string | null;
 }
 
 export const VISIBLE_REQUEST_STATUSES = [

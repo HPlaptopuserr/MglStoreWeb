@@ -350,7 +350,7 @@ const generateInvoiceNumber = async (): Promise<string> => {
 // Get all stock requests (Admin sees all, Vendor sees their own)
 router.get("/stock-requests", requireAuth, async (req, res) => {
   try {
-    const { organizationId, status, warehouseId } = req.query;
+    const { organizationId, status, warehouseId, view } = req.query;
     const actor = getActor(req);
     if (!actor) {
       return res.status(401).json({ message: "Нэвтрээгүй байна" });
@@ -407,102 +407,170 @@ router.get("/stock-requests", requireAuth, async (req, res) => {
       where.warehouseId = targetWarehouseId;
     }
 
-    const requests = await prisma.warehouseStockRequest.findMany({
-      where,
-      include: {
-        organization: {
+    const overviewOnly = view === "warehouse-overview";
+    const requests = overviewOnly
+      ? await prisma.warehouseStockRequest.findMany({
+          where,
           select: {
             id: true,
-            name: true,
-            slug: true,
-            logoUrl: true,
-          },
-        },
-        warehouse: {
-          select: {
-            id: true,
-            name: true,
-            address: true,
-            city: true,
-          },
-        },
-        requestedBy: {
-          select: {
-            id: true,
-            email: true,
-            profile: {
-              select: {
-                fullName: true,
-              },
-            },
-          },
-        },
-        reviewedBy: {
-          select: {
-            id: true,
-            email: true,
-            profile: {
-              select: {
-                fullName: true,
-              },
-            },
-          },
-        },
-        items: {
-          include: {
-            product: {
+            requestNumber: true,
+            status: true,
+            requestedAt: true,
+            deliveryPhone: true,
+            note: true,
+            reviewNote: true,
+            organization: {
               select: {
                 id: true,
                 name: true,
-                sku: true,
-                price: true,
-                images: {
-                  take: 1,
-                  select: { url: true },
+                phone: true,
+                email: true,
+              },
+            },
+            warehouse: { select: { id: true, name: true } },
+            requestedBy: {
+              select: {
+                id: true,
+                email: true,
+                profile: {
+                  select: { fullName: true, phoneNumber: true },
                 },
               },
             },
+            items: {
+              select: {
+                id: true,
+                productId: true,
+                quantity: true,
+                approvedQuantity: true,
+                product: {
+                  select: { id: true, name: true, sku: true },
+                },
+              },
+            },
+            payment: {
+              select: {
+                id: true,
+                totalAmount: true,
+                paidAmount: true,
+                status: true,
+                paymentMethod: true,
+                dueDate: true,
+              },
+            },
           },
-        },
-        payment: {
+          orderBy: { requestedAt: "desc" },
+        })
+      : await prisma.warehouseStockRequest.findMany({
+          where,
           include: {
-            entries: {
-              where: { status: PaymentStatus.PAID },
-              include: {
-                receipt: { select: { id: true, name: true } },
-                confirmedBy: {
+            organization: {
+              select: {
+                id: true,
+                name: true,
+                slug: true,
+                logoUrl: true,
+                phone: true,
+                email: true,
+              },
+            },
+            warehouse: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                city: true,
+              },
+            },
+            requestedBy: {
+              select: {
+                id: true,
+                email: true,
+                profile: {
                   select: {
-                    id: true,
-                    email: true,
-                    profile: { select: { fullName: true } },
+                    fullName: true,
+                    phoneNumber: true,
                   },
                 },
               },
-              orderBy: { confirmedAt: "asc" },
             },
+            reviewedBy: {
+              select: {
+                id: true,
+                email: true,
+                profile: {
+                  select: {
+                    fullName: true,
+                  },
+                },
+              },
+            },
+            items: {
+              include: {
+                product: {
+                  select: {
+                    id: true,
+                    name: true,
+                    sku: true,
+                    price: true,
+                    images: {
+                      take: 1,
+                      select: { url: true },
+                    },
+                  },
+                },
+              },
+            },
+            payment: {
+              include: {
+                entries: {
+                  where: { status: PaymentStatus.PAID },
+                  include: {
+                    receipt: { select: { id: true, name: true } },
+                    confirmedBy: {
+                      select: {
+                        id: true,
+                        email: true,
+                        profile: { select: { fullName: true } },
+                      },
+                    },
+                  },
+                  orderBy: { confirmedAt: "asc" },
+                },
+              },
+            },
+            dispatch: true,
           },
-        },
-        dispatch: true,
-      },
-      orderBy: {
-        requestedAt: "desc",
-      },
-    });
+          orderBy: {
+            requestedAt: "desc",
+          },
+        });
 
     const includeOwnership = canViewStockOrderOwnership(
       actor.role,
       actor.orgRole,
     );
-    res.json(
-      includeOwnership
-        ? requests
-        : requests.map(
-            ({
-              requestedBy: _requestedBy,
-              reviewedBy: _reviewedBy,
-              ...request
-            }) => request,
-          ),
+    if (includeOwnership) {
+      return res.json(requests);
+    }
+    if (overviewOnly) {
+      return res.json(
+        requests.map(({ requestedBy: _requestedBy, ...request }) => request),
+      );
+    }
+    return res.json(
+      requests.map((request) => {
+        if ("reviewedBy" in request) {
+          const {
+            requestedBy: _requestedBy,
+            reviewedBy: _reviewedBy,
+            ...visibleRequest
+          } = request;
+          return visibleRequest;
+        }
+        const { requestedBy: _requestedBy, ...visibleRequest } = request;
+        return visibleRequest;
+      }),
     );
   } catch (error) {
     console.error("get stock requests error", error);
