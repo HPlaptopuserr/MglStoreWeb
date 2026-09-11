@@ -12,6 +12,7 @@ import { WAREHOUSE_ONLINE_ORDER_EVENT } from "../notifications/warehouse-notific
 export function useOnlineOrders(
   status: OnlineOrderStatus | "",
   search: string,
+  warehouseId: string,
 ) {
   const [orders, setOrders] = useState<OnlineOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,7 +23,11 @@ export function useOnlineOrders(
     setLoading(true);
     setError("");
     try {
-      const data = await fetchOnlineOrders({ status, search });
+      if (!warehouseId) {
+        setOrders([]);
+        return;
+      }
+      const data = await fetchOnlineOrders({ status, search, warehouseId });
       setOrders(data.orders);
     } catch (requestError) {
       setError(
@@ -33,7 +38,7 @@ export function useOnlineOrders(
     } finally {
       setLoading(false);
     }
-  }, [search, status]);
+  }, [search, status, warehouseId]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void refresh(), 250);

@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from "react";
 import {
   Search,
   Loader2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   TrendingUp,
@@ -16,6 +15,7 @@ import {
   Filter,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
+import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 
 const REASON_MAP: Record<
   string,
@@ -82,11 +82,8 @@ type Pagination = {
   totalPages: number;
 };
 
-type WarehouseOption = { id: string; name: string };
-
 export default function MovementsPage() {
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
-  const [warehouseId, setWarehouseId] = useState("");
+  const { selectedWarehouseId: warehouseId } = useWarehouseScope();
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
     page: 1,
@@ -100,24 +97,6 @@ export default function MovementsPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [showFilters, setShowFilters] = useState(false);
-
-  // Load warehouses
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await wmsFetch(`${API}/warehouses`);
-        if (res.ok) {
-          const data = await res.json();
-          const list = Array.isArray(data) ? data : data.warehouses || [];
-          setWarehouses(list);
-          if (list.length > 0) setWarehouseId(list[0].id);
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-    load();
-  }, []);
 
   const fetchEntries = useCallback(
     async (page = 1) => {
@@ -233,21 +212,6 @@ export default function MovementsPage() {
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <div className="flex items-center gap-3">
           {/* Warehouse */}
-          <div className="relative">
-            <select
-              value={warehouseId}
-              onChange={(e) => setWarehouseId(e.target.value)}
-              className="h-10 appearance-none rounded-lg border border-slate-300 bg-slate-50 pl-3 pr-8 text-sm font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            >
-              {warehouses.map((wh) => (
-                <option key={wh.id} value={wh.id}>
-                  {wh.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          </div>
-
           {/* Search */}
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

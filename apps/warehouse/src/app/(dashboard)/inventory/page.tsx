@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import {
   Search,
   Loader2,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Package,
@@ -26,6 +25,7 @@ import {
   ProductImageEditor,
   WarehouseInventoryCatalog,
 } from "@/features/inventory";
+import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 
 type InventoryItem = {
   id: string;
@@ -52,11 +52,6 @@ type InventoryItem = {
     isActive: boolean;
     images: { id: string; url: string }[];
   };
-};
-
-type WarehouseOption = {
-  id: string;
-  name: string;
 };
 
 type StockStatus = "all" | "healthy" | "low" | "out";
@@ -99,8 +94,7 @@ const toDateInputValue = (value: string | null) => {
 };
 
 export default function InventoryPage() {
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>("");
+  const { selectedWarehouseId } = useWarehouseScope();
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
@@ -132,24 +126,6 @@ export default function InventoryPage() {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [search]);
-
-  // Load warehouses
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await wmsFetch(`${API}/warehouses`);
-        if (res.ok) {
-          const data = await res.json();
-          const list = Array.isArray(data) ? data : data.warehouses || [];
-          setWarehouses(list);
-          if (list.length > 0) setSelectedWarehouseId(list[0].id);
-        }
-      } catch {
-        /* ignore */
-      }
-    };
-    load();
-  }, []);
 
   // Load inventory when warehouse changes. A failed request is surfaced
   // immediately instead of keeping the screen in a long retry spinner.
@@ -442,24 +418,6 @@ export default function InventoryPage() {
     <div className="space-y-6">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
-        {/* Warehouse selector */}
-        {warehouses.length > 0 && (
-          <div className="relative">
-            <select
-              value={selectedWarehouseId}
-              onChange={(e) => setSelectedWarehouseId(e.target.value)}
-              className="h-10 appearance-none rounded-lg border border-slate-200 bg-white pl-4 pr-10 text-sm font-medium text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-            >
-              {warehouses.map((wh) => (
-                <option key={wh.id} value={wh.id}>
-                  {wh.name}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          </div>
-        )}
-
         {/* Search */}
         <div className="relative flex-1 md:max-w-xs">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />

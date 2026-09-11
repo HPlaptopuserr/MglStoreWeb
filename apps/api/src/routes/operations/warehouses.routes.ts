@@ -487,10 +487,25 @@ router.get("/warehouses/store-locations", requireAuth, async (req, res) => {
 
 router.get("/warehouse-online-orders", requireAuth, async (req, res) => {
   try {
-    const warehouseIds = await getAccessibleWarehouseIds(req);
-    if (warehouseIds.length === 0) {
+    const accessibleWarehouseIds = await getAccessibleWarehouseIds(req);
+    if (accessibleWarehouseIds.length === 0) {
       return res.status(403).json({ message: "Агуулахын эрх олдсонгүй" });
     }
+    const requestedWarehouseId =
+      typeof req.query.warehouseId === "string"
+        ? req.query.warehouseId.trim()
+        : "";
+    if (
+      requestedWarehouseId &&
+      !accessibleWarehouseIds.includes(requestedWarehouseId)
+    ) {
+      return res.status(403).json({
+        message: "Энэ агуулахын захиалгыг харах эрхгүй байна",
+      });
+    }
+    const warehouseIds = requestedWarehouseId
+      ? [requestedWarehouseId]
+      : accessibleWarehouseIds;
 
     const status =
       typeof req.query.status === "string" ? req.query.status : undefined;

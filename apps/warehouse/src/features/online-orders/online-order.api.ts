@@ -62,8 +62,12 @@ export async function assignOnlineOrderDelivery(
 export async function fetchOnlineOrders(input: {
   status?: OnlineOrderStatus | "";
   search?: string;
+  warehouseId: string;
 }): Promise<OnlineOrdersResponse> {
-  const params = new URLSearchParams({ limit: "100" });
+  const params = new URLSearchParams({
+    limit: "100",
+    warehouseId: input.warehouseId,
+  });
   if (input.status) params.set("status", input.status);
   if (input.search) params.set("search", input.search);
 

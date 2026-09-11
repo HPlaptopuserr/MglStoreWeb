@@ -27,8 +27,10 @@ import type {
   CategoryWithCount,
 } from "@/components/dashboard";
 import { fetchWarehouseCategories } from "@/features/categories";
+import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 
 export default function WmsDashboardPage() {
+  const { selectedWarehouseId } = useWarehouseScope();
   const [warehouses, setWarehouses] = useState<WarehouseDetail[]>([]);
   const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,7 +56,11 @@ export default function WmsDashboardPage() {
 
           const summaries = whList.slice(0, 25) as WarehouseDetail[];
           setWarehouses(summaries);
-          if (summaries.length > 0) setSelectedWarehouse(summaries[0]);
+          setSelectedWarehouse(
+            summaries.find((warehouse) => warehouse.id === selectedWarehouseId) ??
+              summaries[0] ??
+              null,
+          );
         }
 
         // Fetch categories
@@ -69,7 +75,13 @@ export default function WmsDashboardPage() {
         );
 
         // Fetch recent movements
-        const mvRes = await wmsFetch(`${API}/inventory-ledger?limit=10`);
+        const movementParams = new URLSearchParams({ limit: "10" });
+        if (selectedWarehouseId) {
+          movementParams.set("warehouseId", selectedWarehouseId);
+        }
+        const mvRes = await wmsFetch(
+          `${API}/inventory-ledger?${movementParams.toString()}`,
+        );
         if (mvRes.ok) {
           const mvData = await mvRes.json();
           setMovements(mvData.entries || []);
@@ -81,7 +93,14 @@ export default function WmsDashboardPage() {
       }
     };
     load();
-  }, []);
+  }, [selectedWarehouseId]);
+
+  useEffect(() => {
+    const summary = warehouses.find(
+      (warehouse) => warehouse.id === selectedWarehouseId,
+    );
+    if (summary) setSelectedWarehouse(summary);
+  }, [selectedWarehouseId, warehouses]);
 
   useEffect(() => {
     const warehouseId = selectedWarehouse?.id;
@@ -125,23 +144,9 @@ export default function WmsDashboardPage() {
     );
   }
 
-  // Aggregate stats across all warehouses
-  const totalProducts = warehouses.reduce(
-    (sum, w) => sum + (w.summary?.totalProducts || 0),
-    0,
-  );
-  const totalStock = warehouses.reduce(
-    (sum, w) => sum + (w.summary?.totalQuantity || 0),
-    0,
-  );
-  const lowStockItems = warehouses.reduce(
-    (sum, w) => sum + (w.summary?.lowStockCount || 0),
-    0,
-  );
-  const outOfStockItems = warehouses.reduce(
-    (sum, w) => sum + (w.summary?.outOfStockCount || 0),
-    0,
-  );
+  const totalProducts = selectedWarehouse?.summary?.totalProducts || 0;
+  const lowStockItems = selectedWarehouse?.summary?.lowStockCount || 0;
+  const outOfStockItems = selectedWarehouse?.summary?.outOfStockCount || 0;
 
   // Build low stock items from selected warehouse
   const lowStockList =
@@ -187,28 +192,6 @@ export default function WmsDashboardPage() {
           alert={outOfStockItems > 0}
         />
       </div>
-
-      {/* Warehouse selector */}
-      {warehouses.length > 1 && (
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-slate-500">Агуулах:</span>
-          <div className="flex gap-2">
-            {warehouses.map((wh) => (
-              <button
-                key={wh.id}
-                onClick={() => setSelectedWarehouse(wh)}
-                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
-                  selectedWarehouse?.id === wh.id
-                    ? "bg-blue-600 text-white"
-                    : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-50"
-                }`}
-              >
-                {wh.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Low stock alerts */}

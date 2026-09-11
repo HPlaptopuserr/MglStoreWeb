@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import WmsSidebar from "@/components/WmsSidebar";
 import WmsHeader from "@/components/WmsHeader";
+import { WarehouseScopeProvider } from "@/features/warehouse-scope/WarehouseScopeProvider";
 
 export default function DashboardLayout({
   children,
@@ -46,28 +47,31 @@ export default function DashboardLayout({
   const handleLogout = () => {
     localStorage.removeItem("wms_token");
     localStorage.removeItem("wms_user");
+    localStorage.removeItem("wms_selected_warehouse_id");
     router.replace("/login");
   };
 
   if (!isReady) return null;
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <WmsSidebar
-        warehouseName={userData.warehouseName}
-        userName={userData.name}
-        userInitials={userData.initials}
-        onSignOut={handleLogout}
-        onCollapsedChange={setSidebarCollapsed}
-      />
-      <div
-        className={`flex flex-1 flex-col transition-all duration-300 ${
-          sidebarCollapsed ? "ml-[68px]" : "ml-[248px]"
-        }`}
-      >
-        <WmsHeader userName={userData.name} userInitials={userData.initials} />
-        <main className="flex-1 p-6">{children}</main>
+    <WarehouseScopeProvider>
+      <div className="flex min-h-screen bg-slate-50">
+        <WmsSidebar
+          warehouseName={userData.warehouseName}
+          userName={userData.name}
+          userInitials={userData.initials}
+          onSignOut={handleLogout}
+          onCollapsedChange={setSidebarCollapsed}
+        />
+        <div
+          className={`flex flex-1 flex-col transition-all duration-300 ${
+            sidebarCollapsed ? "ml-[68px]" : "ml-[248px]"
+          }`}
+        >
+          <WmsHeader userName={userData.name} userInitials={userData.initials} />
+          <main className="flex-1 p-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </WarehouseScopeProvider>
   );
 }

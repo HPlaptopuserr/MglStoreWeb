@@ -16,8 +16,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
-
-type WarehouseOption = { id: string; name: string };
+import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 
 type InventoryItem = {
   id: string;
@@ -34,8 +33,11 @@ type TransferItem = {
 };
 
 export default function TransfersPage() {
-  const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
-  const [sourceId, setSourceId] = useState("");
+  const {
+    warehouses,
+    selectedWarehouseId: sourceId,
+    isLoading: loading,
+  } = useWarehouseScope();
   const [destId, setDestId] = useState("");
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [search, setSearch] = useState("");
@@ -43,31 +45,13 @@ export default function TransfersPage() {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await wmsFetch(`${API}/warehouses`);
-        if (res.ok) {
-          const data = await res.json();
-          const list = Array.isArray(data) ? data : data.warehouses || [];
-          setWarehouses(list);
-          if (list.length >= 2) {
-            setSourceId(list[0].id);
-            setDestId(list[1].id);
-          } else if (list.length === 1) {
-            setSourceId(list[0].id);
-          }
-        }
-      } catch {
-        /* ignore */
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
+    setDestId((current) => {
+      if (current && current !== sourceId) return current;
+      return warehouses.find((warehouse) => warehouse.id !== sourceId)?.id ?? "";
+    });
+  }, [sourceId, warehouses]);
 
   // Load source inventory
   useEffect(() => {
@@ -237,19 +221,9 @@ export default function TransfersPage() {
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-emerald-600">
               Эх агуулах
             </label>
-            <div className="relative">
-              <select
-                value={sourceId}
-                onChange={(e) => setSourceId(e.target.value)}
-                className="h-12 w-full appearance-none rounded-lg border-2 border-emerald-200 bg-emerald-50/30 px-4 text-sm font-semibold text-slate-900 outline-none focus:border-emerald-400"
-              >
-                {warehouses.map((wh) => (
-                  <option key={wh.id} value={wh.id}>
-                    {wh.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <div className="flex h-12 items-center rounded-lg border-2 border-emerald-200 bg-emerald-50/30 px-4 text-sm font-semibold text-slate-900">
+              {warehouses.find((warehouse) => warehouse.id === sourceId)?.name ||
+                "Агуулах сонгогдоогүй"}
             </div>
           </div>
 
