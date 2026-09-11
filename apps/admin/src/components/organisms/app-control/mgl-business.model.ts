@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 export type BusinessAppFeatures = {
+  checklist: boolean;
   orders: boolean;
   inventory: boolean;
   attendance: boolean;
@@ -71,6 +72,13 @@ export type AppFeatureOption = {
 
 export const FEATURE_OPTIONS: AppFeatureOption[] = [
   {
+    key: "checklist",
+    label: "Чанарын checklist",
+    shortLabel: "Checklist",
+    description: "Owner/Manager өөрийн байгууллагын checklist үүсгэж, эрхтэй ажилтнууд зөвхөн өөрийн сүлжээний дэлгүүрийг шалгана. Унтраахад тайлан устахгүй.",
+    icon: ClipboardList,
+  },
+  {
     key: "delivery",
     label: "Хүргэлтийн ажиллагаа",
     shortLabel: "Delivery",
@@ -111,6 +119,7 @@ export const FEATURE_OPTIONS: AppFeatureOption[] = [
 ];
 
 export const DEFAULT_FEATURES: BusinessAppFeatures = {
+  checklist: false,
   orders: true,
   inventory: true,
   attendance: true,
@@ -241,6 +250,7 @@ export function normalizeBusinessAppControl(
     ...organization,
     members: organization.members ?? [],
     features: {
+      checklist: organization.features?.checklist ?? false,
       orders: organization.features?.orders ?? true,
       inventory: organization.features?.inventory ?? true,
       attendance: organization.features?.attendance ?? true,

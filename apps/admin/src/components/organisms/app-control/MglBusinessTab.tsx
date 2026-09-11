@@ -606,7 +606,9 @@ function FeatureToggleCard({
     <button
       type="button"
       onClick={onToggle}
-      aria-pressed={enabled}
+      role="switch"
+      aria-checked={enabled}
+      aria-label={feature.label}
       className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${
         enabled
           ? "border-emerald-200 bg-emerald-50 shadow-sm ring-2 ring-emerald-100"

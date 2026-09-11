@@ -48,7 +48,7 @@ import {
   buildProductSearchWhere,
   scoreProductForSearch,
 } from "../../services/product-discovery.service";
-import { getSalesStoreLocationSources } from "../../services/sales-store-portfolio.service";
+import { getWarehouseStoreLocationSources } from "../../services/sales-store-portfolio.service";
 import {
   CONTRACT_PAYMENT_ACCOUNTS_SETTING_KEY,
   readMinuPaymentAccounts,
@@ -460,7 +460,7 @@ router.get("/warehouses/store-locations", requireAuth, async (req, res) => {
       });
     }
 
-    const locations = await getSalesStoreLocationSources("");
+    const locations = await getWarehouseStoreLocationSources();
     return res.json({
       stores: locations.map((location) => ({
         id: location.id,

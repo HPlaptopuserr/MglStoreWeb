@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { QUALITY_SETTINGS_PREFIX } from "../../services/quality-network-settings";
 import fs from "fs/promises";
 import path from "path";
 import express, {
@@ -58,6 +59,16 @@ const projectPdfUpload = multer({
 });
 
 const router: ExpressRouter = Router();
+// Dedicated audited endpoint owns these keys; generic settings cannot overwrite them.
+router.use("/site-settings", (req, res, next) => {
+  const key = req.path.slice(1);
+  if (["PUT", "POST", "DELETE", "PATCH"].includes(req.method) &&
+      (key.startsWith(QUALITY_SETTINGS_PREFIX) || Object.keys(req.body ?? {}).some((entry) => entry.startsWith(QUALITY_SETTINGS_PREFIX)))) {
+    res.status(403).json({ message: "Checklist тохиргоог App Control → MGL Business хэсгээс өөрчилнө үү." });
+    return;
+  }
+  next();
+});
 const LOCAL_SITE_UPLOADS_DIR = path.resolve(
   __dirname,
   "../../../uploads/site-settings",
@@ -1544,7 +1555,7 @@ router.use(
 // GET all site settings as key-value object (public read for web/vendor)
 router.get("/site-settings", async (req, res) => {
   try {
-    const settings = await prisma.siteSetting.findMany();
+    const settings = await prisma.siteSetting.findMany({ where: { NOT: { key: { startsWith: QUALITY_SETTINGS_PREFIX } } } });
     const obj: Record<string, string> = {};
     for (const s of settings) {
       if (Buffer.byteLength(s.value, "utf8") <= SETTING_VALUE_MAX_BYTES) {
@@ -1901,6 +1912,10 @@ router.put(
   async (req, res) => {
     const { key } = req.params;
     const { value } = req.body as { value: string };
+    if (key.startsWith(QUALITY_SETTINGS_PREFIX)) {
+      res.status(403).json({ message: "Checklist тохиргоог App Control → MGL Business хэсгээс өөрчилнө үү." });
+      return;
+    }
     if (typeof value !== "string") {
       res.status(400).json({ message: "value шаардлагатай" });
       return;

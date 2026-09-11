@@ -1,5 +1,6 @@
 import { Router, type Router as ExpressRouter } from "express";
 import crypto from "crypto";
+import { salesLocationScope, salesVendorScope } from "../../services/sales-organization-scope";
 import {
   canReserveStock,
   reservedStock,
@@ -329,44 +330,14 @@ async function representativeVendorAccess(
   current: NonNullable<Awaited<ReturnType<typeof membership>>>,
   vendorId: string,
 ) {
-  const [ownerOrganization, vendor, location] = await Promise.all([
-    prisma.organization.findUnique({
-      where: { id: current.organizationId },
-      select: { salesRepVendorRestrictionEnabled: true },
-    }),
-    prisma.organization.findFirst({
-      where: {
-        id: vendorId,
-        status: OrgStatus.ACTIVE,
-        deletedAt: null,
-      },
-      select: {
-        id: true,
-        name: true,
-        taxId: true,
-        email: true,
-        phone: true,
-        address: true,
-        businessCategory: true,
-      },
-    }),
-    prisma.salesVisitLocation.findFirst({
-      where: {
-        organizationId: current.organizationId,
-        vendorOrganizationId: vendorId,
-        isActive: true,
-      },
-    }),
-  ]);
-  if (!vendor) return null;
-  if (MANAGER_ROLES.has(current.role)) return { vendor, location };
-  if (
-    !canRepresentativeAccessVendor(
-      ownerOrganization?.salesRepVendorRestrictionEnabled ?? false,
-      location !== null,
-    )
-  )
-    return null;
+  const location = await prisma.salesVisitLocation.findFirst({
+    where: { ...salesLocationScope(current.organizationId), vendorOrganizationId: vendorId },
+    include: { vendorOrganization: {
+      select: { id: true, name: true, taxId: true, email: true, phone: true, address: true, businessCategory: true, status: true, deletedAt: true },
+    } },
+  });
+  const vendor = location?.vendorOrganization;
+  if (!location || !vendor || vendor.deletedAt || vendor.status !== OrgStatus.ACTIVE) return null;
   return { vendor, location };
 }
 
@@ -392,6 +363,7 @@ router.post(
       });
     const vendor = await prisma.organization.findFirst({
       where: {
+        ...salesVendorScope(current.organizationId),
         status: OrgStatus.ACTIVE,
         deletedAt: null,
         ...(email
@@ -466,6 +438,7 @@ router.get(
 
     const organizations = await prisma.organization.findMany({
       where: {
+        ...salesVendorScope(current.organizationId),
         id: { not: current.organizationId },
         status: OrgStatus.ACTIVE,
         deletedAt: null,
@@ -576,7 +549,7 @@ router.get(
         .status(403)
         .json({ message: "Дэлгүүрийн байршил харах эрх шаардлагатай" });
 
-    const locations = await getSalesStoreLocationSources(current.id);
+    const locations = await getSalesStoreLocationSources(current.id, current.organizationId);
     const stores = locations.map((location) => ({
       ...location,
       region: salesStoreRegion(
@@ -1448,6 +1421,7 @@ router.get("/sales-representative/orders", requireAuth, async (req, res) => {
   const orders = await prisma.warehouseStockRequest.findMany({
     where: {
       requestedById: actor.userId,
+      organization: salesVendorScope(current!.organizationId),
       note: { startsWith: "[Х/Т захиалга]" },
     },
     select: {
@@ -1971,26 +1945,13 @@ router.post(
           },
         })
       : null;
-    let location = await prisma.salesVisitLocation.findFirst({
-      where: branch
-        ? { vendorOrganizationId: branch.organizationId }
-        : {
-            id: requestedId,
-            isActive: true,
-            OR: [
-              { organizationId: current.organizationId },
-              {
-                vendorOrganization: {
-                  is: {
-                    type: OrgType.VENDOR,
-                    status: OrgStatus.ACTIVE,
-                    deletedAt: null,
-                  },
-                },
-              },
-            ],
-          },
+    const location = await prisma.salesVisitLocation.findFirst({
+      where: {
+        ...salesLocationScope(current.organizationId),
+        ...(branch ? { vendorOrganizationId: branch.organizationId } : { id: requestedId }),
+      },
     });
+    if (!location) return res.status(404).json({ message: "Танай байгууллагад харьяалагдах идэвхтэй дэлгүүр олдсонгүй" });
     // The map identifies admin branches separately from sales visit locations.
     // Validate the selected branch's coordinates, not another branch's location.
     const target =
@@ -2021,21 +1982,6 @@ router.post(
         message: `Дэлгүүрийн бүсээс гадуур байна (${Math.round(distance)}м)`,
         distanceMeters: Math.round(distance),
         requiredRadiusMeters: target.radiusMeters,
-      });
-    }
-    // Only materialize a missing visit location after successful GPS validation.
-    // Upsert preserves existing ownership, coordinates and assignment records.
-    if (!location && branch) {
-      location = await prisma.salesVisitLocation.upsert({
-        where: { vendorOrganizationId: branch.organizationId },
-        update: {},
-        create: {
-          organizationId: current.organizationId,
-          vendorOrganizationId: branch.organizationId,
-          name: branch.name,
-          address: branch.address,
-          ...target,
-        },
       });
     }
     if (!location || !location.isActive) {

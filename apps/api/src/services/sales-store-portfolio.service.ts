@@ -1,4 +1,5 @@
 import { OrgStatus, OrgType, prisma } from "@mgl/database";
+import { salesLocationScope, salesVendorScope } from "./sales-organization-scope";
 
 type VendorOrganization = {
   id: string;
@@ -146,11 +147,21 @@ const vendorSelect = {
   businessCategory: true,
 } as const;
 
-export async function getSalesStoreLocationSources(currentMemberId: string) {
+export async function getSalesStoreLocationSources(currentMemberId: string, organizationId: string) {
+  salesLocationScope(organizationId); // Fail closed on missing tenant context.
+  return loadStoreLocationSources(currentMemberId, organizationId);
+}
+
+/** Warehouse callers retain their separate warehouse authorization boundary. */
+export async function getWarehouseStoreLocationSources() {
+  return loadStoreLocationSources("");
+}
+
+async function loadStoreLocationSources(currentMemberId: string, organizationId?: string) {
   const [salesLocations, adminBranches] = await Promise.all([
     prisma.salesVisitLocation.findMany({
       where: {
-        isActive: true,
+        ...(organizationId ? salesLocationScope(organizationId) : { isActive: true }),
         vendorOrganizationId: { not: null },
         vendorOrganization: {
           is: {
@@ -179,6 +190,7 @@ export async function getSalesStoreLocationSources(currentMemberId: string) {
         lat: { not: null },
         lng: { not: null },
         organization: {
+          ...(organizationId ? salesVendorScope(organizationId) : {}),
           type: OrgType.VENDOR,
           status: OrgStatus.ACTIVE,
           deletedAt: null,
