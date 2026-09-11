@@ -1,5 +1,5 @@
 import type { BusinessCategory } from "../types";
-import { getEbarimtGroceryClassificationCode } from "@mgl/types";
+import { getEbarimtCategoryClassificationCode } from "@mgl/types";
 
 const CATEGORY_CLASSIFICATION_SEARCH_TERMS: Record<string, string[]> = {
   "fresh-produce": ["жимс", "хүнсний ногоо", "ногоо"],
@@ -18,6 +18,18 @@ const CATEGORY_CLASSIFICATION_SEARCH_TERMS: Record<string, string[]> = {
   "fast-food": ["бургер", "пицца", "сэндвич"],
   "catering-services": ["хоол, ундны үйлчилгээ", "захиалгат хоол"],
   "pet-food": ["амьтны хоол", "тэжээл"],
+  "building-materials": [
+    "барилгын материал",
+    "цонхны шил",
+    "төрөлжсөн дэлгүүр",
+    "жижиглэн худалдаа",
+  ],
+  "-building-material": [
+    "барилгын материал",
+    "цонхны шил",
+    "төрөлжсөн дэлгүүр",
+    "жижиглэн худалдаа",
+  ],
 };
 
 export function getCategoryClassificationSearchText(
@@ -37,5 +49,5 @@ export function getCategoryAutomaticClassificationCode(
   productName = "",
 ) {
   if (!category) return null;
-  return getEbarimtGroceryClassificationCode(category.slug, productName);
+  return getEbarimtCategoryClassificationCode(category.slug, productName);
 }

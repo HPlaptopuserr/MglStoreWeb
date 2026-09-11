@@ -8,6 +8,7 @@ import {
   type ProductCatalogViewMode,
 } from "@mgl/ui";
 import type { Product } from "../types";
+import { formatPosQuantity } from "@mgl/types";
 
 interface Props {
   products: Product[];
@@ -44,7 +45,7 @@ function toCatalogItem(product: Product): ProductCatalogItem {
     category: product.businessCategory?.name ?? null,
     price: product.price,
     secondaryPrice: product.costPrice,
-    stock: product.stock,
+    stock: formatPosQuantity(product.stock, product.unit),
     expiry:
       expiryDate && receiptLotCount > 0
         ? `${expiryDate} · ${receiptLotCount} парт`

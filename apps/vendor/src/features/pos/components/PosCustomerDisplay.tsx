@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import { ReceiptText, ShoppingBag, Sparkles, Star } from "lucide-react";
 import type { CartLine, CartTotals } from "../types/pos.types";
+import { formatPosQuantity } from "@mgl/types";
 
 export const CUSTOMER_DISPLAY_THEME_STORAGE_KEY =
   "mgl_pos_customer_display_theme";
@@ -241,7 +242,7 @@ export function PosCustomerDisplay({
                             Тоо
                           </p>
                           <p className="text-[26px] font-bold leading-none text-[#111827]">
-                            {line.qty}
+                            {formatPosQuantity(line.qty, line.measureUnit)}
                           </p>
                         </div>
 

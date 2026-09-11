@@ -76,6 +76,55 @@ export interface RegisterConfig {
 // ─── Cart ────────────────────────────────────────────────────────────────────
 
 export type PosPriceType = "UNIT" | "WHOLESALE" | "ORDER";
+export type PosMeasureUnit = "pcs" | "kg";
+
+export const POS_PIECE_UNIT: PosMeasureUnit = "pcs";
+export const POS_WEIGHT_UNIT: PosMeasureUnit = "kg";
+export const POS_WEIGHT_STEP_KG = 0.001;
+export const POS_WEIGHT_STOCK_SCALE = 1_000;
+
+export const normalizePosMeasureUnit = (value: unknown): PosMeasureUnit => {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  return ["kg", "кг", "kilogram", "kilograms"].includes(normalized)
+    ? POS_WEIGHT_UNIT
+    : POS_PIECE_UNIT;
+};
+
+export const isPosWeightUnit = (value: unknown) =>
+  normalizePosMeasureUnit(value) === POS_WEIGHT_UNIT;
+
+export const roundPosQuantity = (value: number, unit: unknown) => {
+  const quantity = Number(value);
+  if (!Number.isFinite(quantity)) return 0;
+  return isPosWeightUnit(unit)
+    ? Math.round(quantity * POS_WEIGHT_STOCK_SCALE) / POS_WEIGHT_STOCK_SCALE
+    : Math.floor(quantity);
+};
+
+export const toPosStoredStockQuantity = (value: number, unit: unknown) => {
+  const quantity = Math.max(0, roundPosQuantity(value, unit));
+  return isPosWeightUnit(unit)
+    ? Math.round(quantity * POS_WEIGHT_STOCK_SCALE)
+    : quantity;
+};
+
+export const fromPosStoredStockQuantity = (value: number, unit: unknown) => {
+  const quantity = Math.max(0, Number(value) || 0);
+  return isPosWeightUnit(unit)
+    ? Math.round(quantity) / POS_WEIGHT_STOCK_SCALE
+    : Math.floor(quantity);
+};
+
+export const formatPosQuantity = (value: number, unit: unknown) => {
+  const normalizedUnit = normalizePosMeasureUnit(unit);
+  const quantity = roundPosQuantity(value, normalizedUnit);
+  return `${quantity.toLocaleString("mn-MN", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: normalizedUnit === POS_WEIGHT_UNIT ? 3 : 0,
+  })} ${normalizedUnit === POS_WEIGHT_UNIT ? "кг" : "ш"}`;
+};
 
 export interface PosProduct {
   id: string;
@@ -93,7 +142,7 @@ export interface PosProduct {
   cityTaxRate?: number;
   classificationCode?: string;
   taxProductCode?: string | null;
-  measureUnit?: string;
+  measureUnit?: PosMeasureUnit;
   isActive: boolean;
   categoryName?: string | null;
 }
@@ -114,7 +163,7 @@ export interface CartLine {
   cityTaxRate?: number;
   classificationCode?: string;
   taxProductCode?: string | null;
-  measureUnit?: string;
+  measureUnit?: PosMeasureUnit;
   discountAmount: number;
 }
 

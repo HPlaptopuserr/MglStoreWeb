@@ -55,6 +55,11 @@ import {
   runtimeEnv,
 } from "./_shared";
 import { calculatePosCreditPayable } from "./credit-interest";
+import {
+  fromPosStoredStockQuantity,
+  normalizePosMeasureUnit,
+  toPosStoredStockQuantity,
+} from "@mgl/types";
 
 const router: ExpressRouter = Router();
 
@@ -244,6 +249,7 @@ router.get("/pos/products", async (req, res) => {
         cityTaxRate: true,
         classificationCode: true,
         taxProductCode: true,
+        unit: true,
         stock: true,
         isActive: true,
         isRestaurantMenuItem: true,
@@ -283,13 +289,13 @@ router.get("/pos/products", async (req, res) => {
           wholesalePrice:
             p.wholesalePrice == null ? null : Number(p.wholesalePrice),
           orderPrice: p.orderPrice == null ? null : Number(p.orderPrice),
-          stockQty: p.stock,
+          stockQty: fromPosStoredStockQuantity(p.stock, p.unit),
           taxType: p.taxType || "VAT_ABLE",
           taxRate: p.taxType === "VAT_ABLE" ? 10 : 0,
           cityTaxRate: Number(p.cityTaxRate || 0),
           classificationCode: p.classificationCode || "6212991",
           taxProductCode: p.taxProductCode || null,
-          measureUnit: "pcs",
+          measureUnit: normalizePosMeasureUnit(p.unit),
           expiryDate: expiryDate?.toISOString() ?? null,
           isActive: p.isActive,
           isRestaurantMenuItem: p.isRestaurantMenuItem,
@@ -514,7 +520,7 @@ router.get("/pos/receipts", async (req, res) => {
         lines: sale.lines.map((line) => ({
           productId: line.productId,
           name: line.productName,
-          qty: line.qty,
+          qty: Number(line.qty),
           unitPrice: Number(line.unitPrice),
           taxAmount: Number(line.taxAmount),
           taxType: line.taxType,
@@ -649,7 +655,7 @@ router.get("/pos/sales/history", async (req, res) => {
         productId: line.productId,
         productName: line.productName,
         productSku: line.productSku,
-        qty: line.qty,
+        qty: Number(line.qty),
         unitPrice: Number(line.unitPrice),
         taxAmount: Number(line.taxAmount),
         taxType: line.taxType,
@@ -751,6 +757,7 @@ router.get("/pos/credit-sales", async (req, res) => {
                 unitPrice: true,
                 taxAmount: true,
                 discount: true,
+                measureUnit: true,
                 lineTotal: true,
               },
             },
@@ -775,10 +782,11 @@ router.get("/pos/credit-sales", async (req, res) => {
           productId: line.productId,
           productName: line.productName,
           productSku: line.productSku,
-          qty: line.qty,
+          qty: Number(line.qty),
           unitPrice: Number(line.unitPrice),
           taxAmount: Number(line.taxAmount),
           discount: Number(line.discount),
+          measureUnit: line.measureUnit,
           lineTotal: Number(line.lineTotal),
         })),
       })),
@@ -1580,7 +1588,10 @@ router.post("/pos/sales/:id/void", async (req, res) => {
             productId: line.productId,
             warehouseId: warehouseId ?? undefined,
             branchId: sale.branchId,
-            change: line.qty, // positive = return to stock
+            change: toPosStoredStockQuantity(
+              Number(line.qty),
+              line.measureUnit,
+            ), // positive = return to stock
             reason: InventoryReason.RETURN,
             note: `Void sale ${sale.receiptNo}`,
             createdById: actor.id,

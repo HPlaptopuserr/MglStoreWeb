@@ -461,7 +461,7 @@ async function buildVendorExpiryInsights(organizationId: string) {
   for (const item of posSales) {
     salesByProductId.set(
       item.productId,
-      (salesByProductId.get(item.productId) ?? 0) + (item._sum.qty ?? 0),
+      (salesByProductId.get(item.productId) ?? 0) + Number(item._sum.qty ?? 0),
     );
   }
 
@@ -1019,7 +1019,7 @@ router.get(
           revenue: 0,
           transactions: 0,
         };
-        prev.units += item._sum.qty ?? 0;
+        prev.units += Number(item._sum.qty ?? 0);
         prev.revenue += Number(item._sum.lineTotal ?? 0);
         prev.transactions += item._count.id;
         productMap.set(item.productId, prev);
@@ -1094,7 +1094,7 @@ router.get(
         activeOrganizations,
       );
       const unitsSold =
-        (onlineUnits._sum.quantity ?? 0) + (posUnits._sum.qty ?? 0);
+        (onlineUnits._sum.quantity ?? 0) + Number(posUnits._sum.qty ?? 0);
       const avgTicket =
         totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
       const previousAvgTicket =

@@ -56,6 +56,13 @@ import {
   calculatePosCreditPayable,
   resolvePosCreditDueDate,
 } from "./credit-interest";
+import {
+  formatPosQuantity,
+  fromPosStoredStockQuantity,
+  normalizePosMeasureUnit,
+  roundPosQuantity,
+  toPosStoredStockQuantity,
+} from "@mgl/types";
 
 const router: ExpressRouter = Router();
 
@@ -821,12 +828,19 @@ router.post("/pos/sales", async (req, res) => {
 
     const qtyByProduct = new Map<string, number>();
     for (const line of lines) {
-      if (!line.productId || !Number.isFinite(line.qty) || line.qty <= 0) {
+      const qty = Number(line.qty);
+      if (
+        !line.productId ||
+        !Number.isFinite(qty) ||
+        qty <= 0 ||
+        Math.abs(qty * 1_000 - Math.round(qty * 1_000)) > 0.000001
+      ) {
         return res.status(400).json({ message: "Мөрийн өгөгдөл буруу байна" });
       }
       qtyByProduct.set(
         line.productId,
-        (qtyByProduct.get(line.productId) || 0) + line.qty,
+        Math.round(((qtyByProduct.get(line.productId) || 0) + qty) * 1_000) /
+          1_000,
       );
     }
 
@@ -1144,6 +1158,7 @@ router.post("/pos/sales", async (req, res) => {
             sku: true,
             barcode: true,
             stock: true,
+            unit: true,
             organizationId: true,
             taxType: true,
             cityTaxRate: true,
@@ -1292,15 +1307,33 @@ router.post("/pos/sales", async (req, res) => {
 
         for (const product of products) {
           const requestedQty = qtyByProduct.get(product.id) || 0;
-          if (product.stock < requestedQty) {
+          const measureUnit = normalizePosMeasureUnit(product.unit);
+          if (measureUnit === "pcs" && !Number.isInteger(requestedQty)) {
+            throw toApiError(
+              400,
+              `"${product.name}" барааг бүхэл ширхэгээр борлуулна`,
+            );
+          }
+          const requestedStock = toPosStoredStockQuantity(
+            requestedQty,
+            measureUnit,
+          );
+          if (product.stock < requestedStock) {
             throw toApiError(
               409,
-              `"${product.name}" барааны нөөц хүрэлцэхгүй (үлдэгдэл: ${product.stock})`,
+              `"${product.name}" барааны нөөц хүрэлцэхгүй (үлдэгдэл: ${formatPosQuantity(
+                fromPosStoredStockQuantity(product.stock, measureUnit),
+                measureUnit,
+              )})`,
             );
           }
         }
 
         for (const [productId, qty] of qtyByProduct) {
+          const product = products.find((item) => item.id === productId);
+          if (!product) {
+            throw toApiError(404, "Бараа олдсонгүй");
+          }
           const warehouseId = await resolveOrgWarehouse(
             tx,
             effectiveOrganizationId,
@@ -1311,7 +1344,7 @@ router.post("/pos/sales", async (req, res) => {
             productId,
             warehouseId: warehouseId ?? undefined,
             branchId: body.branchId,
-            change: -qty,
+            change: -toPosStoredStockQuantity(qty, product.unit),
             reason: InventoryReason.ORDER,
             note: body.note || "POS sale",
             createdById: actor?.id || null,
@@ -1390,7 +1423,8 @@ router.post("/pos/sales", async (req, res) => {
               `"${product?.name || line.productId}" барааны үнэ шинэчлэгдсэн байна. Сагсаа дахин ачаална уу`,
             );
           }
-          const qty = Number(line.qty || 0);
+          const measureUnit = normalizePosMeasureUnit(product?.unit);
+          const qty = roundPosQuantity(Number(line.qty || 0), measureUnit);
           const taxType = product?.taxType || "VAT_ABLE";
           const taxRate = taxType === "VAT_ABLE" ? 10 : 0;
           const cityTaxRate = Number(product?.cityTaxRate || 0);
@@ -1418,7 +1452,7 @@ router.post("/pos/sales", async (req, res) => {
             cityTaxAmount,
             classificationCode: product?.classificationCode || "6212991",
             taxProductCode: product?.taxProductCode || null,
-            measureUnit: "pcs",
+            measureUnit,
             discount: discountTotal,
             lineTotal,
           };
@@ -1883,7 +1917,7 @@ router.post("/pos/sales", async (req, res) => {
           lines: fullSale.lines.map((l) => ({
             productId: l.productId,
             name: l.productName,
-            qty: l.qty,
+            qty: Number(l.qty),
             unitPrice: Number(l.unitPrice),
             taxAmount: Number(l.taxAmount),
             taxType: l.taxType,

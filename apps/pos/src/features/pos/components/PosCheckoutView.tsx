@@ -26,6 +26,7 @@ import type {
 } from "../types/pos.types";
 import type { PaymentMethod } from "../constants/payment-methods";
 import { CreditPaymentDialog } from "./CreditPaymentDialog";
+import { formatPosQuantity } from "@mgl/types";
 
 type Props = {
   lines: CartLine[];
@@ -506,7 +507,8 @@ export function PosCheckoutView({
                     {line.name}
                   </p>
                   <p className="text-xs text-zinc-500 mt-0.5">
-                    {line.qty} × ₮{line.unitPrice.toLocaleString()}
+                    {formatPosQuantity(line.qty, line.measureUnit)} × ₮
+                    {line.unitPrice.toLocaleString()}
                   </p>
                 </div>
                 <p className="text-sm font-bold text-zinc-200 tabular-nums shrink-0">

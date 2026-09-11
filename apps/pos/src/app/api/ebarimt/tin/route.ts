@@ -6,15 +6,6 @@ type TinLookupResponse = {
   data?: string | number | null;
 };
 
-type TaxpayerInfoResponse = {
-  status?: number;
-  msg?: string;
-  data?: {
-    name?: string | null;
-    found?: boolean;
-  } | null;
-};
-
 function buildInfoApiUrl(rawBaseUrl: string, endpointName: string) {
   const configured = rawBaseUrl.trim().replace(/\/+$/, "");
   const baseUrl = configured.includes("/api/info/check/")
@@ -26,12 +17,6 @@ function buildInfoApiUrl(rawBaseUrl: string, endpointName: string) {
 function buildTinLookupUrl(rawBaseUrl: string, regNo: string) {
   const url = buildInfoApiUrl(rawBaseUrl, "getTinInfo");
   url.searchParams.set("regNo", regNo);
-  return url;
-}
-
-function buildTaxpayerInfoUrl(rawBaseUrl: string, tin: string) {
-  const url = buildInfoApiUrl(rawBaseUrl, "getInfo");
-  url.searchParams.set("tin", tin);
   return url;
 }
 
@@ -75,40 +60,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const infoResponse = await fetch(buildTaxpayerInfoUrl(baseUrl, tin), {
-      cache: "no-store",
-    });
-    const infoText = await infoResponse.text();
-    let infoPayload: TaxpayerInfoResponse;
-    try {
-      infoPayload = JSON.parse(infoText) as TaxpayerInfoResponse;
-    } catch {
-      return NextResponse.json(
-        {
-          message: `Байгууллагын нэрийн лавлагаа JSON бус хариу өглөө (HTTP ${infoResponse.status})`,
-        },
-        { status: 502 },
-      );
-    }
-
-    const name = String(infoPayload.data?.name ?? "").trim();
-    if (
-      !infoResponse.ok ||
-      infoPayload.status !== 200 ||
-      infoPayload.data?.found === false ||
-      !name
-    ) {
-      return NextResponse.json(
-        {
-          message:
-            infoPayload.msg ||
-            `Байгууллагын нэр олдсонгүй (HTTP ${infoResponse.status})`,
-        },
-        { status: 404 },
-      );
-    }
-
-    return NextResponse.json({ regNo, tin, name });
+    return NextResponse.json({ regNo, tin });
   } catch (error) {
     console.error("eBarimt TIN lookup error", error);
     const detail = error instanceof Error ? error.message : "unknown error";

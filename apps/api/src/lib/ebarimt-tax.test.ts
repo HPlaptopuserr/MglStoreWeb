@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  EBARIMT_BUILDING_MATERIALS_CLASSIFICATION_CODE,
   EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
+  getEbarimtCategoryClassificationCode,
   getEbarimtGroceryClassificationCode,
   getEbarimtTaxProductCodes,
   isValidEbarimtClassificationCode,
@@ -53,4 +55,17 @@ test("grocery categories receive safe automatic retail classifications", () => {
     "6212400",
   );
   assert.equal(getEbarimtGroceryClassificationCode("electronics"), null);
+});
+
+test("building materials receive the matching ordinary retail classification", () => {
+  assert.equal(
+    getEbarimtCategoryClassificationCode("building-materials"),
+    EBARIMT_BUILDING_MATERIALS_CLASSIFICATION_CODE,
+  );
+  assert.equal(
+    getEbarimtCategoryClassificationCode("-building-material"),
+    EBARIMT_BUILDING_MATERIALS_CLASSIFICATION_CODE,
+  );
+  assert.equal(EBARIMT_BUILDING_MATERIALS_CLASSIFICATION_CODE, "6226100");
+  assert.equal(requiresEbarimtTaxProductCode("VAT_ABLE"), false);
 });

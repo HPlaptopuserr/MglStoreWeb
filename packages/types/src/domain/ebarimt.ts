@@ -13,6 +13,7 @@ export type EbarimtTaxProductCode = {
 };
 
 export const EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE = "6212991";
+export const EBARIMT_BUILDING_MATERIALS_CLASSIFICATION_CODE = "6226100";
 
 const EBARIMT_GROCERY_CATEGORY_CLASSIFICATION_CODES: Readonly<
   Record<string, string>
@@ -43,6 +44,26 @@ export function getEbarimtGroceryClassificationCode(
       : "6212300";
   }
   return EBARIMT_GROCERY_CATEGORY_CLASSIFICATION_CODES[slug] ?? null;
+}
+
+const EBARIMT_RETAIL_CATEGORY_CLASSIFICATION_CODES: Readonly<
+  Record<string, string>
+> = {
+  "building-materials": EBARIMT_BUILDING_MATERIALS_CLASSIFICATION_CODE,
+  "-building-material": EBARIMT_BUILDING_MATERIALS_CLASSIFICATION_CODE,
+};
+
+export function getEbarimtCategoryClassificationCode(
+  categorySlug: unknown,
+  productName: unknown = "",
+): string | null {
+  const slug = String(categorySlug ?? "")
+    .trim()
+    .toLowerCase();
+  return (
+    EBARIMT_RETAIL_CATEGORY_CLASSIFICATION_CODES[slug] ??
+    getEbarimtGroceryClassificationCode(slug, productName)
+  );
 }
 
 // Official PosAPI 3 reference lists published by ITC:

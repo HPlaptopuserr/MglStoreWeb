@@ -336,13 +336,17 @@ router.get("/pos/payments/qpay/status/:invoiceId", async (req, res) => {
       return res.status(403).json({ message: "Өөр байгууллагын QPay invoice харах боломжгүй" });
     }
 
-    // Provider state is authoritative. Always reconcile first, even after the
-    // QR deadline: a bank payment can complete just before expiry while its
-    // callback/status check reaches us a little later.
+    // Routine POS polling must only read our local state. QPay explicitly
+    // disallows continuously polling its payment-check endpoint; payment
+    // providers can throttle or invalidate a QR after repeated checks. The
+    // provider callback updates active invoices. We do one final provider
+    // reconciliation only when the local five-minute deadline is reached so a
+    // payment completed just before expiry is not lost if its callback was
+    // delayed.
     let current = invoice;
     if (
-      invoice.status === PosQPayStatus.PENDING ||
-      invoice.status === PosQPayStatus.EXPIRED
+      invoice.status === PosQPayStatus.PENDING &&
+      invoice.expiresAt <= new Date()
     ) {
       const payload = (invoice.webhookPayload || {}) as Record<string, unknown>;
       const providerInvoiceId = String(payload.providerInvoiceId || "").trim();
@@ -430,10 +434,7 @@ router.get("/pos/payments/qpay/status/:invoiceId", async (req, res) => {
         }
       }
 
-      if (
-        current.status === PosQPayStatus.PENDING &&
-        invoice.expiresAt <= new Date()
-      ) {
+      if (current.status === PosQPayStatus.PENDING) {
         await prisma.qPayInvoice.updateMany({
           where: { id, status: PosQPayStatus.PENDING },
           data: { status: PosQPayStatus.EXPIRED },

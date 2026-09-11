@@ -1,4 +1,5 @@
 import type { CartLine, PosProduct } from "../types/pos.types";
+import { POS_WEIGHT_STEP_KG, roundPosQuantity } from "@mgl/types";
 
 export type PosState = {
   branchId: string;
@@ -47,13 +48,24 @@ export function posReducer(state: PosState, action: PosAction): PosState {
         return { ...state, lastError: "Нөөц дууссан бараа байна" };
       }
 
-      const existing = state.cart.find((line) => line.productId === action.payload.productId);
+      const existing = state.cart.find(
+        (line) => line.productId === action.payload.productId,
+      );
       if (existing) {
         const maxQty = Math.max(0, existing.stockQty);
-        const nextQty = Math.min(existing.qty + action.payload.qty, maxQty);
+        const nextQty = Math.min(
+          roundPosQuantity(
+            existing.qty + action.payload.qty,
+            existing.measureUnit,
+          ),
+          maxQty,
+        );
 
         if (nextQty <= existing.qty) {
-          return { ...state, lastError: `"${existing.name}" барааны нөөц хүрэлцэхгүй` };
+          return {
+            ...state,
+            lastError: `"${existing.name}" барааны нөөц хүрэлцэхгүй`,
+          };
         }
 
         return {
@@ -66,7 +78,11 @@ export function posReducer(state: PosState, action: PosAction): PosState {
           ),
         };
       }
-      return { ...state, lastError: null, cart: [...state.cart, action.payload] };
+      return {
+        ...state,
+        lastError: null,
+        cart: [...state.cart, action.payload],
+      };
     }
     case "remove-line":
       return {
@@ -82,13 +98,21 @@ export function posReducer(state: PosState, action: PosAction): PosState {
             if (line.productId !== action.payload.productId) return line;
 
             const maxQty = Math.max(0, line.stockQty);
+            const minimumQty =
+              line.measureUnit === "kg" ? POS_WEIGHT_STEP_KG : 1;
             if (maxQty === 0) {
               return { ...line, qty: 0 };
             }
 
             return {
               ...line,
-              qty: Math.min(Math.max(1, action.payload.qty), maxQty),
+              qty: Math.min(
+                Math.max(
+                  minimumQty,
+                  roundPosQuantity(action.payload.qty, line.measureUnit),
+                ),
+                maxQty,
+              ),
             };
           })
           .filter((line) => line.qty > 0),

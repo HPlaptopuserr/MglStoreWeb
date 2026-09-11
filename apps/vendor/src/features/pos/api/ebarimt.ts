@@ -3,6 +3,8 @@ import type { RegisterConfig, SalePaymentLine } from "../types/pos.types";
 import {
   EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
   isValidEbarimtTaxProductCode,
+  normalizePosMeasureUnit,
+  POS_WEIGHT_STEP_KG,
 } from "@mgl/types";
 import { posRequest } from "./_pos-client";
 
@@ -70,7 +72,7 @@ export type EbarimtBuyer =
 export type EbarimtTinLookupResult = {
   regNo: string;
   tin: string;
-  name: string;
+  name?: string | null;
 };
 
 export type AttachEbarimtPayload = {
@@ -248,17 +250,10 @@ async function lookupEbarimtTinFromBridge(
         );
       }
 
-      const name = pickText(payload.name);
-      if (!name) {
-        // Older bridge builds returned only TIN. Continue with the server
-        // lookup so the official taxpayer name can still be resolved.
-        continue;
-      }
-
       return {
         regNo: String(payload.regNo || regNo).replace(/\D/g, "") || regNo,
         tin,
-        name,
+        name: pickText(payload.name),
       };
     } catch (error) {
       if (error instanceof BridgeTinLookupError && error.final) throw error;
@@ -474,13 +469,12 @@ export async function lookupEbarimtTin(
   const result = payload as Partial<EbarimtTinLookupResult>;
   const tin = normalizeTin(result.tin);
   const name = pickText(result.name);
-  if (!isValidTin(tin) || !name) {
-    throw new Error("Байгууллагын TIN эсвэл нэрийн мэдээлэл дутуу ирлээ");
+  if (!isValidTin(tin)) {
+    throw new Error("Байгууллагын TIN мэдээлэл дутуу ирлээ");
   }
 
   return {
-    regNo:
-      String(result.regNo || normalized).replace(/\D/g, "") || normalized,
+    regNo: String(result.regNo || normalized).replace(/\D/g, "") || normalized,
     tin,
     name,
   };
@@ -760,7 +754,9 @@ export async function issueLocalEbarimtReceipt(
       ? normalizedReceiptTaxType(line.taxType)
       : "VAT_ABLE";
     const totalAmount = money(line.lineTotal);
-    const qty = Math.max(1, Number(line.qty) || 1);
+    const measureUnit = normalizePosMeasureUnit(line.measureUnit);
+    const minimumQty = measureUnit === "kg" ? POS_WEIGHT_STEP_KG : 1;
+    const qty = Math.max(minimumQty, Number(line.qty) || minimumQty);
     const taxProductCode = getLineTaxProductCode(line, receiptTaxType);
     const item = {
       name: line.name,
@@ -770,7 +766,7 @@ export async function issueLocalEbarimtReceipt(
         line.classificationCode ||
         getEbarimtConfig("CLASSIFICATION_CODE", DEFAULT_CLASSIFICATION_CODE),
       ...(taxProductCode ? { taxProductCode } : {}),
-      measureUnit: line.measureUnit || "pcs",
+      measureUnit,
       qty,
       unitPrice: money(totalAmount / qty),
       totalAmount,
