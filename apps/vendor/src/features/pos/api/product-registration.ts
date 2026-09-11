@@ -1,4 +1,5 @@
 import { API, authFetch } from "@/lib/api";
+import { normalizePosMeasureUnit } from "@mgl/types";
 import type { PosProduct } from "../types/pos.types";
 import type {
   QuickProductRegistrationInput,
@@ -100,7 +101,7 @@ export async function registerProductFromPos(
     cityTaxRate: Number(product.cityTaxRate) || 0,
     classificationCode: product.classificationCode || "6212991",
     taxProductCode: product.taxProductCode || null,
-    measureUnit: input.unit || "pcs",
+    measureUnit: normalizePosMeasureUnit(input.unit),
     isActive: true,
     categoryName: product.businessCategory?.name ?? null,
   };
