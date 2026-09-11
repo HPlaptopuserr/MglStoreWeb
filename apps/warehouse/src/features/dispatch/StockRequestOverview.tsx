@@ -16,7 +16,13 @@ import {
   type StockRequest,
 } from "./stock-request.model";
 
-type PaymentFilter = "ALL" | "PAID" | "PARTIAL" | "UNPAID" | "NOT_CREATED";
+type PaymentFilter =
+  | "ALL"
+  | "PAID"
+  | "PARTIAL"
+  | "UNPAID"
+  | "NOT_CREATED"
+  | "VOID";
 
 interface PaymentView {
   key: Exclude<PaymentFilter, "ALL">;
@@ -40,6 +46,24 @@ function money(value: number) {
 }
 
 function paymentView(request: StockRequest): PaymentView {
+  const paymentIsVoided =
+    request.payment?.status === "CANCELLED" ||
+    request.payment?.status === "REFUNDED";
+  if (
+    request.status === "REJECTED" ||
+    request.status === "CANCELLED" ||
+    paymentIsVoided
+  ) {
+    return {
+      key: "VOID",
+      label: "Авлагаас хассан",
+      className: "border-slate-200 bg-slate-100 text-slate-500",
+      total: 0,
+      paid: 0,
+      outstanding: 0,
+    };
+  }
+
   if (!request.payment) {
     return {
       key: "NOT_CREATED",
@@ -129,6 +153,7 @@ export function StockRequestOverview({
       partial: rows.filter(({ payment }) => payment.key === "PARTIAL").length,
       notCreated: rows.filter(({ payment }) => payment.key === "NOT_CREATED")
         .length,
+      voided: rows.filter(({ payment }) => payment.key === "VOID").length,
       outstanding: rows.reduce(
         (total, row) => total + row.payment.outstanding,
         0,
@@ -183,6 +208,7 @@ export function StockRequestOverview({
       label: "Нэхэмжлээгүй",
       count: summary.notCreated,
     },
+    { key: "VOID", label: "Хүчингүй", count: summary.voided },
   ];
 
   return (

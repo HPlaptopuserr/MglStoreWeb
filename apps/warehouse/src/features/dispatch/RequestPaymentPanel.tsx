@@ -34,7 +34,11 @@ export function RequestPaymentPanel({ request, onSaved, onBusy }: {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Баримт татаж чадсангүй"); }
   }
   if (!payment) return <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Төлбөрийн нэхэмжлэх үүсээгүй байна.</p>;
-  const canPay = remaining > 0 && !["REJECTED", "CANCELLED"].includes(request.status);
+  const paymentIsVoided = ["CANCELLED", "REFUNDED"].includes(payment.status);
+  const requestIsVoided = ["REJECTED", "CANCELLED"].includes(request.status);
+  const isVoided = paymentIsVoided || requestIsVoided;
+  const accountingRemaining = isVoided ? 0 : remaining;
+  const canPay = accountingRemaining > 0;
   async function save() {
     if (!payment || busy || !confirmed) return;
     const value = Number(amount);
@@ -65,14 +69,15 @@ export function RequestPaymentPanel({ request, onSaved, onBusy }: {
   return <section className="space-y-3 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4">
     <h4 className="font-bold text-slate-900">Төлбөрийн бүртгэл</h4>
     <dl className="grid grid-cols-3 gap-2 text-xs">
-      {[['Нийт', Number(payment.totalAmount)], ['Төлсөн', Number(payment.paidAmount)], ['Үлдэгдэл', remaining]].map(([label, value]) =>
+      {[['Нийт', Number(payment.totalAmount)], ['Төлсөн', Number(payment.paidAmount)], ['Үлдэгдэл', accountingRemaining]].map(([label, value]) =>
         <div key={label}><dt className="text-slate-500">{label}</dt><dd className="mt-1 font-bold">{money(Number(value))}</dd></div>)}
     </dl>
     {payment.paymentMethod && <p className="text-xs text-slate-600">Сүүлийн төлөлтийн хэлбэр: {methods[payment.paymentMethod as keyof typeof methods] ?? payment.paymentMethod}</p>}
     {saved && <p role="status" className="text-sm text-emerald-700">Төлөлт бүртгэгдлээ.</p>}
     <PaymentConfirmationLog entries={payment.entries} onDownload={(id, name) => void downloadReceipt(id, name)} />
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-    {remaining === 0 && <p className="text-sm font-bold text-emerald-700">Бүрэн төлөгдсөн</p>}
+    {isVoided && <p className="text-sm font-bold text-slate-600">Хүсэлт хүчингүй болсон тул авлагын үлдэгдэлд тооцохгүй.</p>}
+    {!isVoided && remaining === 0 && <p className="text-sm font-bold text-emerald-700">Бүрэн төлөгдсөн</p>}
     {canPay && <fieldset disabled={busy} className="space-y-3 disabled:opacity-60">
       <p className="text-xs text-slate-600">Дансны хуулга, картын баримт эсвэл хүлээн авсан бэлэн мөнгийг шалгасны дараа бүртгэнэ. Энэ үйлдэл мөнгө шилжүүлэхгүй.</p>
       <div className="grid gap-3 sm:grid-cols-2">

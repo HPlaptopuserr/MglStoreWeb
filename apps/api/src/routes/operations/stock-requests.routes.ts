@@ -1151,6 +1151,13 @@ router.patch("/stock-requests/:id/reject", requireAuth, async (req, res) => {
       });
     }
 
+    if (request.payment && Number(request.payment.paidAmount) > 0) {
+      return res.status(409).json({
+        message:
+          "Төлбөр орсон хүсэлтийг шууд татгалзах боломжгүй. Эхлээд төлбөрийг буцаана уу",
+      });
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       const rejectedRequest = await tx.warehouseStockRequest.update({
         where: { id },
@@ -1340,6 +1347,13 @@ router.patch("/stock-requests/:id/cancel", requireAuth, async (req, res) => {
     if (request.status !== StockRequestStatus.PENDING) {
       return res.status(400).json({
         message: "Зөвхөн хүлээгдэж буй хүсэлтийг цуцлах боломжтой",
+      });
+    }
+
+    if (request.payment && Number(request.payment.paidAmount) > 0) {
+      return res.status(409).json({
+        message:
+          "Төлбөр орсон хүсэлтийг шууд цуцлах боломжгүй. Эхлээд төлбөрийг буцаана уу",
       });
     }
 
