@@ -424,6 +424,25 @@ const requireDeliveryDriver = async (
     select: { organizationId: true },
   });
   if (!membership) {
+    // Managers may use their own driver workspace without a separate capability.
+    // Delivery handlers still enforce courierId ownership for every operation.
+    if (user.organizationId) {
+      const manager = await prisma.organizationMember.findFirst({
+        where: {
+          userId: user.userId,
+          organizationId: user.organizationId,
+          isActive: true,
+          deletedAt: null,
+          role: { in: [OrgRole.OWNER, OrgRole.ADMIN] },
+          organization: { businessDeliveryEnabled: true, deletedAt: null },
+        },
+        select: { organizationId: true },
+      });
+      if (manager) {
+        authenticated.deliveryOrganizationId = manager.organizationId;
+        return next();
+      }
+    }
     return res.status(403).json({
       message: "Хүргэлтийн ажилтны эрх идэвхгүй байна",
     });
