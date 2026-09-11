@@ -1715,7 +1715,10 @@ router.get("/grocery-store/dashboard", async (req, res) => {
         soldItems: 0,
       };
       for (const line of sale.lines) {
-        const quantity = line.qty;
+        // POS quantities are stored as Decimal to support weighted products.
+        // Convert at the API boundary so the existing dashboard contract keeps
+        // returning JSON numbers for both old and new clients.
+        const quantity = Number(line.qty);
         const lineRevenue = Number(line.lineTotal);
         const lineCost = Number(line.product.costPrice ?? 0) * quantity;
         soldItems += quantity;
