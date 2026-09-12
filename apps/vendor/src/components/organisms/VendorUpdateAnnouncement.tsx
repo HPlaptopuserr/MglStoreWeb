@@ -186,6 +186,15 @@ export function VendorUpdateAnnouncement() {
     }
     close();
   }, [close]);
+  const stopTour = useCallback(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, String(MAX_IMPRESSIONS));
+    } catch {
+      /* Storage unavailable. */
+    }
+    setTarget(null);
+    close();
+  }, [close]);
 
   useEffect(() => {
     if (recorded.current) return;
@@ -251,7 +260,10 @@ export function VendorUpdateAnnouncement() {
     const previous = document.body.style.overflow;
     if (mode === "welcome") document.body.style.overflow = "hidden";
     const keydown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") {
+        if (mode === "tour") stopTour();
+        else close();
+      }
       if (
         mode === "tour" &&
         event.key === "ArrowRight" &&
@@ -266,7 +278,7 @@ export function VendorUpdateAnnouncement() {
       document.body.style.overflow = previous;
       document.removeEventListener("keydown", keydown);
     };
-  }, [close, mode, stepIndex]);
+  }, [close, mode, stepIndex, stopTour]);
 
   if (mode === "hidden") return null;
   if (mode === "welcome")
@@ -359,8 +371,9 @@ export function VendorUpdateAnnouncement() {
           </span>
           <button
             type="button"
-            onClick={close}
+            onClick={stopTour}
             aria-label="Зааврыг хаах"
+            title="Зааврыг зогсоох"
             className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
           >
             <X size={18} />
@@ -393,7 +406,7 @@ export function VendorUpdateAnnouncement() {
           <button
             type="button"
             onClick={() =>
-              isLast ? close() : setStepIndex((value) => value + 1)
+              isLast ? stopTour() : setStepIndex((value) => value + 1)
             }
             className="inline-flex h-10 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition hover:-translate-y-0.5 hover:bg-indigo-700"
           >
