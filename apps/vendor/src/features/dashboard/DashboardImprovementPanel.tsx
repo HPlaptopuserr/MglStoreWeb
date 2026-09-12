@@ -116,7 +116,10 @@ export function DashboardImprovementPanel({
   const items = buildImprovementItems(metrics);
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section
+      data-tour="improvement-panel"
+      className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+    >
       <div className="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-indigo-50 text-indigo-600">

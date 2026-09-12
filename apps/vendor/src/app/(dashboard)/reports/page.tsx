@@ -241,6 +241,7 @@ export default function ReportsPage() {
         </div>
         <div className="flex gap-2">
           <button
+            data-tour="report-pdf"
             type="button"
             onClick={() => {
               void loadProducts();
@@ -268,6 +269,7 @@ export default function ReportsPage() {
       </header>
 
       <section
+        data-tour="report-filters"
         className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-3"
         aria-label="Тайлан шүүх"
       >

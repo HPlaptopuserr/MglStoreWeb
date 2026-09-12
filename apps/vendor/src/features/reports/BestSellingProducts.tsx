@@ -21,7 +21,10 @@ export function BestSellingProducts({
   );
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section
+      data-tour="best-selling"
+      className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+    >
       <div className="border-b border-slate-100 px-4 py-4 sm:px-5">
         <div className="flex items-center gap-3">
           <span className="grid h-10 w-10 place-items-center rounded-xl bg-amber-50 text-amber-600">

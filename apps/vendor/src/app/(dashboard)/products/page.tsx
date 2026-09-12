@@ -1650,6 +1650,7 @@ export default function ProductsPage() {
 
       {!loading && totalProducts > PRODUCTS_PER_PAGE && (
         <nav
+          data-tour="product-pagination"
           aria-label="Бүтээгдэхүүний хуудас"
           className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row"
         >
