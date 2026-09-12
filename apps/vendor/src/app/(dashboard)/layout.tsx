@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { DashboardLayout } from "@mgl/ui";
 import { NotificationDropdown } from "@/components/organisms/NotificationDropdown";
 import VendorTutorialButton from "@/components/organisms/VendorTutorialButton";
+import { VendorUpdateAnnouncement } from "@/components/organisms/VendorUpdateAnnouncement";
 import {
   isFeatureEnabled,
   POS_FEATURE_KEY,
@@ -79,40 +80,68 @@ export default function VendorDashboardLayout({
           return;
         }
 
-        const storedUser = JSON.parse(localStorage.getItem("vendor_user") || "{}");
+        const storedUser = JSON.parse(
+          localStorage.getItem("vendor_user") || "{}",
+        );
         const nextUser = {
           ...storedUser,
           ...me,
-          organizationName: storedUser.organizationName || me.organizationName || "",
+          organizationName:
+            storedUser.organizationName || me.organizationName || "",
         };
         localStorage.setItem("vendor_user", JSON.stringify(nextUser));
-        setOrganizations(Array.isArray(me.organizations) ? me.organizations : []);
+        setOrganizations(
+          Array.isArray(me.organizations) ? me.organizations : [],
+        );
         setSelectedOrganizationId(me.organizationId || "");
 
         setUserData({
           name: nextUser.name || nextUser.fullName || "Vendor",
           email: nextUser.email || "vendor@mglstore.mn",
           role: nextUser.role || "VENDOR",
-          initials: (nextUser.name || nextUser.fullName || "VN").slice(0, 2).toUpperCase(),
+          initials: (nextUser.name || nextUser.fullName || "VN")
+            .slice(0, 2)
+            .toUpperCase(),
           organizationName: nextUser.organizationName || "",
         });
 
-        const settingRes = await fetch(`${API_URL}/api/site-settings`, { cache: "no-store" });
+        const settingRes = await fetch(`${API_URL}/api/site-settings`, {
+          cache: "no-store",
+        });
         const settings = settingRes.ok
           ? ((await settingRes.json()) as Record<string, unknown>)
           : {};
-        setShowPos(isFeatureEnabled(settings, POS_FEATURE_KEY, me.organizationId));
+        setShowPos(
+          isFeatureEnabled(settings, POS_FEATURE_KEY, me.organizationId),
+        );
         setShowSupplyProducts(
-          isFeatureEnabled(settings, SUPPLY_PRODUCTS_FEATURE_KEY, me.organizationId),
+          isFeatureEnabled(
+            settings,
+            SUPPLY_PRODUCTS_FEATURE_KEY,
+            me.organizationId,
+          ),
         );
         setShowPreorderProducts(
-          isFeatureEnabled(settings, PREORDER_PRODUCTS_FEATURE_KEY, me.organizationId),
+          isFeatureEnabled(
+            settings,
+            PREORDER_PRODUCTS_FEATURE_KEY,
+            me.organizationId,
+          ),
         );
         setShowServicePosts(
-          isFeatureEnabled(settings, SERVICE_POSTS_FEATURE_KEY, me.organizationId, true),
+          isFeatureEnabled(
+            settings,
+            SERVICE_POSTS_FEATURE_KEY,
+            me.organizationId,
+            true,
+          ),
         );
         setShowContractArchive(
-          isFeatureEnabled(settings, CONTRACT_ARCHIVE_FEATURE_KEY, me.organizationId),
+          isFeatureEnabled(
+            settings,
+            CONTRACT_ARCHIVE_FEATURE_KEY,
+            me.organizationId,
+          ),
         );
         setIsReady(true);
       } catch {
@@ -125,20 +154,27 @@ export default function VendorDashboardLayout({
 
   const handleOrganizationChange = async (organizationId: string) => {
     const currentToken = localStorage.getItem("vendor_token");
-    if (!currentToken || !organizationId || organizationId === selectedOrganizationId) {
+    if (
+      !currentToken ||
+      !organizationId ||
+      organizationId === selectedOrganizationId
+    ) {
       return;
     }
 
     setIsSwitchingOrganization(true);
     try {
-      const response = await fetch(`${API_URL}/auth/vendor/switch-organization`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${currentToken}`,
-          "Content-Type": "application/json",
+      const response = await fetch(
+        `${API_URL}/auth/vendor/switch-organization`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${currentToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ organizationId }),
         },
-        body: JSON.stringify({ organizationId }),
-      });
+      );
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
@@ -163,42 +199,47 @@ export default function VendorDashboardLayout({
   if (!isReady) return null;
 
   return (
-    <DashboardLayout
-      variant="vendor"
-      onSignOut={handleLogout}
-      userName={userData.name}
-      userEmail={userData.email}
-      userRole={userData.role}
-      userInitials={userData.initials}
-      organizationName={userData.organizationName}
-      showPos={showPos}
-      showSupplyProducts={showSupplyProducts}
-      showPreorderProducts={showPreorderProducts}
-      showServicePosts={showServicePosts}
-      showContractArchive={showContractArchive}
-      vendorBottomSlot={<VendorTutorialButton variant="sidebar" />}
-      notificationComponent={
-        <>
-          {organizations.length > 1 && (
-            <select
-              value={selectedOrganizationId}
-              disabled={isSwitchingOrganization}
-              onChange={(event) => handleOrganizationChange(event.target.value)}
-              className="h-9 min-w-0 max-w-[128px] truncate rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none transition hover:border-slate-300 disabled:cursor-wait disabled:opacity-60 sm:max-w-[190px] sm:px-3 sm:text-sm"
-              aria-label="Байгууллага солих"
-            >
-              {organizations.map((organization) => (
-                <option key={organization.id} value={organization.id}>
-                  {organization.name}
-                </option>
-              ))}
-            </select>
-          )}
-          <NotificationDropdown />
-        </>
-      }
-    >
-      {children}
-    </DashboardLayout>
+    <>
+      <VendorUpdateAnnouncement />
+      <DashboardLayout
+        variant="vendor"
+        onSignOut={handleLogout}
+        userName={userData.name}
+        userEmail={userData.email}
+        userRole={userData.role}
+        userInitials={userData.initials}
+        organizationName={userData.organizationName}
+        showPos={showPos}
+        showSupplyProducts={showSupplyProducts}
+        showPreorderProducts={showPreorderProducts}
+        showServicePosts={showServicePosts}
+        showContractArchive={showContractArchive}
+        vendorBottomSlot={<VendorTutorialButton variant="sidebar" />}
+        notificationComponent={
+          <>
+            {organizations.length > 1 && (
+              <select
+                value={selectedOrganizationId}
+                disabled={isSwitchingOrganization}
+                onChange={(event) =>
+                  handleOrganizationChange(event.target.value)
+                }
+                className="h-9 min-w-0 max-w-[128px] truncate rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none transition hover:border-slate-300 disabled:cursor-wait disabled:opacity-60 sm:max-w-[190px] sm:px-3 sm:text-sm"
+                aria-label="Байгууллага солих"
+              >
+                {organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            <NotificationDropdown />
+          </>
+        }
+      >
+        {children}
+      </DashboardLayout>
+    </>
   );
 }
