@@ -241,7 +241,6 @@ export default function ReportsPage() {
         </div>
         <div className="flex gap-2">
           <button
-            data-tour="report-pdf"
             type="button"
             onClick={() => {
               void loadProducts();
@@ -257,6 +256,7 @@ export default function ReportsPage() {
             Шинэчлэх
           </button>
           <button
+            data-tour="report-pdf"
             type="button"
             onClick={handleExport}
             disabled={loading || filteredProducts.length === 0}

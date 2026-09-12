@@ -72,6 +72,7 @@ type LocatedTarget = {
   stepIndex: number;
   pathname: string;
 };
+type TooltipSize = { width: number; height: number };
 
 function WelcomeCard({
   onClose,
@@ -175,6 +176,11 @@ export function VendorUpdateAnnouncement() {
   const [mode, setMode] = useState<Mode>("hidden");
   const [stepIndex, setStepIndex] = useState(0);
   const [target, setTarget] = useState<LocatedTarget | null>(null);
+  const [tooltipSize, setTooltipSize] = useState<TooltipSize>({
+    width: 360,
+    height: 400,
+  });
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const recorded = useRef(false);
   const step = STEPS[stepIndex];
   const close = useCallback(() => setMode("hidden"), []);
@@ -280,6 +286,19 @@ export function VendorUpdateAnnouncement() {
     };
   }, [close, mode, stepIndex, stopTour]);
 
+  useEffect(() => {
+    if (mode !== "tour" || !tooltipRef.current) return;
+    const tooltip = tooltipRef.current;
+    const updateSize = () => {
+      const rect = tooltip.getBoundingClientRect();
+      setTooltipSize({ width: rect.width, height: rect.height });
+    };
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(tooltip);
+    return () => observer.disconnect();
+  }, [mode, stepIndex]);
+
   if (mode === "hidden") return null;
   if (mode === "welcome")
     return (
@@ -300,18 +319,47 @@ export function VendorUpdateAnnouncement() {
       ? target.rect
       : null;
   const width = typeof window === "undefined" ? 0 : window.innerWidth;
+  const height = typeof window === "undefined" ? 0 : window.innerHeight;
+  const margin = 20;
+  const gap = 24;
   const tooltipStyle =
     activeTarget && width >= 768
-      ? {
-          top: Math.max(
-            20,
-            Math.min(activeTarget.top, window.innerHeight - 310),
-          ),
-          left:
-            activeTarget.right + 390 < width
-              ? activeTarget.right + 24
-              : Math.max(20, activeTarget.left - 384),
-        }
+      ? (() => {
+          const clampLeft = (left: number) =>
+            Math.max(
+              margin,
+              Math.min(left, width - tooltipSize.width - margin),
+            );
+          const clampTop = (top: number) =>
+            Math.max(
+              margin,
+              Math.min(top, height - tooltipSize.height - margin),
+            );
+          const centeredLeft =
+            activeTarget.left + activeTarget.width / 2 - tooltipSize.width / 2;
+          if (width - activeTarget.right >= tooltipSize.width + gap) {
+            return {
+              top: clampTop(activeTarget.top),
+              left: activeTarget.right + gap,
+            };
+          }
+          if (activeTarget.left >= tooltipSize.width + gap) {
+            return {
+              top: clampTop(activeTarget.top),
+              left: activeTarget.left - tooltipSize.width - gap,
+            };
+          }
+          if (activeTarget.top >= tooltipSize.height + gap) {
+            return {
+              top: activeTarget.top - tooltipSize.height - gap,
+              left: clampLeft(centeredLeft),
+            };
+          }
+          return {
+            top: clampTop(activeTarget.bottom + gap),
+            left: clampLeft(centeredLeft),
+          };
+        })()
       : undefined;
 
   return (
@@ -362,6 +410,7 @@ export function VendorUpdateAnnouncement() {
       )}
 
       <div
+        ref={tooltipRef}
         className="fixed inset-x-3 bottom-3 z-10 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,.35)] md:inset-x-auto md:bottom-auto md:w-[360px]"
         style={tooltipStyle}
       >
