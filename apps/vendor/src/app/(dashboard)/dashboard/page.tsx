@@ -25,6 +25,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { isFeatureEnabled, POS_FEATURE_KEY } from "@/lib/vendor-features";
+import { DashboardImprovementPanel } from "@/features/dashboard";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
@@ -273,7 +274,9 @@ export default function Dashboard() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-32 gap-4">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-[#FFAD02]" />
-          <p className="text-sm text-slate-400 font-medium">Мэдээлэл татаж байна...</p>
+          <p className="text-sm text-slate-400 font-medium">
+            Мэдээлэл татаж байна...
+          </p>
         </div>
       ) : error ? (
         <div className="flex items-center justify-center py-32">
@@ -330,7 +333,9 @@ export default function Dashboard() {
                   <p className="mb-1 text-4xl font-bold leading-none text-white">
                     {data?.stockRequests.completed ?? 0}
                   </p>
-                  <p className="text-sm font-medium text-slate-300">Хүргэгдсэн</p>
+                  <p className="text-sm font-medium text-slate-300">
+                    Хүргэгдсэн
+                  </p>
                 </div>
               </div>
               <div className="absolute -bottom-10 -right-10 h-36 w-36 rounded-full bg-[#FFAD02]/10 blur-2xl" />
@@ -351,11 +356,27 @@ export default function Dashboard() {
                       ? formatMNT(data.pendingPayments.totalAmount)
                       : "0₮"}
                   </p>
-                  <p className="text-sm font-medium text-slate-500">Төлөх дүн</p>
+                  <p className="text-sm font-medium text-slate-500">
+                    Төлөх дүн
+                  </p>
                 </div>
               </div>
             </Link>
           </div>
+
+          <DashboardImprovementPanel
+            metrics={{
+              inactiveProducts: data?.products.inactive ?? 0,
+              inactiveServicePosts: Math.max(
+                0,
+                (data?.servicePosts.total ?? 0) -
+                  (data?.servicePosts.active ?? 0),
+              ),
+              pendingPayments: data?.pendingPayments.count ?? 0,
+              pendingStockRequests: data?.stockRequests.pending ?? 0,
+              urgentExpiryProducts: data?.expiryInsights?.urgentCount ?? 0,
+            }}
+          />
 
           {/* ── Secondary stat row ── */}
           {data?.expiryInsights && (
@@ -399,7 +420,9 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <p className="text-xl font-bold text-slate-900">{s.value}</p>
-                  <p className="mt-0.5 text-xs font-semibold text-slate-500">{s.label}</p>
+                  <p className="mt-0.5 text-xs font-semibold text-slate-500">
+                    {s.label}
+                  </p>
                   <p className="text-[11px] text-slate-400 mt-0.5">{s.sub}</p>
                 </div>
               </Link>
@@ -413,7 +436,9 @@ export default function Dashboard() {
                 <div className="rounded-lg bg-slate-100 p-2">
                   <Boxes size={16} className="text-slate-700" />
                 </div>
-                <h2 className="text-base font-semibold text-slate-900">Нийлүүлэлтийн хүсэлтийн байдал</h2>
+                <h2 className="text-base font-semibold text-slate-900">
+                  Нийлүүлэлтийн хүсэлтийн байдал
+                </h2>
               </div>
               <Link
                 href="/shipments"
@@ -425,11 +450,36 @@ export default function Dashboard() {
 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {[
-                { label: "Хүлээгдэж буй", value: data?.stockRequests.pending ?? 0, color: "text-amber-600 bg-amber-50", bar: "bg-amber-400" },
-                { label: "Зөвшөөрсөн", value: data?.stockRequests.approved ?? 0, color: "text-blue-600 bg-blue-50", bar: "bg-blue-400" },
-                { label: "Дууссан", value: data?.stockRequests.completed ?? 0, color: "text-emerald-600 bg-emerald-50", bar: "bg-emerald-400" },
-                { label: "Татгалзсан", value: data?.stockRequests.rejected ?? 0, color: "text-red-600 bg-red-50", bar: "bg-red-400" },
-                { label: "Цуцлагдсан", value: data?.stockRequests.cancelled ?? 0, color: "text-slate-500 bg-slate-100", bar: "bg-slate-300" },
+                {
+                  label: "Хүлээгдэж буй",
+                  value: data?.stockRequests.pending ?? 0,
+                  color: "text-amber-600 bg-amber-50",
+                  bar: "bg-amber-400",
+                },
+                {
+                  label: "Зөвшөөрсөн",
+                  value: data?.stockRequests.approved ?? 0,
+                  color: "text-blue-600 bg-blue-50",
+                  bar: "bg-blue-400",
+                },
+                {
+                  label: "Дууссан",
+                  value: data?.stockRequests.completed ?? 0,
+                  color: "text-emerald-600 bg-emerald-50",
+                  bar: "bg-emerald-400",
+                },
+                {
+                  label: "Татгалзсан",
+                  value: data?.stockRequests.rejected ?? 0,
+                  color: "text-red-600 bg-red-50",
+                  bar: "bg-red-400",
+                },
+                {
+                  label: "Цуцлагдсан",
+                  value: data?.stockRequests.cancelled ?? 0,
+                  color: "text-slate-500 bg-slate-100",
+                  bar: "bg-slate-300",
+                },
               ].map((s) => {
                 const pct = data?.stockRequests.total
                   ? Math.round((s.value / data.stockRequests.total) * 100)
@@ -437,7 +487,9 @@ export default function Dashboard() {
                 return (
                   <div key={s.label} className={`rounded-xl p-4 ${s.color}`}>
                     <p className="text-xl font-bold">{s.value}</p>
-                    <p className="mt-1 text-xs font-semibold opacity-80">{s.label}</p>
+                    <p className="mt-1 text-xs font-semibold opacity-80">
+                      {s.label}
+                    </p>
                     <div className="mt-2 h-1.5 rounded-full bg-black/10 overflow-hidden">
                       <div
                         className={`h-full rounded-full ${s.bar} opacity-70`}
@@ -459,7 +511,9 @@ export default function Dashboard() {
                   <div className="rounded-lg bg-slate-100 p-2">
                     <ShoppingCart size={16} className="text-slate-700" />
                   </div>
-                  <h2 className="text-base font-semibold text-slate-900">Сүүлийн хүсэлтүүд</h2>
+                  <h2 className="text-base font-semibold text-slate-900">
+                    Сүүлийн хүсэлтүүд
+                  </h2>
                 </div>
                 <Link
                   href="/requests"
@@ -472,7 +526,9 @@ export default function Dashboard() {
               {data?.recentStockRequests?.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 text-center">
                   <Truck size={32} className="text-slate-200 mb-3" />
-                  <p className="text-sm font-medium text-slate-400">Нийлүүлэлтийн хүсэлт байхгүй</p>
+                  <p className="text-sm font-medium text-slate-400">
+                    Нийлүүлэлтийн хүсэлт байхгүй
+                  </p>
                   <Link
                     href="/shipments"
                     className="mt-3 text-xs font-bold text-[#FFAD02] hover:underline"
@@ -498,7 +554,9 @@ export default function Dashboard() {
                             </p>
                             <p className="text-xs text-slate-400 truncate">
                               {r.warehouseName} · {r.itemCount} бүтээгдэхүүн
-                              {r.totalAmount ? ` · ${formatMNT(r.totalAmount)}` : ""}
+                              {r.totalAmount
+                                ? ` · ${formatMNT(r.totalAmount)}`
+                                : ""}
                             </p>
                           </div>
                         </div>
@@ -506,7 +564,10 @@ export default function Dashboard() {
                           {timeAgo(r.createdAt)}
                         </span>
                       </div>
-                      <DispatchStepper status={r.status} dispatch={r.dispatch} />
+                      <DispatchStepper
+                        status={r.status}
+                        dispatch={r.dispatch}
+                      />
                     </div>
                   ))}
                 </div>
@@ -521,14 +582,44 @@ export default function Dashboard() {
                   <div className="rounded-lg bg-slate-100 p-2">
                     <Zap size={16} className="text-slate-700" />
                   </div>
-                  <h2 className="text-base font-semibold text-slate-900">Хурдан үйлдэл</h2>
+                  <h2 className="text-base font-semibold text-slate-900">
+                    Хурдан үйлдэл
+                  </h2>
                 </div>
                 <div className="space-y-2">
                   {[
-                    { href: "/shipments", icon: Truck, label: "Нийлүүлэлт хүсэх", desc: "Агуулахаас бараа авах", color: "bg-[#FFAD02]", textColor: "text-black" },
-                    { href: "/products", icon: Package, label: "Бараа нэмэх", desc: "Шинэ бүтээгдэхүүн", color: "bg-slate-900", textColor: "text-white" },
-                    { href: "/service-posts", icon: Megaphone, label: "Зар нийтлэх", desc: "Зар сурталчилгаа", color: "bg-pink-500", textColor: "text-white" },
-                    { href: "/service-posts", icon: Wrench, label: "Үйлчилгээний постууд", desc: "Хүсэлтүүдээ харах", color: "bg-slate-100", textColor: "text-slate-700" },
+                    {
+                      href: "/shipments",
+                      icon: Truck,
+                      label: "Нийлүүлэлт хүсэх",
+                      desc: "Агуулахаас бараа авах",
+                      color: "bg-[#FFAD02]",
+                      textColor: "text-black",
+                    },
+                    {
+                      href: "/products",
+                      icon: Package,
+                      label: "Бараа нэмэх",
+                      desc: "Шинэ бүтээгдэхүүн",
+                      color: "bg-slate-900",
+                      textColor: "text-white",
+                    },
+                    {
+                      href: "/service-posts",
+                      icon: Megaphone,
+                      label: "Зар нийтлэх",
+                      desc: "Зар сурталчилгаа",
+                      color: "bg-pink-500",
+                      textColor: "text-white",
+                    },
+                    {
+                      href: "/service-posts",
+                      icon: Wrench,
+                      label: "Үйлчилгээний постууд",
+                      desc: "Хүсэлтүүдээ харах",
+                      color: "bg-slate-100",
+                      textColor: "text-slate-700",
+                    },
                   ].map((a) => (
                     <Link
                       key={`${a.href}-${a.label}`}
@@ -536,11 +627,15 @@ export default function Dashboard() {
                       className="flex items-center justify-between rounded-xl p-3 hover:bg-slate-50 transition-colors border border-slate-100"
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${a.color}`}>
+                        <div
+                          className={`flex h-9 w-9 items-center justify-center rounded-xl ${a.color}`}
+                        >
                           <a.icon size={16} className={a.textColor} />
                         </div>
                         <div>
-                          <p className="text-sm font-semibold text-slate-800">{a.label}</p>
+                          <p className="text-sm font-semibold text-slate-800">
+                            {a.label}
+                          </p>
                           <p className="text-[11px] text-slate-400">{a.desc}</p>
                         </div>
                       </div>
@@ -558,20 +653,34 @@ export default function Dashboard() {
                       <div className="rounded-lg bg-slate-100 p-2">
                         <Wrench size={16} className="text-slate-700" />
                       </div>
-                      <h2 className="text-sm font-semibold text-slate-900">Сүүлийн үйлчилгээ</h2>
+                      <h2 className="text-sm font-semibold text-slate-900">
+                        Сүүлийн үйлчилгээ
+                      </h2>
                     </div>
-                    <Link href="/service-posts" className="text-[10px] font-bold text-slate-400 hover:text-slate-600">
+                    <Link
+                      href="/service-posts"
+                      className="text-[10px] font-bold text-slate-400 hover:text-slate-600"
+                    >
                       Бүгд →
                     </Link>
                   </div>
                   <div className="space-y-2">
                     {data?.recentServiceRequests?.map((r) => (
-                      <div key={r.id} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
+                      <div
+                        key={r.id}
+                        className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5"
+                      >
                         <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-700 truncate">{r.title}</p>
-                          <p className="text-[10px] text-slate-400">{SERVICE_TYPE_LABEL[r.type] || r.type}</p>
+                          <p className="text-xs font-bold text-slate-700 truncate">
+                            {r.title}
+                          </p>
+                          <p className="text-[10px] text-slate-400">
+                            {SERVICE_TYPE_LABEL[r.type] || r.type}
+                          </p>
                         </div>
-                        <span className={`ml-2 shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold ${STATUS_COLOR[r.status] || "bg-slate-100 text-slate-500 border-slate-200"}`}>
+                        <span
+                          className={`ml-2 shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold ${STATUS_COLOR[r.status] || "bg-slate-100 text-slate-500 border-slate-200"}`}
+                        >
                           {STATUS_LABEL[r.status] || r.status}
                         </span>
                       </div>
@@ -590,7 +699,10 @@ export default function Dashboard() {
 /* ════════════════════════════════════════════
    4-Level Dispatch Status Stepper
    ════════════════════════════════════════════ */
-const RISK_STYLE: Record<ExpiryRiskLevel, { label: string; className: string }> = {
+const RISK_STYLE: Record<
+  ExpiryRiskLevel,
+  { label: string; className: string }
+> = {
   critical: {
     label: "Маш өндөр",
     className: "border-red-200 bg-red-50 text-red-700",
@@ -857,7 +969,8 @@ function DispatchStepper({
 
   // Cancelled / rejected — show red badge
   if (level === -1) {
-    const isCancelled = status === "CANCELLED" || dispatch?.status === "CANCELLED";
+    const isCancelled =
+      status === "CANCELLED" || dispatch?.status === "CANCELLED";
     return (
       <div className="flex items-center gap-2 rounded-lg bg-red-50 px-3 py-2">
         <AlertCircle size={14} className="text-red-500" />
@@ -888,7 +1001,10 @@ function DispatchStepper({
         const isCurrent = level === stepNum;
         const StepIcon = step.icon;
         return (
-          <div key={step.key} className="flex items-center flex-1 last:flex-none">
+          <div
+            key={step.key}
+            className="flex items-center flex-1 last:flex-none"
+          >
             <div className="flex flex-col items-center">
               <div
                 className={`flex h-7 w-7 items-center justify-center rounded-full border-2 transition-all ${

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Plus,
   Search,
@@ -23,6 +23,8 @@ import {
   Printer,
   RotateCcw,
   CreditCard,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { ProductLabelPrintDialog } from "@mgl/ui";
 import {
@@ -49,6 +51,8 @@ import {
 } from "@/features/products";
 
 type TaxCodeFilter = "all" | "with-code" | "without-code";
+
+const PRODUCTS_PER_PAGE = 24;
 
 const hasCompleteEbarimtTaxSetup = (product: Product) =>
   isValidEbarimtClassificationCode(product.classificationCode) &&
@@ -126,6 +130,9 @@ function getDaysUntilExpiry(value?: string | null) {
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [catalogProductCount, setCatalogProductCount] = useState(0);
+  const [page, setPage] = useState(1);
   const [categories, setCategories] = useState<BusinessCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -138,6 +145,7 @@ export default function ProductsPage() {
     msg: string;
   } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<
     "all" | "active" | "inactive"
   >("all");
@@ -158,6 +166,7 @@ export default function ProductsPage() {
   const [sellerPaymentConfigured, setSellerPaymentConfigured] = useState<
     boolean | null
   >(null);
+  const productsRequestRef = useRef<AbortController | null>(null);
 
   const isPlanActive = planStatus?.isActive ?? true;
   const daysLeft = planStatus?.planExpiresAt
@@ -168,7 +177,7 @@ export default function ProductsPage() {
     : null;
   const productLimit = planStatus?.currentPlan?.maxProducts ?? -1;
   const productLimitReached =
-    productLimit !== -1 && products.length >= productLimit;
+    productLimit !== -1 && catalogProductCount >= productLimit;
   const canAddProduct = isPlanActive && !productLimitReached;
 
   const getOrgId = () => {
@@ -249,15 +258,36 @@ export default function ProductsPage() {
       return;
     }
     setLoading(true);
+    productsRequestRef.current?.abort();
+    const controller = new AbortController();
+    productsRequestRef.current = controller;
     try {
       const params = new URLSearchParams({
         organizationId: orgId,
         includeExpiredInventory: "1",
         includeInactive: "1",
         includePosReceiptLots: "1",
+        meta: "1",
+        limit: String(PRODUCTS_PER_PAGE),
+        offset: String((page - 1) * PRODUCTS_PER_PAGE),
       });
+      if (debouncedSearchQuery.trim()) {
+        params.set("search", debouncedSearchQuery.trim());
+      }
+      if (typeFilter === "stock" || typeFilter === "preorder") {
+        params.set("type", typeFilter);
+      } else {
+        params.set("type", "stock");
+      }
+      if (statusFilter !== "all") {
+        params.set("productStatus", statusFilter);
+      }
+      if (taxCodeFilter !== "all") {
+        params.set("taxSetup", taxCodeFilter);
+      }
       const res = await authFetch(`${API}/products?${params.toString()}`, {
         cache: "no-store",
+        signal: controller.signal,
       });
       if (!res.ok) {
         const raw = await res.text().catch(() => "");
@@ -289,15 +319,41 @@ export default function ProductsPage() {
           ? data.products
           : [];
       setProducts(productRows.map(normalizeProductForDisplay));
+      setTotalProducts(
+        !Array.isArray(data) && typeof data?.total === "number"
+          ? data.total
+          : productRows.length,
+      );
+      setCatalogProductCount(
+        !Array.isArray(data) && typeof data?.organizationTotal === "number"
+          ? data.organizationTotal
+          : productRows.length,
+      );
     } catch (error: unknown) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       showToast(
         "error",
         error instanceof Error ? error.message : "Бараа ачаалахад алдаа гарлаа",
       );
     } finally {
-      setLoading(false);
+      if (productsRequestRef.current === controller) {
+        productsRequestRef.current = null;
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [debouncedSearchQuery, page, statusFilter, taxCodeFilter, typeFilter]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(
+      () => setDebouncedSearchQuery(searchQuery),
+      350,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchQuery, statusFilter, taxCodeFilter, typeFilter]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -510,8 +566,7 @@ export default function ProductsPage() {
       stockNum < 0 ||
       (form.unit === "pcs" && !Number.isInteger(stockNum)) ||
       (form.unit === "kg" &&
-        Math.abs(stockNum * 1_000 - Math.round(stockNum * 1_000)) >
-          0.000001) ||
+        Math.abs(stockNum * 1_000 - Math.round(stockNum * 1_000)) > 0.000001) ||
       stockNum > (form.unit === "kg" ? 2_147_483.647 : 2_147_483_647)
     ) {
       return showToast(
@@ -723,15 +778,11 @@ export default function ProductsPage() {
 
   const isPreorderView =
     preorderFeatureLoaded && showPreorderProducts && typeFilter === "preorder";
-  const visibleProducts = products.filter((p) =>
-    isPreorderView
-      ? p.supplyType === "CHINA_PREORDER"
-      : p.supplyType !== "CHINA_PREORDER",
-  );
+  const visibleProducts = products;
 
   const filtered = visibleProducts
     .filter((p) => {
-      const query = searchQuery.toLowerCase();
+      const query = debouncedSearchQuery.toLowerCase();
       const matchSearch =
         p.name.toLowerCase().includes(query) ||
         (p.sku || "").toLowerCase().includes(query) ||
@@ -739,18 +790,7 @@ export default function ProductsPage() {
         (p.taxProductCode || "").toLowerCase().includes(query) ||
         (p.classificationCode || "").toLowerCase().includes(query);
 
-      const matchStatus =
-        statusFilter === "all" ||
-        (statusFilter === "active" && p.isActive) ||
-        (statusFilter === "inactive" && !p.isActive);
-
-      const hasTaxCode = hasCompleteEbarimtTaxSetup(p);
-      const matchTaxCode =
-        taxCodeFilter === "all" ||
-        (taxCodeFilter === "with-code" && hasTaxCode) ||
-        (taxCodeFilter === "without-code" && !hasTaxCode);
-
-      return matchSearch && matchStatus && matchTaxCode;
+      return matchSearch;
     })
     .sort(
       (a, b) =>
@@ -886,7 +926,8 @@ export default function ProductsPage() {
                 }`}
               >
                 {planStatus.currentPlan.name}
-                {productLimit !== -1 && ` · ${products.length}/${productLimit}`}
+                {productLimit !== -1 &&
+                  ` · ${catalogProductCount}/${productLimit}`}
               </span>
             )}
           </div>
@@ -991,7 +1032,7 @@ export default function ProductsPage() {
         {[
           {
             label: "Нийт бараа",
-            value: visibleProducts.length,
+            value: totalProducts,
             icon: Package,
             color: "bg-indigo-50 text-indigo-600",
           },
@@ -1509,7 +1550,7 @@ export default function ProductsPage() {
                     {isPreorderView ? "Захиалгын бараа" : "Миний бараа"}
                   </h2>
                   <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
-                    {filtered.length} олдлоо
+                    {totalProducts} олдлоо
                   </span>
                 </div>
                 <div className="flex w-full items-center gap-0.5 overflow-x-auto rounded-xl border border-slate-200 bg-white p-0.5 shadow-sm xl:ml-auto xl:w-auto">
@@ -1517,17 +1558,17 @@ export default function ProductsPage() {
                     {
                       key: "all",
                       label: "Бүгд",
-                      count: visibleProducts.length,
+                      count: statusFilter === "all" ? totalProducts : null,
                     },
                     {
                       key: "active",
                       label: "Идэвхтэй",
-                      count: visibleProducts.filter((p) => p.isActive).length,
+                      count: statusFilter === "active" ? totalProducts : null,
                     },
                     {
                       key: "inactive",
                       label: "Идэвхгүй",
-                      count: visibleProducts.filter((p) => !p.isActive).length,
+                      count: statusFilter === "inactive" ? totalProducts : null,
                     },
                   ].map((btn) => (
                     <button
@@ -1544,11 +1585,13 @@ export default function ProductsPage() {
                       }`}
                     >
                       {btn.label}
-                      <span
-                        className={`ml-2 text-xs ${statusFilter === btn.key ? "text-indigo-200" : "opacity-60"}`}
-                      >
-                        {btn.count}
-                      </span>
+                      {btn.count != null && (
+                        <span
+                          className={`ml-2 text-xs ${statusFilter === btn.key ? "text-indigo-200" : "opacity-60"}`}
+                        >
+                          {btn.count}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -1557,15 +1600,14 @@ export default function ProductsPage() {
                     {
                       key: "with-code",
                       label: "Татварын кодтой",
-                      count: visibleProducts.filter(hasCompleteEbarimtTaxSetup)
-                        .length,
+                      count:
+                        taxCodeFilter === "with-code" ? totalProducts : null,
                     },
                     {
                       key: "without-code",
                       label: "Татварын кодгүй",
-                      count: visibleProducts.filter(
-                        (product) => !hasCompleteEbarimtTaxSetup(product),
-                      ).length,
+                      count:
+                        taxCodeFilter === "without-code" ? totalProducts : null,
                     },
                   ].map((button) => (
                     <button
@@ -1586,15 +1628,17 @@ export default function ProductsPage() {
                       }`}
                     >
                       {button.label}
-                      <span
-                        className={`ml-2 text-xs ${
-                          taxCodeFilter === button.key
-                            ? "text-emerald-100"
-                            : "opacity-60"
-                        }`}
-                      >
-                        {button.count}
-                      </span>
+                      {button.count != null && (
+                        <span
+                          className={`ml-2 text-xs ${
+                            taxCodeFilter === button.key
+                              ? "text-emerald-100"
+                              : "opacity-60"
+                          }`}
+                        >
+                          {button.count}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -1603,6 +1647,49 @@ export default function ProductsPage() {
           />
         )}
       </div>
+
+      {!loading && totalProducts > PRODUCTS_PER_PAGE && (
+        <nav
+          aria-label="Бүтээгдэхүүний хуудас"
+          className="flex flex-col items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row"
+        >
+          <p className="text-sm font-medium text-slate-500">
+            Нийт {totalProducts.toLocaleString("mn-MN")} бүтээгдэхүүнээс{" "}
+            {((page - 1) * PRODUCTS_PER_PAGE + 1).toLocaleString("mn-MN")}–
+            {Math.min(page * PRODUCTS_PER_PAGE, totalProducts).toLocaleString(
+              "mn-MN",
+            )}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page === 1}
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft size={16} /> Өмнөх
+            </button>
+            <span className="min-w-24 text-center text-sm font-bold text-slate-700">
+              {page} / {Math.ceil(totalProducts / PRODUCTS_PER_PAGE)}
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                setPage((current) =>
+                  Math.min(
+                    Math.ceil(totalProducts / PRODUCTS_PER_PAGE),
+                    current + 1,
+                  ),
+                )
+              }
+              disabled={page >= Math.ceil(totalProducts / PRODUCTS_PER_PAGE)}
+              className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-slate-200 px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Дараах <ChevronRight size={16} />
+            </button>
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

@@ -1097,6 +1097,8 @@ router.get("/products", optionalAuth, async (req, res) => {
         .trim()
         .slice(0, 128) || new Date().toISOString().slice(0, 10);
     const stockFilter = String(req.query.stock || "").trim();
+    const productStatus = String(req.query.productStatus || "").trim();
+    const taxSetup = String(req.query.taxSetup || "").trim();
     const discountOnly = isTruthyQueryValue(req.query.discount);
     const priceMin = Number(req.query.priceMin);
     const priceMax = Number(req.query.priceMax);
@@ -1168,8 +1170,45 @@ router.get("/products", optionalAuth, async (req, res) => {
     }
     if (requestedProductIds.length > 0) where.id = { in: requestedProductIds };
     if (restaurantMenuOnly) where.isRestaurantMenuItem = true;
+    if (productStatus === "active") where.isActive = true;
+    if (productStatus === "inactive") where.isActive = false;
     if (supplyType === "stock") where.supplyType = { not: "CHINA_PREORDER" };
     if (supplyType === "preorder") where.supplyType = "CHINA_PREORDER";
+    const taxSetupFilter =
+      taxSetup === "with-code"
+        ? {
+            AND: [
+              { classificationCode: { not: "" } },
+              {
+                OR: [
+                  { taxType: { notIn: ["VAT_FREE", "VAT_ZERO"] } },
+                  {
+                    AND: [
+                      { taxProductCode: { not: null } },
+                      { taxProductCode: { not: "" } },
+                    ],
+                  },
+                ],
+              },
+            ],
+          }
+        : taxSetup === "without-code"
+          ? {
+              OR: [
+                { classificationCode: "" },
+                {
+                  taxType: { in: ["VAT_FREE", "VAT_ZERO"] },
+                  OR: [{ taxProductCode: null }, { taxProductCode: "" }],
+                },
+              ],
+            }
+          : null;
+    if (taxSetupFilter) {
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : []),
+        taxSetupFilter,
+      ];
+    }
     if (Number.isFinite(priceMin) || Number.isFinite(priceMax)) {
       where.price = {
         ...(Number.isFinite(priceMin) ? { gte: priceMin } : {}),
@@ -1249,6 +1288,16 @@ router.get("/products", optionalAuth, async (req, res) => {
     const totalCountPromise = includeMeta
       ? prisma.product.count({ where })
       : null;
+    const organizationTotalPromise =
+      includeMeta && isOwnOrganizationCatalog
+        ? prisma.product.count({
+            where: {
+              organizationId: requestedOrganizationId,
+              deletedAt: null,
+              organization: { deletedAt: null, status: "ACTIVE" },
+            },
+          })
+        : null;
     const useRecommendationRanking = sort === "recommended" && !search;
     const useDatabasePagination =
       limit > 0 && !search && !useRecommendationRanking;
@@ -1571,10 +1620,14 @@ router.get("/products", optionalAuth, async (req, res) => {
     }
 
     if (includeMeta) {
-      const totalCount = await totalCountPromise;
+      const [totalCount, organizationTotal] = await Promise.all([
+        totalCountPromise,
+        organizationTotalPromise,
+      ]);
       const payload = {
         products: response,
         total: totalCount ?? response.length,
+        organizationTotal: organizationTotal ?? totalCount ?? response.length,
         limit,
         offset,
         hasMore:
@@ -4113,9 +4166,8 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
         displayStock < 0 ||
         (nextUnit === "pcs" && !Number.isInteger(displayStock)) ||
         (nextUnit === "kg" &&
-          Math.abs(
-            displayStock * 1_000 - Math.round(displayStock * 1_000),
-          ) > 0.000001) ||
+          Math.abs(displayStock * 1_000 - Math.round(displayStock * 1_000)) >
+            0.000001) ||
         s > 2_147_483_647
       )
         return res

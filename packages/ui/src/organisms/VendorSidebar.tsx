@@ -42,7 +42,6 @@ const VENDOR_NAV_GROUPS: Array<
     id: "vendor-menu",
     title: "Цэс",
     items: [
-      { id: "quality-checklist", label: "Чанарын checklist", href: "/checklist", icon: ClipboardList },
       {
         id: "overview-menu",
         label: "Хяналт",
@@ -54,6 +53,12 @@ const VENDOR_NAV_GROUPS: Array<
             label: "Хяналтын самбар",
             href: "/dashboard",
             icon: LayoutDashboard,
+          },
+          {
+            id: "reports",
+            label: "Тайлан",
+            href: "/reports",
+            icon: BarChart2,
           },
           {
             id: "pos",

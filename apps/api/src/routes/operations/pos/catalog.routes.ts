@@ -686,6 +686,94 @@ router.get("/pos/sales/history", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
+ * Top-selling products — org-level aggregate
+ * GET /pos/reports/top-products?organizationId=&from=&to=&limit=
+ * ─────────────────────────────────────────────────────────────────────── */
+router.get("/pos/reports/top-products", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const queryOrgId = String(req.query.organizationId || "").trim() || null;
+    const organizationId =
+      actor.role === "ADMIN" ? queryOrgId : actor.organizationId || queryOrgId;
+    if (!organizationId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+    if (
+      actor.role !== "ADMIN" &&
+      !(await hasOrgMembership(actor.id, organizationId))
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Энэ байгууллагын мэдээлэл харах эрхгүй" });
+    }
+
+    const from = new Date(String(req.query.from || ""));
+    const to = new Date(String(req.query.to || ""));
+    if (!Number.isFinite(from.getTime()) || !Number.isFinite(to.getTime())) {
+      return res.status(400).json({ message: "from, to огноо шаардлагатай" });
+    }
+    if (from > to) {
+      return res
+        .status(400)
+        .json({ message: "Эхлэх огноо дуусах огнооноос хойш байж болохгүй" });
+    }
+
+    const requestedLimit = Number(req.query.limit || 10);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(50, Math.max(1, Math.floor(requestedLimit)))
+      : 10;
+    const grouped = await prisma.posSaleLine.groupBy({
+      by: ["productId"],
+      where: {
+        sale: {
+          organizationId,
+          status: "COMPLETED",
+          createdAt: { gte: from, lte: to },
+        },
+      },
+      _sum: { qty: true, lineTotal: true },
+      _count: { saleId: true },
+      orderBy: { _sum: { qty: "desc" } },
+      take: limit,
+    });
+
+    const productIds = grouped.map((item) => item.productId);
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds }, organizationId },
+      select: { id: true, name: true, sku: true, barcode: true, unit: true },
+    });
+    const productById = new Map(
+      products.map((product) => [product.id, product]),
+    );
+
+    return res.json({
+      from: from.toISOString(),
+      to: to.toISOString(),
+      products: grouped.map((item, index) => {
+        const product = productById.get(item.productId);
+        return {
+          rank: index + 1,
+          productId: item.productId,
+          name: product?.name || "Устгагдсан бүтээгдэхүүн",
+          sku: product?.sku || product?.barcode || null,
+          unit: product?.unit || "pcs",
+          quantitySold: Number(item._sum.qty || 0),
+          revenue: Number(item._sum.lineTotal || 0),
+          salesCount: item._count.saleId,
+        };
+      }),
+    });
+  } catch (error) {
+    console.error("top-selling products report error", error);
+    return res.status(500).json({
+      message: "Хамгийн их зарагдсан бүтээгдэхүүний тайлан авахад алдаа гарлаа",
+    });
+  }
+});
+
+/* ─────────────────────────────────────────────────────────────────────────
  * POS Reports — aggregated sales report
  * GET /pos/reports?branchId=<uuid>&from=<ISO>&to=<ISO>
  * ─────────────────────────────────────────────────────────────────────── */
