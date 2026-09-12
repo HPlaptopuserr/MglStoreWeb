@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 
-const STORAGE_KEY = "mgl-vendor-update:reports-2026-09:v3:impressions";
+const STORAGE_KEY = "mgl-vendor-update:reports-2026-09:v4:impressions";
 const MAX_IMPRESSIONS = 10;
 const PADDING = 10;
 const STEPS = [
@@ -193,11 +193,6 @@ export function VendorUpdateAnnouncement() {
     close();
   }, [close]);
   const stopTour = useCallback(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, String(MAX_IMPRESSIONS));
-    } catch {
-      /* Storage unavailable. */
-    }
     setTarget(null);
     close();
   }, [close]);
