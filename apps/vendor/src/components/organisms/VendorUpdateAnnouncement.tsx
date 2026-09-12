@@ -67,6 +67,11 @@ type TargetRect = Pick<
   DOMRect,
   "top" | "left" | "right" | "bottom" | "width" | "height"
 >;
+type LocatedTarget = {
+  rect: TargetRect;
+  stepIndex: number;
+  pathname: string;
+};
 
 function WelcomeCard({
   onClose,
@@ -169,7 +174,7 @@ export function VendorUpdateAnnouncement() {
   const pathname = usePathname();
   const [mode, setMode] = useState<Mode>("hidden");
   const [stepIndex, setStepIndex] = useState(0);
-  const [target, setTarget] = useState<TargetRect | null>(null);
+  const [target, setTarget] = useState<LocatedTarget | null>(null);
   const recorded = useRef(false);
   const step = STEPS[stepIndex];
   const close = useCallback(() => setMode("hidden"), []);
@@ -202,8 +207,8 @@ export function VendorUpdateAnnouncement() {
 
   useEffect(() => {
     if (mode !== "tour") return;
+    setTarget(null);
     if (pathname !== step.path) {
-      setTarget(null);
       router.push(step.path);
       return;
     }
@@ -217,22 +222,29 @@ export function VendorUpdateAnnouncement() {
       }
       if (!element) return;
       element.scrollIntoView({ behavior: "smooth", block: "center" });
-      timeoutId = setTimeout(
-        () => setTarget(element.getBoundingClientRect()),
-        350,
-      );
+      timeoutId = setTimeout(() => {
+        const rect = element.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          setTarget({ rect, stepIndex, pathname });
+        }
+      }, 350);
     };
     locate();
     const update = () => {
       const element = document.querySelector<HTMLElement>(step.selector);
-      if (element) setTarget(element.getBoundingClientRect());
+      if (element) {
+        const rect = element.getBoundingClientRect();
+        if (rect.width > 0 && rect.height > 0) {
+          setTarget({ rect, stepIndex, pathname });
+        }
+      }
     };
     window.addEventListener("resize", update);
     return () => {
       clearTimeout(timeoutId);
       window.removeEventListener("resize", update);
     };
-  }, [mode, pathname, router, step]);
+  }, [mode, pathname, router, step, stepIndex]);
 
   useEffect(() => {
     if (mode === "hidden") return;
@@ -271,15 +283,22 @@ export function VendorUpdateAnnouncement() {
 
   const Icon = step.icon;
   const isLast = stepIndex === STEPS.length - 1;
+  const activeTarget =
+    target?.stepIndex === stepIndex && target.pathname === pathname
+      ? target.rect
+      : null;
   const width = typeof window === "undefined" ? 0 : window.innerWidth;
   const tooltipStyle =
-    target && width >= 768
+    activeTarget && width >= 768
       ? {
-          top: Math.max(20, Math.min(target.top, window.innerHeight - 310)),
+          top: Math.max(
+            20,
+            Math.min(activeTarget.top, window.innerHeight - 310),
+          ),
           left:
-            target.right + 390 < width
-              ? target.right + 24
-              : Math.max(20, target.left - 384),
+            activeTarget.right + 390 < width
+              ? activeTarget.right + 24
+              : Math.max(20, activeTarget.left - 384),
         }
       : undefined;
 
@@ -290,39 +309,39 @@ export function VendorUpdateAnnouncement() {
       aria-modal="true"
       aria-label="Шинэ боломжуудын заавар"
     >
-      {target ? (
+      {activeTarget ? (
         <>
           <div
             className="fixed inset-x-0 top-0 bg-slate-950/75 backdrop-blur-[2px]"
-            style={{ height: Math.max(0, target.top - PADDING) }}
+            style={{ height: Math.max(0, activeTarget.top - PADDING) }}
           />
           <div
             className="fixed left-0 bg-slate-950/75 backdrop-blur-[2px]"
             style={{
-              top: target.top - PADDING,
-              width: Math.max(0, target.left - PADDING),
-              height: target.height + PADDING * 2,
+              top: activeTarget.top - PADDING,
+              width: Math.max(0, activeTarget.left - PADDING),
+              height: activeTarget.height + PADDING * 2,
             }}
           />
           <div
             className="fixed right-0 bg-slate-950/75 backdrop-blur-[2px]"
             style={{
-              top: target.top - PADDING,
-              left: target.right + PADDING,
-              height: target.height + PADDING * 2,
+              top: activeTarget.top - PADDING,
+              left: activeTarget.right + PADDING,
+              height: activeTarget.height + PADDING * 2,
             }}
           />
           <div
             className="fixed inset-x-0 bottom-0 bg-slate-950/75 backdrop-blur-[2px]"
-            style={{ top: target.bottom + PADDING }}
+            style={{ top: activeTarget.bottom + PADDING }}
           />
           <div
             className="pointer-events-none fixed rounded-2xl ring-4 ring-indigo-400 ring-offset-4 ring-offset-white shadow-[0_0_0_8px_rgba(99,102,241,.25),0_0_40px_rgba(99,102,241,.6)]"
             style={{
-              top: target.top - PADDING,
-              left: target.left - PADDING,
-              width: target.width + PADDING * 2,
-              height: target.height + PADDING * 2,
+              top: activeTarget.top - PADDING,
+              left: activeTarget.left - PADDING,
+              width: activeTarget.width + PADDING * 2,
+              height: activeTarget.height + PADDING * 2,
             }}
           />
         </>
@@ -350,6 +369,12 @@ export function VendorUpdateAnnouncement() {
         <p className="mt-4 text-[11px] font-black uppercase tracking-[.16em] text-indigo-600">
           {stepIndex + 1} / {STEPS.length} алхам
         </p>
+        {!activeTarget && (
+          <p className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-indigo-500">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-indigo-500" />
+            Хэсгийг нээж байна…
+          </p>
+        )}
         <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">
           {step.title}
         </h2>
