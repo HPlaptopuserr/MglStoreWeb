@@ -11,7 +11,8 @@ import {
   X,
 } from "lucide-react";
 
-const STORAGE_KEY = "mgl-vendor-update:reports-2026-09:v1";
+const STORAGE_KEY = "mgl-vendor-update:reports-2026-09:v2:impressions";
+const MAX_IMPRESSIONS = 10;
 const UPDATES = [
   {
     icon: BarChart3,
@@ -36,18 +37,26 @@ const UPDATES = [
 export function VendorUpdateAnnouncement() {
   const [isOpen, setIsOpen] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const hasRecordedImpressionRef = useRef(false);
   const close = useCallback(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, "seen");
-    } catch {
-      /* Storage may be unavailable. */
-    }
     setIsOpen(false);
   }, []);
 
   useEffect(() => {
+    if (hasRecordedImpressionRef.current) return;
+    hasRecordedImpressionRef.current = true;
     try {
-      if (localStorage.getItem(STORAGE_KEY) !== "seen") setIsOpen(true);
+      const storedCount = Number.parseInt(
+        localStorage.getItem(STORAGE_KEY) || "0",
+        10,
+      );
+      const impressionCount = Number.isFinite(storedCount)
+        ? Math.max(0, storedCount)
+        : 0;
+      if (impressionCount < MAX_IMPRESSIONS) {
+        localStorage.setItem(STORAGE_KEY, String(impressionCount + 1));
+        setIsOpen(true);
+      }
     } catch {
       setIsOpen(true);
     }
