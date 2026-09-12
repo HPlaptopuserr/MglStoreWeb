@@ -229,6 +229,19 @@ export function VendorUpdateAnnouncement() {
     }
     let attempts = 0;
     let timeoutId: ReturnType<typeof setTimeout>;
+    let animationFrameId: number | null = null;
+    const update = () => {
+      const element = document.querySelector<HTMLElement>(step.selector);
+      if (!element) return;
+      const rect = element.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setTarget({ rect, stepIndex, pathname });
+      }
+    };
+    const updateOnScroll = () => {
+      if (animationFrameId != null) cancelAnimationFrame(animationFrameId);
+      animationFrameId = requestAnimationFrame(update);
+    };
     const locate = () => {
       const element = document.querySelector<HTMLElement>(step.selector);
       if (!element && attempts++ < 30) {
@@ -237,27 +250,17 @@ export function VendorUpdateAnnouncement() {
       }
       if (!element) return;
       element.scrollIntoView({ behavior: "smooth", block: "center" });
-      timeoutId = setTimeout(() => {
-        const rect = element.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          setTarget({ rect, stepIndex, pathname });
-        }
-      }, 350);
+      update();
+      timeoutId = setTimeout(update, 500);
     };
     locate();
-    const update = () => {
-      const element = document.querySelector<HTMLElement>(step.selector);
-      if (element) {
-        const rect = element.getBoundingClientRect();
-        if (rect.width > 0 && rect.height > 0) {
-          setTarget({ rect, stepIndex, pathname });
-        }
-      }
-    };
     window.addEventListener("resize", update);
+    window.addEventListener("scroll", updateOnScroll, true);
     return () => {
       clearTimeout(timeoutId);
+      if (animationFrameId != null) cancelAnimationFrame(animationFrameId);
       window.removeEventListener("resize", update);
+      window.removeEventListener("scroll", updateOnScroll, true);
     };
   }, [mode, pathname, router, step, stepIndex]);
 
