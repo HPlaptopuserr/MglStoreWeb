@@ -1,7 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Download, FileText, Loader2, RefreshCw, Search } from "lucide-react";
+import {
+  CalendarDays,
+  Download,
+  FileText,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 import { API, authFetch } from "@/lib/api";
 import type { Product } from "@/features/products";
 import {
@@ -270,75 +279,107 @@ export default function ReportsPage() {
 
       <section
         data-tour="report-filters"
-        className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-3"
+        className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
         aria-label="Тайлан шүүх"
       >
-        <label className="relative sm:col-span-1">
-          <span className="sr-only">Бүтээгдэхүүн хайх</span>
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Нэр, SKU, баркод..."
-            className="h-11 w-full rounded-xl border border-slate-200 pl-10 pr-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-          />
-        </label>
-        <label>
-          <span className="sr-only">Төлөв</span>
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value as StatusFilter)}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-          >
-            <option value="all">Бүх төлөв</option>
-            <option value="active">Идэвхтэй</option>
-            <option value="inactive">Идэвхгүй</option>
-          </select>
-        </label>
-        <label>
-          <span className="sr-only">Ангилал</span>
-          <select
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-          >
-            <option value="all">Бүх ангилал</option>
-            {categories.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
-
-      <section
-        className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
-        aria-label="Борлуулалтын хугацаа"
-      >
-        <label className="grid gap-1.5 text-xs font-bold text-slate-500">
-          Эхлэх огноо
-          <input
-            type="date"
-            value={fromDate}
-            max={toDate}
-            onChange={(event) => setFromDate(event.target.value)}
-            className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-          />
-        </label>
-        <label className="grid gap-1.5 text-xs font-bold text-slate-500">
-          Дуусах огноо
-          <input
-            type="date"
-            value={toDate}
-            min={fromDate}
-            onChange={(event) => setToDate(event.target.value)}
-            className="h-11 rounded-xl border border-slate-200 px-3 text-sm font-medium text-slate-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-          />
-        </label>
-        <p className="pb-3 text-xs font-medium text-slate-400">
-          Энэ хугацаа хамгийн их зарагдсан бараанд үйлчилнэ.
-        </p>
+        <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-indigo-50 text-indigo-600">
+              <SlidersHorizontal size={17} />
+            </span>
+            <div>
+              <h2 className="text-sm font-black text-slate-900">Шүүлтүүр</h2>
+              <p className="text-xs text-slate-500">
+                {filteredProducts.length.toLocaleString("mn-MN")} бүтээгдэхүүн
+                харагдаж байна
+              </p>
+            </div>
+          </div>
+          {(search || status !== "all" || category !== "all") && (
+            <button
+              type="button"
+              onClick={() => {
+                setSearch("");
+                setStatus("all");
+                setCategory("all");
+              }}
+              className="inline-flex h-9 w-fit items-center gap-2 rounded-lg px-3 text-xs font-bold text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+            >
+              <RotateCcw size={14} /> Цэвэрлэх
+            </button>
+          )}
+        </div>
+        <div className="grid gap-4 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4">
+          <label className="grid gap-1.5 sm:col-span-2">
+            <span className="text-xs font-bold text-slate-600">
+              Бүтээгдэхүүн хайх
+            </span>
+            <span className="relative">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Нэр, SKU эсвэл баркод"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 pl-10 pr-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+              />
+            </span>
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-bold text-slate-600">Төлөв</span>
+            <select
+              value={status}
+              onChange={(event) =>
+                setStatus(event.target.value as StatusFilter)
+              }
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 text-sm text-slate-800 outline-none transition hover:border-slate-300 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+            >
+              <option value="all">Бүх төлөв</option>
+              <option value="active">Идэвхтэй</option>
+              <option value="inactive">Идэвхгүй</option>
+            </select>
+          </label>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-bold text-slate-600">Ангилал</span>
+            <select
+              value={category}
+              onChange={(event) => setCategory(event.target.value)}
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 text-sm text-slate-800 outline-none transition hover:border-slate-300 focus:border-indigo-400 focus:bg-white focus:ring-4 focus:ring-indigo-50"
+            >
+              <option value="all">Бүх ангилал</option>
+              {categories.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="grid gap-4 border-t border-slate-100 bg-slate-50/70 px-4 py-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-[1fr_1fr_1.25fr] lg:items-end">
+          <label className="grid gap-1.5 text-xs font-bold text-slate-600">
+            Эхлэх огноо
+            <input
+              type="date"
+              value={fromDate}
+              max={toDate}
+              onChange={(event) => setFromDate(event.target.value)}
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+            />
+          </label>
+          <label className="grid gap-1.5 text-xs font-bold text-slate-600">
+            Дуусах огноо
+            <input
+              type="date"
+              value={toDate}
+              min={fromDate}
+              onChange={(event) => setToDate(event.target.value)}
+              className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+            />
+          </label>
+          <div className="flex min-h-11 items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 text-xs leading-5 text-indigo-700 sm:col-span-2 lg:col-span-1">
+            <CalendarDays size={17} className="shrink-0" />
+            Энэ хугацаа хамгийн их зарагдсан барааны тооцоонд үйлчилнэ.
+          </div>
+        </div>
       </section>
 
       {error && (
