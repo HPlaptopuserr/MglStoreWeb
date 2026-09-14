@@ -1,15 +1,18 @@
 import { Router, type Request, type Router as ExpressRouter } from "express";
 import {
   InventoryReason,
+  PaymentStatus,
   prisma,
   ReturnStatus,
   type Prisma,
 } from "@mgl/database";
-import { Permission } from "@mgl/types";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import { adjustStock } from "../../services/inventory.service";
-import { assertOrgPermission } from "../../services/permission.service";
 import { hasWarehouseAccess } from "../../services/warehouse-access.service";
+import {
+  adjustedInvoiceTotalAfterReturn,
+  canCreateUnpaidDispatchReturn,
+} from "../../services/dispatch-return.policy";
 
 const router: ExpressRouter = Router();
 
@@ -60,7 +63,10 @@ router.post("/dispatches/:id/returns", requireAuth, async (req, res) => {
       where: { id },
       include: {
         request: {
-          include: { items: { include: { product: true } } },
+          include: {
+            items: { include: { product: true } },
+            payment: { select: { paidAmount: true, status: true } },
+          },
         },
         returns: { include: { items: true } },
       },
@@ -69,16 +75,17 @@ router.post("/dispatches/:id/returns", requireAuth, async (req, res) => {
     if (!dispatch) {
       return res.status(404).json({ message: "Илгээмж олдсонгүй" });
     }
-    const permissions = await assertOrgPermission(
-      req,
-      res,
-      dispatch.organizationId,
-      Permission.REQUEST_STOCK,
-    );
-    if (!permissions) return;
+    if (!(await assertWarehouseAccess(req, res, dispatch.warehouseId))) return;
     if (dispatch.status !== "DELIVERED") {
       return res.status(400).json({
         message: "Зөвхөн хүргэгдсэн илгээмжээс буцаалт хийх боломжтой",
+      });
+    }
+    if (!canCreateUnpaidDispatchReturn(dispatch.request.payment)) {
+      return res.status(409).json({
+        code: "DISPATCH_RETURN_PAYMENT_RECEIVED",
+        message:
+          "Төлбөр бүрэн эсвэл хэсэгчлэн төлөгдсөн тул буцаалт хийх боломжгүй",
       });
     }
 
@@ -271,7 +278,16 @@ router.patch("/returns/:id/approve", requireAuth, async (req, res) => {
       where: { id },
       include: {
         items: { include: { product: true } },
-        dispatch: true,
+        dispatch: {
+          include: {
+            request: {
+              select: {
+                organizationId: true,
+                payment: { select: { paidAmount: true, status: true } },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -286,9 +302,29 @@ router.patch("/returns/:id/approve", requireAuth, async (req, res) => {
         .status(400)
         .json({ message: "Зөвхөн хүлээгдэж буй буцаалтыг батлах боломжтой" });
     }
+    if (
+      !canCreateUnpaidDispatchReturn(dispatchReturn.dispatch.request.payment)
+    ) {
+      return res.status(409).json({
+        code: "DISPATCH_RETURN_PAYMENT_RECEIVED",
+        message:
+          "Буцаалт үүссэнээс хойш төлбөр орсон тул батлах боломжгүй",
+      });
+    }
 
-    // Restore inventory inside a transaction
     const updated = await prisma.$transaction(async (tx) => {
+      const payment = await tx.stockRequestPayment.findUnique({
+        where: { requestId: dispatchReturn.dispatch.requestId },
+      });
+      if (!canCreateUnpaidDispatchReturn(payment)) {
+        throw new Error("RETURN_PAYMENT_RECEIVED");
+      }
+
+      const returnAmount = dispatchReturn.items.reduce(
+        (total, item) => total + Number(item.product.price) * item.quantity,
+        0,
+      );
+
       for (const item of dispatchReturn.items) {
         await adjustStock(tx, {
           productId: item.productId,
@@ -299,6 +335,54 @@ router.patch("/returns/:id/approve", requireAuth, async (req, res) => {
           createdById: actor?.userId || null,
           referenceId: dispatchReturn.returnNumber,
           referenceType: "DISPATCH_RETURN",
+        });
+
+        const vendorProduct = item.product.sku
+          ? await tx.product.findFirst({
+              where: {
+                organizationId: dispatchReturn.organizationId,
+                sku: item.product.sku,
+                deletedAt: null,
+              },
+              select: { id: true, stock: true },
+            })
+          : null;
+        if (!vendorProduct || vendorProduct.stock < item.quantity) {
+          throw new Error(`VENDOR_STOCK_INSUFFICIENT:${item.product.name}`);
+        }
+        await tx.product.update({
+          where: { id: vendorProduct.id },
+          data: { stock: { decrement: item.quantity } },
+        });
+        await tx.inventoryLedger.create({
+          data: {
+            productId: vendorProduct.id,
+            change: -item.quantity,
+            reason: InventoryReason.RETURN,
+            note: `Буцаалт ${dispatchReturn.returnNumber}`,
+            createdById: actor?.userId || null,
+            referenceId: dispatchReturn.returnNumber,
+            referenceType: "DISPATCH_RETURN",
+          },
+        });
+      }
+
+      if (payment) {
+        const adjustedTotal = adjustedInvoiceTotalAfterReturn({
+          currentTotal: payment.totalAmount,
+          paidAmount: payment.paidAmount,
+          returnAmount,
+        });
+        await tx.stockRequestPayment.update({
+          where: { id: payment.id },
+          data: {
+            totalAmount: adjustedTotal,
+            status:
+              adjustedTotal === 0
+                ? PaymentStatus.CANCELLED
+                : PaymentStatus.PENDING,
+            note: `Буцаалт ${dispatchReturn.returnNumber}: -${returnAmount.toLocaleString("mn-MN")}₮`,
+          },
         });
       }
 
@@ -326,6 +410,18 @@ router.patch("/returns/:id/approve", requireAuth, async (req, res) => {
     res.json(updated);
   } catch (error) {
     console.error("approve dispatch return error", error);
+    if (error instanceof Error && error.message === "RETURN_PAYMENT_RECEIVED") {
+      return res.status(409).json({
+        code: "DISPATCH_RETURN_PAYMENT_RECEIVED",
+        message: "Төлбөр орсон тул буцаалтыг батлах боломжгүй",
+      });
+    }
+    if (error instanceof Error && error.message.startsWith("VENDOR_STOCK_INSUFFICIENT:")) {
+      return res.status(409).json({
+        code: "RETURN_VENDOR_STOCK_INSUFFICIENT",
+        message: `${error.message.split(":").slice(1).join(":")}: дэлгүүрийн үлдэгдэл хүрэлцэхгүй байна`,
+      });
+    }
     res.status(500).json({ message: "Буцаалт батлахад алдаа гарлаа" });
   }
 });

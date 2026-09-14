@@ -606,7 +606,18 @@ async function representativePayment(
     where: { id: paymentId, organizationId: vendorId },
     include: {
       request: {
-        select: { requestNumber: true, status: true, warehouseId: true },
+        select: {
+          requestNumber: true,
+          status: true,
+          warehouseId: true,
+          dispatch: {
+            select: {
+              _count: {
+                select: { returns: { where: { status: "PENDING" } } },
+              },
+            },
+          },
+        },
       },
     },
   });
@@ -689,7 +700,7 @@ router.post(
       req.params.paymentId,
     );
     if (!payment) return res.status(404).json({ message: "Төлбөр олдсонгүй" });
-    if (!canPayApprovedStockRequest(payment.request.status))
+    if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0))
       return res.status(409).json({
         code: "STOCK_REQUEST_NOT_APPROVED",
         message: "Админ зөвшөөрсний дараа QPay нэхэмжлэх нээгдэнэ",
@@ -830,7 +841,7 @@ router.post(
       req.params.paymentId,
     );
     if (!payment) return res.status(404).json({ message: "Төлбөр олдсонгүй" });
-    if (!canPayApprovedStockRequest(payment.request.status))
+    if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0))
       return res.status(409).json({
         code: "STOCK_REQUEST_NOT_APPROVED",
         message: "Админ зөвшөөрсний дараа бэлэн төлбөр баталгаажна",
@@ -972,7 +983,7 @@ router.post(
       req.params.paymentId,
     );
     if (!payment) return res.status(404).json({ message: "Төлбөр олдсонгүй" });
-    if (!canPayApprovedStockRequest(payment.request.status))
+    if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0))
       return res.status(409).json({
         code: "STOCK_REQUEST_NOT_APPROVED",
         message: "Админ зөвшөөрсний дараа төлбөр баталгаажна",

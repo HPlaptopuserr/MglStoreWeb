@@ -27,6 +27,7 @@ import {
 } from "./DispatchProductPicker";
 import {
   type Dispatch,
+  canCreateDispatchReturn,
   STATUS_MAP,
   STEPS,
   formatMoney,
@@ -64,6 +65,20 @@ type EditableRow = {
   quantity: number;
 };
 
+type DispatchReturnSummary = {
+  id: string;
+  returnNumber: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  reason: string | null;
+  createdAt: string;
+  items: Array<{
+    id: string;
+    quantity: number;
+    reason: string | null;
+    product: { id: string; name: string; sku: string | null; price: number };
+  }>;
+};
+
 export function DispatchDetail({
   dispatch: d,
   onConfirm,
@@ -97,6 +112,12 @@ export function DispatchDetail({
   const [itemError, setItemError] = useState("");
   const [editLogs, setEditLogs] = useState<ItemEditLog[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [dispatchReturns, setDispatchReturns] = useState<
+    DispatchReturnSummary[]
+  >([]);
+  const [returnsLoading, setReturnsLoading] = useState(false);
+  const [returnsError, setReturnsError] = useState("");
+  const returnAllowed = canCreateDispatchReturn(d);
 
   useEffect(() => {
     const currentProducts: DispatchEditableProduct[] = d.request.items.map(
@@ -118,6 +139,39 @@ export function DispatchDetail({
     );
     setEditableProducts(currentProducts);
   }, [d]);
+
+  useEffect(() => {
+    if (d.status !== "DELIVERED") {
+      setDispatchReturns([]);
+      return;
+    }
+    let active = true;
+    setReturnsLoading(true);
+    setReturnsError("");
+    wmsFetch(`${API}/stock-requests/dispatches/${d.id}/returns`)
+      .then(async (response) => {
+        const body = (await response.json().catch(() => [])) as unknown;
+        if (!response.ok) throw new Error("Буцаалтын жагсаалт авч чадсангүй");
+        if (active)
+          setDispatchReturns(
+            Array.isArray(body) ? (body as DispatchReturnSummary[]) : [],
+          );
+      })
+      .catch((error: unknown) => {
+        if (active)
+          setReturnsError(
+            error instanceof Error
+              ? error.message
+              : "Буцаалтын жагсаалт авч чадсангүй",
+          );
+      })
+      .finally(() => {
+        if (active) setReturnsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [d.id, d.status]);
 
   useEffect(() => {
     if (!editingItems) return;
@@ -264,6 +318,15 @@ export function DispatchDetail({
           </p>
         </div>
         <div className="flex flex-wrap justify-end gap-2">
+          {d.status === "DELIVERED" && returnAllowed && (
+            <button
+              onClick={onReturn}
+              className="flex items-center gap-2 rounded-lg bg-orange-600 px-3 py-2 text-sm font-bold text-white shadow-sm shadow-orange-200 transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-300 focus:ring-offset-2"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Буцаалт үүсгэх
+            </button>
+          )}
           {d.request.payment && (
             <button
               onClick={onInvoice}
@@ -713,6 +776,117 @@ export function DispatchDetail({
         )}
       </div>
 
+      {d.status === "DELIVERED" && (
+        <section className="mt-5 overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">
+                Хийгдсэн буцаалтууд
+              </h3>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Энэ паданаас үүсгэсэн буцаалтын хүсэлтүүд
+              </p>
+            </div>
+            {!returnsLoading && (
+              <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-slate-600 ring-1 ring-slate-200">
+                {dispatchReturns.length}
+              </span>
+            )}
+          </div>
+
+          {returnsLoading ? (
+            <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-slate-400">
+              <Loader2 className="h-4 w-4 animate-spin" /> Уншиж байна...
+            </div>
+          ) : returnsError ? (
+            <div className="flex items-center gap-2 px-4 py-5 text-sm text-red-600">
+              <AlertTriangle className="h-4 w-4" /> {returnsError}
+            </div>
+          ) : dispatchReturns.length === 0 ? (
+            <div className="px-4 py-7 text-center">
+              <RotateCcw className="mx-auto mb-2 h-7 w-7 text-slate-200" />
+              <p className="text-sm font-medium text-slate-500">
+                Одоогоор буцаалт хийгдээгүй
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {dispatchReturns.map((dispatchReturn) => {
+                const quantity = dispatchReturn.items.reduce(
+                  (sum, item) => sum + item.quantity,
+                  0,
+                );
+                const amount = dispatchReturn.items.reduce(
+                  (sum, item) =>
+                    sum + item.quantity * Number(item.product.price),
+                  0,
+                );
+                const statusStyle =
+                  dispatchReturn.status === "APPROVED"
+                    ? "border-green-200 bg-green-50 text-green-700"
+                    : dispatchReturn.status === "REJECTED"
+                      ? "border-red-200 bg-red-50 text-red-700"
+                      : "border-amber-200 bg-amber-50 text-amber-700";
+                const statusLabel =
+                  dispatchReturn.status === "APPROVED"
+                    ? "Батлагдсан"
+                    : dispatchReturn.status === "REJECTED"
+                      ? "Татгалзсан"
+                      : "Хүлээгдэж буй";
+
+                return (
+                  <article key={dispatchReturn.id} className="p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-bold text-slate-800">
+                            {dispatchReturn.returnNumber}
+                          </p>
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusStyle}`}
+                          >
+                            {statusLabel}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {new Date(dispatchReturn.createdAt).toLocaleString(
+                            "mn-MN",
+                          )}
+                        </p>
+                      </div>
+                      <div className="text-left sm:text-right">
+                        <p className="text-sm font-bold text-slate-800">
+                          ₮{amount.toLocaleString()}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {quantity} ширхэг
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {dispatchReturn.items.map((item) => (
+                        <span
+                          key={item.id}
+                          title={item.reason || undefined}
+                          className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-600"
+                        >
+                          {item.product.name} × {item.quantity}
+                        </span>
+                      ))}
+                    </div>
+                    {dispatchReturn.reason && (
+                      <p className="mt-2 text-xs text-slate-500">
+                        Шалтгаан: {dispatchReturn.reason}
+                      </p>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
       {d.request.note && (
         <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
           <strong>Тэмдэглэл:</strong> {d.request.note}
@@ -783,14 +957,17 @@ export function DispatchDetail({
             </div>
           </div>
         )}
-        {d.status === "DELIVERED" && (
-          <button
-            onClick={onReturn}
-            className="flex items-center gap-2 rounded-lg bg-orange-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-orange-700"
-          >
-            <RotateCcw className="h-4 w-4" />
-            Буцаалт бүртгэх
-          </button>
+        {d.status === "DELIVERED" && !returnAllowed && (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold">Буцаалт хийх боломжгүй</p>
+              <p className="mt-0.5 text-xs leading-5 text-amber-700">
+                Төлбөр бүрэн эсвэл хэсэгчлэн төлөгдсөн байна. Буцаалтыг зөвхөн
+                төлбөр төлөхөөс өмнө бүртгэнэ.
+              </p>
+            </div>
+          </div>
         )}
       </div>
     </div>

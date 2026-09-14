@@ -99,6 +99,10 @@ export type Dispatch = {
     email: string;
     profile?: { fullName: string; phoneNumber?: string };
   } | null;
+  returns?: Array<{
+    status: "PENDING" | "APPROVED";
+    items: Array<{ productId: string; quantity: number }>;
+  }>;
 };
 
 export type ReturnItem = {
@@ -245,4 +249,35 @@ export function paymentOutstanding(
     0,
     Number(payment.totalAmount || 0) - Number(payment.paidAmount || 0),
   );
+}
+
+export function canCreateDispatchReturn(dispatch: Dispatch) {
+  const payment = dispatch.request.payment;
+  const paymentAllowsReturn =
+    !payment ||
+    (payment.status !== "PAID" && Number(payment.paidAmount || 0) === 0);
+
+  return (
+    paymentAllowsReturn &&
+    dispatch.request.items.some(
+      (item) => returnableDispatchItemQuantity(dispatch, item) > 0,
+    )
+  );
+}
+
+export function returnableDispatchItemQuantity(
+  dispatch: Dispatch,
+  item: DispatchItem,
+) {
+  const deliveredQuantity = item.approvedQuantity ?? item.quantity;
+  const reservedForReturns = (dispatch.returns ?? []).reduce(
+    (total, dispatchReturn) =>
+      total +
+      (dispatchReturn.items.find(
+        (returnItem) => returnItem.productId === item.productId,
+      )?.quantity ?? 0),
+    0,
+  );
+
+  return Math.max(0, deliveredQuantity - reservedForReturns);
 }

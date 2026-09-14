@@ -8,10 +8,12 @@ import {
 } from "./stock-payment.policy";
 
 test("stock payment opens only after approval", () => {
-  assert.equal(canPayApprovedStockRequest(StockRequestStatus.PENDING), false);
-  assert.equal(canPayApprovedStockRequest(StockRequestStatus.APPROVED), true);
-  assert.equal(canPayApprovedStockRequest(StockRequestStatus.PROCESSING), true);
-  assert.equal(canPayApprovedStockRequest(StockRequestStatus.REJECTED), false);
+  assert.equal(canPayApprovedStockRequest(StockRequestStatus.PENDING, false), false);
+  assert.equal(canPayApprovedStockRequest(StockRequestStatus.APPROVED, false), true);
+  assert.equal(canPayApprovedStockRequest(StockRequestStatus.COMPLETED, false), true);
+  assert.equal(canPayApprovedStockRequest(StockRequestStatus.COMPLETED, true), false);
+  assert.equal(canPayApprovedStockRequest(StockRequestStatus.PROCESSING, false), true);
+  assert.equal(canPayApprovedStockRequest(StockRequestStatus.REJECTED, false), false);
 });
 
 test("payment method accepts only database enum values", () => {

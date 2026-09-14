@@ -32,10 +32,12 @@ import {
   type DispatchReturnType,
   STATUS_MAP,
   STEPS,
+  canCreateDispatchReturn,
   formatMoney,
   paymentOutstanding,
   paymentStatusClass,
   paymentStatusLabel,
+  returnableDispatchItemQuantity,
   stepIndex,
 } from "@/features/dispatch-orders/dispatch-order.model";
 import {
@@ -53,10 +55,8 @@ const formatDateInput = (date: Date) =>
   ].join("-");
 
 export default function DispatchOrdersPage() {
-  const {
-    selectedWarehouseId,
-    error: warehouseLoadError,
-  } = useWarehouseScope();
+  const { selectedWarehouseId, error: warehouseLoadError } =
+    useWarehouseScope();
   const today = formatDateInput(new Date());
   const sevenDaysAgo = formatDateInput(new Date(Date.now() - 6 * 86_400_000));
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
@@ -103,9 +103,9 @@ export default function DispatchOrdersPage() {
   );
 
   // Returns
-  const [activeTab, setActiveTab] = useState<"dispatches" | "returns">(
-    "dispatches",
-  );
+  const [activeTab, setActiveTab] = useState<
+    "requests" | "dispatches" | "returns"
+  >("requests");
   const [returns, setReturns] = useState<DispatchReturnType[]>([]);
   const [returnsLoading, setReturnsLoading] = useState(false);
   const [showReturnForm, setShowReturnForm] = useState(false);
@@ -116,10 +116,14 @@ export default function DispatchOrdersPage() {
       reason: string;
       maxQty: number;
       name: string;
+      sku: string | null;
+      barcode: string | null;
+      unitPrice: number;
     }[]
   >([]);
   const [returnReason, setReturnReason] = useState("");
   const [returnNote, setReturnNote] = useState("");
+  const [returnError, setReturnError] = useState("");
   const [selectedReturn, setSelectedReturn] =
     useState<DispatchReturnType | null>(null);
   const [showReturnDetail, setShowReturnDetail] = useState(false);
@@ -374,27 +378,55 @@ export default function DispatchOrdersPage() {
   }, [activeTab, selectedWarehouseId]);
 
   const openReturnForm = (d: Dispatch) => {
-    // Build return items from dispatch items with max qty
-    const items = d.request.items.map((i) => ({
-      productId: i.productId,
-      quantity: 0,
-      reason: "",
-      maxQty: i.approvedQuantity || i.quantity,
-      name: i.product.name,
-    }));
+    const items = d.request.items
+      .map((item) => ({
+        productId: item.productId,
+        quantity: 0,
+        reason: "",
+        maxQty: returnableDispatchItemQuantity(d, item),
+        name: item.product.name,
+        sku: item.product.sku,
+        barcode: item.product.barcode ?? null,
+        unitPrice: Number(item.product.price),
+      }))
+      .filter((item) => item.maxQty > 0);
     setReturnItems(items);
     setReturnReason("");
     setReturnNote("");
+    setReturnError("");
     setShowReturnForm(true);
+  };
+
+  const toggleReturnItem = (productId: string) => {
+    setReturnItems((items) =>
+      items.map((item) =>
+        item.productId === productId
+          ? { ...item, quantity: item.quantity > 0 ? 0 : item.maxQty }
+          : item,
+      ),
+    );
+  };
+
+  const toggleAllReturnItems = () => {
+    const allSelected = returnItems.every(
+      (item) => item.quantity === item.maxQty,
+    );
+    setReturnItems((items) =>
+      items.map((item) => ({
+        ...item,
+        quantity: allSelected ? 0 : item.maxQty,
+      })),
+    );
   };
 
   const submitReturn = async () => {
     if (!selectedDispatch) return;
     const itemsToReturn = returnItems.filter((i) => i.quantity > 0);
     if (itemsToReturn.length === 0) {
-      alert("Буцаах бараа сонгоно уу");
+      setReturnError("Буцаах бараанаас дор хаяж нэгийг сонгоно уу.");
       return;
     }
+    setReturnError("");
     setActionLoading(true);
     try {
       const res = await wmsFetch(
@@ -416,13 +448,19 @@ export default function DispatchOrdersPage() {
         setShowReturnForm(false);
         setShowDetail(false);
         alert("Буцаалт амжилттай үүслээ. Батлагдахыг хүлээж байна.");
-        if (activeTab === "returns") fetchReturns();
+        await Promise.all([fetchReturns(), fetchDispatches(true)]);
       } else {
-        const err = await res.json();
-        alert(err.message || "Алдаа гарлаа");
+        const err = (await res.json().catch(() => ({}))) as {
+          message?: string;
+        };
+        setReturnError(err.message || "Буцаалт үүсгэхэд алдаа гарлаа.");
       }
-    } catch {
-      alert("Сүлжээний алдаа");
+    } catch (error) {
+      setReturnError(
+        error instanceof Error && error.name === "TimeoutError"
+          ? "Сервер хариу өгөх хугацаа хэтэрлээ. Дахин оролдоно уу."
+          : "API сервертэй холбогдож чадсангүй. Дахин оролдоно уу.",
+      );
     } finally {
       setActionLoading(false);
     }
@@ -441,6 +479,7 @@ export default function DispatchOrdersPage() {
       );
       if (res.ok) {
         await fetchReturns();
+        await fetchDispatches(true);
         setShowReturnDetail(false);
       } else {
         const err = await res.json();
@@ -486,6 +525,33 @@ export default function DispatchOrdersPage() {
       0,
     );
 
+  const returnEligibleDispatches = useMemo(
+    () =>
+      dispatches.filter(
+        (dispatch) =>
+          dispatch.status === "DELIVERED" && canCreateDispatchReturn(dispatch),
+      ),
+    [dispatches],
+  );
+
+  const returnedProductRows = useMemo(
+    () =>
+      returns.flatMap((dispatchReturn) =>
+        dispatchReturn.status === "REJECTED"
+          ? []
+          : dispatchReturn.items.map((item) => ({
+              ...item,
+              returnId: dispatchReturn.id,
+              returnNumber: dispatchReturn.returnNumber,
+              returnStatus: dispatchReturn.status,
+              dispatchNumber: dispatchReturn.dispatch.dispatchNumber,
+              organizationName: dispatchReturn.organization.name,
+              returnedAt: dispatchReturn.createdAt,
+            })),
+      ),
+    [returns],
+  );
+
   const isOverduePending = (dispatch: Dispatch) =>
     dispatch.status === "PENDING" &&
     Date.now() - new Date(dispatch.createdAt).getTime() >= 86_400_000;
@@ -504,11 +570,12 @@ export default function DispatchOrdersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">
-            Илгээмжийн захиалгууд
+          <h1 className="text-2xl font-bold text-slate-900">
+            Агуулахын захиалга
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Бараа татах хүсэлтээр ирсэн илгээмжийн захиалгуудыг удирдах
+            Хүсэлт хүлээн авахаас эхлээд хүргэлт, буцаалт хүртэлх бүх ажлыг
+            удирдана.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -561,43 +628,67 @@ export default function DispatchOrdersPage() {
         </div>
       )}
 
-      {selectedWarehouseId && (
+      {/* Primary workflow navigation */}
+      <nav
+        aria-label="Захиалгын ажлын урсгал"
+        className="grid gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:grid-cols-2"
+      >
+        <button
+          type="button"
+          onClick={() => setActiveTab("requests")}
+          className={`flex items-center gap-3 rounded-xl px-4 py-3 text-left transition-all ${
+            activeTab === "requests"
+              ? "bg-slate-900 text-white shadow-md"
+              : "text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          <span
+            className={`flex h-9 w-9 items-center justify-center rounded-lg ${activeTab === "requests" ? "bg-white/15" : "bg-amber-50 text-amber-700"}`}
+          >
+            <Package className="h-4 w-4" />
+          </span>
+          <span>
+            <span className="block text-sm font-bold">1. Ирсэн хүсэлт</span>
+            <span
+              className={`mt-0.5 block text-xs ${activeTab === "requests" ? "text-white/65" : "text-slate-400"}`}
+            >
+              Шалгах, зөвшөөрөх
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("dispatches")}
+          className={`flex items-center gap-3 rounded-xl px-4 py-3 text-left transition-all ${
+            activeTab === "dispatches"
+              ? "bg-slate-900 text-white shadow-md"
+              : "text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          <span
+            className={`flex h-9 w-9 items-center justify-center rounded-lg ${activeTab === "dispatches" ? "bg-white/15" : "bg-blue-50 text-blue-700"}`}
+          >
+            <Truck className="h-4 w-4" />
+          </span>
+          <span>
+            <span className="block text-sm font-bold">
+              2. Бэлтгэл ба хүргэлт
+            </span>
+            <span
+              className={`mt-0.5 block text-xs ${activeTab === "dispatches" ? "text-white/65" : "text-slate-400"}`}
+            >
+              Бэлтгэх, илгээх, хүлээлгэх
+            </span>
+          </span>
+        </button>
+      </nav>
+
+      {activeTab === "requests" && selectedWarehouseId && (
         <WarehouseStockRequestQueue
           warehouseId={selectedWarehouseId}
           onDecision={() => void fetchDispatches(true)}
         />
       )}
-
-      {/* Tabs */}
-      <div className="flex gap-1 rounded-xl bg-slate-100 p-1">
-        <button
-          onClick={() => setActiveTab("dispatches")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
-            activeTab === "dispatches"
-              ? "bg-white text-slate-800 shadow-sm"
-              : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          <Truck className="h-4 w-4" />
-          Илгээмжүүд
-        </button>
-        <button
-          onClick={() => setActiveTab("returns")}
-          className={`flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
-            activeTab === "returns"
-              ? "bg-white text-slate-800 shadow-sm"
-              : "text-slate-500 hover:text-slate-700"
-          }`}
-        >
-          <RotateCcw className="h-4 w-4" />
-          Буцаалтууд
-          {returns.filter((r) => r.status === "PENDING").length > 0 && (
-            <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
-              {returns.filter((r) => r.status === "PENDING").length}
-            </span>
-          )}
-        </button>
-      </div>
 
       {activeTab === "dispatches" && (
         <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
@@ -664,7 +755,7 @@ export default function DispatchOrdersPage() {
         ) : (
           <>
             {/* Summary stat bar */}
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               {STEPS.map((step) => {
                 const count = dispatches.filter(
                   (d) => d.status === step.key,
@@ -718,7 +809,7 @@ export default function DispatchOrdersPage() {
             </button>
 
             {/* 4-column pipeline board */}
-            <div className="grid grid-cols-4 gap-4 items-start">
+            <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-4">
               {STEPS.map((step, colIdx) => {
                 const colDispatches = dispatches
                   .filter((d) => d.status === step.key)
@@ -903,9 +994,135 @@ export default function DispatchOrdersPage() {
             <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="space-y-6">
+            <section className="overflow-hidden rounded-2xl border border-orange-200 bg-white shadow-sm">
+              <div className="flex flex-col gap-3 border-b border-orange-100 bg-gradient-to-r from-orange-50 to-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-600 text-white shadow-sm shadow-orange-200">
+                      <RotateCcw className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-slate-900">
+                        Буцаалт үүсгэх боломжтой паданууд
+                      </h2>
+                      <p className="text-xs text-slate-500">
+                        Төлбөр төлөгдөөгүй, хүргэгдсэн паданаас бараагаа сонгож
+                        буцаана.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <span className="w-fit rounded-full border border-orange-200 bg-orange-100 px-3 py-1 text-xs font-bold text-orange-700">
+                  {returnEligibleDispatches.length} падан
+                </span>
+              </div>
+
+              {returnEligibleDispatches.length === 0 ? (
+                <div className="flex flex-col items-center justify-center px-5 py-10 text-center">
+                  <CheckCircle2 className="mb-2 h-9 w-9 text-slate-200" />
+                  <p className="text-sm font-semibold text-slate-600">
+                    Буцаах боломжтой падан алга
+                  </p>
+                  <p className="mt-1 max-w-md text-xs text-slate-400">
+                    Зөвхөн хүргэгдсэн бөгөөд төлбөр төлөгдөөгүй падан энд
+                    харагдана.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid gap-3 p-4 lg:grid-cols-2">
+                  {returnEligibleDispatches.map((dispatch) => {
+                    const availableQuantity = dispatch.request.items.reduce(
+                      (sum, item) =>
+                        sum + returnableDispatchItemQuantity(dispatch, item),
+                      0,
+                    );
+                    const amount = totalAmount(dispatch);
+
+                    return (
+                      <article
+                        key={dispatch.id}
+                        className="group rounded-xl border border-slate-200 bg-white p-4 transition-all hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-md"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate text-sm font-bold text-slate-900">
+                                {dispatch.dispatchNumber}
+                              </p>
+                              <span className="rounded-full border border-green-200 bg-green-50 px-2 py-0.5 text-[10px] font-semibold text-green-700">
+                                Хүргэгдсэн
+                              </span>
+                            </div>
+                            <p className="mt-1 truncate text-sm font-medium text-slate-600">
+                              {dispatch.request.organization.name}
+                            </p>
+                            <p className="truncate text-xs text-slate-400">
+                              Хүсэлт: {dispatch.request.requestNumber}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-sm font-bold text-slate-900">
+                              ₮{amount.toLocaleString()}
+                            </p>
+                            <p className="text-xs font-semibold text-orange-600">
+                              {availableQuantity} ш буцаах боломжтой
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {dispatch.request.items.slice(0, 3).map((item) => (
+                            <span
+                              key={item.id}
+                              className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-600"
+                            >
+                              {item.product.name.slice(0, 22)}
+                              {item.product.name.length > 22 ? "…" : ""} ×
+                              {returnableDispatchItemQuantity(dispatch, item)}
+                            </span>
+                          ))}
+                          {dispatch.request.items.length > 3 && (
+                            <span className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-400">
+                              +{dispatch.request.items.length - 3} бараа
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                          <p className="text-[11px] text-slate-400">
+                            Падан дээр дарж бараа, тоо хэмжээг сонгоно
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedDispatch(dispatch);
+                              openReturnForm(dispatch);
+                            }}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-orange-600 px-3 py-2 text-xs font-bold text-white shadow-sm shadow-orange-200 transition hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-300 focus:ring-offset-2"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Бараа сонгох
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+
+            <div>
+              <h2 className="text-base font-bold text-slate-900">
+                Үүссэн буцаалтын хүсэлтүүд
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Илгээсэн хүсэлтийн төлөв, бараа болон үнийн дүнг хянах хэсэг.
+              </p>
+            </div>
+
             {/* Returns summary */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {[
                 {
                   label: "Хүлээгдэж буй",
@@ -941,12 +1158,129 @@ export default function DispatchOrdersPage() {
               ))}
             </div>
 
+            {/* Returned products ledger */}
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Буцаагдсан бараанууд
+                  </h3>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Хүлээгдэж буй болон батлагдсан буцаалтын барааны нэгдсэн
+                    жагсаалт.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 text-xs font-semibold">
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
+                    {returnedProductRows.length} мөр
+                  </span>
+                  <span className="rounded-full bg-orange-50 px-3 py-1 text-orange-700 ring-1 ring-orange-200">
+                    {returnedProductRows.reduce(
+                      (sum, item) => sum + item.quantity,
+                      0,
+                    )}{" "}
+                    ш
+                  </span>
+                </div>
+              </div>
+
+              {returnedProductRows.length === 0 ? (
+                <div className="flex flex-col items-center justify-center px-5 py-10 text-center">
+                  <RotateCcw className="mb-2 h-9 w-9 text-slate-200" />
+                  <p className="text-sm font-semibold text-slate-600">
+                    Буцаагдсан бараа алга
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Буцаалтын хүсэлт үүсэхэд бараанууд энд харагдана.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[900px] border-collapse text-sm">
+                    <thead>
+                      <tr className="bg-slate-50 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">
+                        <th className="px-4 py-3">Бүтээгдэхүүн</th>
+                        <th className="px-4 py-3">Буцаалтын падан</th>
+                        <th className="px-4 py-3">Эх падан</th>
+                        <th className="px-4 py-3">Байгууллага</th>
+                        <th className="px-4 py-3 text-right">Тоо</th>
+                        <th className="px-4 py-3 text-right">Дүн</th>
+                        <th className="px-4 py-3">Төлөв</th>
+                        <th className="px-4 py-3">Огноо</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {returnedProductRows.map((item) => (
+                        <tr
+                          key={`${item.returnId}-${item.id}`}
+                          onClick={() => {
+                            const dispatchReturn = returns.find(
+                              (row) => row.id === item.returnId,
+                            );
+                            if (!dispatchReturn) return;
+                            setSelectedReturn(dispatchReturn);
+                            setShowReturnDetail(true);
+                          }}
+                          className="cursor-pointer transition-colors hover:bg-blue-50/50"
+                        >
+                          <td className="px-4 py-3">
+                            <p className="font-semibold text-slate-800">
+                              {item.product.name}
+                            </p>
+                            <p className="text-xs text-slate-400">
+                              {item.product.sku || "SKU бүртгээгүй"}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-blue-700">
+                            {item.returnNumber}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">
+                            {item.dispatchNumber}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">
+                            {item.organizationName}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-slate-800">
+                            {item.quantity} ш
+                          </td>
+                          <td className="px-4 py-3 text-right font-semibold text-slate-800">
+                            ₮
+                            {(
+                              item.quantity * Number(item.product.price)
+                            ).toLocaleString()}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex rounded-full border px-2 py-1 text-[11px] font-semibold ${
+                                item.returnStatus === "APPROVED"
+                                  ? "border-green-200 bg-green-50 text-green-700"
+                                  : "border-amber-200 bg-amber-50 text-amber-700"
+                              }`}
+                            >
+                              {item.returnStatus === "APPROVED"
+                                ? "Батлагдсан"
+                                : "Хүлээгдэж буй"}
+                            </span>
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500">
+                            {new Date(item.returnedAt).toLocaleDateString(
+                              "mn-MN",
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
             {/* Returns list */}
             {returns.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 py-16">
                 <RotateCcw className="mb-3 h-12 w-12 text-slate-200" />
                 <p className="text-sm font-medium text-slate-400">
-                  Буцаалт байхгүй
+                  Одоогоор үүссэн буцаалтын хүсэлт алга
                 </p>
               </div>
             ) : (
@@ -1216,13 +1550,17 @@ export default function DispatchOrdersPage() {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-slate-800">
-                    Хүргэгдсэн илгээмжүүд
+                    Төлбөр төлөөгүй хүргэгдсэн паданууд
                   </h2>
-                  <p className="text-sm text-slate-500">
-                    Нийт{" "}
-                    {dispatches.filter((d) => d.status === "DELIVERED").length}{" "}
-                    илгээмж
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-slate-500">
+                      Нийт {returnEligibleDispatches.length} падан
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 font-semibold text-orange-700 ring-1 ring-orange-200">
+                      <RotateCcw className="h-3 w-3" />
+                      {returnEligibleDispatches.length} буцаах боломжтой
+                    </span>
+                  </div>
                 </div>
               </div>
               <button
@@ -1236,14 +1574,14 @@ export default function DispatchOrdersPage() {
             {/* List */}
             <div className="flex-1 overflow-y-auto px-6 py-4">
               <div className="space-y-3">
-                {dispatches
-                  .filter((d) => d.status === "DELIVERED")
+                {returnEligibleDispatches
                   .sort(
                     (a, b) =>
                       new Date(b.deliveredAt || b.createdAt).getTime() -
                       new Date(a.deliveredAt || a.createdAt).getTime(),
                   )
                   .map((d) => {
+                    const returnAllowed = canCreateDispatchReturn(d);
                     const qty = d.request.items.reduce(
                       (s, i) => s + (i.approvedQuantity || i.quantity),
                       0,
@@ -1274,6 +1612,16 @@ export default function DispatchOrdersPage() {
                                 <CheckCircle2 className="h-3 w-3" />
                                 Хүргэгдсэн
                               </span>
+                              {returnAllowed ? (
+                                <span className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-[11px] font-semibold text-orange-700">
+                                  <RotateCcw className="h-3 w-3" />
+                                  Буцаах боломжтой
+                                </span>
+                              ) : (
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                                  Төлбөр орсон
+                                </span>
+                              )}
                             </div>
                             <p className="mt-1 text-sm text-slate-600">
                               {d.request.organization.name}
@@ -1335,20 +1683,37 @@ export default function DispatchOrdersPage() {
                           </button>
                         )}
 
-                        {/* Footer info */}
-                        <div className="mt-2.5 flex items-center gap-4 text-xs text-slate-400">
-                          {d.driverName && (
-                            <span className="flex items-center gap-1">
-                              <Truck className="h-3 w-3" />
-                              {d.driverName}
-                            </span>
-                          )}
-                          {d.deliveredAt && (
-                            <span>
-                              Хүргэгдсэн:{" "}
-                              {new Date(d.deliveredAt).toLocaleString("mn-MN")}
-                            </span>
-                          )}
+                        {/* Footer info and clear next actions */}
+                        <div className="mt-3 flex flex-col gap-3 border-t border-slate-100 pt-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
+                            {d.driverName && (
+                              <span className="flex items-center gap-1">
+                                <Truck className="h-3 w-3" />
+                                {d.driverName}
+                              </span>
+                            )}
+                            {d.deliveredAt && (
+                              <span>
+                                Хүргэгдсэн:{" "}
+                                {new Date(d.deliveredAt).toLocaleString(
+                                  "mn-MN",
+                                )}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setShowDeliveredList(false);
+                                openDetail(d);
+                              }}
+                              className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                            >
+                              Дэлгэрэнгүй
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -1562,178 +1927,367 @@ export default function DispatchOrdersPage() {
           onClick={() => setShowReturnForm(false)}
         >
           <div
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+            className="max-h-[94vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-slate-100 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-6">
-              <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500 text-white">
-                  <RotateCcw className="h-5 w-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-slate-800">
-                    Буцаалт бүртгэх
+            <div className="p-4 sm:p-6">
+              <div className="rounded-xl border border-slate-300 bg-white p-4 sm:p-6">
+                <div className="relative border-b-2 border-double border-slate-300 pb-5 text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowReturnForm(false)}
+                    className="absolute right-0 top-0 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Хаах
+                  </button>
+                  <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-orange-600 text-white">
+                    <RotateCcw className="h-5 w-5" />
+                  </div>
+                  <h2 className="text-xl font-black tracking-wide text-slate-900 sm:text-2xl">
+                    БАРАА БУЦААЛТЫН ПАДАН
                   </h2>
-                  <p className="text-sm text-slate-500">
-                    {selectedDispatch.dispatchNumber} •{" "}
-                    {selectedDispatch.request.organization.name}
+                  <p className="mt-1 text-sm text-slate-500">
+                    Эх падаан:{" "}
+                    <span className="font-bold text-slate-700">
+                      {selectedDispatch.dispatchNumber}
+                    </span>
+                    {" · "}
+                    {new Date().toLocaleDateString("mn-MN")}
                   </p>
                 </div>
-              </div>
 
-              {/* Info grid */}
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase text-slate-400">
-                    Түгээгч
-                  </p>
-                  <p className="mt-1 text-sm font-medium text-slate-800">
-                    {selectedDispatch.driverName || "—"}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {selectedDispatch.driverPhone || ""}
-                  </p>
+                {/* Info grid */}
+                <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-[11px] font-semibold uppercase text-slate-400">
+                      Буцаалт хүлээн авагч / Агуулах
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-800">
+                      {selectedDispatch.warehouse.name}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {selectedDispatch.warehouse.address || ""}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-[11px] font-semibold uppercase text-slate-400">
+                      Бараа буцаагч / Байгууллага
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-800">
+                      {selectedDispatch.request.organization.name}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {selectedDispatch.request.deliveryAddress || ""}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-[11px] font-semibold uppercase text-slate-400">
+                      Тээвэрлэгч / Жолооч
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-800">
+                      {selectedDispatch.driverName || "—"}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {selectedDispatch.driverPhone || ""}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-[11px] font-semibold uppercase text-slate-400">
+                      Хүсэлт / Нэхэмжлэх
+                    </p>
+                    <p className="mt-1 text-sm font-medium text-slate-800">
+                      {selectedDispatch.request.requestNumber}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {selectedDispatch.request.payment?.invoiceNumber ||
+                        "Нэхэмжлэхгүй"}
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-lg bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase text-slate-400">
-                    Дэлгүүр / Байгууллага
-                  </p>
-                  <p className="mt-1 text-sm font-medium text-slate-800">
-                    {selectedDispatch.request.organization.name}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {selectedDispatch.request.deliveryAddress || ""}
-                  </p>
+
+                {/* Return reason */}
+                <div className="mt-4">
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">
+                    Буцаалтын ерөнхий шалтгаан
+                  </label>
+                  <input
+                    value={returnReason}
+                    onChange={(e) => setReturnReason(e.target.value)}
+                    placeholder="Гэмтэлтэй бараа, буруу бараа гэх мэт"
+                    className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
+                  />
                 </div>
-              </div>
 
-              {/* Return reason */}
-              <div className="mt-4">
-                <label className="mb-1 block text-xs font-semibold text-slate-600">
-                  Буцаалтын ерөнхий шалтгаан
-                </label>
-                <input
-                  value={returnReason}
-                  onChange={(e) => setReturnReason(e.target.value)}
-                  placeholder="Гэмтэлтэй бараа, буруу бараа гэх мэт"
-                  className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
-                />
-              </div>
-
-              {/* Items to return */}
-              <div className="mt-4">
-                <h3 className="mb-2 text-sm font-bold text-slate-700">
-                  Буцаах бараа сонгох
-                </h3>
-                <div className="space-y-2">
-                  {returnItems.map((item, idx) => (
-                    <div
-                      key={item.productId}
-                      className="rounded-lg border border-slate-200 bg-white p-3"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-slate-800">
-                            {item.name}
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            Хүргэгдсэн: {item.maxQty} ш
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <label className="text-xs font-semibold text-slate-500">
-                            Буцаах:
-                          </label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={item.maxQty}
-                            value={item.quantity || ""}
-                            onChange={(e) => {
-                              const val = Math.min(
-                                Math.max(0, parseInt(e.target.value) || 0),
-                                item.maxQty,
-                              );
-                              setReturnItems((prev) =>
-                                prev.map((p, i) =>
-                                  i === idx ? { ...p, quantity: val } : p,
-                                ),
-                              );
-                            }}
-                            className="h-9 w-20 rounded-lg border border-slate-300 px-2 text-center text-sm outline-none focus:border-blue-500"
-                          />
-                        </div>
-                      </div>
-                      {item.quantity > 0 && (
-                        <div className="mt-2">
-                          <input
-                            value={item.reason}
-                            onChange={(e) =>
-                              setReturnItems((prev) =>
-                                prev.map((p, i) =>
-                                  i === idx
-                                    ? { ...p, reason: e.target.value }
-                                    : p,
-                                ),
-                              )
-                            }
-                            placeholder="Шалтгаан (гэмтэл, буруу бараа ...)"
-                            className="h-8 w-full rounded border border-slate-200 px-2 text-xs outline-none focus:border-blue-400"
-                          />
-                        </div>
-                      )}
+                {/* Items to return */}
+                <div className="mt-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-800">
+                        Буцаах бүтээгдэхүүн
+                      </h3>
+                      <p className="mt-0.5 text-xs text-slate-500">
+                        Бүтээгдэхүүнээ сонгоод бүтэн эсвэл хэсэгчилсэн тоо
+                        оруулна уу.
+                      </p>
                     </div>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={toggleAllReturnItems}
+                      className="rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700 transition hover:bg-orange-100 focus:outline-none focus:ring-2 focus:ring-orange-200"
+                    >
+                      {returnItems.every(
+                        (item) => item.quantity === item.maxQty,
+                      )
+                        ? "Сонголт цэвэрлэх"
+                        : "Бүгдийг буцаах"}
+                    </button>
+                  </div>
+                  <div className="overflow-hidden rounded-lg border border-slate-300">
+                    <div className="hidden grid-cols-[44px_minmax(180px,1fr)_90px_170px_110px_120px] bg-slate-100 text-[11px] font-bold uppercase text-slate-500 md:grid">
+                      <div className="border-r border-slate-300 px-3 py-2 text-center">
+                        №
+                      </div>
+                      <div className="border-r border-slate-300 px-3 py-2">
+                        Бүтээгдэхүүн
+                      </div>
+                      <div className="border-r border-slate-300 px-3 py-2 text-right">
+                        Авсан
+                      </div>
+                      <div className="border-r border-slate-300 px-3 py-2 text-center">
+                        Буцаах тоо
+                      </div>
+                      <div className="border-r border-slate-300 px-3 py-2 text-right">
+                        Нэгж үнэ
+                      </div>
+                      <div className="px-3 py-2 text-right">Буцаалтын дүн</div>
+                    </div>
+                    {returnItems.map((item, idx) => (
+                      <div
+                        key={item.productId}
+                        className={`border-t border-slate-300 p-3 transition first:border-t-0 md:p-0 ${
+                          item.quantity > 0
+                            ? "bg-orange-50/60"
+                            : "bg-white hover:bg-slate-50"
+                        }`}
+                      >
+                        <div className="grid items-center gap-3 md:grid-cols-[44px_minmax(180px,1fr)_90px_170px_110px_120px] md:gap-0">
+                          <div className="flex items-center gap-2 md:h-full md:justify-center md:border-r md:border-slate-200 md:px-2 md:py-3">
+                            <input
+                              type="checkbox"
+                              checked={item.quantity > 0}
+                              onChange={() => toggleReturnItem(item.productId)}
+                              aria-label={`${item.name} буцаах`}
+                              className="h-5 w-5 shrink-0 rounded border-slate-300 accent-orange-600"
+                            />
+                            <span className="text-xs text-slate-400 md:hidden">
+                              {idx + 1}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => toggleReturnItem(item.productId)}
+                            className="min-w-0 text-left md:h-full md:border-r md:border-slate-200 md:px-3 md:py-3"
+                          >
+                            <p className="text-sm font-medium text-slate-800">
+                              {item.name}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              {item.sku || item.barcode || "Кодгүй"}
+                            </p>
+                          </button>
+                          <div className="text-sm font-bold text-slate-700 md:h-full md:border-r md:border-slate-200 md:px-3 md:py-4 md:text-right">
+                            <span className="mr-2 text-xs font-medium text-slate-400 md:hidden">
+                              Авсан:
+                            </span>
+                            {item.maxQty}
+                          </div>
+                          <div className="md:flex md:h-full md:items-center md:justify-center md:border-r md:border-slate-200 md:px-3 md:py-2">
+                            {item.quantity > 0 ? (
+                              <div className="flex w-fit shrink-0 items-center overflow-hidden rounded-lg border border-slate-300 bg-white">
+                                <button
+                                  type="button"
+                                  aria-label={`${item.name} буцаах тоог хасах`}
+                                  onClick={() =>
+                                    setReturnItems((items) =>
+                                      items.map((row, rowIndex) =>
+                                        rowIndex === idx
+                                          ? {
+                                              ...row,
+                                              quantity: Math.max(
+                                                0,
+                                                row.quantity - 1,
+                                              ),
+                                            }
+                                          : row,
+                                      ),
+                                    )
+                                  }
+                                  className="h-9 w-9 text-lg font-bold text-slate-500 hover:bg-slate-100"
+                                >
+                                  −
+                                </button>
+                                <input
+                                  type="number"
+                                  min={1}
+                                  max={item.maxQty}
+                                  value={item.quantity}
+                                  onChange={(e) => {
+                                    const val = Math.min(
+                                      Math.max(
+                                        1,
+                                        parseInt(e.target.value) || 1,
+                                      ),
+                                      item.maxQty,
+                                    );
+                                    setReturnItems((prev) =>
+                                      prev.map((p, i) =>
+                                        i === idx ? { ...p, quantity: val } : p,
+                                      ),
+                                    );
+                                  }}
+                                  aria-label={`${item.name} буцаах тоо`}
+                                  className="h-9 w-14 border-x border-slate-200 text-center text-sm font-bold outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  aria-label={`${item.name} буцаах тоог нэмэх`}
+                                  onClick={() =>
+                                    setReturnItems((items) =>
+                                      items.map((row, rowIndex) =>
+                                        rowIndex === idx
+                                          ? {
+                                              ...row,
+                                              quantity: Math.min(
+                                                row.maxQty,
+                                                row.quantity + 1,
+                                              ),
+                                            }
+                                          : row,
+                                      ),
+                                    )
+                                  }
+                                  disabled={item.quantity >= item.maxQty}
+                                  className="h-9 w-9 text-lg font-bold text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => toggleReturnItem(item.productId)}
+                                className="rounded-lg border border-orange-200 px-3 py-2 text-xs font-bold text-orange-700 hover:bg-orange-50"
+                              >
+                                Сонгох
+                              </button>
+                            )}
+                          </div>
+                          <div className="text-sm text-slate-600 md:h-full md:border-r md:border-slate-200 md:px-3 md:py-4 md:text-right">
+                            <span className="mr-2 text-xs text-slate-400 md:hidden">
+                              Нэгж үнэ:
+                            </span>
+                            ₮{item.unitPrice.toLocaleString()}
+                          </div>
+                          <div className="text-sm font-bold text-slate-900 md:h-full md:px-3 md:py-4 md:text-right">
+                            <span className="mr-2 text-xs font-medium text-slate-400 md:hidden">
+                              Дүн:
+                            </span>
+                            ₮{(item.quantity * item.unitPrice).toLocaleString()}
+                          </div>
+                        </div>
+                        {item.quantity > 0 && (
+                          <div className="border-t border-orange-100 bg-orange-50/40 p-2 md:pl-[56px]">
+                            <input
+                              value={item.reason}
+                              onChange={(e) =>
+                                setReturnItems((prev) =>
+                                  prev.map((p, i) =>
+                                    i === idx
+                                      ? { ...p, reason: e.target.value }
+                                      : p,
+                                  ),
+                                )
+                              }
+                              placeholder="Шалтгаан (гэмтэл, буруу бараа ...)"
+                              className="h-8 w-full rounded border border-orange-200 bg-white px-2 text-xs outline-none focus:border-orange-400"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* Summary */}
-              {returnItems.filter((i) => i.quantity > 0).length > 0 && (
-                <div className="mt-3 rounded-lg bg-orange-50 border border-orange-200 p-3">
-                  <p className="text-xs font-semibold text-orange-700">
-                    Нийт буцаах:{" "}
-                    {returnItems.filter((i) => i.quantity > 0).length} бараа,{" "}
-                    {returnItems.reduce((s, i) => s + i.quantity, 0)} ширхэг
+                {/* Summary */}
+                {returnItems.filter((i) => i.quantity > 0).length > 0 && (
+                  <div className="mt-3 flex items-center justify-between rounded-lg border border-orange-200 bg-orange-50 p-3 text-orange-800">
+                    <div>
+                      <p className="text-xs font-medium">Буцаалтын нийлбэр</p>
+                      <p className="mt-0.5 text-sm font-black">
+                        {returnItems.filter((i) => i.quantity > 0).length} төрөл
+                        · {returnItems.reduce((s, i) => s + i.quantity, 0)}{" "}
+                        ширхэг
+                      </p>
+                    </div>
+                    <p className="text-lg font-black">
+                      ₮
+                      {returnItems
+                        .reduce(
+                          (sum, item) => sum + item.quantity * item.unitPrice,
+                          0,
+                        )
+                        .toLocaleString()}
+                    </p>
+                  </div>
+                )}
+
+                {returnError && (
+                  <p
+                    role="alert"
+                    className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-700"
+                  >
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                    {returnError}
                   </p>
+                )}
+
+                {/* Note */}
+                <div className="mt-3">
+                  <label className="mb-1 block text-xs font-semibold text-slate-600">
+                    Тэмдэглэл
+                  </label>
+                  <input
+                    value={returnNote}
+                    onChange={(e) => setReturnNote(e.target.value)}
+                    placeholder="Нэмэлт тайлбар"
+                    className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
+                  />
                 </div>
-              )}
 
-              {/* Note */}
-              <div className="mt-3">
-                <label className="mb-1 block text-xs font-semibold text-slate-600">
-                  Тэмдэглэл
-                </label>
-                <input
-                  value={returnNote}
-                  onChange={(e) => setReturnNote(e.target.value)}
-                  placeholder="Нэмэлт тайлбар"
-                  className="h-10 w-full rounded-lg border border-slate-300 px-3 text-sm outline-none focus:border-blue-500"
-                />
-              </div>
-
-              {/* Actions */}
-              <div className="mt-5 flex gap-3">
-                <button
-                  onClick={() => setShowReturnForm(false)}
-                  className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                  Болих
-                </button>
-                <button
-                  onClick={submitReturn}
-                  disabled={
-                    actionLoading ||
-                    returnItems.filter((i) => i.quantity > 0).length === 0
-                  }
-                  className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50"
-                >
-                  {actionLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RotateCcw className="h-4 w-4" />
-                  )}
-                  Буцаалт үүсгэх
-                </button>
+                {/* Actions */}
+                <div className="mt-5 flex gap-3">
+                  <button
+                    onClick={() => setShowReturnForm(false)}
+                    className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  >
+                    Болих
+                  </button>
+                  <button
+                    onClick={submitReturn}
+                    disabled={
+                      actionLoading ||
+                      returnItems.filter((i) => i.quantity > 0).length === 0
+                    }
+                    className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-orange-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50"
+                  >
+                    {actionLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-4 w-4" />
+                    )}
+                    Буцаалт үүсгэх
+                  </button>
+                </div>
               </div>
             </div>
           </div>

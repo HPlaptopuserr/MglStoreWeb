@@ -104,6 +104,10 @@ const DISPATCH_STATUSES = [
   "CANCELLED",
 ] as const;
 
+const pendingReturnCountSelect = {
+  _count: { select: { returns: { where: { status: ReturnStatus.PENDING } } } },
+} as const;
+
 function getActor(req: Request) {
   return (req as Request & { user?: AuthPayload }).user;
 }
@@ -2605,7 +2609,12 @@ router.patch(
         where: { id },
         include: {
           organization: { select: { id: true } },
-          request: { select: { status: true } },
+          request: {
+            select: {
+              status: true,
+              dispatch: { select: pendingReturnCountSelect },
+            },
+          },
         },
       });
 
@@ -2621,7 +2630,7 @@ router.patch(
       );
       if (!permissions) return;
 
-      if (!canPayApprovedStockRequest(payment.request.status)) {
+      if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0)) {
         return res.status(409).json({
           code: "STOCK_REQUEST_NOT_APPROVED",
           message: "Админ зөвшөөрсний дараа төлбөр төлөх боломжтой",
@@ -2830,6 +2839,13 @@ router.get(
           organization: {
             select: { id: true, name: true, phone: true },
           },
+          returns: {
+            where: { status: { not: ReturnStatus.REJECTED } },
+            select: {
+              status: true,
+              items: { select: { productId: true, quantity: true } },
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
       });
@@ -2944,6 +2960,13 @@ router.get("/stock-requests/dispatches/:id", requireAuth, async (req, res) => {
             id: true,
             email: true,
             profile: { select: { fullName: true, phoneNumber: true } },
+          },
+        },
+        returns: {
+          where: { status: { not: ReturnStatus.REJECTED } },
+          select: {
+            status: true,
+            items: { select: { productId: true, quantity: true } },
           },
         },
       },
@@ -3722,6 +3745,7 @@ router.post(
               requestNumber: true,
               status: true,
               warehouseId: true,
+              dispatch: { select: pendingReturnCountSelect },
             },
           },
         },
@@ -3739,7 +3763,7 @@ router.post(
       );
       if (!permissions) return;
 
-      if (!canPayApprovedStockRequest(payment.request.status)) {
+      if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0)) {
         return res.status(409).json({
           code: "STOCK_REQUEST_NOT_APPROVED",
           message: "Админ зөвшөөрсний дараа QPay нэхэмжлэх нээгдэнэ",
@@ -3859,7 +3883,12 @@ router.post(
     const payment = await prisma.stockRequestPayment.findUnique({
       where: { id },
       include: {
-        request: { select: { status: true } },
+        request: {
+          select: {
+            status: true,
+            dispatch: { select: pendingReturnCountSelect },
+          },
+        },
       },
     });
     if (!payment) {
@@ -3874,7 +3903,7 @@ router.post(
     );
     if (!permissions) return;
 
-    if (!canPayApprovedStockRequest(payment.request.status)) {
+    if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0)) {
       return res.status(409).json({
         code: "STOCK_REQUEST_NOT_APPROVED",
         message: "Админ зөвшөөрсний дараа төлбөр баталгаажуулах боломжтой",
@@ -3925,7 +3954,14 @@ router.post(
     const id = req.params.id as string;
     const payment = await prisma.stockRequestPayment.findUnique({
       where: { id },
-      include: { request: { select: { status: true } } },
+      include: {
+        request: {
+          select: {
+            status: true,
+            dispatch: { select: pendingReturnCountSelect },
+          },
+        },
+      },
     });
     if (!payment) {
       return res.status(404).json({ message: "Төлбөр олдсонгүй" });
@@ -3945,7 +3981,7 @@ router.post(
     if (payment.status === PaymentStatus.CANCELLED) {
       return res.status(400).json({ message: "Цуцлагдсан төлбөр байна" });
     }
-    if (!canPayApprovedStockRequest(payment.request.status)) {
+    if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0)) {
       return res.status(409).json({
         code: "STOCK_REQUEST_NOT_APPROVED",
         message: "Админ зөвшөөрсний дараа төлсөн гэж тэмдэглэх боломжтой",
@@ -4140,6 +4176,6 @@ router.post("/stock-requests/qpay/callback", async (req, res) => {
   }
 });
 
-router.use(stockReturnRoutes);
+router.use("/stock-requests", stockReturnRoutes);
 
 export default router;

@@ -1,9 +1,14 @@
 import { PaymentMethod, StockRequestStatus, type Prisma } from "@mgl/database";
 
-export function canPayApprovedStockRequest(status: StockRequestStatus) {
+export function canPayApprovedStockRequest(
+  status: StockRequestStatus,
+  hasPendingReturn: boolean,
+) {
   return (
-    status === StockRequestStatus.APPROVED ||
-    status === StockRequestStatus.PROCESSING
+    !hasPendingReturn &&
+    (status === StockRequestStatus.APPROVED ||
+      status === StockRequestStatus.PROCESSING ||
+      status === StockRequestStatus.COMPLETED)
   );
 }
 
