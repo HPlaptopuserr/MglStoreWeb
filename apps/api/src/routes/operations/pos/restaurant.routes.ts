@@ -10,6 +10,7 @@ import {
   ShiftStatus,
 } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
+import { EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE } from "@mgl/types";
 import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import type { QPayMerchantContext } from "../../../services/qpay.types";
@@ -880,7 +881,9 @@ router.get("/restaurant/menu/:token", async (req, res) => {
         taxType: product.taxType || "VAT_ABLE",
         taxRate: product.taxType === "VAT_ABLE" ? 10 : 0,
         cityTaxRate: Number(product.cityTaxRate || 0),
-        classificationCode: product.classificationCode || "6212991",
+        classificationCode:
+          product.classificationCode ||
+          EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
         taxProductCode: product.taxProductCode || null,
         menuCategory: product.menuCategory,
         kitchenStation: product.kitchenStation,

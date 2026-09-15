@@ -8,6 +8,7 @@ import type {
   PosShiftHistoryResponse,
   SaleCreditPaymentMeta,
 } from "@mgl/types";
+import { EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE } from "@mgl/types";
 import { API, authFetch } from "@/lib/api";
 
 export type RestaurantPosRegister = {
@@ -774,7 +775,7 @@ export async function createRestaurantMenuProduct(input: {
       preparationMinutes: input.preparationMinutes,
       taxType: "VAT_ABLE",
       cityTaxRate: 0,
-      classificationCode: "6212991",
+      classificationCode: EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
       images: [],
     }),
   });

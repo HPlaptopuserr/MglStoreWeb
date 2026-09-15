@@ -22,7 +22,7 @@ import {
 import { useOrg } from "@/components/org/OrgContext";
 import { API, authFetch } from "@/lib/api";
 import {
-  EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
+  EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
   getEbarimtTaxProductCodes,
   isValidEbarimtClassificationCode,
   isValidEbarimtTaxProductCode,
@@ -114,7 +114,7 @@ const emptyForm: MenuForm = {
   imageUrl: "",
   taxType: "VAT_ABLE",
   cityTaxRate: "0",
-  classificationCode: EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
+  classificationCode: EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
   taxProductCode: "",
 };
 
@@ -230,7 +230,7 @@ export function RestaurantProductsScreen() {
       cityTaxRate: String(product.cityTaxRate ?? 0),
       classificationCode:
         product.classificationCode ||
-        EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
+        EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
       taxProductCode: product.taxProductCode || "",
     });
     setFormOpen(true);

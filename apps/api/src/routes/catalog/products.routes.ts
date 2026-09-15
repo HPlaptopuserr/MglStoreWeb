@@ -7,6 +7,7 @@ import { InventoryReason, WarehouseType, prisma } from "@mgl/database";
 import type { PrismaClient } from "@prisma/client";
 import {
   EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
+  EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
   EBARIMT_VAT_FREE_PRODUCT_CODES,
   EBARIMT_VAT_ZERO_PRODUCT_CODES,
   Permission,
@@ -446,9 +447,10 @@ const normalizePercent = (value: unknown, fallback = 0) => {
   return parsed;
 };
 
-const normalizeClassificationCode = (value: unknown) =>
-  String(value || EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE).trim() ||
-  EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE;
+const normalizeClassificationCode = (
+  value: unknown,
+  fallback = EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
+) => String(value || fallback).trim() || fallback;
 
 const normalizeOptionalText = (value: unknown) => {
   const text = String(value ?? "").trim();
@@ -3522,8 +3524,14 @@ router.post(
         return res.status(400).json({ message: "Дуусах хугацаа буруу байна" });
       }
       const normalizedTaxType = normalizeTaxType(taxType);
+      const restaurantMenuEnabled = isTruthyQueryValue(isRestaurantMenuItem);
       const normalizedClassificationCode =
-        normalizeClassificationCode(classificationCode);
+        normalizeClassificationCode(
+          classificationCode,
+          restaurantMenuEnabled
+            ? EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE
+            : EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
+        );
       const normalizedTaxProductCode = normalizeTaxProductCode(
         normalizedTaxType,
         taxProductCode,
@@ -3549,7 +3557,6 @@ router.post(
           message: "Бэлтгэх хугацаа 0-1440 минутын хооронд байх ёстой",
         });
       }
-      const restaurantMenuEnabled = isTruthyQueryValue(isRestaurantMenuItem);
       const normalizedMenuCategory = restaurantMenuEnabled
         ? normalizeRestaurantMenuCategory(menuCategory)
         : null;
