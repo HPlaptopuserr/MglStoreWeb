@@ -110,3 +110,110 @@ export function exportProductReportToPdf({
   </body></html>`);
   reportWindow.document.close();
 }
+
+function safeReportFileName(organizationName: string, extension: string) {
+  const organization = (organizationName || "baiguullaga")
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+  const date = new Date().toISOString().slice(0, 10);
+  return `${organization || "baiguullaga"}-buteegdehuunii-tailan-${date}.${extension}`;
+}
+
+export async function exportProductReportToExcel({
+  organizationName,
+  products,
+  filterDescription,
+  bestSellingProducts,
+  salesPeriodDescription,
+}: ProductReportExportOptions): Promise<void> {
+  const XLSX = await import("xlsx");
+  const totals = calculateProductReportTotals(products);
+  const generatedAt = new Date().toLocaleString("mn-MN");
+
+  const summaryRows: Array<Array<string | number>> = [
+    ["БҮТЭЭГДЭХҮҮНИЙ ТАЙЛАН"],
+    ["Байгууллага", organizationName || "Байгууллага"],
+    ["Үүсгэсэн", generatedAt],
+    ["Шүүлтүүр", filterDescription],
+    [],
+    ["Үзүүлэлт", "Утга"],
+    ["Бүтээгдэхүүний тоо", totals.productCount],
+    ["Нийт үлдэгдэл", totals.stockQuantity],
+    ["Нөөцийн өртөг", Math.round(totals.inventoryCost)],
+    ["Зарах үнийн дүн", Math.round(totals.inventoryRetailValue)],
+    ["Боломжит нийт ашиг", Math.round(totals.projectedGrossProfit)],
+    [],
+    ["ХАМГИЙН ИХ ЗАРАГДСАН БАРАА"],
+    ["Хугацаа", salesPeriodDescription],
+    ["№", "Бүтээгдэхүүн", "SKU", "Зарагдсан", "Нэгж", "Борлуулалт", "Орлого"],
+    ...bestSellingProducts.map((product) => [
+      product.rank,
+      product.name,
+      product.sku || "Кодгүй",
+      product.quantitySold,
+      product.unit === "kg" ? "кг" : "ш",
+      product.salesCount,
+      Math.round(product.revenue),
+    ]),
+  ];
+  const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
+  summarySheet["!cols"] = [
+    { wch: 24 },
+    { wch: 38 },
+    { wch: 22 },
+    { wch: 14 },
+    { wch: 10 },
+    { wch: 15 },
+    { wch: 18 },
+  ];
+
+  const productRows = products.map((product, index) => {
+    const costPrice =
+      product.costPrice == null ? null : Number(product.costPrice);
+    const retailPrice = Number(product.price) || 0;
+    const wholesalePrice =
+      product.wholesalePrice == null ? null : Number(product.wholesalePrice);
+    const stock = Number(product.stock) || 0;
+    const margin = calculateMarginPercent(product);
+    return {
+      "№": index + 1,
+      Бүтээгдэхүүн: product.name,
+      "SKU / Баркод": product.sku || product.barcode || "Кодгүй",
+      Ангилал: product.businessCategory?.name || "Ангилалгүй",
+      "Авсан үнэ": costPrice,
+      "Зарах үнэ": retailPrice,
+      "Бөөний үнэ": wholesalePrice,
+      Үлдэгдэл: stock,
+      Нэгж: product.unit === "kg" ? "кг" : "ш",
+      "Ашгийн хувь": margin == null ? null : Number(margin.toFixed(1)),
+      Төлөв: product.isActive ? "Идэвхтэй" : "Идэвхгүй",
+    };
+  });
+  const productsSheet = XLSX.utils.json_to_sheet(productRows);
+  const productHeaders = productRows[0] ? Object.keys(productRows[0]) : [];
+  productsSheet["!cols"] = productHeaders.map((header) => ({
+    wch: Math.min(
+      42,
+      Math.max(
+        header.length + 2,
+        ...productRows.map(
+          (row) => String(row[header as keyof typeof row] ?? "").length,
+        ),
+      ),
+    ),
+  }));
+  if (products.length > 0) {
+    productsSheet["!autofilter"] = {
+      ref: `A1:${XLSX.utils.encode_col(productHeaders.length - 1)}${products.length + 1}`,
+    };
+  }
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, productsSheet, "Бүтээгдэхүүн");
+  XLSX.utils.book_append_sheet(workbook, summarySheet, "Тойм");
+  XLSX.writeFile(workbook, safeReportFileName(organizationName, "xlsx"), {
+    compression: true,
+  });
+}

@@ -31,9 +31,9 @@ const STEPS = [
   {
     path: "/reports",
     selector: '[data-tour="report-pdf"]',
-    title: "PDF тайлан гаргах",
+    title: "PDF эсвэл Excel тайлан татах",
     description:
-      "Одоогийн шүүлтүүрээр харагдаж буй бүх бүтээгдэхүүнийг хэвлэхэд бэлэн PDF тайлан болгоно.",
+      "Одоогийн шүүлтүүрээр харагдаж буй бүтээгдэхүүнээ хэвлэх PDF эсвэл тооцоолох Excel файлаар татна.",
     icon: Download,
   },
   {
@@ -120,7 +120,7 @@ function WelcomeCard({
             <div className="mt-7 grid grid-cols-3 gap-2 sm:gap-3">
               {[
                 [BarChart3, "Тайлан"],
-                [Download, "PDF"],
+                [Download, "PDF / Excel"],
                 [LayoutDashboard, "Хяналт"],
               ].map(([Icon, label]) => (
                 <div

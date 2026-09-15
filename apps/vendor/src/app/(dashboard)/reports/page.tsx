@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
+  ChevronDown,
   Download,
+  FileSpreadsheet,
   FileText,
   Loader2,
   RefreshCw,
@@ -18,6 +20,7 @@ import {
   type BestSellingProduct,
   calculateMarginPercent,
   calculateProductReportTotals,
+  exportProductReportToExcel,
   exportProductReportToPdf,
   ProductReportSummary,
 } from "@/features/reports";
@@ -31,6 +34,29 @@ interface VendorSession {
 
 const money = (value: number) =>
   `${Math.round(value).toLocaleString("mn-MN")} ₮`;
+
+function toUlaanbaatarDate(value: string) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ulaanbaatar",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(value));
+}
+
+function isProductInDateRange(
+  product: Product,
+  rangeFrom: string,
+  rangeTo: string,
+) {
+  return [
+    product.createdAt,
+    ...(product.receiptLots || []).map((lot) => lot.receivedAt),
+  ].some((value) => {
+    const date = toUlaanbaatarDate(value);
+    return date >= rangeFrom && date <= rangeTo;
+  });
+}
 
 function readVendorSession(): VendorSession {
   try {
@@ -64,6 +90,14 @@ export default function ReportsPage() {
   const [toDate, setToDate] = useState(() =>
     new Date().toISOString().slice(0, 10),
   );
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [exporting, setExporting] = useState<"pdf" | "excel" | null>(null);
+  const [exportFormat, setExportFormat] = useState<"pdf" | "excel" | null>(
+    null,
+  );
+  const [exportFromDate, setExportFromDate] = useState(fromDate);
+  const [exportToDate, setExportToDate] = useState(toDate);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
 
   const loadProducts = useCallback(async () => {
     const session = readVendorSession();
@@ -81,6 +115,7 @@ export default function ReportsPage() {
         organizationId: session.organizationId,
         includeExpiredInventory: "1",
         includeInactive: "1",
+        includePosReceiptLots: "1",
       });
       const response = await authFetch(`${API}/products?${params.toString()}`, {
         cache: "no-store",
@@ -181,7 +216,7 @@ export default function ReportsPage() {
     [products],
   );
 
-  const filteredProducts = useMemo(() => {
+  const baseFilteredProducts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("mn");
     return products.filter((product) => {
       const matchesSearch =
@@ -199,13 +234,83 @@ export default function ReportsPage() {
     });
   }, [category, products, search, status]);
 
+  const filteredProducts = useMemo(() => {
+    return baseFilteredProducts.filter((product) =>
+      isProductInDateRange(product, fromDate, toDate),
+    );
+  }, [baseFilteredProducts, fromDate, toDate]);
+
   const totals = useMemo(
     () => calculateProductReportTotals(filteredProducts),
     [filteredProducts],
   );
 
-  const handleExport = () => {
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const closeMenu = (event: PointerEvent) => {
+      if (!exportMenuRef.current?.contains(event.target as Node)) {
+        setExportMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExportMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeMenu);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenu);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [exportMenuOpen]);
+
+  const openExportDateDialog = (format: "pdf" | "excel") => {
+    setExportMenuOpen(false);
+    setExportFromDate(fromDate);
+    setExportToDate(toDate);
+    setExportFormat(format);
+  };
+
+  const handleExport = async (format: "pdf" | "excel") => {
+    setExportFormat(null);
+    setExporting(format);
     try {
+      const exportProducts = baseFilteredProducts.filter((product) =>
+        isProductInDateRange(product, exportFromDate, exportToDate),
+      );
+      if (exportProducts.length === 0) {
+        throw new Error("Сонгосон хугацаанд тайланд оруулах бараа олдсонгүй.");
+      }
+
+      let periodBestSellingProducts = bestSellingProducts;
+      if (exportFromDate !== fromDate || exportToDate !== toDate) {
+        const session = readVendorSession();
+        if (!session.organizationId) {
+          throw new Error("Байгууллагын мэдээлэл олдсонгүй.");
+        }
+        const params = new URLSearchParams({
+          organizationId: session.organizationId,
+          from: `${exportFromDate}T00:00:00.000Z`,
+          to: `${exportToDate}T23:59:59.999Z`,
+          limit: "10",
+        });
+        const response = await authFetch(
+          `${API}/pos/reports/top-products?${params.toString()}`,
+          { cache: "no-store" },
+        );
+        const body = (await response.json().catch(() => ({}))) as {
+          message?: string;
+          products?: BestSellingProduct[];
+        };
+        if (!response.ok) {
+          throw new Error(
+            body.message || "Сонгосон хугацааны борлуулалтыг авч чадсангүй.",
+          );
+        }
+        periodBestSellingProducts = Array.isArray(body.products)
+          ? body.products
+          : [];
+      }
+
       const filters = [
         status === "active"
           ? "Идэвхтэй"
@@ -214,20 +319,28 @@ export default function ReportsPage() {
             : "Бүх төлөв",
         category === "all" ? "Бүх ангилал" : category,
         search.trim() ? `Хайлт: ${search.trim()}` : null,
+        `Хүлээн авсан / бүртгэсэн: ${exportFromDate} - ${exportToDate}`,
       ].filter((value): value is string => Boolean(value));
-      exportProductReportToPdf({
+      const options = {
         organizationName,
-        products: filteredProducts,
+        products: exportProducts,
         filterDescription: filters.join(" · "),
-        bestSellingProducts,
-        salesPeriodDescription: `${fromDate} - ${toDate}`,
-      });
+        bestSellingProducts: periodBestSellingProducts,
+        salesPeriodDescription: `${exportFromDate} - ${exportToDate}`,
+      };
+      if (format === "excel") {
+        await exportProductReportToExcel(options);
+      } else {
+        exportProductReportToPdf(options);
+      }
     } catch (exportError: unknown) {
       setError(
         exportError instanceof Error
           ? exportError.message
-          : "PDF тайлан нээж чадсангүй",
+          : "Тайлан татаж чадсангүй",
       );
+    } finally {
+      setExporting(null);
     }
   };
 
@@ -264,18 +377,164 @@ export default function ReportsPage() {
             />
             Шинэчлэх
           </button>
-          <button
-            data-tour="report-pdf"
-            type="button"
-            onClick={handleExport}
-            disabled={loading || filteredProducts.length === 0}
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
-          >
-            <Download size={16} />
-            PDF тайлан
-          </button>
+          <div ref={exportMenuRef} className="relative">
+            <button
+              data-tour="report-pdf"
+              type="button"
+              onClick={() => setExportMenuOpen((open) => !open)}
+              disabled={
+                loading || exporting !== null || filteredProducts.length === 0
+              }
+              aria-haspopup="menu"
+              aria-expanded={exportMenuOpen}
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:shadow-none"
+            >
+              {exporting ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Download size={16} />
+              )}
+              {exporting === "excel"
+                ? "Excel бэлтгэж байна"
+                : exporting === "pdf"
+                  ? "PDF бэлтгэж байна"
+                  : "Тайлан татах"}
+              <ChevronDown
+                size={15}
+                className={`transition-transform ${exportMenuOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+            {exportMenuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 z-30 mt-2 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl shadow-slate-900/10"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => openExportDateDialog("pdf")}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-indigo-50 focus:bg-indigo-50 focus:outline-none"
+                >
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-red-50 text-red-600">
+                    <FileText size={17} />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-bold text-slate-800">
+                      PDF тайлан
+                    </span>
+                    <span className="block text-xs text-slate-500">
+                      Хэвлэх, хуваалцахад бэлэн
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => openExportDateDialog("excel")}
+                  className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition hover:bg-emerald-50 focus:bg-emerald-50 focus:outline-none"
+                >
+                  <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-emerald-50 text-emerald-600">
+                    <FileSpreadsheet size={17} />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-bold text-slate-800">
+                      Excel тайлан
+                    </span>
+                    <span className="block text-xs text-slate-500">
+                      Тооцоолох, шүүхэд зориулсан .xlsx
+                    </span>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
+
+      {exportFormat && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
+          onClick={() => setExportFormat(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="export-date-title"
+            onClick={(event) => event.stopPropagation()}
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl sm:p-6"
+          >
+            <div className="flex items-start gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-indigo-50 text-indigo-600">
+                <CalendarDays size={20} />
+              </span>
+              <div>
+                <h2
+                  id="export-date-title"
+                  className="text-lg font-black text-slate-900"
+                >
+                  Тайлангийн хугацаа сонгох
+                </h2>
+                <p className="mt-1 text-sm leading-5 text-slate-500">
+                  {exportFormat === "pdf" ? "PDF" : "Excel"} тайланд оруулах
+                  барааны хүлээн авсан эсвэл бүртгэсэн хугацааг сонгоно.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-1.5 text-xs font-bold text-slate-600">
+                Эхлэх огноо
+                <input
+                  type="date"
+                  value={exportFromDate}
+                  max={exportToDate}
+                  onChange={(event) => setExportFromDate(event.target.value)}
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+                />
+              </label>
+              <label className="grid gap-1.5 text-xs font-bold text-slate-600">
+                Дуусах огноо
+                <input
+                  type="date"
+                  value={exportToDate}
+                  min={exportFromDate}
+                  onChange={(event) => setExportToDate(event.target.value)}
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-50"
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-xs leading-5 text-indigo-700">
+              {
+                baseFilteredProducts.filter((product) =>
+                  isProductInDateRange(product, exportFromDate, exportToDate),
+                ).length
+              }{" "}
+              бүтээгдэхүүн тайланд орно. Нэг өдрийн тайлан авах бол хоёр огноог
+              ижил сонгоно.
+            </div>
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setExportFormat(null)}
+                className="h-11 flex-1 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 transition hover:bg-slate-50"
+              >
+                Болих
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleExport(exportFormat)}
+                disabled={!exportFromDate || !exportToDate}
+                className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+              >
+                <Download size={16} />
+                {exportFormat === "pdf" ? "PDF татах" : "Excel татах"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <section
         data-tour="report-filters"
@@ -377,7 +636,8 @@ export default function ReportsPage() {
           </label>
           <div className="flex min-h-11 items-center gap-3 rounded-xl border border-indigo-100 bg-indigo-50/70 px-3 py-2 text-xs leading-5 text-indigo-700 sm:col-span-2 lg:col-span-1">
             <CalendarDays size={17} className="shrink-0" />
-            Энэ хугацаа хамгийн их зарагдсан барааны тооцоонд үйлчилнэ.
+            Энэ хугацаа бараа хүлээн авсан эсвэл анх бүртгэсэн өдөр болон
+            борлуулалтын тооцоонд үйлчилнэ.
           </div>
         </div>
       </section>
