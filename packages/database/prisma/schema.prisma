@@ -97,6 +97,8 @@ model User {
   deliveryPartnershipResponses     DeliveryPartnership[]          @relation("DeliveryPartnershipRespondedBy")
   warehouseCourierAssignments      WarehouseCourierAssignment[]   @relation("WarehouseAssignedCourier")
   warehouseManualDispatches        WarehouseManualDispatch[]      @relation("WarehouseManualDispatchCreatedBy")
+  createdWarehouseGoodsReceipts    WarehouseGoodsReceipt[]        @relation("WarehouseGoodsReceiptCreatedBy")
+  confirmedWarehouseGoodsReceipts  WarehouseGoodsReceipt[]        @relation("WarehouseGoodsReceiptConfirmedBy")
   assignedWarehouseCouriers        WarehouseCourierAssignment[]   @relation("WarehouseCourierAssignedBy")
   deliveryDriverProfile            DeliveryDriverProfile?
   salesVisits                      SalesVisit[]
@@ -1138,6 +1140,7 @@ model Product {
   kitchenTicketItems     KitchenTicketItem[]
   reels                  Reel[]
   manualDispatchItems    WarehouseManualDispatchItem[]
+  warehouseReceiptItems  WarehouseGoodsReceiptItem[]
 
   @@unique([organizationId, sku])
   @@index([organizationId, isActive])
@@ -1504,6 +1507,7 @@ model Discount {
 model InventoryLedger {
   id            String          @id @default(uuid())
   productId     String
+  warehouseId   String?
   change        Int
   reason        InventoryReason
   note          String?
@@ -1513,8 +1517,10 @@ model InventoryLedger {
   referenceType String?
   createdBy     User?           @relation("InventoryLedgerCreatedBy", fields: [createdById], references: [id])
   product       Product         @relation(fields: [productId], references: [id])
+  warehouse     Warehouse?      @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
 
   @@index([productId])
+  @@index([warehouseId, createdAt])
   @@index([reason])
   @@index([referenceType, referenceId])
   @@index([createdById])
@@ -1857,6 +1863,8 @@ model Warehouse {
   courierAssignments   WarehouseCourierAssignment[]
   deliveries           Delivery[]
   manualDispatches     WarehouseManualDispatch[]
+  goodsReceipts        WarehouseGoodsReceipt[]
+  inventoryLedger      InventoryLedger[]
 
   @@index([createdById])
   @@index([isActive])
@@ -1903,6 +1911,75 @@ model WarehouseInventory {
   @@index([productId])
   @@index([quantity])
   @@index([showOnWeb])
+}
+
+enum WarehouseGoodsReceiptStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+model WarehouseGoodsReceipt {
+  id                     String                            @id @default(uuid())
+  receiptNumber          String                            @unique
+  warehouseId            String
+  supplierName           String
+  supplierRegisterNumber String?
+  supplierDocumentNumber String?
+  documentDate           DateTime?                         @db.Date
+  status                 WarehouseGoodsReceiptStatus       @default(DRAFT)
+  note                   String?
+  createdById            String
+  confirmedById          String?
+  confirmedAt            DateTime?
+  cancelledAt            DateTime?
+  cancellationReason     String?
+  createdAt              DateTime                          @default(now())
+  updatedAt              DateTime                          @updatedAt
+  warehouse              Warehouse                         @relation(fields: [warehouseId], references: [id])
+  createdBy              User                              @relation("WarehouseGoodsReceiptCreatedBy", fields: [createdById], references: [id])
+  confirmedBy            User?                             @relation("WarehouseGoodsReceiptConfirmedBy", fields: [confirmedById], references: [id])
+  items                  WarehouseGoodsReceiptItem[]
+  attachments            WarehouseGoodsReceiptAttachment[]
+
+  @@unique([warehouseId, supplierDocumentNumber])
+  @@index([warehouseId, status, createdAt])
+  @@index([supplierName])
+  @@index([createdById])
+  @@index([confirmedById])
+}
+
+model WarehouseGoodsReceiptItem {
+  id          String                @id @default(uuid())
+  receiptId   String
+  productId   String
+  quantity    Int
+  unitCost    Decimal               @db.Decimal(18, 2)
+  batchNumber String?
+  expiryDate  DateTime?             @db.Date
+  location    String?
+  note        String?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  receipt     WarehouseGoodsReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product     Product               @relation(fields: [productId], references: [id])
+
+  @@index([receiptId])
+  @@index([productId])
+  @@index([batchNumber])
+  @@index([expiryDate])
+}
+
+model WarehouseGoodsReceiptAttachment {
+  id        String                @id @default(uuid())
+  receiptId String
+  name      String
+  mimeType  String
+  url       String
+  createdAt DateTime              @default(now())
+  receipt   WarehouseGoodsReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  @@index([receiptId])
 }
 
 /// A transactional, operator-created dispatch to an arbitrary destination.
@@ -2026,31 +2103,31 @@ model StockRequestPayment {
 /// cash/QPay entries while StockRequestPayment keeps the aggregate balance.
 model StockRequestPaymentEntry {
   receipt       StockPaymentReceipt?
-  id            String              @id @default(uuid())
+  id            String               @id @default(uuid())
   paymentId     String
-  amount        Decimal             @db.Decimal(18, 2)
+  amount        Decimal              @db.Decimal(18, 2)
   method        PaymentMethod
-  status        PaymentStatus       @default(PENDING)
-  transactionId String?             @unique
+  status        PaymentStatus        @default(PENDING)
+  transactionId String?              @unique
   confirmedById String?
   confirmedAt   DateTime?
   note          String?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  payment       StockRequestPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
-  confirmedBy   User?               @relation("StockPaymentEntryConfirmations", fields: [confirmedById], references: [id])
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  payment       StockRequestPayment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  confirmedBy   User?                @relation("StockPaymentEntryConfirmations", fields: [confirmedById], references: [id])
 
   @@index([paymentId, status])
   @@index([createdAt])
 }
 
 model StockPaymentReceipt {
-  id        String @id @default(uuid())
-  entryId   String @unique
+  id        String                   @id @default(uuid())
+  entryId   String                   @unique
   name      String
   mimeType  String
   content   Bytes
-  createdAt DateTime @default(now())
+  createdAt DateTime                 @default(now())
   entry     StockRequestPaymentEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
 }
 

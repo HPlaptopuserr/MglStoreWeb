@@ -27,21 +27,22 @@ export default function DashboardLayout({
       return;
     }
 
-    try {
-      const user = JSON.parse(localStorage.getItem("wms_user") || "{}");
-      setUserData({
-        name: user.name || user.fullName || "Operator",
-        initials:
-          user.name?.slice(0, 2).toUpperCase() ||
-          user.email?.slice(0, 2).toUpperCase() ||
-          "OP",
-        warehouseName: user.warehouseName || "Агуулах",
-      });
-    } catch {
-      /* keep defaults */
-    }
-
-    setIsReady(true);
+    queueMicrotask(() => {
+      try {
+        const user = JSON.parse(localStorage.getItem("wms_user") || "{}");
+        setUserData({
+          name: user.name || user.fullName || "Operator",
+          initials:
+            user.name?.slice(0, 2).toUpperCase() ||
+            user.email?.slice(0, 2).toUpperCase() ||
+            "OP",
+          warehouseName: user.warehouseName || "Агуулах",
+        });
+      } catch {
+        /* keep defaults */
+      }
+      setIsReady(true);
+    });
   }, [router]);
 
   const handleLogout = () => {
@@ -63,12 +64,15 @@ export default function DashboardLayout({
           onCollapsedChange={setSidebarCollapsed}
         />
         <div
-          className={`flex flex-1 flex-col transition-all duration-300 ${
+          className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ${
             sidebarCollapsed ? "ml-[68px]" : "ml-[248px]"
           }`}
         >
-          <WmsHeader userName={userData.name} userInitials={userData.initials} />
-          <main className="flex-1 p-6">{children}</main>
+          <WmsHeader
+            userName={userData.name}
+            userInitials={userData.initials}
+          />
+          <main className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
         </div>
       </div>
     </WarehouseScopeProvider>

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseDeliveryPackageDetails } from "./delivery-package.service";
+import {
+  parseDeliveryPackageDetails,
+  parseOptionalDeliveryPackageDetails,
+} from "./delivery-package.service";
 
 test("accepts and normalizes complete delivery package details", () => {
   const result = parseDeliveryPackageDetails({
@@ -36,6 +39,20 @@ test("rejects missing or non-positive dimensions", () => {
     packageHeightCm: 20,
     sizeCategory: "SMALL",
   });
+
+  assert.equal(result.data, null);
+  assert.equal(result.error, "INVALID");
+});
+
+test("allows delivery package details to be omitted", () => {
+  const result = parseOptionalDeliveryPackageDetails({});
+
+  assert.equal(result.data, null);
+  assert.equal(result.error, null);
+});
+
+test("rejects partially supplied optional delivery package details", () => {
+  const result = parseOptionalDeliveryPackageDetails({ packageCount: 2 });
 
   assert.equal(result.data, null);
   assert.equal(result.error, "INVALID");

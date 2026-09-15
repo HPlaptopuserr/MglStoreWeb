@@ -860,6 +860,7 @@ async function upsertVendorProductInventory(
     await tx.inventoryLedger.create({
       data: {
         productId: input.productId,
+        warehouseId,
         change: diff,
         reason: existing
           ? InventoryReason.RESTOCK

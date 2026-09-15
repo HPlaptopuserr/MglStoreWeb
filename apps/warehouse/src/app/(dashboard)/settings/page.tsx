@@ -5,7 +5,6 @@ import {
   Loader2,
   Save,
   Building2,
-  Bell,
   Shield,
   Palette,
   Check,
@@ -35,6 +34,14 @@ type PaymentAccount = {
   accountHolder: string;
 };
 
+type WarehouseUser = {
+  name?: string;
+  fullName?: string;
+  email?: string;
+  role?: string;
+  organizationId?: string;
+};
+
 export default function SettingsPage() {
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [paymentAccounts, setPaymentAccounts] = useState<PaymentAccount[]>([]);
@@ -46,10 +53,12 @@ export default function SettingsPage() {
   const [editForm, setEditForm] = useState<Partial<Warehouse>>({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<WarehouseUser | null>(null);
 
   useEffect(() => {
-    const u = JSON.parse(localStorage.getItem("wms_user") || "{}");
+    const u = JSON.parse(
+      localStorage.getItem("wms_user") || "{}",
+    ) as WarehouseUser;
     setUser(u);
 
     const load = async () => {

@@ -13,6 +13,7 @@ import {
   adjustedInvoiceTotalAfterReturn,
   canCreateUnpaidDispatchReturn,
 } from "../../services/dispatch-return.policy";
+import { approvedStockRequestQuantity } from "../../services/stock-reservation.service";
 
 const router: ExpressRouter = Router();
 
@@ -104,8 +105,7 @@ router.post("/dispatches/:id/returns", requireAuth, async (req, res) => {
           message: `Бүтээгдэхүүн ${item.productId} илгээмжид байхгүй`,
         });
       }
-      const deliveredQty =
-        dispatchItem.approvedQuantity || dispatchItem.quantity;
+      const deliveredQty = approvedStockRequestQuantity(dispatchItem);
       // Sum previously approved/pending returns for this product
       const alreadyReturned = dispatch.returns
         .filter((r) => r.status !== "REJECTED")

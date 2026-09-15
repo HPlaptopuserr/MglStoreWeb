@@ -3,13 +3,11 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Loader2,
-  ChevronDown,
   TrendingUp,
   TrendingDown,
   Package,
   AlertTriangle,
   BarChart3,
-  Download,
   Printer,
   FileSpreadsheet,
   Calendar,
@@ -19,6 +17,13 @@ import {
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
+import { InventoryAuditPanel } from "@/features/inventory";
+import { TopMovedProductsChart } from "@/features/reports/TopMovedProductsChart";
+import { RankedBarChart } from "@/features/reports/RankedBarChart";
+import {
+  TopOrderingStoresChart,
+  type StoreOrder,
+} from "@/features/reports/TopOrderingStoresChart";
 
 /* ─── Types ───────────────────────────────────────────────────────────── */
 type InventoryItem = {
@@ -143,7 +148,7 @@ export default function ReportsPage() {
     selectedWarehouse,
     selectedWarehouseId: warehouseId,
   } = useWarehouseScope();
-  const [tab, setTab] = useState<"inventory" | "dispatch" | "ledger">(
+  const [tab, setTab] = useState<"inventory" | "dispatch" | "ledger" | "audit">(
     "inventory",
   );
   const [detail, setDetail] = useState<WarehouseDetail | null>(null);
@@ -281,6 +286,26 @@ export default function ReportsPage() {
     [filteredDispatches, dispatchRows],
   );
 
+  const storeOrders = useMemo<StoreOrder[]>(
+    () =>
+      filteredDispatches.map((dispatch) => {
+        const store = dispatch.request?.organization || dispatch.organization;
+        const quantity = (dispatch.request?.items || []).reduce(
+          (total, item) =>
+            total + (item.dispatchedQuantity ?? item.quantity),
+          0,
+        );
+
+        return {
+          id: dispatch.id,
+          storeId: store?.id || null,
+          storeName: store?.name || "Тодорхойгүй дэлгүүр",
+          quantity,
+        };
+      }),
+    [filteredDispatches],
+  );
+
   /* Inventory stats */
   const inventories = detail?.inventories || [];
   const totalProducts = inventories.length;
@@ -306,11 +331,6 @@ export default function ReportsPage() {
         a.quantity * (a.product.price || 0),
     )
     .slice(0, 10);
-  const maxQty = topByQty[0]?.quantity || 1;
-  const maxVal = topByValue[0]
-    ? topByValue[0].quantity * (topByValue[0].product.price || 0)
-    : 1;
-
   /* Excel export for dispatches */
   const handleExcelDispatch = () => {
     if (!dispatchRows.length) return;
@@ -642,7 +662,7 @@ export default function ReportsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {/* Period pills — only for dispatch/ledger tabs */}
-            {tab !== "inventory" && (
+            {(tab === "dispatch" || tab === "ledger") && (
               <div className="flex flex-wrap items-center gap-1">
                 {(Object.keys(PERIOD_LABELS) as PeriodKey[]).map((k) => (
                   <button
@@ -711,13 +731,15 @@ export default function ReportsPage() {
                 Excel татах
               </button>
             )}
-            <button
-              onClick={handlePrint}
-              className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
-            >
-              <Printer className="h-4 w-4 text-slate-500" />
-              Хэвлэх
-            </button>
+            {tab !== "audit" && (
+              <button
+                onClick={handlePrint}
+                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              >
+                <Printer className="h-4 w-4 text-slate-500" />
+                Хэвлэх
+              </button>
+            )}
           </div>
         </div>
 
@@ -731,6 +753,11 @@ export default function ReportsPage() {
                 key: "ledger",
                 label: "Хөдөлгөөний тайлан",
                 icon: ClipboardList,
+              },
+              {
+                key: "audit",
+                label: "Өгөгдөл шалгах",
+                icon: AlertTriangle,
               },
             ] as const
           ).map(({ key, label, icon: Icon }) => (
@@ -860,71 +887,28 @@ export default function ReportsPage() {
 
             {/* Two-col charts */}
             <div className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-white p-5">
-                <h3 className="mb-4 text-sm font-bold text-slate-900">
-                  Тоо ширхэгээр Топ 10
-                </h3>
-                <div className="space-y-2.5">
-                  {topByQty.map((item, idx) => (
-                    <div key={item.id} className="flex items-center gap-3">
-                      <span className="w-5 text-right text-xs font-bold text-slate-300">
-                        {idx + 1}
-                      </span>
-                      <div className="flex-1">
-                        <div className="mb-1 flex justify-between">
-                          <p className="max-w-[180px] truncate text-xs font-medium text-slate-700">
-                            {item.product.name}
-                          </p>
-                          <span className="text-xs font-bold text-slate-900">
-                            {item.quantity.toLocaleString()}
-                          </span>
-                        </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                          <div
-                            className="h-full rounded-full bg-blue-500"
-                            style={{
-                              width: `${(item.quantity / maxQty) * 100}%`,
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-5">
-                <h3 className="mb-4 text-sm font-bold text-slate-900">
-                  Үнэ цэнээрээ Топ 10
-                </h3>
-                <div className="space-y-2.5">
-                  {topByValue.map((item, idx) => {
-                    const val = item.quantity * (item.product.price || 0);
-                    return (
-                      <div key={item.id} className="flex items-center gap-3">
-                        <span className="w-5 text-right text-xs font-bold text-slate-300">
-                          {idx + 1}
-                        </span>
-                        <div className="flex-1">
-                          <div className="mb-1 flex justify-between">
-                            <p className="max-w-[180px] truncate text-xs font-medium text-slate-700">
-                              {item.product.name}
-                            </p>
-                            <span className="text-xs font-bold text-slate-900">
-                              {fmtMoney(val)}
-                            </span>
-                          </div>
-                          <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className="h-full rounded-full bg-emerald-500"
-                              style={{ width: `${(val / maxVal) * 100}%` }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <RankedBarChart
+                dense
+                showRank
+                title="Тоо ширхэгээр Топ 10"
+                items={topByQty.map((item) => ({
+                  id: item.id,
+                  label: item.product.name,
+                  value: item.quantity,
+                }))}
+              />
+              <RankedBarChart
+                dense
+                showRank
+                color="emerald"
+                title="Үнэ цэнээрээ Топ 10"
+                formatValue={fmtMoney}
+                items={topByValue.map((item) => ({
+                  id: item.id,
+                  label: item.product.name,
+                  value: item.quantity * (item.product.price || 0),
+                }))}
+              />
             </div>
 
             {/* Low stock */}
@@ -1014,6 +998,11 @@ export default function ReportsPage() {
                 </p>
               </div>
             </div>
+
+            <TopOrderingStoresChart
+              orders={storeOrders}
+              periodLabel={PERIOD_LABELS[period]}
+            />
 
             {/* Table */}
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -1154,6 +1143,11 @@ export default function ReportsPage() {
               </div>
             </div>
 
+            <TopMovedProductsChart
+              movements={ledger}
+              periodLabel={PERIOD_LABELS[period]}
+            />
+
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                 <h3 className="text-sm font-bold text-slate-900">
@@ -1230,6 +1224,10 @@ export default function ReportsPage() {
               )}
             </div>
           </div>
+        )}
+
+        {tab === "audit" && warehouseId && (
+          <InventoryAuditPanel warehouseId={warehouseId} />
         )}
       </div>
     </>

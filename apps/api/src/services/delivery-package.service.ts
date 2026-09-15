@@ -5,6 +5,17 @@ const DELIVERY_SIZE_CATEGORIES = new Set([
   "OVERSIZED",
 ]);
 
+const DELIVERY_PACKAGE_FIELDS = [
+  "packageCount",
+  "totalWeightKg",
+  "packageLengthCm",
+  "packageWidthCm",
+  "packageHeightCm",
+  "sizeCategory",
+  "isFragile",
+  "handlingInstructions",
+] as const;
+
 const positiveNumber = (value: unknown) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
@@ -42,4 +53,18 @@ export function parseDeliveryPackageDetails(body: unknown) {
     DELIVERY_SIZE_CATEGORIES.has(data.sizeCategory);
 
   return valid ? { data, error: null } : { data: null, error: "INVALID" };
+}
+
+export function parseOptionalDeliveryPackageDetails(body: unknown) {
+  const input =
+    body && typeof body === "object"
+      ? (body as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
+  const hasPackageDetails = DELIVERY_PACKAGE_FIELDS.some(
+    (field) => input[field] !== undefined && input[field] !== null,
+  );
+
+  return hasPackageDetails
+    ? parseDeliveryPackageDetails(input)
+    : { data: null, error: null };
 }

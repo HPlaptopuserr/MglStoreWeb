@@ -33,6 +33,7 @@ export {
   serviceRequestsRoutes,
   stockRequestsRoutes,
   warehousesRoutes,
+  warehouseGoodsReceiptsRoutes,
   deliveriesRoutes,
   deliveryPartnershipsRoutes,
 } from "./operations";

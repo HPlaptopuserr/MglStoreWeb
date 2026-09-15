@@ -19,6 +19,7 @@ interface DeliveryPackageDialogProps {
   submitting: boolean;
   onClose: () => void;
   onSubmit: (details: DeliveryPackageDetails) => Promise<void>;
+  onSkip?: () => Promise<void>;
 }
 
 const SIZE_OPTIONS: Array<{
@@ -37,7 +38,9 @@ export function DeliveryPackageDialog({
   submitting,
   onClose,
   onSubmit,
+  onSkip,
 }: DeliveryPackageDialogProps) {
+  const [includePackageDetails, setIncludePackageDetails] = useState(true);
   const [form, setForm] = useState({
     packageCount: "1",
     totalWeightKg: "",
@@ -55,6 +58,12 @@ export function DeliveryPackageDialog({
   };
 
   const submit = async () => {
+    if (!includePackageDetails && onSkip) {
+      setError("");
+      await onSkip();
+      return;
+    }
+
     const details: DeliveryPackageDetails = {
       packageCount: Number(form.packageCount),
       totalWeightKg: Number(form.totalWeightKg),
@@ -108,129 +117,183 @@ export function DeliveryPackageDialog({
 
         <div className="space-y-6 p-5 sm:p-6">
           <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-sm text-indigo-900">
-            Энэ мэдээллээр тохирох хүргэгч, тээврийн хэрэгслийг сонгоно.
-            Баталсны дараа хүргэлтийн ажил автоматаар үүснэ.
+            {includePackageDetails
+              ? "Энэ мэдээллээр тохирох хүргэгч, тээврийн хэрэгслийг сонгоно. Баталсны дараа хүргэлтийн ажил автоматаар үүснэ."
+              : "Баглаа боодлын мэдээлэлгүйгээр хүргэлтийн ажил үүснэ. Тохирох тээврийн хэрэгслийг дараагийн шатанд гараар сонгоно."}
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <NumberField
-              icon={Box}
-              label="Хайрцаг / багцын тоо"
-              value={form.packageCount}
-              min="1"
-              step="1"
-              suffix="ш"
-              onChange={(value) => setField("packageCount", value)}
-            />
-            <NumberField
-              icon={Scale}
-              label="Нийт жин"
-              value={form.totalWeightKg}
-              min="0.01"
-              step="0.01"
-              suffix="кг"
-              onChange={(value) => setField("totalWeightKg", value)}
-            />
-          </div>
+          {onSkip && (
+            <fieldset>
+              <legend className="mb-3 text-sm font-bold text-slate-800">
+                Баглаа боодлын мэдээлэл оруулах эсэх
+              </legend>
+              <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5">
+                <button
+                  type="button"
+                  aria-pressed={includePackageDetails}
+                  onClick={() => {
+                    setIncludePackageDetails(true);
+                    setError("");
+                  }}
+                  className={`rounded-xl px-3 py-3 text-sm font-bold transition ${
+                    includePackageDetails
+                      ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  Мэдээлэл оруулах
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={!includePackageDetails}
+                  onClick={() => {
+                    setIncludePackageDetails(false);
+                    setError("");
+                  }}
+                  className={`rounded-xl px-3 py-3 text-sm font-bold transition ${
+                    !includePackageDetails
+                      ? "bg-white text-indigo-700 shadow-sm ring-1 ring-slate-200"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                >
+                  Алгасах
+                </button>
+              </div>
+            </fieldset>
+          )}
 
-          <div>
-            <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800">
-              <Ruler size={16} className="text-indigo-600" />
-              Нийт багцын гадна хэмжээ
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              {(
-                [
-                  ["packageLengthCm", "Урт"],
-                  ["packageWidthCm", "Өргөн"],
-                  ["packageHeightCm", "Өндөр"],
-                ] as const
-              ).map(([key, label]) => (
-                <label key={key} className="space-y-1.5">
-                  <span className="text-xs font-semibold text-slate-500">
-                    {label}
+          {includePackageDetails ? (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <NumberField
+                  icon={Box}
+                  label="Хайрцаг / багцын тоо"
+                  value={form.packageCount}
+                  min="1"
+                  step="1"
+                  suffix="ш"
+                  onChange={(value) => setField("packageCount", value)}
+                />
+                <NumberField
+                  icon={Scale}
+                  label="Нийт жин"
+                  value={form.totalWeightKg}
+                  min="0.01"
+                  step="0.01"
+                  suffix="кг"
+                  onChange={(value) => setField("totalWeightKg", value)}
+                />
+              </div>
+
+              <div>
+                <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800">
+                  <Ruler size={16} className="text-indigo-600" />
+                  Нийт багцын гадна хэмжээ
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  {(
+                    [
+                      ["packageLengthCm", "Урт"],
+                      ["packageWidthCm", "Өргөн"],
+                      ["packageHeightCm", "Өндөр"],
+                    ] as const
+                  ).map(([key, label]) => (
+                    <label key={key} className="space-y-1.5">
+                      <span className="text-xs font-semibold text-slate-500">
+                        {label}
+                      </span>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          min="0.01"
+                          step="0.01"
+                          value={form[key]}
+                          onChange={(event) =>
+                            setField(key, event.target.value)
+                          }
+                          className="w-full rounded-xl border border-slate-200 px-3 py-3 pr-9 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                          см
+                        </span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <fieldset>
+                <legend className="mb-3 text-sm font-bold text-slate-800">
+                  Оворын ангилал
+                </legend>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {SIZE_OPTIONS.map((option) => {
+                    const selected = form.sizeCategory === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => setField("sizeCategory", option.value)}
+                        className={`rounded-xl border p-3 text-left transition ${
+                          selected
+                            ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-100"
+                            : "border-slate-200 hover:border-slate-300"
+                        }`}
+                      >
+                        <span className="block text-sm font-black text-slate-900">
+                          {option.label}
+                        </span>
+                        <span className="mt-1 block text-[11px] text-slate-500">
+                          {option.hint}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </fieldset>
+
+              <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                <span>
+                  <span className="block text-sm font-black text-amber-950">
+                    Эмзэг / хагарах бараа
                   </span>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0.01"
-                      step="0.01"
-                      value={form[key]}
-                      onChange={(event) => setField(key, event.target.value)}
-                      className="w-full rounded-xl border border-slate-200 px-3 py-3 pr-9 text-sm font-bold text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
-                      см
-                    </span>
-                  </div>
-                </label>
-              ))}
+                  <span className="mt-1 block text-xs text-amber-700">
+                    Хүргэгчид анхааруулга тод харагдана
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={form.isFragile}
+                  onChange={(event) =>
+                    setField("isFragile", event.target.checked)
+                  }
+                  className="h-5 w-5 rounded border-amber-300 text-indigo-600"
+                />
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-sm font-bold text-slate-800">
+                  Зөөвөрлөх тусгай заавар
+                </span>
+                <textarea
+                  value={form.handlingInstructions}
+                  onChange={(event) =>
+                    setField("handlingInstructions", event.target.value)
+                  }
+                  maxLength={500}
+                  rows={3}
+                  placeholder="Жишээ: Босоогоор зөөнө, дээр нь бараа тавихгүй"
+                  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
+                />
+              </label>
+            </>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-sm text-slate-600">
+              Жин, хэмжээ, оворын ангилал бөглөхгүй. Илгээмжийг баталгаажуулж,
+              хүргэлтийн дараагийн алхам руу шууд шилжинэ.
             </div>
-          </div>
-
-          <fieldset>
-            <legend className="mb-3 text-sm font-bold text-slate-800">
-              Оворын ангилал
-            </legend>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {SIZE_OPTIONS.map((option) => {
-                const selected = form.sizeCategory === option.value;
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setField("sizeCategory", option.value)}
-                    className={`rounded-xl border p-3 text-left transition ${
-                      selected
-                        ? "border-indigo-500 bg-indigo-50 ring-2 ring-indigo-100"
-                        : "border-slate-200 hover:border-slate-300"
-                    }`}
-                  >
-                    <span className="block text-sm font-black text-slate-900">
-                      {option.label}
-                    </span>
-                    <span className="mt-1 block text-[11px] text-slate-500">
-                      {option.hint}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </fieldset>
-
-          <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <span>
-              <span className="block text-sm font-black text-amber-950">
-                Эмзэг / хагарах бараа
-              </span>
-              <span className="mt-1 block text-xs text-amber-700">
-                Хүргэгчид анхааруулга тод харагдана
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              checked={form.isFragile}
-              onChange={(event) => setField("isFragile", event.target.checked)}
-              className="h-5 w-5 rounded border-amber-300 text-indigo-600"
-            />
-          </label>
-
-          <label className="block space-y-2">
-            <span className="text-sm font-bold text-slate-800">
-              Зөөвөрлөх тусгай заавар
-            </span>
-            <textarea
-              value={form.handlingInstructions}
-              onChange={(event) =>
-                setField("handlingInstructions", event.target.value)
-              }
-              maxLength={500}
-              rows={3}
-              placeholder="Жишээ: Босоогоор зөөнө, дээр нь бараа тавихгүй"
-              className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100"
-            />
-          </label>
+          )}
 
           {error && (
             <p className="rounded-xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
@@ -258,7 +321,9 @@ export function DeliveryPackageDialog({
               ) : (
                 <PackageCheck size={17} />
               )}
-              Хүргэлтийн ажил үүсгэх
+              {includePackageDetails
+                ? "Хүргэлтийн ажил үүсгэх"
+                : "Мэдээлэлгүйгээр үргэлжлүүлэх"}
             </button>
           </div>
         </div>

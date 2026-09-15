@@ -9,7 +9,9 @@ function SetupForm() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
 
-  const [status, setStatus] = useState<"loading" | "valid" | "error" | "success">("loading");
+  const [status, setStatus] = useState<
+    "loading" | "valid" | "error" | "success"
+  >("loading");
   const [error, setError] = useState("");
   const [email, setEmail] = useState("");
   const [operatorId, setOperatorId] = useState("");
@@ -19,15 +21,16 @@ function SetupForm() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!token) {
-      setStatus("error");
-      setError("Token олдсонгүй. Линк буруу байна.");
-      return;
-    }
-
     const validateToken = async () => {
+      if (!token) {
+        setStatus("error");
+        setError("Token олдсонгүй. Линк буруу байна.");
+        return;
+      }
       try {
-        const res = await fetch(`${API}/warehouse-setup/validate?token=${token}`);
+        const res = await fetch(
+          `${API}/warehouse-setup/validate?token=${token}`,
+        );
         const data = await res.json();
 
         if (!res.ok || !data.valid) {
@@ -92,12 +95,26 @@ function SetupForm() {
         {/* Logo / Branding */}
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[#0f172a]">
-            <svg className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+            <svg
+              className="h-8 w-8 text-white"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+              />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">WMS Нууц үг тохируулах</h1>
-          <p className="mt-1 text-sm text-slate-500">Агуулахын удирдлагын систем</p>
+          <h1 className="text-2xl font-bold text-slate-900">
+            WMS Нууц үг тохируулах
+          </h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Агуулахын удирдлагын систем
+          </p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -105,7 +122,9 @@ function SetupForm() {
           {status === "loading" && (
             <div className="flex flex-col items-center py-8">
               <div className="h-8 w-8 animate-spin rounded-full border-4 border-slate-200 border-t-[#0f172a]" />
-              <p className="mt-4 text-sm text-slate-500">Token шалгаж байна...</p>
+              <p className="mt-4 text-sm text-slate-500">
+                Token шалгаж байна...
+              </p>
             </div>
           )}
 
@@ -113,8 +132,18 @@ function SetupForm() {
           {status === "error" && (
             <div className="text-center py-8">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
-                <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  className="h-6 w-6 text-red-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </div>
               <h2 className="text-lg font-semibold text-slate-900">Алдаа</h2>
@@ -136,11 +165,15 @@ function SetupForm() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Оператор ID:</span>
-                    <span className="font-mono font-bold text-[#0f172a]">{operatorId}</span>
+                    <span className="font-mono font-bold text-[#0f172a]">
+                      {operatorId}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Агуулах:</span>
-                    <span className="font-medium text-slate-900">{warehouseName}</span>
+                    <span className="font-medium text-slate-900">
+                      {warehouseName}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -199,7 +232,8 @@ function SetupForm() {
               </form>
 
               <p className="mt-4 text-center text-xs text-amber-600">
-                ⚠ Энэ линк 5 минутын хугацаатай. Хугацаа дуусвал админаас шинэ линк авна уу.
+                ⚠ Энэ линк 5 минутын хугацаатай. Хугацаа дуусвал админаас шинэ
+                линк авна уу.
               </p>
             </>
           )}
@@ -208,11 +242,23 @@ function SetupForm() {
           {status === "success" && (
             <div className="text-center py-8">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                <svg
+                  className="h-6 w-6 text-green-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
                 </svg>
               </div>
-              <h2 className="text-lg font-semibold text-slate-900">Амжилттай!</h2>
+              <h2 className="text-lg font-semibold text-slate-900">
+                Амжилттай!
+              </h2>
               <p className="mt-2 text-sm text-slate-500">
                 Нууц үг амжилттай тохируулагдлаа. Одоо нэвтэрч орно уу.
               </p>

@@ -8,10 +8,8 @@ import {
   Clock,
   FileText,
   Loader2,
-  Package,
   Printer,
   RotateCcw,
-  Send,
   Truck,
   Pencil,
   Save,
@@ -30,10 +28,6 @@ import {
   canCreateDispatchReturn,
   STATUS_MAP,
   STEPS,
-  formatMoney,
-  paymentOutstanding,
-  paymentStatusClass,
-  paymentStatusLabel,
   stepIndex,
 } from "./dispatch-order.model";
 
@@ -273,11 +267,11 @@ export function DispatchDetail({
   const st = STATUS_MAP[d.status];
   const StIcon = st?.icon || Clock;
   const totalQty = d.request.items.reduce(
-    (s, i) => s + (i.approvedQuantity || i.quantity),
+    (s, i) => s + (i.approvedQuantity ?? i.quantity),
     0,
   );
   const totalAmt = d.request.items.reduce(
-    (s, i) => s + (i.approvedQuantity || i.quantity) * Number(i.product.price),
+    (s, i) => s + (i.approvedQuantity ?? i.quantity) * Number(i.product.price),
     0,
   );
   const editableTotalQty = editableRows.reduce(
@@ -341,7 +335,7 @@ export function DispatchDetail({
             className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             <Printer className="h-4 w-4" />
-            Падаан
+            Зарлагын баримт
           </button>
         </div>
       </div>
@@ -670,7 +664,7 @@ export function DispatchDetail({
                     );
                   })
                 : d.request.items.map((item, idx) => {
-                    const qty = item.approvedQuantity || item.quantity;
+                    const qty = item.approvedQuantity ?? item.quantity;
                     return (
                       <tr key={item.id} className="hover:bg-slate-50">
                         <td className="px-4 py-2.5 text-slate-500">

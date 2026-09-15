@@ -3,8 +3,16 @@
 import { useEffect, useState } from "react";
 import { Printer } from "lucide-react";
 import { wmsFetch } from "@/lib/api";
-import { type Dispatch, type DispatchReturnType, formatMoney } from "./dispatch-order.model";
+import { type Dispatch, type DispatchReturnType } from "./dispatch-order.model";
 import { CodeModeSelect, type ProductCodeMode } from "./CodeModeSelect";
+import {
+  WarehouseDocumentHeader,
+  WarehouseDocumentInfoCard,
+  WarehouseDocumentInfoGrid,
+  WarehouseDocumentItemsTable,
+  WarehouseDocumentSheet,
+} from "@/features/documents/WarehouseDocumentSheet";
+import { printWarehouseDocument } from "@/features/documents/warehouse-document.print";
 
 export function PadaanView({
   dispatch: d,
@@ -28,66 +36,17 @@ export function PadaanView({
       .catch(() => {});
   }, [d.id]);
 
-  const totalQty = d.request.items.reduce(
-    (s, i) => s + (i.approvedQuantity || i.quantity),
-    0,
-  );
-  const totalAmt = d.request.items.reduce(
-    (s, i) => s + (i.approvedQuantity || i.quantity) * Number(i.product.price),
-    0,
-  );
-
-  const handlePrint = () => {
-    const printContent = document.getElementById("padaan-content");
-    if (!printContent) return;
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Падаан - ${d.dispatchNumber}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Segoe UI', Tahoma, sans-serif; padding: 30px; color: #1e293b; }
-          .header { text-align: center; border-bottom: 3px double #334155; padding-bottom: 16px; margin-bottom: 20px; }
-          .header h1 { font-size: 24px; margin-bottom: 4px; }
-          .header p { color: #64748b; font-size: 13px; }
-          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-          .info-box { border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px; }
-          .info-box .label { font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; }
-          .info-box .value { font-size: 14px; font-weight: 600; margin-top: 4px; }
-          .info-box .sub { font-size: 12px; color: #64748b; }
-          table { width: 100%; border-collapse: collapse; margin: 16px 0; }
-          th, td { border: 1px solid #cbd5e1; padding: 8px 12px; text-align: left; font-size: 13px; }
-          th { background: #f1f5f9; font-weight: 600; }
-          .text-right { text-align: right; }
-          .total-row td { font-weight: 700; background: #f8fafc; }
-          .signatures { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 30px; margin-top: 40px; }
-          .sig-box { text-align: center; }
-          .sig-line { border-top: 1px solid #94a3b8; margin-top: 60px; padding-top: 8px; font-size: 12px; color: #64748b; }
-          .footer { text-align: center; margin-top: 30px; padding-top: 12px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; }
-          .returns-section h3 { color: #c2410c; font-size: 14px; font-weight: 700; margin-bottom: 8px; }
-          .returns-section .ret-info { font-size: 12px; color: #64748b; margin-bottom: 4px; }
-          @media print { body { padding: 15px; } }
-        </style>
-      </head>
-      <body>${printContent.innerHTML}
-        <div class="footer">MGL Store WMS • Хэвлэгдсэн: ${new Date().toLocaleString("mn-MN")}</div>
-      </body>
-      </html>
-    `);
-    win.document.close();
-    win.print();
-  };
+  const handlePrint = () =>
+    printWarehouseDocument(
+      "padaan-content",
+      `Зарлагын баримт - ${d.dispatchNumber}`,
+    );
 
   return (
     <div className="p-6">
       {/* Toolbar */}
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-bold text-slate-800">
-          Падаан / Зарлагын баримт
-        </h2>
+        <h2 className="text-lg font-bold text-slate-800">Зарлагын баримт</h2>
         <div className="flex flex-wrap gap-2">
           <CodeModeSelect value={codeMode} onChange={setCodeMode} />
           <button
@@ -107,32 +66,18 @@ export function PadaanView({
       </div>
 
       {/* Print Content */}
-      <div
-        id="padaan-content"
-        className="rounded-lg border border-slate-200 bg-white p-6"
-      >
-        {/* Header */}
-        <div className="header mb-5 border-b-2 border-double border-slate-300 pb-4 text-center">
-          <h1 className="text-2xl font-bold text-slate-800">ЗАРЛАГЫН БАРИМТ</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {d.dispatchNumber} •{" "}
-            {new Date(d.createdAt).toLocaleDateString("mn-MN", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
-          </p>
-        </div>
+      <WarehouseDocumentSheet id="padaan-content">
+        <WarehouseDocumentHeader
+          title="ЗАРЛАГЫН БАРИМТ"
+          number={d.dispatchNumber}
+          date={new Date(d.createdAt)}
+        />
 
-        {/* Info Grid */}
-        <div className="info-grid mb-5 grid grid-cols-2 gap-4">
-          <div className="info-box rounded-lg border border-slate-200 p-3">
-            <p className="label text-[11px] font-semibold uppercase text-slate-400">
-              Агуулах (Илгээгч)
-            </p>
-            <p className="value mt-1 text-sm font-semibold text-slate-800">
-              {d.warehouse.name}
-            </p>
+        <WarehouseDocumentInfoGrid>
+          <WarehouseDocumentInfoCard
+            label="Агуулах (Илгээгч)"
+            value={d.warehouse.name}
+          >
             {d.warehouse.address && (
               <p className="sub text-xs text-slate-500">
                 {d.warehouse.address}
@@ -143,14 +88,11 @@ export function PadaanView({
                 Утас: {d.warehouse.phone}
               </p>
             )}
-          </div>
-          <div className="info-box rounded-lg border border-slate-200 p-3">
-            <p className="label text-[11px] font-semibold uppercase text-slate-400">
-              Хүлээн авагч
-            </p>
-            <p className="value mt-1 text-sm font-semibold text-slate-800">
-              {d.request.organization.name}
-            </p>
+          </WarehouseDocumentInfoCard>
+          <WarehouseDocumentInfoCard
+            label="Хүлээн авагч"
+            value={d.request.organization.name}
+          >
             {d.request.deliveryAddress && (
               <p className="sub text-xs text-slate-500">
                 {d.request.deliveryAddress}
@@ -161,15 +103,12 @@ export function PadaanView({
                 Утас: {d.request.deliveryPhone}
               </p>
             )}
-          </div>
+          </WarehouseDocumentInfoCard>
           {d.driverName && (
-            <div className="info-box rounded-lg border border-slate-200 p-3">
-              <p className="label text-[11px] font-semibold uppercase text-slate-400">
-                Тээвэрлэгч / Жолооч
-              </p>
-              <p className="value mt-1 text-sm font-semibold text-slate-800">
-                {d.driverName}
-              </p>
+            <WarehouseDocumentInfoCard
+              label="Тээвэрлэгч / Жолооч"
+              value={d.driverName}
+            >
               <p className="sub text-xs text-slate-500">
                 Утас: {d.driverPhone}
               </p>
@@ -178,92 +117,39 @@ export function PadaanView({
                   Тээврийн хэрэгсэл: {d.vehicleNumber}
                 </p>
               )}
-            </div>
+            </WarehouseDocumentInfoCard>
           )}
-          <div className="info-box rounded-lg border border-slate-200 p-3">
-            <p className="label text-[11px] font-semibold uppercase text-slate-400">
-              Хүсэлтийн дугаар
-            </p>
-            <p className="value mt-1 text-sm font-semibold text-slate-800">
-              {d.request.requestNumber}
-            </p>
+          <WarehouseDocumentInfoCard
+            label="Хүсэлтийн дугаар"
+            value={d.request.requestNumber}
+          >
             {d.request.payment && (
               <p className="sub text-xs text-slate-500">
                 Нэхэмжлэх: {d.request.payment.invoiceNumber}
               </p>
             )}
-          </div>
-        </div>
+          </WarehouseDocumentInfoCard>
+          <WarehouseDocumentInfoCard
+            label={
+              d.status === "PENDING"
+                ? "Агуулахын хариуцсан ажилтан"
+                : "Агуулахаас илгээсэн ажилтан"
+            }
+            value={d.operatorName || "Бүртгэгдээгүй"}
+          />
+        </WarehouseDocumentInfoGrid>
 
-        {/* Items Table */}
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="bg-slate-100">
-              <th className="border border-slate-300 px-3 py-2 text-left">№</th>
-              <th className="border border-slate-300 px-3 py-2 text-left">
-                Бүтээгдэхүүний нэр
-              </th>
-              <th className="border border-slate-300 px-3 py-2 text-left">
-                {codeMode === "SKU" ? "SKU" : "Баркод"}
-              </th>
-              <th className="border border-slate-300 px-3 py-2 text-right">
-                Тоо ширхэг
-              </th>
-              <th className="border border-slate-300 px-3 py-2 text-right">
-                Нэгж үнэ
-              </th>
-              <th className="border border-slate-300 px-3 py-2 text-right">
-                Нийт дүн
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {d.request.items.map((item, idx) => {
-              const qty = item.approvedQuantity || item.quantity;
-              return (
-                <tr key={item.id}>
-                  <td className="border border-slate-300 px-3 py-2">
-                    {idx + 1}
-                  </td>
-                  <td className="border border-slate-300 px-3 py-2 font-medium">
-                    {item.product.name}
-                  </td>
-                  <td className="border border-slate-300 px-3 py-2 text-slate-500">
-                    {codeMode === "SKU"
-                      ? item.product.sku || "—"
-                      : item.product.barcode || item.product.sku || "—"}
-                  </td>
-                  <td className="border border-slate-300 px-3 py-2 text-right font-bold">
-                    {qty}
-                  </td>
-                  <td className="border border-slate-300 px-3 py-2 text-right">
-                    ₮{Number(item.product.price).toLocaleString()}
-                  </td>
-                  <td className="border border-slate-300 px-3 py-2 text-right font-medium">
-                    ₮{(qty * Number(item.product.price)).toLocaleString()}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr className="total-row bg-slate-50 font-bold">
-              <td
-                colSpan={3}
-                className="border border-slate-300 px-3 py-2 text-right"
-              >
-                Нийт:
-              </td>
-              <td className="border border-slate-300 px-3 py-2 text-right">
-                {totalQty}
-              </td>
-              <td className="border border-slate-300 px-3 py-2"></td>
-              <td className="border border-slate-300 px-3 py-2 text-right">
-                ₮{totalAmt.toLocaleString()}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
+        <WarehouseDocumentItemsTable
+          codeMode={codeMode}
+          items={d.request.items.map((item) => ({
+            id: item.id,
+            name: item.product.name,
+            sku: item.product.sku,
+            barcode: item.product.barcode ?? null,
+            quantity: item.approvedQuantity ?? item.quantity,
+            unitPrice: Number(item.product.price),
+          }))}
+        />
 
         {d.note && (
           <div className="mt-4 text-sm text-slate-600">
@@ -339,7 +225,7 @@ export function PadaanView({
             </div>
           </div>
         </div>
-      </div>
+      </WarehouseDocumentSheet>
     </div>
   );
 }

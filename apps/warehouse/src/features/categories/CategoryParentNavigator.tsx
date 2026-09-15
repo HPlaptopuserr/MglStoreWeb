@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Check, ChevronRight, Folder, FolderOpen } from "lucide-react";
 import type { CategoryLevel, WarehouseCategory } from "./category.types";
 
@@ -58,23 +58,22 @@ export function CategoryParentNavigator({
   onChange,
 }: CategoryParentNavigatorProps) {
   const roots = categories.filter((category) => category.level === 0);
-  const selectedParent = categories.find((category) => category.id === parentId);
-  const [selectedRootId, setSelectedRootId] = useState(
-    level === 1 ? parentId : selectedParent?.parentId || "",
+  const selectedParent = categories.find(
+    (category) => category.id === parentId,
   );
+  const contextKey = `${level}:${parentId}`;
+  const propRootId = level === 1 ? parentId : selectedParent?.parentId || "";
+  const [rootSelection, setRootSelection] = useState<{
+    contextKey: string;
+    categoryId: string;
+  } | null>(null);
+  const selectedRootId =
+    rootSelection?.contextKey === contextKey
+      ? rootSelection.categoryId
+      : propRootId;
   const children = categories.filter(
     (category) => category.level === 1 && category.parentId === selectedRootId,
   );
-
-  useEffect(() => {
-    if (level === 1) {
-      setSelectedRootId(parentId);
-      return;
-    }
-    if (selectedParent?.parentId) {
-      setSelectedRootId(selectedParent.parentId);
-    }
-  }, [level, parentId, selectedParent?.parentId]);
 
   if (level === 0) {
     return (
@@ -87,7 +86,7 @@ export function CategoryParentNavigator({
   }
 
   const selectRoot = (categoryId: string) => {
-    setSelectedRootId(categoryId);
+    setRootSelection({ contextKey, categoryId });
     onChange(level === 1 ? categoryId : "");
   };
 

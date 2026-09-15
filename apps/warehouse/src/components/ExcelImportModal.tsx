@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import NextImage from "next/image";
 import {
   X,
   Upload,
@@ -642,10 +643,13 @@ function ImportResults({
                             key={idx}
                             className="relative group w-16 h-16 rounded-lg overflow-hidden border border-slate-200"
                           >
-                            <img
+                            <NextImage
                               src={img}
                               alt=""
-                              className="w-full h-full object-cover"
+                              fill
+                              sizes="64px"
+                              unoptimized
+                              className="object-cover"
                             />
                             {!isSaved && (
                               <button

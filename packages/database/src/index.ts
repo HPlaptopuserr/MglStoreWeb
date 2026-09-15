@@ -28,6 +28,7 @@ export {
   StockRequestStatus,
   DispatchStatus,
   WarehouseType,
+  WarehouseGoodsReceiptStatus,
   PosActivationStatus,
   PosPaymentStatus,
   PosQPayStatus,

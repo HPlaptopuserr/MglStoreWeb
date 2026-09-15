@@ -190,6 +190,7 @@ export async function adjustStock(
   await tx.inventoryLedger.create({
     data: {
       productId,
+      warehouseId: warehouseId || null,
       change,
       reason,
       note: note || null,

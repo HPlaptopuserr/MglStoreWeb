@@ -1,5 +1,23 @@
 import { Prisma, prisma } from "@mgl/database";
 
+export function approvedStockRequestQuantity(item: {
+  quantity: number;
+  approvedQuantity: number | null;
+}): number {
+  return item.approvedQuantity ?? item.quantity;
+}
+
+export function stockAvailability(
+  physicalQuantity: number,
+  reservedQuantity: number,
+) {
+  return {
+    quantity: Math.max(0, physicalQuantity - reservedQuantity),
+    physicalQuantity,
+    reservedQuantity,
+  };
+}
+
 // Reservations derive from live requests: cancellation/rejection releases them
 // without modifying physical stock or requiring a database migration.
 export async function reservedStock(
@@ -12,14 +30,28 @@ export async function reservedStock(
       productId: { in: productIds },
       request: {
         warehouseId,
-        status: { in: ["PENDING", "APPROVED", "PROCESSING"] },
+        OR: [
+          { status: { in: ["PENDING", "APPROVED"] } },
+          {
+            status: "PROCESSING",
+            OR: [
+              { dispatch: { is: null } },
+              { dispatch: { is: { status: "PENDING" } } },
+            ],
+          },
+        ],
       },
     },
     select: {
       productId: true,
       quantity: true,
       approvedQuantity: true,
-      request: { select: { status: true } },
+      request: {
+        select: {
+          status: true,
+          dispatch: { select: { status: true } },
+        },
+      },
     },
   });
   return sumReservedStock(items);
@@ -30,17 +62,24 @@ export function sumReservedStock(
     productId: string;
     quantity: number;
     approvedQuantity: number | null;
-    request: { status: string };
+    request: {
+      status: string;
+      dispatch?: { status: string } | null;
+    };
   }[],
 ) {
   const reserved = new Map<string, number>();
   for (const item of items) {
-    if (!["PENDING", "APPROVED", "PROCESSING"].includes(item.request.status))
-      continue;
+    const isReserved =
+      item.request.status === "PENDING" ||
+      item.request.status === "APPROVED" ||
+      (item.request.status === "PROCESSING" &&
+        (!item.request.dispatch || item.request.dispatch.status === "PENDING"));
+    if (!isReserved) continue;
     const quantity =
       item.request.status === "PENDING"
         ? item.quantity
-        : (item.approvedQuantity ?? item.quantity);
+        : approvedStockRequestQuantity(item);
     reserved.set(
       item.productId,
       (reserved.get(item.productId) ?? 0) + quantity,

@@ -36,6 +36,7 @@ import {
   serviceRequestsRoutes,
   stockRequestsRoutes,
   warehousesRoutes,
+  warehouseGoodsReceiptsRoutes,
   deliveriesRoutes,
   deliveryPartnershipsRoutes,
   dashboardRoutes,
@@ -154,6 +155,7 @@ app.use("/api", jobPositionRoutes);
 app.use("/api", posRoutes);
 app.use("/api", serviceRequestsRoutes);
 app.use("/api", warehousesRoutes);
+app.use("/api", warehouseGoodsReceiptsRoutes);
 app.use("/api", deliveriesRoutes);
 app.use("/api", deliveryPartnershipsRoutes);
 app.use("/api", stockRequestsRoutes);

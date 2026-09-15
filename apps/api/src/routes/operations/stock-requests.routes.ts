@@ -5,7 +5,12 @@ import express, {
   type Router as ExpressRouter,
 } from "express";
 import crypto from "crypto";
-import { canReserveStock } from "../../services/stock-reservation.service";
+import {
+  approvedStockRequestQuantity,
+  canReserveStock,
+  reservedStock,
+  stockAvailability,
+} from "../../services/stock-reservation.service";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
@@ -59,7 +64,7 @@ import {
   notifyAssignedOrderDelivery,
   routeWarehouseDispatchDelivery,
 } from "../../services/delivery-routing.service";
-import { parseDeliveryPackageDetails } from "../../services/delivery-package.service";
+import { parseOptionalDeliveryPackageDetails } from "../../services/delivery-package.service";
 import {
   getOutstandingStockPayments,
   serializeOutstandingPayment,
@@ -902,7 +907,8 @@ router.post(
       // Create stock request with payment record in transaction
       const request = await prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
-          if (!await canReserveStock(tx, warehouseId, normalizedItems)) return null;
+          if (!(await canReserveStock(tx, warehouseId, normalizedItems)))
+            return null;
           const stockRequest = await tx.warehouseStockRequest.create({
             data: {
               requestNumber,
@@ -977,7 +983,11 @@ router.post(
         },
       );
 
-      if (!request) return res.status(409).json({ message: "Барааны боломжит үлдэгдэл хүрэлцэхгүй байна. Жагсаалтыг шинэчилнэ үү." });
+      if (!request)
+        return res.status(409).json({
+          message:
+            "Барааны боломжит үлдэгдэл хүрэлцэхгүй байна. Жагсаалтыг шинэчилнэ үү.",
+        });
       res.status(201).json(request);
     } catch (error) {
       console.error("create stock request error", error);
@@ -1036,10 +1046,24 @@ router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
     }
 
     // Approval may release reserved units, but must not silently reserve more.
-    if (items && items.some((item: { productId: string; approvedQuantity: number }) => {
-      const original = request.items.find((row) => row.productId === item.productId);
-      return !original || !Number.isSafeInteger(item.approvedQuantity) || item.approvedQuantity < 0 || item.approvedQuantity > original.quantity;
-    })) return res.status(400).json({ message: "Батлах тоо 0-ээс захиалсан тооны хооронд бүхэл тоо байх ёстой" });
+    if (
+      items &&
+      items.some((item: { productId: string; approvedQuantity: number }) => {
+        const original = request.items.find(
+          (row) => row.productId === item.productId,
+        );
+        return (
+          !original ||
+          !Number.isSafeInteger(item.approvedQuantity) ||
+          item.approvedQuantity < 0 ||
+          item.approvedQuantity > original.quantity
+        );
+      })
+    )
+      return res.status(400).json({
+        message:
+          "Батлах тоо 0-ээс захиалсан тооны хооронд бүхэл тоо байх ёстой",
+      });
     // Update request and items with approved quantities
     const updated = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
@@ -1388,6 +1412,93 @@ router.patch("/stock-requests/:id/cancel", requireAuth, async (req, res) => {
 
 // Get available products from warehouse for stock request
 router.get(
+  "/stock-requests/warehouse/:warehouseId/products/:productId/reservations",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { warehouseId, productId } = req.params;
+      if (!(await assertWarehouseAccess(req, res, warehouseId))) return;
+      const [inventory, product, items] = await Promise.all([
+        prisma.warehouseInventory.findUnique({
+          where: { warehouseId_productId: { warehouseId, productId } },
+          select: { quantity: true },
+        }),
+        prisma.product.findUnique({
+          where: { id: productId },
+          select: { id: true, name: true, sku: true, barcode: true },
+        }),
+        prisma.warehouseStockRequestItem.findMany({
+          where: {
+            productId,
+            request: {
+              warehouseId,
+              OR: [
+                { status: { in: ["PENDING", "APPROVED"] } },
+                {
+                  status: "PROCESSING",
+                  OR: [
+                    { dispatch: { is: null } },
+                    { dispatch: { is: { status: "PENDING" } } },
+                  ],
+                },
+              ],
+            },
+          },
+          select: {
+            id: true,
+            quantity: true,
+            approvedQuantity: true,
+            request: {
+              select: {
+                id: true,
+                requestNumber: true,
+                status: true,
+                requestedAt: true,
+                organization: { select: { id: true, name: true } },
+                dispatch: {
+                  select: { id: true, dispatchNumber: true, status: true },
+                },
+              },
+            },
+          },
+          orderBy: { request: { requestedAt: "desc" } },
+        }),
+      ]);
+      if (!product || !inventory)
+        return res.status(404).json({ message: "Агуулахын бараа олдсонгүй" });
+      const reservations = items.map((item) => ({
+        requestId: item.request.id,
+        requestNumber: item.request.requestNumber,
+        organization: item.request.organization,
+        status: item.request.status,
+        requestedAt: item.request.requestedAt,
+        dispatch: item.request.dispatch,
+        quantity:
+          item.request.status === "PENDING"
+            ? item.quantity
+            : approvedStockRequestQuantity(item),
+      }));
+      const reservedStock = reservations.reduce(
+        (sum, reservation) => sum + reservation.quantity,
+        0,
+      );
+      return res.json({
+        product,
+        physicalStock: inventory.quantity,
+        reservedStock,
+        availableStock: Math.max(0, inventory.quantity - reservedStock),
+        reservations,
+      });
+    } catch (error) {
+      console.error("get product stock reservations error", error);
+      return res.status(500).json({
+        message: "Барааны захиалгын задаргаа авахад алдаа гарлаа",
+      });
+    }
+  },
+);
+
+router.get(
   "/stock-requests/warehouse/:warehouseId/products",
   requireAuth,
   async (req, res) => {
@@ -1550,10 +1661,21 @@ router.get(
             take: limit,
           }),
         ]);
+        const reservedByProduct = await reservedStock(
+          warehouseId,
+          items.map((item) => item.productId),
+        );
+        const availableItems = items.map((item) => {
+          const reservedQuantity = reservedByProduct.get(item.productId) ?? 0;
+          return {
+            ...item,
+            ...stockAvailability(item.quantity, reservedQuantity),
+          };
+        });
         return res.json({
-          items,
+          items: availableItems,
           total,
-          hasMore: offset + items.length < total,
+          hasMore: offset + availableItems.length < total,
         });
       }
 
@@ -1570,6 +1692,7 @@ router.get(
       if (productIds.length === 0) {
         return res.json({ items: [], total: 0, hasMore: false });
       }
+      const reservedByProduct = await reservedStock(warehouseId, productIds);
 
       const since = new Date();
       since.setDate(since.getDate() - 90);
@@ -1859,6 +1982,10 @@ router.get(
 
         return {
           ...item,
+          ...stockAvailability(
+            item.quantity,
+            reservedByProduct.get(item.productId) ?? 0,
+          ),
           organizationStock,
           reorderPoint,
           soldQuantity90d,
@@ -2457,28 +2584,59 @@ router.get(
   },
 );
 
-router.get("/stock-requests/payment-receipts/:id", requireAuth, async (req, res) => {
-  try {
-    const metadata = await prisma.stockPaymentReceipt.findUnique({
-      where: { id: req.params.id },
-      select: { entry: { select: { payment: { select: { request: { select: { warehouseId: true } } } } } } },
-    });
-    if (!metadata) return res.status(404).json({ message: "Баримт олдсонгүй" });
-    if (!await assertStockRequestDecisionAccess(req, res, metadata.entry.payment.request.warehouseId)) return;
-    const receipt = await prisma.stockPaymentReceipt.findUniqueOrThrow({ where: { id: req.params.id } });
-    res.setHeader("Cache-Control", "private, no-store");
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(receipt.name)}`);
-    res.type(receipt.mimeType).send(receipt.content);
-  } catch { res.status(500).json({ message: "Төлбөрийн баримт татаж чадсангүй" }); }
-});
+router.get(
+  "/stock-requests/payment-receipts/:id",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const metadata = await prisma.stockPaymentReceipt.findUnique({
+        where: { id: req.params.id },
+        select: {
+          entry: {
+            select: {
+              payment: {
+                select: { request: { select: { warehouseId: true } } },
+              },
+            },
+          },
+        },
+      });
+      if (!metadata)
+        return res.status(404).json({ message: "Баримт олдсонгүй" });
+      if (
+        !(await assertStockRequestDecisionAccess(
+          req,
+          res,
+          metadata.entry.payment.request.warehouseId,
+        ))
+      )
+        return;
+      const receipt = await prisma.stockPaymentReceipt.findUniqueOrThrow({
+        where: { id: req.params.id },
+      });
+      res.setHeader("Cache-Control", "private, no-store");
+      res.setHeader("X-Content-Type-Options", "nosniff");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename*=UTF-8''${encodeURIComponent(receipt.name)}`,
+      );
+      res.type(receipt.mimeType).send(receipt.content);
+    } catch {
+      res.status(500).json({ message: "Төлбөрийн баримт татаж чадсангүй" });
+    }
+  },
+);
 
 router.patch(
   "/stock-requests/payments/:id/confirm",
   requireAuth,
   (req, res, next) => {
     padaanImageUpload.single("receipt")(req, res, (error) => {
-      if (error) return res.status(400).json({ message: "Баримт JPG, PNG, WebP эсвэл GIF зураг, 10MB-аас бага байх ёстой" });
+      if (error)
+        return res.status(400).json({
+          message:
+            "Баримт JPG, PNG, WebP эсвэл GIF зураг, 10MB-аас бага байх ёстой",
+        });
       next();
     });
   },
@@ -2497,9 +2655,19 @@ router.patch(
         return res.status(404).json({ message: "Төлбөр олдсонгүй" });
       }
 
-      if (!await assertStockRequestDecisionAccess(req, res, payment.request.warehouseId)) return;
+      if (
+        !(await assertStockRequestDecisionAccess(
+          req,
+          res,
+          payment.request.warehouseId,
+        ))
+      )
+        return;
       if (["REJECTED", "CANCELLED"].includes(payment.request.status)) {
-        return res.status(409).json({ message: "Цуцлагдсан эсвэл татгалзсан хүсэлтэд төлөлт бүртгэх боломжгүй" });
+        return res.status(409).json({
+          message:
+            "Цуцлагдсан эсвэл татгалзсан хүсэлтэд төлөлт бүртгэх боломжгүй",
+        });
       }
 
       if (payment.status === PaymentStatus.PAID) {
@@ -2529,7 +2697,10 @@ router.patch(
           .status(400)
           .json({ message: "Төлбөрийн хэлбэр шаардлагатай" });
       const entryAmount = confirmation.paidAmount - Number(payment.paidAmount);
-      if (entryAmount <= 0) return res.status(409).json({ message: "Энэ дүн бүртгэгдсэн байна. Төлбөрийг шинэчилж шалгана уу" });
+      if (entryAmount <= 0)
+        return res.status(409).json({
+          message: "Энэ дүн бүртгэгдсэн байна. Төлбөрийг шинэчилж шалгана уу",
+        });
       const confirmedAt = new Date();
       const updated = await prisma.$transaction(async (tx) => {
         // Compare-and-set prevents concurrent confirmations from overwriting a payment.
@@ -2567,11 +2738,17 @@ router.patch(
             confirmedById: actor?.userId || null,
             confirmedAt,
             note: note || "Эрх бүхий ажилтан баталгаажуулсан төлбөр",
-            ...(req.file ? { receipt: { create: {
-              name: req.file.originalname.slice(0, 255),
-              mimeType: req.file.mimetype,
-              content: req.file.buffer,
-            } } } : {}),
+            ...(req.file
+              ? {
+                  receipt: {
+                    create: {
+                      name: req.file.originalname.slice(0, 255),
+                      mimeType: req.file.mimetype,
+                      content: req.file.buffer,
+                    },
+                  },
+                }
+              : {}),
           },
         });
         const entries = await tx.stockRequestPaymentEntry.findMany({
@@ -2579,13 +2756,23 @@ router.patch(
           orderBy: { confirmedAt: "asc" },
           include: {
             receipt: { select: { id: true, name: true } },
-            confirmedBy: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
+            confirmedBy: {
+              select: {
+                id: true,
+                email: true,
+                profile: { select: { fullName: true } },
+              },
+            },
           },
         });
         return { ...result, entries };
       });
 
-      if (!updated) return res.status(409).json({ message: "Төлбөр өөрчлөгдсөн байна. Шинэчилж шалгаад дахин оролдоно уу" });
+      if (!updated)
+        return res.status(409).json({
+          message:
+            "Төлбөр өөрчлөгдсөн байна. Шинэчилж шалгаад дахин оролдоно уу",
+        });
       res.json(updated);
     } catch (error) {
       console.error("confirm payment error", error);
@@ -2630,7 +2817,12 @@ router.patch(
       );
       if (!permissions) return;
 
-      if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0)) {
+      if (
+        !canPayApprovedStockRequest(
+          payment.request.status,
+          (payment.request.dispatch?._count.returns ?? 0) > 0,
+        )
+      ) {
         return res.status(409).json({
           code: "STOCK_REQUEST_NOT_APPROVED",
           message: "Админ зөвшөөрсний дараа төлбөр төлөх боломжтой",
@@ -2834,6 +3026,12 @@ router.get(
               address: true,
               phone: true,
               paymentAccountId: true,
+              createdBy: {
+                select: {
+                  email: true,
+                  profile: { select: { fullName: true } },
+                },
+              },
             },
           },
           organization: {
@@ -2870,6 +3068,41 @@ router.get(
               orderBy: { createdAt: "desc" },
             })
           : [];
+
+      const dispatchOperatorLedgers =
+        dispatches.length > 0
+          ? await prisma.inventoryLedger.findMany({
+              where: {
+                warehouseId,
+                referenceType: "STOCK_DISPATCH",
+                referenceId: {
+                  in: dispatches.map((dispatch) => dispatch.requestId),
+                },
+                createdById: { not: null },
+                change: { lt: 0 },
+              },
+              select: {
+                referenceId: true,
+                createdBy: {
+                  select: {
+                    email: true,
+                    profile: { select: { fullName: true } },
+                  },
+                },
+              },
+              orderBy: { createdAt: "desc" },
+            })
+          : [];
+      const operatorByRequestId = new Map<string, string>();
+      for (const ledger of dispatchOperatorLedgers) {
+        if (!ledger.referenceId || !ledger.createdBy) continue;
+        if (!operatorByRequestId.has(ledger.referenceId)) {
+          operatorByRequestId.set(
+            ledger.referenceId,
+            ledger.createdBy.profile?.fullName || ledger.createdBy.email,
+          );
+        }
+      }
       const cancellationByDispatchId = new Map<
         string,
         (typeof cancellationLogs)[number]
@@ -2895,6 +3128,11 @@ router.get(
               : dispatch.deliveredAt,
           cancellationDecision:
             cancellationByDispatchId.get(dispatch.id) || null,
+          operatorName:
+            operatorByRequestId.get(dispatch.requestId) ||
+            dispatch.warehouse.createdBy?.profile?.fullName ||
+            dispatch.warehouse.createdBy?.email ||
+            null,
         })),
       );
     } catch (error) {
@@ -3276,6 +3514,7 @@ router.patch(
   requireAuth,
   async (req, res) => {
     try {
+      const actor = getActor(req);
       const { id } = req.params;
 
       const dispatch = await prisma.stockDispatch.findUnique({
@@ -3306,12 +3545,12 @@ router.patch(
           message: "Зөвхөн хүлээгдэж буй илгээмжийг баталгаажуулах боломжтой",
         });
       }
-      const packageResult = parseDeliveryPackageDetails(req.body);
-      if (packageResult.error || !packageResult.data) {
+      const packageResult = parseOptionalDeliveryPackageDetails(req.body);
+      if (packageResult.error) {
         return res.status(400).json({
-          code: "DELIVERY_PACKAGE_DETAILS_REQUIRED",
+          code: "INVALID_DELIVERY_PACKAGE_DETAILS",
           message:
-            "Хайрцгийн тоо, нийт жин, урт, өргөн, өндөр болон оворын ангиллыг бүрэн оруулна уу.",
+            "Баглаа боодлын мэдээлэл оруулах бол хайрцгийн тоо, нийт жин, урт, өргөн, өндөр болон оворын ангиллыг бүрэн оруулна уу.",
         });
       }
 
@@ -3319,7 +3558,8 @@ router.patch(
         async (tx: Prisma.TransactionClient) => {
           // Deduct inventory for each item
           for (const item of dispatch.request.items) {
-            const quantity = item.approvedQuantity || item.quantity;
+            const quantity = approvedStockRequestQuantity(item);
+            if (quantity === 0) continue;
 
             await adjustStock(tx, {
               productId: item.productId,
@@ -3327,6 +3567,7 @@ router.patch(
               change: -quantity,
               reason: InventoryReason.TRANSFER_OUT,
               note: `Dispatch ${dispatch.dispatchNumber} confirmed`,
+              createdById: actor?.userId || null,
               referenceId: dispatch.requestId,
               referenceType: "STOCK_DISPATCH",
             });
@@ -3362,9 +3603,13 @@ router.patch(
           await tx.delivery.update({
             where: { id: delivery.id },
             data: {
-              ...packageResult.data,
-              handlingInstructions:
-                packageResult.data.handlingInstructions || null,
+              ...(packageResult.data
+                ? {
+                    ...packageResult.data,
+                    handlingInstructions:
+                      packageResult.data.handlingInstructions || null,
+                  }
+                : {}),
               readyAt: new Date(),
             },
           });
@@ -3664,7 +3909,8 @@ router.patch(
           // If was CONFIRMED, reverse the inventory deduction
           if (dispatch.status === "CONFIRMED") {
             for (const item of dispatch.request.items) {
-              const quantity = item.approvedQuantity || item.quantity;
+              const quantity = approvedStockRequestQuantity(item);
+              if (quantity === 0) continue;
               await adjustStock(tx, {
                 productId: item.productId,
                 warehouseId: dispatch.warehouseId,
@@ -3763,7 +4009,12 @@ router.post(
       );
       if (!permissions) return;
 
-      if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0)) {
+      if (
+        !canPayApprovedStockRequest(
+          payment.request.status,
+          (payment.request.dispatch?._count.returns ?? 0) > 0,
+        )
+      ) {
         return res.status(409).json({
           code: "STOCK_REQUEST_NOT_APPROVED",
           message: "Админ зөвшөөрсний дараа QPay нэхэмжлэх нээгдэнэ",
@@ -3903,7 +4154,12 @@ router.post(
     );
     if (!permissions) return;
 
-    if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0)) {
+    if (
+      !canPayApprovedStockRequest(
+        payment.request.status,
+        (payment.request.dispatch?._count.returns ?? 0) > 0,
+      )
+    ) {
       return res.status(409).json({
         code: "STOCK_REQUEST_NOT_APPROVED",
         message: "Админ зөвшөөрсний дараа төлбөр баталгаажуулах боломжтой",
@@ -3981,7 +4237,12 @@ router.post(
     if (payment.status === PaymentStatus.CANCELLED) {
       return res.status(400).json({ message: "Цуцлагдсан төлбөр байна" });
     }
-    if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0)) {
+    if (
+      !canPayApprovedStockRequest(
+        payment.request.status,
+        (payment.request.dispatch?._count.returns ?? 0) > 0,
+      )
+    ) {
       return res.status(409).json({
         code: "STOCK_REQUEST_NOT_APPROVED",
         message: "Админ зөвшөөрсний дараа төлсөн гэж тэмдэглэх боломжтой",

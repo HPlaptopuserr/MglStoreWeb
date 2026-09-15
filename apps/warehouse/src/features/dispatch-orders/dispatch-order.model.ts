@@ -41,6 +41,7 @@ export type Dispatch = {
   deliveredAt: string | null;
   createdAt: string;
   updatedAt?: string;
+  operatorName: string | null;
   cancellationDecision?: {
     id: string;
     createdAt: string;

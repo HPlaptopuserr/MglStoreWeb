@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import NextImage from "next/image";
 import {
   Search,
   Loader2,
@@ -14,6 +15,9 @@ import {
   Upload,
   Image as ImageIcon,
   FileSpreadsheet,
+  FilePlus2,
+  History,
+  Paperclip,
 } from "lucide-react";
 import SkuGenerator from "@/components/SkuGenerator";
 import { ExcelImportModal } from "@/components/ExcelImportModal";
@@ -24,6 +28,7 @@ import {
   type WarehouseVendorProduct,
 } from "@/features/receive/WarehouseVendorProductResults";
 import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
+import { WarehouseGoodsReceiptHistory } from "@/features/receive/WarehouseGoodsReceiptHistory";
 
 type Product = WarehouseVendorProduct;
 
@@ -33,7 +38,10 @@ type ReceiveItem = {
   sku: string | null;
   quantity: number;
   cost: number;
-  isNew?: boolean; // locally created product
+  batchNumber: string;
+  expiryDate: string;
+  location: string;
+  isNew?: boolean;
 };
 
 // ───── New Product Form State ─────
@@ -82,9 +90,21 @@ export default function ReceivePage() {
   const [searching, setSearching] = useState(false);
   const [items, setItems] = useState<ReceiveItem[]>([]);
   const [supplier, setSupplier] = useState("");
+  const [supplierRegisterNumber, setSupplierRegisterNumber] = useState("");
+  const [supplierDocumentNumber, setSupplierDocumentNumber] = useState("");
+  const [documentDate, setDocumentDate] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  );
   const [note, setNote] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [savedReceiptNumber, setSavedReceiptNumber] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [activeView, setActiveView] = useState<"create" | "history">("create");
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [receiptFiles, setReceiptFiles] = useState<File[]>([]);
+  const [pendingReceiptId, setPendingReceiptId] = useState<string | null>(null);
+  const receiptFileInputRef = useRef<HTMLInputElement>(null);
 
   // Organization name for SKU generator
   const [organizationName, setOrganizationName] = useState("");
@@ -109,7 +129,9 @@ export default function ReceivePage() {
       organizationName?: string;
     };
     setOrganizationName(
-      user.organizationName || selectedWarehouse?.organizations?.[0]?.name || "",
+      user.organizationName ||
+        selectedWarehouse?.organizations?.[0]?.name ||
+        "",
     );
   }, [selectedWarehouse]);
 
@@ -151,6 +173,9 @@ export default function ReceivePage() {
         sku: product.sku,
         quantity: 1,
         cost: Number(product.price) || 0,
+        batchNumber: "",
+        expiryDate: "",
+        location: "",
       },
     ]);
     setProductSearch("");
@@ -169,6 +194,18 @@ export default function ReceivePage() {
   const updateCost = (productId: string, cost: number) => {
     setItems(
       items.map((i) => (i.productId === productId ? { ...i, cost } : i)),
+    );
+  };
+
+  const updateItemMetadata = (
+    productId: string,
+    field: "batchNumber" | "expiryDate" | "location",
+    value: string,
+  ) => {
+    setItems((current) =>
+      current.map((item) =>
+        item.productId === productId ? { ...item, [field]: value } : item,
+      ),
     );
   };
 
@@ -254,7 +291,7 @@ export default function ReceivePage() {
               : null,
             businessCategoryId: productForm.businessCategoryId || null,
             images: productForm.images,
-            quantity: parseInt(productForm.quantity) || 0,
+            quantity: 0,
             minQuantity: parseInt(productForm.minQuantity) || 0,
             location: productForm.location.trim() || null,
             batchNumber: productForm.batchNumber.trim() || null,
@@ -282,6 +319,9 @@ export default function ReceivePage() {
             sku: data.sku,
             quantity: qty,
             cost: parseFloat(productForm.costPrice || productForm.price),
+            batchNumber: productForm.batchNumber.trim(),
+            expiryDate: productForm.expiryDate,
+            location: productForm.location.trim(),
             isNew: true,
           },
         ]);
@@ -297,37 +337,82 @@ export default function ReceivePage() {
     }
   };
 
-  // ───── Submit receive (existing products only — new ones already saved) ─────
+  // ───── Submit one atomic goods receipt ─────
   const handleSubmit = async () => {
-    if (!selectedWarehouseId || items.length === 0) return;
+    if (!selectedWarehouseId || items.length === 0 || !supplier.trim()) return;
     setSaving(true);
     setSaved(false);
+    setSubmitError("");
 
     try {
-      // Only submit items that are NOT new (new ones already created with inventory)
-      const existingItems = items.filter((i) => !i.isNew);
-
-      for (const item of existingItems) {
-        await wmsFetch(`${API}/warehouses/${selectedWarehouseId}/inventory`, {
+      let receiptId = pendingReceiptId;
+      let receiptNumber = "";
+      if (!receiptId) {
+        const response = await wmsFetch(`${API}/warehouse-goods-receipts`, {
           method: "POST",
           body: JSON.stringify({
-            productId: item.productId,
-            quantity: item.quantity,
-            note: supplier
-              ? `Нийлүүлэгч: ${supplier}. ${note}`
-              : note || "Бараа хүлээн авалт",
+            warehouseId: selectedWarehouseId,
+            supplierName: supplier.trim(),
+            supplierRegisterNumber: supplierRegisterNumber.trim() || null,
+            supplierDocumentNumber: supplierDocumentNumber.trim() || null,
+            documentDate,
+            note: note.trim() || null,
+            confirm: false,
+            items: items.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+              unitCost: item.cost,
+              batchNumber: item.batchNumber || null,
+              expiryDate: item.expiryDate || null,
+              location: item.location || null,
+            })),
           }),
         });
+        const draft = await response.json().catch(() => null);
+        if (!response.ok)
+          throw new Error(draft?.message || "Орлогын падаан хадгалагдсангүй");
+        receiptId = draft.id;
+        receiptNumber = draft.receiptNumber;
+        setPendingReceiptId(receiptId);
       }
 
+      if (receiptFiles.length > 0) {
+        const body = new FormData();
+        receiptFiles.forEach((file) => body.append("files", file));
+        const uploadResponse = await wmsFetch(
+          `${API}/warehouse-goods-receipts/${receiptId}/attachments`,
+          { method: "POST", body },
+        );
+        const uploadResult = await uploadResponse.json().catch(() => null);
+        if (!uploadResponse.ok)
+          throw new Error(
+            uploadResult?.message || "Падааны файл хадгалагдсангүй",
+          );
+      }
+
+      const confirmResponse = await wmsFetch(
+        `${API}/warehouse-goods-receipts/${receiptId}/confirm`,
+        { method: "PATCH" },
+      );
+      const result = await confirmResponse.json().catch(() => null);
+      if (!confirmResponse.ok)
+        throw new Error(result?.message || "Орлогын падаан баталгаажсангүй");
+
       setSaved(true);
+      setSavedReceiptNumber(result.receiptNumber || receiptNumber);
+      setHistoryRefreshKey((current) => current + 1);
+      setPendingReceiptId(null);
+      setReceiptFiles([]);
       setItems([]);
       setSupplier("");
+      setSupplierRegisterNumber("");
+      setSupplierDocumentNumber("");
       setNote("");
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
-      console.error("Receive failed:", err);
-      alert("Хадгалахад алдаа гарлаа");
+      setSubmitError(
+        err instanceof Error ? err.message : "Хадгалахад алдаа гарлаа",
+      );
     } finally {
       setSaving(false);
     }
@@ -345,13 +430,51 @@ export default function ReceivePage() {
         {saved && (
           <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700">
             <Check className="h-4 w-4" />
-            Амжилттай хадгалагдлаа
+            {savedReceiptNumber} амжилттай баталгаажлаа
           </div>
         )}
       </div>
 
+      <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
+        <button
+          type="button"
+          onClick={() => setActiveView("create")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+            activeView === "create"
+              ? "bg-blue-600 text-white shadow-sm"
+              : "text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          <FilePlus2 className="h-4 w-4" />
+          Шинэ падаан
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveView("history")}
+          className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
+            activeView === "history"
+              ? "bg-blue-600 text-white shadow-sm"
+              : "text-slate-600 hover:bg-slate-50"
+          }`}
+        >
+          <History className="h-4 w-4" />
+          Падааны түүх
+        </button>
+      </div>
+
+      {activeView === "history" && (
+        <WarehouseGoodsReceiptHistory
+          warehouseId={selectedWarehouseId}
+          refreshKey={historyRefreshKey}
+        />
+      )}
+
       {/* Form */}
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div
+        className={`grid gap-6 lg:grid-cols-3 ${
+          activeView === "history" ? "hidden" : ""
+        }`}
+      >
         <div className="space-y-6 lg:col-span-2">
           {/* Warehouse + Supplier */}
           <div className="rounded-xl border border-slate-200 bg-white p-5">
@@ -376,6 +499,43 @@ export default function ReceivePage() {
                   value={supplier}
                   onChange={(e) => setSupplier(e.target.value)}
                   placeholder="Нийлүүлэгчийн нэр"
+                  className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Нийлүүлэгчийн регистр
+                </label>
+                <input
+                  value={supplierRegisterNumber}
+                  onChange={(event) =>
+                    setSupplierRegisterNumber(event.target.value)
+                  }
+                  placeholder="Регистр (заавал биш)"
+                  className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Нийлүүлэгчийн падааны дугаар
+                </label>
+                <input
+                  value={supplierDocumentNumber}
+                  onChange={(event) =>
+                    setSupplierDocumentNumber(event.target.value)
+                  }
+                  placeholder="Жишээ: INV-2026-001"
+                  className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  Падааны огноо
+                </label>
+                <input
+                  type="date"
+                  value={documentDate}
+                  onChange={(event) => setDocumentDate(event.target.value)}
                   className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
@@ -479,7 +639,6 @@ export default function ReceivePage() {
                         onClick={() =>
                           updateQuantity(item.productId, item.quantity - 1)
                         }
-                        disabled={item.isNew}
                         className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
                       >
                         <Minus className="h-3 w-3" />
@@ -493,14 +652,12 @@ export default function ReceivePage() {
                             parseInt(e.target.value) || 1,
                           )
                         }
-                        disabled={item.isNew}
                         className="h-8 w-16 rounded border border-slate-200 text-center text-sm font-semibold outline-none focus:border-blue-300 disabled:bg-slate-100"
                       />
                       <button
                         onClick={() =>
                           updateQuantity(item.productId, item.quantity + 1)
                         }
-                        disabled={item.isNew}
                         className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
                       >
                         <Plus className="h-3 w-3" />
@@ -517,7 +674,6 @@ export default function ReceivePage() {
                             parseFloat(e.target.value) || 0,
                           )
                         }
-                        disabled={item.isNew}
                         className="h-8 w-full rounded border border-slate-200 px-2 text-right text-sm outline-none focus:border-blue-300 disabled:bg-slate-100"
                       />
                     </div>
@@ -529,6 +685,49 @@ export default function ReceivePage() {
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
+                    </div>
+                    <div className="col-span-4">
+                      <input
+                        value={item.batchNumber}
+                        onChange={(event) =>
+                          updateItemMetadata(
+                            item.productId,
+                            "batchNumber",
+                            event.target.value,
+                          )
+                        }
+                        placeholder="Batch / lot дугаар"
+                        className="h-8 w-full rounded border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300"
+                      />
+                    </div>
+                    <div className="col-span-4">
+                      <input
+                        type="date"
+                        value={item.expiryDate}
+                        onChange={(event) =>
+                          updateItemMetadata(
+                            item.productId,
+                            "expiryDate",
+                            event.target.value,
+                          )
+                        }
+                        aria-label={`${item.name} дуусах хугацаа`}
+                        className="h-8 w-full rounded border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300"
+                      />
+                    </div>
+                    <div className="col-span-4">
+                      <input
+                        value={item.location}
+                        onChange={(event) =>
+                          updateItemMetadata(
+                            item.productId,
+                            "location",
+                            event.target.value,
+                          )
+                        }
+                        placeholder="Байршил"
+                        className="h-8 w-full rounded border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300"
+                      />
                     </div>
                   </div>
                 ))}
@@ -548,6 +747,42 @@ export default function ReceivePage() {
               rows={2}
               className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <input
+                ref={receiptFileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                multiple
+                className="hidden"
+                onChange={(event) => {
+                  const selected = Array.from(event.target.files || []).slice(
+                    0,
+                    5,
+                  );
+                  setReceiptFiles(selected);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => receiptFileInputRef.current?.click()}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <Paperclip className="h-4 w-4" />
+                Падааны зураг/PDF хавсаргах
+              </button>
+              {receiptFiles.length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs text-slate-500">
+                  {receiptFiles.map((file) => (
+                    <li key={`${file.name}-${file.lastModified}`}>
+                      {file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="mt-1 text-xs text-slate-400">
+                JPG, PNG, WebP, PDF · файл тус бүр 10 MB · хамгийн ихдээ 5
+              </p>
+            </div>
           </div>
         </div>
 
@@ -585,7 +820,12 @@ export default function ReceivePage() {
 
             <button
               onClick={handleSubmit}
-              disabled={saving || items.length === 0 || !selectedWarehouseId}
+              disabled={
+                saving ||
+                items.length === 0 ||
+                !selectedWarehouseId ||
+                !supplier.trim()
+              }
               className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
             >
               {saving ? (
@@ -593,10 +833,15 @@ export default function ReceivePage() {
               ) : (
                 <>
                   <PackageCheck className="h-4 w-4" />
-                  Хүлээн авах
+                  Орлого баталгаажуулах
                 </>
               )}
             </button>
+            {submitError && (
+              <p role="alert" className="mt-3 text-sm text-red-600">
+                {submitError}
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -809,10 +1054,13 @@ export default function ReceivePage() {
                       key={idx}
                       className="group relative h-20 w-20 overflow-hidden rounded-lg border border-slate-200"
                     >
-                      <img
+                      <NextImage
                         src={img}
                         alt=""
-                        className="h-full w-full object-cover"
+                        fill
+                        sizes="80px"
+                        unoptimized
+                        className="object-cover"
                       />
                       <button
                         onClick={() => removeImage(idx)}

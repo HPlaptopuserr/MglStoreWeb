@@ -70,11 +70,11 @@ export function InvoiceView({
     };
   }, [d.warehouse.paymentAccountId]);
   const totalQty = d.request.items.reduce(
-    (s, i) => s + (i.approvedQuantity || i.quantity),
+    (s, i) => s + (i.approvedQuantity ?? i.quantity),
     0,
   );
   const computedTotal = d.request.items.reduce(
-    (s, i) => s + (i.approvedQuantity || i.quantity) * Number(i.product.price),
+    (s, i) => s + (i.approvedQuantity ?? i.quantity) * Number(i.product.price),
     0,
   );
   const invoiceTotal = Number(payment?.totalAmount ?? computedTotal);
@@ -339,7 +339,7 @@ export function InvoiceView({
               </thead>
               <tbody>
                 {d.request.items.map((item, idx) => {
-                  const qty = item.approvedQuantity || item.quantity;
+                  const qty = item.approvedQuantity ?? item.quantity;
                   return (
                     <tr key={item.id}>
                       <td className="border border-slate-300 px-3 py-2">

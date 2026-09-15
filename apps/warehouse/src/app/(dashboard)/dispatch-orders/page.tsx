@@ -8,9 +8,6 @@ import {
   CheckCircle2,
   Clock,
   XCircle,
-  User,
-  Phone,
-  MapPin,
   FileText,
   ChevronRight,
   AlertTriangle,
@@ -30,15 +27,11 @@ import { WarehouseStockRequestQueue } from "@/features/dispatch/WarehouseStockRe
 import {
   type Dispatch,
   type DispatchReturnType,
-  STATUS_MAP,
   STEPS,
   canCreateDispatchReturn,
-  formatMoney,
-  paymentOutstanding,
   paymentStatusClass,
   paymentStatusLabel,
   returnableDispatchItemQuantity,
-  stepIndex,
 } from "@/features/dispatch-orders/dispatch-order.model";
 import {
   InvoiceView,
@@ -57,8 +50,10 @@ const formatDateInput = (date: Date) =>
 export default function DispatchOrdersPage() {
   const { selectedWarehouseId, error: warehouseLoadError } =
     useWarehouseScope();
-  const today = formatDateInput(new Date());
-  const sevenDaysAgo = formatDateInput(new Date(Date.now() - 6 * 86_400_000));
+  const [today] = useState(() => formatDateInput(new Date()));
+  const [sevenDaysAgo] = useState(() =>
+    formatDateInput(new Date(Date.now() - 6 * 86_400_000)),
+  );
   const [dispatches, setDispatches] = useState<Dispatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -167,7 +162,7 @@ export default function DispatchOrdersPage() {
         setRefreshing(false);
       }
     },
-    [boardView, historyFrom, historyTo, selectedWarehouseId],
+    [boardView, historyFrom, historyTo, selectedWarehouseId, today],
   );
 
   // Keep the warehouse queue live while admin approves new requests.
@@ -191,7 +186,7 @@ export default function DispatchOrdersPage() {
   // ───── Actions ─────
   const confirmDispatch = async (
     id: string,
-    packageDetails: DeliveryPackageDetails,
+    packageDetails?: DeliveryPackageDetails,
   ) => {
     setActionLoading(true);
     try {
@@ -199,7 +194,7 @@ export default function DispatchOrdersPage() {
         `${API}/stock-requests/dispatches/${id}/confirm`,
         {
           method: "PATCH",
-          body: JSON.stringify(packageDetails),
+          body: JSON.stringify(packageDetails ?? {}),
         },
       );
       if (res.ok) {
@@ -516,12 +511,12 @@ export default function DispatchOrdersPage() {
   };
 
   const totalItems = (d: Dispatch) =>
-    d.request.items.reduce((s, i) => s + (i.approvedQuantity || i.quantity), 0);
+    d.request.items.reduce((s, i) => s + (i.approvedQuantity ?? i.quantity), 0);
 
   const totalAmount = (d: Dispatch) =>
     d.request.items.reduce(
       (s, i) =>
-        s + (i.approvedQuantity || i.quantity) * Number(i.product.price),
+        s + (i.approvedQuantity ?? i.quantity) * Number(i.product.price),
       0,
     );
 
@@ -930,7 +925,7 @@ export default function DispatchOrdersPage() {
                                 >
                                   {item.product.name.slice(0, 15)}
                                   {item.product.name.length > 15 ? "…" : ""} ×
-                                  {item.approvedQuantity || item.quantity}
+                                  {item.approvedQuantity ?? item.quantity}
                                 </span>
                               ))}
                               {d.request.items.length > 2 && (
@@ -1503,7 +1498,7 @@ export default function DispatchOrdersPage() {
                               className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-600"
                             >
                               {item.product.name} ×{" "}
-                              {item.approvedQuantity || item.quantity}
+                              {item.approvedQuantity ?? item.quantity}
                             </span>
                           ))}
                           {dispatch.request.items.length > 4 && (
@@ -1583,13 +1578,13 @@ export default function DispatchOrdersPage() {
                   .map((d) => {
                     const returnAllowed = canCreateDispatchReturn(d);
                     const qty = d.request.items.reduce(
-                      (s, i) => s + (i.approvedQuantity || i.quantity),
+                      (s, i) => s + (i.approvedQuantity ?? i.quantity),
                       0,
                     );
                     const amt = d.request.items.reduce(
                       (s, i) =>
                         s +
-                        (i.approvedQuantity || i.quantity) *
+                        (i.approvedQuantity ?? i.quantity) *
                           Number(i.product.price),
                       0,
                     );
@@ -1649,7 +1644,7 @@ export default function DispatchOrdersPage() {
                             >
                               {item.product.name.slice(0, 20)}
                               {item.product.name.length > 20 ? "…" : ""} ×
-                              {item.approvedQuantity || item.quantity}
+                              {item.approvedQuantity ?? item.quantity}
                             </span>
                           ))}
                           {d.request.items.length > 3 && (
@@ -1757,6 +1752,7 @@ export default function DispatchOrdersPage() {
             if (!actionLoading) setShowPackageDialog(false);
           }}
           onSubmit={(details) => confirmDispatch(selectedDispatch.id, details)}
+          onSkip={() => confirmDispatch(selectedDispatch.id)}
         />
       )}
 
@@ -1944,10 +1940,10 @@ export default function DispatchOrdersPage() {
                     <RotateCcw className="h-5 w-5" />
                   </div>
                   <h2 className="text-xl font-black tracking-wide text-slate-900 sm:text-2xl">
-                    БАРАА БУЦААЛТЫН ПАДАН
+                    БАРАА БУЦААЛТЫН БАРИМТ
                   </h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Эх падаан:{" "}
+                    Эх зарлагын баримт:{" "}
                     <span className="font-bold text-slate-700">
                       {selectedDispatch.dispatchNumber}
                     </span>

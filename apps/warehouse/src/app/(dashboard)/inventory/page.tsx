@@ -23,6 +23,7 @@ import { API, wmsFetch } from "@/lib/api";
 import { WarehouseCategoryPicker } from "@/features/categories";
 import {
   ProductImageEditor,
+  StockReservationBreakdown,
   WarehouseInventoryCatalog,
 } from "@/features/inventory";
 import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
@@ -109,6 +110,7 @@ export default function InventoryPage() {
   const [imageError, setImageError] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -123,7 +125,10 @@ export default function InventoryPage() {
   const PAGE_SIZE = 20;
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    const timer = window.setTimeout(
+      () => setDebouncedSearch(search.trim()),
+      300,
+    );
     return () => window.clearTimeout(timer);
   }, [search]);
 
@@ -180,11 +185,18 @@ export default function InventoryPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedWarehouseId, currentPage, debouncedSearch, statusFilter, retryCount]);
+  }, [
+    selectedWarehouseId,
+    currentPage,
+    debouncedSearch,
+    statusFilter,
+    retryCount,
+  ]);
 
   const handleDelete = async () => {
     if (!selectedItem) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       const res = await wmsFetch(
         `${API}/warehouses/${selectedWarehouseId}/inventory/${selectedItem.product.id}`,
@@ -196,10 +208,12 @@ export default function InventoryPage() {
         setDeleteConfirm(false);
       } else {
         const data = await res.json().catch(() => null);
-        alert(data?.message || "Устгахад алдаа гарлаа");
+        setDeleteError(data?.message || "Устгахад алдаа гарлаа");
       }
     } catch {
-      alert("Устгахад алдаа гарлаа");
+      setDeleteError(
+        "Устгахад алдаа гарлаа. Сүлжээ болон API холболтоо шалгана уу.",
+      );
     } finally {
       setDeleting(false);
     }
@@ -538,19 +552,27 @@ export default function InventoryPage() {
       ) : inventory.length === 0 ? (
         <div className="flex h-64 flex-col items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-slate-400 shadow-sm">
           <Package className="h-9 w-9" />
-          <p className="text-sm font-semibold text-slate-600">Бараа олдсонгүй</p>
-          <p className="text-xs">Хайлт эсвэл төлөвийн шүүлтүүрээ өөрчилнө үү.</p>
+          <p className="text-sm font-semibold text-slate-600">
+            Бараа олдсонгүй
+          </p>
+          <p className="text-xs">
+            Хайлт эсвэл төлөвийн шүүлтүүрээ өөрчилнө үү.
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
           <WarehouseInventoryCatalog
             items={inventory}
             onSelect={(itemId) => {
-              const item = inventory.find((candidate) => candidate.id === itemId);
+              const item = inventory.find(
+                (candidate) => candidate.id === itemId,
+              );
               if (item) openDetail(item);
             }}
             onEdit={(itemId) => {
-              const item = inventory.find((candidate) => candidate.id === itemId);
+              const item = inventory.find(
+                (candidate) => candidate.id === itemId,
+              );
               if (!item) return;
               setSelectedItem(item);
               openEdit(item);
@@ -560,7 +582,8 @@ export default function InventoryPage() {
           {totalPages > 1 && (
             <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row">
               <p className="text-xs text-slate-500">
-                Нийт <span className="font-bold text-slate-700">{totalItems}</span>{" "}
+                Нийт{" "}
+                <span className="font-bold text-slate-700">{totalItems}</span>{" "}
                 барааны{" "}
                 <span className="font-bold text-slate-700">
                   {(currentPage - 1) * PAGE_SIZE + 1}–
@@ -571,7 +594,9 @@ export default function InventoryPage() {
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.max(1, page - 1))
+                  }
                   disabled={currentPage === 1}
                   aria-label="Өмнөх хуудас"
                   className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 transition hover:border-indigo-300 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1074,6 +1099,11 @@ export default function InventoryPage() {
                   </div>
                 </div>
 
+                <StockReservationBreakdown
+                  warehouseId={selectedWarehouseId}
+                  productId={selectedItem.product.id}
+                />
+
                 {/* Footer */}
                 <div className="flex gap-3 border-t border-slate-100 pt-6">
                   <button
@@ -1090,7 +1120,10 @@ export default function InventoryPage() {
                     Засах
                   </button>
                   <button
-                    onClick={() => setDeleteConfirm(true)}
+                    onClick={() => {
+                      setDeleteError(null);
+                      setDeleteConfirm(true);
+                    }}
                     className="inline-flex items-center gap-2 rounded-lg bg-red-50 px-4 py-2.5 font-medium text-red-600 hover:bg-red-100"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -1121,6 +1154,14 @@ export default function InventoryPage() {
             <p className="mb-5 rounded-lg bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
               {selectedItem.product.name}
             </p>
+            {deleteError && (
+              <p
+                role="alert"
+                className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+              >
+                {deleteError}
+              </p>
+            )}
             <div className="flex gap-3">
               <button
                 onClick={() => setDeleteConfirm(false)}

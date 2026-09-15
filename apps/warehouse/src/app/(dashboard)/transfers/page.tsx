@@ -12,8 +12,6 @@ import {
   Trash2,
   AlertTriangle,
   Check,
-  Clock,
-  CheckCircle,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
@@ -49,7 +47,9 @@ export default function TransfersPage() {
   useEffect(() => {
     setDestId((current) => {
       if (current && current !== sourceId) return current;
-      return warehouses.find((warehouse) => warehouse.id !== sourceId)?.id ?? "";
+      return (
+        warehouses.find((warehouse) => warehouse.id !== sourceId)?.id ?? ""
+      );
     });
   }, [sourceId, warehouses]);
 
@@ -222,8 +222,8 @@ export default function TransfersPage() {
               Эх агуулах
             </label>
             <div className="flex h-12 items-center rounded-lg border-2 border-emerald-200 bg-emerald-50/30 px-4 text-sm font-semibold text-slate-900">
-              {warehouses.find((warehouse) => warehouse.id === sourceId)?.name ||
-                "Агуулах сонгогдоогүй"}
+              {warehouses.find((warehouse) => warehouse.id === sourceId)
+                ?.name || "Агуулах сонгогдоогүй"}
             </div>
           </div>
 

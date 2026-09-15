@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Check,
   ChevronDown,
@@ -22,7 +22,9 @@ type WarehouseCategoryTreeProps = {
   onChange: (categoryId: string) => void;
 };
 
-function buildCategoryTree(categories: WarehouseCategory[]): CategoryTreeNode[] {
+function buildCategoryTree(
+  categories: WarehouseCategory[],
+): CategoryTreeNode[] {
   const nodes = new Map<string, CategoryTreeNode>(
     categories.map((category) => [category.id, { ...category, children: [] }]),
   );
@@ -71,7 +73,11 @@ function CategoryTreeRow({
   const levelLabel = depth === 0 ? "Үндсэн" : depth === 1 ? "Дэд" : "Sub";
 
   return (
-    <div role="treeitem" aria-expanded={hasChildren ? expanded : undefined}>
+    <div
+      role="treeitem"
+      aria-expanded={hasChildren ? expanded : undefined}
+      aria-selected={selected}
+    >
       <div
         className={`group mb-1 flex min-h-11 items-center gap-1 rounded-xl border transition ${
           selected
@@ -165,7 +171,9 @@ export function WarehouseCategoryTree({
     const visible = new Set<string>();
     categories.forEach((category) => {
       if (!categoryMatchesSearch(category, categories, search)) return;
-      categoryPath(category.id, categories).forEach((item) => visible.add(item.id));
+      categoryPath(category.id, categories).forEach((item) =>
+        visible.add(item.id),
+      );
     });
     return visible;
   }, [categories, search]);
@@ -180,15 +188,6 @@ export function WarehouseCategoryTree({
     }
     return next;
   }, [categories, expandedIds, search, value, visibleIds]);
-
-  useEffect(() => {
-    if (!value) return;
-    const ancestorIds = categoryPath(value, categories)
-      .slice(0, -1)
-      .map((category) => category.id);
-    if (ancestorIds.length === 0) return;
-    setExpandedIds((current) => new Set([...current, ...ancestorIds]));
-  }, [categories, value]);
 
   const toggle = (categoryId: string) => {
     setExpandedIds((current) => {

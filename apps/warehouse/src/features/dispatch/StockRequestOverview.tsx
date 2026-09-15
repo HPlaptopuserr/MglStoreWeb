@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Banknote,
   ChevronLeft,
@@ -184,19 +184,23 @@ export function StockRequestOverview({
         (left, right) =>
           unpaidPriority(left.request) - unpaidPriority(right.request),
       );
+    } else {
+      matched.sort(
+        (left, right) =>
+          Number(right.request.status === "PENDING") -
+            Number(left.request.status === "PENDING") ||
+          new Date(right.request.requestedAt).getTime() -
+            new Date(left.request.requestedAt).getTime(),
+      );
     }
     return matched;
   }, [paymentFilter, rows, search]);
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
   const visibleRows = filteredRows.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE,
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
   );
-
-  useEffect(() => setPage(1), [paymentFilter, search]);
-  useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
 
   const filters: Array<{ key: PaymentFilter; label: string; count: number }> = [
     { key: "ALL", label: "Бүгд", count: summary.total },
@@ -269,7 +273,10 @@ export function StockRequestOverview({
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             value={search}
-            onChange={(event) => setSearch(event.target.value)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setPage(1);
+            }}
             placeholder="Дугаар, байгууллага, хэрэглэгч хайх..."
             className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
           />
@@ -279,7 +286,10 @@ export function StockRequestOverview({
             <button
               key={filter.key}
               type="button"
-              onClick={() => setPaymentFilter(filter.key)}
+              onClick={() => {
+                setPaymentFilter(filter.key);
+                setPage(1);
+              }}
               className={`shrink-0 rounded-md px-3 py-1.5 text-xs font-bold transition ${
                 paymentFilter === filter.key
                   ? "bg-slate-900 text-white shadow-sm"
@@ -292,6 +302,11 @@ export function StockRequestOverview({
         </div>
       </div>
 
+      <p className="text-xs font-semibold text-slate-600">
+        {paymentFilter === "UNPAID" || paymentFilter === "PARTIAL"
+          ? "Төлбөрийн хугацаагаар эрэмбэлэв"
+          : "Шалгах хүсэлтүүд эхэнд · Шинэ хүсэлтээс хуучин руу"}
+      </p>
       {visibleRows.length === 0 ? (
         <div className="flex h-32 items-center justify-center rounded-xl border-2 border-dashed border-slate-200 text-sm font-semibold text-slate-400">
           Хайлт, шүүлтүүрт тохирох хүсэлт алга
@@ -327,9 +342,17 @@ export function StockRequestOverview({
                         }
                       }}
                       aria-busy={loadingRequestId === request.id}
-                      className="cursor-pointer transition hover:bg-indigo-50/40 focus:bg-indigo-50 focus:outline-none"
+                      className={`cursor-pointer transition focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-indigo-600 ${request.status === "PENDING" ? "bg-amber-50/80 hover:bg-amber-100/80" : "hover:bg-indigo-50/40 focus:bg-indigo-50"}`}
                     >
-                      <td className="px-4 py-3">
+                      <td
+                        className={`border-l-4 px-4 py-3 ${request.status === "PENDING" ? "border-amber-500" : "border-transparent"}`}
+                      >
+                        {request.status === "PENDING" && (
+                          <span className="mb-1.5 inline-flex items-center gap-1.5 rounded-md bg-amber-200 px-2 py-1 text-[11px] font-black text-amber-950">
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-800" />{" "}
+                            Шалгах хүсэлт
+                          </span>
+                        )}
                         <p className="text-sm font-black text-slate-900">
                           {request.requestNumber}
                         </p>
@@ -404,21 +427,22 @@ export function StockRequestOverview({
           </div>
           <div className="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-4 py-3">
             <p className="text-xs text-slate-500">
-              {filteredRows.length} хүсэлтийн {(page - 1) * PAGE_SIZE + 1}–
-              {Math.min(page * PAGE_SIZE, filteredRows.length)}
+              {filteredRows.length} хүсэлтийн{" "}
+              {(currentPage - 1) * PAGE_SIZE + 1}–
+              {Math.min(currentPage * PAGE_SIZE, filteredRows.length)}
             </p>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 aria-label="Өмнөх хуудас"
                 onClick={() => setPage((current) => Math.max(1, current - 1))}
-                disabled={page === 1}
+                disabled={currentPage === 1}
                 className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:text-indigo-600 disabled:opacity-40"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <span className="min-w-16 text-center text-xs font-bold text-slate-600">
-                {page} / {totalPages}
+                {currentPage} / {totalPages}
               </span>
               <button
                 type="button"
@@ -426,7 +450,7 @@ export function StockRequestOverview({
                 onClick={() =>
                   setPage((current) => Math.min(totalPages, current + 1))
                 }
-                disabled={page === totalPages}
+                disabled={currentPage === totalPages}
                 className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:text-indigo-600 disabled:opacity-40"
               >
                 <ChevronRight className="h-4 w-4" />

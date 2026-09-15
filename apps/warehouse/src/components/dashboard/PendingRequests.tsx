@@ -59,9 +59,12 @@ export function PendingRequests({ warehouseId }: PendingRequestsProps) {
   }, [warehouseId]);
 
   useEffect(() => {
-    void load();
+    const initial = window.setTimeout(() => void load(), 0);
     const interval = window.setInterval(() => void load(), 20_000);
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(interval);
+    };
   }, [load]);
 
   if (requests.length === 0) return null;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { Package } from "lucide-react";
 import { getOptimizedProductImageUrl } from "./product-image.utils";
 
@@ -29,14 +30,15 @@ export function ProductThumbnail({
     >
       <Package className="h-5 w-5 text-slate-300" aria-hidden="true" />
       {imageUrl && !failed && (
-        <img
+        <Image
           src={getOptimizedProductImageUrl(imageUrl, size, quality)}
           alt={productName}
-          loading={eager ? "eager" : "lazy"}
-          decoding="async"
-          fetchPriority={eager ? "high" : "low"}
+          fill
+          sizes={`${size}px`}
+          priority={eager}
+          unoptimized
           referrerPolicy="no-referrer"
-          className="absolute inset-0 h-full w-full object-cover"
+          className="object-cover"
           onError={() => setFailed(true)}
         />
       )}

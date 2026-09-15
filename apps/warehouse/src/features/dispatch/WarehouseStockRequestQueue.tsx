@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { RequestAttentionBanner } from "./RequestAttentionBanner";
 import { RequestPaymentPanel } from "./RequestPaymentPanel";
 import { StockRequestOverview } from "./StockRequestOverview";
 import { AlertCircle, Loader2, Package, RefreshCw, X } from "lucide-react";
@@ -40,14 +41,39 @@ export function WarehouseStockRequestQueue({
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [submitting, setSubmitting] = useState(false);
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const knownRequests = useRef<{
+    warehouseId: string;
+    ids: Set<string>;
+  } | null>(null);
+  const [arrivalMessage, setArrivalMessage] = useState("");
+  const [overviewRevision, setOverviewRevision] = useState(0);
 
   const load = useCallback(
     async (silent = false) => {
       if (!warehouseId) return;
-      silent ? setRefreshing(true) : setLoading(true);
+      if (silent) setRefreshing(true);
+      else setLoading(true);
       try {
         setError(null);
-        setRequests(await fetchWarehouseStockRequests(warehouseId));
+        const next = await fetchWarehouseStockRequests(warehouseId);
+        const previous = knownRequests.current;
+        if (previous?.warehouseId === warehouseId) {
+          const arrivals = next.filter(
+            (request) =>
+              request.status === "PENDING" && !previous.ids.has(request.id),
+          );
+          if (arrivals.length)
+            setArrivalMessage(
+              `${arrivals.length} шинэ хүсэлт ирлээ. Шалгах хүсэлтүүдээс нээнэ үү.`,
+            );
+        } else {
+          setArrivalMessage("");
+        }
+        knownRequests.current = {
+          warehouseId,
+          ids: new Set(next.map((request) => request.id)),
+        };
+        setRequests(next);
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -69,6 +95,17 @@ export function WarehouseStockRequestQueue({
   }, [load]);
 
   const counts = useMemo(() => countRequestsByStatus(requests), [requests]);
+  const pendingRequests = useMemo(
+    () =>
+      requests
+        .filter((request) => request.status === "PENDING")
+        .sort(
+          (a, b) =>
+            new Date(b.requestedAt).getTime() -
+            new Date(a.requestedAt).getTime(),
+        ),
+    [requests],
+  );
   const visible = useMemo(
     () =>
       requests.filter(
@@ -137,7 +174,7 @@ export function WarehouseStockRequestQueue({
             </h2>
             {counts.PENDING > 0 && (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-black text-amber-700">
-                {counts.PENDING} шинэ
+                {counts.PENDING} шалгах
               </span>
             )}
           </div>
@@ -159,10 +196,38 @@ export function WarehouseStockRequestQueue({
         </button>
       </div>
 
+      <div role="status" aria-live="polite" aria-atomic="true">
+        {arrivalMessage && (
+          <div className="fixed bottom-4 right-4 z-40 flex max-w-[calc(100vw-2rem)] items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm font-semibold text-indigo-900 shadow-lg sm:max-w-md">
+            <span>{arrivalMessage}</span>
+            <button
+              type="button"
+              aria-label="Мэдэгдэл хаах"
+              onClick={() => setArrivalMessage("")}
+              className="rounded-lg p-2 hover:bg-indigo-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </div>
+      {!loading && (
+        <RequestAttentionBanner
+          requests={pendingRequests}
+          loadingRequestId={detailLoadingId}
+          onSelect={(request) => void open(request)}
+          onShowPending={() => {
+            setFilter("PENDING");
+            setOverviewRevision((current) => current + 1);
+          }}
+        />
+      )}
+
       <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
         <button
           type="button"
           onClick={() => setFilter("ALL")}
+          aria-pressed={filter === "ALL"}
           className={`flex items-center gap-2 rounded-xl border p-3 text-left transition ${
             filter === "ALL"
               ? "border-indigo-200 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-100"
@@ -185,6 +250,7 @@ export function WarehouseStockRequestQueue({
               key={status}
               type="button"
               onClick={() => setFilter(status)}
+              aria-pressed={filter === status}
               className={`flex items-center gap-2 rounded-xl border p-3 text-left transition ${
                 filter === status
                   ? `${REQUEST_TONE_CLASS[config.tone]} ring-2 ring-offset-1`
@@ -218,6 +284,7 @@ export function WarehouseStockRequestQueue({
         </div>
       ) : (
         <StockRequestOverview
+          key={`${filter}-${overviewRevision}`}
           requests={visible}
           loadingRequestId={detailLoadingId}
           onSelect={(request) => void open(request)}

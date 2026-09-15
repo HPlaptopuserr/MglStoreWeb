@@ -1,9 +1,13 @@
 import { Router, type Router as ExpressRouter } from "express";
 import crypto from "crypto";
-import { salesLocationScope, salesVendorScope } from "../../services/sales-organization-scope";
+import {
+  salesLocationScope,
+  salesVendorScope,
+} from "../../services/sales-organization-scope";
 import {
   canReserveStock,
   reservedStock,
+  stockAvailability,
 } from "../../services/stock-reservation.service";
 import {
   Capability,
@@ -331,13 +335,34 @@ async function representativeVendorAccess(
   vendorId: string,
 ) {
   const location = await prisma.salesVisitLocation.findFirst({
-    where: { ...salesLocationScope(current.organizationId), vendorOrganizationId: vendorId },
-    include: { vendorOrganization: {
-      select: { id: true, name: true, taxId: true, email: true, phone: true, address: true, businessCategory: true, status: true, deletedAt: true },
-    } },
+    where: {
+      ...salesLocationScope(current.organizationId),
+      vendorOrganizationId: vendorId,
+    },
+    include: {
+      vendorOrganization: {
+        select: {
+          id: true,
+          name: true,
+          taxId: true,
+          email: true,
+          phone: true,
+          address: true,
+          businessCategory: true,
+          status: true,
+          deletedAt: true,
+        },
+      },
+    },
   });
   const vendor = location?.vendorOrganization;
-  if (!location || !vendor || vendor.deletedAt || vendor.status !== OrgStatus.ACTIVE) return null;
+  if (
+    !location ||
+    !vendor ||
+    vendor.deletedAt ||
+    vendor.status !== OrgStatus.ACTIVE
+  )
+    return null;
   return { vendor, location };
 }
 
@@ -549,7 +574,10 @@ router.get(
         .status(403)
         .json({ message: "Дэлгүүрийн байршил харах эрх шаардлагатай" });
 
-    const locations = await getSalesStoreLocationSources(current.id, current.organizationId);
+    const locations = await getSalesStoreLocationSources(
+      current.id,
+      current.organizationId,
+    );
     const stores = locations.map((location) => ({
       ...location,
       region: salesStoreRegion(
@@ -700,7 +728,12 @@ router.post(
       req.params.paymentId,
     );
     if (!payment) return res.status(404).json({ message: "Төлбөр олдсонгүй" });
-    if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0))
+    if (
+      !canPayApprovedStockRequest(
+        payment.request.status,
+        (payment.request.dispatch?._count.returns ?? 0) > 0,
+      )
+    )
       return res.status(409).json({
         code: "STOCK_REQUEST_NOT_APPROVED",
         message: "Админ зөвшөөрсний дараа QPay нэхэмжлэх нээгдэнэ",
@@ -841,7 +874,12 @@ router.post(
       req.params.paymentId,
     );
     if (!payment) return res.status(404).json({ message: "Төлбөр олдсонгүй" });
-    if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0))
+    if (
+      !canPayApprovedStockRequest(
+        payment.request.status,
+        (payment.request.dispatch?._count.returns ?? 0) > 0,
+      )
+    )
       return res.status(409).json({
         code: "STOCK_REQUEST_NOT_APPROVED",
         message: "Админ зөвшөөрсний дараа бэлэн төлбөр баталгаажна",
@@ -983,7 +1021,12 @@ router.post(
       req.params.paymentId,
     );
     if (!payment) return res.status(404).json({ message: "Төлбөр олдсонгүй" });
-    if (!canPayApprovedStockRequest(payment.request.status, (payment.request.dispatch?._count.returns ?? 0) > 0))
+    if (
+      !canPayApprovedStockRequest(
+        payment.request.status,
+        (payment.request.dispatch?._count.returns ?? 0) > 0,
+      )
+    )
       return res.status(409).json({
         code: "STOCK_REQUEST_NOT_APPROVED",
         message: "Админ зөвшөөрсний дараа төлбөр баталгаажна",
@@ -1407,12 +1450,7 @@ router.get(
     return res.json(
       rows.map((row) => ({
         ...row,
-        physicalQuantity: row.quantity,
-        reservedQuantity: reserved.get(row.productId) ?? 0,
-        quantity: Math.max(
-          0,
-          row.quantity - (reserved.get(row.productId) ?? 0),
-        ),
+        ...stockAvailability(row.quantity, reserved.get(row.productId) ?? 0),
       })),
     );
   },
@@ -1638,12 +1676,10 @@ router.post(
       },
     );
     if (!order)
-      return res
-        .status(409)
-        .json({
-          message:
-            "Барааны боломжит үлдэгдэл хүрэлцэхгүй байна. Өөр захиалгад нөөцлөгдсөн байж болно. Барааны жагсаалтыг шинэчилнэ үү.",
-        });
+      return res.status(409).json({
+        message:
+          "Барааны боломжит үлдэгдэл хүрэлцэхгүй байна. Өөр захиалгад нөөцлөгдсөн байж болно. Барааны жагсаалтыг шинэчилнэ үү.",
+      });
     void prisma.auditLog.create({
       data: {
         userId: actor.userId,
@@ -1959,10 +1995,17 @@ router.post(
     const location = await prisma.salesVisitLocation.findFirst({
       where: {
         ...salesLocationScope(current.organizationId),
-        ...(branch ? { vendorOrganizationId: branch.organizationId } : { id: requestedId }),
+        ...(branch
+          ? { vendorOrganizationId: branch.organizationId }
+          : { id: requestedId }),
       },
     });
-    if (!location) return res.status(404).json({ message: "Танай байгууллагад харьяалагдах идэвхтэй дэлгүүр олдсонгүй" });
+    if (!location)
+      return res
+        .status(404)
+        .json({
+          message: "Танай байгууллагад харьяалагдах идэвхтэй дэлгүүр олдсонгүй",
+        });
     // The map identifies admin branches separately from sales visit locations.
     // Validate the selected branch's coordinates, not another branch's location.
     const target =

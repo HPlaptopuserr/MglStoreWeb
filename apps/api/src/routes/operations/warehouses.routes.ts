@@ -29,6 +29,12 @@ import {
   resolveOrgWarehouse,
   syncProductStock,
 } from "../../services/inventory.service";
+import { approvedStockRequestQuantity } from "../../services/stock-reservation.service";
+import {
+  inventoryAuditIssues,
+  isCriticalInventoryAuditIssue,
+} from "../../services/inventory-audit.policy";
+import { parseWarehouseDateRange } from "../../services/warehouse-date-range";
 import {
   hasPlatformWarehouseAccess,
   hasWarehouseAccess,
@@ -338,7 +344,8 @@ router.get("/warehouses", requireAuth, async (req, res) => {
       createdBy: w.createdBy
         ? {
             id: w.createdBy.id,
-            name: w.createdBy.profile?.fullName || w.createdBy.email || "Ажилтан",
+            name:
+              w.createdBy.profile?.fullName || w.createdBy.email || "Ажилтан",
           }
         : null,
     }));
@@ -352,7 +359,6 @@ router.get("/warehouses", requireAuth, async (req, res) => {
     });
   }
 });
-
 
 const BANK_NAMES: Record<string, string> = {
   "050000": "Хаан банк",
@@ -394,7 +400,9 @@ router.get("/warehouses/payment-accounts", requireAuth, async (req, res) => {
       const merchantCode = String(item?.merchantCode || "").trim();
       const bankCode = String(item?.bankCode || "050000").trim();
       const bankName = BANK_NAMES[bankCode] || item?.bankName || "Банк";
-      const merchantName = String(item?.merchantName || item?.label || "").trim();
+      const merchantName = String(
+        item?.merchantName || item?.label || "",
+      ).trim();
       const corporateName = String(item?.corporateName || "").trim();
       const label = String(item?.label || merchantName || bankName).trim();
       const accountNumber = String(item?.accountNumber || "").trim();
@@ -422,31 +430,29 @@ router.get("/warehouses/payment-accounts", requireAuth, async (req, res) => {
   return res.json({ accounts });
 });
 
-router.put(
-  "/warehouses/:id/payment-account",
-  requireAuth,
-  async (req, res) => {
-    const { id } = req.params;
-    if (!(await assertWarehouseMutationPermission(req, res, id))) return;
-    const accountId =
-      typeof req.body?.accountId === "string" ? req.body.accountId.trim() : "";
-    if (accountId) {
-      const setting = await prisma.siteSetting.findUnique({
-        where: { key: CONTRACT_PAYMENT_ACCOUNTS_SETTING_KEY },
-        select: { value: true },
-      });
-      if (!readMinuPaymentAccounts(setting?.value).some((a) => a.id === accountId)) {
-        return res.status(400).json({ message: "Сонгосон Minu данс олдсонгүй" });
-      }
-    }
-    const warehouse = await prisma.warehouse.update({
-      where: { id },
-      data: { paymentAccountId: accountId || null },
-      select: { id: true, paymentAccountId: true },
+router.put("/warehouses/:id/payment-account", requireAuth, async (req, res) => {
+  const { id } = req.params;
+  if (!(await assertWarehouseMutationPermission(req, res, id))) return;
+  const accountId =
+    typeof req.body?.accountId === "string" ? req.body.accountId.trim() : "";
+  if (accountId) {
+    const setting = await prisma.siteSetting.findUnique({
+      where: { key: CONTRACT_PAYMENT_ACCOUNTS_SETTING_KEY },
+      select: { value: true },
     });
-    return res.json(warehouse);
-  },
-);
+    if (
+      !readMinuPaymentAccounts(setting?.value).some((a) => a.id === accountId)
+    ) {
+      return res.status(400).json({ message: "Сонгосон Minu данс олдсонгүй" });
+    }
+  }
+  const warehouse = await prisma.warehouse.update({
+    where: { id },
+    data: { paymentAccountId: accountId || null },
+    select: { id: true, paymentAccountId: true },
+  });
+  return res.json(warehouse);
+});
 
 // Unified delivery destinations for WMS operators. MGL Business registers
 // stores as SalesVisitLocation records, while admin-managed stores use Branch.
@@ -517,8 +523,7 @@ router.get("/warehouse-online-orders", requireAuth, async (req, res) => {
       where: {
         deletedAt: null,
         paymentStatus: { in: [PaymentStatus.PENDING, PaymentStatus.PAID] },
-        ...(status &&
-        Object.values(OrderStatus).includes(status as OrderStatus)
+        ...(status && Object.values(OrderStatus).includes(status as OrderStatus)
           ? { status: status as OrderStatus }
           : {
               status: {
@@ -765,7 +770,10 @@ router.patch(
       const assignment = await prisma.$transaction(async (tx) => {
         await tx.order.update({
           where: { id: order.id },
-          data: { status: nextStatus, ...(deliveryCode ? { deliveryCode } : {}) },
+          data: {
+            status: nextStatus,
+            ...(deliveryCode ? { deliveryCode } : {}),
+          },
         });
         await tx.orderHistory.create({
           data: {
@@ -1017,91 +1025,98 @@ router.get("/warehouse-notifications", requireAuth, async (req, res) => {
     });
     const warehouseIds = warehouses.map((warehouse) => warehouse.id);
     if (warehouseIds.length === 0) {
-      return res.json({ notifications: [], generatedAt: new Date().toISOString() });
+      return res.json({
+        notifications: [],
+        generatedAt: new Date().toISOString(),
+      });
     }
 
     const expiryLimit = new Date();
     expiryLimit.setDate(expiryLimit.getDate() + 7);
 
-    const [inventoryCandidates, pendingRequests, expiringInventory, paidOrders] =
-      await Promise.all([
-        prisma.warehouseInventory.findMany({
-          where: {
-            warehouseId: { in: warehouseIds },
-            OR: [{ quantity: 0 }, { minQuantity: { gt: 0 } }],
-          },
-          orderBy: [{ quantity: "asc" }, { updatedAt: "desc" }],
-          take: 100,
-          select: {
-            id: true,
-            quantity: true,
-            minQuantity: true,
-            updatedAt: true,
-            warehouse: { select: { name: true } },
-            product: { select: { name: true, sku: true } },
-          },
-        }),
-        prisma.warehouseStockRequest.findMany({
-          where: {
-            warehouseId: { in: warehouseIds },
-            status: "PENDING",
-          },
-          orderBy: { requestedAt: "desc" },
-          take: 10,
-          select: {
-            id: true,
-            requestNumber: true,
-            requestedAt: true,
-            organization: { select: { name: true } },
-          },
-        }),
-        prisma.warehouseInventory.findMany({
-          where: {
-            warehouseId: { in: warehouseIds },
-            quantity: { gt: 0 },
-            expiryDate: { gte: new Date(), lte: expiryLimit },
-          },
-          orderBy: { expiryDate: "asc" },
-          take: 10,
-          select: {
-            id: true,
-            expiryDate: true,
-            warehouse: { select: { name: true } },
-            product: { select: { name: true, sku: true } },
-          },
-        }),
-        prisma.order.findMany({
-          where: {
-            deletedAt: null,
-            paymentStatus: "PAID",
-            status: OrderStatus.CONFIRMED,
-            items: {
-              some: {
-                product: { managedByWarehouseId: { in: warehouseIds } },
-              },
+    const [
+      inventoryCandidates,
+      pendingRequests,
+      expiringInventory,
+      paidOrders,
+    ] = await Promise.all([
+      prisma.warehouseInventory.findMany({
+        where: {
+          warehouseId: { in: warehouseIds },
+          OR: [{ quantity: 0 }, { minQuantity: { gt: 0 } }],
+        },
+        orderBy: [{ quantity: "asc" }, { updatedAt: "desc" }],
+        take: 100,
+        select: {
+          id: true,
+          quantity: true,
+          minQuantity: true,
+          updatedAt: true,
+          warehouse: { select: { name: true } },
+          product: { select: { name: true, sku: true } },
+        },
+      }),
+      prisma.warehouseStockRequest.findMany({
+        where: {
+          warehouseId: { in: warehouseIds },
+          status: "PENDING",
+        },
+        orderBy: { requestedAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          requestNumber: true,
+          requestedAt: true,
+          organization: { select: { name: true } },
+        },
+      }),
+      prisma.warehouseInventory.findMany({
+        where: {
+          warehouseId: { in: warehouseIds },
+          quantity: { gt: 0 },
+          expiryDate: { gte: new Date(), lte: expiryLimit },
+        },
+        orderBy: { expiryDate: "asc" },
+        take: 10,
+        select: {
+          id: true,
+          expiryDate: true,
+          warehouse: { select: { name: true } },
+          product: { select: { name: true, sku: true } },
+        },
+      }),
+      prisma.order.findMany({
+        where: {
+          deletedAt: null,
+          paymentStatus: "PAID",
+          status: OrderStatus.CONFIRMED,
+          items: {
+            some: {
+              product: { managedByWarehouseId: { in: warehouseIds } },
             },
           },
-          orderBy: { createdAt: "desc" },
-          take: 10,
-          select: {
-            id: true,
-            orderNumber: true,
-            createdAt: true,
-            items: {
-              where: {
-                product: { managedByWarehouseId: { in: warehouseIds } },
-              },
-              select: { quantity: true },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          orderNumber: true,
+          createdAt: true,
+          items: {
+            where: {
+              product: { managedByWarehouseId: { in: warehouseIds } },
             },
-            payments: {
-              where: { status: "PAID" },
-              orderBy: { paidAt: "desc" },
-              take: 1,
-              select: { paidAt: true },
-            },
+            select: { quantity: true },
           },
-        }),
-      ]);
+          payments: {
+            where: { status: "PAID" },
+            orderBy: { paidAt: "desc" },
+            take: 1,
+            select: { paidAt: true },
+          },
+        },
+      }),
+    ]);
 
     const stockNotifications = inventoryCandidates
       .filter(
@@ -2082,6 +2097,7 @@ router.post(
           await tx.inventoryLedger.create({
             data: {
               productId,
+              warehouseId: id,
               change: diff,
               reason: existing ? "RESTOCK" : "INITIAL_STOCK",
               note: `Агуулахийн бүртгэл ${existing ? "шинэчилсэн" : "нэмсэн"}`,
@@ -2323,6 +2339,7 @@ router.post(
           await tx.inventoryLedger.create({
             data: {
               productId: item.productId,
+              warehouseId,
               change: -item.quantity,
               reason: InventoryReason.MANUAL_ADJUST,
               note: `${dispatchNumber} · ${address}`,
@@ -2563,6 +2580,7 @@ router.patch(
             await tx.inventoryLedger.create({
               data: {
                 productId,
+                warehouseId,
                 change: diff,
                 reason: "MANUAL_ADJUST",
                 note: "Агуулахийн тоо хэмжээ шинэчилсэн",
@@ -2610,6 +2628,36 @@ router.delete(
       }
 
       await prisma.$transaction(async (tx) => {
+        const activeReservations = await tx.warehouseStockRequestItem.findMany({
+          where: {
+            productId,
+            request: {
+              warehouseId,
+              OR: [
+                { status: { in: ["PENDING", "APPROVED"] } },
+                {
+                  status: "PROCESSING",
+                  OR: [
+                    { dispatch: { is: null } },
+                    { dispatch: { is: { status: "PENDING" } } },
+                  ],
+                },
+              ],
+            },
+          },
+          select: {
+            quantity: true,
+            approvedQuantity: true,
+            request: { select: { requestNumber: true, status: true } },
+          },
+        });
+        if (activeReservations.length > 0) {
+          const requestNumbers = activeReservations
+            .map((item) => item.request.requestNumber)
+            .join(", ");
+          throw new Error(`ACTIVE_RESERVATIONS:${requestNumbers}`);
+        }
+
         // Get quantity before delete for ledger
         const existing = await tx.warehouseInventory.findUnique({
           where: { warehouseId_productId: { warehouseId, productId } },
@@ -2629,6 +2677,7 @@ router.delete(
           await tx.inventoryLedger.create({
             data: {
               productId,
+              warehouseId,
               change: -existing.quantity,
               reason: "MANUAL_ADJUST",
               note: "Агуулахийн бүртгэл устгасан",
@@ -2642,6 +2691,19 @@ router.delete(
 
       res.json({ message: "Агуулахийн бүртгэл устгагдлаа" });
     } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith("ACTIVE_RESERVATIONS:")
+      ) {
+        const requestNumbers = error.message.slice(
+          "ACTIVE_RESERVATIONS:".length,
+        );
+        return res.status(409).json({
+          message: `Энэ бараа ${requestNumbers} хүсэлтэд захиалагдсан байна. Эхлээд хүсэлтийг шийдвэрлэнэ үү.`,
+          code: "ACTIVE_RESERVATIONS",
+          requestNumbers: requestNumbers.split(", ").filter(Boolean),
+        });
+      }
       console.error("delete warehouse inventory error", error);
       res.status(500).json({
         message: "Агуулахийн бүртгэл устгахад алдаа гарлаа",
@@ -2650,8 +2712,129 @@ router.delete(
   },
 );
 
+// ─── Inventory consistency audit ──────────────────────────────────
+router.get(
+  "/warehouses/:warehouseId/inventory-audit",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const { warehouseId } = req.params;
+      const actor = (
+        req as typeof req & { user?: { userId?: string; role?: string } }
+      ).user;
+      if (!(await hasWarehouseAccess(actor, warehouseId))) {
+        return res.status(403).json({
+          message: "Энэ агуулахын нөөцийг шалгах эрхгүй байна",
+        });
+      }
+
+      const [inventories, reservedItems] = await Promise.all([
+        prisma.warehouseInventory.findMany({
+          where: { warehouseId },
+          select: {
+            id: true,
+            quantity: true,
+            location: true,
+            expiryDate: true,
+            product: {
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                barcode: true,
+                isActive: true,
+                deletedAt: true,
+              },
+            },
+          },
+          orderBy: { product: { name: "asc" } },
+        }),
+        prisma.warehouseStockRequestItem.findMany({
+          where: {
+            request: {
+              warehouseId,
+              OR: [
+                { status: { in: ["PENDING", "APPROVED"] } },
+                {
+                  status: "PROCESSING",
+                  OR: [
+                    { dispatch: { is: null } },
+                    { dispatch: { is: { status: "PENDING" } } },
+                  ],
+                },
+              ],
+            },
+          },
+          select: {
+            productId: true,
+            quantity: true,
+            approvedQuantity: true,
+            request: { select: { status: true } },
+          },
+        }),
+      ]);
+
+      const reservedByProduct = new Map<string, number>();
+      for (const item of reservedItems) {
+        const quantity =
+          item.request.status === "PENDING"
+            ? item.quantity
+            : approvedStockRequestQuantity(item);
+        reservedByProduct.set(
+          item.productId,
+          (reservedByProduct.get(item.productId) ?? 0) + quantity,
+        );
+      }
+
+      const now = new Date();
+      const rows = inventories.map((inventory) => {
+        const reservedStock = reservedByProduct.get(inventory.product.id) ?? 0;
+        const issues = inventoryAuditIssues({
+          physicalStock: inventory.quantity,
+          reservedStock,
+          sku: inventory.product.sku,
+          barcode: inventory.product.barcode,
+          location: inventory.location,
+          isActive: inventory.product.isActive,
+          deletedAt: inventory.product.deletedAt,
+          expiryDate: inventory.expiryDate,
+          now,
+        });
+        return {
+          inventoryId: inventory.id,
+          product: inventory.product,
+          physicalStock: inventory.quantity,
+          reservedStock,
+          availableStock: inventory.quantity - reservedStock,
+          location: inventory.location,
+          expiryDate: inventory.expiryDate,
+          issues,
+        };
+      });
+      const problematicRows = rows.filter((row) => row.issues.length > 0);
+      return res.json({
+        checkedAt: new Date(),
+        summary: {
+          totalProducts: rows.length,
+          healthyProducts: rows.length - problematicRows.length,
+          productsWithIssues: problematicRows.length,
+          criticalProducts: rows.filter((row) =>
+            row.issues.some(isCriticalInventoryAuditIssue),
+          ).length,
+        },
+        rows: problematicRows,
+      });
+    } catch (error) {
+      console.error("inventory audit error", error);
+      return res.status(500).json({
+        message: "Нөөцийн өгөгдөл шалгахад алдаа гарлаа",
+      });
+    }
+  },
+);
+
 // ─── Inventory Ledger (Stock Movements) ───────────────────────────
-router.get("/inventory-ledger", async (req, res) => {
+router.get("/inventory-ledger", requireAuth, async (req, res) => {
   try {
     const {
       warehouseId,
@@ -2661,6 +2844,7 @@ router.get("/inventory-ledger", async (req, res) => {
       limit = "50",
       from,
       to,
+      search,
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
@@ -2670,40 +2854,108 @@ router.get("/inventory-ledger", async (req, res) => {
     );
     const skip = (pageNum - 1) * limitNum;
 
-    const where: any = {};
+    const filters: Prisma.InventoryLedgerWhereInput[] = [];
+    let warehouseLedgerScope: Prisma.InventoryLedgerWhereInput | undefined;
+
+    if (warehouseId) {
+      const actor = (
+        req as typeof req & { user?: { userId?: string; role?: string } }
+      ).user;
+      if (!(await hasWarehouseAccess(actor, warehouseId as string))) {
+        return res.status(403).json({
+          message: "Энэ агуулахын хөдөлгөөнийг харах эрхгүй байна",
+        });
+      }
+    }
 
     if (productId) {
-      where.productId = productId as string;
+      filters.push({ productId: productId as string });
     }
 
     if (reason) {
-      where.reason = reason as string;
+      filters.push({ reason: reason as InventoryReason });
     }
 
     if (from || to) {
-      where.createdAt = {};
-      if (from) where.createdAt.gte = new Date(from as string);
-      if (to) where.createdAt.lte = new Date(to as string);
+      const dateRange = parseWarehouseDateRange(from, to);
+      filters.push({
+        createdAt: {
+          ...(dateRange.from ? { gte: dateRange.from } : {}),
+          ...(dateRange.to ? { lte: dateRange.to } : {}),
+        },
+      });
     }
 
-    // If warehouseId is provided, only include products that belong to that warehouse
+    // New ledger rows carry their warehouse explicitly. Legacy rows do not, so
+    // retain product-based fallback only for those rows during migration.
     if (warehouseId) {
       const warehouseProducts = await prisma.warehouseInventory.findMany({
         where: { warehouseId: warehouseId as string },
         select: { productId: true },
       });
-      where.productId = {
-        in: warehouseProducts.map(
-          (wp: (typeof warehouseProducts)[number]) => wp.productId,
-        ),
+      warehouseLedgerScope = {
+        OR: [
+          { warehouseId: warehouseId as string },
+          {
+            warehouseId: null,
+            productId: { in: warehouseProducts.map((wp) => wp.productId) },
+          },
+        ],
       };
+      filters.push(warehouseLedgerScope);
     }
+
+    const searchTerm = typeof search === "string" ? search.trim() : "";
+    if (searchTerm) {
+      const matchingRequests = await prisma.warehouseStockRequest.findMany({
+        where: {
+          OR: [
+            { requestNumber: { contains: searchTerm, mode: "insensitive" } },
+            {
+              dispatch: {
+                is: {
+                  dispatchNumber: {
+                    contains: searchTerm,
+                    mode: "insensitive",
+                  },
+                },
+              },
+            },
+          ],
+        },
+        select: { id: true },
+      });
+      const matchingRequestIds = matchingRequests.map((request) => request.id);
+
+      filters.push({
+        OR: [
+          { product: { name: { contains: searchTerm, mode: "insensitive" } } },
+          { product: { sku: { contains: searchTerm, mode: "insensitive" } } },
+          {
+            product: {
+              barcode: { contains: searchTerm, mode: "insensitive" },
+            },
+          },
+          { note: { contains: searchTerm, mode: "insensitive" } },
+          { referenceId: { contains: searchTerm, mode: "insensitive" } },
+          { referenceType: { contains: searchTerm, mode: "insensitive" } },
+          ...(matchingRequestIds.length > 0
+            ? [{ referenceId: { in: matchingRequestIds } }]
+            : []),
+        ],
+      });
+    }
+
+    const where: Prisma.InventoryLedgerWhereInput =
+      filters.length > 0 ? { AND: filters } : {};
 
     const [entries, total] = await Promise.all([
       prisma.inventoryLedger.findMany({
         where,
         include: {
-          product: { select: { id: true, name: true, sku: true } },
+          product: {
+            select: { id: true, name: true, sku: true, barcode: true },
+          },
           createdBy: {
             select: {
               id: true,
@@ -2712,15 +2964,165 @@ router.get("/inventory-ledger", async (req, res) => {
             },
           },
         },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         skip,
         take: limitNum,
       }),
       prisma.inventoryLedger.count({ where }),
     ]);
 
+    let entriesWithBalances = entries.map((entry) => ({
+      ...entry,
+      balanceBefore: null as number | null,
+      balanceAfter: null as number | null,
+    }));
+
+    if (entries.length > 0) {
+      const productIds = [...new Set(entries.map((entry) => entry.productId))];
+      const oldestVisibleDate = entries.reduce(
+        (oldest, entry) =>
+          entry.createdAt < oldest ? entry.createdAt : oldest,
+        entries[0].createdAt,
+      );
+
+      const [recentHistory, currentBalances] = await Promise.all([
+        prisma.inventoryLedger.findMany({
+          where: {
+            AND: [
+              { productId: { in: productIds } },
+              { createdAt: { gte: oldestVisibleDate } },
+              ...(warehouseLedgerScope ? [warehouseLedgerScope] : []),
+            ],
+          },
+          select: { id: true, productId: true, change: true, createdAt: true },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        }),
+        warehouseId
+          ? prisma.warehouseInventory.findMany({
+              where: {
+                warehouseId: warehouseId as string,
+                productId: { in: productIds },
+              },
+              select: { productId: true, quantity: true },
+            })
+          : prisma.product.findMany({
+              where: { id: { in: productIds } },
+              select: { id: true, stock: true },
+            }),
+      ]);
+
+      const runningBalances = new Map<string, number>();
+      if (warehouseId) {
+        for (const balance of currentBalances as Array<{
+          productId: string;
+          quantity: number;
+        }>) {
+          runningBalances.set(balance.productId, balance.quantity);
+        }
+      } else {
+        for (const balance of currentBalances as Array<{
+          id: string;
+          stock: number;
+        }>) {
+          runningBalances.set(balance.id, balance.stock);
+        }
+      }
+
+      const balanceByEntryId = new Map<
+        string,
+        { balanceBefore: number; balanceAfter: number }
+      >();
+      for (const historyEntry of recentHistory) {
+        const balanceAfter = runningBalances.get(historyEntry.productId) ?? 0;
+        const balanceBefore = balanceAfter - historyEntry.change;
+        balanceByEntryId.set(historyEntry.id, {
+          balanceBefore,
+          balanceAfter,
+        });
+        runningBalances.set(historyEntry.productId, balanceBefore);
+      }
+
+      entriesWithBalances = entries.map((entry) => ({
+        ...entry,
+        ...(balanceByEntryId.get(entry.id) ?? {
+          balanceBefore: null,
+          balanceAfter: null,
+        }),
+      }));
+    }
+
+    const referenceIds = (referenceTypes: string[]) => [
+      ...new Set(
+        entries.flatMap((entry) =>
+          entry.referenceId &&
+          entry.referenceType &&
+          referenceTypes.includes(entry.referenceType)
+            ? [entry.referenceId]
+            : [],
+        ),
+      ),
+    ];
+    const [
+      receiptReferences,
+      manualDispatchReferences,
+      requestReferences,
+      orderReferences,
+    ] = await Promise.all([
+      prisma.warehouseGoodsReceipt.findMany({
+        where: {
+          id: {
+            in: referenceIds([
+              "WAREHOUSE_GOODS_RECEIPT",
+              "WAREHOUSE_GOODS_RECEIPT_CANCELLATION",
+            ]),
+          },
+        },
+        select: { id: true, receiptNumber: true },
+      }),
+      prisma.warehouseManualDispatch.findMany({
+        where: { id: { in: referenceIds(["WAREHOUSE_MANUAL_DISPATCH"]) } },
+        select: { id: true, dispatchNumber: true },
+      }),
+      prisma.warehouseStockRequest.findMany({
+        where: {
+          id: { in: referenceIds(["STOCK_REQUEST", "STOCK_DISPATCH"]) },
+        },
+        select: {
+          id: true,
+          requestNumber: true,
+          dispatch: { select: { dispatchNumber: true } },
+        },
+      }),
+      prisma.order.findMany({
+        where: { id: { in: referenceIds(["ORDER"]) } },
+        select: { id: true, orderNumber: true },
+      }),
+    ]);
+
+    const documentNumberByReference = new Map<string, string>();
+    for (const receipt of receiptReferences)
+      documentNumberByReference.set(receipt.id, receipt.receiptNumber);
+    for (const dispatch of manualDispatchReferences)
+      documentNumberByReference.set(dispatch.id, dispatch.dispatchNumber);
+    for (const request of requestReferences)
+      documentNumberByReference.set(
+        request.id,
+        request.dispatch?.dispatchNumber || request.requestNumber,
+      );
+    for (const order of orderReferences)
+      documentNumberByReference.set(order.id, order.orderNumber);
+
+    const responseEntries = entriesWithBalances.map((entry) => ({
+      ...entry,
+      documentNumber:
+        (entry.referenceId
+          ? documentNumberByReference.get(entry.referenceId)
+          : null) ||
+        (entry.referenceType === "DISPATCH_RETURN" ? entry.referenceId : null),
+    }));
+
     res.json({
-      entries,
+      entries: responseEntries,
       pagination: {
         page: pageNum,
         limit: limitNum,
@@ -3165,6 +3567,7 @@ router.post(
               await tx.inventoryLedger.create({
                 data: {
                   productId: product.id,
+                  warehouseId,
                   change: stockNum,
                   reason: wasUpdate ? "RESTOCK" : "INITIAL_STOCK",
                   note: "Excel импортоор нэмсэн",
@@ -3369,6 +3772,7 @@ router.post("/warehouses/:id/products", requireAuth, async (req, res) => {
         await tx.inventoryLedger.create({
           data: {
             productId: newProduct.id,
+            warehouseId,
             change: qty,
             reason: "INITIAL_STOCK",
             note: note || "Шинэ бараа бүртгэл — агуулахаас нэмсэн",
