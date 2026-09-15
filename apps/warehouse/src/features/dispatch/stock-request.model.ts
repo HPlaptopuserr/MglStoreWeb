@@ -76,15 +76,50 @@ export const VISIBLE_REQUEST_STATUSES = [
 ] as const satisfies readonly RequestStatus[];
 
 export const REQUEST_STATUS_CONFIG = {
-  PENDING: { label: "Хүлээгдэж буй", icon: Clock, tone: "amber" },
-  APPROVED: { label: "Зөвшөөрөгдсөн", icon: CheckCircle2, tone: "emerald" },
-  PROCESSING: { label: "Боловсруулж буй", icon: Truck, tone: "blue" },
-  COMPLETED: { label: "Дууссан", icon: Package, tone: "slate" },
-  REJECTED: { label: "Татгалзсан", icon: XCircle, tone: "red" },
-  CANCELLED: { label: "Цуцлагдсан", icon: XCircle, tone: "slate" },
+  PENDING: {
+    label: "Шалгах",
+    description: "Зөвшөөрөх эсвэл татгалзах шаардлагатай",
+    icon: Clock,
+    tone: "amber",
+  },
+  APPROVED: {
+    label: "Бэлтгэл хүлээж буй",
+    description: "Падаан бэлтгэж, агуулахын гаргалтыг баталгаажуулна",
+    icon: CheckCircle2,
+    tone: "emerald",
+  },
+  PROCESSING: {
+    label: "Агуулахаас гарсан",
+    description: "Гаргалт баталгаажсан · хүргэлт дуусахыг хүлээж байна",
+    icon: Truck,
+    tone: "blue",
+  },
+  COMPLETED: {
+    label: "Хүргэгдсэн",
+    description: "Барааг хүлээн авагчид хүлээлгэн өгсөн",
+    icon: Package,
+    tone: "slate",
+  },
+  REJECTED: {
+    label: "Татгалзсан",
+    description: "Хүсэлтийг зөвшөөрөөгүй",
+    icon: XCircle,
+    tone: "red",
+  },
+  CANCELLED: {
+    label: "Цуцлагдсан",
+    description: "Захиалагч хүсэлтээ цуцалсан",
+    icon: XCircle,
+    tone: "slate",
+  },
 } satisfies Record<
   RequestStatus,
-  { label: string; icon: typeof Clock; tone: RequestTone }
+  {
+    label: string;
+    description: string;
+    icon: typeof Clock;
+    tone: RequestTone;
+  }
 >;
 
 type RequestTone = "amber" | "emerald" | "blue" | "red" | "slate";

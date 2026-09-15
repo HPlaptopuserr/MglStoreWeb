@@ -320,7 +320,7 @@ export function StockRequestOverview({
                   <th className="px-4 py-3">Хүсэлт</th>
                   <th className="px-4 py-3">Захиалагч</th>
                   <th className="px-4 py-3">Огноо</th>
-                  <th className="px-4 py-3">Хүсэлтийн төлөв</th>
+                  <th className="px-4 py-3">Гүйцэтгэлийн төлөв</th>
                   <th className="px-4 py-3 text-right">Нийт дүн</th>
                   <th className="px-4 py-3 text-right">Төлсөн</th>
                   <th className="px-4 py-3">Төлбөр</th>
@@ -391,10 +391,13 @@ export function StockRequestOverview({
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-bold ${REQUEST_TONE_CLASS[status.tone]}`}
+                          className={`inline-flex whitespace-nowrap rounded-full border px-2 py-1 text-[10px] font-bold ${REQUEST_TONE_CLASS[status.tone]}`}
                         >
                           {status.label}
                         </span>
+                        <p className="mt-1 max-w-52 text-[10px] leading-4 text-slate-500">
+                          {status.description}
+                        </p>
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-bold text-slate-700">
                         {payment.total ? money(payment.total) : "—"}
