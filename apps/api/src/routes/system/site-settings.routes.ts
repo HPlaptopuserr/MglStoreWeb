@@ -87,6 +87,7 @@ const FREE_PDF_PREVIEW_PAGE_COUNT = 3;
 const MEMBERSHIP_FRANCHISE_CREDIT_PRICE = 30_000;
 const VENDOR_FEATURE_KEYS = new Set([
   "pos-enabled",
+  "self-service-enabled",
   "web-products-enabled",
   "supply-products-enabled",
   "preorder-products-enabled",
