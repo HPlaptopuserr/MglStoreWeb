@@ -5,6 +5,7 @@ import {
   ChefHat,
   ClipboardList,
   Clapperboard,
+  MonitorSmartphone,
   UtensilsCrossed,
   LayoutDashboard,
   Megaphone,
@@ -28,6 +29,24 @@ export function getOrgNavItems(
   features: OrgFeatureState,
   user?: OrgUser | null,
 ): OrgNavItem[] {
+  if (features.selfService) {
+    return [
+      {
+        label: "Өөртөө үйлчлэх касс",
+        href: "/dashboard/self-service",
+        icon: MonitorSmartphone,
+      },
+      {
+        label: "Гал тогооны дэлгэц",
+        href: "/dashboard/kitchen-display",
+        icon: ChefHat,
+      },
+      { label: "Бүтээгдэхүүн", href: "/dashboard/products", icon: Package },
+      { label: "Тохиргоо", href: "/dashboard/settings", icon: Settings },
+      { label: "Тайлан", href: "/dashboard/reports", icon: BarChart3 },
+    ];
+  }
+
   return [
     { label: "Хяналтын самбар", href: "/dashboard", icon: LayoutDashboard },
     {

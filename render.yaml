@@ -156,6 +156,12 @@ services:
         value: production
       - key: NEXT_PUBLIC_API_URL
         sync: false
+      - key: NEXT_PUBLIC_EBARIMT_ENABLED
+        sync: false
+      - key: NEXT_PUBLIC_EBARIMT_POS_API_URL
+        sync: false
+      - key: EBARIMT_INFO_API_URL
+        sync: false
 
   - type: web
     name: mgl-business

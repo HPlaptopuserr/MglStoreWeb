@@ -4,6 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3004 --webpack",
+    "kiosk": "start-self-service-kiosk.cmd",
+    "kiosk:install": "powershell -NoProfile -ExecutionPolicy Bypass -File install-self-service-kiosk-shortcut.ps1",
+    "kiosk:install:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File install-self-service-kiosk-shortcut.ps1 -Url \"http://localhost:3004/dashboard/self-service?silentPrint=1\" -ShortcutName \"MGL Self Service Kiosk DEV\"",
+    "kiosk:package": "powershell -NoProfile -ExecutionPolicy Bypass -File package-self-service-kiosk.ps1",
     "build": "next build",
     "start": "next start -H 0.0.0.0",
     "lint": "eslint .",

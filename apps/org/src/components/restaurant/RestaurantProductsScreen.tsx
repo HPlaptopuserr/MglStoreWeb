@@ -21,15 +21,16 @@ import {
 } from "lucide-react";
 import { useOrg } from "@/components/org/OrgContext";
 import { API, authFetch } from "@/lib/api";
+import {
+  EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
+  getEbarimtTaxProductCodes,
+  isValidEbarimtClassificationCode,
+  isValidEbarimtTaxProductCode,
+  requiresEbarimtTaxProductCode,
+} from "@mgl/types";
 
 type MenuCategory =
-  | "HOT"
-  | "COLD"
-  | "SOUP"
-  | "GRILL"
-  | "APPETIZER"
-  | "DESSERT"
-  | "DRINK";
+  "HOT" | "COLD" | "SOUP" | "GRILL" | "APPETIZER" | "DESSERT" | "DRINK";
 type KitchenStation = "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR";
 type TaxType = "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
 
@@ -94,10 +95,10 @@ const kitchenStations: Array<{
 ];
 
 const taxTypes: Array<{ value: TaxType; label: string }> = [
-  { value: "VAT_ABLE", label: "НӨАТ-тэй" },
-  { value: "VAT_FREE", label: "НӨАТ-аас чөлөөлөгдсөн" },
+  { value: "VAT_ABLE", label: "Ердийн борлуулалт" },
+  { value: "VAT_FREE", label: "Хуулиар НӨАТ-аас чөлөөлөгдсөн" },
   { value: "VAT_ZERO", label: "НӨАТ 0%" },
-  { value: "NOT_VAT", label: "НӨАТ ногдохгүй" },
+  { value: "NOT_VAT", label: "Монгол Улсын хилийн гаднах борлуулалт" },
 ];
 
 const emptyForm: MenuForm = {
@@ -113,7 +114,7 @@ const emptyForm: MenuForm = {
   imageUrl: "",
   taxType: "VAT_ABLE",
   cityTaxRate: "0",
-  classificationCode: "6212991",
+  classificationCode: EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
   taxProductCode: "",
 };
 
@@ -227,7 +228,9 @@ export function RestaurantProductsScreen() {
       imageUrl: product.images[0]?.url || "",
       taxType: product.taxType || "VAT_ABLE",
       cityTaxRate: String(product.cityTaxRate ?? 0),
-      classificationCode: product.classificationCode || "6212991",
+      classificationCode:
+        product.classificationCode ||
+        EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
       taxProductCode: product.taxProductCode || "",
     });
     setFormOpen(true);
@@ -281,6 +284,17 @@ export function RestaurantProductsScreen() {
       showMessage("error", "Хотын татвар 0-100 хувь байна");
       return;
     }
+    if (!isValidEbarimtClassificationCode(form.classificationCode)) {
+      showMessage("error", "Нэгдсэн ангиллын код 7 оронтой тоо байна");
+      return;
+    }
+    if (!isValidEbarimtTaxProductCode(form.taxType, form.taxProductCode)) {
+      showMessage(
+        "error",
+        "Албан жагсаалтын 3 оронтой татварын код сонгоно уу",
+      );
+      return;
+    }
 
     setSaving(true);
     try {
@@ -305,8 +319,10 @@ export function RestaurantProductsScreen() {
             preparationMinutes,
             taxType: form.taxType,
             cityTaxRate,
-            classificationCode: form.classificationCode.trim() || "6212991",
-            taxProductCode: form.taxProductCode.trim() || null,
+            classificationCode: form.classificationCode.trim(),
+            taxProductCode: requiresEbarimtTaxProductCode(form.taxType)
+              ? form.taxProductCode.trim()
+              : null,
             images: form.imageUrl.trim() ? [form.imageUrl.trim()] : [],
           }),
         },
@@ -1001,9 +1017,16 @@ function MenuItemForm({
                   <Field label="Татварын төрөл">
                     <select
                       value={form.taxType}
-                      onChange={(event) =>
-                        update("taxType", event.target.value as TaxType)
-                      }
+                      onChange={(event) => {
+                        const taxType = event.target.value as TaxType;
+                        onChange({
+                          ...form,
+                          taxType,
+                          taxProductCode: requiresEbarimtTaxProductCode(taxType)
+                            ? form.taxProductCode
+                            : "",
+                        });
+                      }}
                       className={inputClass}
                     >
                       {taxTypes.map((taxType) => (
@@ -1028,8 +1051,10 @@ function MenuItemForm({
                         className={inputClass}
                       />
                     </Field>
-                    <Field label="Ангиллын код">
+                    <Field label="Нэгдсэн ангилал (7 орон)">
                       <input
+                        inputMode="numeric"
+                        maxLength={7}
                         value={form.classificationCode}
                         onChange={(event) =>
                           update("classificationCode", event.target.value)
@@ -1039,16 +1064,27 @@ function MenuItemForm({
                     </Field>
                   </div>
 
-                  <Field label="Tax product code">
-                    <input
-                      value={form.taxProductCode}
-                      onChange={(event) =>
-                        update("taxProductCode", event.target.value)
-                      }
-                      placeholder="Шаардлагатай бол"
-                      className={inputClass}
-                    />
-                  </Field>
+                  {requiresEbarimtTaxProductCode(form.taxType) ? (
+                    <Field label="Татварын код (3 орон)">
+                      <select
+                        value={form.taxProductCode}
+                        onChange={(event) =>
+                          update("taxProductCode", event.target.value)
+                        }
+                        className={inputClass}
+                        required
+                      >
+                        <option value="">Татварын код сонгох</option>
+                        {getEbarimtTaxProductCodes(form.taxType).map(
+                          (entry) => (
+                            <option key={entry.code} value={entry.code}>
+                              {entry.code} — {entry.name}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </Field>
+                  ) : null}
                 </div>
               </div>
 

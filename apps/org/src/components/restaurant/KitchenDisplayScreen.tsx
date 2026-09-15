@@ -7,13 +7,15 @@ import {
   CheckCircle2,
   ChefHat,
   Clock3,
+  Expand,
   Flame,
+  FlaskConical,
   GlassWater,
   Loader2,
-  Play,
+  Radio,
+  ReceiptText,
   RefreshCw,
   Salad,
-  UtensilsCrossed,
 } from "lucide-react";
 import { useOrg } from "@/components/org/OrgContext";
 import {
@@ -24,38 +26,12 @@ import {
   type RestaurantKitchenTicket,
   type RestaurantPosRegister,
 } from "@/lib/restaurant-pos-api";
+import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
 
 type StationFilter = "ALL" | "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR";
-type ActiveKitchenStatus = "NEW" | "PREPARING" | "READY";
 
 const BRANCH_STORAGE_KEY = "org_restaurant_kds_branch_id";
 const REFRESH_INTERVAL_MS = 5_000;
-
-const statusColumns: Array<{
-  status: ActiveKitchenStatus;
-  label: string;
-  empty: string;
-  accent: string;
-}> = [
-  {
-    status: "NEW",
-    label: "Шинэ",
-    empty: "Шинэ захиалга алга",
-    accent: "border-rose-400/50 bg-rose-400/10 text-rose-200",
-  },
-  {
-    status: "PREPARING",
-    label: "Бэлтгэж байна",
-    empty: "Бэлтгэж буй захиалга алга",
-    accent: "border-amber-300/50 bg-amber-300/10 text-amber-100",
-  },
-  {
-    status: "READY",
-    label: "Бэлэн",
-    empty: "Бэлэн захиалга алга",
-    accent: "border-emerald-400/50 bg-emerald-400/10 text-emerald-100",
-  },
-];
 
 const stationOptions: Array<{
   value: StationFilter;
@@ -69,7 +45,7 @@ const stationOptions: Array<{
 ];
 
 const orderModeLabels = {
-  DINE_IN: "Зааланд",
+  DINE_IN: "Энд идэх",
   TO_GO: "Авч явах",
   DELIVERY: "Хүргэлт",
 } as const;
@@ -78,44 +54,10 @@ const stationLabels: Record<string, string> = {
   HOT_KITCHEN: "Халуун гал тогоо",
   COLD_KITCHEN: "Хүйтэн гал тогоо",
   BAR: "Бар",
+  MIXED: "Олон хэсгийн захиалга",
 };
 
-const nextActions: Record<
-  ActiveKitchenStatus,
-  {
-    status: "PREPARING" | "READY" | "SERVED";
-    label: string;
-    busyLabel: string;
-    icon: typeof Play;
-    className: string;
-  }
-> = {
-  NEW: {
-    status: "PREPARING",
-    label: "Бэлтгэж эхлэх",
-    busyLabel: "Эхлүүлж байна...",
-    icon: Play,
-    className: "bg-amber-300 text-slate-950 hover:bg-amber-200",
-  },
-  PREPARING: {
-    status: "READY",
-    label: "Бэлэн болгох",
-    busyLabel: "Шинэчилж байна...",
-    icon: CheckCircle2,
-    className: "bg-emerald-400 text-slate-950 hover:bg-emerald-300",
-  },
-  READY: {
-    status: "SERVED",
-    label: "Зөөгчид өгсөн",
-    busyLabel: "Шилжүүлж байна...",
-    icon: UtensilsCrossed,
-    className: "bg-sky-400 text-slate-950 hover:bg-sky-300",
-  },
-};
-
-const isActiveStatus = (
-  status: KitchenTicketStatus,
-): status is ActiveKitchenStatus =>
+const isActiveStatus = (status: KitchenTicketStatus) =>
   status === "NEW" || status === "PREPARING" || status === "READY";
 
 const getElapsedMinutes = (sentAt: string, now: number) => {
@@ -125,7 +67,126 @@ const getElapsedMinutes = (sentAt: string, now: number) => {
 };
 
 const getTicketStation = (ticket: RestaurantKitchenTicket) =>
-  ticket.items[0]?.kitchenStation || "HOT_KITCHEN";
+  new Set(ticket.items.map((item) => item.kitchenStation).filter(Boolean)).size >
+  1
+    ? "MIXED"
+    : ticket.items[0]?.kitchenStation || "HOT_KITCHEN";
+
+const createDemoTickets = (
+  currentTime: number,
+  branchId: string,
+): RestaurantKitchenTicket[] => {
+  const sentAt = (minutesAgo: number) =>
+    new Date(currentTime - minutesAgo * 60_000).toISOString();
+
+  return [
+    {
+      id: "demo-ticket-1",
+      kitchenTicketNo: "KDS-1042",
+      organizationId: "demo-organization",
+      branchId,
+      status: "NEW",
+      sentAt: sentAt(4),
+      startedAt: null,
+      readyAt: null,
+      servedAt: null,
+      restaurantTicket: {
+        id: "demo-order-1",
+        ticketNo: "R-1042",
+        orderMode: "DINE_IN",
+        status: "KITCHEN",
+        table: null,
+      },
+      items: [
+        {
+          id: "demo-item-1",
+          productId: "demo-product-burger",
+          name: "Үхрийн махан бургер",
+          qty: 2,
+          note: "Сонгиногүй",
+          kitchenStation: "HOT_KITCHEN",
+          preparationMinutes: 15,
+        },
+        {
+          id: "demo-item-2",
+          productId: "demo-product-fries",
+          name: "Шарсан төмс",
+          qty: 1,
+          note: "",
+          kitchenStation: "HOT_KITCHEN",
+          preparationMinutes: 8,
+        },
+      ],
+    },
+    {
+      id: "demo-ticket-2",
+      kitchenTicketNo: "KDS-1043",
+      organizationId: "demo-organization",
+      branchId,
+      status: "NEW",
+      sentAt: sentAt(9),
+      startedAt: null,
+      readyAt: null,
+      servedAt: null,
+      restaurantTicket: {
+        id: "demo-order-2",
+        ticketNo: "R-1043",
+        orderMode: "TO_GO",
+        status: "KITCHEN",
+        table: null,
+      },
+      items: [
+        {
+          id: "demo-item-3",
+          productId: "demo-product-pasta",
+          name: "Карбонара паста",
+          qty: 1,
+          note: "Соус тусад нь",
+          kitchenStation: "HOT_KITCHEN",
+          preparationMinutes: 12,
+        },
+        {
+          id: "demo-item-4",
+          productId: "demo-product-salad",
+          name: "Ногоон салат",
+          qty: 1,
+          note: "",
+          kitchenStation: "COLD_KITCHEN",
+          preparationMinutes: 7,
+        },
+      ],
+    },
+    {
+      id: "demo-ticket-3",
+      kitchenTicketNo: "KDS-1044",
+      organizationId: "demo-organization",
+      branchId,
+      status: "NEW",
+      sentAt: sentAt(18),
+      startedAt: null,
+      readyAt: null,
+      servedAt: null,
+      restaurantTicket: {
+        id: "demo-order-3",
+        ticketNo: "R-1044",
+        orderMode: "DINE_IN",
+        status: "KITCHEN",
+        table: null,
+      },
+      items: [
+        {
+          id: "demo-item-5",
+          productId: "demo-product-pizza",
+          name: "Пепперони пицца",
+          qty: 1,
+          note: "Нэмэлт бяслагтай",
+          kitchenStation: "HOT_KITCHEN",
+          preparationMinutes: 15,
+        },
+      ],
+    },
+  ];
+};
 
 export function KitchenDisplayScreen() {
   const { user } = useOrg();
@@ -138,6 +199,7 @@ export function KitchenDisplayScreen() {
   const [error, setError] = useState("");
   const [busyTicketId, setBusyTicketId] = useState("");
   const [now, setNow] = useState(() => Date.now());
+  const [demoMode, setDemoMode] = useState(false);
 
   const branches = useMemo(() => {
     const unique = new Map<
@@ -188,6 +250,7 @@ export function KitchenDisplayScreen() {
 
   const loadTickets = useCallback(
     async (options?: { silent?: boolean }) => {
+      if (demoMode) return;
       if (!selectedBranchId) {
         setTickets([]);
         return;
@@ -209,7 +272,7 @@ export function KitchenDisplayScreen() {
         if (!options?.silent) setRefreshing(false);
       }
     },
-    [selectedBranchId],
+    [demoMode, selectedBranchId],
   );
 
   useEffect(() => {
@@ -244,21 +307,83 @@ export function KitchenDisplayScreen() {
     [stationFilter, tickets],
   );
 
+  const activeTickets = useMemo(
+    () => tickets.filter((ticket) => isActiveStatus(ticket.status)),
+    [tickets],
+  );
+  const clockLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("mn-MN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(now),
+    [now],
+  );
+  const dateLabel = useMemo(
+    () =>
+      new Intl.DateTimeFormat("mn-MN", {
+        month: "short",
+        day: "numeric",
+        weekday: "short",
+      }).format(now),
+    [now],
+  );
+
+  const getStationTicketCount = (station: StationFilter) =>
+    station === "ALL"
+      ? activeTickets.length
+      : activeTickets.filter((ticket) =>
+          ticket.items.some((item) => item.kitchenStation === station),
+        ).length;
+
+  const requestFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch {
+      setError("Бүтэн дэлгэцийн горим нээж чадсангүй.");
+    }
+  };
+
+  const showDemoTickets = () => {
+    const currentTime = Date.now();
+    setDemoMode(true);
+    setStationFilter("ALL");
+    setNow(currentTime);
+    setError("");
+    setTickets(
+      createDemoTickets(currentTime, selectedBranchId || "demo-branch"),
+    );
+  };
+
+  const closeDemoMode = () => {
+    setDemoMode(false);
+    setTickets([]);
+  };
+
   const handleStatusChange = async (ticket: RestaurantKitchenTicket) => {
-    if (!selectedBranchId || !isActiveStatus(ticket.status)) return;
-    const action = nextActions[ticket.status];
+    if (!isActiveStatus(ticket.status)) return;
+    if (demoMode) {
+      setTickets((current) =>
+        current.filter((item) => item.id !== ticket.id),
+      );
+      return;
+    }
+    if (!selectedBranchId) return;
     setBusyTicketId(ticket.id);
     setError("");
     try {
-      const updated = await updateRestaurantKitchenTicketStatus({
+      await updateRestaurantKitchenTicketStatus({
         branchId: selectedBranchId,
         kitchenTicketId: ticket.id,
-        status: action.status,
+        status: "SERVED",
       });
       setTickets((current) =>
-        updated.status === "SERVED"
-          ? current.filter((item) => item.id !== updated.id)
-          : current.map((item) => (item.id === updated.id ? updated : item)),
+        current.filter((item) => item.id !== ticket.id),
       );
     } catch (updateError) {
       setError(
@@ -274,45 +399,81 @@ export function KitchenDisplayScreen() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#10131c] text-slate-200">
-        <Loader2 className="mr-3 size-6 animate-spin text-amber-300" />
-        Гал тогооны дэлгэц ачаалж байна...
+      <div className="flex h-screen items-center justify-center bg-[#090c12] px-6 text-slate-200 [background-image:radial-gradient(circle_at_center,rgba(245,158,11,0.1),transparent_32%)]">
+        <div className="text-center">
+          <div className="mx-auto flex size-20 items-center justify-center rounded-[28px] bg-gradient-to-br from-amber-300 to-orange-400 text-slate-950 shadow-2xl shadow-amber-500/10">
+            <ChefHat className="size-10" />
+          </div>
+          <div className="mt-6 flex items-center justify-center gap-2 text-sm font-black">
+            <Loader2 className="size-4 animate-spin text-amber-300" />
+            Гал тогооны дэлгэц ачаалж байна
+          </div>
+          <p className="mt-2 text-xs font-semibold text-slate-600">
+            Захиалгын мэдээллийг бэлтгэж байна...
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen min-h-0 flex-col bg-[#10131c] text-slate-100">
-      <header className="border-b border-white/10 bg-[#171b27] px-4 py-3 lg:px-6">
+    <div className="flex h-screen min-h-0 flex-col bg-[#090c12] text-slate-100 [background-image:radial-gradient(circle_at_top_left,rgba(245,158,11,0.08),transparent_28%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.06),transparent_24%)]">
+      <header className="relative z-20 shrink-0 border-b border-white/[0.08] bg-[#0d1119]/95 px-4 py-3 shadow-2xl shadow-black/20 backdrop-blur-xl lg:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3">
             <Link
-              href="/dashboard/restaurant-pos"
-              className="flex size-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-slate-300 transition hover:bg-white/10 hover:text-white"
-              aria-label="Ресторан касс руу буцах"
+              href="/dashboard"
+              className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+              aria-label="Dashboard руу буцах"
             >
               <ArrowLeft className="size-5" />
             </Link>
-            <div className="flex size-11 items-center justify-center rounded-2xl bg-amber-300 text-slate-950">
-              <ChefHat className="size-6" />
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-300 to-orange-400 text-slate-950 shadow-lg shadow-amber-400/10">
+              <ChefHat className="size-7" strokeWidth={2.2} />
             </div>
-            <div>
-              <h1 className="text-lg font-black tracking-tight">
-                Гал тогооны дэлгэц
-              </h1>
-              <p className="text-xs text-slate-400">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-lg font-black tracking-tight sm:text-xl">
+                  Гал тогооны дэлгэц
+                </h1>
+                <span
+                  className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] sm:inline-flex ${
+                    demoMode
+                      ? "border-violet-400/20 bg-violet-400/10 text-violet-300"
+                      : "border-emerald-400/20 bg-emerald-400/10 text-emerald-300"
+                  }`}
+                >
+                  {demoMode ? (
+                    <FlaskConical className="size-3" />
+                  ) : (
+                    <Radio className="size-3" />
+                  )}
+                  {demoMode ? "Demo" : "Live"}
+                </span>
+              </div>
+              <p className="truncate text-xs font-semibold text-slate-500">
                 {user.organizationName || "Ресторан"} ·{" "}
-                {selectedBranch?.name || "Салбар сонгоно уу"}
+                {demoMode
+                  ? "Демо салбар"
+                  : selectedBranch?.name || "Салбар сонгоно уу"}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {branches.length > 1 ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="hidden min-w-24 text-right md:block">
+              <p className="text-xl font-black tabular-nums leading-none text-white">
+                {clockLabel}
+              </p>
+              <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500">
+                {dateLabel}
+              </p>
+            </div>
+            {branches.length > 1 && !demoMode ? (
               <select
                 value={selectedBranchId}
                 onChange={(event) => setSelectedBranchId(event.target.value)}
-                className="h-10 rounded-xl border border-white/10 bg-[#202533] px-3 text-sm font-bold text-white outline-none focus:border-amber-300"
+                className="h-11 max-w-48 rounded-2xl border border-white/10 bg-white/[0.06] px-3 text-sm font-bold text-white outline-none transition focus:border-amber-300/70"
                 aria-label="Салбар сонгох"
               >
                 {branches.map((branch) => (
@@ -324,20 +485,46 @@ export function KitchenDisplayScreen() {
             ) : null}
             <button
               type="button"
-              onClick={() => void loadTickets()}
-              disabled={!selectedBranchId || refreshing}
-              className="flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 text-sm font-bold text-slate-200 transition hover:bg-white/10 disabled:opacity-50"
+              onClick={demoMode ? closeDemoMode : showDemoTickets}
+              className={`flex h-11 items-center gap-2 rounded-2xl border px-3.5 text-sm font-black transition ${
+                demoMode
+                  ? "border-violet-400/30 bg-violet-400/15 text-violet-200 hover:bg-violet-400/20"
+                  : "border-white/10 bg-white/[0.06] text-slate-300 hover:border-violet-400/30 hover:text-violet-200"
+              }`}
+            >
+              <FlaskConical className="size-4" />
+              <span className="hidden lg:inline">
+                {demoMode ? "Демо хаах" : "Демо харах"}
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void requestFullscreen()}
+              className="flex size-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+              aria-label="Бүтэн дэлгэц"
+            >
+              <Expand className="size-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                demoMode ? showDemoTickets() : void loadTickets()
+              }
+              disabled={(!selectedBranchId && !demoMode) || refreshing}
+              className="flex h-11 items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-3.5 text-sm font-black text-slate-200 transition hover:border-white/20 hover:bg-white/10 disabled:opacity-50"
             >
               <RefreshCw
                 className={`size-4 ${refreshing ? "animate-spin" : ""}`}
               />
-              Шинэчлэх
+              <span className="hidden sm:inline">
+                {demoMode ? "Дахин эхлэх" : "Шинэчлэх"}
+              </span>
             </button>
           </div>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] pt-3">
+          <div className="flex max-w-full gap-2 overflow-x-auto pb-0.5">
             {stationOptions.map((station) => {
               const Icon = station.icon;
               const active = stationFilter === station.value;
@@ -346,87 +533,86 @@ export function KitchenDisplayScreen() {
                   key={station.value}
                   type="button"
                   onClick={() => setStationFilter(station.value)}
-                  className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-xs font-black transition ${
+                  className={`flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-black transition ${
                     active
-                      ? "border-amber-300 bg-amber-300 text-slate-950"
-                      : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
+                      ? "border-amber-300 bg-amber-300 text-slate-950 shadow-lg shadow-amber-400/10"
+                      : "border-white/[0.08] bg-white/[0.04] text-slate-400 hover:bg-white/[0.08] hover:text-white"
                   }`}
                 >
                   <Icon className="size-4" />
                   {station.label}
+                  <span
+                    className={`rounded-md px-1.5 py-0.5 tabular-nums ${
+                      active ? "bg-black/10" : "bg-white/[0.07] text-slate-300"
+                    }`}
+                  >
+                    {getStationTicketCount(station.value)}
+                  </span>
                 </button>
               );
             })}
           </div>
-          <div className="flex items-center gap-4 text-xs font-bold text-slate-400">
-            {statusColumns.map((column) => (
-              <span key={column.status}>
-                {column.label}:{" "}
-                <strong className="text-white">
-                  {
-                    visibleTickets.filter(
-                      (ticket) => ticket.status === column.status,
-                    ).length
-                  }
-                </strong>
-              </span>
-            ))}
+
+          <div className="flex h-10 items-center gap-2 rounded-xl border border-amber-300/15 bg-amber-300/[0.07] px-3 text-xs font-black text-amber-100">
+            <ReceiptText className="size-4 text-amber-300" />
+            Орж ирсэн захиалга
+            <strong className="rounded-md bg-amber-300 px-2 py-0.5 text-sm tabular-nums text-slate-950">
+              {visibleTickets.length}
+            </strong>
           </div>
         </div>
 
         {error ? (
-          <div className="mt-3 rounded-xl border border-rose-400/30 bg-rose-400/10 px-4 py-2 text-sm font-bold text-rose-200">
-            {error}
+          <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-rose-400/30 bg-rose-400/10 px-4 py-2 text-sm font-bold text-rose-200">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={() => setError("")}
+              className="shrink-0 text-xs font-black uppercase tracking-wide text-rose-100/70 hover:text-white"
+            >
+              Хаах
+            </button>
           </div>
         ) : null}
       </header>
 
-      <main className="min-h-0 flex-1 overflow-auto p-4 lg:p-5">
-        {!selectedBranchId ? (
+      <main className="min-h-0 flex-1 overflow-auto p-3 sm:p-4 lg:p-5">
+        {!selectedBranchId && !demoMode ? (
           <EmptyState
             title="POS касс олдсонгүй"
             description="Энэ байгууллагад идэвхтэй POS register тохируулсны дараа гал тогооны дэлгэц ашиглана."
+            actionLabel="Демо захиалга харах"
+            onAction={showDemoTickets}
+          />
+        ) : visibleTickets.length === 0 ? (
+          <EmptyState
+            title={demoMode ? "Демо захиалга дууслаа" : "Одоогоор захиалга алга"}
+            description={
+              demoMode
+                ? "Демо захиалгуудыг дахин гаргаж дизайн болон товчийг туршина уу."
+                : "Шинэ захиалга орж ирмэгц энэ дэлгэц дээр автоматаар харагдана."
+            }
+            actionLabel={demoMode ? "Дахин эхлэх" : "Демо захиалга харах"}
+            onAction={showDemoTickets}
           />
         ) : (
-          <div className="grid min-h-full gap-4 xl:grid-cols-3">
-            {statusColumns.map((column) => {
-              const columnTickets = visibleTickets.filter(
-                (ticket) => ticket.status === column.status,
-              );
-              return (
-                <section
-                  key={column.status}
-                  className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.025] p-3"
-                >
-                  <div
-                    className={`mb-3 flex items-center justify-between rounded-xl border px-4 py-3 ${column.accent}`}
-                  >
-                    <h2 className="font-black">{column.label}</h2>
-                    <span className="rounded-lg bg-black/20 px-2.5 py-1 text-sm font-black">
-                      {columnTickets.length}
-                    </span>
-                  </div>
-
-                  <div className="space-y-3">
-                    {columnTickets.map((ticket) => (
-                      <KitchenTicketCard
-                        key={ticket.id}
-                        ticket={ticket}
-                        now={now}
-                        stationFilter={stationFilter}
-                        busy={busyTicketId === ticket.id}
-                        onAdvance={() => void handleStatusChange(ticket)}
-                      />
-                    ))}
-                    {columnTickets.length === 0 ? (
-                      <div className="flex min-h-36 items-center justify-center rounded-xl border border-dashed border-white/10 px-4 text-center text-sm text-slate-500">
-                        {column.empty}
-                      </div>
-                    ) : null}
-                  </div>
-                </section>
-              );
-            })}
+          <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {[...visibleTickets]
+              .sort(
+                (first, second) =>
+                  new Date(first.sentAt).getTime() -
+                  new Date(second.sentAt).getTime(),
+              )
+              .map((ticket) => (
+                <KitchenTicketCard
+                  key={ticket.id}
+                  ticket={ticket}
+                  now={now}
+                  stationFilter={stationFilter}
+                  busy={busyTicketId === ticket.id}
+                  onAdvance={() => void handleStatusChange(ticket)}
+                />
+              ))}
           </div>
         )}
       </main>
@@ -449,8 +635,6 @@ function KitchenTicketCard({
 }) {
   if (!isActiveStatus(ticket.status)) return null;
 
-  const action = nextActions[ticket.status];
-  const ActionIcon = action.icon;
   const elapsedMinutes = getElapsedMinutes(ticket.sentAt, now);
   const preparationMinutes = Math.max(
     0,
@@ -458,89 +642,140 @@ function KitchenTicketCard({
   );
   const overdue =
     preparationMinutes > 0 && elapsedMinutes >= preparationMinutes;
+  const nearingDeadline =
+    !overdue &&
+    preparationMinutes > 0 &&
+    elapsedMinutes >= preparationMinutes * 0.7;
+  const progress =
+    preparationMinutes > 0
+      ? Math.min(100, (elapsedMinutes / preparationMinutes) * 100)
+      : 0;
   const visibleItems =
     stationFilter === "ALL"
       ? ticket.items
       : ticket.items.filter(
           (item) => item.kitchenStation === stationFilter,
         );
-  const station = getTicketStation(ticket);
-  const tableLabel =
-    ticket.restaurantTicket.table?.label ||
-    orderModeLabels[ticket.restaurantTicket.orderMode];
+  const station =
+    stationFilter === "ALL" ? getTicketStation(ticket) : stationFilter;
+  const orderMode = ticket.restaurantTicket.orderMode;
+  const displayOrderNumber = formatRestaurantOrderNumber(
+    ticket.restaurantTicket.ticketNo,
+    ticket.restaurantTicket.id,
+  );
 
   return (
     <article
-      className={`overflow-hidden rounded-2xl border bg-[#1b202d] shadow-xl shadow-black/10 ${
-        overdue ? "border-rose-400/70" : "border-white/10"
+      className={`group relative overflow-hidden rounded-2xl border bg-[#181e2a] shadow-xl shadow-black/15 transition ${
+        overdue
+          ? "border-rose-400/70 shadow-rose-950/20"
+          : nearingDeadline
+            ? "border-amber-300/40"
+            : "border-white/[0.09]"
       }`}
     >
-      <div className="flex items-start justify-between gap-3 border-b border-white/10 px-4 py-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-xl font-black text-white">{tableLabel}</span>
-            <span className="rounded-md bg-white/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-slate-300">
-              {orderModeLabels[ticket.restaurantTicket.orderMode]}
-            </span>
+      <span className="absolute inset-x-0 top-0 h-1 bg-amber-300" />
+
+      <div className="border-b border-white/[0.08] px-4 pb-3.5 pt-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
+              <ReceiptText className="size-3.5" />
+              Шинэ захиалга
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <h3 className="text-2xl font-black leading-none tracking-tight text-white">
+                Захиалга №{displayOrderNumber}
+              </h3>
+              <span
+                className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] ${
+                  orderMode === "TO_GO"
+                    ? "border-amber-300/20 bg-amber-300/10 text-amber-200"
+                    : orderMode === "DELIVERY"
+                      ? "border-violet-400/20 bg-violet-400/10 text-violet-200"
+                      : "border-sky-400/20 bg-sky-400/10 text-sky-200"
+                }`}
+              >
+                {orderModeLabels[orderMode]}
+              </span>
+            </div>
           </div>
-          <p className="mt-1 font-mono text-[11px] text-slate-500">
-            {ticket.kitchenTicketNo}
+          <div
+            className={`flex shrink-0 items-center gap-1.5 rounded-xl border px-2.5 py-2 text-sm font-black tabular-nums ${
+              overdue
+                ? "border-rose-300/40 bg-rose-400 text-white"
+                : nearingDeadline
+                  ? "border-amber-300/30 bg-amber-300/15 text-amber-100"
+                  : "border-white/[0.08] bg-black/20 text-slate-200"
+            }`}
+          >
+            <Clock3 className="size-4" />
+            {elapsedMinutes} мин
+          </div>
+        </div>
+
+        {preparationMinutes > 0 ? (
+          <div className="mt-3">
+            <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+              <span>{stationLabels[station] || "Гал тогоо"}</span>
+              <span>Зорилт {preparationMinutes} мин</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-black/30">
+              <div
+                className={`h-full rounded-full transition-[width] duration-500 ${
+                  overdue
+                    ? "bg-rose-400"
+                    : nearingDeadline
+                      ? "bg-amber-300"
+                      : "bg-emerald-400"
+                }`}
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+          </div>
+        ) : (
+          <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+            {stationLabels[station] || "Гал тогоо"}
           </p>
-        </div>
-        <div
-          className={`flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-black ${
-            overdue
-              ? "bg-rose-400 text-white"
-              : "bg-white/10 text-slate-200"
-          }`}
-        >
-          <Clock3 className="size-3.5" />
-          {elapsedMinutes} мин
-        </div>
+        )}
       </div>
 
-      <div className="px-4 py-3">
-        <div className="mb-3 flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-slate-500">
-          <span>{stationLabels[station] || "Гал тогоо"}</span>
-          {preparationMinutes > 0 ? (
-            <span>Зорилт {preparationMinutes} мин</span>
-          ) : null}
-        </div>
-
-        <div className="space-y-3">
+      <div className="px-4 py-1">
+        <div className="divide-y divide-white/[0.07]">
           {visibleItems.map((item) => (
-            <div key={item.id}>
-              <div className="flex gap-3">
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-300 text-sm font-black text-slate-950">
-                  {item.qty}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-black leading-6 text-white">{item.name}</p>
-                  {item.note ? (
-                    <p className="mt-1 rounded-lg border border-amber-300/20 bg-amber-300/10 px-2.5 py-2 text-xs font-bold text-amber-100">
-                      Тайлбар: {item.note}
-                    </p>
-                  ) : null}
-                </div>
+            <div key={item.id} className="flex gap-3 py-3">
+              <span className="flex h-8 min-w-9 shrink-0 items-center justify-center rounded-lg bg-amber-300 px-2 text-sm font-black text-slate-950 shadow-sm shadow-amber-950/10">
+                ×{item.qty}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[15px] font-black leading-6 text-white">
+                  {item.name}
+                </p>
+                {item.note ? (
+                  <p className="mt-1.5 rounded-lg border border-amber-300/20 bg-amber-300/[0.08] px-2.5 py-2 text-xs font-bold leading-5 text-amber-100">
+                    <span className="mr-1 text-amber-400">АНХААР:</span>
+                    {item.note}
+                  </p>
+                ) : null}
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="border-t border-white/10 p-3">
+      <div className="border-t border-white/[0.08] bg-black/10 p-3">
         <button
           type="button"
           onClick={onAdvance}
           disabled={busy}
-          className={`flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-black transition disabled:cursor-wait disabled:opacity-60 ${action.className}`}
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 text-sm font-black text-slate-950 shadow-lg shadow-emerald-950/10 transition hover:bg-emerald-300 active:scale-[0.99] disabled:cursor-wait disabled:opacity-60"
         >
           {busy ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
-            <ActionIcon className="size-4" />
+            <CheckCircle2 className="size-4" />
           )}
-          {busy ? action.busyLabel : action.label}
+          {busy ? "Хааж байна..." : "Бэлэн болсон"}
         </button>
       </div>
     </article>
@@ -550,9 +785,13 @@ function KitchenTicketCard({
 function EmptyState({
   title,
   description,
+  actionLabel,
+  onAction,
 }: {
   title: string;
   description: string;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
   return (
     <div className="flex h-full min-h-72 items-center justify-center">
@@ -560,6 +799,16 @@ function EmptyState({
         <ChefHat className="mx-auto size-12 text-slate-600" />
         <h2 className="mt-4 text-xl font-black">{title}</h2>
         <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
+        {actionLabel && onAction ? (
+          <button
+            type="button"
+            onClick={onAction}
+            className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-400 px-4 text-sm font-black text-slate-950 transition hover:bg-violet-300"
+          >
+            <FlaskConical className="size-4" />
+            {actionLabel}
+          </button>
+        ) : null}
       </div>
     </div>
   );

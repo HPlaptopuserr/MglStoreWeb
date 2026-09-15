@@ -9,6 +9,7 @@ import {
   Megaphone,
   PackageSearch,
   ScanLine,
+  MonitorSmartphone,
   Store,
   Globe2,
   Tags,
@@ -52,6 +53,15 @@ const FEATURES = [
       "Барааг ширхэгийн, бөөний болон захиалгын үнээс сонгон борлуулна.",
     group: "channels",
     icon: Tags,
+    defaultEnabled: false,
+  },
+  {
+    suffix: "self-service-enabled",
+    label: "Өөртөө үйлчлэх касс",
+    description:
+      "Org dashboard-ийг өөртөө үйлчлэх касс, гал тогоо, бүтээгдэхүүн, тохиргоо, тайлан гэсэн таван хэсэгтэй нээнэ.",
+    group: "channels",
+    icon: MonitorSmartphone,
     defaultEnabled: false,
   },
   {

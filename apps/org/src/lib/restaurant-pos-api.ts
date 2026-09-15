@@ -30,6 +30,11 @@ export type RestaurantPosRegister = {
   cardTerminalSourceRegisterId?: string | null;
   cardTerminalSourceRequestId?: string | null;
   qpayEnabled: boolean;
+  ebarimtEnabled: boolean;
+  ebarimtPosApiUrl: string | null;
+  ebarimtMerchantTin: string | null;
+  ebarimtPosNo: string | null;
+  ebarimtMerchantName: string | null;
   minuAgentEnabled?: boolean;
   minuAgentUsername?: string | null;
   minuAgentBranchId?: string | null;
@@ -911,7 +916,9 @@ export async function getPublicRestaurantQPayStatus(
 export async function saveRestaurantTicket(input: {
   branchId: string;
   shiftId: string;
-  tableId: string;
+  tableId?: string;
+  ticketId?: string;
+  source?: "SELF_SERVICE";
   orderMode: "DINE_IN" | "TO_GO" | "DELIVERY";
   note?: string;
   lines: Array<{ productId: string; qty: number; note?: string }>;

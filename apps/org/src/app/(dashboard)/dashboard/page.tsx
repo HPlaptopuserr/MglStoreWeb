@@ -14,8 +14,12 @@ export default function OrgDashboardPage() {
   return (
     <div className="space-y-6">
       <DashboardHeader user={user} />
-      <KpiGrid loading={loading} stats={stats} />
-      <SalesHistoryPanel organizationId={user.organizationId} />
+      {!features.selfService ? (
+        <>
+          <KpiGrid loading={loading} stats={stats} />
+          <SalesHistoryPanel organizationId={user.organizationId} />
+        </>
+      ) : null}
       <ModuleGrid features={features} />
     </div>
   );

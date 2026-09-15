@@ -9,6 +9,8 @@ dist
 out
 build
 packages/pos-bridge/release/
+apps/org/Service/
+apps/org/release/
 
 # Turbo
 .turbo

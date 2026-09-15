@@ -1710,6 +1710,7 @@ router.patch("/restaurant/pos/kitchen-tickets/:id/status", async (req, res) => {
             status: true,
             restaurantTicketId: true,
             startedAt: true,
+            readyAt: true,
           },
         });
         if (!current) {
@@ -1726,7 +1727,14 @@ router.patch("/restaurant/pos/kitchen-tickets/:id/status", async (req, res) => {
               : current.status === KitchenTicketStatus.READY
                 ? KitchenTicketStatus.SERVED
                 : null;
-        if (current.status !== nextStatus && expectedNext !== nextStatus) {
+        const canCompleteDirectly =
+          nextStatus === KitchenTicketStatus.SERVED &&
+          ACTIVE_KITCHEN_TICKET_STATUSES.includes(current.status);
+        if (
+          current.status !== nextStatus &&
+          expectedNext !== nextStatus &&
+          !canCompleteDirectly
+        ) {
           throw Object.assign(
             new Error(
               `Ticket-ийн төлөвийг ${current.status}-оос ${nextStatus} болгох боломжгүй`,
@@ -1741,10 +1749,16 @@ router.patch("/restaurant/pos/kitchen-tickets/:id/status", async (req, res) => {
           data: {
             status: nextStatus,
             startedAt:
-              nextStatus === KitchenTicketStatus.PREPARING
+              nextStatus === KitchenTicketStatus.PREPARING ||
+              nextStatus === KitchenTicketStatus.SERVED
                 ? current.startedAt || now
                 : undefined,
-            readyAt: nextStatus === KitchenTicketStatus.READY ? now : undefined,
+            readyAt:
+              nextStatus === KitchenTicketStatus.READY
+                ? now
+                : nextStatus === KitchenTicketStatus.SERVED
+                  ? current.readyAt || now
+                  : undefined,
             servedAt:
               nextStatus === KitchenTicketStatus.SERVED ? now : undefined,
           },
@@ -2085,12 +2099,15 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
     const branchId = String(req.body?.branchId || "").trim();
     const shiftId = String(req.body?.shiftId || "").trim();
     const tableId = String(req.body?.tableId || "").trim();
+    const ticketId = String(req.body?.ticketId || "").trim();
+    const isSelfService =
+      String(req.body?.source || "").trim().toUpperCase() === "SELF_SERVICE";
     const orderMode = normalizeOrderMode(req.body?.orderMode);
     const lines = Array.isArray(req.body?.lines)
       ? (req.body.lines as TicketLineInput[])
       : [];
 
-    if (!branchId || !shiftId || !tableId) {
+    if (!branchId || !shiftId || (!tableId && !isSelfService)) {
       return res
         .status(400)
         .json({ message: "branchId, shiftId болон tableId шаардлагатай" });
@@ -2128,23 +2145,34 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
 
     const result = await prisma.$transaction(
       async (tx) => {
-        await tx.$queryRaw`
-          SELECT "id"
-          FROM "RestaurantTable"
-          WHERE "id" = ${tableId}
-          FOR UPDATE
-        `;
-        const table = await tx.restaurantTable.findFirst({
-          where: {
-            id: tableId,
-            branchId,
-            organizationId: access.branch.organizationId,
-            isActive: true,
-          },
-          select: { id: true },
-        });
-        if (!table)
-          throw Object.assign(new Error("Ширээ олдсонгүй"), { status: 404 });
+        if (ticketId) {
+          await tx.$queryRaw`
+            SELECT "id"
+            FROM "RestaurantTicket"
+            WHERE "id" = ${ticketId}
+            FOR UPDATE
+          `;
+        }
+        if (tableId) {
+          await tx.$queryRaw`
+            SELECT "id"
+            FROM "RestaurantTable"
+            WHERE "id" = ${tableId}
+            FOR UPDATE
+          `;
+          const table = await tx.restaurantTable.findFirst({
+            where: {
+              id: tableId,
+              branchId,
+              organizationId: access.branch.organizationId,
+              isActive: true,
+            },
+            select: { id: true },
+          });
+          if (!table) {
+            throw Object.assign(new Error("Ширээ олдсонгүй"), { status: 404 });
+          }
+        }
 
         await tx.$queryRaw`
           SELECT "id"
@@ -2183,14 +2211,44 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
           );
         }
 
-        let ticket = await tx.restaurantTicket.findFirst({
-          where: { tableId, status: { in: EDITABLE_TICKET_STATUSES } },
-          orderBy: { updatedAt: "desc" },
-          include: { items: true, kitchenTickets: { select: { id: true } } },
-        });
+        let ticket = ticketId
+          ? await tx.restaurantTicket.findFirst({
+              where: {
+                id: ticketId,
+                branchId,
+                organizationId: access.branch.organizationId,
+                shiftId,
+                openedById: actor.id,
+                tableId: null,
+                status: { in: EDITABLE_TICKET_STATUSES },
+              },
+              include: {
+                items: true,
+                kitchenTickets: { select: { id: true } },
+              },
+            })
+          : tableId
+            ? await tx.restaurantTicket.findFirst({
+                where: {
+                  tableId,
+                  status: { in: EDITABLE_TICKET_STATUSES },
+                },
+                orderBy: { updatedAt: "desc" },
+                include: {
+                  items: true,
+                  kitchenTickets: { select: { id: true } },
+                },
+              })
+            : null;
+
+        if (ticketId && !ticket) {
+          throw Object.assign(new Error("Self-service ticket олдсонгүй"), {
+            status: 404,
+          });
+        }
 
         if (!ticket && normalizedLines.length === 0) return null;
-        if (!ticket) {
+        if (!ticket && tableId) {
           const paidOccupiedTicket = await tx.restaurantTicket.findFirst({
             where: { tableId, status: RestaurantTicketStatus.PAID },
             orderBy: { updatedAt: "desc" },
@@ -2245,7 +2303,7 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
               organizationId: access.branch.organizationId,
               branchId,
               shiftId,
-              tableId,
+              tableId: tableId || null,
               openedById: actor.id,
               orderMode,
               note: normalizeNote(req.body?.note),

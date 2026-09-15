@@ -1,10 +1,14 @@
 import {
+  BarChart3,
   Boxes,
   Building2,
+  ChefHat,
   Clapperboard,
   ClipboardList,
   Megaphone,
+  MonitorSmartphone,
   Package,
+  Settings,
   UtensilsCrossed,
   Users,
 } from "lucide-react";
@@ -41,6 +45,46 @@ export function getDashboardKpis(stats: DashboardStats | null) {
 }
 
 export function getDashboardModules(features: OrgFeatureState) {
+  if (features.selfService) {
+    return [
+      {
+        title: "Өөртөө үйлчлэх касс",
+        desc: "Зочин захиалгаа өөрөө үүсгэж, QPay эсвэл картаар төлнө.",
+        href: "/dashboard/self-service",
+        icon: MonitorSmartphone,
+        enabled: true,
+      },
+      {
+        title: "Гал тогооны дэлгэц",
+        desc: "Шинэ захиалгыг хүлээн авч, бэлтгэлийн төлөвийг удирдана.",
+        href: "/dashboard/kitchen-display",
+        icon: ChefHat,
+        enabled: true,
+      },
+      {
+        title: "Бүтээгдэхүүн",
+        desc: "Өөртөө үйлчлэх кассанд харагдах бүтээгдэхүүн, хоол болон үнийг удирдана.",
+        href: "/dashboard/products",
+        icon: Package,
+        enabled: true,
+      },
+      {
+        title: "Тохиргоо",
+        desc: "Касс, QPay, карт болон рестораны тохиргоог удирдана.",
+        href: "/dashboard/settings",
+        icon: Settings,
+        enabled: true,
+      },
+      {
+        title: "Тайлан",
+        desc: "Өөртөө үйлчлэх кассын борлуулалт, төлбөрийн тайланг харна.",
+        href: "/dashboard/reports",
+        icon: BarChart3,
+        enabled: true,
+      },
+    ];
+  }
+
   return [
     {
       title: "Байгууллагын profile",

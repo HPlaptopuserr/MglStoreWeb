@@ -2,6 +2,7 @@ export type OrgFeatureState = {
   supplyProducts: boolean;
   preorderProducts: boolean;
   servicePosts: boolean;
+  selfService: boolean;
 };
 
 export type DashboardStats = {

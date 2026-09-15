@@ -14,16 +14,19 @@ export default function OrgShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { ready, user, logout } = useOrgSession();
-  const features = useOrgFeatures(user?.organizationId);
+  const { features, loading: featuresLoading } = useOrgFeatures(
+    user?.organizationId,
+  );
   const navItems = useMemo(
     () => getOrgNavItems(features, user),
     [features, user],
   );
   const isRestaurantWorkspace =
     pathname.startsWith("/dashboard/restaurant-pos") ||
-    pathname.startsWith("/dashboard/kitchen-display");
+    pathname.startsWith("/dashboard/kitchen-display") ||
+    pathname.startsWith("/dashboard/self-service");
 
-  if (!ready || !user) return <OrgShellLoading />;
+  if (!ready || !user || featuresLoading) return <OrgShellLoading />;
 
   if (isRestaurantWorkspace) {
     return (
