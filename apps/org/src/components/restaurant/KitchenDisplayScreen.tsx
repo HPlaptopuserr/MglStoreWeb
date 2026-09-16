@@ -399,13 +399,13 @@ export function KitchenDisplayScreen() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#090c12] px-6 text-slate-200 [background-image:radial-gradient(circle_at_center,rgba(245,158,11,0.1),transparent_32%)]">
+      <div className="flex h-screen items-center justify-center bg-[#101216] px-6 text-slate-200">
         <div className="text-center">
-          <div className="mx-auto flex size-20 items-center justify-center rounded-[28px] bg-gradient-to-br from-amber-300 to-orange-400 text-slate-950 shadow-2xl shadow-amber-500/10">
+          <div className="mx-auto flex size-20 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.06] text-slate-100">
             <ChefHat className="size-10" />
           </div>
           <div className="mt-6 flex items-center justify-center gap-2 text-sm font-black">
-            <Loader2 className="size-4 animate-spin text-amber-300" />
+            <Loader2 className="size-4 animate-spin text-slate-300" />
             Гал тогооны дэлгэц ачаалж байна
           </div>
           <p className="mt-2 text-xs font-semibold text-slate-600">
@@ -417,18 +417,18 @@ export function KitchenDisplayScreen() {
   }
 
   return (
-    <div className="flex h-screen min-h-0 flex-col bg-[#090c12] text-slate-100 [background-image:radial-gradient(circle_at_top_left,rgba(245,158,11,0.08),transparent_28%),radial-gradient(circle_at_top_right,rgba(14,165,233,0.06),transparent_24%)]">
-      <header className="relative z-20 shrink-0 border-b border-white/[0.08] bg-[#0d1119]/95 px-4 py-3 shadow-2xl shadow-black/20 backdrop-blur-xl lg:px-5">
+    <div className="flex h-screen min-h-0 flex-col bg-[#101216] text-slate-100">
+      <header className="relative z-20 shrink-0 border-b border-white/[0.08] bg-[#15181d] px-4 py-3 lg:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <Link
               href="/dashboard"
-              className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+              className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-400 transition hover:bg-white/[0.08] hover:text-white"
               aria-label="Dashboard руу буцах"
             >
               <ArrowLeft className="size-5" />
             </Link>
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-300 to-orange-400 text-slate-950 shadow-lg shadow-amber-400/10">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.07] text-slate-100">
               <ChefHat className="size-7" strokeWidth={2.2} />
             </div>
             <div className="min-w-0">
@@ -439,8 +439,8 @@ export function KitchenDisplayScreen() {
                 <span
                   className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] sm:inline-flex ${
                     demoMode
-                      ? "border-violet-400/20 bg-violet-400/10 text-violet-300"
-                      : "border-emerald-400/20 bg-emerald-400/10 text-emerald-300"
+                      ? "border-white/15 bg-white/[0.08] text-slate-200"
+                      : "border-white/10 bg-white/[0.04] text-slate-400"
                   }`}
                 >
                   {demoMode ? (
@@ -473,7 +473,7 @@ export function KitchenDisplayScreen() {
               <select
                 value={selectedBranchId}
                 onChange={(event) => setSelectedBranchId(event.target.value)}
-                className="h-11 max-w-48 rounded-2xl border border-white/10 bg-white/[0.06] px-3 text-sm font-bold text-white outline-none transition focus:border-amber-300/70"
+                className="h-11 max-w-48 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm font-bold text-white outline-none transition focus:border-white/30"
                 aria-label="Салбар сонгох"
               >
                 {branches.map((branch) => (
@@ -486,10 +486,10 @@ export function KitchenDisplayScreen() {
             <button
               type="button"
               onClick={demoMode ? closeDemoMode : showDemoTickets}
-              className={`flex h-11 items-center gap-2 rounded-2xl border px-3.5 text-sm font-black transition ${
+              className={`flex h-11 items-center gap-2 rounded-xl border px-3.5 text-sm font-black transition ${
                 demoMode
-                  ? "border-violet-400/30 bg-violet-400/15 text-violet-200 hover:bg-violet-400/20"
-                  : "border-white/10 bg-white/[0.06] text-slate-300 hover:border-violet-400/30 hover:text-violet-200"
+                  ? "border-white/20 bg-white/10 text-white hover:bg-white/[0.14]"
+                  : "border-white/10 bg-white/[0.04] text-slate-400 hover:bg-white/[0.08] hover:text-white"
               }`}
             >
               <FlaskConical className="size-4" />
@@ -500,7 +500,7 @@ export function KitchenDisplayScreen() {
             <button
               type="button"
               onClick={() => void requestFullscreen()}
-              className="flex size-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-slate-300 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
+              className="flex size-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-400 transition hover:bg-white/[0.08] hover:text-white"
               aria-label="Бүтэн дэлгэц"
             >
               <Expand className="size-5" />
@@ -511,7 +511,7 @@ export function KitchenDisplayScreen() {
                 demoMode ? showDemoTickets() : void loadTickets()
               }
               disabled={(!selectedBranchId && !demoMode) || refreshing}
-              className="flex h-11 items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-3.5 text-sm font-black text-slate-200 transition hover:border-white/20 hover:bg-white/10 disabled:opacity-50"
+              className="flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 text-sm font-black text-slate-300 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
             >
               <RefreshCw
                 className={`size-4 ${refreshing ? "animate-spin" : ""}`}
@@ -535,7 +535,7 @@ export function KitchenDisplayScreen() {
                   onClick={() => setStationFilter(station.value)}
                   className={`flex h-10 shrink-0 items-center gap-2 rounded-xl border px-3 text-xs font-black transition ${
                     active
-                      ? "border-amber-300 bg-amber-300 text-slate-950 shadow-lg shadow-amber-400/10"
+                      ? "border-slate-100 bg-slate-100 text-slate-950"
                       : "border-white/[0.08] bg-white/[0.04] text-slate-400 hover:bg-white/[0.08] hover:text-white"
                   }`}
                 >
@@ -553,10 +553,10 @@ export function KitchenDisplayScreen() {
             })}
           </div>
 
-          <div className="flex h-10 items-center gap-2 rounded-xl border border-amber-300/15 bg-amber-300/[0.07] px-3 text-xs font-black text-amber-100">
-            <ReceiptText className="size-4 text-amber-300" />
+          <div className="flex h-10 items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 text-xs font-black text-slate-300">
+            <ReceiptText className="size-4 text-slate-400" />
             Орж ирсэн захиалга
-            <strong className="rounded-md bg-amber-300 px-2 py-0.5 text-sm tabular-nums text-slate-950">
+            <strong className="rounded-md bg-white/[0.09] px-2 py-0.5 text-sm tabular-nums text-white">
               {visibleTickets.length}
             </strong>
           </div>
@@ -666,15 +666,19 @@ function KitchenTicketCard({
 
   return (
     <article
-      className={`group relative overflow-hidden rounded-2xl border bg-[#181e2a] shadow-xl shadow-black/15 transition ${
+      className={`group relative overflow-hidden rounded-2xl border bg-[#191c21] shadow-sm shadow-black/20 transition ${
         overdue
-          ? "border-rose-400/70 shadow-rose-950/20"
+          ? "border-rose-400/70"
           : nearingDeadline
-            ? "border-amber-300/40"
+            ? "border-white/20"
             : "border-white/[0.09]"
       }`}
     >
-      <span className="absolute inset-x-0 top-0 h-1 bg-amber-300" />
+      <span
+        className={`absolute inset-x-0 top-0 h-1 ${
+          overdue ? "bg-rose-400" : "bg-slate-500"
+        }`}
+      />
 
       <div className="border-b border-white/[0.08] px-4 pb-3.5 pt-4">
         <div className="flex items-start justify-between gap-3">
@@ -687,15 +691,7 @@ function KitchenTicketCard({
               <h3 className="text-2xl font-black leading-none tracking-tight text-white">
                 Захиалга №{displayOrderNumber}
               </h3>
-              <span
-                className={`rounded-lg border px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] ${
-                  orderMode === "TO_GO"
-                    ? "border-amber-300/20 bg-amber-300/10 text-amber-200"
-                    : orderMode === "DELIVERY"
-                      ? "border-violet-400/20 bg-violet-400/10 text-violet-200"
-                      : "border-sky-400/20 bg-sky-400/10 text-sky-200"
-                }`}
-              >
+              <span className="rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-300">
                 {orderModeLabels[orderMode]}
               </span>
             </div>
@@ -705,7 +701,7 @@ function KitchenTicketCard({
               overdue
                 ? "border-rose-300/40 bg-rose-400 text-white"
                 : nearingDeadline
-                  ? "border-amber-300/30 bg-amber-300/15 text-amber-100"
+                  ? "border-white/15 bg-white/10 text-white"
                   : "border-white/[0.08] bg-black/20 text-slate-200"
             }`}
           >
@@ -725,9 +721,7 @@ function KitchenTicketCard({
                 className={`h-full rounded-full transition-[width] duration-500 ${
                   overdue
                     ? "bg-rose-400"
-                    : nearingDeadline
-                      ? "bg-amber-300"
-                      : "bg-emerald-400"
+                    : "bg-slate-300"
                 }`}
                 style={{ width: `${progress}%` }}
               />
@@ -744,7 +738,7 @@ function KitchenTicketCard({
         <div className="divide-y divide-white/[0.07]">
           {visibleItems.map((item) => (
             <div key={item.id} className="flex gap-3 py-3">
-              <span className="flex h-8 min-w-9 shrink-0 items-center justify-center rounded-lg bg-amber-300 px-2 text-sm font-black text-slate-950 shadow-sm shadow-amber-950/10">
+              <span className="flex h-8 min-w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.09] px-2 text-sm font-black text-white">
                 ×{item.qty}
               </span>
               <div className="min-w-0 flex-1">
@@ -752,8 +746,8 @@ function KitchenTicketCard({
                   {item.name}
                 </p>
                 {item.note ? (
-                  <p className="mt-1.5 rounded-lg border border-amber-300/20 bg-amber-300/[0.08] px-2.5 py-2 text-xs font-bold leading-5 text-amber-100">
-                    <span className="mr-1 text-amber-400">АНХААР:</span>
+                  <p className="mt-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 text-xs font-bold leading-5 text-slate-300">
+                    <span className="mr-1 text-slate-400">АНХААР:</span>
                     {item.note}
                   </p>
                 ) : null}
@@ -768,7 +762,7 @@ function KitchenTicketCard({
           type="button"
           onClick={onAdvance}
           disabled={busy}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-400 text-sm font-black text-slate-950 shadow-lg shadow-emerald-950/10 transition hover:bg-emerald-300 active:scale-[0.99] disabled:cursor-wait disabled:opacity-60"
+          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-200 text-sm font-black text-emerald-950 transition hover:bg-emerald-100 active:scale-[0.99] disabled:cursor-wait disabled:opacity-60"
         >
           {busy ? (
             <Loader2 className="size-4 animate-spin" />
@@ -803,7 +797,7 @@ function EmptyState({
           <button
             type="button"
             onClick={onAction}
-            className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-400 px-4 text-sm font-black text-slate-950 transition hover:bg-violet-300"
+            className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 text-sm font-black text-slate-950 transition hover:bg-white"
           >
             <FlaskConical className="size-4" />
             {actionLabel}
