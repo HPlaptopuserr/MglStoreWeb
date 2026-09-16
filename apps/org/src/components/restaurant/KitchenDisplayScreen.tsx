@@ -31,7 +31,7 @@ import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
 type StationFilter = "ALL" | "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR";
 
 const BRANCH_STORAGE_KEY = "org_restaurant_kds_branch_id";
-const REFRESH_INTERVAL_MS = 5_000;
+const REFRESH_INTERVAL_MS = 3_000;
 
 const stationOptions: Array<{
   value: StationFilter;
