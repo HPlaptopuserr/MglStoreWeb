@@ -262,7 +262,7 @@ function mapEbarimtPayload(payload: AttachEbarimtPayload): NonNullable<PosReceip
   };
 }
 
-const SCAN_GAP_MS = 80;
+const SCAN_GAP_MS = 250;
 const EBARIMT_ENABLED = process.env.NEXT_PUBLIC_EBARIMT_ENABLED === "true";
 const LONG_RUNNING_CARD_PROVIDERS = new Set(["PUSH_ECR", "MINU_AGENT", "ANDROID_PGW"]);
 const terminalNeedsWaitingOverlay = (provider?: string | null) =>
@@ -1498,9 +1498,16 @@ export default function PosDemoPage() {
   };
 
   useEffect(() => {
-    if (!posEnabled) return;
-    scannerInputRef.current?.focus();
-  }, [posEnabled]);
+    if (!posEnabled || view !== "register") return;
+
+    const focusScannerInput = () => {
+      scannerInputRef.current?.focus({ preventScroll: true });
+    };
+
+    focusScannerInput();
+    const animationFrame = window.requestAnimationFrame(focusScannerInput);
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [posEnabled, view]);
 
   useEffect(() => {
     return () => {
@@ -4351,6 +4358,7 @@ export default function PosDemoPage() {
               <Barcode size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 ref={scannerInputRef}
+                autoFocus
                 value={scanBuffer}
                 onChange={(e) => setScanBuffer(e.target.value)}
                 placeholder="Barcode уншуулах эсвэл гараар оруулах"
