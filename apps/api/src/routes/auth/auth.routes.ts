@@ -24,6 +24,10 @@ import {
 import { emailService } from "../../services/email/email.service";
 import { authEmailTemplates } from "../../services/email/templates/auth-email.templates";
 import { recordOrganizationActivity } from "../../services/organization-activity.service";
+import {
+  isPhoneNumberConflict,
+  normalizePhoneNumber,
+} from "../../utils/phone-number";
 
 const router: ExpressRouter = Router();
 const isProduction = process.env.NODE_ENV === "production";
@@ -504,10 +508,7 @@ function normalizeWebIdentifier(email?: string, phone?: string) {
 }
 
 function normalizePhoneDigits(phone?: string | null) {
-  const digits = (phone || "").replace(/[^\d]/g, "");
-  return digits.startsWith("976") && digits.length === 11
-    ? digits.slice(3)
-    : digits;
+  return normalizePhoneNumber(phone) || "";
 }
 
 async function findWebUserByIdentifier(identifier: string, isPhone: boolean) {
@@ -1450,7 +1451,11 @@ router.post("/login", loginAttemptLimiter, async (req, res) => {
 
     let user;
     if (isPhone) {
-      const phone = identifier.trim();
+      const phone = normalizePhoneNumber(identifier);
+
+      if (!phone) {
+        return res.status(400).json({ message: "Утасны дугаар буруу байна" });
+      }
 
       // 1. Profile.phoneNumber-аар хай
       user = await prisma.user.findFirst({
@@ -1854,6 +1859,11 @@ router.post("/web/verify-mn/complete", async (req, res) => {
     return res.json(await toWebAuthResponseWithOrganizations(user, orgInfo));
   } catch (error) {
     console.error("[verify.mn complete error]", error);
+    if (isPhoneNumberConflict(error)) {
+      return res
+        .status(409)
+        .json({ message: "Энэ утасны дугаар бүртгэгдсэн байна." });
+    }
     return res.status(500).json({
       message:
         error instanceof Error
@@ -2341,9 +2351,13 @@ router.put("/web/profile", requireAuth, async (req, res) => {
     }
 
     // Validate phone uniqueness if changed
-    if (phone && phone !== user.profile?.phoneNumber) {
+    const normalizedPhone = normalizePhoneNumber(phone);
+    if (normalizedPhone && normalizedPhone !== user.profile?.phoneNumber) {
       const existing = await prisma.user.findFirst({
-        where: { profile: { phoneNumber: phone.trim() }, id: { not: userId } },
+        where: {
+          profile: { phoneNumber: normalizedPhone },
+          id: { not: userId },
+        },
       });
       if (existing) {
         return res
@@ -2374,7 +2388,7 @@ router.put("/web/profile", requireAuth, async (req, res) => {
                   upsert: {
                     create: {
                       fullName: fullName?.trim() || "",
-                      phoneNumber: phone?.trim() || "",
+                      phoneNumber: normalizedPhone,
                       avatarUrl: avatarUrl?.trim() || null,
                     },
                     update: {
@@ -2382,7 +2396,7 @@ router.put("/web/profile", requireAuth, async (req, res) => {
                         ? { fullName: fullName.trim() }
                         : {}),
                       ...(phone !== undefined
-                        ? { phoneNumber: phone.trim() }
+                        ? { phoneNumber: normalizedPhone }
                         : {}),
                       ...(avatarUrl !== undefined
                         ? { avatarUrl: avatarUrl?.trim() || null }
@@ -2478,6 +2492,11 @@ router.put("/web/profile", requireAuth, async (req, res) => {
     return res.json(toWebUserPayload(updatedUser, orgInfo));
   } catch (error) {
     console.error("[web/profile update error]", error);
+    if (isPhoneNumberConflict(error)) {
+      return res
+        .status(409)
+        .json({ message: "Энэ утасны дугаар бүртгэгдсэн байна" });
+    }
     return res.status(500).json({ message: "Сервер дээр алдаа гарлаа" });
   }
 });
