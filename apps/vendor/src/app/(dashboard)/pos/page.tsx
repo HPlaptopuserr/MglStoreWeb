@@ -262,7 +262,7 @@ function mapEbarimtPayload(payload: AttachEbarimtPayload): NonNullable<PosReceip
   };
 }
 
-const SCAN_GAP_MS = 250;
+const SCAN_GAP_MS = 1_000;
 const EBARIMT_ENABLED = process.env.NEXT_PUBLIC_EBARIMT_ENABLED === "true";
 const LONG_RUNNING_CARD_PROVIDERS = new Set(["PUSH_ECR", "MINU_AGENT", "ANDROID_PGW"]);
 const terminalNeedsWaitingOverlay = (provider?: string | null) =>
@@ -473,13 +473,6 @@ const sumCashCount = (counts: CashDenominationCount[]) =>
 
 const normalizeProductCode = (value: string) => value.trim().replace(/\s+/g, "").toLowerCase();
 
-const productMatchesCode = (product: { id: string; sku?: string | null; barcode?: string | null }, code: string) => {
-  const normalized = normalizeProductCode(code);
-  return [product.sku, product.barcode, product.id].some(
-    (value) => normalizeProductCode(String(value || "")) === normalized,
-  );
-};
-
 const validateCardRegisterConfig = (register: RegisterConfig | null) => {
   if (!register) {
     throw new Error("POS register тохиргоо олдсонгүй");
@@ -557,7 +550,6 @@ export default function PosDemoPage() {
   const [organizationId, setOrganizationId] = useState("");
   const [posAccess, setPosAccess] = useState<"checking" | "enabled" | "disabled">("checking");
   const [multiPriceEnabled, setMultiPriceEnabled] = useState(false);
-  const [scanBuffer, setScanBuffer] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [lastScannedCode, setLastScannedCode] = useState("");
   const [scanMessage, setScanMessage] = useState("");
@@ -1699,13 +1691,22 @@ export default function PosDemoPage() {
           (loyaltyRedeemSession?.status === "CONFIRMED" &&
             loyaltyRedeemSession.requestedPoints === Math.floor(loyalty.redeemPoints || 0)))));
 
+  const productCodeIndex = useMemo(() => {
+    const index = new Map<string, (typeof products)[number]>();
+    for (const product of products) {
+      for (const value of [product.sku, product.barcode, product.id]) {
+        const code = normalizeProductCode(String(value || ""));
+        if (code && !index.has(code)) index.set(code, product);
+      }
+    }
+    return index;
+  }, [products]);
+
   const selectedByCode = useMemo(() => {
     if (!lastScannedCode) return null;
-    const normalized = lastScannedCode.trim().toLowerCase();
-    return (
-      products.find((item) => productMatchesCode(item, normalized)) || null
-    );
-  }, [products, lastScannedCode]);
+    const normalized = normalizeProductCode(lastScannedCode);
+    return productCodeIndex.get(normalized) || null;
+  }, [lastScannedCode, productCodeIndex]);
 
   const resetCreditRepaymentMode = () => {
     if (cardPaymentRunRef.current) {
@@ -1744,7 +1745,9 @@ export default function PosDemoPage() {
     unknownBarcode.close();
     reloadProducts();
     setSearchInput("");
-    setScanBuffer("");
+    keyBufferRef.current = "";
+    lastKeyTsRef.current = 0;
+    if (scannerInputRef.current) scannerInputRef.current.value = "";
     setScanStatus("success");
     setScanMessage(`Өөрийн санд оруулаад сагсанд нэмлээ: ${product.name}`);
     scannerInputRef.current?.focus();
@@ -1960,7 +1963,7 @@ export default function PosDemoPage() {
 
     setLastScannedCode(normalized);
 
-    const found = products.find((item) => productMatchesCode(item, normalized));
+    const found = productCodeIndex.get(normalizeProductCode(normalized));
 
     if (!found) {
       setSearchInput(normalized);
@@ -1978,7 +1981,9 @@ export default function PosDemoPage() {
     }
 
     setSearchInput("");
-    setScanBuffer("");
+    keyBufferRef.current = "";
+    lastKeyTsRef.current = 0;
+    if (scannerInputRef.current) scannerInputRef.current.value = "";
     setScanMessage(`Амжилттай сагсанд нэмэгдлээ: ${found.name}`);
     setScanStatus("success");
     scannerInputRef.current?.focus();
@@ -2009,16 +2014,20 @@ export default function PosDemoPage() {
 
       if (event.key === "Enter") {
         if (keyBufferRef.current.length > 0) {
-          processScan(keyBufferRef.current);
+          const code = keyBufferRef.current;
           keyBufferRef.current = "";
-          setScanBuffer("");
+          lastKeyTsRef.current = 0;
+          if (scannerInputRef.current) scannerInputRef.current.value = "";
+          processScan(code);
         }
         return;
       }
 
       if (event.key.length === 1) {
         keyBufferRef.current += event.key;
-        setScanBuffer(keyBufferRef.current);
+        if (scannerInputRef.current) {
+          scannerInputRef.current.value = keyBufferRef.current;
+        }
       }
     };
 
@@ -2028,8 +2037,11 @@ export default function PosDemoPage() {
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    processScan(scanBuffer);
-    setScanBuffer("");
+    const code = scannerInputRef.current?.value || keyBufferRef.current;
+    keyBufferRef.current = "";
+    lastKeyTsRef.current = 0;
+    if (scannerInputRef.current) scannerInputRef.current.value = "";
+    processScan(code);
   };
 
   const completePaidSale = (finalReceipt: PosReceipt, finalMessage: string, isCreditSale: boolean) => {
@@ -4359,8 +4371,21 @@ export default function PosDemoPage() {
               <input
                 ref={scannerInputRef}
                 autoFocus
-                value={scanBuffer}
-                onChange={(e) => setScanBuffer(e.target.value)}
+                defaultValue=""
+                onChange={(event) => {
+                  keyBufferRef.current = event.currentTarget.value;
+                  lastKeyTsRef.current = Date.now();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Enter") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const code = event.currentTarget.value;
+                  event.currentTarget.value = "";
+                  keyBufferRef.current = "";
+                  lastKeyTsRef.current = 0;
+                  processScan(code);
+                }}
                 placeholder="Barcode уншуулах эсвэл гараар оруулах"
                 className="h-12 w-full rounded-lg border-2 border-blue-500 bg-white pl-12 pr-4 text-base font-bold tracking-wide text-slate-950 outline-none transition focus:ring-4 focus:ring-blue-100"
               />
@@ -4369,7 +4394,9 @@ export default function PosDemoPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setScanBuffer("");
+                  keyBufferRef.current = "";
+                  lastKeyTsRef.current = 0;
+                  if (scannerInputRef.current) scannerInputRef.current.value = "";
                   setLastScannedCode("");
                   setScanMessage("");
                   setScanStatus("idle");
