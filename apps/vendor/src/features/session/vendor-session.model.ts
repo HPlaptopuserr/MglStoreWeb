@@ -92,7 +92,7 @@ export function canAccessVendorPath(mode: VendorAccessMode, pathname: string) {
   if (mode === "member") return pathname === "/dashboard";
   return (
     mode === "owner" ||
-    ["/pos", "/inventory"].some(
+    ["/pos", "/inventory", "/goods-receipts"].some(
       (path) => pathname === path || pathname.startsWith(`${path}/`),
     )
   );

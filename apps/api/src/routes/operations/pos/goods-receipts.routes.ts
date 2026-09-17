@@ -5,8 +5,7 @@ import {
   adjustStock,
   resolveOrgWarehouse,
 } from "../../../services/inventory.service";
-import { hasOrgMembership } from "../../../services/permission.service";
-import { requirePosUser } from "./_shared";
+import { canAccessPosOrganization, requirePosUser } from "./_shared";
 import { parsePosGoodsReceiptInput } from "./goods-receipt";
 import { fromPosStoredStockQuantity } from "@mgl/types";
 
@@ -42,11 +41,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
       return res.status(409).json({ message: "POS касс идэвхгүй байна" });
     }
 
-    if (
-      actor.role !== "ADMIN" &&
-      actor.role !== "SUPER_ADMIN" &&
-      !(await hasOrgMembership(actor.id, register.organizationId))
-    ) {
+    if (!canAccessPosOrganization(actor, register.organizationId)) {
       return res
         .status(403)
         .json({ message: "Энэ кассаар бараа хүлээн авах эрхгүй байна" });

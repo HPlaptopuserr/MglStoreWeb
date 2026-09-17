@@ -7,6 +7,7 @@ import {
   VendorSessionExpiredError,
 } from "./vendor-session.api";
 import {
+  canAccessVendorPath,
   canSwitchToOrganization,
   organizationDestination,
   parseVendorSessionUser,
@@ -263,4 +264,15 @@ test("active sales representatives can switch stores without gaining owner or ca
     }),
     true,
   );
+});
+
+test("cashiers can receive goods without accessing employee or store administration", () => {
+  assert.equal(canAccessVendorPath("cashier", "/goods-receipts"), true);
+  assert.equal(
+    organizationDestination("cashier", "/goods-receipts"),
+    "/goods-receipts",
+  );
+  assert.equal(canAccessVendorPath("member", "/goods-receipts"), false);
+  assert.equal(canAccessVendorPath("cashier", "/employees"), false);
+  assert.equal(canAccessVendorPath("cashier", "/goods-receipts-other"), false);
 });

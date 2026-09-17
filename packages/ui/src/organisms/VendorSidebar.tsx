@@ -222,6 +222,12 @@ const CASHIER_NAV_GROUPS: AppSidebarGroup[] = [
         href: "/inventory",
         icon: PackageSearch,
       },
+      {
+        id: "goods-receipts",
+        label: "Бараа хүлээж авах",
+        href: "/goods-receipts",
+        icon: PackagePlus,
+      },
     ],
   },
 ];

@@ -1,5 +1,8 @@
 "use client";
 
+import { canBecomeVendorOwner } from "./vendor-owner-policy";
+import { VendorOwnerDialog } from "./VendorOwnerDialog";
+
 import { useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import {
@@ -113,13 +116,16 @@ function MemberStatusPill({ member }: { member: VendorLoginMember }) {
 export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
   const members = partner.members ?? [];
   const primaryOwner = useMemo(
-    () => members.find((member) => member.isPrimary || member.role === "OWNER") ?? members[0],
+    () => members.find((member) => member.role === "OWNER"),
     [members],
   );
   const memberUserIds = useMemo(
     () => members.map((member) => member.userId),
     [members],
   );
+  const [ownerCandidate, setOwnerCandidate] = useState<VendorLoginMember | null>(null);
+  const [ownerError, setOwnerError] = useState("");
+  const [ownerNotice, setOwnerNotice] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [tempPasswords, setTempPasswords] = useState<Record<string, string>>({});
   const [inviteLinks, setInviteLinks] = useState<Record<string, string>>({});
@@ -187,7 +193,8 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
   };
 
   const makeOwner = async (member: VendorLoginMember) => {
-    if (!confirm(`${member.fullName || member.email} хэрэглэгчийг owner болгох уу?`)) return;
+    if (busyAction || !canBecomeVendorOwner(member)) return;
+    setOwnerError("");
     const key = `owner:${member.userId}`;
     setBusyAction(key);
     try {
@@ -196,9 +203,12 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) throw new Error(data?.message || "Owner солиход алдаа гарлаа");
-      onMembersUpdated(data.members ?? []);
+      if (!Array.isArray(data?.members)) throw new Error("Эрхийн мэдээлэл бүрэн ирсэнгүй. Дахин шалгана уу.");
+      onMembersUpdated(data.members);
+      setOwnerCandidate(null);
+      setOwnerNotice("Дэлгүүрийн эзэмшигчийг амжилттай сольлоо.");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Owner солиход алдаа гарлаа");
+      setOwnerError(error instanceof Error ? error.message : "Owner солиход алдаа гарлаа");
     } finally {
       setBusyAction(null);
     }
@@ -448,6 +458,15 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
 
   return (
     <section className="overflow-hidden rounded-2xl border border-indigo-100 bg-white shadow-sm">
+      {ownerNotice && <p role="status" className="border-b border-emerald-100 bg-emerald-50 px-5 py-3 text-sm text-emerald-800">{ownerNotice}</p>}
+      {ownerCandidate && <VendorOwnerDialog
+        member={ownerCandidate}
+        currentOwner={primaryOwner}
+        busy={busyAction !== null}
+        error={ownerError}
+        onCancel={() => setOwnerCandidate(null)}
+        onConfirm={() => void makeOwner(ownerCandidate)}
+      />}
       <div className="border-b border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-amber-50 px-5 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -636,7 +655,6 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
                           value={member.role}
                           disabled={
                             member.role === "OWNER" ||
-                            Boolean(member.isPrimary) ||
                             busyAction === `role:${member.userId}`
                           }
                           onChange={(event) => changeRole(member, event.target.value)}
@@ -667,8 +685,9 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
                         Invite link
                       </button>
                       <button
-                        onClick={() => makeOwner(member)}
-                        disabled={Boolean(member.isPrimary) || busyAction === `owner:${member.userId}`}
+                        type="button"
+                        onClick={() => { setOwnerError(""); setOwnerNotice(""); setOwnerCandidate(member); }}
+                        disabled={!canBecomeVendorOwner(member) || Boolean(busyAction)}
                         className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-black text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {busyAction === `owner:${member.userId}` ? <Loader2 size={14} className="animate-spin" /> : <Crown size={14} />}
