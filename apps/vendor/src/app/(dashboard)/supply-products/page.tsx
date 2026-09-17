@@ -15,6 +15,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { API } from "@/lib/api";
+import { clearVendorSessionIfCurrent } from "@/lib/vendor-session-storage";
 
 type CatalogCategory = {
   name: string;
@@ -102,9 +103,9 @@ export default function SupplyProductsPage() {
           },
         );
         if (res.status === 401) {
-          localStorage.removeItem("vendor_token");
-          localStorage.removeItem("vendor_user");
-          router.replace("/login");
+          if (clearVendorSessionIfCurrent(localStorage, token)) {
+            router.replace("/login");
+          }
           return;
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -119,7 +120,7 @@ export default function SupplyProductsPage() {
     };
 
     load();
-  }, [retryKey]);
+  }, [retryKey, router]);
 
   const filteredItems = useMemo(() => {
     const list = data?.items || [];

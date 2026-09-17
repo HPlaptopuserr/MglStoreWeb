@@ -1,5 +1,7 @@
 "use client";
 
+import { clearVendorSessionIfCurrent } from "@/lib/vendor-session-storage";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -202,9 +204,9 @@ export default function Dashboard() {
     })
       .then((r) => {
         if (r.status === 401) {
-          localStorage.removeItem("vendor_token");
-          localStorage.removeItem("vendor_user");
-          router.replace("/login");
+          if (clearVendorSessionIfCurrent(localStorage, token)) {
+            router.replace("/login");
+          }
           return;
         }
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
