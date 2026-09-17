@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { DashboardLayout } from "@mgl/ui";
 import { NotificationDropdown } from "@/components/organisms/NotificationDropdown";
 import VendorTutorialButton from "@/components/organisms/VendorTutorialButton";
@@ -25,12 +25,23 @@ type VendorOrganization = {
   role: string;
 };
 
+type VendorAccessMode = "owner" | "cashier";
+
+const CASHIER_ALLOWED_PATHS = ["/pos", "/inventory"] as const;
+
+function canCashierAccess(pathname: string) {
+  return CASHIER_ALLOWED_PATHS.some(
+    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  );
+}
+
 export default function VendorDashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isReady, setIsReady] = useState(false);
   const [showPos, setShowPos] = useState(false);
   const [showSupplyProducts, setShowSupplyProducts] = useState(false);
@@ -40,6 +51,7 @@ export default function VendorDashboardLayout({
   const [organizations, setOrganizations] = useState<VendorOrganization[]>([]);
   const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
   const [isSwitchingOrganization, setIsSwitchingOrganization] = useState(false);
+  const [accessMode, setAccessMode] = useState<VendorAccessMode | null>(null);
   const [userData, setUserData] = useState({
     name: "Vendor",
     email: "vendor@mglstore.mn",
@@ -89,6 +101,21 @@ export default function VendorDashboardLayout({
           organizationName:
             storedUser.organizationName || me.organizationName || "",
         };
+        const capabilities = Array.isArray(me.capabilities)
+          ? (me.capabilities as string[])
+          : [];
+        const nextAccessMode: VendorAccessMode =
+          me.orgRole === "OWNER" ? "owner" : "cashier";
+
+        if (
+          nextAccessMode === "cashier" &&
+          !capabilities.includes("POS_CASHIER")
+        ) {
+          clearSession();
+          return;
+        }
+
+        setAccessMode(nextAccessMode);
         localStorage.setItem("vendor_user", JSON.stringify(nextUser));
         setOrganizations(
           Array.isArray(me.organizations) ? me.organizations : [],
@@ -96,10 +123,19 @@ export default function VendorDashboardLayout({
         setSelectedOrganizationId(me.organizationId || "");
 
         setUserData({
-          name: nextUser.name || nextUser.fullName || "Vendor",
+          name:
+            nextUser.fullName || nextUser.name || nextUser.email || "Vendor",
           email: nextUser.email || "vendor@mglstore.mn",
-          role: nextUser.role || "VENDOR",
-          initials: (nextUser.name || nextUser.fullName || "VN")
+          role:
+            nextAccessMode === "cashier"
+              ? "Кассын ажилтан"
+              : "Дэлгүүрийн эзэмшигч",
+          initials: (
+            nextUser.fullName ||
+            nextUser.name ||
+            nextUser.email ||
+            "VN"
+          )
             .slice(0, 2)
             .toUpperCase(),
           organizationName: nextUser.organizationName || "",
@@ -152,6 +188,12 @@ export default function VendorDashboardLayout({
     hydrateSession();
   }, [router]);
 
+  useEffect(() => {
+    if (isReady && accessMode === "cashier" && !canCashierAccess(pathname)) {
+      router.replace("/pos");
+    }
+  }, [accessMode, isReady, pathname, router]);
+
   const handleOrganizationChange = async (organizationId: string) => {
     const currentToken = localStorage.getItem("vendor_token");
     if (
@@ -200,7 +242,7 @@ export default function VendorDashboardLayout({
 
   return (
     <>
-      <VendorUpdateAnnouncement />
+      {accessMode === "owner" && <VendorUpdateAnnouncement />}
       <DashboardLayout
         variant="vendor"
         onSignOut={handleLogout}
@@ -214,7 +256,12 @@ export default function VendorDashboardLayout({
         showPreorderProducts={showPreorderProducts}
         showServicePosts={showServicePosts}
         showContractArchive={showContractArchive}
-        vendorBottomSlot={<VendorTutorialButton variant="sidebar" />}
+        vendorAccessMode={accessMode || "owner"}
+        vendorBottomSlot={
+          accessMode === "owner" ? (
+            <VendorTutorialButton variant="sidebar" />
+          ) : undefined
+        }
         notificationComponent={
           <>
             {organizations.length > 1 && (

@@ -26,7 +26,6 @@ const ORG_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     Permission.MANAGE_SERVICES,
   ],
   ADMIN: [
-    Permission.MANAGE_ORG_MEMBERS,
     Permission.MANAGE_PRODUCTS,
     Permission.APPROVE_PRODUCTS,
     Permission.MANAGE_ORDERS,
@@ -40,14 +39,8 @@ const ORG_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     Permission.MANAGE_SERVICES,
   ],
   STAFF: [
-    Permission.VIEW_ORDERS,
-    Permission.REQUEST_STOCK,
-    Permission.VIEW_ORG_DASHBOARD,
   ],
-  VIEWER: [
-    Permission.VIEW_ORDERS,
-    Permission.VIEW_ORG_DASHBOARD,
-  ],
+  VIEWER: [],
 };
 
 /** Capability → additional permissions granted */
@@ -60,7 +53,7 @@ const CAPABILITY_PERMISSIONS: Record<string, Permission[]> = {
 
 // ─── Helpers ────────────────────────────────────────────────────────────
 
-function buildPermissionSet(role: string, capabilities: string[]): Set<Permission> {
+export function buildPermissionSet(role: string, capabilities: string[]): Set<Permission> {
   const perms = new Set<Permission>();
   for (const p of ORG_ROLE_PERMISSIONS[role] || []) perms.add(p);
   for (const cap of capabilities) {

@@ -2,6 +2,7 @@ import { Router, type Router as ExpressRouter } from "express";
 import { prisma, Capability, PlatformRole } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import bcrypt from "bcryptjs";
+import storeEmployeeRoutes from "./store-employees.routes";
 import { Permission } from "@mgl/types";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import {
@@ -10,6 +11,7 @@ import {
 } from "../../services/permission.service";
 
 const router: ExpressRouter = Router();
+router.use(storeEmployeeRoutes);
 
 const VALID_ROLES = ["OWNER", "ADMIN", "STAFF", "VIEWER"] as const;
 type OrgRole = (typeof VALID_ROLES)[number];
@@ -193,6 +195,9 @@ router.post(
         .status(403)
         .json({ message: "Энэ байгууллагад хандах эрхгүй" });
     }
+    if (callerRole !== "OWNER") {
+      return res.status(403).json({ message: "Ажилтныг зөвхөн дэлгүүрийн эзэмшигч нэмнэ" });
+    }
 
     // Determine target role — caller cannot assign equal or higher role
     let targetRole: OrgRole = "STAFF";
@@ -357,6 +362,9 @@ router.patch("/org/members/:memberId/role", requireAuth, async (req, res) => {
         .status(403)
         .json({ message: "Энэ байгууллагад хандах эрхгүй" });
     }
+    if (callerRole !== "OWNER") {
+      return res.status(403).json({ message: "Ажилтны эрхийг зөвхөн дэлгүүрийн эзэмшигч өөрчилнө" });
+    }
 
     // Cannot change own role
     if (targetMember.userId === user.userId) {
@@ -445,6 +453,9 @@ router.delete("/org/members/:memberId", requireAuth, async (req, res) => {
         .status(403)
         .json({ message: "Энэ байгууллагад хандах эрхгүй" });
     }
+    if (callerRole !== "OWNER") {
+      return res.status(403).json({ message: "Ажилтныг зөвхөн дэлгүүрийн эзэмшигч хасна" });
+    }
 
     // Can only remove people at lower level
     if (ROLE_LEVEL[targetMember.role as OrgRole] <= ROLE_LEVEL[callerRole]) {
@@ -504,6 +515,9 @@ router.patch("/org/members/:memberId/toggle", requireAuth, async (req, res) => {
       return res
         .status(403)
         .json({ message: "Энэ байгууллагад хандах эрхгүй" });
+    }
+    if (callerRole !== "OWNER") {
+      return res.status(403).json({ message: "Ажилтны төлөвийг зөвхөн дэлгүүрийн эзэмшигч өөрчилнө" });
     }
 
     if (ROLE_LEVEL[targetMember.role as OrgRole] <= ROLE_LEVEL[callerRole]) {
@@ -576,6 +590,9 @@ router.patch("/org/members/:memberId", requireAuth, async (req, res) => {
     }
 
     const isSelf = targetMember.userId === user.userId;
+    if (callerRole !== "OWNER" && !isSelf) {
+      return res.status(403).json({ message: "Ажилтны мэдээллийг зөвхөн дэлгүүрийн эзэмшигч засна" });
+    }
     const canManageTarget =
       ROLE_LEVEL[targetMember.role as OrgRole] > ROLE_LEVEL[callerRole];
     if (!isSelf && !canManageTarget) {

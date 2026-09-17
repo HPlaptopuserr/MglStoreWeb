@@ -20,6 +20,7 @@ export interface DashboardLayoutProps extends Partial<SidebarProps> {
   showPreorderProducts?: boolean;
   showServicePosts?: boolean;
   showContractArchive?: boolean;
+  vendorAccessMode?: "owner" | "cashier";
   vendorBottomSlot?: ReactNode;
   notificationComponent?: ReactNode;
 }
@@ -37,6 +38,7 @@ export function DashboardLayout({
   showPreorderProducts,
   showServicePosts,
   showContractArchive,
+  vendorAccessMode = "owner",
   vendorBottomSlot,
   notificationComponent,
   ...sidebarProps
@@ -64,7 +66,7 @@ export function DashboardLayout({
       {isVendor && (
         <VendorSidebar
           onSignOut={onSignOut}
-          userName={organizationName || userName}
+          userName={userName}
           userRole={userRole}
           userInitials={userInitials}
           showPos={showPos}
@@ -72,6 +74,7 @@ export function DashboardLayout({
           showPreorderProducts={showPreorderProducts}
           showServicePosts={showServicePosts}
           showContractArchive={showContractArchive}
+          accessMode={vendorAccessMode}
           bottomSlot={vendorBottomSlot}
           mobileOpen={mobileMenuOpen}
           onMobileClose={() => setMobileMenuOpen(false)}

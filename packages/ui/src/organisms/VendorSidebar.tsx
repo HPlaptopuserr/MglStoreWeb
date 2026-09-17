@@ -151,6 +151,12 @@ const VENDOR_NAV_GROUPS: Array<
         icon: ClipboardList,
         children: [
           {
+            id: "employees",
+            label: "Ажилтнууд",
+            href: "/employees",
+            icon: Users,
+          },
+          {
             id: "contract-archive",
             label: "Гэрээний архив",
             href: "/contracts",
@@ -198,6 +204,28 @@ const VENDOR_BOTTOM_GROUPS: AppSidebarGroup[] = [
   },
 ];
 
+const CASHIER_NAV_GROUPS: AppSidebarGroup[] = [
+  {
+    id: "cashier-work",
+    title: "Кассын ажил",
+    items: [
+      {
+        id: "pos",
+        label: "POS касс",
+        href: "/pos",
+        icon: ScanLine,
+        tone: "success",
+      },
+      {
+        id: "inventory",
+        label: "Барааны үлдэгдэл",
+        href: "/inventory",
+        icon: PackageSearch,
+      },
+    ],
+  },
+];
+
 const VENDOR_SIDEBAR_COLLAPSED_KEY = "vendor_sidebar_collapsed";
 
 export interface VendorSidebarProps {
@@ -210,6 +238,7 @@ export interface VendorSidebarProps {
   showPreorderProducts?: boolean;
   showServicePosts?: boolean;
   showContractArchive?: boolean;
+  accessMode?: "owner" | "cashier";
   bottomSlot?: ReactNode;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
@@ -301,6 +330,7 @@ export function VendorSidebar({
   showPreorderProducts = false,
   showServicePosts = false,
   showContractArchive = false,
+  accessMode = "owner",
   bottomSlot,
   mobileOpen = false,
   onMobileClose,
@@ -329,8 +359,10 @@ export function VendorSidebar({
   }, [pathname]);
 
   const groups = useMemo(
-    () =>
-      VENDOR_NAV_GROUPS.map((group) => ({
+    () => {
+      if (accessMode === "cashier") return CASHIER_NAV_GROUPS;
+
+      return VENDOR_NAV_GROUPS.map((group) => ({
         ...group,
         items: group.items
           .map((item) =>
@@ -343,7 +375,8 @@ export function VendorSidebar({
             }),
           )
           .filter((item): item is VendorNavItem => Boolean(item)),
-      })).filter((group) => group.items.length > 0),
+      })).filter((group) => group.items.length > 0);
+    },
     [
       pathname,
       productType,
@@ -352,6 +385,7 @@ export function VendorSidebar({
       showServicePosts,
       showContractArchive,
       showSupplyProducts,
+      accessMode,
     ],
   );
 
@@ -386,7 +420,7 @@ export function VendorSidebar({
         userInitials={profileInitials}
         groups={groups}
         bottomSlot={bottomSlot}
-        bottomGroups={VENDOR_BOTTOM_GROUPS}
+        bottomGroups={accessMode === "owner" ? VENDOR_BOTTOM_GROUPS : []}
         collapsed={isCollapsed}
         onCollapsedChange={handleCollapsedChange}
         onSignOut={onSignOut}
