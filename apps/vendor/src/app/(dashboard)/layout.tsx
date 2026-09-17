@@ -10,6 +10,7 @@ import { useVendorSession } from "@/features/session/useVendorSession";
 import { MemberWorkspace } from "@/features/session/MemberWorkspace";
 import {
   canAccessVendorPath,
+  canSwitchToOrganization,
   organizationDestination,
 } from "@/features/session/vendor-session.model";
 import { VendorOrganizationSwitcher } from "@/features/session/VendorOrganizationSwitcher";
@@ -71,14 +72,21 @@ export default function VendorDashboardLayout({
     );
 
   const { user, settings } = state;
-  const selector = (
+  const availableOrganizations = user.organizations.filter(
+    canSwitchToOrganization,
+  );
+  const hasOtherOrganization = availableOrganizations.some(
+    (organization) => organization.id !== user.organizationId,
+  );
+  const isPosRoute = pathname === "/pos" || pathname.startsWith("/pos/");
+  const selector = hasOtherOrganization ? (
     <VendorOrganizationSwitcher
-      organizations={user.organizations}
+      organizations={availableOrganizations}
       selectedId={user.organizationId}
       disabled={switching}
       onChange={(id) => void switchOrganization(id)}
     />
-  );
+  ) : null;
   if (!mode || !user.organizationId)
     return (
       <VendorSessionFeedback
@@ -133,11 +141,24 @@ export default function VendorDashboardLayout({
         }
         notificationComponent={
           <>
-            {user.organizations.length > 1 && selector}
+            {selector}
             {mode === "owner" && <NotificationDropdown />}
           </>
         }
       >
+        {isPosRoute && hasOtherOrganization && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                Дэлгүүр солих
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Эрхтэй дэлгүүрээ сонгож шилжинэ үү.
+              </p>
+            </div>
+            {selector}
+          </div>
+        )}
         {switchError && (
           <div
             role="alert"
