@@ -55,6 +55,15 @@ export const employeeApi = {
         assignment: "POS_CASHIER",
       }),
     }),
+  grantCashier: (organizationId: string, memberId: string) =>
+    employeeRequest(
+      `/${encodeURIComponent(memberId)}/assign-cashier`,
+      parseStoreEmployee,
+      {
+        method: "POST",
+        body: JSON.stringify({ organizationId }),
+      },
+    ),
   setStatus: (organizationId: string, memberId: string, isActive: boolean) =>
     employeeRequest(
       `/${encodeURIComponent(memberId)}/status`,

@@ -205,6 +205,29 @@ export async function assignStoreCashier(
   });
 }
 
+async function requireStoreEmployee(
+  db: Prisma.TransactionClient,
+  organizationId: string,
+  memberId: string,
+) {
+  const member = await db.organizationMember.findFirst({
+    where: { id: memberId, organizationId, deletedAt: null },
+    select: {
+      ...employeeSelect,
+      user: {
+        select: {
+          ...employeeSelect.user.select,
+          isActive: true,
+          deletedAt: true,
+        },
+      },
+    },
+  });
+  if (!member)
+    throw new StoreEmployeeError(404, "Ажилтан энэ дэлгүүрт бүртгэлгүй байна.");
+  return member;
+}
+
 export async function setStoreEmployeeStatus(
   actorId: string,
   organizationId: string,
@@ -213,24 +236,7 @@ export async function setStoreEmployeeStatus(
 ) {
   return withMembershipTransaction(async (db) => {
     const organization = await requireStoreOwner(db, actorId, organizationId);
-    const member = await db.organizationMember.findFirst({
-      where: { id: memberId, organizationId, deletedAt: null },
-      select: {
-        ...employeeSelect,
-        user: {
-          select: {
-            ...employeeSelect.user.select,
-            isActive: true,
-            deletedAt: true,
-          },
-        },
-      },
-    });
-    if (!member)
-      throw new StoreEmployeeError(
-        404,
-        "Ажилтан энэ дэлгүүрт бүртгэлгүй байна.",
-      );
+    const member = await requireStoreEmployee(db, organizationId, memberId);
     if (member.role === "OWNER" || member.userId === actorId)
       throw new StoreEmployeeError(
         403,
@@ -248,6 +254,36 @@ export async function setStoreEmployeeStatus(
       await db.organizationMember.update({
         where: { id: memberId },
         data: { isActive },
+        select: employeeSelect,
+      }),
+    );
+  });
+}
+
+export async function grantStoreCashierAccess(
+  actorId: string,
+  organizationId: string,
+  memberId: string,
+) {
+  return withMembershipTransaction(async (db) => {
+    await requireStoreOwner(db, actorId, organizationId);
+    const member = await requireStoreEmployee(db, organizationId, memberId);
+    if (member.role === "OWNER" || member.userId === actorId)
+      throw new StoreEmployeeError(
+        403,
+        "Эзэмшигчийн эрхийг өөрчлөх шаардлагагүй.",
+      );
+    if (!member.isActive || !member.user.isActive || member.user.deletedAt)
+      throw new StoreEmployeeError(
+        409,
+        "Эхлээд ажилтны болон хувийн бүртгэлийн эрхийг сэргээнэ үү.",
+      );
+    if (member.capabilities.includes("POS_CASHIER"))
+      return serializeEmployee(member);
+    return serializeEmployee(
+      await db.organizationMember.update({
+        where: { id: member.id },
+        data: { capabilities: [...member.capabilities, "POS_CASHIER"] },
         select: employeeSelect,
       }),
     );

@@ -3,6 +3,7 @@ import { afterEach, mock, test, type Mock } from "node:test";
 import { prisma, Prisma } from "@mgl/database";
 import {
   assignStoreCashier,
+  grantStoreCashierAccess,
   searchStorePersonalAccounts,
   setStoreEmployeeStatus,
   StoreEmployeeError,
@@ -309,5 +310,58 @@ test("serialization conflicts are retried and unique collisions produce a confli
   await assert.rejects(
     assignStoreCashier("owner", "store", "personal-user"),
     status(409),
+  );
+});
+
+test("existing staff gain cashier access without replacing their other permissions or role", async () => {
+  mockStore({
+    target: { ...employee, department: "Борлуулалт", capabilities: ["SALES"] },
+  });
+  const update = mockMethod(
+    prisma.organizationMember,
+    "update",
+    async () => employee,
+  );
+  await grantStoreCashierAccess("owner", "store", "member");
+  assert.deepEqual(update.mock.calls[0]?.arguments[0]?.data, {
+    capabilities: ["SALES", "POS_CASHIER"],
+  });
+  assert.deepEqual(update.mock.calls[0]?.arguments[0]?.where, { id: "member" });
+});
+test("only the store owner can grant access and only to a member of that store", async () => {
+  mockStore({ owner: false });
+  await assert.rejects(
+    grantStoreCashierAccess("staff", "store", "member"),
+    status(403),
+  );
+  mockStore({ target: null });
+  await assert.rejects(
+    grantStoreCashierAccess("owner", "store", "foreign-member"),
+    status(404),
+  );
+});
+test("cashier grants do not reactivate disabled memberships or personal accounts", async () => {
+  for (const target of [
+    { ...employee, isActive: false },
+    { ...employee, user: { ...employee.user, isActive: false } },
+  ]) {
+    mockStore({ target });
+    await assert.rejects(
+      grantStoreCashierAccess("owner", "store", "member"),
+      status(409),
+    );
+  }
+});
+test("cashier grants are idempotent and cannot alter owner memberships", async () => {
+  mockStore();
+  const update = mockMethod(prisma.organizationMember, "update", async () => {
+    throw new Error("No duplicate write");
+  });
+  await grantStoreCashierAccess("owner", "store", "member");
+  assert.equal(update.mock.callCount(), 0);
+  mockStore({ target: { ...employee, role: "OWNER" } });
+  await assert.rejects(
+    grantStoreCashierAccess("owner", "store", "member"),
+    status(403),
   );
 });

@@ -10,8 +10,10 @@ import { EmployeeAvatar } from "./EmployeePrimitives";
 export function EmployeeRow({
   employee,
   onStatusChange,
+  onGrantCashier,
 }: {
   employee: StoreEmployee;
+  onGrantCashier: (employee: StoreEmployee) => void;
   onStatusChange: (employee: StoreEmployee) => void;
 }) {
   const isOwner = employee.role === "OWNER";
@@ -66,7 +68,18 @@ export function EmployeeRow({
         />
         {employee.isActive ? "Идэвхтэй" : "Түр хаалттай"}
       </span>
-      <div className="flex justify-end">
+      <div className="flex flex-col items-end gap-2">
+        {!isOwner &&
+          employee.isActive &&
+          !employee.capabilities.includes("POS_CASHIER") && (
+            <button
+              type="button"
+              onClick={() => onGrantCashier(employee)}
+              className="min-h-10 rounded-lg bg-blue-50 px-2.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-blue-600"
+            >
+              Кассын эрх олгох
+            </button>
+          )}
         {isOwner ? (
           <span className="inline-flex items-center gap-1.5 text-xs text-slate-400">
             <LockKeyhole className="size-3.5" aria-hidden="true" />

@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import {
   assignStoreCashier,
+  grantStoreCashierAccess,
   searchStorePersonalAccounts,
   setStoreEmployeeStatus,
   StoreEmployeeError,
@@ -38,11 +39,9 @@ function handleError(res: Response, error: unknown) {
   if (error instanceof StoreEmployeeError)
     return res.status(error.status).json({ message: error.message });
   console.error("store employees error", error);
-  return res
-    .status(500)
-    .json({
-      message: "Үйлдлийг гүйцэтгэж чадсангүй. Түр хүлээгээд дахин оролдоно уу.",
-    });
+  return res.status(500).json({
+    message: "Үйлдлийг гүйцэтгэж чадсангүй. Түр хүлээгээд дахин оролдоно уу.",
+  });
 }
 
 router.get(
@@ -110,5 +109,28 @@ router.patch("/org/members/:memberId/status", requireAuth, async (req, res) => {
     return handleError(res, error);
   }
 });
+
+router.post(
+  "/org/members/:memberId/assign-cashier",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const body = req.body as Record<string, unknown> | undefined;
+      const organizationId = requiredText(
+        body?.organizationId,
+        "Дэлгүүрийн мэдээлэл",
+      );
+      return res.json(
+        await grantStoreCashierAccess(
+          actorId(req),
+          organizationId,
+          req.params.memberId,
+        ),
+      );
+    } catch (error) {
+      return handleError(res, error);
+    }
+  },
+);
 
 export default router;

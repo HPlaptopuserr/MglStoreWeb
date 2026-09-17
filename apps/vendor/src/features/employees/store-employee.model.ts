@@ -30,14 +30,13 @@ export function employeeJob(employee: StoreEmployee) {
 
 export function employeeAccess(employee: StoreEmployee) {
   if (employee.role === "OWNER") return "Дэлгүүрийн бүх эрх";
-  if (employee.role === "ADMIN") return "Борлуулалт, бараа, захиалга";
   if (employee.capabilities.includes("POS_CASHIER")) {
     return employee.capabilities.length > 1
       ? "POS касс болон нэмэлт эрх"
       : "POS касс · Барааны үлдэгдэл";
   }
   return employee.capabilities.length
-    ? "Тусгай эрх оноосон"
+    ? "Кассын эрхгүй · Бусад ажлын эрхтэй"
     : "Кассын эрх оноогоогүй";
 }
 

@@ -22,11 +22,13 @@ export function EmployeeDirectory({
   summary,
   loading,
   onStatusChange,
+  onGrantCashier,
   onAdd,
 }: {
   employees: StoreEmployee[];
   summary: EmployeeSummary;
   loading: boolean;
+  onGrantCashier: (employee: StoreEmployee) => void;
   onStatusChange: (employee: StoreEmployee) => void;
   onAdd: () => void;
 }) {
@@ -143,6 +145,7 @@ export function EmployeeDirectory({
                 key={employee.id}
                 employee={employee}
                 onStatusChange={onStatusChange}
+                onGrantCashier={onGrantCashier}
               />
             ))}
           </ul>
