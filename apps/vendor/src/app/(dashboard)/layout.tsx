@@ -7,7 +7,11 @@ import { NotificationDropdown } from "@/components/organisms/NotificationDropdow
 import VendorTutorialButton from "@/components/organisms/VendorTutorialButton";
 import { VendorUpdateAnnouncement } from "@/components/organisms/VendorUpdateAnnouncement";
 import { useVendorSession } from "@/features/session/useVendorSession";
-import { canAccessVendorPath } from "@/features/session/vendor-session.model";
+import { MemberWorkspace } from "@/features/session/MemberWorkspace";
+import {
+  canAccessVendorPath,
+  organizationDestination,
+} from "@/features/session/vendor-session.model";
 import { VendorOrganizationSwitcher } from "@/features/session/VendorOrganizationSwitcher";
 import {
   VendorSessionFeedback,
@@ -38,13 +42,16 @@ export default function VendorDashboardLayout({
     switchError,
     switchOrganization,
   } = useVendorSession(pathname);
-  const redirectToPos = mode !== null && !canAccessVendorPath(mode, pathname);
+  const redirectDestination =
+    mode !== null && !canAccessVendorPath(mode, pathname)
+      ? organizationDestination(mode, pathname)
+      : null;
 
   useEffect(() => {
-    if (redirectToPos && !switching) router.replace("/pos");
-  }, [redirectToPos, switching, router]);
+    if (redirectDestination && !switching) router.replace(redirectDestination);
+  }, [redirectDestination, switching, router]);
 
-  if (state.status === "loading" || switching || redirectToPos)
+  if (state.status === "loading" || switching || redirectDestination)
     return <VendorSessionLoading switching={switching} />;
   if (state.status === "error")
     return (
@@ -86,6 +93,16 @@ export default function VendorDashboardLayout({
           </p>
         )}
       </VendorSessionFeedback>
+    );
+
+  if (mode === "member")
+    return (
+      <MemberWorkspace
+        user={user}
+        selector={selector}
+        error={switchError}
+        onLogout={logout}
+      />
     );
 
   const organizationId = user.organizationId;

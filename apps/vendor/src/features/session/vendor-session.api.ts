@@ -60,7 +60,7 @@ export async function switchVendorOrganization(
   const mode = vendorAccessMode(user.orgRole, user.capabilities);
   if (user.organizationId !== organizationId || !mode) {
     throw new Error(
-      "Энэ дэлгүүрт эзэмшигч эсвэл кассын ажилтны эрх шаардлагатай. Өмнөх дэлгүүрийн нэвтрэлт хэвээр байна.",
+      "Энэ дэлгүүрийн идэвхтэй гишүүнчлэл шаардлагатай. Өмнөх дэлгүүрийн нэвтрэлт хэвээр байна.",
     );
   }
   return { accessToken: body.accessToken, user, mode };

@@ -111,9 +111,7 @@ export function useVendorSession(pathname: string) {
       (item) => item.id === organizationId,
     );
     if (!target || !canSwitchToOrganization(target)) {
-      setSwitchError(
-        "Сонгосон дэлгүүрт эзэмшигч эсвэл кассын ажилтны эрх шаардлагатай.",
-      );
+      setSwitchError("Сонгосон дэлгүүрийн гишүүнчлэл идэвхгүй байна.");
       return;
     }
     const token = localStorage.getItem(VENDOR_TOKEN_KEY);

@@ -85,7 +85,7 @@ test("valid owner-to-owner switch returns the requested context and token", asyn
 test("unsupported roles and mismatched destination responses never replace the existing session", async () => {
   const session = storage();
   for (const user of [
-    { ...owner, orgRole: "STAFF" },
+    { ...owner, orgRole: "UNKNOWN" },
     { ...owner, organizationId: "wrong-store" },
   ]) {
     respond({ accessToken: "new-token", user });
@@ -202,12 +202,12 @@ test("a failed token write restores the previous user context", () => {
   assert.equal(session.getItem(VENDOR_USER_KEY), "old-user");
 });
 
-test("switcher offers only active owner or explicitly assigned cashier contexts", () => {
+test("switcher permits active members and rejects suspended organizations", () => {
   const organization = owner.organizations[0];
   assert.equal(canSwitchToOrganization(organization), true);
   assert.equal(
     canSwitchToOrganization({ ...organization, role: "STAFF" }),
-    false,
+    true,
   );
   assert.equal(
     canSwitchToOrganization({ ...organization, status: "SUSPENDED" }),
@@ -221,7 +221,7 @@ test("switcher offers only active owner or explicitly assigned cashier contexts"
     }),
     true,
   );
-  assert.equal(vendorAccessMode("ADMIN", []), null);
+  assert.equal(vendorAccessMode("ADMIN", []), "member");
 });
 
 test("cashier switches navigate before restricted dashboard content can mount", () => {
@@ -235,4 +235,32 @@ test("profile hydration keeps the server's selected organization name and valida
   assert.equal(parseVendorSessionUser(owner).organizationName, "Store B");
   assert.throws(() => parseVendorSessionUser(null));
   assert.throws(() => parseVendorSessionUser({ organizations: [] }));
+});
+
+test("active sales representatives can switch stores without gaining owner or cashier access", async () => {
+  const member = {
+    ...owner,
+    orgRole: "STAFF",
+    capabilities: ["SALES_REPRESENTATIVE"],
+  };
+  respond({ accessToken: "member-token", user: member });
+  const result = await switchVendorOrganization(
+    "http://test.invalid",
+    "old-token",
+    "store-b",
+  );
+  assert.equal(result.mode, "member");
+  assert.equal(organizationDestination(result.mode, "/pos"), "/dashboard");
+  assert.equal(
+    organizationDestination(result.mode, "/employees"),
+    "/dashboard",
+  );
+  assert.equal(
+    canSwitchToOrganization({
+      ...owner.organizations[0],
+      role: "STAFF",
+      capabilities: ["SALES_REPRESENTATIVE"],
+    }),
+    true,
+  );
 });

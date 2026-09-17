@@ -1,4 +1,4 @@
-export type VendorAccessMode = "owner" | "cashier";
+export type VendorAccessMode = "owner" | "cashier" | "member";
 
 export interface VendorOrganization {
   id: string;
@@ -75,7 +75,10 @@ export function vendorAccessMode(
   capabilities: readonly string[],
 ): VendorAccessMode | null {
   if (role === "OWNER") return "owner";
-  return capabilities.includes("POS_CASHIER") ? "cashier" : null;
+  if (capabilities.includes("POS_CASHIER")) return "cashier";
+  return role === "STAFF" || role === "ADMIN" || role === "VIEWER"
+    ? "member"
+    : null;
 }
 
 export function canSwitchToOrganization(organization: VendorOrganization) {
@@ -86,6 +89,7 @@ export function canSwitchToOrganization(organization: VendorOrganization) {
 }
 
 export function canAccessVendorPath(mode: VendorAccessMode, pathname: string) {
+  if (mode === "member") return pathname === "/dashboard";
   return (
     mode === "owner" ||
     ["/pos", "/inventory"].some(
@@ -98,5 +102,9 @@ export function organizationDestination(
   mode: VendorAccessMode,
   pathname: string,
 ) {
-  return canAccessVendorPath(mode, pathname) ? pathname : "/pos";
+  return canAccessVendorPath(mode, pathname)
+    ? pathname
+    : mode === "member"
+      ? "/dashboard"
+      : "/pos";
 }

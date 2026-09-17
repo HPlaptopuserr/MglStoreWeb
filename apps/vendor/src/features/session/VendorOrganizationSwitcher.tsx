@@ -36,7 +36,7 @@ export function VendorOrganizationSwitcher({
           disabled={!canSwitchToOrganization(organization)}
         >
           {organization.name}
-          {!canSwitchToOrganization(organization) ? " · Vendor эрхгүй" : ""}
+          {!canSwitchToOrganization(organization) ? " · Идэвхгүй" : ""}
         </option>
       ))}
     </select>
