@@ -35,7 +35,8 @@ function isPersonalAccount(value: unknown): value is PersonalAccount {
     hasAccountIdentity(value) &&
     (value.membership === null ||
       value.membership === "ACTIVE" ||
-      value.membership === "INACTIVE")
+      value.membership === "INACTIVE" ||
+      value.membership === "OTHER")
   );
 }
 

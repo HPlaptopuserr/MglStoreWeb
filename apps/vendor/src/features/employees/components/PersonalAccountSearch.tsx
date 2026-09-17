@@ -136,14 +136,20 @@ export function PersonalAccountSearch({
                     <li key={account.id}>
                       <button
                         type="button"
-                        disabled={account.membership !== null}
+                        disabled={
+                          account.membership === "ACTIVE" ||
+                          account.membership === "INACTIVE"
+                        }
                         aria-pressed={isSelected}
                         onClick={() => onSelect(account)}
                         className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:opacity-65 ${isSelected ? "border-blue-500 bg-blue-50/60" : "border-slate-200 hover:border-blue-300 hover:bg-blue-50/30"}`}
                       >
                         <EmployeeAvatar
                           name={account.fullName || account.email}
-                          muted={account.membership !== null}
+                          muted={
+                            account.membership === "ACTIVE" ||
+                            account.membership === "INACTIVE"
+                          }
                         />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-semibold text-slate-900">
@@ -157,13 +163,16 @@ export function PersonalAccountSearch({
                           </span>
                           {account.membership && (
                             <span className="mt-1 block text-xs font-medium text-slate-600">
-                              {account.membership === "ACTIVE"
-                                ? "Энэ дэлгүүрт бүртгэлтэй"
-                                : "Эрх түр хаалттай · Жагсаалтаас сэргээнэ үү"}
+                              {account.membership === "OTHER"
+                                ? "Кассын ажилтнаар нэмэх боломжтой"
+                                : account.membership === "ACTIVE"
+                                  ? "Энэ дэлгүүрт бүртгэлтэй"
+                                  : "Эрх түр хаалттай · Жагсаалтаас сэргээнэ үү"}
                             </span>
                           )}
                         </span>
-                        {!account.membership &&
+                        {(account.membership === null ||
+                          account.membership === "OTHER") &&
                           (isSelected ? (
                             <Check
                               className="size-5 shrink-0 text-blue-600"

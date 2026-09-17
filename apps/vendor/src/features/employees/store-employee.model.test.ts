@@ -63,7 +63,7 @@ test("personal account results require an explicit membership state before selec
   );
 });
 
-test("staff statistics exclude owners, managers and inactive cashiers from the cashier count", () => {
+test("cashier statistics count explicit POS access regardless of other job roles", () => {
   const members: StoreEmployee[] = [
     cashier,
     { ...cashier, role: "OWNER" },
@@ -74,7 +74,7 @@ test("staff statistics exclude owners, managers and inactive cashiers from the c
     total: 4,
     active: 3,
     inactive: 1,
-    cashiers: 1,
+    cashiers: 2,
   });
   assert.equal(employeeJob(members[1]), "Дэлгүүрийн эзэмшигч");
   assert.deepEqual(summarizeEmployees([]), {

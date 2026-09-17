@@ -80,7 +80,7 @@ function mockStore(
     },
   );
   mockMethod(prisma.organizationMember, "findUnique", async () =>
-    options.existing ? { id: "existing" } : null,
+    options.existing ? { ...employee, deletedAt: null } : null,
   );
   mockMethod(
     prisma.organizationMember,
@@ -146,17 +146,15 @@ test("only active store owners can search, assign or change status", async () =>
   );
 });
 
-test("existing and inactive memberships cannot be added twice", async () => {
+test("adding an existing cashier is idempotent without a duplicate membership", async () => {
   mockStore({ existing: true });
   const create = mockMethod(
     prisma.organizationMember,
     "create",
     async () => employee,
   );
-  await assert.rejects(
-    assignStoreCashier("owner", "store", "personal-user"),
-    status(409),
-  );
+  const result = await assignStoreCashier("owner", "store", "personal-user");
+  assert.equal(result.id, employee.id);
   assert.equal(create.mock.callCount(), 0);
 });
 
@@ -249,7 +247,14 @@ test("search enforces short and bounded queries and returns membership status wi
       id: "personal-user",
       email: employee.user.email,
       profile: employee.user.profile,
-      organizationMemberships: [{ isActive: false }],
+      organizationMemberships: [
+        {
+          isActive: false,
+          role: "STAFF",
+          capabilities: ["POS_CASHIER"],
+          deletedAt: null,
+        },
+      ],
     },
   ]);
   assert.deepEqual(
@@ -363,5 +368,36 @@ test("cashier grants are idempotent and cannot alter owner memberships", async (
   await assert.rejects(
     grantStoreCashierAccess("owner", "store", "member"),
     status(403),
+  );
+});
+
+test("adding an existing non-cashier directly assigns POS in the same operation", async () => {
+  mockStore();
+  mockMethod(prisma.organizationMember, "findUnique", async () => ({
+    ...employee,
+    capabilities: ["SALES_REPRESENTATIVE"],
+    deletedAt: null,
+  }));
+  const update = mockMethod(
+    prisma.organizationMember,
+    "update",
+    async () => employee,
+  );
+  await assignStoreCashier("owner", "store", "personal-user");
+  assert.deepEqual(update.mock.calls[0]?.arguments[0]?.data, {
+    isActive: true,
+    capabilities: ["SALES_REPRESENTATIVE", "POS_CASHIER"],
+  });
+});
+test("reactivating an existing membership via cashier assignment respects the plan limit", async () => {
+  mockStore({ count: 10, maxMembers: 10 });
+  mockMethod(prisma.organizationMember, "findUnique", async () => ({
+    ...employee,
+    isActive: false,
+    deletedAt: null,
+  }));
+  await assert.rejects(
+    assignStoreCashier("owner", "store", "personal-user"),
+    status(409),
   );
 });

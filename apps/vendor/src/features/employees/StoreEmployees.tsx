@@ -13,7 +13,6 @@ import {
 import { useStoreEmployees } from "./useStoreEmployees";
 import { summarizeEmployees, type StoreEmployee } from "./store-employee.model";
 import { AssignEmployeeDialog } from "./components/AssignEmployeeDialog";
-import { EmployeeCashierDialog } from "./components/EmployeeCashierDialog";
 import { EmployeeStatusDialog } from "./components/EmployeeStatusDialog";
 import { EmployeeAlert, EmployeeButton } from "./components/EmployeePrimitives";
 import { EmployeeDirectory } from "./components/EmployeeDirectory";
@@ -22,7 +21,6 @@ import { EmployeeOverview } from "./components/EmployeeOverview";
 type ActiveDialog =
   | { type: "assign" }
   | { type: "status"; employee: StoreEmployee }
-  | { type: "cashier"; employee: StoreEmployee }
   | null;
 
 export function StoreEmployees({ organizationId }: { organizationId: string }) {
@@ -34,7 +32,7 @@ export function StoreEmployees({ organizationId }: { organizationId: string }) {
   function saved(employee: StoreEmployee) {
     saveEmployee(employee);
     setNotice(
-      dialog?.type === "assign" || dialog?.type === "cashier"
+      dialog?.type === "assign"
         ? `${employee.fullName || employee.email} — кассын эрх амжилттай олголоо.`
         : `${employee.fullName || employee.email} — ${employee.isActive ? "ажлын эрхийг сэргээлээ" : "ажлын эрхийг түр хаалаа"}.`,
     );
@@ -58,7 +56,7 @@ export function StoreEmployees({ organizationId }: { organizationId: string }) {
                 id="employees-title"
                 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-[28px]"
               >
-                Дэлгүүрийн ажилтнууд
+                Дэлгүүрийн кассын ажилтнууд
               </h1>
               <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-500">
                 <ShieldCheck className="size-3" aria-hidden="true" />
@@ -66,7 +64,7 @@ export function StoreEmployees({ organizationId }: { organizationId: string }) {
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Багаа бүрдүүлж, ажилтан бүрийн ажлын эрхийг удирдаарай.
+              Энд нэмсэн хэрэглэгч шууд кассын ажилтны эрхтэй болно.
             </p>
           </div>
           <EmployeeButton
@@ -75,7 +73,7 @@ export function StoreEmployees({ organizationId }: { organizationId: string }) {
             className="shrink-0"
           >
             <Plus className="size-4" aria-hidden="true" />
-            Ажилтан нэмэх
+            Кассын ажилтан нэмэх
           </EmployeeButton>
         </div>
       </header>
@@ -121,9 +119,6 @@ export function StoreEmployees({ organizationId }: { organizationId: string }) {
           employees={employees}
           summary={summary}
           loading={loading}
-          onGrantCashier={(employee) =>
-            setDialog({ type: "cashier", employee })
-          }
           onStatusChange={(employee) => setDialog({ type: "status", employee })}
           onAdd={() => setDialog({ type: "assign" })}
         />
@@ -148,14 +143,6 @@ export function StoreEmployees({ organizationId }: { organizationId: string }) {
       </div>
       {dialog?.type === "assign" && (
         <AssignEmployeeDialog
-          organizationId={organizationId}
-          onClose={() => setDialog(null)}
-          onSuccess={saved}
-        />
-      )}
-      {dialog?.type === "cashier" && (
-        <EmployeeCashierDialog
-          employee={dialog.employee}
           organizationId={organizationId}
           onClose={() => setDialog(null)}
           onSuccess={saved}

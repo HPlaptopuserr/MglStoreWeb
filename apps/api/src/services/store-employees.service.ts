@@ -142,7 +142,12 @@ export async function searchStorePersonalAccounts(
       profile: { select: { fullName: true, phoneNumber: true } },
       organizationMemberships: {
         where: { organizationId },
-        select: { isActive: true },
+        select: {
+          isActive: true,
+          role: true,
+          capabilities: true,
+          deletedAt: true,
+        },
         take: 1,
       },
     },
@@ -155,9 +160,13 @@ export async function searchStorePersonalAccounts(
     fullName: user.profile?.fullName || "",
     phone: user.profile?.phoneNumber || null,
     membership: user.organizationMemberships.length
-      ? user.organizationMemberships[0].isActive
-        ? "ACTIVE"
-        : "INACTIVE"
+      ? user.organizationMemberships[0].role !== "OWNER" &&
+        !user.organizationMemberships[0].capabilities.includes("POS_CASHIER") &&
+        !user.organizationMemberships[0].deletedAt
+        ? "OTHER"
+        : user.organizationMemberships[0].isActive
+          ? "ACTIVE"
+          : "INACTIVE"
       : null,
   }));
 }
@@ -180,13 +189,31 @@ export async function assignStoreCashier(
       );
     const existing = await db.organizationMember.findUnique({
       where: { userId_organizationId: { userId, organizationId } },
-      select: { id: true },
+      select: { ...employeeSelect, deletedAt: true },
     });
-    if (existing)
-      throw new StoreEmployeeError(
-        409,
-        "Энэ хэрэглэгч дэлгүүрт бүртгэлтэй байна. Ажилтны жагсаалтаас эрхийг нь удирдана уу.",
+    if (existing) {
+      if (existing.deletedAt || existing.role === "OWNER")
+        throw new StoreEmployeeError(
+          409,
+          "Энэ хэрэглэгчийг кассын ажилтнаар нэмэх боломжгүй.",
+        );
+      if (!existing.isActive)
+        await requireAvailableSeat(db, organizationId, organization.maxMembers);
+      if (existing.isActive && existing.capabilities.includes("POS_CASHIER"))
+        return serializeEmployee(existing);
+      return serializeEmployee(
+        await db.organizationMember.update({
+          where: { id: existing.id },
+          data: {
+            isActive: true,
+            capabilities: [
+              ...new Set([...existing.capabilities, "POS_CASHIER" as const]),
+            ],
+          },
+          select: employeeSelect,
+        }),
       );
+    }
     await requireAvailableSeat(db, organizationId, organization.maxMembers);
     // Link the existing identity. Never write their profile, credentials or other memberships.
     return serializeEmployee(

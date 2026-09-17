@@ -16,14 +16,13 @@ export interface PersonalAccount {
   email: string;
   fullName: string;
   phone: string | null;
-  membership: "ACTIVE" | "INACTIVE" | null;
+  membership: "ACTIVE" | "INACTIVE" | "OTHER" | null;
 }
 
 export type EmployeeFilter = "ALL" | "ACTIVE" | "INACTIVE";
 
 export function employeeJob(employee: StoreEmployee) {
   if (employee.role === "OWNER") return "Дэлгүүрийн эзэмшигч";
-  if (employee.role === "ADMIN") return "Менежер";
   if (employee.capabilities.includes("POS_CASHIER")) return "Кассын ажилтан";
   return employee.roleLabel;
 }
@@ -49,9 +48,7 @@ export interface EmployeeSummary {
 
 export function isCashier(employee: StoreEmployee) {
   return (
-    employee.role !== "OWNER" &&
-    employee.role !== "ADMIN" &&
-    employee.capabilities.includes("POS_CASHIER")
+    employee.role !== "OWNER" && employee.capabilities.includes("POS_CASHIER")
   );
 }
 

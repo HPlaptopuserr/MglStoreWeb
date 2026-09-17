@@ -53,8 +53,8 @@ export function AssignEmployeeDialog({
 
   return (
     <EmployeeDialog
-      title="Ажилтан нэмэх"
-      description="MGL Store-ийн хувийн бүртгэлээс багтаа нэмнэ."
+      title="Кассын ажилтан нэмэх"
+      description="Нэмэхэд энэ дэлгүүрийн POS кассын эрх шууд олгогдоно."
       busy={saving}
       onClose={onClose}
       footer={
@@ -79,7 +79,7 @@ export function AssignEmployeeDialog({
               {!saving && (
                 <UserRoundPlus className="size-4" aria-hidden="true" />
               )}
-              {saving ? "Эрх олгож байна…" : "Кассын эрх олгох"}
+              {saving ? "Эрх олгож байна…" : "Кассын ажилтнаар нэмэх"}
             </EmployeeButton>
           )}
         </>

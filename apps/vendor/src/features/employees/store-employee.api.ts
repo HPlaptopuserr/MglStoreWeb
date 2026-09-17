@@ -37,7 +37,12 @@ export const employeeApi = {
   list: (organizationId: string, signal: AbortSignal) =>
     employeeRequest(
       `?${new URLSearchParams({ organizationId })}`,
-      parseStoreEmployees,
+      (value) =>
+        parseStoreEmployees(value).filter(
+          (employee) =>
+            employee.role === "OWNER" ||
+            employee.capabilities.includes("POS_CASHIER"),
+        ),
       { signal },
     ),
   search: (organizationId: string, search: string, signal: AbortSignal) =>
@@ -55,15 +60,6 @@ export const employeeApi = {
         assignment: "POS_CASHIER",
       }),
     }),
-  grantCashier: (organizationId: string, memberId: string) =>
-    employeeRequest(
-      `/${encodeURIComponent(memberId)}/assign-cashier`,
-      parseStoreEmployee,
-      {
-        method: "POST",
-        body: JSON.stringify({ organizationId }),
-      },
-    ),
   setStatus: (organizationId: string, memberId: string, isActive: boolean) =>
     employeeRequest(
       `/${encodeURIComponent(memberId)}/status`,
