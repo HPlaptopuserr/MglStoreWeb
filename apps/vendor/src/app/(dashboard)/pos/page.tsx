@@ -103,6 +103,7 @@ import {
 } from "@/features/pos/utils/qpay-checkout-recovery";
 import { printThermalDocument } from "@/features/pos/utils/print-thermal-document";
 import { API, authFetch } from "@/lib/api";
+import { RegisterShiftConflict } from "@/features/pos/components/RegisterShiftConflict";
 import {
   isFeatureEnabled,
   MULTI_PRICE_SALES_FEATURE_KEY,
@@ -651,7 +652,7 @@ export default function PosDemoPage() {
   const reloadProducts = registerBranchId ? posProductsState.reload : ownProductsState.reload;
   const { state, totals, addProduct, dispatch } = usePosCart();
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
-  const { shift, loading: shiftLoading, load: loadShift, open: openShift, close: closeShiftFn } = useCurrentShift();
+  const { shift, blockingShift, ready: shiftReady, error: shiftError, loading: shiftLoading, load: loadShift, open: openShift, close: closeShiftFn, closeBlocking } = useCurrentShift(registerConfig?.id);
   const unknownBarcode = useUnknownBarcodeRegistration();
   const shiftRegisterMismatch = Boolean(
     shift?.registerId &&
@@ -3840,7 +3841,7 @@ export default function PosDemoPage() {
           <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-teal-200 bg-white shadow-2xl sm:max-h-[calc(100vh-3rem)]">
             <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-3">
               <p className="text-sm font-bold text-slate-800">
-                {shift ? "Ээлж хаах" : "Ээлж нээх"}
+                {shift ? "Ээлж хаах" : blockingShift ? "Нээлттэй ээлжийг шийдвэрлэх" : "Ээлж нээх"}
               </p>
               <button
                 type="button"
@@ -3851,9 +3852,27 @@ export default function PosDemoPage() {
               </button>
             </div>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 py-4">
-              {!shift ? (
+              {!shift && blockingShift ? (
+                <RegisterShiftConflict
+                  key={blockingShift.id}
+                  shift={blockingShift}
+                  busy={shiftLoading}
+                  settlesTerminal={getEffectiveCardProvider(registerConfig) === "PUSH_ECR"}
+                  onRefresh={() => void loadShift()}
+                  onClose={async (shiftId, amount, note) => {
+                    const terminalId = getEffectiveCardProvider(registerConfig) === "PUSH_ECR"
+                      ? registerConfig.cardTerminalId ?? undefined : undefined;
+                    await closeBlocking(shiftId, amount, note, terminalId);
+                    reloadShiftHistory();
+                    setScanMessage("Өмнөх ээлж хаагдлаа. Одоо өөрийн ээлжийг нээнэ үү.");
+                    setScanStatus("success");
+                  }}
+                />
+              ) : !shift ? (
                 <>
                   <p className="text-xs text-slate-500">Эхлэх мөнгийг оруулна уу.</p>
+                  {shiftError && <p role="alert" className="text-sm text-rose-700">{shiftError}</p>}
+                  {!shiftReady && <button type="button" disabled={shiftLoading} onClick={() => void loadShift()} className="min-h-11 rounded-lg border px-3 text-sm">{shiftLoading ? "Ээлж шалгаж байна…" : "Ээлж дахин шалгах"}</button>}
                   <div className="flex gap-2">
                     <input
                       type="number"
@@ -3865,7 +3884,7 @@ export default function PosDemoPage() {
                     />
                     <button
                       type="button"
-                      disabled={shiftLoading}
+                      disabled={shiftLoading || !shiftReady}
                       onClick={async () => {
                         if (!registerConfig?.branchId) return;
                         try {
@@ -4271,6 +4290,7 @@ export default function PosDemoPage() {
               setShowCashDrawerPanel(false);
               setShowShiftHistoryPanel(false);
               setShowShiftPanel((value) => !value);
+              if (!showShiftPanel) void loadShift();
             }}
             className={`rounded-lg px-3 py-2 text-left font-black transition-colors ${
               shift ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
@@ -4284,8 +4304,10 @@ export default function PosDemoPage() {
                   {formatDateTime(shift.openedAt)} нээгдсэн
                 </span>
               </>
+            ) : blockingShift ? (
+              <><span className="block">Өөр кассчны ээлж</span><span className="mt-0.5 block text-[11px] font-semibold">{blockingShift.cashierName}</span></>
             ) : (
-              "Нээх хэрэгтэй"
+              shiftLoading ? "Шалгаж байна…" : !shiftReady ? "Төлөв шалгах" : "Нээх хэрэгтэй"
             )}
           </button>
         </div>

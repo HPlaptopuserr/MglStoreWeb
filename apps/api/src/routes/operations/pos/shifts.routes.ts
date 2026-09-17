@@ -59,6 +59,8 @@ import {
   buildOpenShiftConflictScopes,
 } from "./shift-organization-scope";
 
+import { canClosePosShift, requiresShiftCloseReason } from "./shift-access";
+
 const router: ExpressRouter = Router();
 
 const isAdminActor = (actor: AuthUser) =>
@@ -81,11 +83,19 @@ const normalizeCashCountForResponse = (value: unknown) => {
     .filter(Boolean);
 };
 
-const toShiftResponse = (shift: any) => ({
+type ShiftWithRelations = Prisma.PosShiftGetPayload<{
+  include: {
+    cashier: { select: { id: true; email: true; profile: { select: { fullName: true } } } };
+    branch: { select: { id: true; name: true } };
+    register: { select: { id: true; name: true } };
+  };
+}>;
+
+const toShiftResponse = (shift: ShiftWithRelations) => ({
   id: shift.id,
   organizationId: shift.organizationId,
   cashierId: shift.cashierId,
-  cashierName: shift.cashier?.email || "",
+  cashierName: shift.cashier?.profile?.fullName || shift.cashier?.email || "Кассчин",
   branchId: shift.branchId,
   branchName: shift.branch?.name,
   registerId: shift.registerId ?? null,
@@ -403,7 +413,7 @@ router.post("/pos/shifts/open", async (req, res) => {
             status: ShiftStatus.OPEN,
           },
           include: {
-            cashier: { select: { id: true, email: true } },
+            cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
             branch: { select: { id: true, name: true } },
             register: { select: { id: true, name: true } },
           },
@@ -420,6 +430,7 @@ router.post("/pos/shifts/open", async (req, res) => {
       return res.status(409).json({ message });
     }
 
+    if (!result.shift) throw new Error("Shift was not created");
     res.status(201).json(toShiftResponse(result.shift));
   } catch (error) {
     console.error("open shift error", error);
@@ -468,13 +479,14 @@ router.post("/pos/shifts/close", async (req, res) => {
     if (!shiftForAccess) {
       return res.status(404).json({ message: "Ээлж олдсонгүй" });
     }
-    if (
-      !canAccessPosOrganization(actor, shiftForAccess.organizationId) ||
-      (shiftForAccess.cashierId !== actor.id && !isAdminActor(actor))
-    ) {
+    if (!canClosePosShift(actor, shiftForAccess)) {
       return res
         .status(403)
         .json({ message: "Энэ ээлжийг хаах эрхгүй" });
+    }
+
+    if (requiresShiftCloseReason(actor, shiftForAccess) && !note) {
+      return res.status(400).json({ message: "Бусдын ээлжийг хаах шалтгааныг бичнэ үү." });
     }
 
     const updatedShift = await prisma.$transaction(
@@ -491,7 +503,7 @@ router.post("/pos/shifts/close", async (req, res) => {
         const shift = await tx.posShift.findUnique({
           where: { id: shiftId },
           include: {
-            cashier: { select: { id: true, email: true } },
+            cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
             branch: { select: { id: true, name: true } },
             register: { select: { id: true, name: true } },
           },
@@ -529,7 +541,7 @@ router.post("/pos/shifts/close", async (req, res) => {
         });
         const cashDifference = roundMoney(closingCash - expectedCash);
 
-        return tx.posShift.update({
+        const closedShift = await tx.posShift.update({
           where: { id: shiftId },
           data: {
             status: ShiftStatus.CLOSED,
@@ -542,11 +554,32 @@ router.post("/pos/shifts/close", async (req, res) => {
             closedAt: new Date(),
           },
           include: {
-            cashier: { select: { id: true, email: true } },
+            cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
             branch: { select: { id: true, name: true } },
             register: { select: { id: true, name: true } },
           },
         });
+        await tx.auditLog.create({
+          data: {
+            userId: actor.id,
+            action: AuditAction.POS_REGISTER_UPDATED,
+            ip: req.ip,
+            meta: {
+              event: "POS_SHIFT_CLOSED",
+              shiftId: shift.id,
+              registerId: shift.registerId,
+              organizationId: shift.organizationId,
+              cashierId: shift.cashierId,
+              closedById: actor.id,
+              closedByOtherUser: requiresShiftCloseReason(actor, shift),
+              closingCash,
+              expectedCash,
+              cashDifference,
+              note,
+            },
+          },
+        });
+        return closedShift;
       },
     );
 
@@ -561,6 +594,50 @@ router.post("/pos/shifts/close", async (req, res) => {
   }
 });
 
+router.get("/pos/shifts/register-current", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+    const registerId = String(req.query.registerId || "").trim();
+    if (!registerId) return res.status(400).json({ message: "Кассаа сонгоно уу." });
+    const register = await prisma.posRegister.findUnique({
+      where: { id: registerId },
+      select: { organizationId: true },
+    });
+    if (!register || !canAccessPosOrganization(actor, register.organizationId)) {
+      return res.status(403).json({ message: "Энэ кассын ээлжийг харах эрхгүй." });
+    }
+    const shifts = await prisma.posShift.findMany({
+      where: {
+        organizationId: register.organizationId,
+        status: ShiftStatus.OPEN,
+        OR: [{ cashierId: actor.id }, { registerId }],
+      },
+      orderBy: { openedAt: "desc" },
+      include: {
+        cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
+        branch: { select: { id: true, name: true } },
+        register: { select: { id: true, name: true } },
+      },
+    });
+    const ownShift = shifts.find((shift) => shift.cashierId === actor.id);
+    const blockingShift = shifts.find((shift) => shift.registerId === registerId && shift.cashierId !== actor.id);
+    return res.json({
+      shift: ownShift ? toShiftResponse(ownShift) : null,
+      blockingShift: blockingShift ? {
+        id: blockingShift.id,
+        cashierName: blockingShift.cashier.profile?.fullName || blockingShift.cashier.email || "Кассчин",
+        registerName: blockingShift.register?.name || "POS касс",
+        openedAt: blockingShift.openedAt.toISOString(),
+        canClose: canClosePosShift(actor, blockingShift),
+      } : null,
+    });
+  } catch (error) {
+    console.error("get register shift error", error);
+    return res.status(500).json({ message: "Кассын ээлжийг шалгаж чадсангүй. Дахин оролдоно уу." });
+  }
+});
+
 router.get("/pos/shifts/current", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
@@ -572,7 +649,7 @@ router.get("/pos/shifts/current", async (req, res) => {
         status: ShiftStatus.OPEN,
       },
       include: {
-        cashier: { select: { id: true, email: true } },
+        cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
         branch: { select: { id: true, name: true } },
         register: { select: { id: true, name: true } },
       },
@@ -607,7 +684,7 @@ router.get("/pos/shifts/:shiftId/drawer", async (req, res) => {
     const shift = await prisma.posShift.findUnique({
       where: { id: shiftId },
       include: {
-        cashier: { select: { id: true, email: true } },
+        cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
         branch: { select: { id: true, name: true } },
         register: { select: { id: true, name: true } },
       },
@@ -669,7 +746,7 @@ router.post("/pos/shifts/drawer-events", async (req, res) => {
     const shift = await prisma.posShift.findUnique({
       where: { id: shiftId },
       include: {
-        cashier: { select: { id: true, email: true } },
+        cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
         branch: { select: { id: true, name: true } },
         register: { select: { id: true, name: true } },
       },
@@ -783,7 +860,7 @@ router.get("/pos/shifts/history", async (req, res) => {
       orderBy:
         status === "CLOSED" ? { closedAt: "desc" } : { openedAt: "desc" },
       include: {
-        cashier: { select: { id: true, email: true } },
+        cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
         branch: { select: { id: true, name: true } },
         register: { select: { id: true, name: true } },
       },
