@@ -107,6 +107,7 @@ type PendingCardCheckout = Omit<PendingCheckout, "invoice"> & {
 };
 
 const REGISTER_STORAGE_KEY = "org_restaurant_pos_register_id";
+const MENU_REFRESH_INTERVAL_MS = 15_000;
 const EBARIMT_ENABLED = process.env.NEXT_PUBLIC_EBARIMT_ENABLED === "true";
 const DEMO_CASH_PAYMENT_ENABLED = process.env.NODE_ENV !== "production";
 const LONG_RUNNING_CARD_PROVIDERS = new Set([
@@ -114,6 +115,71 @@ const LONG_RUNNING_CARD_PROVIDERS = new Set([
   "MINU_AGENT",
   "ANDROID_PGW",
 ]);
+
+function reconcileCartWithProducts(
+  current: CartLine[],
+  products: RestaurantPosProduct[],
+) {
+  if (current.length === 0) {
+    return { cart: current, changed: false, notice: "" };
+  }
+
+  const productsById = new Map(products.map((product) => [product.id, product]));
+  let removedCount = 0;
+  let cappedCount = 0;
+  let priceChanged = false;
+  let changed = false;
+
+  const cart = current.flatMap<CartLine>((line) => {
+    const product = productsById.get(line.product.id);
+    const availableQty = Math.max(0, Math.floor(Number(product?.stockQty) || 0));
+
+    if (
+      !product ||
+      !product.isActive ||
+      Number(product.price) <= 0 ||
+      availableQty <= 0
+    ) {
+      removedCount += 1;
+      changed = true;
+      return [];
+    }
+
+    const qty = Math.min(line.qty, availableQty);
+    if (qty !== line.qty) {
+      cappedCount += 1;
+      changed = true;
+    }
+    if (Number(product.price) !== Number(line.product.price)) {
+      priceChanged = true;
+      changed = true;
+    }
+    if (product !== line.product) changed = true;
+
+    return [{ product, qty }];
+  });
+
+  const notices = [
+    removedCount > 0
+      ? `${removedCount} бүтээгдэхүүн дууссан тул сагснаас хасагдлаа.`
+      : "",
+    cappedCount > 0
+      ? `${cappedCount} бүтээгдэхүүний тоог шинэ үлдэгдэлд таарууллаа.`
+      : "",
+    priceChanged ? "Бүтээгдэхүүний шинэ үнэ сагсанд туслаа." : "",
+  ].filter(Boolean);
+
+  return { cart, changed, notice: notices.join(" ") };
+}
+
+async function loadSelfServiceProducts(branchId: string) {
+  const products = await getRestaurantPosProducts(branchId, {
+    restaurantMenuOnly: false,
+  });
+  return products.filter(
+    (product) => product.isActive && Number(product.price) > 0,
+  );
+}
 
 const getEffectiveCardProvider = (register?: RestaurantPosRegister | null) =>
   register?.cardProviderType ||
@@ -378,6 +444,7 @@ export function SelfServiceCheckoutScreen() {
   const [setupLoading, setSetupLoading] = useState(true);
   const [setupError, setSetupError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [catalogNotice, setCatalogNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [pendingCheckout, setPendingCheckout] =
@@ -393,6 +460,7 @@ export function SelfServiceCheckoutScreen() {
   const finalizedCardAttemptRef = useRef<string | null>(null);
   const ebarimtQrRef = useRef<HTMLDivElement | null>(null);
   const autoPrintedEbarimtRef = useRef<string | null>(null);
+  const menuRefreshInFlightRef = useRef(false);
 
   const loadSetup = useCallback(async () => {
     setSetupLoading(true);
@@ -417,18 +485,13 @@ export function SelfServiceCheckoutScreen() {
 
       window.localStorage.setItem(REGISTER_STORAGE_KEY, nextRegister.id);
 
-      const nextProducts = await getRestaurantPosProducts(
+      const nextProducts = await loadSelfServiceProducts(
         nextRegister.branchId,
-        { restaurantMenuOnly: false },
       );
 
       setRegister(nextRegister);
       setShift(currentShift?.status === "OPEN" ? currentShift : null);
-      setProducts(
-        nextProducts.filter(
-          (product) => product.isActive && Number(product.price) > 0,
-        ),
-      );
+      setProducts(nextProducts);
     } catch (error) {
       setRegister(null);
       setShift(null);
@@ -452,12 +515,80 @@ export function SelfServiceCheckoutScreen() {
     setSilentPrintEnabled(params.get("silentPrint") === "1");
   }, []);
 
+  const refreshMenuProducts = useCallback(async () => {
+    if (!register?.branchId || menuRefreshInFlightRef.current) return;
+
+    menuRefreshInFlightRef.current = true;
+    try {
+      const nextProducts = await loadSelfServiceProducts(register.branchId);
+      setProducts(nextProducts);
+      setCatalogNotice((current) =>
+        current.startsWith("Менюг шинэчилж чадсангүй") ? "" : current,
+      );
+    } catch {
+      setCatalogNotice(
+        "Менюг шинэчилж чадсангүй. Сүлжээний холболтыг шалгана уу.",
+      );
+    } finally {
+      menuRefreshInFlightRef.current = false;
+    }
+  }, [register?.branchId]);
+
+  useEffect(() => {
+    if (
+      !register?.branchId ||
+      !["welcome", "menu", "checkout"].includes(screen)
+    ) {
+      return;
+    }
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshMenuProducts();
+      }
+    };
+    const refreshTimer = window.setInterval(
+      refreshWhenVisible,
+      MENU_REFRESH_INTERVAL_MS,
+    );
+
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenVisible);
+    return () => {
+      window.clearInterval(refreshTimer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenVisible);
+    };
+  }, [refreshMenuProducts, register?.branchId, screen]);
+
+  useEffect(() => {
+    if (setupLoading || (screen !== "menu" && screen !== "checkout")) return;
+
+    const reconciled = reconcileCartWithProducts(cart, products);
+    if (!reconciled.changed) return;
+
+    setCart(reconciled.cart);
+    if (reconciled.notice) setCatalogNotice(reconciled.notice);
+  }, [cart, products, screen, setupLoading]);
+
+  useEffect(() => {
+    if (!catalogNotice) return;
+    const timer = window.setTimeout(() => setCatalogNotice(""), 8_000);
+    return () => window.clearTimeout(timer);
+  }, [catalogNotice]);
+
   const visibleCategories = useMemo(() => {
     const present = new Set(products.map(productCategory));
     return categoryOrder.filter(
       (category) => category === "ALL" || present.has(category),
     );
   }, [products]);
+
+  useEffect(() => {
+    if (!visibleCategories.includes(activeCategory)) {
+      setActiveCategory("ALL");
+    }
+  }, [activeCategory, visibleCategories]);
 
   const visibleProducts = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("mn");
@@ -667,6 +798,7 @@ export function SelfServiceCheckoutScreen() {
       setEbarimtSubmitting(false);
       setCompletedEbarimtBuyer({ type: "B2C" });
       setActionError("");
+      setCatalogNotice("");
       setPendingCheckout(null);
       setPendingCardCheckout(null);
       setReceipt(null);
@@ -1695,6 +1827,12 @@ export function SelfServiceCheckoutScreen() {
             </p>
           </header>
 
+          {catalogNotice ? (
+            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+              {catalogNotice}
+            </div>
+          ) : null}
+
           <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]">
             <section className="rounded-[28px] bg-white p-5 shadow-sm sm:p-7">
               <div className="flex items-center justify-between">
@@ -2011,6 +2149,11 @@ export function SelfServiceCheckoutScreen() {
 
       <div className="flex h-[calc(100dvh-78px)] flex-col">
         <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {catalogNotice ? (
+            <div className="mx-4 mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 sm:mx-6">
+              {catalogNotice}
+            </div>
+          ) : null}
           <div className="border-b border-black/5 bg-white px-4 sm:px-6">
             <div className="flex gap-2 overflow-x-auto py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {visibleCategories.map((category) => (
