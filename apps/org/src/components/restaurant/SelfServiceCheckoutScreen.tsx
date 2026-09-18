@@ -86,6 +86,7 @@ type Category =
   | "APPETIZER"
   | "DESSERT"
   | "DRINK"
+  | "SET_MENU"
   | "OTHER";
 
 type CartLine = {
@@ -188,25 +189,27 @@ const getEffectiveCardProvider = (register?: RestaurantPosRegister | null) =>
 
 const categoryCopy: Record<Category, string> = {
   ALL: "Бүгд",
-  HOT: "Халуун хоол",
+  HOT: "2-р хоол",
   COLD: "Хүйтэн хоол",
-  SOUP: "Шөл",
+  SOUP: "1-р хоол",
   GRILL: "Грилл",
   APPETIZER: "Зууш",
   DESSERT: "Амттан",
-  DRINK: "Ундаа",
+  DRINK: "Уух зүйлс",
+  SET_MENU: "Сет хоол",
   OTHER: "Бусад",
 };
 
 const categoryOrder: Category[] = [
   "ALL",
-  "HOT",
   "SOUP",
+  "HOT",
+  "DRINK",
+  "SET_MENU",
   "GRILL",
   "APPETIZER",
   "COLD",
   "DESSERT",
-  "DRINK",
   "OTHER",
 ];
 

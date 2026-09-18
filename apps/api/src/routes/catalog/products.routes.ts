@@ -430,6 +430,7 @@ const RESTAURANT_MENU_CATEGORIES = new Set([
   "APPETIZER",
   "DESSERT",
   "DRINK",
+  "SET_MENU",
 ]);
 const KITCHEN_STATIONS = new Set(["HOT_KITCHEN", "COLD_KITCHEN", "BAR"]);
 

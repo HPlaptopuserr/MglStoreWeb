@@ -105,7 +105,8 @@ type MenuCategory =
   | "grill"
   | "appetizer"
   | "dessert"
-  | "drink";
+  | "drink"
+  | "set";
 type MenuCategoryFilter = "all" | MenuCategory;
 type DishTone = "coral" | "amber" | "mint" | "lime" | "orange" | "sky";
 type TableStatus = "FREE" | "OPEN" | "KITCHEN" | "READY" | "PAID" | "RESERVED";
@@ -199,26 +200,28 @@ type DiningTable = {
 
 const categories: { id: MenuCategoryFilter; label: string }[] = [
   { id: "all", label: "Бүгд" },
-  { id: "hot", label: "Халуун хоол" },
-  { id: "cold", label: "Хүйтэн хоол" },
-  { id: "soup", label: "Шөл" },
+  { id: "soup", label: "1-р хоол" },
+  { id: "hot", label: "2-р хоол" },
+  { id: "drink", label: "Уух зүйлс" },
+  { id: "set", label: "Сет хоол" },
   { id: "grill", label: "Грилл" },
   { id: "appetizer", label: "Зууш" },
+  { id: "cold", label: "Хүйтэн хоол" },
   { id: "dessert", label: "Амттан" },
-  { id: "drink", label: "Ундаа" },
 ];
 
 const restaurantMenuCategories: Array<{
   value: RestaurantMenuCategory;
   label: string;
 }> = [
-  { value: "HOT", label: "Халуун хоол" },
-  { value: "COLD", label: "Хүйтэн хоол" },
-  { value: "SOUP", label: "Шөл" },
+  { value: "SOUP", label: "1-р хоол" },
+  { value: "HOT", label: "2-р хоол" },
+  { value: "DRINK", label: "Уух зүйлс" },
+  { value: "SET_MENU", label: "Сет хоол" },
   { value: "GRILL", label: "Грилл" },
   { value: "APPETIZER", label: "Зууш" },
+  { value: "COLD", label: "Хүйтэн хоол" },
   { value: "DESSERT", label: "Амттан" },
-  { value: "DRINK", label: "Ундаа" },
 ];
 
 const restaurantKitchenStations: Array<{
@@ -435,6 +438,7 @@ const menuCategoryMap: Record<
   APPETIZER: "appetizer",
   DESSERT: "dessert",
   DRINK: "drink",
+  SET_MENU: "set",
 };
 
 const categoryTone: Record<MenuCategory, DishTone> = {
@@ -445,6 +449,7 @@ const categoryTone: Record<MenuCategory, DishTone> = {
   appetizer: "lime",
   dessert: "sky",
   drink: "sky",
+  set: "amber",
 };
 
 const REGISTER_STORAGE_KEY = "org_restaurant_pos_register_id";

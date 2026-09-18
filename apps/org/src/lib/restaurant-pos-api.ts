@@ -71,6 +71,7 @@ export type RestaurantPosProduct = {
     | "APPETIZER"
     | "DESSERT"
     | "DRINK"
+    | "SET_MENU"
     | null;
   kitchenStation: "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR" | null;
   preparationMinutes: number | null;

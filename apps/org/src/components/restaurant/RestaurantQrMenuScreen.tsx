@@ -40,13 +40,14 @@ type PublicMenuCategory =
   | "OTHER";
 
 const categoryLabels: Record<PublicMenuCategory, string> = {
-  HOT: "Халуун хоол",
+  HOT: "2-р хоол",
   COLD: "Хүйтэн хоол",
-  SOUP: "Шөл",
+  SOUP: "1-р хоол",
   GRILL: "Грилл",
   APPETIZER: "Зууш",
   DESSERT: "Амттан",
-  DRINK: "Ундаа",
+  DRINK: "Уух зүйлс",
+  SET_MENU: "Сет хоол",
   OTHER: "Бусад",
 };
 
@@ -292,13 +293,14 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
   const categories = useMemo(() => {
     if (!menu) return [];
     const orderedCategories: PublicMenuCategory[] = [
-      "HOT",
       "SOUP",
+      "HOT",
+      "DRINK",
+      "SET_MENU",
       "GRILL",
       "APPETIZER",
       "COLD",
       "DESSERT",
-      "DRINK",
       "OTHER",
     ];
     const present = new Set(menu.products.map(getProductCategory));

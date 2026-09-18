@@ -30,7 +30,14 @@ import {
 } from "@mgl/types";
 
 type MenuCategory =
-  "HOT" | "COLD" | "SOUP" | "GRILL" | "APPETIZER" | "DESSERT" | "DRINK";
+  | "HOT"
+  | "COLD"
+  | "SOUP"
+  | "GRILL"
+  | "APPETIZER"
+  | "DESSERT"
+  | "DRINK"
+  | "SET_MENU";
 type KitchenStation = "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR";
 type TaxType = "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
 
@@ -76,13 +83,14 @@ const menuCategories: Array<{
   value: MenuCategory;
   label: string;
 }> = [
-  { value: "HOT", label: "Халуун хоол" },
-  { value: "COLD", label: "Хүйтэн хоол" },
-  { value: "SOUP", label: "Шөл" },
+  { value: "SOUP", label: "1-р хоол" },
+  { value: "HOT", label: "2-р хоол" },
+  { value: "DRINK", label: "Уух зүйлс" },
+  { value: "SET_MENU", label: "Сет хоол" },
   { value: "GRILL", label: "Грилл" },
   { value: "APPETIZER", label: "Зууш" },
+  { value: "COLD", label: "Хүйтэн хоол" },
   { value: "DESSERT", label: "Амттан" },
-  { value: "DRINK", label: "Ундаа" },
 ];
 
 const kitchenStations: Array<{
