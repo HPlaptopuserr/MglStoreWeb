@@ -454,6 +454,7 @@ model Organization {
   posCreditCustomers               PosCreditCustomer[]
   posCreditSales                   PosCreditSale[]
   posLoyaltyTransactions           PosLoyaltyTransaction[]
+  restaurantMenuCategories         RestaurantMenuCategory[]
   restaurantTables                 RestaurantTable[]
   restaurantTickets                RestaurantTicket[]
   kitchenTickets                   KitchenTicket[]
@@ -2921,6 +2922,20 @@ model RestaurantTable {
   @@index([branchId, isActive])
   @@index([branchId, sortOrder])
   @@index([qrToken])
+}
+
+model RestaurantMenuCategory {
+  id             String       @id @default(uuid())
+  organizationId String
+  code           String
+  name           String
+  sortOrder      Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, code])
+  @@index([organizationId, sortOrder])
 }
 
 model RestaurantTicket {

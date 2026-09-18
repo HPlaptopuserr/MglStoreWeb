@@ -45,6 +45,7 @@ import {
   createRestaurantQPayInvoice,
   createRestaurantQPaySale,
   getCurrentRestaurantPosShift,
+  getRestaurantMenuCategories,
   getRestaurantCardAttemptStatus,
   getRestaurantPosProducts,
   getRestaurantPosRegisters,
@@ -55,6 +56,7 @@ import {
   type RestaurantPosProduct,
   type RestaurantPosQPayInvoice,
   type RestaurantPosRegister,
+  type RestaurantMenuCategory,
   type RestaurantTicket,
 } from "@/lib/restaurant-pos-api";
 import {
@@ -78,17 +80,7 @@ type Screen =
   | "success";
 type OrderMode = "DINE_IN" | "TO_GO";
 type PaymentMethod = "QPAY" | "CARD" | "CASH";
-type Category =
-  | "ALL"
-  | "HOT"
-  | "COLD"
-  | "SOUP"
-  | "GRILL"
-  | "APPETIZER"
-  | "DESSERT"
-  | "DRINK"
-  | "SET_MENU"
-  | "OTHER";
+type Category = string;
 
 type CartLine = {
   product: RestaurantPosProduct;
@@ -188,32 +180,6 @@ async function loadSelfServiceProducts(branchId: string) {
 const getEffectiveCardProvider = (register?: RestaurantPosRegister | null) =>
   register?.cardProviderType ||
   (register?.minuAgentEnabled ? "MINU_AGENT" : null);
-
-const categoryCopy: Record<Category, string> = {
-  ALL: "Бүгд",
-  HOT: "2-р хоол",
-  COLD: "Хүйтэн хоол",
-  SOUP: "1-р хоол",
-  GRILL: "Грилл",
-  APPETIZER: "Зууш",
-  DESSERT: "Амттан",
-  DRINK: "Уух зүйлс",
-  SET_MENU: "Сет хоол",
-  OTHER: "Бусад",
-};
-
-const categoryOrder: Category[] = [
-  "ALL",
-  "SOUP",
-  "HOT",
-  "DRINK",
-  "SET_MENU",
-  "GRILL",
-  "APPETIZER",
-  "COLD",
-  "DESSERT",
-  "OTHER",
-];
 
 const moneyFormatter = new Intl.NumberFormat("mn-MN", {
   maximumFractionDigits: 0,
@@ -369,9 +335,6 @@ function printSelfServiceReceipt(
   return true;
 }
 
-const productCategory = (product: RestaurantPosProduct): Category =>
-  product.menuCategory || (product.kitchenStation === "BAR" ? "DRINK" : "OTHER");
-
 const createClientSaleId = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `self-service-${crypto.randomUUID()}`;
@@ -438,6 +401,9 @@ export function SelfServiceCheckoutScreen() {
   const [register, setRegister] = useState<RestaurantPosRegister | null>(null);
   const [shift, setShift] = useState<PosShift | null>(null);
   const [products, setProducts] = useState<RestaurantPosProduct[]>([]);
+  const [menuCategories, setMenuCategories] = useState<
+    RestaurantMenuCategory[]
+  >([]);
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod>("QPAY");
   const [ebarimtBuyerMode, setEbarimtBuyerMode] =
@@ -498,17 +464,20 @@ export function SelfServiceCheckoutScreen() {
 
       window.localStorage.setItem(REGISTER_STORAGE_KEY, nextRegister.id);
 
-      const nextProducts = await loadSelfServiceProducts(
-        nextRegister.branchId,
-      );
+      const [nextProducts, nextCategories] = await Promise.all([
+        loadSelfServiceProducts(nextRegister.branchId),
+        getRestaurantMenuCategories(nextRegister.organizationId),
+      ]);
 
       setRegister(nextRegister);
       setShift(currentShift?.status === "OPEN" ? currentShift : null);
       setProducts(nextProducts);
+      setMenuCategories(nextCategories);
     } catch (error) {
       setRegister(null);
       setShift(null);
       setProducts([]);
+      setMenuCategories([]);
       setSetupError(
         error instanceof Error
           ? error.message
@@ -533,8 +502,12 @@ export function SelfServiceCheckoutScreen() {
 
     menuRefreshInFlightRef.current = true;
     try {
-      const nextProducts = await loadSelfServiceProducts(register.branchId);
+      const [nextProducts, nextCategories] = await Promise.all([
+        loadSelfServiceProducts(register.branchId),
+        getRestaurantMenuCategories(register.organizationId),
+      ]);
       setProducts(nextProducts);
+      setMenuCategories(nextCategories);
       setCatalogNotice((current) =>
         current.startsWith("Менюг шинэчилж чадсангүй") ? "" : current,
       );
@@ -545,7 +518,7 @@ export function SelfServiceCheckoutScreen() {
     } finally {
       menuRefreshInFlightRef.current = false;
     }
-  }, [register?.branchId]);
+  }, [register?.branchId, register?.organizationId]);
 
   useEffect(() => {
     if (
@@ -590,12 +563,37 @@ export function SelfServiceCheckoutScreen() {
     return () => window.clearTimeout(timer);
   }, [catalogNotice]);
 
+  const configuredCategoryCodes = useMemo(
+    () => new Set(menuCategories.map((category) => category.code)),
+    [menuCategories],
+  );
+  const resolveProductCategory = useCallback(
+    (product: RestaurantPosProduct): Category =>
+      product.menuCategory && configuredCategoryCodes.has(product.menuCategory)
+        ? product.menuCategory
+        : "OTHER",
+    [configuredCategoryCodes],
+  );
+
   const visibleCategories = useMemo(() => {
-    const present = new Set(products.map(productCategory));
-    return categoryOrder.filter(
-      (category) => category === "ALL" || present.has(category),
-    );
-  }, [products]);
+    const present = new Set(products.map(resolveProductCategory));
+    const configured = menuCategories
+      .map((category) => category.code)
+      .filter((category) => present.has(category));
+    const hasOther = present.has("OTHER");
+    return ["ALL", ...configured, ...(hasOther ? ["OTHER"] : [])];
+  }, [menuCategories, products, resolveProductCategory]);
+
+  const categoryLabel = useCallback(
+    (category: Category) => {
+      if (category === "ALL") return "Бүгд";
+      if (category === "OTHER") return "Бусад";
+      return (
+        menuCategories.find((item) => item.code === category)?.name || category
+      );
+    },
+    [menuCategories],
+  );
 
   useEffect(() => {
     if (!visibleCategories.includes(activeCategory)) {
@@ -607,14 +605,15 @@ export function SelfServiceCheckoutScreen() {
     const normalizedQuery = query.trim().toLocaleLowerCase("mn");
     return products.filter((product) => {
       const matchesCategory =
-        activeCategory === "ALL" || productCategory(product) === activeCategory;
+        activeCategory === "ALL" ||
+        resolveProductCategory(product) === activeCategory;
       const matchesSearch =
         !normalizedQuery ||
         product.name.toLocaleLowerCase("mn").includes(normalizedQuery) ||
         product.sku.toLocaleLowerCase("mn").includes(normalizedQuery);
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, products, query]);
+  }, [activeCategory, products, query, resolveProductCategory]);
 
   const cartQty = cart.reduce((sum, line) => sum + line.qty, 0);
   const cartSubtotal = cart.reduce(
@@ -2246,7 +2245,7 @@ export function SelfServiceCheckoutScreen() {
                       : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                   }`}
                 >
-                  {categoryCopy[category]}
+                  {categoryLabel(category)}
                 </button>
               ))}
             </div>
@@ -2265,7 +2264,7 @@ export function SelfServiceCheckoutScreen() {
             <div className="mb-5 flex items-end justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-black tracking-tight">
-                  {categoryCopy[activeCategory]}
+                  {categoryLabel(activeCategory)}
                 </h1>
                 <p className="mt-1 text-sm font-semibold text-slate-400">
                   Сонгох бүтээгдэхүүн дээрээ дарна уу

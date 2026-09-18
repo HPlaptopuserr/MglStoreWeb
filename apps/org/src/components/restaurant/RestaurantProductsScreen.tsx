@@ -12,6 +12,7 @@ import {
   Pencil,
   Plus,
   Search,
+  Tags,
   ToggleLeft,
   ToggleRight,
   Trash2,
@@ -22,6 +23,13 @@ import {
 import { useOrg } from "@/components/org/OrgContext";
 import { API, authFetch } from "@/lib/api";
 import {
+  createRestaurantMenuCategory,
+  deleteRestaurantMenuCategory,
+  getRestaurantMenuCategories,
+  updateRestaurantMenuCategory,
+  type RestaurantMenuCategory,
+} from "@/lib/restaurant-pos-api";
+import {
   EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
   getEbarimtTaxProductCodes,
   isValidEbarimtClassificationCode,
@@ -29,15 +37,7 @@ import {
   requiresEbarimtTaxProductCode,
 } from "@mgl/types";
 
-type MenuCategory =
-  | "HOT"
-  | "COLD"
-  | "SOUP"
-  | "GRILL"
-  | "APPETIZER"
-  | "DESSERT"
-  | "DRINK"
-  | "SET_MENU";
+type MenuCategory = string;
 type KitchenStation = "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR";
 type TaxType = "VAT_ABLE" | "VAT_FREE" | "VAT_ZERO" | "NOT_VAT";
 
@@ -79,20 +79,6 @@ type MenuForm = {
   taxProductCode: string;
 };
 
-const menuCategories: Array<{
-  value: MenuCategory;
-  label: string;
-}> = [
-  { value: "SOUP", label: "1-р хоол" },
-  { value: "HOT", label: "2-р хоол" },
-  { value: "DRINK", label: "Уух зүйлс" },
-  { value: "SET_MENU", label: "Сет хоол" },
-  { value: "GRILL", label: "Грилл" },
-  { value: "APPETIZER", label: "Зууш" },
-  { value: "COLD", label: "Хүйтэн хоол" },
-  { value: "DESSERT", label: "Амттан" },
-];
-
 const kitchenStations: Array<{
   value: KitchenStation;
   label: string;
@@ -126,10 +112,6 @@ const emptyForm: MenuForm = {
   taxProductCode: "",
 };
 
-const categoryLabel = (value?: MenuCategory | null) =>
-  menuCategories.find((category) => category.value === value)?.label ??
-  "Ангилалгүй";
-
 const stationLabel = (value?: KitchenStation | null) =>
   kitchenStations.find((station) => station.value === value)?.label ??
   "Тодорхойгүй";
@@ -140,10 +122,15 @@ const formatMoney = (value: number) =>
 export function RestaurantProductsScreen() {
   const { user } = useOrg();
   const [products, setProducts] = useState<RestaurantProduct[]>([]);
+  const [menuCategories, setMenuCategories] = useState<
+    RestaurantMenuCategory[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [categorySaving, setCategorySaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<MenuForm>(emptyForm);
   const [query, setQuery] = useState("");
@@ -172,14 +159,18 @@ export function RestaurantProductsScreen() {
         organizationId: user.organizationId,
         includeInactive: "1",
       });
-      const response = await authFetch(`${API}/products?${params.toString()}`, {
-        cache: "no-store",
-      });
+      const [response, categories] = await Promise.all([
+        authFetch(`${API}/products?${params.toString()}`, {
+          cache: "no-store",
+        }),
+        getRestaurantMenuCategories(user.organizationId),
+      ]);
       const payload = await response.json().catch(() => []);
       if (!response.ok) {
         throw new Error(payload?.message || "Меню ачаалахад алдаа гарлаа");
       }
       setProducts(Array.isArray(payload) ? payload : []);
+      setMenuCategories(categories);
     } catch (error) {
       showMessage(
         "error",
@@ -215,9 +206,16 @@ export function RestaurantProductsScreen() {
     (product) => product.kitchenStation === "BAR",
   ).length;
 
+  const categoryLabel = (value?: MenuCategory | null) =>
+    menuCategories.find((category) => category.code === value)?.name ??
+    "Ангилалгүй";
+
   const openCreate = () => {
     setEditingId(null);
-    setForm(emptyForm);
+    setForm({
+      ...emptyForm,
+      menuCategory: menuCategories[0]?.code || emptyForm.menuCategory,
+    });
     setFormOpen(true);
   };
 
@@ -230,7 +228,10 @@ export function RestaurantProductsScreen() {
       price: String(product.price),
       costPrice: product.costPrice === null ? "" : String(product.costPrice),
       stock: String(product.stock),
-      menuCategory: product.menuCategory || "HOT",
+      menuCategory:
+        product.menuCategory ||
+        menuCategories[0]?.code ||
+        emptyForm.menuCategory,
       kitchenStation: product.kitchenStation || "HOT_KITCHEN",
       preparationMinutes: String(product.preparationMinutes ?? 15),
       imageUrl: product.images[0]?.url || "",
@@ -408,6 +409,75 @@ export function RestaurantProductsScreen() {
     }
   };
 
+  const saveCategory = async (name: string, categoryId?: string) => {
+    if (!user.organizationId) return false;
+    setCategorySaving(true);
+    try {
+      if (categoryId) {
+        const updated = await updateRestaurantMenuCategory({
+          id: categoryId,
+          name,
+        });
+        setMenuCategories((current) =>
+          current.map((category) =>
+            category.id === updated.id ? updated : category,
+          ),
+        );
+        showMessage("success", "Ангиллын нэр шинэчлэгдлээ");
+      } else {
+        const created = await createRestaurantMenuCategory({
+          organizationId: user.organizationId,
+          name,
+        });
+        setMenuCategories((current) => [...current, created]);
+        showMessage("success", "Шинэ ангилал нэмэгдлээ");
+      }
+      return true;
+    } catch (error) {
+      showMessage(
+        "error",
+        error instanceof Error
+          ? error.message
+          : "Ангилал хадгалахад алдаа гарлаа",
+      );
+      return false;
+    } finally {
+      setCategorySaving(false);
+    }
+  };
+
+  const removeCategory = async (category: RestaurantMenuCategory) => {
+    const productNotice =
+      category.productCount > 0
+        ? ` ${category.productCount} бүтээгдэхүүн ангилалгүй болно.`
+        : "";
+    if (
+      !window.confirm(`“${category.name}” ангиллыг устгах уу?${productNotice}`)
+    ) {
+      return;
+    }
+
+    setCategorySaving(true);
+    try {
+      await deleteRestaurantMenuCategory(category.id);
+      setMenuCategories((current) =>
+        current.filter((item) => item.id !== category.id),
+      );
+      setActiveCategory("ALL");
+      showMessage("success", "Ангилал устгагдлаа");
+      await loadProducts();
+    } catch (error) {
+      showMessage(
+        "error",
+        error instanceof Error
+          ? error.message
+          : "Ангилал устгахад алдаа гарлаа",
+      );
+    } finally {
+      setCategorySaving(false);
+    }
+  };
+
   return (
     <section className="space-y-5">
       {message ? (
@@ -437,6 +507,14 @@ export function RestaurantProductsScreen() {
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={() => setCategoryManagerOpen(true)}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-5 text-sm font-black text-slate-800 transition hover:bg-slate-50"
+          >
+            <Tags className="h-4 w-4" />
+            Ангилал тохируулах
+          </button>
           <Link
             href="/dashboard/reels"
             className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-5 text-sm font-black text-slate-800 transition hover:bg-slate-50"
@@ -471,10 +549,10 @@ export function RestaurantProductsScreen() {
           />
           {menuCategories.map((category) => (
             <FilterButton
-              key={category.value}
-              active={activeCategory === category.value}
-              onClick={() => setActiveCategory(category.value)}
-              label={category.label}
+              key={category.code}
+              active={activeCategory === category.code}
+              onClick={() => setActiveCategory(category.code)}
+              label={category.name}
             />
           ))}
         </div>
@@ -619,11 +697,21 @@ export function RestaurantProductsScreen() {
       {formOpen ? (
         <MenuItemForm
           form={form}
+          menuCategories={menuCategories}
           editing={Boolean(editingId)}
           saving={saving}
           onChange={setForm}
           onClose={closeForm}
           onSubmit={handleSubmit}
+        />
+      ) : null}
+      {categoryManagerOpen ? (
+        <CategoryManager
+          categories={menuCategories}
+          saving={categorySaving}
+          onClose={() => setCategoryManagerOpen(false)}
+          onSave={saveCategory}
+          onDelete={removeCategory}
         />
       ) : null}
     </section>
@@ -694,8 +782,177 @@ function ProductImage({ imageUrl, name }: { imageUrl?: string; name: string }) {
   );
 }
 
+function CategoryManager({
+  categories,
+  saving,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  categories: RestaurantMenuCategory[];
+  saving: boolean;
+  onClose: () => void;
+  onSave: (name: string, categoryId?: string) => Promise<boolean>;
+  onDelete: (category: RestaurantMenuCategory) => Promise<void>;
+}) {
+  const [newName, setNewName] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState("");
+
+  const submitNew = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = newName.trim();
+    if (!name) return;
+    if (await onSave(name)) setNewName("");
+  };
+
+  const submitEdit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const name = editingName.trim();
+    if (!editingId || !name) return;
+    if (await onSave(name, editingId)) {
+      setEditingId(null);
+      setEditingName("");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/55 p-4">
+      <section className="flex max-h-[88vh] w-full max-w-xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+        <header className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
+          <div>
+            <div className="flex items-center gap-2 text-sm font-bold text-emerald-700">
+              <Tags className="h-4 w-4" />
+              Менюгийн ангилал
+            </div>
+            <h2 className="mt-1 text-xl font-black text-slate-950">
+              Ангилал нэмэх, өөрчлөх
+            </h2>
+            <p className="mt-1 text-sm font-medium text-slate-500">
+              Энд хийсэн өөрчлөлт касс болон QR менюд автоматаар тусна.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-950 disabled:opacity-50"
+            aria-label="Хаах"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-6">
+          <form onSubmit={submitNew} className="flex gap-2">
+            <input
+              value={newName}
+              onChange={(event) => setNewName(event.target.value)}
+              maxLength={80}
+              placeholder="Шинэ ангиллын нэр"
+              disabled={saving}
+              className="h-11 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-slate-400 disabled:bg-slate-50"
+            />
+            <button
+              type="submit"
+              disabled={saving || !newName.trim()}
+              className="inline-flex h-11 items-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-black text-white disabled:opacity-50"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              Нэмэх
+            </button>
+          </form>
+
+          <div className="mt-5 divide-y divide-slate-100 border-y border-slate-200">
+            {categories.map((category) =>
+              editingId === category.id ? (
+                <form
+                  key={category.id}
+                  onSubmit={submitEdit}
+                  className="flex items-center gap-2 py-3"
+                >
+                  <input
+                    autoFocus
+                    value={editingName}
+                    onChange={(event) => setEditingName(event.target.value)}
+                    maxLength={80}
+                    disabled={saving}
+                    className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 px-3 text-sm font-bold outline-none focus:border-slate-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={saving || !editingName.trim()}
+                    className="h-10 rounded-lg bg-slate-950 px-4 text-sm font-black text-white disabled:opacity-50"
+                  >
+                    Хадгалах
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingId(null)}
+                    disabled={saving}
+                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 text-slate-500"
+                    aria-label="Болих"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </form>
+              ) : (
+                <div
+                  key={category.id}
+                  className="flex items-center justify-between gap-3 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black text-slate-900">
+                      {category.name}
+                    </p>
+                    <p className="mt-0.5 text-xs font-semibold text-slate-400">
+                      {category.productCount} бүтээгдэхүүн
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingId(category.id);
+                        setEditingName(category.name);
+                      }}
+                      disabled={saving}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-950 disabled:opacity-50"
+                      aria-label={`${category.name} нэр өөрчлөх`}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void onDelete(category)}
+                      disabled={saving || categories.length <= 1}
+                      className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30"
+                      aria-label={`${category.name} устгах`}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ),
+            )}
+          </div>
+          <p className="mt-4 text-xs font-semibold leading-5 text-slate-500">
+            Ашиглагдаж байгаа ангиллыг устгавал тухайн бүтээгдэхүүнүүд
+            “Ангилалгүй” төлөвт шилжинэ. Хамгийн багадаа нэг ангилал үлдэнэ.
+          </p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function MenuItemForm({
   form,
+  menuCategories,
   editing,
   saving,
   onChange,
@@ -703,6 +960,7 @@ function MenuItemForm({
   onSubmit,
 }: {
   form: MenuForm;
+  menuCategories: RestaurantMenuCategory[];
   editing: boolean;
   saving: boolean;
   onChange: (form: MenuForm) => void;
@@ -826,8 +1084,8 @@ function MenuItemForm({
                     className={inputClass}
                   >
                     {menuCategories.map((category) => (
-                      <option key={category.value} value={category.value}>
-                        {category.label}
+                      <option key={category.code} value={category.code}>
+                        {category.name}
                       </option>
                     ))}
                   </select>

@@ -423,16 +423,7 @@ const normalizeSupplierDocumentImage = (value: unknown) => {
 const PREORDER_PRODUCTS_FEATURE_KEY = "preorder-products-enabled";
 const TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
 const TAX_TYPES = new Set(["VAT_ABLE", "VAT_FREE", "VAT_ZERO", "NOT_VAT"]);
-const RESTAURANT_MENU_CATEGORIES = new Set([
-  "HOT",
-  "COLD",
-  "SOUP",
-  "GRILL",
-  "APPETIZER",
-  "DESSERT",
-  "DRINK",
-  "SET_MENU",
-]);
+const RESTAURANT_MENU_CATEGORY_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 const KITCHEN_STATIONS = new Set(["HOT_KITCHEN", "COLD_KITCHEN", "BAR"]);
 
 const normalizeTaxType = (value: unknown) => {
@@ -480,7 +471,7 @@ const normalizeRestaurantMenuCategory = (value: unknown) => {
   const normalized = String(value || "")
     .trim()
     .toUpperCase();
-  return RESTAURANT_MENU_CATEGORIES.has(normalized) ? normalized : null;
+  return RESTAURANT_MENU_CATEGORY_CODE.test(normalized) ? normalized : null;
 };
 
 const normalizeKitchenStation = (value: unknown) => {
@@ -3540,11 +3531,10 @@ router.post(
       }
       const normalizedTaxType = normalizeTaxType(taxType);
       const restaurantMenuEnabled = isTruthyQueryValue(isRestaurantMenuItem);
-      const normalizedClassificationCode =
-        normalizeClassificationCode(
-          classificationCode,
-          restaurantMenuEnabled
-            ? EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE
+      const normalizedClassificationCode = normalizeClassificationCode(
+        classificationCode,
+        restaurantMenuEnabled
+          ? EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE
             : EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
         );
       const normalizedTaxProductCode = normalizeTaxProductCode(

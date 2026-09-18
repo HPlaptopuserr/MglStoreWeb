@@ -63,16 +63,7 @@ export type RestaurantPosProduct = {
   measureUnit: string;
   isActive: boolean;
   isRestaurantMenuItem: boolean;
-  menuCategory:
-    | "HOT"
-    | "COLD"
-    | "SOUP"
-    | "GRILL"
-    | "APPETIZER"
-    | "DESSERT"
-    | "DRINK"
-    | "SET_MENU"
-    | null;
+  menuCategory: string | null;
   kitchenStation: "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR" | null;
   preparationMinutes: number | null;
 };
@@ -133,6 +124,14 @@ export type RestaurantDiningTable = {
   currentTicket: RestaurantTicket | null;
 };
 
+export type RestaurantMenuCategory = {
+  id: string;
+  code: string;
+  name: string;
+  sortOrder: number;
+  productCount: number;
+};
+
 export type RestaurantPublicMenuProduct = {
   id: string;
   name: string;
@@ -166,6 +165,7 @@ export type RestaurantPublicMenu = {
     seats: number;
   };
   orderingAvailable: boolean;
+  categories: RestaurantMenuCategory[];
   products: RestaurantPublicMenuProduct[];
 };
 
@@ -649,6 +649,48 @@ export async function getRestaurantPosProducts(
     cache: "no-store",
   });
   return readApiResponse<RestaurantPosProduct[]>(response);
+}
+
+export async function getRestaurantMenuCategories(organizationId: string) {
+  const params = new URLSearchParams({ organizationId });
+  const response = await authFetch(
+    `${API}/restaurant/pos/menu-categories?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantMenuCategory[]>(response);
+}
+
+export async function createRestaurantMenuCategory(input: {
+  organizationId: string;
+  name: string;
+}) {
+  const response = await authFetch(`${API}/restaurant/pos/menu-categories`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<RestaurantMenuCategory>(response);
+}
+
+export async function updateRestaurantMenuCategory(input: {
+  id: string;
+  name: string;
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/pos/menu-categories/${encodeURIComponent(input.id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ name: input.name }),
+    },
+  );
+  return readApiResponse<RestaurantMenuCategory>(response);
+}
+
+export async function deleteRestaurantMenuCategory(id: string) {
+  const response = await authFetch(
+    `${API}/restaurant/pos/menu-categories/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+  return readApiResponse<{ ok: true; detachedProducts: number }>(response);
 }
 
 export async function getRestaurantCreditCustomers(

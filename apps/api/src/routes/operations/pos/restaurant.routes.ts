@@ -23,6 +23,11 @@ import {
   createSystemQrInvoice,
 } from "../../../services/systemqr";
 import { requirePosUser, type AuthUser } from "./_shared";
+import {
+  createRestaurantMenuCategoryCode,
+  listRestaurantMenuCategories,
+  normalizeRestaurantMenuCategoryName,
+} from "./restaurant-menu-categories";
 
 const router: ExpressRouter = Router();
 
@@ -352,6 +357,34 @@ async function requireBranchAccess(actor: AuthUser, branchId: string) {
   }
 
   return { branch } as const;
+}
+
+async function requireRestaurantOrganizationAccess(
+  actor: AuthUser,
+  organizationId: string,
+) {
+  const organization = await prisma.organization.findFirst({
+    where: { id: organizationId, deletedAt: null, status: "ACTIVE" },
+    select: { id: true },
+  });
+  if (!organization) {
+    return {
+      error: { status: 404, message: "Байгууллага олдсонгүй" },
+    } as const;
+  }
+  if (
+    actor.role !== "ADMIN" &&
+    actor.role !== "SUPER_ADMIN" &&
+    !(await hasOrgMembership(actor.id, organizationId))
+  ) {
+    return {
+      error: {
+        status: 403,
+        message: "Рестораны ангилал удирдах эрхгүй байна",
+      },
+    } as const;
+  }
+  return { organization } as const;
 }
 
 const ticketInclude = {
@@ -827,7 +860,7 @@ router.get("/restaurant/menu/:token", async (req, res) => {
       return res.status(404).json({ message: "QR menu олдсонгүй" });
     }
 
-    const [products, activeShift] = await Promise.all([
+    const [products, activeShift, menuCategories] = await Promise.all([
       prisma.product.findMany({
         where: {
           organizationId: table.organizationId,
@@ -859,6 +892,7 @@ router.get("/restaurant/menu/:token", async (req, res) => {
         select: { id: true },
         orderBy: { openedAt: "desc" },
       }),
+      listRestaurantMenuCategories(table.organizationId),
     ]);
 
     return res.json({
@@ -872,6 +906,7 @@ router.get("/restaurant/menu/:token", async (req, res) => {
         seats: table.seats,
       },
       orderingAvailable: Boolean(activeShift),
+      categories: menuCategories,
       products: products.map((product) => ({
         id: product.id,
         name: product.name,
@@ -893,6 +928,198 @@ router.get("/restaurant/menu/:token", async (req, res) => {
   } catch (error) {
     console.error("get public restaurant menu error", error);
     return res.status(500).json({ message: "QR menu ачаалахад алдаа гарлаа" });
+  }
+});
+
+router.get("/restaurant/pos/menu-categories", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const organizationId = String(req.query.organizationId || "").trim();
+    if (!organizationId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+    const access = await requireRestaurantOrganizationAccess(
+      actor,
+      organizationId,
+    );
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+
+    return res.json(await listRestaurantMenuCategories(organizationId));
+  } catch (error) {
+    console.error("get restaurant menu categories error", error);
+    return res
+      .status(500)
+      .json({ message: "Менюгийн ангилал авахад алдаа гарлаа" });
+  }
+});
+
+router.post("/restaurant/pos/menu-categories", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const organizationId = String(req.body?.organizationId || "").trim();
+    const name = normalizeRestaurantMenuCategoryName(req.body?.name);
+    if (!organizationId || !name) {
+      return res
+        .status(400)
+        .json({ message: "Байгууллага болон ангиллын нэр шаардлагатай" });
+    }
+    const access = await requireRestaurantOrganizationAccess(
+      actor,
+      organizationId,
+    );
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+
+    await listRestaurantMenuCategories(organizationId);
+    const duplicate = await prisma.restaurantMenuCategory.findFirst({
+      where: {
+        organizationId,
+        name: { equals: name, mode: "insensitive" },
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      return res.status(409).json({ message: "Ийм нэртэй ангилал байна" });
+    }
+    const aggregate = await prisma.restaurantMenuCategory.aggregate({
+      where: { organizationId },
+      _max: { sortOrder: true },
+    });
+    const category = await prisma.restaurantMenuCategory.create({
+      data: {
+        organizationId,
+        code: createRestaurantMenuCategoryCode(),
+        name,
+        sortOrder: (aggregate._max.sortOrder || 0) + 10,
+      },
+    });
+    return res.status(201).json({ ...category, productCount: 0 });
+  } catch (error) {
+    console.error("create restaurant menu category error", error);
+    return res
+      .status(500)
+      .json({ message: "Менюгийн ангилал нэмэхэд алдаа гарлаа" });
+  }
+});
+
+router.patch("/restaurant/pos/menu-categories/:id", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const categoryId = String(req.params.id || "").trim();
+    const name = normalizeRestaurantMenuCategoryName(req.body?.name);
+    if (!categoryId || !name) {
+      return res.status(400).json({ message: "Ангиллын нэр шаардлагатай" });
+    }
+    const current = await prisma.restaurantMenuCategory.findUnique({
+      where: { id: categoryId },
+    });
+    if (!current) {
+      return res.status(404).json({ message: "Ангилал олдсонгүй" });
+    }
+    const access = await requireRestaurantOrganizationAccess(
+      actor,
+      current.organizationId,
+    );
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+    const duplicate = await prisma.restaurantMenuCategory.findFirst({
+      where: {
+        organizationId: current.organizationId,
+        id: { not: current.id },
+        name: { equals: name, mode: "insensitive" },
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      return res.status(409).json({ message: "Ийм нэртэй ангилал байна" });
+    }
+
+    const updated = await prisma.restaurantMenuCategory.update({
+      where: { id: current.id },
+      data: { name },
+    });
+    const productCount = await prisma.product.count({
+      where: {
+        organizationId: current.organizationId,
+        deletedAt: null,
+        isRestaurantMenuItem: true,
+        menuCategory: current.code,
+      },
+    });
+    return res.json({ ...updated, productCount });
+  } catch (error) {
+    console.error("update restaurant menu category error", error);
+    return res
+      .status(500)
+      .json({ message: "Менюгийн ангилал өөрчлөхөд алдаа гарлаа" });
+  }
+});
+
+router.delete("/restaurant/pos/menu-categories/:id", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const categoryId = String(req.params.id || "").trim();
+    const current = await prisma.restaurantMenuCategory.findUnique({
+      where: { id: categoryId },
+    });
+    if (!current) {
+      return res.status(404).json({ message: "Ангилал олдсонгүй" });
+    }
+    const access = await requireRestaurantOrganizationAccess(
+      actor,
+      current.organizationId,
+    );
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+
+    const categoryCount = await prisma.restaurantMenuCategory.count({
+      where: { organizationId: current.organizationId },
+    });
+    if (categoryCount <= 1) {
+      return res
+        .status(409)
+        .json({ message: "Хамгийн багадаа нэг ангилал үлдэх ёстой" });
+    }
+
+    const detachedProducts = await prisma.$transaction(async (tx) => {
+      const detached = await tx.product.updateMany({
+        where: {
+          organizationId: current.organizationId,
+          menuCategory: current.code,
+        },
+        data: { menuCategory: null },
+      });
+      await tx.restaurantMenuCategory.delete({ where: { id: current.id } });
+      return detached.count;
+    });
+
+    return res.json({ ok: true, detachedProducts });
+  } catch (error) {
+    console.error("delete restaurant menu category error", error);
+    return res
+      .status(500)
+      .json({ message: "Менюгийн ангилал устгахад алдаа гарлаа" });
   }
 });
 
@@ -2104,7 +2331,9 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
     const tableId = String(req.body?.tableId || "").trim();
     const ticketId = String(req.body?.ticketId || "").trim();
     const isSelfService =
-      String(req.body?.source || "").trim().toUpperCase() === "SELF_SERVICE";
+      String(req.body?.source || "")
+        .trim()
+        .toUpperCase() === "SELF_SERVICE";
     const orderMode = normalizeOrderMode(req.body?.orderMode);
     const lines = Array.isArray(req.body?.lines)
       ? (req.body.lines as TicketLineInput[])

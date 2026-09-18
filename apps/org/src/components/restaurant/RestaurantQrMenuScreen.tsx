@@ -35,21 +35,7 @@ type CartLine = {
   imageUrl: string | null;
 };
 
-type PublicMenuCategory =
-  | NonNullable<RestaurantPublicMenuProduct["menuCategory"]>
-  | "OTHER";
-
-const categoryLabels: Record<PublicMenuCategory, string> = {
-  HOT: "2-р хоол",
-  COLD: "Хүйтэн хоол",
-  SOUP: "1-р хоол",
-  GRILL: "Грилл",
-  APPETIZER: "Зууш",
-  DESSERT: "Амттан",
-  DRINK: "Уух зүйлс",
-  SET_MENU: "Сет хоол",
-  OTHER: "Бусад",
-};
+type PublicMenuCategory = string;
 
 const moneyFormatter = new Intl.NumberFormat("mn-MN");
 const formatMoney = (value: number) => `${moneyFormatter.format(value)}₮`;
@@ -242,8 +228,12 @@ const getProductCategory = (
   product: RestaurantPublicMenuProduct,
 ): PublicMenuCategory => product.menuCategory || "OTHER";
 
-const buildProductDescription = (product: RestaurantPublicMenuProduct) => {
-  const parts = [categoryLabels[getProductCategory(product)]];
+const buildProductDescription = (
+  product: RestaurantPublicMenuProduct,
+  categoryLabels: Map<string, string>,
+) => {
+  const category = getProductCategory(product);
+  const parts = [categoryLabels.get(category) || category];
   if (product.preparationMinutes) {
     parts.push(`${product.preparationMinutes} минут орчим`);
   }
@@ -290,21 +280,24 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
     void loadMenu();
   }, [loadMenu]);
 
+  const categoryLabels = useMemo(
+    () =>
+      new Map<string, string>([
+        ...(menu?.categories.map(
+          (category) => [category.code, category.name] as const,
+        ) || []),
+        ["OTHER", "Бусад"],
+      ]),
+    [menu],
+  );
+
   const categories = useMemo(() => {
     if (!menu) return [];
-    const orderedCategories: PublicMenuCategory[] = [
-      "SOUP",
-      "HOT",
-      "DRINK",
-      "SET_MENU",
-      "GRILL",
-      "APPETIZER",
-      "COLD",
-      "DESSERT",
-      "OTHER",
-    ];
     const present = new Set(menu.products.map(getProductCategory));
-    return orderedCategories.filter((category) => present.has(category));
+    const configured = menu.categories
+      .map((category) => category.code)
+      .filter((category) => present.has(category));
+    return [...configured, ...(present.has("OTHER") ? ["OTHER"] : [])];
   }, [menu]);
 
   const visibleProducts = useMemo(() => {
@@ -317,7 +310,9 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
   }, [activeCategory, menu]);
 
   const sectionTitle =
-    activeCategory === "ALL" ? "Popular Items" : categoryLabels[activeCategory];
+    activeCategory === "ALL"
+      ? "Popular Items"
+      : categoryLabels.get(activeCategory) || activeCategory;
   const sectionSubtitle =
     activeCategory === "ALL"
       ? "The most commonly ordered items and dishes from this store"
@@ -555,7 +550,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
                     : "text-slate-500 hover:text-slate-900"
                 }`}
               >
-                {categoryLabels[category]}
+                {categoryLabels.get(category) || category}
                 {activeCategory === category ? (
                   <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-slate-950" />
                 ) : null}
@@ -602,7 +597,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
                       {product.name}
                     </span>
                     <span className="mt-1 line-clamp-2 min-h-9 text-xs font-medium leading-4 text-slate-500">
-                      {buildProductDescription(product)}
+                      {buildProductDescription(product, categoryLabels)}
                     </span>
                     <span className="mt-auto flex items-end justify-between gap-2 pt-3">
                       <span className="text-sm font-semibold text-slate-800">
