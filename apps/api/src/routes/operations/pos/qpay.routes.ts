@@ -516,6 +516,7 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
       : null;
     const systemProvider =
       String(payload.provider || "").toUpperCase() === "SYSTEMQR";
+    let providerCancelWarning: string | null = null;
 
     if (systemProvider) {
       const resolved = await resolveSystemQrConfig(
@@ -531,19 +532,28 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
           .json({ message: "Minu Dynamic QR merchantCode олдсонгүй" });
       }
       try {
-        await cancelSystemQrInvoice(
-          { merchantCode, invoiceNumber: providerInvoiceId },
-          resolved?.username,
-          resolved?.password,
-        );
-      } catch (error) {
-        if (!resolved?.password || !isSystemQrAuthenticationError(error)) {
-          throw error;
+        try {
+          await cancelSystemQrInvoice(
+            { merchantCode, invoiceNumber: providerInvoiceId },
+            resolved?.username,
+            resolved?.password,
+          );
+        } catch (error) {
+          if (!resolved?.password || !isSystemQrAuthenticationError(error)) {
+            throw error;
+          }
+          await cancelSystemQrInvoice({
+            merchantCode,
+            invoiceNumber: providerInvoiceId,
+          });
         }
-        await cancelSystemQrInvoice({
-          merchantCode,
-          invoiceNumber: providerInvoiceId,
-        });
+      } catch (error) {
+        providerCancelWarning =
+          error instanceof Error ? error.message : String(error);
+        console.warn(
+          "[SystemQR] Provider cancellation failed; expiring the unpaid local invoice",
+          providerCancelWarning,
+        );
       }
     } else {
       let merchantContext = registerConfig
@@ -567,6 +577,7 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
           cancelledAt: cancelledAt.toISOString(),
           cancelledById: actor.id,
           cancelReason: "SELF_SERVICE_ORDER_CHANGE",
+          ...(providerCancelWarning ? { providerCancelWarning } : {}),
         } as unknown as Prisma.JsonObject,
       },
     });
@@ -583,6 +594,12 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
       status: PosQPayStatus.EXPIRED,
       expiresAt: cancelledAt.toISOString(),
       createdAt: invoice.createdAt.toISOString(),
+      ...(providerCancelWarning
+        ? {
+            warning:
+              "Minu талд QR цуцлах хүсэлт амжилтгүй болсон ч төлөгдөөгүй нэхэмжлэлийг хаалаа.",
+          }
+        : {}),
     });
   } catch (error) {
     console.error("qpay invoice cancel error", error);
