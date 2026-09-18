@@ -10,6 +10,7 @@ import {
   PosPaymentStatus,
   PosQPayStatus,
   PosActivationStatus,
+  RestaurantOrderMode,
   ShiftStatus,
 } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
@@ -57,6 +58,9 @@ import {
   resolvePosCreditDueDate,
 } from "./credit-interest";
 import {
+  EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
+  SELF_SERVICE_TAKEAWAY_PACKAGING_FEE,
+  SELF_SERVICE_TAKEAWAY_PACKAGING_SKU,
   formatPosQuantity,
   fromPosStoredStockQuantity,
   normalizePosMeasureUnit,
@@ -704,6 +708,22 @@ router.post("/pos/sales", async (req, res) => {
     const restaurantTicketId =
       String(body.restaurantTicketId || "").trim() || null;
     const clientSaleId = String(body.clientSaleId || "").trim();
+    const packagingFee = roundMoney(Number(body.packagingFee || 0));
+
+    if (
+      !Number.isFinite(packagingFee) ||
+      (!moneyMatches(packagingFee, 0) &&
+        !moneyMatches(packagingFee, SELF_SERVICE_TAKEAWAY_PACKAGING_FEE))
+    ) {
+      return res.status(400).json({
+        message: `Савны үнэ 0 эсвэл ${SELF_SERVICE_TAKEAWAY_PACKAGING_FEE}₮ байх ёстой`,
+      });
+    }
+    if (packagingFee > 0 && !restaurantTicketId) {
+      return res.status(400).json({
+        message: "Савны үнэ зөвхөн авч явах рестораны захиалгад нэмэгдэнэ",
+      });
+    }
 
     let idempotencyOrganizationId: string | null = null;
     if (registerId) {
@@ -861,7 +881,9 @@ router.post("/pos/sales", async (req, res) => {
       (sum, line) => sum + line.discountTotal,
       0,
     );
-    const expectedGrandTotal = roundMoney(preSubTotal - preDiscountTotal);
+    const expectedGrandTotal = roundMoney(
+      preSubTotal - preDiscountTotal + packagingFee,
+    );
     const paymentTotal = roundMoney(
       normalizedPayments.reduce(
         (sum, item) => sum + Number(item.amount || 0),
@@ -1118,6 +1140,15 @@ router.post("/pos/sales", async (req, res) => {
               "Рестораны ticket аль хэдийн төлөгдсөн байна",
             );
           }
+          if (
+            packagingFee > 0 &&
+            restaurantTicket.orderMode !== RestaurantOrderMode.TO_GO
+          ) {
+            throw toApiError(
+              400,
+              "Савны үнэ зөвхөн авч явах захиалгад нэмэгдэнэ",
+            );
+          }
 
           const ticketQtyByProduct = new Map(
             restaurantTicket.items.map((item) => [item.productId, item.qty]),
@@ -1184,6 +1215,86 @@ router.post("/pos/sales", async (req, res) => {
             }
           }
         }
+
+        const packagingProduct =
+          packagingFee > 0
+            ? await tx.product.upsert({
+                where: {
+                  organizationId_sku: {
+                    organizationId: effectiveOrganizationId,
+                    sku: SELF_SERVICE_TAKEAWAY_PACKAGING_SKU,
+                  },
+                },
+                update: {
+                  name: "Савны үнэ",
+                  description:
+                    "Авч явах захиалгын автомат савлагааны төлбөр",
+                  unit: "pcs",
+                  price: packagingFee,
+                  taxType: "VAT_ABLE",
+                  cityTaxRate: 0,
+                  classificationCode:
+                    EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
+                  taxProductCode: null,
+                  isRestaurantMenuItem: false,
+                  menuCategory: null,
+                  kitchenStation: null,
+                  preparationMinutes: null,
+                  supplyType: "CHINA_PREORDER",
+                  isActive: true,
+                  deletedAt: null,
+                },
+                create: {
+                  organizationId: effectiveOrganizationId,
+                  name: "Савны үнэ",
+                  description:
+                    "Авч явах захиалгын автомат савлагааны төлбөр",
+                  sku: SELF_SERVICE_TAKEAWAY_PACKAGING_SKU,
+                  unit: "pcs",
+                  price: packagingFee,
+                  stock: 0,
+                  taxType: "VAT_ABLE",
+                  cityTaxRate: 0,
+                  classificationCode:
+                    EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
+                  taxProductCode: null,
+                  isRestaurantMenuItem: false,
+                  supplyType: "CHINA_PREORDER",
+                  isActive: true,
+                },
+                select: {
+                  id: true,
+                  name: true,
+                  sku: true,
+                  barcode: true,
+                  stock: true,
+                  unit: true,
+                  organizationId: true,
+                  taxType: true,
+                  cityTaxRate: true,
+                  classificationCode: true,
+                  taxProductCode: true,
+                  price: true,
+                  wholesalePrice: true,
+                  orderPrice: true,
+                },
+              })
+            : null;
+        const saleProducts = packagingProduct
+          ? [...products, packagingProduct]
+          : products;
+        const saleLines: SaleLineInput[] = packagingProduct
+          ? [
+              ...lines,
+              {
+                productId: packagingProduct.id,
+                qty: 1,
+                unitPrice: packagingFee,
+                discountAmount: 0,
+                taxRate: 10,
+              },
+            ]
+          : lines;
 
         const cardLines = normalizedPayments.filter(
           (item) => item.method === PaymentMethod.CARD,
@@ -1389,8 +1500,8 @@ router.post("/pos/sales", async (req, res) => {
             .toLowerCase(),
         );
 
-        const lineDetails = lines.map((line) => {
-          const product = products.find(
+        const lineDetails = saleLines.map((line) => {
+          const product = saleProducts.find(
             (item: (typeof products)[number]) => item.id === line.productId,
           );
           const discount = Number(line.discountAmount || 0);
@@ -1466,7 +1577,7 @@ router.post("/pos/sales", async (req, res) => {
           (sum, line) => sum + line.taxAmount,
           0,
         );
-        const discountTotal = lines.reduce(
+        const discountTotal = saleLines.reduce(
           (sum, line) =>
             sum + Number(line.discountAmount || 0) * Number(line.qty || 0),
           0,
@@ -1968,6 +2079,7 @@ router.post("/pos/sales", async (req, res) => {
           organizationId: result.effectiveOrganizationId,
           paymentBreakdown: normalizedPayments,
           grandTotal: result.grandTotal,
+          packagingFee,
           loyalty: result.loyalty,
         },
       },

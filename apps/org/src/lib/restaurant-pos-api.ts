@@ -302,6 +302,7 @@ type CreateRestaurantCashSalePayload = {
   clientSaleId: string;
   restaurantTicketId: string;
   total: number;
+  packagingFee?: number;
   note: string;
   lines: Array<{
     productId: string;
@@ -1075,6 +1076,7 @@ async function createRestaurantSale(input: CreateRestaurantSalePayload) {
       ],
       loyalty: { mode: "NONE" },
       lines: input.lines,
+      packagingFee: input.packagingFee || 0,
       note: input.note,
     }),
   });

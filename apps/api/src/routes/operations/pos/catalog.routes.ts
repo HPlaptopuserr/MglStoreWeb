@@ -58,6 +58,7 @@ import { calculatePosCreditPayable } from "./credit-interest";
 import {
   fromPosStoredStockQuantity,
   normalizePosMeasureUnit,
+  SELF_SERVICE_TAKEAWAY_PACKAGING_SKU,
   toPosStoredStockQuantity,
 } from "@mgl/types";
 
@@ -232,6 +233,10 @@ router.get("/pos/products", async (req, res) => {
     const products = await prisma.product.findMany({
       where: {
         organizationId: branch.organizationId,
+        OR: [
+          { sku: null },
+          { sku: { not: SELF_SERVICE_TAKEAWAY_PACKAGING_SKU } },
+        ],
         isActive: true,
         deletedAt: null,
         ...(includeAllSupplyTypes ? {} : { supplyType: "IN_STOCK" }),
@@ -1667,6 +1672,9 @@ router.post("/pos/sales/:id/void", async (req, res) => {
 
         // Reverse stock for each line
         for (const line of sale.lines) {
+          if (line.productSku === SELF_SERVICE_TAKEAWAY_PACKAGING_SKU) {
+            continue;
+          }
           const warehouseId = await resolveOrgWarehouse(
             tx,
             sale.organizationId,

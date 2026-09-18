@@ -33,6 +33,7 @@ import type {
   PosShift,
   SalePaymentLine,
 } from "@mgl/types";
+import { SELF_SERVICE_TAKEAWAY_PACKAGING_FEE } from "@mgl/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOrg } from "@/components/org/OrgContext";
 import {
@@ -100,6 +101,7 @@ type PendingCheckout = {
   clientSaleId: string;
   shiftId: string;
   total: number;
+  packagingFee: number;
   lines: CartLine[];
   ebarimtBuyer: EbarimtBuyer;
 };
@@ -615,10 +617,15 @@ export function SelfServiceCheckoutScreen() {
   }, [activeCategory, products, query]);
 
   const cartQty = cart.reduce((sum, line) => sum + line.qty, 0);
-  const cartTotal = cart.reduce(
+  const cartSubtotal = cart.reduce(
     (sum, line) => sum + Number(line.product.price) * line.qty,
     0,
   );
+  const packagingFee =
+    orderMode === "TO_GO" && cart.length > 0
+      ? SELF_SERVICE_TAKEAWAY_PACKAGING_FEE
+      : 0;
+  const cartTotal = cartSubtotal + packagingFee;
   const cardProvider = getEffectiveCardProvider(register);
   const cardTerminalReady = Boolean(
     register?.cardEnabled &&
@@ -1050,6 +1057,7 @@ export function SelfServiceCheckoutScreen() {
         restaurantTicketId: checkout.ticket.id,
         clientSaleId: checkout.clientSaleId,
         total: checkout.total,
+        packagingFee: checkout.packagingFee,
         note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}`,
         lines: checkout.lines.map((line) => ({
           productId: line.product.id,
@@ -1150,6 +1158,7 @@ export function SelfServiceCheckoutScreen() {
           restaurantTicketId: savedTicket.id,
           clientSaleId,
           total: cartTotal,
+          packagingFee,
           note: `Өөртөө үйлчлэх касс · Тест борлуулалт · ${
             orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"
           }`,
@@ -1181,6 +1190,7 @@ export function SelfServiceCheckoutScreen() {
           clientSaleId,
           shiftId: activeShift.id,
           total: cartTotal,
+          packagingFee,
           lines: cart.map((line) => ({ ...line })),
           cardAttempt,
           ebarimtBuyer,
@@ -1201,6 +1211,7 @@ export function SelfServiceCheckoutScreen() {
         clientSaleId,
         shiftId: activeShift.id,
         total: cartTotal,
+        packagingFee,
         lines: cart.map((line) => ({ ...line })),
         ebarimtBuyer,
       };
@@ -1231,6 +1242,7 @@ export function SelfServiceCheckoutScreen() {
           clientSaleId: createClientSaleId(),
           shiftId: activeShift.id,
           total: cartTotal,
+          packagingFee,
           lines: cart,
           ebarimtBuyer: { type: "B2C" },
         });
@@ -1266,6 +1278,7 @@ export function SelfServiceCheckoutScreen() {
           restaurantTicketId: checkout.ticket.id,
           clientSaleId: checkout.clientSaleId,
           total: checkout.total,
+          packagingFee: checkout.packagingFee,
           qpayInvoiceId: paidInvoice.invoiceId,
           note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}`,
           lines: checkout.lines.map((line) => ({
@@ -1950,8 +1963,14 @@ export function SelfServiceCheckoutScreen() {
               <div className="mt-6 space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span className="font-semibold text-white/55">Барааны дүн</span>
-                  <span className="font-black">{formatMoney(cartTotal)}</span>
+                  <span className="font-black">{formatMoney(cartSubtotal)}</span>
                 </div>
+                {packagingFee > 0 ? (
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-white/55">Савны үнэ</span>
+                    <span className="font-black">{formatMoney(packagingFee)}</span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between">
                   <span className="font-semibold text-white/55">Хөнгөлөлт</span>
                   <span className="font-black">0₮</span>

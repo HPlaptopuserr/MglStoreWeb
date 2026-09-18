@@ -2,6 +2,10 @@
 
 export type SalePaymentMethod = "CASH" | "CARD" | "QR" | "CREDIT";
 
+export const SELF_SERVICE_TAKEAWAY_PACKAGING_FEE = 800;
+export const SELF_SERVICE_TAKEAWAY_PACKAGING_SKU =
+  "__MGL_SELF_SERVICE_TAKEAWAY_PACKAGING__";
+
 // ─── QPay ────────────────────────────────────────────────────────────────────
 
 export type QPayInvoiceStatus = "PENDING" | "PAID" | "EXPIRED";

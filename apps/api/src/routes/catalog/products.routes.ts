@@ -19,6 +19,7 @@ import {
   fromPosStoredStockQuantity,
   normalizePosMeasureUnit,
   requiresEbarimtTaxProductCode,
+  SELF_SERVICE_TAKEAWAY_PACKAGING_SKU,
   toPosStoredStockQuantity,
 } from "@mgl/types";
 import { optionalAuth, requireAuth } from "../../middleware/auth";
@@ -1163,6 +1164,14 @@ router.get("/products", optionalAuth, async (req, res) => {
 
     const where: any = {
       deletedAt: null,
+      AND: [
+        {
+          OR: [
+            { sku: null },
+            { sku: { not: SELF_SERVICE_TAKEAWAY_PACKAGING_SKU } },
+          ],
+        },
+      ],
       organization: { deletedAt: null, status: "ACTIVE" },
     };
     if (!isOwnOrganizationCatalog && !includeInactive) {
@@ -1298,6 +1307,10 @@ router.get("/products", optionalAuth, async (req, res) => {
             where: {
               organizationId: requestedOrganizationId,
               deletedAt: null,
+              OR: [
+                { sku: null },
+                { sku: { not: SELF_SERVICE_TAKEAWAY_PACKAGING_SKU } },
+              ],
               organization: { deletedAt: null, status: "ACTIVE" },
             },
           })
