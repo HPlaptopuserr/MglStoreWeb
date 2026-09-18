@@ -533,6 +533,24 @@ export interface QPayPaymentCheckResponse {
   }[];
 }
 
+export async function cancelQPayInvoice(
+  invoiceId: string,
+  merchantContext?: QPayMerchantContext,
+): Promise<void> {
+  const baseUrl = resolveBaseUrl(merchantContext);
+  const res = await authorizedFetch(
+    `${baseUrl}/invoice/${encodeURIComponent(invoiceId)}`,
+    { method: "DELETE" },
+    merchantContext,
+  );
+
+  if (!res.ok) {
+    const errorBody = await res.text();
+    console.error("QPay invoice cancel failed:", res.status, errorBody);
+    throw new Error(`QPay invoice cancel failed: ${res.status}`);
+  }
+}
+
 export async function checkQPayPayment(
   invoiceId: string,
   merchantContext?: QPayMerchantContext,

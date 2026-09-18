@@ -4,10 +4,18 @@ import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, 
 import type { Prisma } from "@mgl/database";
 import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
 import { hasOrgMembership } from "../../../services/permission.service";
-import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
+import {
+  cancelQPayInvoice,
+  checkQPayPayment,
+  createQPayInvoice,
+} from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
-import { checkSystemQrPayment, createSystemQrInvoice } from "../../../services/systemqr";
+import {
+  cancelSystemQrInvoice,
+  checkSystemQrPayment,
+  createSystemQrInvoice,
+} from "../../../services/systemqr";
 import {
   requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
   roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
@@ -434,6 +442,144 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
     console.error("qpay invoice create error", error);
     const msg = error instanceof Error ? error.message : "QPay invoice үүсгэхэд алдаа гарлаа";
     return res.status(500).json({ message: msg });
+  }
+});
+
+router.post("/pos/payments/qpay/cancel", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+
+  const id = String(req.body?.invoiceId || "").trim();
+  if (!id) {
+    return res.status(400).json({ message: "QPay invoiceId шаардлагатай" });
+  }
+
+  try {
+    const invoice = await prisma.qPayInvoice.findUnique({
+      where: { id },
+      include: {
+        register: {
+          select: {
+            qpayEnabled: true,
+            qpayMerchantId: true,
+            qpayTerminalId: true,
+          },
+        },
+      },
+    });
+    if (!invoice) {
+      return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+    }
+    if (
+      actor.role !== "ADMIN" &&
+      invoice.organizationId &&
+      !(await hasOrgMembership(actor.id, invoice.organizationId))
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Өөр байгууллагын QPay invoice цуцлах боломжгүй" });
+    }
+    if (invoice.status === PosQPayStatus.PAID) {
+      return res
+        .status(409)
+        .json({ message: "Төлбөр аль хэдийн баталгаажсан байна" });
+    }
+    if (invoice.status === PosQPayStatus.EXPIRED) {
+      return res.json({
+        invoiceId: invoice.id,
+        amount: Number(invoice.amount),
+        qrText: invoice.qrText,
+        status: invoice.status,
+        expiresAt: invoice.expiresAt.toISOString(),
+        createdAt: invoice.createdAt.toISOString(),
+      });
+    }
+
+    if (await reconcilePosQPayInvoicePayment(invoice)) {
+      return res
+        .status(409)
+        .json({ message: "Төлбөр баталгаажсан тул захиалгыг өөрчлөх боломжгүй" });
+    }
+
+    const payload = (invoice.webhookPayload || {}) as Record<string, unknown>;
+    const providerInvoiceId = String(payload.providerInvoiceId || "").trim();
+    if (!providerInvoiceId) {
+      return res.status(400).json({ message: "Provider invoice ID олдсонгүй" });
+    }
+
+    const registerConfig = invoice.register
+      ? {
+          qpayEnabled: invoice.register.qpayEnabled,
+          qpayMerchantId: invoice.register.qpayMerchantId,
+          qpayTerminalId: invoice.register.qpayTerminalId,
+        }
+      : null;
+    const systemProvider =
+      String(payload.provider || "").toUpperCase() === "SYSTEMQR";
+
+    if (systemProvider) {
+      const resolved = await resolveSystemQrConfig(
+        invoice.organizationId,
+        registerConfig,
+      );
+      try {
+        await cancelSystemQrInvoice(
+          { invoiceNumber: providerInvoiceId },
+          resolved?.username,
+          resolved?.password,
+        );
+      } catch (error) {
+        if (!resolved?.password || !isSystemQrAuthenticationError(error)) {
+          throw error;
+        }
+        await cancelSystemQrInvoice({ invoiceNumber: providerInvoiceId });
+      }
+    } else {
+      let merchantContext = registerConfig
+        ? buildQPayMerchantContextFromPosRegister(registerConfig)
+        : null;
+      if (!merchantContext && invoice.organizationId) {
+        const orgResult = await getVendorMerchantConfig(invoice.organizationId);
+        merchantContext = orgResult.config ?? null;
+      }
+      await cancelQPayInvoice(providerInvoiceId, merchantContext || undefined);
+    }
+
+    const cancelledAt = new Date();
+    const updated = await prisma.qPayInvoice.updateMany({
+      where: { id, status: PosQPayStatus.PENDING },
+      data: {
+        status: PosQPayStatus.EXPIRED,
+        expiresAt: cancelledAt,
+        webhookPayload: {
+          ...payload,
+          cancelledAt: cancelledAt.toISOString(),
+          cancelledById: actor.id,
+          cancelReason: "SELF_SERVICE_ORDER_CHANGE",
+        } as unknown as Prisma.JsonObject,
+      },
+    });
+    if (updated.count !== 1) {
+      return res.status(409).json({
+        message: "Төлбөрийн төлөв өөрчлөгдсөн тул дахин шалгана уу",
+      });
+    }
+
+    return res.json({
+      invoiceId: invoice.id,
+      amount: Number(invoice.amount),
+      qrText: invoice.qrText,
+      status: PosQPayStatus.EXPIRED,
+      expiresAt: cancelledAt.toISOString(),
+      createdAt: invoice.createdAt.toISOString(),
+    });
+  } catch (error) {
+    console.error("qpay invoice cancel error", error);
+    const message =
+      error instanceof Error
+        ? error.message
+        : "QPay invoice цуцлахад алдаа гарлаа";
+    return res.status(502).json({ message });
   }
 });
 

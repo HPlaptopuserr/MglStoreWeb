@@ -1029,6 +1029,14 @@ export async function createRestaurantQPayInvoice(input: {
   return readApiResponse<RestaurantPosQPayInvoice>(response);
 }
 
+export async function cancelRestaurantQPayInvoice(invoiceId: string) {
+  const response = await authFetch(`${API}/pos/payments/qpay/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ invoiceId }),
+  });
+  return readApiResponse<RestaurantPosQPayInvoice>(response);
+}
+
 export async function getRestaurantQPayInvoiceStatus(
   invoiceId: string,
   options?: { refreshProvider?: boolean },

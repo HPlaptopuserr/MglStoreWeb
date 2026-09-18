@@ -36,6 +36,7 @@ import type {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOrg } from "@/components/org/OrgContext";
 import {
+  cancelRestaurantQPayInvoice,
   chargeRestaurantClientBridge,
   createRestaurantCardAttempt,
   createRestaurantCardSale,
@@ -457,6 +458,7 @@ export function SelfServiceCheckoutScreen() {
   const [secondsToReset, setSecondsToReset] = useState(30);
   const [silentPrintEnabled, setSilentPrintEnabled] = useState(false);
   const finalizedInvoiceRef = useRef<string | null>(null);
+  const cancellingInvoiceRef = useRef<string | null>(null);
   const finalizedCardAttemptRef = useRef<string | null>(null);
   const ebarimtQrRef = useRef<HTMLDivElement | null>(null);
   const autoPrintedEbarimtRef = useRef<string | null>(null);
@@ -806,6 +808,7 @@ export function SelfServiceCheckoutScreen() {
       setCardMessage("");
       setSecondsToReset(30);
       finalizedInvoiceRef.current = null;
+      cancellingInvoiceRef.current = null;
       finalizedCardAttemptRef.current = null;
       autoPrintedEbarimtRef.current = null;
       if (options?.reload) void loadSetup();
@@ -1304,12 +1307,15 @@ export function SelfServiceCheckoutScreen() {
       if (!pendingCheckout || pendingCheckout.invoice.status !== "PENDING") {
         return;
       }
+      const invoiceId = pendingCheckout.invoice.invoiceId;
+      if (cancellingInvoiceRef.current === invoiceId) return;
       if (!silent) setCheckingPayment(true);
       try {
         const status = await getRestaurantQPayInvoiceStatus(
-          pendingCheckout.invoice.invoiceId,
+          invoiceId,
           { refreshProvider: !silent },
         );
+        if (cancellingInvoiceRef.current === invoiceId) return;
         const nextInvoice = { ...pendingCheckout.invoice, ...status };
         const nextCheckout = { ...pendingCheckout, invoice: nextInvoice };
         if (nextInvoice.status === "PAID") {
@@ -1370,8 +1376,39 @@ export function SelfServiceCheckoutScreen() {
     await cleanupDraftTicket(pendingCheckout);
     setPendingCheckout(null);
     setActionError("");
-    setScreen("checkout");
+    setScreen("menu");
     setSubmitting(false);
+  };
+
+  const returnToMenuFromPayment = async () => {
+    if (!pendingCheckout || submitting || checkingPayment) return;
+    if (pendingCheckout.invoice.status !== "PENDING") {
+      await leaveExpiredPayment();
+      return;
+    }
+
+    setSubmitting(true);
+    setActionError("");
+    const invoiceId = pendingCheckout.invoice.invoiceId;
+    cancellingInvoiceRef.current = invoiceId;
+    try {
+      await cancelRestaurantQPayInvoice(invoiceId);
+      await cleanupDraftTicket(pendingCheckout);
+      finalizedInvoiceRef.current = null;
+      setPendingCheckout(null);
+      setScreen("menu");
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "QR төлбөрийг цуцалж чадсангүй.",
+      );
+    } finally {
+      if (cancellingInvoiceRef.current === invoiceId) {
+        cancellingInvoiceRef.current = null;
+      }
+      setSubmitting(false);
+    }
   };
 
   const requestFullscreen = () => {
@@ -1636,6 +1673,18 @@ export function SelfServiceCheckoutScreen() {
                 )}
                 {paid ? "Захиалга бүртгэх" : "Төлбөр шалгах"}
               </button>
+
+              {!paid && !expired ? (
+                <button
+                  type="button"
+                  onClick={() => void returnToMenuFromPayment()}
+                  disabled={checkingPayment || submitting}
+                  className="mt-3 inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Буцах · Захиалгаа өөрчлөх
+                </button>
+              ) : null}
 
               {expired ? (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
