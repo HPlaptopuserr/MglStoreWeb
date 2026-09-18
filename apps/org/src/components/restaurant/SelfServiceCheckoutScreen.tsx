@@ -236,7 +236,7 @@ const formatPrintDate = (value: string) => {
   }).format(date);
 };
 
-function printSelfServiceEbarimt(
+function printSelfServiceReceipt(
   receipt: PosReceipt,
   context: {
     organizationName: string;
@@ -246,18 +246,17 @@ function printSelfServiceEbarimt(
     qrMarkup: string;
   },
 ) {
-  if (typeof document === "undefined" || receipt.ebarimt?.status !== "SUCCESS") {
-    return false;
-  }
+  if (typeof document === "undefined") return false;
 
-  const ebarimt = receipt.ebarimt;
-  const isDemo = ebarimt.billId?.startsWith("TEST-") === true;
+  const ebarimt =
+    receipt.ebarimt?.status === "SUCCESS" ? receipt.ebarimt : null;
+  const isDemo = ebarimt?.billId?.startsWith("TEST-") === true;
   const paymentLabel =
     String(receipt.paymentMethod).toUpperCase() === "CARD"
       ? "Карт"
       : String(receipt.paymentMethod).toUpperCase() === "CASH"
         ? "Тест төлбөр"
-        : "QPay";
+        : "QR";
   const lineRows = receipt.lines
     .map(
       (line) => `
@@ -343,13 +342,20 @@ function printSelfServiceEbarimt(
           ${receipt.taxTotal > 0 ? `<div class="total"><span>Үүнд НӨАТ:</span><span>${escapePrintHtml(formatMoney(receipt.taxTotal))}</span></div>` : ""}
           <div class="total grand"><span>НИЙТ:</span><span>${escapePrintHtml(formatMoney(receipt.grandTotal))}</span></div>
         </div>
-        <div class="ebarimt">
-          <div class="center"><strong>${ebarimt.receiptType === "B2B" ? "БАЙГУУЛЛАГЫН EBARIMT" : "ХУВЬ ХҮНИЙ EBARIMT"}</strong></div>
-          ${ebarimt.customerRegNo ? `<div class="row"><span>Регистр:</span><span>${escapePrintHtml(ebarimt.customerRegNo)}</span></div>` : ""}
-          ${ebarimt.billId ? `<div class="row"><span>ДДТД:</span><span>${escapePrintHtml(ebarimt.billId)}</span></div>` : ""}
-          ${ebarimt.lottery ? `<div class="row"><span>Сугалаа:</span><span>${escapePrintHtml(ebarimt.lottery)}</span></div>` : ""}
-          <div class="qr">${context.qrMarkup || `<div class="qr-fallback">${escapePrintHtml(ebarimt.qrData)}</div>`}</div>
-        </div>
+        ${
+          ebarimt
+            ? `<div class="ebarimt">
+                <div class="center"><strong>${ebarimt.receiptType === "B2B" ? "БАЙГУУЛЛАГЫН EBARIMT" : "ХУВЬ ХҮНИЙ EBARIMT"}</strong></div>
+                ${ebarimt.customerRegNo ? `<div class="row"><span>Регистр:</span><span>${escapePrintHtml(ebarimt.customerRegNo)}</span></div>` : ""}
+                ${ebarimt.billId ? `<div class="row"><span>ДДТД:</span><span>${escapePrintHtml(ebarimt.billId)}</span></div>` : ""}
+                ${ebarimt.lottery ? `<div class="row"><span>Сугалаа:</span><span>${escapePrintHtml(ebarimt.lottery)}</span></div>` : ""}
+                <div class="qr">${context.qrMarkup || `<div class="qr-fallback">${escapePrintHtml(ebarimt.qrData)}</div>`}</div>
+              </div>`
+            : `<div class="ebarimt center">
+                <strong>ЗАХИАЛГЫН БАРИМТ</strong>
+                <div class="muted">Ebarimt биш</div>
+              </div>`
+        }
         <div class="footer">Үйлчлүүлсэнд баярлалаа</div>
       </body>
     </html>`;
@@ -461,7 +467,7 @@ export function SelfServiceCheckoutScreen() {
   const cancellingInvoiceRef = useRef<string | null>(null);
   const finalizedCardAttemptRef = useRef<string | null>(null);
   const ebarimtQrRef = useRef<HTMLDivElement | null>(null);
-  const autoPrintedEbarimtRef = useRef<string | null>(null);
+  const autoPrintedReceiptRef = useRef<string | null>(null);
   const menuRefreshInFlightRef = useRef(false);
 
   const loadSetup = useCallback(async () => {
@@ -810,15 +816,15 @@ export function SelfServiceCheckoutScreen() {
       finalizedInvoiceRef.current = null;
       cancellingInvoiceRef.current = null;
       finalizedCardAttemptRef.current = null;
-      autoPrintedEbarimtRef.current = null;
+      autoPrintedReceiptRef.current = null;
       if (options?.reload) void loadSetup();
     },
     [loadSetup],
   );
 
-  const printCompletedEbarimt = useCallback(
+  const printCompletedReceipt = useCallback(
     (targetReceipt: PosReceipt) =>
-      printSelfServiceEbarimt(targetReceipt, {
+      printSelfServiceReceipt(targetReceipt, {
         organizationName: user.organizationName || "MGL Store",
         registerName: register?.label || register?.name || "Self service",
         orderLabel: orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах",
@@ -833,25 +839,24 @@ export function SelfServiceCheckoutScreen() {
   );
 
   useEffect(() => {
-    if (
-      !silentPrintEnabled ||
-      screen !== "success" ||
-      receipt?.ebarimt?.status !== "SUCCESS"
-    ) {
+    if (!silentPrintEnabled || screen !== "success" || !receipt) {
       return;
     }
-    const printKey =
-      receipt.ebarimt.billId ||
-      receipt.ebarimt.receiptId ||
-      `${receipt.id}-${receipt.receiptNo}`;
-    if (autoPrintedEbarimtRef.current === printKey) return;
+    const successfulEbarimt =
+      receipt.ebarimt?.status === "SUCCESS" ? receipt.ebarimt : null;
+    const printKey = successfulEbarimt
+      ? successfulEbarimt.billId ||
+        successfulEbarimt.receiptId ||
+        `ebarimt-${receipt.id}`
+      : `order-${receipt.id}-${receipt.receiptNo}`;
+    if (autoPrintedReceiptRef.current === printKey) return;
 
     const timer = window.setTimeout(() => {
-      autoPrintedEbarimtRef.current = printKey;
-      printCompletedEbarimt(receipt);
+      autoPrintedReceiptRef.current = printKey;
+      printCompletedReceipt(receipt);
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [printCompletedEbarimt, receipt, screen, silentPrintEnabled]);
+  }, [printCompletedReceipt, receipt, screen, silentPrintEnabled]);
 
   useEffect(() => {
     if (screen !== "success") return;
@@ -1832,16 +1837,18 @@ export function SelfServiceCheckoutScreen() {
           </div>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            {ebarimtSucceeded ? (
-              <button
-                type="button"
-                onClick={() => printCompletedEbarimt(receipt)}
-                className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-6 text-sm font-black text-white transition hover:bg-white/15"
-              >
-                <Printer className="h-5 w-5" />
-                {silentPrintEnabled ? "Дахин хэвлэх" : "Баримт хэвлэх"}
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => printCompletedReceipt(receipt)}
+              className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-6 text-sm font-black text-white transition hover:bg-white/15"
+            >
+              <Printer className="h-5 w-5" />
+              {silentPrintEnabled
+                ? "Дахин хэвлэх"
+                : ebarimtSucceeded
+                  ? "Баримт хэвлэх"
+                  : "Захиалгын баримт хэвлэх"}
+            </button>
             <button
               type="button"
               onClick={() => resetOrder({ reload: true })}

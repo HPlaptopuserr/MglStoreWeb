@@ -50,9 +50,11 @@ test("cancelQPayInvoice deletes the exact provider invoice", async (t) => {
 test("cancelSystemQrInvoice cancels the exact Minu invoice", async (t) => {
   const originalFetch = globalThis.fetch;
   const originalBaseUrl = process.env.SYSTEMQR_BASE_URL;
+  const originalDeeplinkUrl = process.env.SYSTEMQR_DEEPLINK_URL;
   const requests: Array<{ url: string; body: unknown }> = [];
 
   process.env.SYSTEMQR_BASE_URL = "https://systemqr.example/qrpay";
+  process.env.SYSTEMQR_DEEPLINK_URL = "https://systemqr.example/deeplink";
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     requests.push({
@@ -69,10 +71,12 @@ test("cancelSystemQrInvoice cancels the exact Minu invoice", async (t) => {
     globalThis.fetch = originalFetch;
     if (originalBaseUrl === undefined) delete process.env.SYSTEMQR_BASE_URL;
     else process.env.SYSTEMQR_BASE_URL = originalBaseUrl;
+    if (originalDeeplinkUrl === undefined) delete process.env.SYSTEMQR_DEEPLINK_URL;
+    else process.env.SYSTEMQR_DEEPLINK_URL = originalDeeplinkUrl;
   });
 
   await cancelSystemQrInvoice(
-    { invoiceNumber: "MINU-123" },
+    { merchantCode: "MERCHANT-123", invoiceNumber: "MINU-123" },
     "merchant-user",
     "merchant-password",
   );
@@ -83,8 +87,8 @@ test("cancelSystemQrInvoice cancels the exact Minu invoice", async (t) => {
       body: { username: "merchant-user", password: "merchant-password" },
     },
     {
-      url: "https://systemqr.example/qrpay/cancelQr",
-      body: { invoiceNumber: "MINU-123" },
+      url: "https://systemqr.example/deeplink/subMerchant/cancelQr",
+      body: { merchantCode: "MERCHANT-123", invoiceNumber: "MINU-123" },
     },
   ]);
 });

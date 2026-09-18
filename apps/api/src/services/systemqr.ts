@@ -46,6 +46,7 @@ interface SystemQrCheckInvoiceParams {
 }
 
 interface SystemQrCancelInvoiceParams {
+  merchantCode: string;
   invoiceNumber: string;
 }
 
@@ -466,18 +467,21 @@ export async function cancelSystemQrInvoice(
   username?: string,
   password?: string,
 ) {
-  const { qrpayBaseUrl } = systemQrEnv();
+  const { deeplinkBaseUrl } = systemQrEnv();
 
   try {
     const data = await fetchSystemQrJsonWithTokenRetry<any>(
       (token) =>
-        fetch(`${qrpayBaseUrl}/cancelQr`, {
+        fetch(`${deeplinkBaseUrl}/subMerchant/cancelQr`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ invoiceNumber: params.invoiceNumber }),
+          body: JSON.stringify({
+            merchantCode: params.merchantCode,
+            invoiceNumber: params.invoiceNumber,
+          }),
         }),
       username,
       password,
@@ -485,13 +489,13 @@ export async function cancelSystemQrInvoice(
 
     if (data.status !== "000") {
       throw new Error(
-        `Minu SystemQR cancelQr failed (${data.status || "unknown"}): ${
+        `Minu Dynamic QR cancel failed (${data.status || "unknown"}): ${
           data.message || "SystemQR invoice cancellation failed"
         }`,
       );
     }
   } catch (error: any) {
-    console.error("SystemQR cancelQr error:", error.message);
+    console.error("Minu Dynamic QR cancel error:", error.message);
     throw error;
   }
 }

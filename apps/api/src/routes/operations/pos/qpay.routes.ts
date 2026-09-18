@@ -522,9 +522,17 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
         invoice.organizationId,
         registerConfig,
       );
+      const merchantCode = String(
+        payload.merchantCode || resolved?.merchantCode || "",
+      ).trim();
+      if (!merchantCode) {
+        return res
+          .status(400)
+          .json({ message: "Minu Dynamic QR merchantCode олдсонгүй" });
+      }
       try {
         await cancelSystemQrInvoice(
-          { invoiceNumber: providerInvoiceId },
+          { merchantCode, invoiceNumber: providerInvoiceId },
           resolved?.username,
           resolved?.password,
         );
@@ -532,7 +540,10 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
         if (!resolved?.password || !isSystemQrAuthenticationError(error)) {
           throw error;
         }
-        await cancelSystemQrInvoice({ invoiceNumber: providerInvoiceId });
+        await cancelSystemQrInvoice({
+          merchantCode,
+          invoiceNumber: providerInvoiceId,
+        });
       }
     } else {
       let merchantContext = registerConfig
