@@ -1308,6 +1308,7 @@ export function SelfServiceCheckoutScreen() {
       try {
         const status = await getRestaurantQPayInvoiceStatus(
           pendingCheckout.invoice.invoiceId,
+          { refreshProvider: !silent },
         );
         const nextInvoice = { ...pendingCheckout.invoice, ...status };
         const nextCheckout = { ...pendingCheckout, invoice: nextInvoice };

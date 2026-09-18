@@ -84,6 +84,132 @@ async function resolveSystemQrConfig(
   };
 }
 
+type ReconciliablePosQPayInvoice = {
+  id: string;
+  organizationId: string | null;
+  status: PosQPayStatus;
+  webhookPayload: Prisma.JsonValue | null;
+  register: {
+    qpayEnabled: boolean;
+    qpayMerchantId: string | null;
+    qpayTerminalId: string | null;
+  } | null;
+};
+
+const isSystemQrAuthenticationError = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return /SystemQR Login Error|username or password|credential|unauthorized|401|403/i.test(
+    message,
+  );
+};
+
+async function reconcilePosQPayInvoicePayment(
+  invoice: ReconciliablePosQPayInvoice,
+  lastWebhook?: Record<string, unknown>,
+) {
+  if (invoice.status === PosQPayStatus.PAID) return true;
+  if (
+    invoice.status !== PosQPayStatus.PENDING &&
+    invoice.status !== PosQPayStatus.EXPIRED
+  ) {
+    return false;
+  }
+
+  const payload = (invoice.webhookPayload || {}) as Record<string, unknown>;
+  const providerInvoiceId = String(payload.providerInvoiceId || "").trim();
+  if (!providerInvoiceId) return false;
+
+  const registerConfig = invoice.register
+    ? {
+        qpayEnabled: invoice.register.qpayEnabled,
+        qpayMerchantId: invoice.register.qpayMerchantId,
+        qpayTerminalId: invoice.register.qpayTerminalId,
+      }
+    : null;
+  const systemProvider =
+    String(payload.provider || "").toUpperCase() === "SYSTEMQR";
+
+  let paymentId = "";
+  let paymentCheck: unknown;
+  if (systemProvider) {
+    const resolved = await resolveSystemQrConfig(
+      invoice.organizationId,
+      registerConfig,
+    );
+    const merchantCode = String(
+      payload.merchantCode || resolved?.merchantCode || "",
+    ).trim();
+    if (!merchantCode) return false;
+
+    try {
+      paymentCheck = await checkSystemQrPayment(
+        { merchantCode, invoiceNumber: providerInvoiceId },
+        resolved?.username,
+        resolved?.password,
+      );
+    } catch (error) {
+      if (!resolved?.password || !isSystemQrAuthenticationError(error)) {
+        throw error;
+      }
+      paymentCheck = await checkSystemQrPayment({
+        merchantCode,
+        invoiceNumber: providerInvoiceId,
+      });
+    }
+
+    if (!(paymentCheck as { paid?: boolean }).paid) return false;
+    paymentId = `systemqr-${providerInvoiceId}`;
+  } else {
+    let merchantContext = registerConfig
+      ? buildQPayMerchantContextFromPosRegister(registerConfig)
+      : null;
+    if (!merchantContext && invoice.organizationId) {
+      const orgResult = await getVendorMerchantConfig(invoice.organizationId);
+      merchantContext = orgResult.config ?? null;
+    }
+
+    paymentCheck = await checkQPayPayment(
+      providerInvoiceId,
+      merchantContext || undefined,
+    );
+    const paidRow = Array.isArray(
+      (paymentCheck as { rows?: unknown[] }).rows,
+    )
+      ? (paymentCheck as { rows: Array<{ payment_id?: string }> }).rows[0]
+      : null;
+    paymentId = String(paidRow?.payment_id || "").trim();
+    if (
+      Number((paymentCheck as { count?: number }).count || 0) <= 0 ||
+      !paymentId
+    ) {
+      return false;
+    }
+  }
+
+  await prisma.qPayInvoice.updateMany({
+    where: {
+      id: invoice.id,
+      status: { in: [PosQPayStatus.PENDING, PosQPayStatus.EXPIRED] },
+    },
+    data: {
+      status: PosQPayStatus.PAID,
+      paymentId,
+      paidAt: new Date(),
+      webhookPayload: {
+        ...payload,
+        lastPaymentCheck: paymentCheck,
+        ...(lastWebhook ? { lastWebhook } : {}),
+      } as unknown as Prisma.JsonObject,
+    },
+  });
+
+  const current = await prisma.qPayInvoice.findUnique({
+    where: { id: invoice.id },
+    select: { status: true },
+  });
+  return current?.status === PosQPayStatus.PAID;
+}
+
 router.post("/pos/payments/qpay/invoice", async (req, res) => {
   const actor = await requirePosUser(req, res);
   if (!actor) return;
@@ -336,105 +462,38 @@ router.get("/pos/payments/qpay/status/:invoiceId", async (req, res) => {
       return res.status(403).json({ message: "Өөр байгууллагын QPay invoice харах боломжгүй" });
     }
 
-    // Routine POS polling must only read our local state. QPay explicitly
-    // disallows continuously polling its payment-check endpoint; payment
-    // providers can throttle or invalidate a QR after repeated checks. The
-    // provider callback updates active invoices. We do one final provider
-    // reconciliation only when the local five-minute deadline is reached so a
-    // payment completed just before expiry is not lost if its callback was
-    // delayed.
+    // Routine POS polling reads local state because providers can throttle
+    // repeated payment checks. A user-triggered refresh performs one provider
+    // reconciliation, and expiry still performs a final reconciliation so a
+    // delayed callback cannot lose a completed payment.
+    const refreshProvider = String(req.query.refresh || "") === "1";
     let current = invoice;
-    if (
-      invoice.status === PosQPayStatus.PENDING &&
-      invoice.expiresAt <= new Date()
-    ) {
-      const payload = (invoice.webhookPayload || {}) as Record<string, unknown>;
-      const providerInvoiceId = String(payload.providerInvoiceId || "").trim();
-      if (providerInvoiceId) {
-        const registerConfig = invoice.register
-          ? {
-              qpayEnabled: invoice.register.qpayEnabled,
-              qpayMerchantId: invoice.register.qpayMerchantId,
-              qpayTerminalId: invoice.register.qpayTerminalId,
-            }
-          : null;
-        const systemProvider = String(payload.provider || "").toUpperCase() === "SYSTEMQR";
+    const shouldReconcile = refreshProvider
+      ? invoice.status === PosQPayStatus.PENDING ||
+        invoice.status === PosQPayStatus.EXPIRED
+      : invoice.status === PosQPayStatus.PENDING &&
+        invoice.expiresAt <= new Date();
+    if (shouldReconcile) {
+      await reconcilePosQPayInvoicePayment(invoice);
+      current = await prisma.qPayInvoice.findUniqueOrThrow({
+        where: { id },
+        include: {
+          register: {
+            select: {
+              id: true,
+              organizationId: true,
+              qpayEnabled: true,
+              qpayMerchantId: true,
+              qpayTerminalId: true,
+            },
+          },
+        },
+      });
 
-        if (systemProvider) {
-          const resolved = await resolveSystemQrConfig(invoice.organizationId, registerConfig);
-          const merchantCode = String(payload.merchantCode || resolved?.merchantCode || "").trim();
-          if (merchantCode) {
-            const check = await checkSystemQrPayment(
-              { merchantCode, invoiceNumber: providerInvoiceId },
-              resolved?.username,
-              resolved?.password,
-            );
-            if (check.paid) {
-              current = await prisma.qPayInvoice.update({
-                where: { id },
-                data: {
-                  status: PosQPayStatus.PAID,
-                  paymentId: `systemqr-${providerInvoiceId}`,
-                  paidAt: new Date(),
-                  webhookPayload: {
-                    ...payload,
-                    lastPaymentCheck: check,
-                  } as unknown as Prisma.JsonObject,
-                },
-                include: {
-                  register: {
-                    select: {
-                      id: true,
-                      organizationId: true,
-                      qpayEnabled: true,
-                      qpayMerchantId: true,
-                      qpayTerminalId: true,
-                    },
-                  },
-                },
-              });
-            }
-          }
-        } else {
-          let statusMerchantContext = registerConfig ? buildQPayMerchantContextFromPosRegister(registerConfig) : null;
-
-          // Fall back to org-level config if register has no QPay config
-          if (!statusMerchantContext && invoice.organizationId) {
-            const orgRes = await getVendorMerchantConfig(invoice.organizationId);
-            statusMerchantContext = orgRes.config ?? null;
-          }
-
-          const check = await checkQPayPayment(providerInvoiceId, statusMerchantContext || undefined);
-          const paidRow = Array.isArray(check.rows) ? check.rows[0] : null;
-          if (check.count > 0 && paidRow?.payment_id) {
-            current = await prisma.qPayInvoice.update({
-              where: { id },
-              data: {
-                status: PosQPayStatus.PAID,
-                paymentId: paidRow.payment_id,
-                paidAt: new Date(),
-                webhookPayload: {
-                  ...payload,
-                  lastPaymentCheck: check,
-                } as unknown as Prisma.JsonObject,
-              },
-              include: {
-                register: {
-                  select: {
-                    id: true,
-                    organizationId: true,
-                    qpayEnabled: true,
-                    qpayMerchantId: true,
-                    qpayTerminalId: true,
-                  },
-                },
-              },
-            });
-          }
-        }
-      }
-
-      if (current.status === PosQPayStatus.PENDING) {
+      if (
+        current.status === PosQPayStatus.PENDING &&
+        current.expiresAt <= new Date()
+      ) {
         await prisma.qPayInvoice.updateMany({
           where: { id, status: PosQPayStatus.PENDING },
           data: { status: PosQPayStatus.EXPIRED },
@@ -509,11 +568,55 @@ router.post("/pos/payments/qpay/confirm", async (req, res) => {
 });
 
 /* ─────────────────────────────────────────────────────────────────────────
- * POST /pos/qpay/cb  — short alias for QuickQR callback (255-char URL limit)
+ * GET|POST /pos/qpay/cb — short provider callback URL (255-char URL limit).
+ * The callback body differs between QPay and SystemQR, so the local invoice id
+ * embedded in our callback URL is authoritative for lookup. Provider state is
+ * then checked before the invoice is marked paid.
  */
-router.post("/pos/qpay/cb", async (req, res, next) => {
-  req.url = "/pos/payments/qpay/webhook";
-  next("route");
+router.all("/pos/qpay/cb", async (req, res) => {
+  const invoiceId = String(
+    req.query?.invoiceId ||
+      req.query?.orderId ||
+      req.body?.orderId ||
+      req.body?.order_id ||
+      req.body?.referenceNumber ||
+      req.body?.reference_number ||
+      req.body?.invoiceId ||
+      req.body?.invoice_id ||
+      "",
+  ).trim();
+  if (!invoiceId) {
+    return res.status(400).json({ message: "invoiceId шаардлагатай" });
+  }
+
+  try {
+    const invoice = await prisma.qPayInvoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        register: {
+          select: {
+            qpayEnabled: true,
+            qpayMerchantId: true,
+            qpayTerminalId: true,
+          },
+        },
+      },
+    });
+    if (!invoice) {
+      return res.status(404).json({ message: "Invoice олдсонгүй" });
+    }
+
+    const paid = await reconcilePosQPayInvoicePayment(invoice, {
+      method: req.method,
+      receivedAt: new Date().toISOString(),
+      query: req.query,
+      body: req.body,
+    });
+    return res.json({ ok: true, paid });
+  } catch (error) {
+    console.error("qpay short callback error", error);
+    return res.status(500).json({ ok: false, message: "callback error" });
+  }
 });
 
 /**
