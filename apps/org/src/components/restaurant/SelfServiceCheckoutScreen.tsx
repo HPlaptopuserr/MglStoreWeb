@@ -269,9 +269,10 @@ function printSelfServiceReceipt(
         <meta charset="utf-8" />
         <title>${escapePrintHtml(receipt.receiptNo)}</title>
         <style>
-          @page { size: 80mm auto; margin: 3mm; }
+          @page { size: 58mm auto; margin: 2mm; }
           * { box-sizing: border-box; }
-          body { width: 74mm; margin: 0 auto; color: #000; background: #fff; font-family: Arial, sans-serif; font-size: 11px; line-height: 1.35; }
+          html, body { width: 54mm; max-width: 54mm; }
+          body { margin: 0 auto; overflow-wrap: anywhere; color: #000; background: #fff; font-family: Arial, sans-serif; font-size: 10px; line-height: 1.35; }
           h1 { margin: 0; text-align: center; font-size: 17px; }
           .center { text-align: center; }
           .muted { color: #333; font-size: 10px; }
@@ -279,15 +280,17 @@ function printSelfServiceReceipt(
           .order-number { margin-top: 8px; padding: 8px 4px; border: 2px solid #000; text-align: center; }
           .order-number strong { display: block; font-size: 23px; line-height: 1.1; letter-spacing: .5px; }
           .meta, .ebarimt { margin-top: 8px; padding: 7px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; }
-          .row, .total { display: flex; justify-content: space-between; gap: 8px; }
-          table { width: 100%; margin-top: 5px; border-collapse: collapse; }
+          .row, .total { display: flex; width: 100%; justify-content: space-between; gap: 5px; }
+          .row > span:first-child, .total > span:first-child { flex: 0 0 auto; }
+          .row > span:last-child, .total > span:last-child { min-width: 0; text-align: right; overflow-wrap: anywhere; word-break: break-all; }
+          table { width: 100%; table-layout: fixed; margin-top: 5px; border-collapse: collapse; }
           td { padding: 5px 0; vertical-align: top; border-bottom: 1px dotted #777; }
-          .amount { width: 32%; text-align: right; white-space: nowrap; font-weight: 700; }
+          .amount { width: 30%; text-align: right; white-space: nowrap; font-weight: 700; }
           .totals { margin-top: 7px; }
           .total { margin-top: 3px; }
           .grand { margin-top: 6px; padding-top: 6px; border-top: 2px solid #000; font-size: 15px; font-weight: 800; }
           .qr { margin-top: 8px; text-align: center; }
-          .qr svg { width: 38mm; height: 38mm; }
+          .qr svg { width: 34mm; height: 34mm; max-width: 100%; }
           .qr-fallback { overflow-wrap: anywhere; font-family: monospace; font-size: 8px; }
           .footer { margin-top: 10px; text-align: center; font-weight: 700; }
         </style>
