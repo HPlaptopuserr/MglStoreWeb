@@ -104,7 +104,6 @@ type PendingCardCheckout = Omit<PendingCheckout, "invoice"> & {
 
 const REGISTER_STORAGE_KEY = "org_restaurant_pos_register_id";
 const MENU_REFRESH_INTERVAL_MS = 15_000;
-const EBARIMT_ENABLED = process.env.NEXT_PUBLIC_EBARIMT_ENABLED === "true";
 const DEMO_CASH_PAYMENT_ENABLED = process.env.NODE_ENV !== "production";
 const LONG_RUNNING_CARD_PROVIDERS = new Set([
   "PUSH_ECR",
@@ -634,8 +633,7 @@ export function SelfServiceCheckoutScreen() {
         : register.cardTerminalId),
   );
   const ebarimtReady = Boolean(
-    DEMO_CASH_PAYMENT_ENABLED ||
-      (EBARIMT_ENABLED && register?.ebarimtEnabled),
+    DEMO_CASH_PAYMENT_ENABLED || register?.ebarimtEnabled,
   );
 
   const lookupCompanyBuyer = async (): Promise<EbarimtTinLookupResult> => {
@@ -860,11 +858,27 @@ export function SelfServiceCheckoutScreen() {
       : `order-${receipt.id}-${receipt.receiptNo}`;
     if (autoPrintedReceiptRef.current === printKey) return;
 
-    const timer = window.setTimeout(() => {
+    let timer: number | undefined;
+    let attempts = 0;
+    let cancelled = false;
+    const printWhenQrIsReady = () => {
+      if (cancelled) return;
+      const waitingForQr =
+        Boolean(successfulEbarimt?.qrData) &&
+        !ebarimtQrRef.current?.querySelector("svg");
+      if (waitingForQr && attempts < 20) {
+        attempts += 1;
+        timer = window.setTimeout(printWhenQrIsReady, 100);
+        return;
+      }
       autoPrintedReceiptRef.current = printKey;
       printCompletedReceipt(receipt);
-    }, 350);
-    return () => window.clearTimeout(timer);
+    };
+    timer = window.setTimeout(printWhenQrIsReady, 350);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [printCompletedReceipt, receipt, screen, silentPrintEnabled]);
 
   useEffect(() => {
