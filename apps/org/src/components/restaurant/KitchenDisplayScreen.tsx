@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -276,6 +276,11 @@ export function KitchenDisplayScreen() {
   const [now, setNow] = useState(() => Date.now());
   const [demoMode, setDemoMode] = useState(false);
   const [speakerEnabled, setSpeakerEnabled] = useState(true);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const ticketSnapshotRef = useRef<{
+    branchId: string;
+    ids: Set<string>;
+  } | null>(null);
 
   const branches = useMemo(() => {
     const unique = new Map<
@@ -296,6 +301,55 @@ export function KitchenDisplayScreen() {
 
   const selectedBranch =
     branches.find((branch) => branch.id === selectedBranchId) ?? null;
+
+  const getAudioContext = useCallback(async () => {
+    if (typeof window === "undefined") return null;
+    const AudioContextConstructor =
+      window.AudioContext ||
+      (
+        window as typeof window & {
+          webkitAudioContext?: typeof AudioContext;
+        }
+      ).webkitAudioContext;
+    if (!AudioContextConstructor) return null;
+
+    const context =
+      audioContextRef.current || new AudioContextConstructor();
+    audioContextRef.current = context;
+    if (context.state === "suspended") {
+      await context.resume().catch(() => undefined);
+    }
+    return context.state === "running" ? context : null;
+  }, []);
+
+  const playNewOrderChime = useCallback(async (force = false) => {
+    if (!speakerEnabled && !force) return;
+    const context = await getAudioContext();
+    if (!context) return;
+
+    const startAt = context.currentTime + 0.02;
+    const notes = [
+      { frequency: 880, offset: 0, duration: 0.16 },
+      { frequency: 1174.66, offset: 0.2, duration: 0.24 },
+    ];
+    for (const note of notes) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const noteStart = startAt + note.offset;
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(note.frequency, noteStart);
+      gain.gain.setValueAtTime(0.0001, noteStart);
+      gain.gain.exponentialRampToValueAtTime(0.35, noteStart + 0.02);
+      gain.gain.exponentialRampToValueAtTime(
+        0.0001,
+        noteStart + note.duration,
+      );
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(noteStart);
+      oscillator.stop(noteStart + note.duration + 0.02);
+    }
+  }, [getAudioContext, speakerEnabled]);
 
   const loadSetup = useCallback(async () => {
     setLoading(true);
@@ -335,9 +389,18 @@ export function KitchenDisplayScreen() {
       try {
         const nextTickets =
           await getRestaurantKitchenTickets(selectedBranchId);
+        const previousSnapshot = ticketSnapshotRef.current;
+        const hasNewTicket =
+          previousSnapshot?.branchId === selectedBranchId &&
+          nextTickets.some((ticket) => !previousSnapshot.ids.has(ticket.id));
+        ticketSnapshotRef.current = {
+          branchId: selectedBranchId,
+          ids: new Set(nextTickets.map((ticket) => ticket.id)),
+        };
         setTickets(nextTickets);
         setError("");
         setNow(Date.now());
+        if (hasNewTicket) void playNewOrderChime();
       } catch (loadError) {
         setError(
           loadError instanceof Error
@@ -348,7 +411,7 @@ export function KitchenDisplayScreen() {
         if (!options?.silent) setRefreshing(false);
       }
     },
-    [demoMode, selectedBranchId],
+    [demoMode, playNewOrderChime, selectedBranchId],
   );
 
   useEffect(() => {
@@ -364,6 +427,29 @@ export function KitchenDisplayScreen() {
       // Local storage may be unavailable in a restricted kiosk browser.
     }
   }, []);
+
+  useEffect(() => {
+    if (!speakerEnabled) return;
+    const unlockAudio = () => {
+      void getAudioContext();
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+    };
+  }, [getAudioContext, speakerEnabled]);
+
+  useEffect(
+    () => () => {
+      void audioContextRef.current?.close();
+      audioContextRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!selectedBranchId) return;
@@ -444,6 +530,7 @@ export function KitchenDisplayScreen() {
     setTickets(
       createDemoTickets(currentTime, selectedBranchId || "demo-branch"),
     );
+    void playNewOrderChime();
   };
 
   const closeDemoMode = () => {
@@ -514,9 +601,11 @@ export function KitchenDisplayScreen() {
       // The current session can still use the selected setting.
     }
     if (nextEnabled) {
+      void playNewOrderChime(true);
       speakMessage("Дуудлага идэвхжлээ.");
-    } else if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
+    } else {
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      void audioContextRef.current?.suspend();
     }
   };
 
