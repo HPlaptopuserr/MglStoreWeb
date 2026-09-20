@@ -633,6 +633,9 @@ router.get("/pos/sales/history", async (req, res) => {
           },
           branch: { select: { name: true } },
           register: { select: { name: true } },
+          restaurantTicket: {
+            select: { ticketNo: true, orderMode: true },
+          },
         },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
@@ -643,6 +646,8 @@ router.get("/pos/sales/history", async (req, res) => {
     const result = sales.map((sale) => ({
       id: sale.id,
       receiptNo: sale.receiptNo,
+      ticketNo: sale.restaurantTicket?.ticketNo ?? null,
+      orderMode: sale.restaurantTicket?.orderMode ?? null,
       branchName: sale.branch.name,
       registerName: sale.register?.name || null,
       cashierName: sale.cashier.profile?.fullName || sale.cashier.email,

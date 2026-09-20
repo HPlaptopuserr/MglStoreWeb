@@ -1,11 +1,5 @@
-import ModulePlaceholder from "@/components/ModulePlaceholder";
+import OrderHistoryScreen from "@/components/reports/OrderHistoryScreen";
 
 export default function ReportsPage() {
-  return (
-    <ModulePlaceholder
-      title="Тайлан"
-      description="Борлуулалт, үйлчилгээний хүсэлт, контент үзэлт, төлбөр, агуулахын хөдөлгөөнийг байгууллагын идэвхтэй module-уудаас хамааруулж харуулна."
-      legacyPath="/sales"
-    />
-  );
+  return <OrderHistoryScreen />;
 }

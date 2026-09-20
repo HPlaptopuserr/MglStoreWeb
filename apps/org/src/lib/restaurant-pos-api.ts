@@ -230,6 +230,8 @@ export type RestaurantSalesHistoryLine = {
 export type RestaurantSalesHistoryItem = {
   id: string;
   receiptNo: string;
+  ticketNo: string | null;
+  orderMode: "DINE_IN" | "TO_GO" | "DELIVERY" | null;
   branchName: string;
   registerName: string | null;
   cashierName: string;
