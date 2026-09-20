@@ -2035,7 +2035,16 @@ router.patch("/restaurant/pos/kitchen-tickets/:id/status", async (req, res) => {
     if (!updated) {
       return res.status(404).json({ message: "Гал тогооны ticket олдсонгүй" });
     }
-    return res.json(mapKitchenTicket(updated));
+    const remainingActiveTickets = await prisma.kitchenTicket.count({
+      where: {
+        restaurantTicketId: updated.restaurantTicket.id,
+        status: { in: ACTIVE_KITCHEN_TICKET_STATUSES },
+      },
+    });
+    return res.json({
+      ...mapKitchenTicket(updated),
+      orderCompleted: remainingActiveTickets === 0,
+    });
   } catch (error) {
     const known = error as Error & { status?: number };
     if (known.status) {

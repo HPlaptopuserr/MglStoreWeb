@@ -267,6 +267,7 @@ export type KitchenTicketStatus =
 export type RestaurantKitchenTicket = {
   id: string;
   kitchenTicketNo: string;
+  orderCompleted?: boolean;
   organizationId: string;
   branchId: string;
   status: KitchenTicketStatus;

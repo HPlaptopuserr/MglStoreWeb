@@ -16,6 +16,8 @@ import {
   ReceiptText,
   RefreshCw,
   Salad,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { useOrg } from "@/components/org/OrgContext";
 import {
@@ -31,7 +33,80 @@ import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
 type StationFilter = "ALL" | "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR";
 
 const BRANCH_STORAGE_KEY = "org_restaurant_kds_branch_id";
+const SPEAKER_STORAGE_KEY = "org_restaurant_kds_speaker_enabled";
 const REFRESH_INTERVAL_MS = 3_000;
+
+const mongolianUnits = [
+  "",
+  "нэг",
+  "хоёр",
+  "гурав",
+  "дөрөв",
+  "тав",
+  "зургаа",
+  "долоо",
+  "найм",
+  "ес",
+];
+const mongolianExactTens = [
+  "",
+  "арав",
+  "хорь",
+  "гуч",
+  "дөч",
+  "тавь",
+  "жар",
+  "дал",
+  "ная",
+  "ер",
+];
+const mongolianJoiningTens = [
+  "",
+  "арван",
+  "хорин",
+  "гучин",
+  "дөчин",
+  "тавин",
+  "жаран",
+  "далан",
+  "наян",
+  "ерэн",
+];
+const mongolianHundreds = [
+  "",
+  "нэг",
+  "хоёр",
+  "гурван",
+  "дөрвөн",
+  "таван",
+  "зургаан",
+  "долоон",
+  "найман",
+  "есөн",
+];
+
+const getSpokenOrderNumber = (value: string) => {
+  const number = Math.max(0, Math.min(999, Number.parseInt(value, 10) || 0));
+  if (number === 0) return "тэг";
+
+  const hundreds = Math.floor(number / 100);
+  const remainder = number % 100;
+  const tens = Math.floor(remainder / 10);
+  const units = remainder % 10;
+  const parts: string[] = [];
+
+  if (hundreds > 0) {
+    parts.push(`${mongolianHundreds[hundreds]} ${remainder > 0 ? "зуун" : "зуу"}`);
+  }
+  if (tens > 0) {
+    parts.push(
+      units > 0 ? mongolianJoiningTens[tens] : mongolianExactTens[tens],
+    );
+  }
+  if (units > 0) parts.push(mongolianUnits[units]);
+
+  return parts.join(" ");
+};
 
 const stationOptions: Array<{
   value: StationFilter;
@@ -200,6 +275,7 @@ export function KitchenDisplayScreen() {
   const [busyTicketId, setBusyTicketId] = useState("");
   const [now, setNow] = useState(() => Date.now());
   const [demoMode, setDemoMode] = useState(false);
+  const [speakerEnabled, setSpeakerEnabled] = useState(true);
 
   const branches = useMemo(() => {
     const unique = new Map<
@@ -278,6 +354,16 @@ export function KitchenDisplayScreen() {
   useEffect(() => {
     void loadSetup();
   }, [loadSetup]);
+
+  useEffect(() => {
+    try {
+      setSpeakerEnabled(
+        window.localStorage.getItem(SPEAKER_STORAGE_KEY) !== "false",
+      );
+    } catch {
+      // Local storage may be unavailable in a restricted kiosk browser.
+    }
+  }, []);
 
   useEffect(() => {
     if (!selectedBranchId) return;
@@ -365,19 +451,95 @@ export function KitchenDisplayScreen() {
     setTickets([]);
   };
 
+  const speakMessage = useCallback(
+    (message: string, repetitions = 1) => {
+      if (
+        typeof window === "undefined" ||
+        !("speechSynthesis" in window) ||
+        typeof window.SpeechSynthesisUtterance === "undefined"
+      ) {
+        setError("Энэ browser speaker дуудлага дэмжихгүй байна.");
+        return false;
+      }
+
+      const voice = window.speechSynthesis
+        .getVoices()
+        .find((item) => item.lang.toLowerCase().startsWith("mn"));
+      for (let index = 0; index < repetitions; index += 1) {
+        const utterance = new window.SpeechSynthesisUtterance(message);
+        utterance.lang = "mn-MN";
+        utterance.rate = 0.82;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+        if (voice) utterance.voice = voice;
+        utterance.onerror = (event) => {
+          if (event.error === "canceled" || event.error === "interrupted") {
+            return;
+          }
+          setError(
+            "Speaker дуудлага ажилласангүй. Төхөөрөмжийн дуу болон Text-to-Speech тохиргоог шалгана уу.",
+          );
+        };
+        window.speechSynthesis.speak(utterance);
+      }
+      return true;
+    },
+    [],
+  );
+
+  const announceReadyOrder = useCallback(
+    (ticket: RestaurantKitchenTicket) => {
+      if (!speakerEnabled || ticket.restaurantTicket.table) return;
+      const orderNumber = formatRestaurantOrderNumber(
+        ticket.restaurantTicket.ticketNo,
+        ticket.restaurantTicket.id,
+      );
+      speakMessage(
+        `Захиалга ${getSpokenOrderNumber(orderNumber)}, хоолоо аваарай.`,
+        2,
+      );
+    },
+    [speakerEnabled, speakMessage],
+  );
+
+  const toggleSpeaker = () => {
+    const nextEnabled = !speakerEnabled;
+    setSpeakerEnabled(nextEnabled);
+    try {
+      window.localStorage.setItem(
+        SPEAKER_STORAGE_KEY,
+        String(nextEnabled),
+      );
+    } catch {
+      // The current session can still use the selected setting.
+    }
+    if (nextEnabled) {
+      speakMessage("Дуудлага идэвхжлээ.");
+    } else if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+    }
+  };
+
   const handleStatusChange = async (ticket: RestaurantKitchenTicket) => {
     if (!isActiveStatus(ticket.status)) return;
     if (demoMode) {
+      const hasActiveSibling = tickets.some(
+        (item) =>
+          item.id !== ticket.id &&
+          item.restaurantTicket.id === ticket.restaurantTicket.id &&
+          isActiveStatus(item.status),
+      );
       setTickets((current) =>
         current.filter((item) => item.id !== ticket.id),
       );
+      if (!hasActiveSibling) announceReadyOrder(ticket);
       return;
     }
     if (!selectedBranchId) return;
     setBusyTicketId(ticket.id);
     setError("");
     try {
-      await updateRestaurantKitchenTicketStatus({
+      const updated = await updateRestaurantKitchenTicketStatus({
         branchId: selectedBranchId,
         kitchenTicketId: ticket.id,
         status: "SERVED",
@@ -385,6 +547,7 @@ export function KitchenDisplayScreen() {
       setTickets((current) =>
         current.filter((item) => item.id !== ticket.id),
       );
+      if (updated.orderCompleted) announceReadyOrder(updated);
     } catch (updateError) {
       setError(
         updateError instanceof Error
@@ -483,6 +646,29 @@ export function KitchenDisplayScreen() {
                 ))}
               </select>
             ) : null}
+            <button
+              type="button"
+              onClick={toggleSpeaker}
+              className={`flex h-11 items-center gap-2 rounded-xl border px-3.5 text-sm font-black transition ${
+                speakerEnabled
+                  ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-200 hover:bg-emerald-300/15"
+                  : "border-white/10 bg-white/[0.04] text-slate-500 hover:bg-white/[0.08] hover:text-white"
+              }`}
+              aria-pressed={speakerEnabled}
+              aria-label={
+                speakerEnabled
+                  ? "Speaker дуудлагыг унтраах"
+                  : "Speaker дуудлагыг асаах"
+              }
+              title={speakerEnabled ? "Speaker дуудлага асаалттай" : "Speaker дуудлага унтраалттай"}
+            >
+              {speakerEnabled ? (
+                <Volume2 className="size-4" />
+              ) : (
+                <VolumeX className="size-4" />
+              )}
+              <span className="hidden lg:inline">Дуудлага</span>
+            </button>
             <button
               type="button"
               onClick={demoMode ? closeDemoMode : showDemoTickets}
