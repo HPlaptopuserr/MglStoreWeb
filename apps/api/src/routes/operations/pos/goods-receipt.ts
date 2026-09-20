@@ -1,6 +1,7 @@
 export type PosGoodsReceiptLine = {
   productId: string;
   quantity: number;
+  unitCost: number;
   batchNumber: string | null;
   expiryDate: Date | null;
 };
@@ -77,6 +78,7 @@ export function parsePosGoodsReceiptInput(
     const item = rawItem as Record<string, unknown>;
     const productId = cleanText(item.productId, 100);
     const quantity = Number(item.quantity);
+    const unitCost = Number(item.unitCost);
     const batchNumber = cleanText(item.batchNumber, 80);
     const parsedExpiryDate = parseExpiryDate(item.expiryDate);
     if (!productId) {
@@ -86,6 +88,16 @@ export function parsePosGoodsReceiptInput(
       return {
         ok: false,
         message: "Хүлээн авах тоо ширхэг 1-1,000,000 хооронд байна",
+      };
+    }
+    if (
+      !Number.isFinite(unitCost) ||
+      unitCost < 0 ||
+      unitCost > 1_000_000_000
+    ) {
+      return {
+        ok: false,
+        message: "Нэгж авсан үнэ 0-1,000,000,000₮ хооронд байна",
       };
     }
 
@@ -101,6 +113,7 @@ export function parsePosGoodsReceiptInput(
       productId,
       batchNumber,
       expiryDate?.toISOString().slice(0, 10) || null,
+      unitCost,
     ]);
     const nextQuantity = (linesByLot.get(lotKey)?.quantity || 0) + quantity;
     if (nextQuantity > 1_000_000) {
@@ -112,6 +125,7 @@ export function parsePosGoodsReceiptInput(
     linesByLot.set(lotKey, {
       productId,
       quantity: nextQuantity,
+      unitCost,
       batchNumber,
       expiryDate,
     });

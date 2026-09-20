@@ -1,5 +1,6 @@
 import { prisma, InventoryReason, WarehouseType } from "@mgl/database";
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { fromPosStoredStockQuantity } from "@mgl/types";
 
 type Tx = Omit<
   PrismaClient,
@@ -28,6 +29,9 @@ async function consumePosReceiptLotsFefo(
   },
 ) {
   let quantityToAllocate = input.quantity;
+  let allocatedCost = 0;
+  let hasKnownCost = false;
+  let hasUnknownCost = false;
   let attempts = 0;
 
   while (quantityToAllocate > 0 && attempts < 10) {
@@ -42,7 +46,12 @@ async function consumePosReceiptLotsFefo(
         { expiryDate: { sort: "asc", nulls: "last" } },
         { createdAt: "asc" },
       ],
-      select: { id: true, remainingQuantity: true },
+      select: {
+        id: true,
+        remainingQuantity: true,
+        unitCost: true,
+        product: { select: { unit: true } },
+      },
     });
     if (lots.length === 0) break;
 
@@ -56,14 +65,27 @@ async function consumePosReceiptLotsFefo(
       });
       if (updated.count === 0) continue;
 
+      const unitCost = lot.unitCost == null ? null : Number(lot.unitCost);
+      const totalCost =
+        unitCost == null
+          ? null
+          : unitCost * fromPosStoredStockQuantity(quantity, lot.product.unit);
       await tx.posGoodsReceiptAllocation.create({
         data: {
           receiptItemId: lot.id,
           referenceId: input.referenceId,
           referenceType: "POS_SALE",
           quantity,
+          unitCost,
+          totalCost,
         },
       });
+      if (totalCost !== null) {
+        allocatedCost += totalCost;
+        hasKnownCost = true;
+      } else {
+        hasUnknownCost = true;
+      }
       quantityToAllocate -= quantity;
       allocatedThisAttempt += quantity;
     }
@@ -73,6 +95,12 @@ async function consumePosReceiptLotsFefo(
 
   // Existing stock created before lot tracking has no receipt item. It remains
   // valid legacy stock, so an unallocated remainder must not block the sale.
+  // A partially known total would understate COGS. If even one consumed lot (or
+  // legacy stock without a lot) has no cost, let the caller use its explicit
+  // legacy fallback for the whole product quantity instead.
+  return hasKnownCost && !hasUnknownCost && quantityToAllocate <= 0
+    ? allocatedCost
+    : null;
 }
 
 async function restorePosReceiptLots(
@@ -123,7 +151,7 @@ async function restorePosReceiptLots(
 export async function adjustStock(
   tx: Tx,
   input: AdjustStockInput,
-): Promise<void> {
+): Promise<{ allocatedCost: number | null }> {
   const {
     productId,
     warehouseId,
@@ -170,8 +198,9 @@ export async function adjustStock(
     });
   }
 
+  let allocatedCost: number | null = null;
   if (change < 0 && branchId && referenceId && referenceType === "POS_SALE") {
-    await consumePosReceiptLotsFefo(tx, {
+    allocatedCost = await consumePosReceiptLotsFefo(tx, {
       productId,
       branchId,
       quantity: Math.abs(change),
@@ -199,6 +228,7 @@ export async function adjustStock(
       referenceType: referenceType || null,
     },
   });
+  return { allocatedCost };
 }
 
 /**

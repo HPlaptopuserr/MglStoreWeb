@@ -241,7 +241,6 @@ export default function VendorOrdersPage() {
 
       const res = await authFetch(`${API}/vendor/orders?${params}`);
       if (res.status === 401) {
-        router.push("/login");
         return;
       }
       const data = await res.json();
@@ -270,7 +269,7 @@ export default function VendorOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [filter, router]);
+  }, [filter]);
 
   useEffect(() => {
     const token = localStorage.getItem("vendor_token");

@@ -1396,6 +1396,11 @@ export default function ProductsPage() {
                                     selectedProduct.unit,
                                   )}
                                 </p>
+                                <p className="text-[11px] font-semibold text-slate-500">
+                                  {lot.unitCost == null
+                                    ? "Өртөг бүртгэгдээгүй"
+                                    : `Нэгж өртөг ${new Intl.NumberFormat("mn-MN").format(lot.unitCost)}₮`}
+                                </p>
                               </div>
                             </div>
                             <div className="mt-2 border-t border-slate-100 pt-2 text-[11px] leading-relaxed text-slate-500">

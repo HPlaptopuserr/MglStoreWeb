@@ -1,11 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { DashboardLayout } from "@mgl/ui";
 import { NotificationDropdown } from "@/components/organisms/NotificationDropdown";
 import VendorTutorialButton from "@/components/organisms/VendorTutorialButton";
 import { VendorUpdateAnnouncement } from "@/components/organisms/VendorUpdateAnnouncement";
+import { useVendorSession } from "@/features/session/useVendorSession";
+import { MemberWorkspace } from "@/features/session/MemberWorkspace";
+import {
+  canAccessVendorPath,
+  canSwitchToOrganization,
+  organizationDestination,
+} from "@/features/session/vendor-session.model";
+import { VendorOrganizationSwitcher } from "@/features/session/VendorOrganizationSwitcher";
+import {
+  VendorSessionFeedback,
+  VendorSessionLoading,
+} from "@/features/session/VendorSessionFeedback";
 import {
   isFeatureEnabled,
   POS_FEATURE_KEY,
@@ -15,229 +27,146 @@ import {
   CONTRACT_ARCHIVE_FEATURE_KEY,
 } from "@/lib/vendor-features";
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, "") ||
-  "http://localhost:4000";
-
-type VendorOrganization = {
-  id: string;
-  name: string;
-  role: string;
-};
-
 export default function VendorDashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
   const router = useRouter();
-  const [isReady, setIsReady] = useState(false);
-  const [showPos, setShowPos] = useState(false);
-  const [showSupplyProducts, setShowSupplyProducts] = useState(false);
-  const [showPreorderProducts, setShowPreorderProducts] = useState(false);
-  const [showServicePosts, setShowServicePosts] = useState(true);
-  const [showContractArchive, setShowContractArchive] = useState(false);
-  const [organizations, setOrganizations] = useState<VendorOrganization[]>([]);
-  const [selectedOrganizationId, setSelectedOrganizationId] = useState("");
-  const [isSwitchingOrganization, setIsSwitchingOrganization] = useState(false);
-  const [userData, setUserData] = useState({
-    name: "Vendor",
-    email: "vendor@mglstore.mn",
-    role: "VENDOR",
-    initials: "VN",
-    organizationName: "",
-  });
+  const {
+    state,
+    mode,
+    retry,
+    logout,
+    switching,
+    switchError,
+    switchOrganization,
+  } = useVendorSession(pathname);
+  const redirectDestination =
+    mode !== null && !canAccessVendorPath(mode, pathname)
+      ? organizationDestination(mode, pathname)
+      : null;
 
   useEffect(() => {
-    const token = localStorage.getItem("vendor_token");
+    if (redirectDestination && !switching) router.replace(redirectDestination);
+  }, [redirectDestination, switching, router]);
 
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
+  if (state.status === "loading" || switching || redirectDestination)
+    return <VendorSessionLoading switching={switching} />;
+  if (state.status === "error")
+    return (
+      <VendorSessionFeedback
+        title="Дэлгүүрийн мэдээлэл ачаалсангүй"
+        message={state.message}
+        onLogout={logout}
+      >
+        <button
+          type="button"
+          onClick={retry}
+          className="min-h-11 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+        >
+          Дахин оролдох
+        </button>
+      </VendorSessionFeedback>
+    );
 
-    const clearSession = () => {
-      localStorage.removeItem("vendor_token");
-      localStorage.removeItem("vendor_user");
-      router.replace("/login");
-    };
+  const { user, settings } = state;
+  const availableOrganizations = user.organizations.filter(
+    canSwitchToOrganization,
+  );
+  const hasOtherOrganization = availableOrganizations.some(
+    (organization) => organization.id !== user.organizationId,
+  );
+  const isPosRoute = pathname === "/pos" || pathname.startsWith("/pos/");
+  const selector = hasOtherOrganization ? (
+    <VendorOrganizationSwitcher
+      organizations={availableOrganizations}
+      selectedId={user.organizationId}
+      disabled={switching}
+      onChange={(id) => void switchOrganization(id)}
+    />
+  ) : null;
+  if (!mode || !user.organizationId)
+    return (
+      <VendorSessionFeedback
+        title="Ажиллах дэлгүүрээ сонгоно уу"
+        message="Нэвтрэлт хэвээр байна. Сонгосон байгууллагад Vendor эрх олгогдоогүй тул эзэмшигч эсвэл кассын эрхтэй дэлгүүрээ сонгоно уу."
+        onLogout={logout}
+      >
+        {selector}
+        {switchError && (
+          <p role="alert" className="text-sm text-rose-700">
+            {switchError}
+          </p>
+        )}
+      </VendorSessionFeedback>
+    );
 
-    const hydrateSession = async () => {
-      try {
-        const meRes = await fetch(`${API_URL}/auth/me`, {
-          cache: "no-store",
-          headers: { Authorization: `Bearer ${token}` },
-        });
+  if (mode === "member")
+    return (
+      <MemberWorkspace
+        user={user}
+        selector={selector}
+        error={switchError}
+        onLogout={logout}
+      />
+    );
 
-        if (!meRes.ok) {
-          clearSession();
-          return;
-        }
-
-        const me = await meRes.json();
-        if (!me.organizationId) {
-          clearSession();
-          return;
-        }
-
-        const storedUser = JSON.parse(
-          localStorage.getItem("vendor_user") || "{}",
-        );
-        const nextUser = {
-          ...storedUser,
-          ...me,
-          organizationName:
-            storedUser.organizationName || me.organizationName || "",
-        };
-        localStorage.setItem("vendor_user", JSON.stringify(nextUser));
-        setOrganizations(
-          Array.isArray(me.organizations) ? me.organizations : [],
-        );
-        setSelectedOrganizationId(me.organizationId || "");
-
-        setUserData({
-          name: nextUser.name || nextUser.fullName || "Vendor",
-          email: nextUser.email || "vendor@mglstore.mn",
-          role: nextUser.role || "VENDOR",
-          initials: (nextUser.name || nextUser.fullName || "VN")
-            .slice(0, 2)
-            .toUpperCase(),
-          organizationName: nextUser.organizationName || "",
-        });
-
-        const settingRes = await fetch(`${API_URL}/api/site-settings`, {
-          cache: "no-store",
-        });
-        const settings = settingRes.ok
-          ? ((await settingRes.json()) as Record<string, unknown>)
-          : {};
-        setShowPos(
-          isFeatureEnabled(settings, POS_FEATURE_KEY, me.organizationId),
-        );
-        setShowSupplyProducts(
-          isFeatureEnabled(
-            settings,
-            SUPPLY_PRODUCTS_FEATURE_KEY,
-            me.organizationId,
-          ),
-        );
-        setShowPreorderProducts(
-          isFeatureEnabled(
-            settings,
-            PREORDER_PRODUCTS_FEATURE_KEY,
-            me.organizationId,
-          ),
-        );
-        setShowServicePosts(
-          isFeatureEnabled(
-            settings,
-            SERVICE_POSTS_FEATURE_KEY,
-            me.organizationId,
-            true,
-          ),
-        );
-        setShowContractArchive(
-          isFeatureEnabled(
-            settings,
-            CONTRACT_ARCHIVE_FEATURE_KEY,
-            me.organizationId,
-          ),
-        );
-        setIsReady(true);
-      } catch {
-        clearSession();
-      }
-    };
-
-    hydrateSession();
-  }, [router]);
-
-  const handleOrganizationChange = async (organizationId: string) => {
-    const currentToken = localStorage.getItem("vendor_token");
-    if (
-      !currentToken ||
-      !organizationId ||
-      organizationId === selectedOrganizationId
-    ) {
-      return;
-    }
-
-    setIsSwitchingOrganization(true);
-    try {
-      const response = await fetch(
-        `${API_URL}/auth/vendor/switch-organization`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${currentToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ organizationId }),
-        },
-      );
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(data.message || "Байгууллага солиход алдаа гарлаа");
-      }
-
-      localStorage.setItem("vendor_token", data.accessToken);
-      localStorage.setItem("vendor_user", JSON.stringify(data.user));
-      window.location.reload();
-    } catch (error) {
-      console.error("[vendor organization switch error]", error);
-      setIsSwitchingOrganization(false);
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("vendor_token");
-    localStorage.removeItem("vendor_user");
-    router.replace("/login");
-  };
-
-  if (!isReady) return null;
-
+  const organizationId = user.organizationId;
+  const name = user.fullName || user.email || "Vendor";
+  const enabled = (key: string, fallback = false) =>
+    isFeatureEnabled(settings, key, organizationId, fallback);
   return (
     <>
-      <VendorUpdateAnnouncement />
+      {mode === "owner" && <VendorUpdateAnnouncement />}
       <DashboardLayout
         variant="vendor"
-        onSignOut={handleLogout}
-        userName={userData.name}
-        userEmail={userData.email}
-        userRole={userData.role}
-        userInitials={userData.initials}
-        organizationName={userData.organizationName}
-        showPos={showPos}
-        showSupplyProducts={showSupplyProducts}
-        showPreorderProducts={showPreorderProducts}
-        showServicePosts={showServicePosts}
-        showContractArchive={showContractArchive}
-        vendorBottomSlot={<VendorTutorialButton variant="sidebar" />}
+        onSignOut={logout}
+        userName={name}
+        userEmail={user.email || ""}
+        userRole={mode === "cashier" ? "Кассын ажилтан" : "Дэлгүүрийн эзэмшигч"}
+        userInitials={name.slice(0, 2).toUpperCase()}
+        organizationName={user.organizationName}
+        showPos={enabled(POS_FEATURE_KEY)}
+        showSupplyProducts={enabled(SUPPLY_PRODUCTS_FEATURE_KEY)}
+        showPreorderProducts={enabled(PREORDER_PRODUCTS_FEATURE_KEY)}
+        showServicePosts={enabled(SERVICE_POSTS_FEATURE_KEY, true)}
+        showContractArchive={enabled(CONTRACT_ARCHIVE_FEATURE_KEY)}
+        vendorAccessMode={mode}
+        vendorBottomSlot={
+          mode === "owner" ? (
+            <VendorTutorialButton variant="sidebar" />
+          ) : undefined
+        }
         notificationComponent={
           <>
-            {organizations.length > 1 && (
-              <select
-                value={selectedOrganizationId}
-                disabled={isSwitchingOrganization}
-                onChange={(event) =>
-                  handleOrganizationChange(event.target.value)
-                }
-                className="h-9 min-w-0 max-w-[128px] truncate rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none transition hover:border-slate-300 disabled:cursor-wait disabled:opacity-60 sm:max-w-[190px] sm:px-3 sm:text-sm"
-                aria-label="Байгууллага солих"
-              >
-                {organizations.map((organization) => (
-                  <option key={organization.id} value={organization.id}>
-                    {organization.name}
-                  </option>
-                ))}
-              </select>
-            )}
-            <NotificationDropdown />
+            {selector}
+            {mode === "owner" && <NotificationDropdown />}
           </>
         }
       >
+        {isPosRoute && hasOtherOrganization && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">
+                Дэлгүүр солих
+              </p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Эрхтэй дэлгүүрээ сонгож шилжинэ үү.
+              </p>
+            </div>
+            {selector}
+          </div>
+        )}
+        {switchError && (
+          <div
+            role="alert"
+            className="mb-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-800"
+          >
+            {switchError}
+          </div>
+        )}
         {children}
       </DashboardLayout>
     </>

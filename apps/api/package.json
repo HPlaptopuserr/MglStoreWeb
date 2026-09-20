@@ -13,6 +13,8 @@
     "categories:seed-marketplace": "tsx src/scripts/seed-marketplace-categories.ts",
     "seed:mgl-water-products": "tsx src/scripts/seed-mgl-water-products.ts",
     "seed:nama-test-order": "tsx src/scripts/seed-nama-test-order.ts",
+    "seed:nama-lot-cost-demo": "tsx src/scripts/seed-nama-lot-cost-demo.ts",
+    "seed:nama-20-item-receipt": "tsx src/scripts/seed-nama-20-item-receipt.ts",
     "seed:demo-vendor": "tsx src/scripts/seed-demo-vendor-account.ts",
     "products:classify": "tsx src/scripts/classify-products.ts",
     "pos:sync-voided-restaurant-tickets": "tsx src/scripts/sync-voided-restaurant-tickets.ts",

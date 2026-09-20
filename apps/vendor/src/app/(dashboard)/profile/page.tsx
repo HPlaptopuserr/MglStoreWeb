@@ -102,9 +102,9 @@ export default function ProfilePage() {
       ? "qpay"
       : initialTab === "web-qpay" || initialTab === "web-payment"
         ? "qpay"
-      : initialTab === "terminal"
-        ? "terminal"
-        : "profile",
+        : initialTab === "terminal"
+          ? "terminal"
+          : "profile",
   );
 
   const uploadOrgImage = async (file: File): Promise<string | null> => {
@@ -151,7 +151,9 @@ export default function ProfilePage() {
     }
   };
 
-  const handleProfileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProfileUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = e.target.files?.[0];
     if (!file || !partner?.id) return;
     setProfilePreview(URL.createObjectURL(file));
@@ -227,10 +229,9 @@ export default function ProfilePage() {
           }
         } else if (userEmail) {
           // Fallback: search by email if orgId not set (legacy accounts)
-          const partnersRes = await authFetch(
-            `${API}/partners?limit=10000`,
-            { cache: "no-store" },
-          );
+          const partnersRes = await authFetch(`${API}/partners?limit=10000`, {
+            cache: "no-store",
+          });
           if (partnersRes.ok) {
             const json = await partnersRes.json();
             const data = Array.isArray(json) ? json : json?.data || [];
@@ -433,40 +434,51 @@ export default function ProfilePage() {
     );
   }
 
+  const ownerAccount = Array.isArray(partner.members)
+    ? (partner.members.find(
+        (member: { role?: string; isPrimary?: boolean }) =>
+          member.role === "OWNER" && member.isPrimary,
+      ) ??
+      partner.members.find(
+        (member: { role?: string }) => member.role === "OWNER",
+      ))
+    : null;
+  const ownerName = ownerAccount?.fullName || ownerAccount?.email || null;
+
   const selectedSlugs = getSelectedSlugs();
   const selectedCats = categories.filter((c) => selectedSlugs.includes(c.slug));
 
   const statItems = partner.stats
     ? [
-      {
-        label: "Хэрэглэгч",
-        value: partner.stats.users,
-        icon: Users,
-        color: "text-indigo-600",
-        bg: "bg-indigo-50",
-      },
-      {
-        label: "Бүтээгдэхүүн",
-        value: partner.stats.products,
-        icon: Package,
-        color: "text-emerald-600",
-        bg: "bg-emerald-50",
-      },
-      {
-        label: "Салбар",
-        value: partner.stats.branches,
-        icon: GitBranch,
-        color: "text-amber-600",
-        bg: "bg-amber-50",
-      },
-      {
-        label: "Захиалга",
-        value: partner.stats.orders,
-        icon: ShoppingCart,
-        color: "text-sky-600",
-        bg: "bg-sky-50",
-      },
-    ]
+        {
+          label: "Хэрэглэгч",
+          value: partner.stats.users,
+          icon: Users,
+          color: "text-indigo-600",
+          bg: "bg-indigo-50",
+        },
+        {
+          label: "Бүтээгдэхүүн",
+          value: partner.stats.products,
+          icon: Package,
+          color: "text-emerald-600",
+          bg: "bg-emerald-50",
+        },
+        {
+          label: "Салбар",
+          value: partner.stats.branches,
+          icon: GitBranch,
+          color: "text-amber-600",
+          bg: "bg-amber-50",
+        },
+        {
+          label: "Захиалга",
+          value: partner.stats.orders,
+          icon: ShoppingCart,
+          color: "text-sky-600",
+          bg: "bg-sky-50",
+        },
+      ]
     : [];
 
   return (
@@ -474,7 +486,7 @@ export default function ProfilePage() {
       {/* Cover + Avatar card */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="relative h-52 bg-linear-to-br from-slate-100 to-slate-200 group/cover">
-          {(coverPreview || partner.bannerUrl) ? (
+          {coverPreview || partner.bannerUrl ? (
             <img
               src={coverPreview || partner.bannerUrl}
               alt="Cover"
@@ -509,7 +521,7 @@ export default function ProfilePage() {
           <div className="absolute -top-14 left-8">
             <div className="relative group/avatar">
               <div className="w-28 h-28 rounded-2xl bg-white border-4 border-white shadow-lg overflow-hidden flex items-center justify-center">
-                {(profilePreview || partner.logoUrl) ? (
+                {profilePreview || partner.logoUrl ? (
                   <img
                     src={profilePreview || partner.logoUrl}
                     alt={partner.name}
@@ -555,7 +567,14 @@ export default function ProfilePage() {
                   <CheckCircle2 className="text-blue-500 w-6 h-6" />
                 )}
               </div>
-              <p className="text-slate-500 font-medium mt-1">@{partner.slug}</p>
+              <p className="mt-1 font-medium text-slate-500">@{partner.slug}</p>
+              <div className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+                <Users size={15} className="text-slate-400" />
+                <span className="font-medium">Эзэмшигч:</span>
+                <span className="font-bold text-slate-800">
+                  {ownerName || "Нэр бүртгэгдээгүй"}
+                </span>
+              </div>
             </div>
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 uppercase tracking-wider">
@@ -609,30 +628,33 @@ export default function ProfilePage() {
         <button
           type="button"
           onClick={() => setActiveTab("profile")}
-          className={`px-5 py-2.5 text-sm font-semibold transition-colors ${activeTab === "profile"
+          className={`px-5 py-2.5 text-sm font-semibold transition-colors ${
+            activeTab === "profile"
               ? "border-b-2 border-indigo-500 text-indigo-600"
               : "text-slate-500 hover:text-slate-700"
-            }`}
+          }`}
         >
           Профайл
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("qpay")}
-          className={`px-5 py-2.5 text-sm font-semibold transition-colors ${activeTab === "qpay"
+          className={`px-5 py-2.5 text-sm font-semibold transition-colors ${
+            activeTab === "qpay"
               ? "border-b-2 border-indigo-500 text-indigo-600"
               : "text-slate-500 hover:text-slate-700"
-            }`}
+          }`}
         >
           QR төлбөрийн тохиргоо
         </button>
         <button
           type="button"
           onClick={() => setActiveTab("terminal")}
-          className={`px-5 py-2.5 text-sm font-semibold transition-colors ${activeTab === "terminal"
+          className={`px-5 py-2.5 text-sm font-semibold transition-colors ${
+            activeTab === "terminal"
               ? "border-b-2 border-indigo-500 text-indigo-600"
               : "text-slate-500 hover:text-slate-700"
-            }`}
+          }`}
         >
           Terminal тохиргоо
         </button>
@@ -652,7 +674,10 @@ export default function ProfilePage() {
           <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-6">
             POS terminal тохиргоо
           </h3>
-          <MerchantSettingsSection organizationId={partner?.id} mode="terminal" />
+          <MerchantSettingsSection
+            organizationId={partner?.id}
+            mode="terminal"
+          />
         </div>
       )}
 
@@ -662,7 +687,7 @@ export default function ProfilePage() {
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
               <div className="flex items-center justify-between gap-3 mb-5">
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
-                Байгууллагын мэдээлэл
+                  Байгууллагын мэдээлэл
                 </h3>
                 {!isEditing && (
                   <button
@@ -684,7 +709,9 @@ export default function ProfilePage() {
                 <InfoItem
                   icon={<Calendar size={18} className="text-slate-400" />}
                   label="Бүртгүүлсэн огноо"
-                  value={new Date(partner.createdAt).toLocaleDateString("mn-MN")}
+                  value={new Date(partner.createdAt).toLocaleDateString(
+                    "mn-MN",
+                  )}
                 />
                 <InfoItem
                   icon={<Shield size={18} className="text-slate-400" />}
@@ -756,7 +783,11 @@ export default function ProfilePage() {
                       <Tag size={18} className="text-slate-400" />
                     )}
                     <span
-                      className={selectedCats.length > 0 ? "text-slate-800" : "text-slate-400"}
+                      className={
+                        selectedCats.length > 0
+                          ? "text-slate-800"
+                          : "text-slate-400"
+                      }
                     >
                       {selectedCats.length > 0
                         ? `${selectedCats.length} ангилал сонгогдсон`
@@ -791,14 +822,20 @@ export default function ProfilePage() {
                           <button
                             key={cat.slug}
                             onClick={() => handleCategoryToggle(cat.slug)}
-                            className={`w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-indigo-50 transition-colors ${isSelected ? "bg-indigo-50/50" : ""
-                              }`}
+                            className={`w-full flex items-center gap-3 px-4 py-3 text-sm hover:bg-indigo-50 transition-colors ${
+                              isSelected ? "bg-indigo-50/50" : ""
+                            }`}
                           >
-                            <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${isSelected
-                                ? "border-indigo-500 bg-indigo-500"
-                                : "border-slate-300"
-                              }`}>
-                              {isSelected && <Check size={10} className="text-white" />}
+                            <div
+                              className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${
+                                isSelected
+                                  ? "border-indigo-500 bg-indigo-500"
+                                  : "border-slate-300"
+                              }`}
+                            >
+                              {isSelected && (
+                                <Check size={10} className="text-white" />
+                              )}
                             </div>
                             <span className="text-lg">{cat.icon ?? "🏷️"}</span>
                             <span className="font-semibold text-slate-700">
@@ -881,11 +918,19 @@ export default function ProfilePage() {
                         Байгууллагын нэр
                       </label>
                       <div className="relative">
-                        <Building2 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <Building2
+                          size={16}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                        />
                         <input
                           type="text"
                           value={formData.name}
-                          onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              name: e.target.value,
+                            }))
+                          }
                           className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
                           placeholder="Байгууллагын нэр"
                         />
@@ -896,10 +941,22 @@ export default function ProfilePage() {
                         Бизнес ангилал
                       </label>
                       <div className="relative">
-                        <Briefcase size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <Briefcase
+                          size={16}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                        />
                         <select
-                          value={formData.businessCategory.split(",").filter(Boolean)[0] || ""}
-                          onChange={(e) => setFormData(prev => ({ ...prev, businessCategory: e.target.value }))}
+                          value={
+                            formData.businessCategory
+                              .split(",")
+                              .filter(Boolean)[0] || ""
+                          }
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              businessCategory: e.target.value,
+                            }))
+                          }
                           className="w-full appearance-none pl-10 pr-10 py-3 border border-slate-200 rounded-xl text-sm font-semibold bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
                         >
                           <option value="">Ангилал сонгоно уу</option>
@@ -909,7 +966,10 @@ export default function ProfilePage() {
                             </option>
                           ))}
                         </select>
-                        <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <ChevronDown
+                          size={16}
+                          className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                        />
                       </div>
                     </div>
                     <div>
@@ -917,11 +977,19 @@ export default function ProfilePage() {
                         И-мэйл
                       </label>
                       <div className="relative">
-                        <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <Mail
+                          size={16}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                        />
                         <input
                           type="email"
                           value={formData.email}
-                          onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              email: e.target.value,
+                            }))
+                          }
                           className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
                           placeholder="example@mail.com"
                         />
@@ -932,11 +1000,19 @@ export default function ProfilePage() {
                         Утас
                       </label>
                       <div className="relative">
-                        <Phone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <Phone
+                          size={16}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                        />
                         <input
                           type="tel"
                           value={formData.phone}
-                          onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+                          onChange={(e) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              phone: e.target.value,
+                            }))
+                          }
                           className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
                           placeholder="99001122"
                         />
@@ -949,11 +1025,19 @@ export default function ProfilePage() {
                       Хаяг
                     </label>
                     <div className="relative">
-                      <MapPin size={16} className="absolute left-3 top-3 text-slate-400" />
+                      <MapPin
+                        size={16}
+                        className="absolute left-3 top-3 text-slate-400"
+                      />
                       <input
                         type="text"
                         value={formData.address}
-                        onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            address: e.target.value,
+                          }))
+                        }
                         className="w-full pl-10 pr-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
                         placeholder="Улаанбаатар хот, Баянзүрх дүүрэг..."
                       />
@@ -968,12 +1052,19 @@ export default function ProfilePage() {
                     <input
                       type="text"
                       value={formData.shortDescription}
-                      onChange={(e) => setFormData(prev => ({ ...prev, shortDescription: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          shortDescription: e.target.value,
+                        }))
+                      }
                       className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
                       placeholder="Чанартай бараа бүтээгдэхүүн..."
                       maxLength={100}
                     />
-                    <p className="text-xs text-slate-400 mt-1">Нийтийн хуудсанд гарчиг болон харагдана</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Нийтийн хуудсанд гарчиг болон харагдана
+                    </p>
                   </div>
 
                   <div>
@@ -982,7 +1073,12 @@ export default function ProfilePage() {
                     </label>
                     <textarea
                       value={formData.description}
-                      onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          description: e.target.value,
+                        }))
+                      }
                       rows={4}
                       className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400 resize-none"
                       placeholder="Байгууллагын талаар дэлгэрэнгүй мэдээлэл..."
@@ -1007,14 +1103,18 @@ export default function ProfilePage() {
                     </div>
                     <div className="space-y-2">
                       {formData.openingHours.length === 0 ? (
-                        <p className="text-sm text-slate-400 italic">Цагийн хуваарь нэмэгдээгүй байна</p>
+                        <p className="text-sm text-slate-400 italic">
+                          Цагийн хуваарь нэмэгдээгүй байна
+                        </p>
                       ) : (
                         formData.openingHours.map((hour, index) => (
                           <div key={index} className="flex items-center gap-2">
                             <input
                               type="text"
                               value={hour}
-                              onChange={(e) => updateOpeningHour(index, e.target.value)}
+                              onChange={(e) =>
+                                updateOpeningHour(index, e.target.value)
+                              }
                               className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
                               placeholder="Даваа-Баасан: 09:00-18:00"
                             />
@@ -1041,7 +1141,12 @@ export default function ProfilePage() {
                       <input
                         type="text"
                         value={formData.deliveryText}
-                        onChange={(e) => setFormData(prev => ({ ...prev, deliveryText: e.target.value }))}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            deliveryText: e.target.value,
+                          }))
+                        }
                         className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
                         placeholder="Улаанбаатар хотод хүргэнэ"
                       />
@@ -1053,7 +1158,12 @@ export default function ProfilePage() {
                       <input
                         type="text"
                         value={formData.deliveryPrice}
-                        onChange={(e) => setFormData(prev => ({ ...prev, deliveryPrice: e.target.value }))}
+                        onChange={(e) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            deliveryPrice: e.target.value,
+                          }))
+                        }
                         className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
                         placeholder="5,000₮"
                       />
@@ -1070,7 +1180,12 @@ export default function ProfilePage() {
                       type="number"
                       min={1}
                       value={formData.operatingYears}
-                      onChange={(e) => setFormData(prev => ({ ...prev, operatingYears: parseInt(e.target.value) || 1 }))}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          operatingYears: parseInt(e.target.value) || 1,
+                        }))
+                      }
                       className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
                     />
                   </div>
@@ -1101,50 +1216,68 @@ export default function ProfilePage() {
             )}
 
             {/* Public Profile Preview Section */}
-            {!isEditing && (partner.description || partner.shortDescription || partner.deliveryText || partner.openingHours?.length > 0) && (
-              <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
-                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
-                  Нийтийн профайл мэдээлэл
-                </h3>
-                <div className="space-y-4">
-                  {partner.shortDescription && (
-                    <div>
-                      <p className="text-xs font-semibold text-slate-400 mb-1">Богино танилцуулга</p>
-                      <p className="text-sm text-slate-700">{partner.shortDescription}</p>
-                    </div>
-                  )}
-                  {partner.description && (
-                    <div>
-                      <p className="text-xs font-semibold text-slate-400 mb-1">Дэлгэрэнгүй</p>
-                      <p className="text-sm text-slate-700 whitespace-pre-wrap">{partner.description}</p>
-                    </div>
-                  )}
-                  {partner.openingHours?.length > 0 && (
-                    <div>
-                      <p className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                        <Clock size={12} /> Ажлын цаг
-                      </p>
-                      <div className="space-y-1">
-                        {partner.openingHours.map((h: string, i: number) => (
-                          <p key={i} className="text-sm text-slate-700">{h}</p>
-                        ))}
+            {!isEditing &&
+              (partner.description ||
+                partner.shortDescription ||
+                partner.deliveryText ||
+                partner.openingHours?.length > 0) && (
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6">
+                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-5">
+                    Нийтийн профайл мэдээлэл
+                  </h3>
+                  <div className="space-y-4">
+                    {partner.shortDescription && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-400 mb-1">
+                          Богино танилцуулга
+                        </p>
+                        <p className="text-sm text-slate-700">
+                          {partner.shortDescription}
+                        </p>
                       </div>
-                    </div>
-                  )}
-                  {(partner.deliveryText || partner.deliveryPrice) && (
-                    <div>
-                      <p className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
-                        <Truck size={12} /> Хүргэлт
-                      </p>
-                      <p className="text-sm text-slate-700">
-                        {partner.deliveryText}
-                        {partner.deliveryPrice && <span className="text-indigo-600 font-semibold ml-2">{partner.deliveryPrice}</span>}
-                      </p>
-                    </div>
-                  )}
+                    )}
+                    {partner.description && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-400 mb-1">
+                          Дэлгэрэнгүй
+                        </p>
+                        <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                          {partner.description}
+                        </p>
+                      </div>
+                    )}
+                    {partner.openingHours?.length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                          <Clock size={12} /> Ажлын цаг
+                        </p>
+                        <div className="space-y-1">
+                          {partner.openingHours.map((h: string, i: number) => (
+                            <p key={i} className="text-sm text-slate-700">
+                              {h}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {(partner.deliveryText || partner.deliveryPrice) && (
+                      <div>
+                        <p className="text-xs font-semibold text-slate-400 mb-1 flex items-center gap-1">
+                          <Truck size={12} /> Хүргэлт
+                        </p>
+                        <p className="text-sm text-slate-700">
+                          {partner.deliveryText}
+                          {partner.deliveryPrice && (
+                            <span className="text-indigo-600 font-semibold ml-2">
+                              {partner.deliveryPrice}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
           </div>
 
           <div className="space-y-6">

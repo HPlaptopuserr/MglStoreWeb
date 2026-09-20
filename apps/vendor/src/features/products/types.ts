@@ -18,6 +18,7 @@ export interface ProductReceiptLot {
   id: string;
   quantity: number;
   remainingQuantity: number;
+  unitCost: number | null;
   batchNumber: string | null;
   expiryDate: string | null;
   receiptNo: string;

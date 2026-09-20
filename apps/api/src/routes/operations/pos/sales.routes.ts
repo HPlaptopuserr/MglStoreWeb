@@ -56,6 +56,7 @@ import {
   calculatePosCreditPayable,
   resolvePosCreditDueDate,
 } from "./credit-interest";
+import { resolvePosSaleLineCost } from "./pos-sale-cost";
 import {
   formatPosQuantity,
   fromPosStoredStockQuantity,
@@ -1167,6 +1168,7 @@ router.post("/pos/sales", async (req, res) => {
             price: true,
             wholesalePrice: true,
             orderPrice: true,
+            costPrice: true,
           },
         });
 
@@ -1329,6 +1331,7 @@ router.post("/pos/sales", async (req, res) => {
           }
         }
 
+        const allocatedCostByProduct = new Map<string, number | null>();
         for (const [productId, qty] of qtyByProduct) {
           const product = products.find((item) => item.id === productId);
           if (!product) {
@@ -1340,7 +1343,7 @@ router.post("/pos/sales", async (req, res) => {
             productId,
           );
 
-          await adjustStock(tx, {
+          const adjustment = await adjustStock(tx, {
             productId,
             warehouseId: warehouseId ?? undefined,
             branchId: body.branchId,
@@ -1351,6 +1354,7 @@ router.post("/pos/sales", async (req, res) => {
             referenceId: receiptNo,
             referenceType: "POS_SALE",
           });
+          allocatedCostByProduct.set(productId, adjustment.allocatedCost);
         }
 
         for (const cardLine of cardLines) {
@@ -1436,6 +1440,16 @@ router.post("/pos/sales", async (req, res) => {
           const cityTaxAmount =
             cityTaxRate > 0 ? taxable * (cityTaxRate / (100 + cityTaxRate)) : 0;
           const lineTotal = taxable;
+          const totalProductQty = qtyByProduct.get(line.productId) || qty;
+          const allocatedCost = allocatedCostByProduct.get(line.productId);
+          const fallbackUnitCost =
+            product?.costPrice == null ? null : Number(product.costPrice);
+          const { unitCost, costTotal } = resolvePosSaleLineCost({
+            allocatedCost,
+            totalProductQuantity: totalProductQty,
+            lineQuantity: qty,
+            fallbackUnitCost,
+          });
 
           return {
             productId: line.productId,
@@ -1455,6 +1469,8 @@ router.post("/pos/sales", async (req, res) => {
             measureUnit,
             discount: discountTotal,
             lineTotal,
+            unitCost,
+            costTotal,
           };
         });
 
@@ -1515,6 +1531,8 @@ router.post("/pos/sales", async (req, res) => {
                 measureUnit: ld.measureUnit,
                 discount: ld.discount,
                 lineTotal: ld.lineTotal,
+                unitCost: ld.unitCost,
+                costTotal: ld.costTotal,
               })),
             },
           },
@@ -1698,6 +1716,8 @@ router.post("/pos/sales", async (req, res) => {
                 productBarcode: true,
                 qty: true,
                 unitPrice: true,
+                unitCost: true,
+                costTotal: true,
                 taxAmount: true,
                 taxType: true,
                 taxRate: true,

@@ -1649,6 +1649,8 @@ router.get("/grocery-store/dashboard", async (req, res) => {
                 unitPrice: true,
                 discount: true,
                 lineTotal: true,
+                unitCost: true,
+                costTotal: true,
                 product: { select: { costPrice: true } },
               },
             },
@@ -1720,7 +1722,12 @@ router.get("/grocery-store/dashboard", async (req, res) => {
         // returning JSON numbers for both old and new clients.
         const quantity = Number(line.qty);
         const lineRevenue = Number(line.lineTotal);
-        const lineCost = Number(line.product.costPrice ?? 0) * quantity;
+        // New sales keep the immutable FEFO lot cost on the sale line. Legacy
+        // sales fall back to Product.costPrice because they predate lot costs.
+        const costUnitPrice = Number(
+          line.unitCost ?? line.product.costPrice ?? 0,
+        );
+        const lineCost = Number(line.costTotal ?? costUnitPrice * quantity);
         soldItems += quantity;
         revenue += lineRevenue;
         cost += lineCost;
@@ -1730,7 +1737,7 @@ router.get("/grocery-store/dashboard", async (req, res) => {
         cashierSaleLines.push({
           quantity,
           saleUnitPrice: Number(line.unitPrice),
-          costUnitPrice: Number(line.product.costPrice ?? 0),
+          costUnitPrice,
           discount: Number(line.discount),
           refundedQuantity: 0,
           soldAt: sale.createdAt.toISOString(),

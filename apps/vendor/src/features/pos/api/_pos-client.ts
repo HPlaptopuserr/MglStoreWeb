@@ -1,4 +1,5 @@
 import { API } from "@/lib/api";
+import { posErrorMessage } from "./pos-error-message";
 
 type RequestOptions = {
   method?: "GET" | "POST";
@@ -39,16 +40,7 @@ export async function posRequest<T>(
 
   if (!res.ok) {
     const raw = await res.text().catch(() => "");
-    let message = "POS request failed";
-
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        message = parsed?.message || parsed?.error || message;
-      } catch {
-        message = raw.slice(0, 220);
-      }
-    }
+    const message = posErrorMessage(raw, res.status);
 
     throw new PosApiError(`${message} (HTTP ${res.status})`, res.status);
   }

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
-import { prisma, PaymentMethod, PosPaymentStatus } from "@mgl/database";
+import { Capability, prisma, PaymentMethod, PosPaymentStatus } from "@mgl/database";
 
 export const JWT_SECRET = process.env.JWT_SECRET || "dev-secret-change-me";
 export const runtimeEnv = String(
@@ -111,6 +111,7 @@ export type AuthUser = {
   deletedAt: Date | null;
   organizationId: string | null;
   orgRole: string | null;
+  capabilities: Capability[];
 };
 
 export const MONEY_EPSILON = 0.01;
@@ -236,7 +237,7 @@ export const getAuthUser = async (req: Request): Promise<AuthUser | null> => {
         : { isPrimary: true }),
       organization: { status: "ACTIVE", deletedAt: null },
     },
-    select: { organizationId: true, role: true },
+    select: { organizationId: true, role: true, capabilities: true },
   });
   const fallback = !claims.organizationId && !membership
     ? await prisma.organizationMember.findFirst({
@@ -247,7 +248,7 @@ export const getAuthUser = async (req: Request): Promise<AuthUser | null> => {
           organization: { status: "ACTIVE", deletedAt: null },
         },
         orderBy: { createdAt: "asc" },
-        select: { organizationId: true, role: true },
+        select: { organizationId: true, role: true, capabilities: true },
       })
     : null;
   const org = membership || fallback;
@@ -259,6 +260,7 @@ export const getAuthUser = async (req: Request): Promise<AuthUser | null> => {
     deletedAt: user.deletedAt,
     organizationId: org?.organizationId || null,
     orgRole: org?.role || null,
+    capabilities: org?.capabilities || [],
   };
 };
 
@@ -269,6 +271,17 @@ export const canAccessPosOrganization = (
   actor.role === "ADMIN" ||
   actor.role === "SUPER_ADMIN" ||
   actor.organizationId === organizationId;
+
+export const canOperatePos = (
+  actor: Pick<AuthUser, "role" | "organizationId" | "orgRole" | "capabilities">,
+) =>
+  actor.role === "ADMIN" ||
+  actor.role === "SUPER_ADMIN" ||
+  Boolean(
+    actor.organizationId &&
+      (actor.orgRole === "OWNER" ||
+        actor.capabilities.includes(Capability.POS_CASHIER)),
+  );
 
 export const requireAdminUser = async (req: Request, res: Response) => {
   const actor = await getAuthUser(req);
@@ -289,11 +302,7 @@ export const requirePosUser = async (req: Request, res: Response) => {
     res.status(401).json({ message: "Нэвтрэлт шаардлагатай" });
     return null;
   }
-  if (
-    actor.role !== "ADMIN" &&
-    actor.role !== "SUPER_ADMIN" &&
-    !actor.organizationId
-  ) {
+  if (!canOperatePos(actor)) {
     res.status(403).json({ message: "POS ашиглах эрх хүрэлцэхгүй" });
     return null;
   }

@@ -3141,6 +3141,7 @@ model PosGoodsReceiptItem {
   productId         String
   quantity          Int
   remainingQuantity Int
+  unitCost          Decimal?                    @db.Decimal(18, 2)
   batchNumber       String?
   expiryDate        DateTime?                   @db.Date
   createdAt         DateTime                    @default(now())
@@ -3162,6 +3163,8 @@ model PosGoodsReceiptAllocation {
   referenceId   String
   referenceType String
   quantity      Int
+  unitCost      Decimal?            @db.Decimal(18, 2)
+  totalCost     Decimal?            @db.Decimal(18, 2)
   createdAt     DateTime            @default(now())
   reversedAt    DateTime?
   receiptItem   PosGoodsReceiptItem @relation(fields: [receiptItemId], references: [id], onDelete: Cascade)
@@ -3354,27 +3357,29 @@ model PosCreditSale {
 
 /// Individual line item within a POS sale.
 model PosSaleLine {
-  id                 String  @id @default(uuid())
+  id                 String   @id @default(uuid())
   saleId             String
   productId          String
   productName        String
   productSku         String?
   productBarcode     String?
-  qty                Decimal @db.Decimal(18, 3)
-  unitPrice          Decimal @db.Decimal(18, 2)
-  priceType          String  @default("UNIT")
-  taxAmount          Decimal @db.Decimal(18, 2)
-  taxType            String  @default("VAT_ABLE")
-  taxRate            Decimal @default(10) @db.Decimal(5, 2)
-  cityTaxRate        Decimal @default(0) @db.Decimal(5, 2)
-  cityTaxAmount      Decimal @default(0) @db.Decimal(18, 2)
-  classificationCode String  @default("6212991")
+  qty                Decimal  @db.Decimal(18, 3)
+  unitPrice          Decimal  @db.Decimal(18, 2)
+  priceType          String   @default("UNIT")
+  taxAmount          Decimal  @db.Decimal(18, 2)
+  taxType            String   @default("VAT_ABLE")
+  taxRate            Decimal  @default(10) @db.Decimal(5, 2)
+  cityTaxRate        Decimal  @default(0) @db.Decimal(5, 2)
+  cityTaxAmount      Decimal  @default(0) @db.Decimal(18, 2)
+  classificationCode String   @default("6212991")
   taxProductCode     String?
-  measureUnit        String  @default("pcs")
-  discount           Decimal @db.Decimal(18, 2)
-  lineTotal          Decimal @db.Decimal(18, 2)
-  sale               PosSale @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  product            Product @relation(fields: [productId], references: [id])
+  measureUnit        String   @default("pcs")
+  discount           Decimal  @db.Decimal(18, 2)
+  lineTotal          Decimal  @db.Decimal(18, 2)
+  unitCost           Decimal? @db.Decimal(18, 2)
+  costTotal          Decimal? @db.Decimal(18, 2)
+  sale               PosSale  @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product            Product  @relation(fields: [productId], references: [id])
 
   @@index([saleId])
   @@index([productId])

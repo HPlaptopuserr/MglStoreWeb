@@ -14,12 +14,14 @@ test("accepts a free-form supplier organization and combines the same lot", () =
         quantity: 2,
         batchNumber: "LOT-1",
         expiryDate: "2027-04-30",
+        unitCost: 3000,
       },
       {
         productId: "product-1",
         quantity: 3,
         batchNumber: "LOT-1",
         expiryDate: "2027-04-30",
+        unitCost: 3000,
       },
     ],
   });
@@ -33,6 +35,7 @@ test("accepts a free-form supplier organization and combines the same lot", () =
       quantity: 5,
       batchNumber: "LOT-1",
       expiryDate: new Date("2027-04-30T00:00:00.000Z"),
+      unitCost: 3000,
     },
   ]);
 });
@@ -42,8 +45,18 @@ test("keeps different expiry dates as separate lots for the same product", () =>
     registerId: "register-1",
     supplierName: "Supplier",
     items: [
-      { productId: "product-1", quantity: 2, expiryDate: "2027-04-30" },
-      { productId: "product-1", quantity: 3, expiryDate: "2027-06-30" },
+      {
+        productId: "product-1",
+        quantity: 2,
+        expiryDate: "2027-04-30",
+        unitCost: 3000,
+      },
+      {
+        productId: "product-1",
+        quantity: 3,
+        expiryDate: "2027-06-30",
+        unitCost: 3200,
+      },
     ],
   });
 
@@ -56,6 +69,24 @@ test("keeps different expiry dates as separate lots for the same product", () =>
   );
 });
 
+test("keeps different purchase costs as separate lots", () => {
+  const result = parsePosGoodsReceiptInput({
+    registerId: "register-1",
+    supplierName: "Supplier",
+    items: [
+      { productId: "product-1", quantity: 10, unitCost: 3000 },
+      { productId: "product-1", quantity: 10, unitCost: 3200 },
+    ],
+  });
+
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.deepEqual(
+    result.value.items.map((item) => item.unitCost),
+    [3000, 3200],
+  );
+});
+
 test("requires supplier, register and at least one valid product line", () => {
   assert.deepEqual(parsePosGoodsReceiptInput({ items: [] }), {
     ok: false,
@@ -65,14 +96,28 @@ test("requires supplier, register and at least one valid product line", () => {
   const invalidQuantity = parsePosGoodsReceiptInput({
     registerId: "register-1",
     supplierName: "Нийлүүлэгч",
-    items: [{ productId: "product-1", quantity: 0 }],
+    items: [{ productId: "product-1", quantity: 0, unitCost: 3000 }],
   });
   assert.equal(invalidQuantity.ok, false);
 
   const invalidExpiryDate = parsePosGoodsReceiptInput({
     registerId: "register-1",
     supplierName: "Supplier",
-    items: [{ productId: "product-1", quantity: 1, expiryDate: "2027-02-30" }],
+    items: [
+      {
+        productId: "product-1",
+        quantity: 1,
+        expiryDate: "2027-02-30",
+        unitCost: 3000,
+      },
+    ],
   });
   assert.equal(invalidExpiryDate.ok, false);
+
+  const missingUnitCost = parsePosGoodsReceiptInput({
+    registerId: "register-1",
+    supplierName: "Supplier",
+    items: [{ productId: "product-1", quantity: 1 }],
+  });
+  assert.equal(missingUnitCost.ok, false);
 });

@@ -1477,6 +1477,7 @@ router.get("/products", optionalAuth, async (req, res) => {
               productId: true,
               quantity: true,
               remainingQuantity: true,
+              unitCost: true,
               batchNumber: true,
               expiryDate: true,
               receipt: {
@@ -1542,6 +1543,7 @@ router.get("/products", optionalAuth, async (req, res) => {
                     lot.remainingQuantity,
                     product.unit,
                   ),
+                  unitCost: lot.unitCost == null ? null : Number(lot.unitCost),
                   batchNumber: lot.batchNumber,
                   expiryDate: lot.expiryDate?.toISOString() ?? null,
                   receiptNo: lot.receipt.receiptNo,

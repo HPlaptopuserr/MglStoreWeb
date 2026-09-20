@@ -5,12 +5,124 @@ import {
   adjustStock,
   resolveOrgWarehouse,
 } from "../../../services/inventory.service";
-import { hasOrgMembership } from "../../../services/permission.service";
-import { requirePosUser } from "./_shared";
+import { canAccessPosOrganization, requirePosUser } from "./_shared";
 import { parsePosGoodsReceiptInput } from "./goods-receipt";
 import { fromPosStoredStockQuantity } from "@mgl/types";
 
 const router: ExpressRouter = Router();
+
+router.get("/pos/goods-receipts", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+    const registerId = String(req.query.registerId ?? "").trim();
+    if (!registerId)
+      return res.status(400).json({ message: "POS касс сонгоно уу" });
+
+    const register = await prisma.posRegister.findFirst({
+      where: { id: registerId, deletedAt: null },
+      select: { organizationId: true },
+    });
+    if (!register)
+      return res.status(404).json({ message: "POS касс олдсонгүй" });
+    if (
+      actor.role !== "ADMIN" &&
+      actor.role !== "SUPER_ADMIN" &&
+      !(await hasOrgMembership(actor.id, register.organizationId))
+    ) {
+      return res
+        .status(403)
+        .json({ message: "Баримтын жагсаалт харах эрхгүй байна" });
+    }
+
+    const receipts = await prisma.posGoodsReceipt.findMany({
+      where: { registerId },
+      orderBy: { receivedAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        receiptNo: true,
+        supplierName: true,
+        supplierRegisterNo: true,
+        documentNo: true,
+        note: true,
+        receivedAt: true,
+        branch: { select: { name: true } },
+        register: { select: { name: true } },
+        receivedBy: {
+          select: { email: true, profile: { select: { fullName: true } } },
+        },
+        items: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            quantity: true,
+            remainingQuantity: true,
+            unitCost: true,
+            batchNumber: true,
+            expiryDate: true,
+            product: {
+              select: { name: true, sku: true, barcode: true, unit: true },
+            },
+          },
+        },
+      },
+    });
+
+    return res.json(
+      receipts.map((receipt) => {
+        const items = receipt.items.map((item) => {
+          const quantity = fromPosStoredStockQuantity(
+            item.quantity,
+            item.product.unit,
+          );
+          const remainingQuantity = fromPosStoredStockQuantity(
+            item.remainingQuantity,
+            item.product.unit,
+          );
+          const unitCost = item.unitCost == null ? null : Number(item.unitCost);
+          return {
+            id: item.id,
+            productName: item.product.name,
+            sku: item.product.sku,
+            barcode: item.product.barcode,
+            unit: item.product.unit,
+            quantity,
+            remainingQuantity,
+            unitCost,
+            totalCost: unitCost == null ? null : unitCost * quantity,
+            batchNumber: item.batchNumber,
+            expiryDate: item.expiryDate?.toISOString().slice(0, 10) ?? null,
+          };
+        });
+        return {
+          id: receipt.id,
+          receiptNo: receipt.receiptNo,
+          supplierName: receipt.supplierName,
+          supplierRegisterNo: receipt.supplierRegisterNo,
+          documentNo: receipt.documentNo,
+          note: receipt.note,
+          receivedAt: receipt.receivedAt.toISOString(),
+          branchName: receipt.branch.name,
+          registerName: receipt.register.name,
+          receivedBy:
+            receipt.receivedBy.profile?.fullName ?? receipt.receivedBy.email,
+          totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
+          totalCost: items.reduce(
+            (sum, item) => sum + (item.totalCost ?? 0),
+            0,
+          ),
+          items,
+        };
+      }),
+    );
+  } catch (error) {
+    console.error("POS goods receipt list error", error);
+    return res
+      .status(500)
+      .json({ message: "Хүлээн авалтын баримтуудыг авахад алдаа гарлаа" });
+  }
+});
 
 router.post("/pos/goods-receipts", async (req, res) => {
   try {
@@ -42,11 +154,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
       return res.status(409).json({ message: "POS касс идэвхгүй байна" });
     }
 
-    if (
-      actor.role !== "ADMIN" &&
-      actor.role !== "SUPER_ADMIN" &&
-      !(await hasOrgMembership(actor.id, register.organizationId))
-    ) {
+    if (!canAccessPosOrganization(actor, register.organizationId)) {
       return res
         .status(403)
         .json({ message: "Энэ кассаар бараа хүлээн авах эрхгүй байна" });
@@ -119,6 +227,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
               productId: item.productId,
               quantity: item.quantity,
               remainingQuantity: item.quantity,
+              unitCost: item.unitCost,
               batchNumber: item.batchNumber,
               expiryDate: item.expiryDate,
             },
@@ -181,6 +290,10 @@ router.post("/pos/goods-receipts", async (req, res) => {
           sku: product.sku,
           barcode: product.barcode,
           quantity: fromPosStoredStockQuantity(item.quantity, product.unit),
+          unitCost: item.unitCost,
+          totalCost:
+            item.unitCost *
+            fromPosStoredStockQuantity(item.quantity, product.unit),
           batchNumber: item.batchNumber,
           expiryDate: item.expiryDate?.toISOString().slice(0, 10) || null,
           stockQty: fromPosStoredStockQuantity(

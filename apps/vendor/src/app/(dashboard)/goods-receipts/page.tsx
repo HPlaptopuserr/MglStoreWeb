@@ -15,6 +15,11 @@ import {
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
 import {
+  QuickProductCreateModal,
+  type CreatedReceiptProduct,
+} from "@/features/receive/QuickProductCreateModal";
+import { GoodsReceiptDocumentList } from "@/features/receive/GoodsReceiptDocumentList";
+import {
   formatPosQuantity,
   normalizePosMeasureUnit,
   POS_WEIGHT_STEP_KG,
@@ -29,6 +34,7 @@ type ProductOption = {
   sku?: string | null;
   barcode?: string | null;
   stock: number;
+  costPrice?: number | null;
   unit?: PosMeasureUnit | string | null;
   isActive?: boolean;
   supplyType?: string;
@@ -46,6 +52,7 @@ type ReceiptLine = {
   id: string;
   product: ProductOption;
   quantity: number;
+  unitCost: string;
   batchNumber: string;
   expiryDate: string;
 };
@@ -105,6 +112,8 @@ export default function GoodsReceiptsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [success, setSuccess] = useState<GoodsReceiptResult | null>(null);
+  const [createProductOpen, setCreateProductOpen] = useState(false);
+  const [newProductCode, setNewProductCode] = useState("");
 
   const loadData = useCallback(async () => {
     const organizationId = getOrganizationId();
@@ -201,11 +210,19 @@ export default function GoodsReceiptsPage() {
   const totalWeight = lines
     .filter((line) => normalizePosMeasureUnit(line.product.unit) === "kg")
     .reduce((total, line) => total + line.quantity, 0);
+  const totalPurchaseCost = lines.reduce((total, line) => {
+    const unitCost = Number(line.unitCost);
+    return total + (Number.isFinite(unitCost) ? unitCost * line.quantity : 0);
+  }, 0);
 
   const createReceiptLine = (product: ProductOption): ReceiptLine => ({
     id: `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     product,
     quantity: 1,
+    unitCost:
+      product.costPrice == null || Number(product.costPrice) < 0
+        ? ""
+        : String(product.costPrice),
     batchNumber: "",
     expiryDate: "",
   });
@@ -241,6 +258,32 @@ export default function GoodsReceiptsPage() {
     setSuccess(null);
   };
 
+  const openProductCreate = (code = search) => {
+    setNewProductCode(code.trim());
+    setCreateProductOpen(true);
+    setSubmitError("");
+  };
+
+  const handleProductCreated = (product: CreatedReceiptProduct) => {
+    const nextProduct: ProductOption = {
+      id: product.id,
+      name: product.name,
+      sku: product.sku,
+      barcode: product.barcode,
+      stock: Number(product.stock || 0),
+      costPrice: product.costPrice,
+      unit: product.unit,
+      isActive: product.isActive,
+      supplyType: product.supplyType,
+    };
+    setProducts((current) => [
+      nextProduct,
+      ...current.filter((item) => item.id !== nextProduct.id),
+    ]);
+    setCreateProductOpen(false);
+    addProduct(nextProduct);
+  };
+
   const setQuantity = (lineId: string, quantity: number) => {
     setLines((current) =>
       current.map((line) => {
@@ -261,7 +304,7 @@ export default function GoodsReceiptsPage() {
 
   const setLotField = (
     lineId: string,
-    field: "batchNumber" | "expiryDate",
+    field: "batchNumber" | "expiryDate" | "unitCost",
     value: string,
   ) => {
     setLines((current) =>
@@ -286,7 +329,7 @@ export default function GoodsReceiptsPage() {
     if (product) {
       addProduct(product);
     } else if (normalizedSearch) {
-      setSubmitError("Бараа олдсонгүй. Нэр, SKU эсвэл баркодоо шалгана уу.");
+      openProductCreate(search);
     }
   };
 
@@ -301,6 +344,16 @@ export default function GoodsReceiptsPage() {
     }
     if (lines.length === 0) {
       setSubmitError("Хүлээн авах бараа нэмнэ үү.");
+      return;
+    }
+    const invalidCostLine = lines.find((line) => {
+      const cost = Number(line.unitCost);
+      return !line.unitCost.trim() || !Number.isFinite(cost) || cost < 0;
+    });
+    if (invalidCostLine) {
+      setSubmitError(
+        `“${invalidCostLine.product.name}” барааны авсан үнийг оруулна уу.`,
+      );
       return;
     }
 
@@ -322,6 +375,7 @@ export default function GoodsReceiptsPage() {
               line.quantity,
               line.product.unit,
             ),
+            unitCost: Number(line.unitCost),
             batchNumber: line.batchNumber.trim() || undefined,
             expiryDate: line.expiryDate || undefined,
           })),
@@ -384,13 +438,14 @@ export default function GoodsReceiptsPage() {
             бараа нэмнэ.
           </p>
         </div>
-        <Link
-          href="/products"
+        <button
+          type="button"
+          onClick={() => openProductCreate("")}
           className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50"
         >
           <Plus className="h-4 w-4" />
           Шинэ бүтээгдэхүүн бүртгэх
-        </Link>
+        </button>
       </div>
 
       {loadError && (
@@ -584,12 +639,13 @@ export default function GoodsReceiptsPage() {
                         <p className="text-xs font-semibold text-slate-500">
                           Тохирох бараа олдсонгүй
                         </p>
-                        <Link
-                          href="/products"
+                        <button
+                          type="button"
+                          onClick={() => openProductCreate(search)}
                           className="mt-2 inline-block text-xs font-black text-cyan-700"
                         >
                           Шинэ бүтээгдэхүүн бүртгэх
-                        </Link>
+                        </button>
                       </div>
                     )}
                   </div>
@@ -698,10 +754,41 @@ export default function GoodsReceiptsPage() {
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                      <div className="mt-3 grid gap-3 border-t border-slate-200 pt-3 sm:grid-cols-2">
+                      <div className="mt-3 grid gap-3 border-t border-slate-200 pt-3 sm:grid-cols-3">
                         <label className="block">
                           <span className="mb-1 block text-[11px] font-bold text-slate-500">
-                            Парт / лот №
+                            Нэгж авсан үнэ *
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="1000000000"
+                            step="0.01"
+                            required
+                            value={line.unitCost}
+                            onChange={(event) =>
+                              setLotField(
+                                line.id,
+                                "unitCost",
+                                event.target.value,
+                              )
+                            }
+                            placeholder="0₮"
+                            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+                          />
+                          {line.unitCost && (
+                            <span className="mt-1 block text-[10px] text-slate-400">
+                              Нийт{" "}
+                              {new Intl.NumberFormat("mn-MN").format(
+                                Number(line.unitCost) * line.quantity,
+                              )}
+                              ₮
+                            </span>
+                          )}
+                        </label>
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] font-bold text-slate-500">
+                            Багцын дугаар (заавал биш)
                           </span>
                           <input
                             value={line.batchNumber}
@@ -713,13 +800,13 @@ export default function GoodsReceiptsPage() {
                                 event.target.value,
                               )
                             }
-                            placeholder="Заавал биш"
+                            placeholder="Жишээ: LOT-2026-09"
                             className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
                           />
                         </label>
                         <label className="block">
                           <span className="mb-1 block text-[11px] font-bold text-slate-500">
-                            Дуусах хугацаа
+                            Дуусах хугацаа (байвал)
                           </span>
                           <input
                             type="date"
@@ -737,14 +824,15 @@ export default function GoodsReceiptsPage() {
                       </div>
                       <div className="mt-2 flex items-center justify-between gap-3 text-[11px]">
                         <span className="text-slate-500">
-                          Хугацаагүй бараа бол хоосон үлдээнэ.
+                          Савлагаан дээр LOT дугаар эсвэл дуусах хугацаа байвал
+                          оруулна.
                         </span>
                         <button
                           type="button"
                           onClick={() => addSeparateLot(line.product)}
                           className="shrink-0 font-black text-cyan-700 hover:text-cyan-800"
                         >
-                          + Өөр парт нэмэх
+                          + Өөр үнэ/хугацаатай багц нэмэх
                         </button>
                       </div>
                     </div>
@@ -767,7 +855,7 @@ export default function GoodsReceiptsPage() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-slate-500">Партын мөр</span>
+                  <span className="text-slate-500">Барааны багц</span>
                   <span className="font-black text-slate-900">
                     {lines.length}
                   </span>
@@ -787,6 +875,14 @@ export default function GoodsReceiptsPage() {
                     ]
                       .filter(Boolean)
                       .join(" · ") || "0"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-bold text-slate-700">
+                    Нийт авсан өртөг
+                  </span>
+                  <span className="font-black text-cyan-700">
+                    {new Intl.NumberFormat("mn-MN").format(totalPurchaseCost)}₮
                   </span>
                 </div>
               </div>
@@ -814,13 +910,27 @@ export default function GoodsReceiptsPage() {
                 {submitting ? "Бүртгэж байна..." : "Бараа хүлээн авах"}
               </button>
               <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-500">
-                Хүлээн авсан тоо үлдэгдэлд нэмэгдэж, хугацаа ойр парт
+                Хүлээн авсан тоо үлдэгдэлд нэмэгдэнэ. Ижил барааны хугацаа,
+                авсан үнэ өөр бол тусдаа багц болгон нэмнэ. Хугацаа ойр багц
                 борлуулалтаар түрүүлж хасагдана.
               </p>
             </div>
           </aside>
         </div>
       )}
+      {!loading && (
+        <GoodsReceiptDocumentList
+          registerId={selectedRegisterId}
+          refreshKey={success?.id ?? ""}
+        />
+      )}
+      <QuickProductCreateModal
+        open={createProductOpen}
+        organizationId={getOrganizationId()}
+        initialCode={newProductCode}
+        onClose={() => setCreateProductOpen(false)}
+        onCreated={handleProductCreated}
+      />
     </div>
   );
 }
