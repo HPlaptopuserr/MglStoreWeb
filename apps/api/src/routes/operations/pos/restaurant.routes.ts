@@ -55,6 +55,7 @@ const ACTIVE_KITCHEN_TICKET_STATUSES: KitchenTicketStatus[] = [
 ];
 
 const TABLE_QR_TOKEN_BYTES = 24;
+const RESTAURANT_MENU_AVAILABLE_QTY = 999_999;
 
 const DEFAULT_TABLES = [
   { code: "A1", label: "A1", zone: "Гол заал", seats: 4, sortOrder: 10 },
@@ -658,6 +659,7 @@ async function finalizePaidRestaurantQrInvoice(
       name: true,
       price: true,
       stock: true,
+      isRestaurantMenuItem: true,
       kitchenStation: true,
       preparationMinutes: true,
     },
@@ -715,7 +717,7 @@ async function finalizePaidRestaurantQrInvoice(
     const existing = existingByProduct.get(line.productId);
     const nextQty = (existing?.qty || 0) + line.qty;
     const nextSentQty = Math.min(nextQty, (existing?.sentQty || 0) + line.qty);
-    if (nextQty > product.stock) {
+    if (!product.isRestaurantMenuItem && nextQty > product.stock) {
       throw Object.assign(
         new Error(
           `"${product.name}" хоолны үлдэгдэл хүрэлцэхгүй (${product.stock})`,
@@ -872,6 +874,7 @@ router.get("/restaurant/menu/:token", async (req, res) => {
           name: true,
           price: true,
           stock: true,
+          isRestaurantMenuItem: true,
           taxType: true,
           cityTaxRate: true,
           classificationCode: true,
@@ -912,7 +915,9 @@ router.get("/restaurant/menu/:token", async (req, res) => {
         name: product.name,
         imageUrl: product.images[0]?.url ?? null,
         price: Number(product.price),
-        stockQty: product.stock,
+        stockQty: product.isRestaurantMenuItem
+          ? RESTAURANT_MENU_AVAILABLE_QTY
+          : product.stock,
         taxType: product.taxType || "VAT_ABLE",
         taxRate: product.taxType === "VAT_ABLE" ? 10 : 0,
         cityTaxRate: Number(product.cityTaxRate || 0),
@@ -1217,6 +1222,7 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
         name: true,
         price: true,
         stock: true,
+        isRestaurantMenuItem: true,
       },
     });
     if (products.length !== productIds.length) {
@@ -1229,7 +1235,7 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
       Math.round(
         normalizedLines.reduce((sum, line) => {
           const product = products.find((item) => item.id === line.productId)!;
-          if (line.qty > product.stock) {
+          if (!product.isRestaurantMenuItem && line.qty > product.stock) {
             throw Object.assign(
               new Error(
                 `"${product.name}" хоолны үлдэгдэл хүрэлцэхгүй (${product.stock})`,
@@ -1670,6 +1676,7 @@ router.post("/restaurant/menu/:token/orders", async (req, res) => {
             name: true,
             price: true,
             stock: true,
+            isRestaurantMenuItem: true,
             kitchenStation: true,
             preparationMinutes: true,
           },
@@ -1727,7 +1734,7 @@ router.post("/restaurant/menu/:token/orders", async (req, res) => {
             nextQty,
             (existing?.sentQty || 0) + line.qty,
           );
-          if (nextQty > product.stock) {
+          if (!product.isRestaurantMenuItem && nextQty > product.stock) {
             throw Object.assign(
               new Error(
                 `"${product.name}" хоолны үлдэгдэл хүрэлцэхгүй (${product.stock})`,
@@ -2525,6 +2532,7 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
                 name: true,
                 price: true,
                 stock: true,
+                isRestaurantMenuItem: true,
                 isTakeawayAvailable: true,
                 kitchenStation: true,
                 preparationMinutes: true,
@@ -2588,6 +2596,7 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
           const product = products.find((item) => item.id === line.productId)!;
           const existing = existingByProduct.get(line.productId);
           if (
+            !product.isRestaurantMenuItem &&
             line.qty > product.stock &&
             (!existing || line.qty > existing.qty)
           ) {

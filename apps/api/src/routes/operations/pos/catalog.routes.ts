@@ -63,6 +63,7 @@ import {
 } from "@mgl/types";
 
 const router: ExpressRouter = Router();
+const RESTAURANT_MENU_AVAILABLE_QTY = 999_999;
 
 const cleanOptionalText = (value: unknown) => {
   const text = String(value ?? "").trim();
@@ -295,7 +296,9 @@ router.get("/pos/products", async (req, res) => {
           wholesalePrice:
             p.wholesalePrice == null ? null : Number(p.wholesalePrice),
           orderPrice: p.orderPrice == null ? null : Number(p.orderPrice),
-          stockQty: fromPosStoredStockQuantity(p.stock, p.unit),
+          stockQty: p.isRestaurantMenuItem
+            ? RESTAURANT_MENU_AVAILABLE_QTY
+            : fromPosStoredStockQuantity(p.stock, p.unit),
           taxType: p.taxType || "VAT_ABLE",
           taxRate: p.taxType === "VAT_ABLE" ? 10 : 0,
           cityTaxRate: Number(p.cityTaxRate || 0),

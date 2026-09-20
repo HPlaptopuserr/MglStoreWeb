@@ -1190,6 +1190,7 @@ router.post("/pos/sales", async (req, res) => {
             sku: true,
             barcode: true,
             stock: true,
+            isRestaurantMenuItem: true,
             unit: true,
             organizationId: true,
             taxType: true,
@@ -1270,6 +1271,7 @@ router.post("/pos/sales", async (req, res) => {
                   sku: true,
                   barcode: true,
                   stock: true,
+                  isRestaurantMenuItem: true,
                   unit: true,
                   organizationId: true,
                   taxType: true,
@@ -1432,7 +1434,7 @@ router.post("/pos/sales", async (req, res) => {
             requestedQty,
             measureUnit,
           );
-          if (product.stock < requestedStock) {
+          if (!product.isRestaurantMenuItem && product.stock < requestedStock) {
             throw toApiError(
               409,
               `"${product.name}" барааны нөөц хүрэлцэхгүй (үлдэгдэл: ${formatPosQuantity(
@@ -1448,6 +1450,10 @@ router.post("/pos/sales", async (req, res) => {
           const product = products.find((item) => item.id === productId);
           if (!product) {
             throw toApiError(404, "Бараа олдсонгүй");
+          }
+          if (product.isRestaurantMenuItem) {
+            allocatedCostByProduct.set(productId, null);
+            continue;
           }
           const warehouseId = await resolveOrgWarehouse(
             tx,

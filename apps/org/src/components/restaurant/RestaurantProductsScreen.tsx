@@ -13,8 +13,6 @@ import {
   Plus,
   Search,
   Tags,
-  ToggleLeft,
-  ToggleRight,
   Trash2,
   Upload,
   UtensilsCrossed,
@@ -49,7 +47,6 @@ type RestaurantProduct = {
   unit: string | null;
   price: number;
   costPrice: number | null;
-  stock: number;
   taxType: TaxType;
   cityTaxRate: number;
   classificationCode: string;
@@ -69,7 +66,6 @@ type MenuForm = {
   sku: string;
   price: string;
   costPrice: string;
-  stock: string;
   menuCategory: MenuCategory;
   kitchenStation: KitchenStation;
   preparationMinutes: string;
@@ -103,7 +99,6 @@ const emptyForm: MenuForm = {
   sku: "",
   price: "",
   costPrice: "",
-  stock: "0",
   menuCategory: "HOT",
   kitchenStation: "HOT_KITCHEN",
   preparationMinutes: "15",
@@ -132,6 +127,9 @@ export function RestaurantProductsScreen() {
   const [saving, setSaving] = useState(false);
   const [categorySaving, setCategorySaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [availabilityUpdatingId, setAvailabilityUpdatingId] = useState<
+    string | null
+  >(null);
   const [formOpen, setFormOpen] = useState(false);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -230,7 +228,6 @@ export function RestaurantProductsScreen() {
       sku: product.sku || "",
       price: String(product.price),
       costPrice: product.costPrice === null ? "" : String(product.costPrice),
-      stock: String(product.stock),
       menuCategory:
         product.menuCategory ||
         menuCategories[0]?.code ||
@@ -265,7 +262,6 @@ export function RestaurantProductsScreen() {
 
     const price = Number(form.price);
     const costPrice = form.costPrice.trim() ? Number(form.costPrice) : null;
-    const stock = Number(form.stock);
     const preparationMinutes = Number(form.preparationMinutes);
     const cityTaxRate = Number(form.cityTaxRate);
 
@@ -279,10 +275,6 @@ export function RestaurantProductsScreen() {
     }
     if (costPrice !== null && (!Number.isFinite(costPrice) || costPrice < 0)) {
       showMessage("error", "Өртөг үнэ буруу байна");
-      return;
-    }
-    if (!Number.isInteger(stock) || stock < 0) {
-      showMessage("error", "Боломжит порц 0-ээс багагүй бүхэл тоо байна");
       return;
     }
     if (
@@ -324,7 +316,7 @@ export function RestaurantProductsScreen() {
             unit: "порц",
             price,
             costPrice,
-            stock,
+            stock: 0,
             supplyType: "IN_STOCK",
             isRestaurantMenuItem: true,
             menuCategory: form.menuCategory,
@@ -365,6 +357,7 @@ export function RestaurantProductsScreen() {
   };
 
   const toggleProduct = async (product: RestaurantProduct) => {
+    setAvailabilityUpdatingId(product.id);
     try {
       const response = await authFetch(`${API}/products/${product.id}`, {
         method: "PATCH",
@@ -380,11 +373,19 @@ export function RestaurantProductsScreen() {
           item.id === product.id ? { ...item, isActive: !item.isActive } : item,
         ),
       );
+      showMessage(
+        "success",
+        product.isActive
+          ? `“${product.name}” өнөөдөр гарахгүй боллоо`
+          : `“${product.name}” өнөөдрийн менюд идэвхжлээ`,
+      );
     } catch (error) {
       showMessage(
         "error",
         error instanceof Error ? error.message : "Төлөв солиход алдаа гарлаа",
       );
+    } finally {
+      setAvailabilityUpdatingId(null);
     }
   };
 
@@ -540,7 +541,7 @@ export function RestaurantProductsScreen() {
 
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-slate-200 pb-4">
         <Metric label="Нийт меню" value={products.length} />
-        <Metric label="Идэвхтэй" value={activeCount} accent="emerald" />
+        <Metric label="Өнөөдөр гарна" value={activeCount} accent="emerald" />
         <Metric label="Гал тогоо" value={kitchenCount} accent="amber" />
         <Metric label="Бар" value={barCount} accent="sky" />
       </div>
@@ -599,11 +600,11 @@ export function RestaurantProductsScreen() {
         </div>
       ) : (
         <div className="overflow-hidden border border-slate-200 bg-white">
-          <div className="grid grid-cols-[minmax(240px,1.5fr)_150px_150px_100px_110px_120px] border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black text-slate-500 max-xl:grid-cols-[minmax(220px,1fr)_140px_100px_120px]">
+          <div className="grid grid-cols-[minmax(240px,1.5fr)_150px_150px_210px_110px_100px] border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black text-slate-500 max-xl:grid-cols-[minmax(220px,1fr)_140px_210px_100px_100px]">
             <span>Хоол</span>
             <span className="max-xl:hidden">Ангилал</span>
             <span>Гал тогоо</span>
-            <span className="text-right max-xl:hidden">Порц</span>
+            <span>Өнөөдрийн төлөв</span>
             <span className="text-right">Үнэ</span>
             <span className="text-right">Үйлдэл</span>
           </div>
@@ -612,7 +613,7 @@ export function RestaurantProductsScreen() {
             {filteredProducts.map((product) => (
               <article
                 key={product.id}
-                className="grid min-h-20 grid-cols-[minmax(240px,1.5fr)_150px_150px_100px_110px_120px] items-center px-4 py-3 max-xl:grid-cols-[minmax(220px,1fr)_140px_100px_120px]"
+                className="grid min-h-20 grid-cols-[minmax(240px,1.5fr)_150px_150px_210px_110px_100px] items-center px-4 py-3 max-xl:grid-cols-[minmax(220px,1fr)_140px_210px_100px_100px]"
               >
                 <div className="flex min-w-0 items-center gap-3">
                   <ProductImage
@@ -647,9 +648,27 @@ export function RestaurantProductsScreen() {
                 <span className="text-sm font-bold text-slate-600">
                   {stationLabel(product.kitchenStation)}
                 </span>
-                <span className="text-right text-sm font-black tabular-nums text-slate-700 max-xl:hidden">
-                  {product.stock}
-                </span>
+                <button
+                  type="button"
+                  onClick={() => void toggleProduct(product)}
+                  disabled={availabilityUpdatingId === product.id}
+                  className={`inline-flex h-9 w-fit items-center justify-center whitespace-nowrap rounded-lg border px-3 text-xs font-black transition disabled:cursor-wait disabled:opacity-60 ${
+                    product.isActive
+                      ? "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                      : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                  }`}
+                  aria-label={
+                    product.isActive
+                      ? `${product.name} өнөөдөр гаргах боломжгүй болгох`
+                      : `${product.name} өнөөдөр гаргах боломжтой болгох`
+                  }
+                >
+                  {availabilityUpdatingId === product.id
+                    ? "Шинэчилж байна..."
+                    : product.isActive
+                      ? "Өнөөдөр гаргах боломжгүй"
+                      : "Өнөөдөр гаргах боломжтой"}
+                </button>
                 <span className="text-right text-sm font-black tabular-nums text-slate-950">
                   {formatMoney(product.price)}
                 </span>
@@ -663,23 +682,6 @@ export function RestaurantProductsScreen() {
                     title="Засах"
                   >
                     <Pencil className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void toggleProduct(product)}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-950"
-                    aria-label={
-                      product.isActive
-                        ? `${product.name} идэвхгүй болгох`
-                        : `${product.name} идэвхжүүлэх`
-                    }
-                    title={product.isActive ? "Идэвхгүй болгох" : "Идэвхжүүлэх"}
-                  >
-                    {product.isActive ? (
-                      <ToggleRight className="h-5 w-5 text-emerald-600" />
-                    ) : (
-                      <ToggleLeft className="h-5 w-5" />
-                    )}
                   </button>
                   <button
                     type="button"
@@ -1119,7 +1121,7 @@ function MenuItemForm({
                 </Field>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-3">
+              <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Зарах үнэ" required suffix="₮">
                   <input
                     required
@@ -1140,17 +1142,6 @@ function MenuItemForm({
                     onChange={(event) =>
                       update("costPrice", event.target.value)
                     }
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Боломжит порц" required>
-                  <input
-                    required
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={form.stock}
-                    onChange={(event) => update("stock", event.target.value)}
                     className={inputClass}
                   />
                 </Field>
