@@ -99,6 +99,7 @@ export type CreateSaleBody = {
     redeemSessionId?: string;
   };
   lines?: SaleLineInput[];
+  packagingFee?: number;
   note?: string;
 };
 

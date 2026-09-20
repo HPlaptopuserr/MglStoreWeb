@@ -33,9 +33,11 @@ import type {
   PosShift,
   SalePaymentLine,
 } from "@mgl/types";
+import { SELF_SERVICE_TAKEAWAY_PACKAGING_FEE } from "@mgl/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOrg } from "@/components/org/OrgContext";
 import {
+  cancelRestaurantQPayInvoice,
   chargeRestaurantClientBridge,
   createRestaurantCardAttempt,
   createRestaurantCardSale,
@@ -43,6 +45,7 @@ import {
   createRestaurantQPayInvoice,
   createRestaurantQPaySale,
   getCurrentRestaurantPosShift,
+  getRestaurantMenuCategories,
   getRestaurantCardAttemptStatus,
   getRestaurantPosProducts,
   getRestaurantPosRegisters,
@@ -53,6 +56,7 @@ import {
   type RestaurantPosProduct,
   type RestaurantPosQPayInvoice,
   type RestaurantPosRegister,
+  type RestaurantMenuCategory,
   type RestaurantTicket,
 } from "@/lib/restaurant-pos-api";
 import {
@@ -76,16 +80,7 @@ type Screen =
   | "success";
 type OrderMode = "DINE_IN" | "TO_GO";
 type PaymentMethod = "QPAY" | "CARD" | "CASH";
-type Category =
-  | "ALL"
-  | "HOT"
-  | "COLD"
-  | "SOUP"
-  | "GRILL"
-  | "APPETIZER"
-  | "DESSERT"
-  | "DRINK"
-  | "OTHER";
+type Category = string;
 
 type CartLine = {
   product: RestaurantPosProduct;
@@ -98,6 +93,7 @@ type PendingCheckout = {
   clientSaleId: string;
   shiftId: string;
   total: number;
+  packagingFee: number;
   lines: CartLine[];
   ebarimtBuyer: EbarimtBuyer;
 };
@@ -107,7 +103,7 @@ type PendingCardCheckout = Omit<PendingCheckout, "invoice"> & {
 };
 
 const REGISTER_STORAGE_KEY = "org_restaurant_pos_register_id";
-const EBARIMT_ENABLED = process.env.NEXT_PUBLIC_EBARIMT_ENABLED === "true";
+const MENU_REFRESH_INTERVAL_MS = 15_000;
 const DEMO_CASH_PAYMENT_ENABLED = process.env.NODE_ENV !== "production";
 const LONG_RUNNING_CARD_PROVIDERS = new Set([
   "PUSH_ECR",
@@ -115,33 +111,74 @@ const LONG_RUNNING_CARD_PROVIDERS = new Set([
   "ANDROID_PGW",
 ]);
 
+function reconcileCartWithProducts(
+  current: CartLine[],
+  products: RestaurantPosProduct[],
+) {
+  if (current.length === 0) {
+    return { cart: current, changed: false, notice: "" };
+  }
+
+  const productsById = new Map(products.map((product) => [product.id, product]));
+  let removedCount = 0;
+  let cappedCount = 0;
+  let priceChanged = false;
+  let changed = false;
+
+  const cart = current.flatMap<CartLine>((line) => {
+    const product = productsById.get(line.product.id);
+    const availableQty = Math.max(0, Math.floor(Number(product?.stockQty) || 0));
+
+    if (
+      !product ||
+      !product.isActive ||
+      Number(product.price) <= 0 ||
+      availableQty <= 0
+    ) {
+      removedCount += 1;
+      changed = true;
+      return [];
+    }
+
+    const qty = Math.min(line.qty, availableQty);
+    if (qty !== line.qty) {
+      cappedCount += 1;
+      changed = true;
+    }
+    if (Number(product.price) !== Number(line.product.price)) {
+      priceChanged = true;
+      changed = true;
+    }
+    if (product !== line.product) changed = true;
+
+    return [{ product, qty }];
+  });
+
+  const notices = [
+    removedCount > 0
+      ? `${removedCount} бүтээгдэхүүн дууссан тул сагснаас хасагдлаа.`
+      : "",
+    cappedCount > 0
+      ? `${cappedCount} бүтээгдэхүүний тоог шинэ үлдэгдэлд таарууллаа.`
+      : "",
+    priceChanged ? "Бүтээгдэхүүний шинэ үнэ сагсанд туслаа." : "",
+  ].filter(Boolean);
+
+  return { cart, changed, notice: notices.join(" ") };
+}
+
+async function loadSelfServiceProducts(branchId: string) {
+  const products = await getRestaurantPosProducts(branchId, {
+    restaurantMenuOnly: false,
+  });
+  return products.filter(
+    (product) => product.isActive && Number(product.price) > 0,
+  );
+}
+
 const getEffectiveCardProvider = (register?: RestaurantPosRegister | null) =>
   register?.cardProviderType ||
   (register?.minuAgentEnabled ? "MINU_AGENT" : null);
-
-const categoryCopy: Record<Category, string> = {
-  ALL: "Бүгд",
-  HOT: "Халуун хоол",
-  COLD: "Хүйтэн хоол",
-  SOUP: "Шөл",
-  GRILL: "Грилл",
-  APPETIZER: "Зууш",
-  DESSERT: "Амттан",
-  DRINK: "Ундаа",
-  OTHER: "Бусад",
-};
-
-const categoryOrder: Category[] = [
-  "ALL",
-  "HOT",
-  "SOUP",
-  "GRILL",
-  "APPETIZER",
-  "COLD",
-  "DESSERT",
-  "DRINK",
-  "OTHER",
-];
 
 const moneyFormatter = new Intl.NumberFormat("mn-MN", {
   maximumFractionDigits: 0,
@@ -169,7 +206,7 @@ const formatPrintDate = (value: string) => {
   }).format(date);
 };
 
-function printSelfServiceEbarimt(
+function printSelfServiceReceipt(
   receipt: PosReceipt,
   context: {
     organizationName: string;
@@ -179,18 +216,17 @@ function printSelfServiceEbarimt(
     qrMarkup: string;
   },
 ) {
-  if (typeof document === "undefined" || receipt.ebarimt?.status !== "SUCCESS") {
-    return false;
-  }
+  if (typeof document === "undefined") return false;
 
-  const ebarimt = receipt.ebarimt;
-  const isDemo = ebarimt.billId?.startsWith("TEST-") === true;
+  const ebarimt =
+    receipt.ebarimt?.status === "SUCCESS" ? receipt.ebarimt : null;
+  const isDemo = ebarimt?.billId?.startsWith("TEST-") === true;
   const paymentLabel =
     String(receipt.paymentMethod).toUpperCase() === "CARD"
       ? "Карт"
       : String(receipt.paymentMethod).toUpperCase() === "CASH"
         ? "Тест төлбөр"
-        : "QPay";
+        : "QR";
   const lineRows = receipt.lines
     .map(
       (line) => `
@@ -233,9 +269,10 @@ function printSelfServiceEbarimt(
         <meta charset="utf-8" />
         <title>${escapePrintHtml(receipt.receiptNo)}</title>
         <style>
-          @page { size: 80mm auto; margin: 3mm; }
+          @page { size: 58mm auto; margin: 2mm; }
           * { box-sizing: border-box; }
-          body { width: 74mm; margin: 0 auto; color: #000; background: #fff; font-family: Arial, sans-serif; font-size: 11px; line-height: 1.35; }
+          html, body { width: 54mm; max-width: 54mm; }
+          body { margin: 0 auto; overflow-wrap: anywhere; color: #000; background: #fff; font-family: Arial, sans-serif; font-size: 10px; line-height: 1.35; }
           h1 { margin: 0; text-align: center; font-size: 17px; }
           .center { text-align: center; }
           .muted { color: #333; font-size: 10px; }
@@ -243,15 +280,17 @@ function printSelfServiceEbarimt(
           .order-number { margin-top: 8px; padding: 8px 4px; border: 2px solid #000; text-align: center; }
           .order-number strong { display: block; font-size: 23px; line-height: 1.1; letter-spacing: .5px; }
           .meta, .ebarimt { margin-top: 8px; padding: 7px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; }
-          .row, .total { display: flex; justify-content: space-between; gap: 8px; }
-          table { width: 100%; margin-top: 5px; border-collapse: collapse; }
+          .row, .total { display: flex; width: 100%; justify-content: space-between; gap: 5px; }
+          .row > span:first-child, .total > span:first-child { flex: 0 0 auto; }
+          .row > span:last-child, .total > span:last-child { min-width: 0; text-align: right; overflow-wrap: anywhere; word-break: break-all; }
+          table { width: 100%; table-layout: fixed; margin-top: 5px; border-collapse: collapse; }
           td { padding: 5px 0; vertical-align: top; border-bottom: 1px dotted #777; }
-          .amount { width: 32%; text-align: right; white-space: nowrap; font-weight: 700; }
+          .amount { width: 30%; text-align: right; white-space: nowrap; font-weight: 700; }
           .totals { margin-top: 7px; }
           .total { margin-top: 3px; }
           .grand { margin-top: 6px; padding-top: 6px; border-top: 2px solid #000; font-size: 15px; font-weight: 800; }
           .qr { margin-top: 8px; text-align: center; }
-          .qr svg { width: 38mm; height: 38mm; }
+          .qr svg { width: 34mm; height: 34mm; max-width: 100%; }
           .qr-fallback { overflow-wrap: anywhere; font-family: monospace; font-size: 8px; }
           .footer { margin-top: 10px; text-align: center; font-weight: 700; }
         </style>
@@ -276,13 +315,20 @@ function printSelfServiceEbarimt(
           ${receipt.taxTotal > 0 ? `<div class="total"><span>Үүнд НӨАТ:</span><span>${escapePrintHtml(formatMoney(receipt.taxTotal))}</span></div>` : ""}
           <div class="total grand"><span>НИЙТ:</span><span>${escapePrintHtml(formatMoney(receipt.grandTotal))}</span></div>
         </div>
-        <div class="ebarimt">
-          <div class="center"><strong>${ebarimt.receiptType === "B2B" ? "БАЙГУУЛЛАГЫН EBARIMT" : "ХУВЬ ХҮНИЙ EBARIMT"}</strong></div>
-          ${ebarimt.customerRegNo ? `<div class="row"><span>Регистр:</span><span>${escapePrintHtml(ebarimt.customerRegNo)}</span></div>` : ""}
-          ${ebarimt.billId ? `<div class="row"><span>ДДТД:</span><span>${escapePrintHtml(ebarimt.billId)}</span></div>` : ""}
-          ${ebarimt.lottery ? `<div class="row"><span>Сугалаа:</span><span>${escapePrintHtml(ebarimt.lottery)}</span></div>` : ""}
-          <div class="qr">${context.qrMarkup || `<div class="qr-fallback">${escapePrintHtml(ebarimt.qrData)}</div>`}</div>
-        </div>
+        ${
+          ebarimt
+            ? `<div class="ebarimt">
+                <div class="center"><strong>${ebarimt.receiptType === "B2B" ? "БАЙГУУЛЛАГЫН EBARIMT" : "ХУВЬ ХҮНИЙ EBARIMT"}</strong></div>
+                ${ebarimt.customerRegNo ? `<div class="row"><span>Регистр:</span><span>${escapePrintHtml(ebarimt.customerRegNo)}</span></div>` : ""}
+                ${ebarimt.billId ? `<div class="row"><span>ДДТД:</span><span>${escapePrintHtml(ebarimt.billId)}</span></div>` : ""}
+                ${ebarimt.lottery ? `<div class="row"><span>Сугалаа:</span><span>${escapePrintHtml(ebarimt.lottery)}</span></div>` : ""}
+                <div class="qr">${context.qrMarkup || `<div class="qr-fallback">${escapePrintHtml(ebarimt.qrData)}</div>`}</div>
+              </div>`
+            : `<div class="ebarimt center">
+                <strong>ЗАХИАЛГЫН БАРИМТ</strong>
+                <div class="muted">Ebarimt биш</div>
+              </div>`
+        }
         <div class="footer">Үйлчлүүлсэнд баярлалаа</div>
       </body>
     </html>`;
@@ -290,9 +336,6 @@ function printSelfServiceEbarimt(
   document.body.appendChild(iframe);
   return true;
 }
-
-const productCategory = (product: RestaurantPosProduct): Category =>
-  product.menuCategory || (product.kitchenStation === "BAR" ? "DRINK" : "OTHER");
 
 const createClientSaleId = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -360,6 +403,9 @@ export function SelfServiceCheckoutScreen() {
   const [register, setRegister] = useState<RestaurantPosRegister | null>(null);
   const [shift, setShift] = useState<PosShift | null>(null);
   const [products, setProducts] = useState<RestaurantPosProduct[]>([]);
+  const [menuCategories, setMenuCategories] = useState<
+    RestaurantMenuCategory[]
+  >([]);
   const [paymentMethod, setPaymentMethod] =
     useState<PaymentMethod>("QPAY");
   const [ebarimtBuyerMode, setEbarimtBuyerMode] =
@@ -378,6 +424,7 @@ export function SelfServiceCheckoutScreen() {
   const [setupLoading, setSetupLoading] = useState(true);
   const [setupError, setSetupError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [catalogNotice, setCatalogNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [pendingCheckout, setPendingCheckout] =
@@ -390,9 +437,11 @@ export function SelfServiceCheckoutScreen() {
   const [secondsToReset, setSecondsToReset] = useState(30);
   const [silentPrintEnabled, setSilentPrintEnabled] = useState(false);
   const finalizedInvoiceRef = useRef<string | null>(null);
+  const cancellingInvoiceRef = useRef<string | null>(null);
   const finalizedCardAttemptRef = useRef<string | null>(null);
   const ebarimtQrRef = useRef<HTMLDivElement | null>(null);
-  const autoPrintedEbarimtRef = useRef<string | null>(null);
+  const autoPrintedReceiptRef = useRef<string | null>(null);
+  const menuRefreshInFlightRef = useRef(false);
 
   const loadSetup = useCallback(async () => {
     setSetupLoading(true);
@@ -417,22 +466,20 @@ export function SelfServiceCheckoutScreen() {
 
       window.localStorage.setItem(REGISTER_STORAGE_KEY, nextRegister.id);
 
-      const nextProducts = await getRestaurantPosProducts(
-        nextRegister.branchId,
-        { restaurantMenuOnly: false },
-      );
+      const [nextProducts, nextCategories] = await Promise.all([
+        loadSelfServiceProducts(nextRegister.branchId),
+        getRestaurantMenuCategories(nextRegister.organizationId),
+      ]);
 
       setRegister(nextRegister);
       setShift(currentShift?.status === "OPEN" ? currentShift : null);
-      setProducts(
-        nextProducts.filter(
-          (product) => product.isActive && Number(product.price) > 0,
-        ),
-      );
+      setProducts(nextProducts);
+      setMenuCategories(nextCategories);
     } catch (error) {
       setRegister(null);
       setShift(null);
       setProducts([]);
+      setMenuCategories([]);
       setSetupError(
         error instanceof Error
           ? error.message
@@ -452,31 +499,134 @@ export function SelfServiceCheckoutScreen() {
     setSilentPrintEnabled(params.get("silentPrint") === "1");
   }, []);
 
-  const visibleCategories = useMemo(() => {
-    const present = new Set(products.map(productCategory));
-    return categoryOrder.filter(
-      (category) => category === "ALL" || present.has(category),
+  const refreshMenuProducts = useCallback(async () => {
+    if (!register?.branchId || menuRefreshInFlightRef.current) return;
+
+    menuRefreshInFlightRef.current = true;
+    try {
+      const [nextProducts, nextCategories] = await Promise.all([
+        loadSelfServiceProducts(register.branchId),
+        getRestaurantMenuCategories(register.organizationId),
+      ]);
+      setProducts(nextProducts);
+      setMenuCategories(nextCategories);
+      setCatalogNotice((current) =>
+        current.startsWith("Менюг шинэчилж чадсангүй") ? "" : current,
+      );
+    } catch {
+      setCatalogNotice(
+        "Менюг шинэчилж чадсангүй. Сүлжээний холболтыг шалгана уу.",
+      );
+    } finally {
+      menuRefreshInFlightRef.current = false;
+    }
+  }, [register?.branchId, register?.organizationId]);
+
+  useEffect(() => {
+    if (
+      !register?.branchId ||
+      !["welcome", "menu", "checkout"].includes(screen)
+    ) {
+      return;
+    }
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshMenuProducts();
+      }
+    };
+    const refreshTimer = window.setInterval(
+      refreshWhenVisible,
+      MENU_REFRESH_INTERVAL_MS,
     );
-  }, [products]);
+
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenVisible);
+    return () => {
+      window.clearInterval(refreshTimer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenVisible);
+    };
+  }, [refreshMenuProducts, register?.branchId, screen]);
+
+  useEffect(() => {
+    if (setupLoading || (screen !== "menu" && screen !== "checkout")) return;
+
+    const reconciled = reconcileCartWithProducts(cart, products);
+    if (!reconciled.changed) return;
+
+    setCart(reconciled.cart);
+    if (reconciled.notice) setCatalogNotice(reconciled.notice);
+  }, [cart, products, screen, setupLoading]);
+
+  useEffect(() => {
+    if (!catalogNotice) return;
+    const timer = window.setTimeout(() => setCatalogNotice(""), 8_000);
+    return () => window.clearTimeout(timer);
+  }, [catalogNotice]);
+
+  const configuredCategoryCodes = useMemo(
+    () => new Set(menuCategories.map((category) => category.code)),
+    [menuCategories],
+  );
+  const resolveProductCategory = useCallback(
+    (product: RestaurantPosProduct): Category =>
+      product.menuCategory && configuredCategoryCodes.has(product.menuCategory)
+        ? product.menuCategory
+        : "OTHER",
+    [configuredCategoryCodes],
+  );
+
+  const visibleCategories = useMemo(() => {
+    const present = new Set(products.map(resolveProductCategory));
+    const configured = menuCategories
+      .map((category) => category.code)
+      .filter((category) => present.has(category));
+    const hasOther = present.has("OTHER");
+    return ["ALL", ...configured, ...(hasOther ? ["OTHER"] : [])];
+  }, [menuCategories, products, resolveProductCategory]);
+
+  const categoryLabel = useCallback(
+    (category: Category) => {
+      if (category === "ALL") return "Бүгд";
+      if (category === "OTHER") return "Бусад";
+      return (
+        menuCategories.find((item) => item.code === category)?.name || category
+      );
+    },
+    [menuCategories],
+  );
+
+  useEffect(() => {
+    if (!visibleCategories.includes(activeCategory)) {
+      setActiveCategory("ALL");
+    }
+  }, [activeCategory, visibleCategories]);
 
   const visibleProducts = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("mn");
     return products.filter((product) => {
       const matchesCategory =
-        activeCategory === "ALL" || productCategory(product) === activeCategory;
+        activeCategory === "ALL" ||
+        resolveProductCategory(product) === activeCategory;
       const matchesSearch =
         !normalizedQuery ||
         product.name.toLocaleLowerCase("mn").includes(normalizedQuery) ||
         product.sku.toLocaleLowerCase("mn").includes(normalizedQuery);
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, products, query]);
+  }, [activeCategory, products, query, resolveProductCategory]);
 
   const cartQty = cart.reduce((sum, line) => sum + line.qty, 0);
-  const cartTotal = cart.reduce(
+  const cartSubtotal = cart.reduce(
     (sum, line) => sum + Number(line.product.price) * line.qty,
     0,
   );
+  const packagingFee =
+    orderMode === "TO_GO" && cart.length > 0
+      ? SELF_SERVICE_TAKEAWAY_PACKAGING_FEE
+      : 0;
+  const cartTotal = cartSubtotal + packagingFee;
   const cardProvider = getEffectiveCardProvider(register);
   const cardTerminalReady = Boolean(
     register?.cardEnabled &&
@@ -486,8 +636,7 @@ export function SelfServiceCheckoutScreen() {
         : register.cardTerminalId),
   );
   const ebarimtReady = Boolean(
-    DEMO_CASH_PAYMENT_ENABLED ||
-      (EBARIMT_ENABLED && register?.ebarimtEnabled),
+    DEMO_CASH_PAYMENT_ENABLED || register?.ebarimtEnabled,
   );
 
   const lookupCompanyBuyer = async (): Promise<EbarimtTinLookupResult> => {
@@ -667,6 +816,7 @@ export function SelfServiceCheckoutScreen() {
       setEbarimtSubmitting(false);
       setCompletedEbarimtBuyer({ type: "B2C" });
       setActionError("");
+      setCatalogNotice("");
       setPendingCheckout(null);
       setPendingCardCheckout(null);
       setReceipt(null);
@@ -674,16 +824,17 @@ export function SelfServiceCheckoutScreen() {
       setCardMessage("");
       setSecondsToReset(30);
       finalizedInvoiceRef.current = null;
+      cancellingInvoiceRef.current = null;
       finalizedCardAttemptRef.current = null;
-      autoPrintedEbarimtRef.current = null;
+      autoPrintedReceiptRef.current = null;
       if (options?.reload) void loadSetup();
     },
     [loadSetup],
   );
 
-  const printCompletedEbarimt = useCallback(
+  const printCompletedReceipt = useCallback(
     (targetReceipt: PosReceipt) =>
-      printSelfServiceEbarimt(targetReceipt, {
+      printSelfServiceReceipt(targetReceipt, {
         organizationName: user.organizationName || "MGL Store",
         registerName: register?.label || register?.name || "Self service",
         orderLabel: orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах",
@@ -698,25 +849,40 @@ export function SelfServiceCheckoutScreen() {
   );
 
   useEffect(() => {
-    if (
-      !silentPrintEnabled ||
-      screen !== "success" ||
-      receipt?.ebarimt?.status !== "SUCCESS"
-    ) {
+    if (!silentPrintEnabled || screen !== "success" || !receipt) {
       return;
     }
-    const printKey =
-      receipt.ebarimt.billId ||
-      receipt.ebarimt.receiptId ||
-      `${receipt.id}-${receipt.receiptNo}`;
-    if (autoPrintedEbarimtRef.current === printKey) return;
+    const successfulEbarimt =
+      receipt.ebarimt?.status === "SUCCESS" ? receipt.ebarimt : null;
+    const printKey = successfulEbarimt
+      ? successfulEbarimt.billId ||
+        successfulEbarimt.receiptId ||
+        `ebarimt-${receipt.id}`
+      : `order-${receipt.id}-${receipt.receiptNo}`;
+    if (autoPrintedReceiptRef.current === printKey) return;
 
-    const timer = window.setTimeout(() => {
-      autoPrintedEbarimtRef.current = printKey;
-      printCompletedEbarimt(receipt);
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [printCompletedEbarimt, receipt, screen, silentPrintEnabled]);
+    let timer: number | undefined;
+    let attempts = 0;
+    let cancelled = false;
+    const printWhenQrIsReady = () => {
+      if (cancelled) return;
+      const waitingForQr =
+        Boolean(successfulEbarimt?.qrData) &&
+        !ebarimtQrRef.current?.querySelector("svg");
+      if (waitingForQr && attempts < 20) {
+        attempts += 1;
+        timer = window.setTimeout(printWhenQrIsReady, 100);
+        return;
+      }
+      autoPrintedReceiptRef.current = printKey;
+      printCompletedReceipt(receipt);
+    };
+    timer = window.setTimeout(printWhenQrIsReady, 350);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [printCompletedReceipt, receipt, screen, silentPrintEnabled]);
 
   useEffect(() => {
     if (screen !== "success") return;
@@ -907,6 +1073,7 @@ export function SelfServiceCheckoutScreen() {
         restaurantTicketId: checkout.ticket.id,
         clientSaleId: checkout.clientSaleId,
         total: checkout.total,
+        packagingFee: checkout.packagingFee,
         note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}`,
         lines: checkout.lines.map((line) => ({
           productId: line.product.id,
@@ -1007,6 +1174,7 @@ export function SelfServiceCheckoutScreen() {
           restaurantTicketId: savedTicket.id,
           clientSaleId,
           total: cartTotal,
+          packagingFee,
           note: `Өөртөө үйлчлэх касс · Тест борлуулалт · ${
             orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"
           }`,
@@ -1038,6 +1206,7 @@ export function SelfServiceCheckoutScreen() {
           clientSaleId,
           shiftId: activeShift.id,
           total: cartTotal,
+          packagingFee,
           lines: cart.map((line) => ({ ...line })),
           cardAttempt,
           ebarimtBuyer,
@@ -1058,6 +1227,7 @@ export function SelfServiceCheckoutScreen() {
         clientSaleId,
         shiftId: activeShift.id,
         total: cartTotal,
+        packagingFee,
         lines: cart.map((line) => ({ ...line })),
         ebarimtBuyer,
       };
@@ -1088,6 +1258,7 @@ export function SelfServiceCheckoutScreen() {
           clientSaleId: createClientSaleId(),
           shiftId: activeShift.id,
           total: cartTotal,
+          packagingFee,
           lines: cart,
           ebarimtBuyer: { type: "B2C" },
         });
@@ -1123,6 +1294,7 @@ export function SelfServiceCheckoutScreen() {
           restaurantTicketId: checkout.ticket.id,
           clientSaleId: checkout.clientSaleId,
           total: checkout.total,
+          packagingFee: checkout.packagingFee,
           qpayInvoiceId: paidInvoice.invoiceId,
           note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}`,
           lines: checkout.lines.map((line) => ({
@@ -1172,11 +1344,15 @@ export function SelfServiceCheckoutScreen() {
       if (!pendingCheckout || pendingCheckout.invoice.status !== "PENDING") {
         return;
       }
+      const invoiceId = pendingCheckout.invoice.invoiceId;
+      if (cancellingInvoiceRef.current === invoiceId) return;
       if (!silent) setCheckingPayment(true);
       try {
         const status = await getRestaurantQPayInvoiceStatus(
-          pendingCheckout.invoice.invoiceId,
+          invoiceId,
+          { refreshProvider: !silent },
         );
+        if (cancellingInvoiceRef.current === invoiceId) return;
         const nextInvoice = { ...pendingCheckout.invoice, ...status };
         const nextCheckout = { ...pendingCheckout, invoice: nextInvoice };
         if (nextInvoice.status === "PAID") {
@@ -1237,8 +1413,39 @@ export function SelfServiceCheckoutScreen() {
     await cleanupDraftTicket(pendingCheckout);
     setPendingCheckout(null);
     setActionError("");
-    setScreen("checkout");
+    setScreen("menu");
     setSubmitting(false);
+  };
+
+  const returnToMenuFromPayment = async () => {
+    if (!pendingCheckout || submitting || checkingPayment) return;
+    if (pendingCheckout.invoice.status !== "PENDING") {
+      await leaveExpiredPayment();
+      return;
+    }
+
+    setSubmitting(true);
+    setActionError("");
+    const invoiceId = pendingCheckout.invoice.invoiceId;
+    cancellingInvoiceRef.current = invoiceId;
+    try {
+      await cancelRestaurantQPayInvoice(invoiceId);
+      await cleanupDraftTicket(pendingCheckout);
+      finalizedInvoiceRef.current = null;
+      setPendingCheckout(null);
+      setScreen("menu");
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "QR төлбөрийг цуцалж чадсангүй.",
+      );
+    } finally {
+      if (cancellingInvoiceRef.current === invoiceId) {
+        cancellingInvoiceRef.current = null;
+      }
+      setSubmitting(false);
+    }
   };
 
   const requestFullscreen = () => {
@@ -1504,6 +1711,18 @@ export function SelfServiceCheckoutScreen() {
                 {paid ? "Захиалга бүртгэх" : "Төлбөр шалгах"}
               </button>
 
+              {!paid && !expired ? (
+                <button
+                  type="button"
+                  onClick={() => void returnToMenuFromPayment()}
+                  disabled={checkingPayment || submitting}
+                  className="mt-3 inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 text-sm font-black text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Буцах · Захиалгаа өөрчлөх
+                </button>
+              ) : null}
+
               {expired ? (
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
                   <button
@@ -1650,16 +1869,18 @@ export function SelfServiceCheckoutScreen() {
           </div>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            {ebarimtSucceeded ? (
-              <button
-                type="button"
-                onClick={() => printCompletedEbarimt(receipt)}
-                className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-6 text-sm font-black text-white transition hover:bg-white/15"
-              >
-                <Printer className="h-5 w-5" />
-                {silentPrintEnabled ? "Дахин хэвлэх" : "Баримт хэвлэх"}
-              </button>
-            ) : null}
+            <button
+              type="button"
+              onClick={() => printCompletedReceipt(receipt)}
+              className="inline-flex h-14 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-6 text-sm font-black text-white transition hover:bg-white/15"
+            >
+              <Printer className="h-5 w-5" />
+              {silentPrintEnabled
+                ? "Дахин хэвлэх"
+                : ebarimtSucceeded
+                  ? "Баримт хэвлэх"
+                  : "Захиалгын баримт хэвлэх"}
+            </button>
             <button
               type="button"
               onClick={() => resetOrder({ reload: true })}
@@ -1694,6 +1915,12 @@ export function SelfServiceCheckoutScreen() {
               Захиалга баталгаажуулах
             </p>
           </header>
+
+          {catalogNotice ? (
+            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+              {catalogNotice}
+            </div>
+          ) : null}
 
           <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]">
             <section className="rounded-[28px] bg-white p-5 shadow-sm sm:p-7">
@@ -1752,8 +1979,14 @@ export function SelfServiceCheckoutScreen() {
               <div className="mt-6 space-y-3 text-sm">
                 <div className="flex justify-between">
                   <span className="font-semibold text-white/55">Барааны дүн</span>
-                  <span className="font-black">{formatMoney(cartTotal)}</span>
+                  <span className="font-black">{formatMoney(cartSubtotal)}</span>
                 </div>
+                {packagingFee > 0 ? (
+                  <div className="flex justify-between">
+                    <span className="font-semibold text-white/55">Савны үнэ</span>
+                    <span className="font-black">{formatMoney(packagingFee)}</span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between">
                   <span className="font-semibold text-white/55">Хөнгөлөлт</span>
                   <span className="font-black">0₮</span>
@@ -2011,6 +2244,11 @@ export function SelfServiceCheckoutScreen() {
 
       <div className="flex h-[calc(100dvh-78px)] flex-col">
         <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {catalogNotice ? (
+            <div className="mx-4 mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 sm:mx-6">
+              {catalogNotice}
+            </div>
+          ) : null}
           <div className="border-b border-black/5 bg-white px-4 sm:px-6">
             <div className="flex gap-2 overflow-x-auto py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {visibleCategories.map((category) => (
@@ -2024,7 +2262,7 @@ export function SelfServiceCheckoutScreen() {
                       : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                   }`}
                 >
-                  {categoryCopy[category]}
+                  {categoryLabel(category)}
                 </button>
               ))}
             </div>
@@ -2043,7 +2281,7 @@ export function SelfServiceCheckoutScreen() {
             <div className="mb-5 flex items-end justify-between gap-4">
               <div>
                 <h1 className="text-2xl font-black tracking-tight">
-                  {categoryCopy[activeCategory]}
+                  {categoryLabel(activeCategory)}
                 </h1>
                 <p className="mt-1 text-sm font-semibold text-slate-400">
                   Сонгох бүтээгдэхүүн дээрээ дарна уу

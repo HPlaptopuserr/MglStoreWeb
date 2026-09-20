@@ -63,15 +63,7 @@ export type RestaurantPosProduct = {
   measureUnit: string;
   isActive: boolean;
   isRestaurantMenuItem: boolean;
-  menuCategory:
-    | "HOT"
-    | "COLD"
-    | "SOUP"
-    | "GRILL"
-    | "APPETIZER"
-    | "DESSERT"
-    | "DRINK"
-    | null;
+  menuCategory: string | null;
   kitchenStation: "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR" | null;
   preparationMinutes: number | null;
 };
@@ -132,6 +124,14 @@ export type RestaurantDiningTable = {
   currentTicket: RestaurantTicket | null;
 };
 
+export type RestaurantMenuCategory = {
+  id: string;
+  code: string;
+  name: string;
+  sortOrder: number;
+  productCount: number;
+};
+
 export type RestaurantPublicMenuProduct = {
   id: string;
   name: string;
@@ -165,6 +165,7 @@ export type RestaurantPublicMenu = {
     seats: number;
   };
   orderingAvailable: boolean;
+  categories: RestaurantMenuCategory[];
   products: RestaurantPublicMenuProduct[];
 };
 
@@ -301,6 +302,7 @@ type CreateRestaurantCashSalePayload = {
   clientSaleId: string;
   restaurantTicketId: string;
   total: number;
+  packagingFee?: number;
   note: string;
   lines: Array<{
     productId: string;
@@ -647,6 +649,48 @@ export async function getRestaurantPosProducts(
     cache: "no-store",
   });
   return readApiResponse<RestaurantPosProduct[]>(response);
+}
+
+export async function getRestaurantMenuCategories(organizationId: string) {
+  const params = new URLSearchParams({ organizationId });
+  const response = await authFetch(
+    `${API}/restaurant/pos/menu-categories?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantMenuCategory[]>(response);
+}
+
+export async function createRestaurantMenuCategory(input: {
+  organizationId: string;
+  name: string;
+}) {
+  const response = await authFetch(`${API}/restaurant/pos/menu-categories`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<RestaurantMenuCategory>(response);
+}
+
+export async function updateRestaurantMenuCategory(input: {
+  id: string;
+  name: string;
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/pos/menu-categories/${encodeURIComponent(input.id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ name: input.name }),
+    },
+  );
+  return readApiResponse<RestaurantMenuCategory>(response);
+}
+
+export async function deleteRestaurantMenuCategory(id: string) {
+  const response = await authFetch(
+    `${API}/restaurant/pos/menu-categories/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+  return readApiResponse<{ ok: true; detachedProducts: number }>(response);
 }
 
 export async function getRestaurantCreditCustomers(
@@ -1029,9 +1073,21 @@ export async function createRestaurantQPayInvoice(input: {
   return readApiResponse<RestaurantPosQPayInvoice>(response);
 }
 
-export async function getRestaurantQPayInvoiceStatus(invoiceId: string) {
+export async function cancelRestaurantQPayInvoice(invoiceId: string) {
+  const response = await authFetch(`${API}/pos/payments/qpay/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ invoiceId }),
+  });
+  return readApiResponse<RestaurantPosQPayInvoice>(response);
+}
+
+export async function getRestaurantQPayInvoiceStatus(
+  invoiceId: string,
+  options?: { refreshProvider?: boolean },
+) {
+  const query = options?.refreshProvider ? "?refresh=1" : "";
   const response = await authFetch(
-    `${API}/pos/payments/qpay/status/${encodeURIComponent(invoiceId)}`,
+    `${API}/pos/payments/qpay/status/${encodeURIComponent(invoiceId)}${query}`,
     { cache: "no-store" },
   );
   return readApiResponse<RestaurantPosQPayInvoice>(response);
@@ -1062,6 +1118,7 @@ async function createRestaurantSale(input: CreateRestaurantSalePayload) {
       ],
       loyalty: { mode: "NONE" },
       lines: input.lines,
+      packagingFee: input.packagingFee || 0,
       note: input.note,
     }),
   });

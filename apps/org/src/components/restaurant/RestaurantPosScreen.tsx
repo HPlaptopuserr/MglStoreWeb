@@ -60,6 +60,7 @@ import {
   getRestaurantCreditSales,
   getRestaurantQPayInvoiceStatus,
   getRestaurantDiningTables,
+  getRestaurantMenuCategories,
   getRestaurantPosProducts,
   getRestaurantPosRegisters,
   getRestaurantSalesHistory,
@@ -74,6 +75,7 @@ import {
   voidRestaurantSale,
   type RestaurantDiningTable,
   type RestaurantCreditSale,
+  type RestaurantMenuCategory,
   type RestaurantPosQPayInvoice,
   type RestaurantPosProduct,
   type RestaurantPosRegister,
@@ -98,19 +100,11 @@ import type {
 } from "@mgl/types";
 
 type OrderMode = "DINE_IN" | "TO_GO" | "DELIVERY";
-type MenuCategory =
-  | "hot"
-  | "cold"
-  | "soup"
-  | "grill"
-  | "appetizer"
-  | "dessert"
-  | "drink";
+type MenuCategory = string;
 type MenuCategoryFilter = "all" | MenuCategory;
 type DishTone = "coral" | "amber" | "mint" | "lime" | "orange" | "sky";
 type TableStatus = "FREE" | "OPEN" | "KITCHEN" | "READY" | "PAID" | "RESERVED";
 type PaymentMethod = "CASH" | "CARD" | "QPAY" | "CREDIT";
-type RestaurantMenuCategory = NonNullable<RestaurantPosProduct["menuCategory"]>;
 type RestaurantKitchenStation = NonNullable<
   RestaurantPosProduct["kitchenStation"]
 >;
@@ -196,30 +190,6 @@ type DiningTable = {
   total: number;
   currentTicket: RestaurantTicket | null;
 };
-
-const categories: { id: MenuCategoryFilter; label: string }[] = [
-  { id: "all", label: "Бүгд" },
-  { id: "hot", label: "Халуун хоол" },
-  { id: "cold", label: "Хүйтэн хоол" },
-  { id: "soup", label: "Шөл" },
-  { id: "grill", label: "Грилл" },
-  { id: "appetizer", label: "Зууш" },
-  { id: "dessert", label: "Амттан" },
-  { id: "drink", label: "Ундаа" },
-];
-
-const restaurantMenuCategories: Array<{
-  value: RestaurantMenuCategory;
-  label: string;
-}> = [
-  { value: "HOT", label: "Халуун хоол" },
-  { value: "COLD", label: "Хүйтэн хоол" },
-  { value: "SOUP", label: "Шөл" },
-  { value: "GRILL", label: "Грилл" },
-  { value: "APPETIZER", label: "Зууш" },
-  { value: "DESSERT", label: "Амттан" },
-  { value: "DRINK", label: "Ундаа" },
-];
 
 const restaurantKitchenStations: Array<{
   value: RestaurantKitchenStation;
@@ -424,27 +394,21 @@ const paymentMethodLabel = (method?: string | null) => {
   return "Бэлэн";
 };
 
-const menuCategoryMap: Record<
-  NonNullable<RestaurantPosProduct["menuCategory"]>,
-  MenuCategory
-> = {
-  HOT: "hot",
-  COLD: "cold",
-  SOUP: "soup",
-  GRILL: "grill",
-  APPETIZER: "appetizer",
-  DESSERT: "dessert",
-  DRINK: "drink",
-};
+const categoryTones: DishTone[] = [
+  "amber",
+  "orange",
+  "sky",
+  "coral",
+  "lime",
+  "mint",
+];
 
-const categoryTone: Record<MenuCategory, DishTone> = {
-  hot: "orange",
-  cold: "mint",
-  soup: "amber",
-  grill: "coral",
-  appetizer: "lime",
-  dessert: "sky",
-  drink: "sky",
+const categoryTone = (category: string): DishTone => {
+  const hash = [...category].reduce(
+    (total, character) => total + character.charCodeAt(0),
+    0,
+  );
+  return categoryTones[hash % categoryTones.length] || "amber";
 };
 
 const REGISTER_STORAGE_KEY = "org_restaurant_pos_register_id";
@@ -723,6 +687,9 @@ export function RestaurantPosScreen() {
   const [tablesLoading, setTablesLoading] = useState(false);
   const [tablesError, setTablesError] = useState("");
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [menuCategories, setMenuCategories] = useState<
+    RestaurantMenuCategory[]
+  >([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState("");
   const [productManagerOpen, setProductManagerOpen] = useState(false);
@@ -736,7 +703,7 @@ export function RestaurantPosScreen() {
   const [productManagerSaving, setProductManagerSaving] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [menuProductCategory, setMenuProductCategory] =
-    useState<RestaurantMenuCategory>("HOT");
+    useState<string>("HOT");
   const [menuProductStation, setMenuProductStation] =
     useState<RestaurantKitchenStation>("HOT_KITCHEN");
   const [menuProductPreparationMinutes, setMenuProductPreparationMinutes] =
@@ -1154,31 +1121,36 @@ export function RestaurantPosScreen() {
     setMenuLoading(true);
     setMenuError("");
     try {
-      const products = await getRestaurantPosProducts(
-        selectedRegister.branchId,
-        {
+      const [products, nextCategories] = await Promise.all([
+        getRestaurantPosProducts(selectedRegister.branchId, {
           restaurantMenuOnly: false,
-        },
+        }),
+        getRestaurantMenuCategories(selectedRegister.organizationId),
+      ]);
+      const configuredCategoryCodes = new Set(
+        nextCategories.map((category) => category.code),
       );
       const nextItems = products
         .filter((product) => product.isActive)
         .map((product) => {
           const menuCategory =
-            product.menuCategory ||
-            (product.kitchenStation === "BAR" ? "DRINK" : "HOT");
-          const category = menuCategoryMap[menuCategory];
+            product.menuCategory &&
+            configuredCategoryCodes.has(product.menuCategory)
+              ? product.menuCategory
+              : "OTHER";
           return {
             id: product.id,
             name: product.name,
-            category,
+            category: menuCategory,
             price: Number(product.price) || 0,
             available: Number(product.stockQty) || 0,
             taxRate: Number(product.taxRate) || 0,
-            tone: categoryTone[category],
+            tone: categoryTone(menuCategory),
             imageUrl: product.imageUrl || undefined,
           };
         });
       setMenuItems(nextItems);
+      setMenuCategories(nextCategories);
     } catch (error) {
       setMenuError(
         error instanceof Error ? error.message : "Меню ачаалахад алдаа гарлаа",
@@ -1186,7 +1158,7 @@ export function RestaurantPosScreen() {
     } finally {
       setMenuLoading(false);
     }
-  }, [selectedRegister?.branchId]);
+  }, [selectedRegister?.branchId, selectedRegister?.organizationId]);
 
   useEffect(() => {
     void loadMenu();
@@ -1352,6 +1324,38 @@ export function RestaurantPosScreen() {
       setOrderMode("DINE_IN");
     }
   }, [menuItems, selectedTable.currentTicket, selectedTable.id]);
+
+  const categoryFilters = useMemo(
+    () => [
+      { id: "all", label: "Бүгд" },
+      ...menuCategories.map((category) => ({
+        id: category.code,
+        label: category.name,
+      })),
+      ...(menuItems.some((item) => item.category === "OTHER")
+        ? [{ id: "OTHER", label: "Бусад" }]
+        : []),
+    ],
+    [menuCategories, menuItems],
+  );
+
+  useEffect(() => {
+    if (
+      menuCategories.length > 0 &&
+      !menuCategories.some((category) => category.code === menuProductCategory)
+    ) {
+      setMenuProductCategory(menuCategories[0].code);
+    }
+  }, [menuCategories, menuProductCategory]);
+
+  useEffect(() => {
+    if (
+      activeCategory !== "all" &&
+      !categoryFilters.some((category) => category.id === activeCategory)
+    ) {
+      setActiveCategory("all");
+    }
+  }, [activeCategory, categoryFilters]);
 
   const filteredMenu = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -3727,7 +3731,7 @@ export function RestaurantPosScreen() {
 
           <div className="mt-4 flex shrink-0 items-center justify-between gap-4">
             <div className="flex min-w-0 gap-7 overflow-x-auto pb-1">
-              {categories.map((category) => (
+              {categoryFilters.map((category) => (
                 <button
                   key={category.id}
                   type="button"
@@ -5130,15 +5134,15 @@ export function RestaurantPosScreen() {
                     value={menuProductCategory}
                     onChange={(event) =>
                       setMenuProductCategory(
-                        event.target.value as RestaurantMenuCategory,
+                        event.target.value,
                       )
                     }
                     disabled={productManagerSaving}
                     className="mt-2 h-11 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-sm font-bold text-slate-100 outline-none focus:border-sky-400/70"
                   >
-                    {restaurantMenuCategories.map((category) => (
-                      <option key={category.value} value={category.value}>
-                        {category.label}
+                    {menuCategories.map((category) => (
+                      <option key={category.code} value={category.code}>
+                        {category.name}
                       </option>
                     ))}
                   </select>
