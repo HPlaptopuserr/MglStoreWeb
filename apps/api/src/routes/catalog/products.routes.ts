@@ -3411,6 +3411,7 @@ router.post(
         classificationCode,
         taxProductCode,
         isRestaurantMenuItem,
+        isTakeawayAvailable,
         menuCategory,
         kitchenStation,
         preparationMinutes,
@@ -3730,6 +3731,10 @@ router.post(
             classificationCode: normalizedClassificationCode,
             taxProductCode: normalizedTaxProductCode,
             isRestaurantMenuItem: restaurantMenuEnabled,
+            isTakeawayAvailable:
+              isTakeawayAvailable === undefined
+                ? true
+                : isTruthyQueryValue(isTakeawayAvailable),
             menuCategory: normalizedMenuCategory,
             kitchenStation: normalizedKitchenStation,
             preparationMinutes: restaurantMenuEnabled
@@ -3946,6 +3951,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       classificationCode,
       taxProductCode,
       isRestaurantMenuItem,
+      isTakeawayAvailable,
       menuCategory,
       kitchenStation,
       preparationMinutes,
@@ -4129,6 +4135,9 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
         : existing.isRestaurantMenuItem;
     if (isRestaurantMenuItem !== undefined) {
       data.isRestaurantMenuItem = nextRestaurantMenuEnabled;
+    }
+    if (isTakeawayAvailable !== undefined) {
+      data.isTakeawayAvailable = isTruthyQueryValue(isTakeawayAvailable);
     }
     if (
       menuCategory !== undefined ||

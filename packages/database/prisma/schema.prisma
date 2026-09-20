@@ -1092,6 +1092,7 @@ model Product {
   classificationCode     String                        @default("6212991")
   taxProductCode         String?
   isRestaurantMenuItem   Boolean                       @default(false)
+  isTakeawayAvailable    Boolean                       @default(true)
   menuCategory           String?
   kitchenStation         String?
   preparationMinutes     Int?

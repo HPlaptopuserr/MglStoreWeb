@@ -63,6 +63,7 @@ export type RestaurantPosProduct = {
   measureUnit: string;
   isActive: boolean;
   isRestaurantMenuItem: boolean;
+  isTakeawayAvailable: boolean;
   menuCategory: string | null;
   kitchenStation: "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR" | null;
   preparationMinutes: number | null;

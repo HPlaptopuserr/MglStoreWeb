@@ -2516,6 +2516,7 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
                 name: true,
                 price: true,
                 stock: true,
+                isTakeawayAvailable: true,
                 kitchenStation: true,
                 preparationMinutes: true,
               },
@@ -2524,6 +2525,19 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
         if (products.length !== productIds.length) {
           throw Object.assign(
             new Error("Зарим бүтээгдэхүүн идэвхгүй эсвэл олдсонгүй"),
+            { status: 400 },
+          );
+        }
+
+        const unavailableForTakeaway =
+          orderMode === RestaurantOrderMode.TO_GO
+            ? products.filter((product) => !product.isTakeawayAvailable)
+            : [];
+        if (unavailableForTakeaway.length > 0) {
+          throw Object.assign(
+            new Error(
+              `${unavailableForTakeaway.map((product) => product.name).join(", ")} авч явах боломжгүй бүтээгдэхүүн байна`,
+            ),
             { status: 400 },
           );
         }

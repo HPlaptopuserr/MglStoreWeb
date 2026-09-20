@@ -56,6 +56,7 @@ type RestaurantProduct = {
   taxProductCode: string | null;
   isActive: boolean;
   isRestaurantMenuItem: boolean;
+  isTakeawayAvailable: boolean;
   menuCategory: MenuCategory | null;
   kitchenStation: KitchenStation | null;
   preparationMinutes: number | null;
@@ -72,6 +73,7 @@ type MenuForm = {
   menuCategory: MenuCategory;
   kitchenStation: KitchenStation;
   preparationMinutes: string;
+  isTakeawayAvailable: boolean;
   imageUrl: string;
   taxType: TaxType;
   cityTaxRate: string;
@@ -105,6 +107,7 @@ const emptyForm: MenuForm = {
   menuCategory: "HOT",
   kitchenStation: "HOT_KITCHEN",
   preparationMinutes: "15",
+  isTakeawayAvailable: true,
   imageUrl: "",
   taxType: "VAT_ABLE",
   cityTaxRate: "0",
@@ -234,6 +237,7 @@ export function RestaurantProductsScreen() {
         emptyForm.menuCategory,
       kitchenStation: product.kitchenStation || "HOT_KITCHEN",
       preparationMinutes: String(product.preparationMinutes ?? 15),
+      isTakeawayAvailable: product.isTakeawayAvailable !== false,
       imageUrl: product.images[0]?.url || "",
       taxType: product.taxType || "VAT_ABLE",
       cityTaxRate: String(product.cityTaxRate ?? 0),
@@ -326,6 +330,7 @@ export function RestaurantProductsScreen() {
             menuCategory: form.menuCategory,
             kitchenStation: form.kitchenStation,
             preparationMinutes,
+            isTakeawayAvailable: form.isTakeawayAvailable,
             taxType: form.taxType,
             cityTaxRate,
             classificationCode: form.classificationCode.trim(),
@@ -629,6 +634,9 @@ export function RestaurantProductsScreen() {
                     <p className="mt-1 truncate text-xs font-semibold text-slate-400">
                       {product.sku || "SKU байхгүй"} ·{" "}
                       {product.preparationMinutes ?? 0} мин
+                      {product.isTakeawayAvailable === false
+                        ? " · Зөвхөн энд идэх"
+                        : ""}
                     </p>
                   </div>
                 </div>
@@ -1172,6 +1180,25 @@ function MenuItemForm({
                   />
                 </Field>
               </div>
+
+              <label className="flex cursor-pointer items-start gap-3 border border-slate-200 bg-slate-50 p-4">
+                <input
+                  type="checkbox"
+                  checked={form.isTakeawayAvailable}
+                  onChange={(event) =>
+                    update("isTakeawayAvailable", event.target.checked)
+                  }
+                  className="mt-0.5 h-5 w-5 rounded border-slate-300 accent-slate-950"
+                />
+                <span>
+                  <span className="block text-sm font-black text-slate-950">
+                    Авч явах боломжтой
+                  </span>
+                  <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
+                    Унтраавал энэ хоол зөвхөн энд идэх захиалгад харагдана.
+                  </span>
+                </span>
+              </label>
 
               <Field label="Тайлбар">
                 <textarea

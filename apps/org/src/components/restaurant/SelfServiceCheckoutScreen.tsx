@@ -114,6 +114,7 @@ const LONG_RUNNING_CARD_PROVIDERS = new Set([
 function reconcileCartWithProducts(
   current: CartLine[],
   products: RestaurantPosProduct[],
+  orderMode: OrderMode | null,
 ) {
   if (current.length === 0) {
     return { cart: current, changed: false, notice: "" };
@@ -121,6 +122,7 @@ function reconcileCartWithProducts(
 
   const productsById = new Map(products.map((product) => [product.id, product]));
   let removedCount = 0;
+  let takeawayRemovedCount = 0;
   let cappedCount = 0;
   let priceChanged = false;
   let changed = false;
@@ -128,6 +130,16 @@ function reconcileCartWithProducts(
   const cart = current.flatMap<CartLine>((line) => {
     const product = productsById.get(line.product.id);
     const availableQty = Math.max(0, Math.floor(Number(product?.stockQty) || 0));
+
+    if (
+      product &&
+      orderMode === "TO_GO" &&
+      product.isTakeawayAvailable === false
+    ) {
+      takeawayRemovedCount += 1;
+      changed = true;
+      return [];
+    }
 
     if (
       !product ||
@@ -155,6 +167,9 @@ function reconcileCartWithProducts(
   });
 
   const notices = [
+    takeawayRemovedCount > 0
+      ? `${takeawayRemovedCount} бүтээгдэхүүн авч явах боломжгүй тул сагснаас хасагдлаа.`
+      : "",
     removedCount > 0
       ? `${removedCount} бүтээгдэхүүн дууссан тул сагснаас хасагдлаа.`
       : "",
@@ -552,12 +567,12 @@ export function SelfServiceCheckoutScreen() {
   useEffect(() => {
     if (setupLoading || (screen !== "menu" && screen !== "checkout")) return;
 
-    const reconciled = reconcileCartWithProducts(cart, products);
+    const reconciled = reconcileCartWithProducts(cart, products, orderMode);
     if (!reconciled.changed) return;
 
     setCart(reconciled.cart);
     if (reconciled.notice) setCatalogNotice(reconciled.notice);
-  }, [cart, products, screen, setupLoading]);
+  }, [cart, orderMode, products, screen, setupLoading]);
 
   useEffect(() => {
     if (!catalogNotice) return;
@@ -577,14 +592,22 @@ export function SelfServiceCheckoutScreen() {
     [configuredCategoryCodes],
   );
 
+  const orderModeProducts = useMemo(
+    () =>
+      orderMode === "TO_GO"
+        ? products.filter((product) => product.isTakeawayAvailable !== false)
+        : products,
+    [orderMode, products],
+  );
+
   const visibleCategories = useMemo(() => {
-    const present = new Set(products.map(resolveProductCategory));
+    const present = new Set(orderModeProducts.map(resolveProductCategory));
     const configured = menuCategories
       .map((category) => category.code)
       .filter((category) => present.has(category));
     const hasOther = present.has("OTHER");
     return ["ALL", ...configured, ...(hasOther ? ["OTHER"] : [])];
-  }, [menuCategories, products, resolveProductCategory]);
+  }, [menuCategories, orderModeProducts, resolveProductCategory]);
 
   const categoryLabel = useCallback(
     (category: Category) => {
@@ -605,7 +628,7 @@ export function SelfServiceCheckoutScreen() {
 
   const visibleProducts = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("mn");
-    return products.filter((product) => {
+    return orderModeProducts.filter((product) => {
       const matchesCategory =
         activeCategory === "ALL" ||
         resolveProductCategory(product) === activeCategory;
@@ -615,7 +638,7 @@ export function SelfServiceCheckoutScreen() {
         product.sku.toLocaleLowerCase("mn").includes(normalizedQuery);
       return matchesCategory && matchesSearch;
     });
-  }, [activeCategory, products, query, resolveProductCategory]);
+  }, [activeCategory, orderModeProducts, query, resolveProductCategory]);
 
   const cartQty = cart.reduce((sum, line) => sum + line.qty, 0);
   const cartSubtotal = cart.reduce(
@@ -908,6 +931,13 @@ export function SelfServiceCheckoutScreen() {
 
   const addProduct = (product: RestaurantPosProduct) => {
     setActionError("");
+    if (
+      orderMode === "TO_GO" &&
+      product.isTakeawayAvailable === false
+    ) {
+      setActionError("Энэ бүтээгдэхүүнийг авч явах боломжгүй");
+      return;
+    }
     setCart((current) => {
       const existing = current.find((line) => line.product.id === product.id);
       if (existing) {
