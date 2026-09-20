@@ -1279,6 +1279,7 @@ router.post("/pos/sales", async (req, res) => {
                   price: true,
                   wholesalePrice: true,
                   orderPrice: true,
+                  costPrice: true,
                 },
               })
             : null;

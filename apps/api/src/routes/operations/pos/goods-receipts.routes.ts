@@ -25,11 +25,7 @@ router.get("/pos/goods-receipts", async (req, res) => {
     });
     if (!register)
       return res.status(404).json({ message: "POS касс олдсонгүй" });
-    if (
-      actor.role !== "ADMIN" &&
-      actor.role !== "SUPER_ADMIN" &&
-      !(await hasOrgMembership(actor.id, register.organizationId))
-    ) {
+    if (!canAccessPosOrganization(actor, register.organizationId)) {
       return res
         .status(403)
         .json({ message: "Баримтын жагсаалт харах эрхгүй байна" });
