@@ -2231,7 +2231,7 @@ export function SelfServiceCheckoutScreen() {
 
   return (
     <main className="h-[100dvh] overflow-hidden bg-[#f5f6f3] text-[#10221c]">
-      <header className="flex h-[78px] items-center gap-4 border-b border-black/5 bg-white px-4 sm:px-6">
+      <header className="flex h-[78px] items-center gap-4 border-b border-black/5 bg-white px-4 sm:px-6 [@media(max-height:900px)]:h-16">
         <button
           type="button"
           onClick={() => resetOrder()}
@@ -2272,7 +2272,7 @@ export function SelfServiceCheckoutScreen() {
         </button>
       </header>
 
-      <div className="flex h-[calc(100dvh-78px)] flex-col">
+      <div className="flex h-[calc(100dvh-78px)] flex-col [@media(max-height:900px)]:h-[calc(100dvh-64px)]">
         <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {catalogNotice ? (
             <div className="mx-4 mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 sm:mx-6">
@@ -2280,13 +2280,13 @@ export function SelfServiceCheckoutScreen() {
             </div>
           ) : null}
           <div className="border-b border-black/5 bg-white px-4 sm:px-6">
-            <div className="flex gap-2 overflow-x-auto py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex gap-2 overflow-x-auto py-3 [scrollbar-width:none] [@media(max-height:900px)]:py-2 [&::-webkit-scrollbar]:hidden">
               {visibleCategories.map((category) => (
                 <button
                   key={category}
                   type="button"
                   onClick={() => setActiveCategory(category)}
-                  className={`h-11 shrink-0 rounded-2xl px-5 text-sm font-black transition ${
+                  className={`h-11 shrink-0 rounded-2xl px-5 text-sm font-black transition [@media(max-height:900px)]:h-9 ${
                     activeCategory === category
                       ? "bg-[#11231d] text-white shadow-md"
                       : "bg-slate-100 text-slate-500 hover:bg-slate-200"
@@ -2298,7 +2298,7 @@ export function SelfServiceCheckoutScreen() {
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-5 sm:px-6">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-5 sm:px-6 [@media(max-height:900px)]:pb-3 [@media(max-height:900px)]:pt-3">
             <div className="relative mb-5 sm:hidden">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
@@ -2308,12 +2308,12 @@ export function SelfServiceCheckoutScreen() {
                 className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-semibold outline-none"
               />
             </div>
-            <div className="mb-5 flex items-end justify-between gap-4">
+            <div className="mb-5 flex items-end justify-between gap-4 [@media(max-height:900px)]:mb-3">
               <div>
-                <h1 className="text-2xl font-black tracking-tight">
+                <h1 className="text-2xl font-black tracking-tight [@media(max-height:900px)]:text-xl">
                   {categoryLabel(activeCategory)}
                 </h1>
-                <p className="mt-1 text-sm font-semibold text-slate-400">
+                <p className="mt-1 text-sm font-semibold text-slate-400 [@media(max-height:900px)]:hidden">
                   Сонгох бүтээгдэхүүн дээрээ дарна уу
                 </p>
               </div>
@@ -2332,7 +2332,7 @@ export function SelfServiceCheckoutScreen() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 [@media(max-height:900px)]:gap-2.5">
                 {visibleProducts.map((product) => {
                   const selectedQty =
                     cart.find((line) => line.product.id === product.id)?.qty || 0;
@@ -2345,7 +2345,7 @@ export function SelfServiceCheckoutScreen() {
                       disabled={soldOut}
                       className="group overflow-hidden rounded-[24px] border border-black/5 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-55"
                     >
-                      <span className="relative block aspect-[4/3] overflow-hidden bg-gradient-to-br from-[#e4eee8] via-[#f0e8d5] to-[#e8d1a5]">
+                      <span className="relative block aspect-[4/3] overflow-hidden bg-gradient-to-br from-[#e4eee8] via-[#f0e8d5] to-[#e8d1a5] [@media(max-height:900px)]:h-[100px] [@media(max-height:900px)]:aspect-auto">
                         {product.imageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
@@ -2369,11 +2369,11 @@ export function SelfServiceCheckoutScreen() {
                           </span>
                         ) : null}
                       </span>
-                      <span className="block p-4">
-                        <span className="line-clamp-2 min-h-10 text-sm font-black leading-5">
+                      <span className="block p-4 [@media(max-height:900px)]:p-3">
+                        <span className="line-clamp-2 min-h-10 text-sm font-black leading-5 [@media(max-height:900px)]:line-clamp-1 [@media(max-height:900px)]:min-h-5">
                           {product.name}
                         </span>
-                        <span className="mt-3 flex items-center justify-between gap-2">
+                        <span className="mt-3 flex items-center justify-between gap-2 [@media(max-height:900px)]:mt-2">
                           <span className="text-base font-black text-[#13795b]">
                             {formatMoney(Number(product.price))}
                           </span>
@@ -2390,7 +2390,7 @@ export function SelfServiceCheckoutScreen() {
           </div>
         </section>
 
-        <aside className="flex h-[164px] shrink-0 border-t border-black/5 bg-white shadow-[0_-12px_40px_rgba(15,35,29,0.08)] sm:h-[176px]">
+        <aside className="flex h-[164px] shrink-0 border-t border-black/5 bg-white shadow-[0_-12px_40px_rgba(15,35,29,0.08)] sm:h-[176px] [@media(max-height:900px)]:h-32">
           <div className="hidden w-[190px] shrink-0 items-center justify-between border-r border-slate-100 px-5 py-4 sm:flex">
             <div className="flex items-center gap-3">
               <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#eef5f1] text-[#13795b]">
