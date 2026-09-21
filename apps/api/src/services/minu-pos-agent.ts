@@ -70,6 +70,7 @@ export type MinuTxnEntity = {
 
 export type MinuTxnResult = {
   approved: boolean;
+  declined: boolean;
   pending: boolean;
   status: string;
   message?: string;
@@ -207,8 +208,6 @@ export function parseMinuAgentTransactionResponse(
   const normalizedTopStatus = topStatus.toUpperCase();
   const normalizedEntityError = entityError.toUpperCase();
   const approvedStatuses = new Set([
-    "0",
-    "00",
     "000",
     "SUCCESS",
     "APPROVED",
@@ -216,6 +215,15 @@ export function parseMinuAgentTransactionResponse(
     "COMPLETED",
     "COMPLETE",
     "OK",
+  ]);
+  const declinedStatuses = new Set([
+    "DECLINED",
+    "FAILED",
+    "FAIL",
+    "CANCELLED",
+    "CANCELED",
+    "ERROR",
+    "REJECTED",
   ]);
   const successErrorCodes = new Set(["", "0", "00", "000", "SUCCESS", "OK"]);
   const hasFailureError = !successErrorCodes.has(normalizedEntityError);
@@ -227,14 +235,20 @@ export function parseMinuAgentTransactionResponse(
   const approved =
     normalizedTopStatus === "000" &&
     (approvedStatuses.has(normalizedEntityStatus) || (Boolean(rrn) && !hasFailureError));
-  const pending =
+  const declined =
     !approved &&
-    ((normalizedTopStatus === "000" && !normalizedEntityStatus && !hasFailureError) ||
-      ["0064", "PENDING", "PROCESSING", ""].includes(normalizedTopStatus));
+    (hasFailureError ||
+      declinedStatuses.has(normalizedEntityStatus) ||
+      declinedStatuses.has(normalizedTopStatus));
+  // A successful checkTxn API call is not proof that the card was charged.
+  // Unknown and intermediate terminal states must remain pending until Minu
+  // returns an explicit paid state or a bank RRN.
+  const pending = !approved && !declined;
   const status = entityStatus || topStatus;
 
   return {
     approved,
+    declined,
     pending,
     status,
     message: data.entity?.message || data.message,

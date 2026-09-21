@@ -41,6 +41,7 @@ test("accepts a paid Minu transaction when the terminal returns an RRN", () => {
   });
 
   assert.equal(result.approved, true);
+  assert.equal(result.declined, false);
   assert.equal(result.pending, false);
   assert.equal(result.transactionId, "654321987654");
 });
@@ -57,6 +58,41 @@ test("keeps a Minu transaction pending before an RRN is returned", () => {
   });
 
   assert.equal(result.approved, false);
+  assert.equal(result.declined, false);
+  assert.equal(result.pending, true);
+});
+
+test("keeps Minu status zero pending until payment proof arrives", () => {
+  const result = parseMinuAgentTransactionResponse({
+    status: "000",
+    message: "Successful",
+    entity: {
+      invoice: "MGL-123",
+      status: 0,
+      rrn: null,
+      error: 0,
+    },
+  });
+
+  assert.equal(result.approved, false);
+  assert.equal(result.declined, false);
+  assert.equal(result.pending, true);
+});
+
+test("keeps unknown Minu terminal states pending instead of declining them", () => {
+  const result = parseMinuAgentTransactionResponse({
+    status: "000",
+    message: "Successful",
+    entity: {
+      invoice: "MGL-123",
+      status: "CHECKED",
+      rrn: null,
+      error: null,
+    },
+  });
+
+  assert.equal(result.approved, false);
+  assert.equal(result.declined, false);
   assert.equal(result.pending, true);
 });
 
@@ -71,5 +107,6 @@ test("does not approve an RRN response that contains a terminal error", () => {
   });
 
   assert.equal(result.approved, false);
+  assert.equal(result.declined, true);
   assert.equal(result.pending, false);
 });

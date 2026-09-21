@@ -871,7 +871,7 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
               } as object,
             },
           });
-        } else if (!minuStatus.pending) {
+        } else if (minuStatus.declined) {
           freshAttempt = await prisma.cardPaymentAttempt.update({
             where: { id: attempt.id },
             data: {
@@ -894,6 +894,11 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
       }
     }
 
+    const responseMessage =
+      freshAttempt.status === PosPaymentStatus.PENDING && payload?.provider === "MINU_AGENT"
+        ? "Терминал дээр картаа уншуулж төлбөрөө баталгаажуулна уу."
+        : freshAttempt.message;
+
     return res.json({
       attemptId: freshAttempt.id,
       amount: Number(freshAttempt.amount),
@@ -901,7 +906,7 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
       bridgeUrl: freshAttempt.bridgeUrl,
       status: freshAttempt.status,
       transactionId: freshAttempt.transactionId,
-      message: freshAttempt.message,
+      message: responseMessage,
       createdAt: freshAttempt.createdAt.toISOString(),
       updatedAt: freshAttempt.updatedAt.toISOString(),
     });
