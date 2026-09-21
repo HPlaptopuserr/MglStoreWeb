@@ -457,6 +457,7 @@ export function SelfServiceCheckoutScreen() {
   const ebarimtQrRef = useRef<HTMLDivElement | null>(null);
   const autoPrintedReceiptRef = useRef<string | null>(null);
   const menuRefreshInFlightRef = useRef(false);
+  const screenWakeLockRef = useRef<WakeLockSentinel | null>(null);
 
   const loadSetup = useCallback(async () => {
     setSetupLoading(true);
@@ -508,6 +509,63 @@ export function SelfServiceCheckoutScreen() {
   useEffect(() => {
     void loadSetup();
   }, [loadSetup]);
+
+  useEffect(() => {
+    let disposed = false;
+    let requesting = false;
+
+    const requestScreenWakeLock = async () => {
+      if (
+        disposed ||
+        requesting ||
+        document.visibilityState !== "visible" ||
+        screenWakeLockRef.current ||
+        !("wakeLock" in navigator)
+      ) {
+        return;
+      }
+
+      requesting = true;
+      try {
+        const wakeLock = await navigator.wakeLock.request("screen");
+        if (disposed) {
+          await wakeLock.release();
+          return;
+        }
+        screenWakeLockRef.current = wakeLock;
+        wakeLock.addEventListener(
+          "release",
+          () => {
+            if (screenWakeLockRef.current === wakeLock) {
+              screenWakeLockRef.current = null;
+            }
+          },
+          { once: true },
+        );
+      } catch {
+        // Some browsers or device policies do not expose Screen Wake Lock.
+        // The Windows kiosk launcher provides an OS-level fallback.
+      } finally {
+        requesting = false;
+      }
+    };
+
+    const requestWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void requestScreenWakeLock();
+      }
+    };
+
+    void requestScreenWakeLock();
+    document.addEventListener("visibilitychange", requestWhenVisible);
+    return () => {
+      disposed = true;
+      document.removeEventListener("visibilitychange", requestWhenVisible);
+      const wakeLock = screenWakeLockRef.current;
+      screenWakeLockRef.current = null;
+      if (wakeLock) void wakeLock.release().catch(() => undefined);
+    };
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

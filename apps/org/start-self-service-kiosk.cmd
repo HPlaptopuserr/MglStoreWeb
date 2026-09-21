@@ -82,4 +82,11 @@ if defined SILENT_PRINT_READY (
     "!KIOSK_URL!"
 )
 
+start "" powershell.exe ^
+  -NoProfile ^
+  -WindowStyle Hidden ^
+  -ExecutionPolicy Bypass ^
+  -File "%~dp0keep-self-service-awake.ps1" ^
+  -ProfilePath "!KIOSK_PROFILE!"
+
 exit /b 0

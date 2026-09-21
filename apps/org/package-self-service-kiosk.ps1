@@ -26,7 +26,8 @@ $files = @(
   "install-self-service-kiosk.cmd",
   "install-self-service-kiosk-shortcut.ps1",
   "start-self-service-kiosk.cmd",
-  "check-self-service-printer.ps1"
+  "check-self-service-printer.ps1",
+  "keep-self-service-awake.ps1"
 )
 foreach ($file in $files) {
   Copy-Item -LiteralPath (Join-Path $PSScriptRoot $file) -Destination $stagingDirectory -Force
