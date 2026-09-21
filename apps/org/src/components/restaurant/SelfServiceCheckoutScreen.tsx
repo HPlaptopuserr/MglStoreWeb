@@ -2345,13 +2345,13 @@ export function SelfServiceCheckoutScreen() {
                       disabled={soldOut}
                       className="group overflow-hidden rounded-[24px] border border-black/5 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-55"
                     >
-                      <span className="relative block aspect-[4/3] overflow-hidden bg-gradient-to-br from-[#e4eee8] via-[#f0e8d5] to-[#e8d1a5] [@media(max-height:900px)]:h-[100px] [@media(max-height:900px)]:aspect-auto">
+                      <span className="relative block aspect-[4/3] overflow-hidden bg-gradient-to-br from-[#e4eee8] via-[#f0e8d5] to-[#e8d1a5] [@media(max-height:900px)]:h-[120px] [@media(max-height:900px)]:aspect-auto">
                         {product.imageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={product.imageUrl}
                             alt={product.name}
-                            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                            className="h-full w-full object-contain transition duration-500 group-hover:scale-105"
                           />
                         ) : (
                           <span className="absolute inset-0 grid place-items-center text-[#13795b]/50">
