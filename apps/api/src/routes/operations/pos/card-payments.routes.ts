@@ -863,7 +863,7 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
             data: {
               status: PosPaymentStatus.APPROVED,
               transactionId: minuStatus.transactionId || null,
-              traceno: minuStatus.entity?.rrn || null,
+              traceno: minuStatus.entity?.rrn ? String(minuStatus.entity.rrn) : null,
               message: minuStatus.message || "Minu terminal payment approved",
               providerPayload: {
                 ...payload,

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { describeMinuAgentInvoiceError } from "./minu-pos-agent";
+import {
+  describeMinuAgentInvoiceError,
+  parseMinuAgentTransactionResponse,
+} from "./minu-pos-agent";
 
 test("explains Minu device lookup errors with terminal and branch context", () => {
   const message = describeMinuAgentInvoiceError({
@@ -23,4 +26,50 @@ test("keeps unrelated Minu errors unchanged", () => {
     }),
     "Нэвтрэх нэр эсвэл нууц үг буруу",
   );
+});
+
+test("accepts a paid Minu transaction when the terminal returns an RRN", () => {
+  const result = parseMinuAgentTransactionResponse({
+    status: "000",
+    message: "Success",
+    entity: {
+      invoice: "MGL-123",
+      status: null,
+      rrn: "654321987654",
+      error: null,
+    },
+  });
+
+  assert.equal(result.approved, true);
+  assert.equal(result.pending, false);
+  assert.equal(result.transactionId, "654321987654");
+});
+
+test("keeps a Minu transaction pending before an RRN is returned", () => {
+  const result = parseMinuAgentTransactionResponse({
+    status: "000",
+    entity: {
+      invoice: "MGL-123",
+      status: null,
+      rrn: null,
+      error: null,
+    },
+  });
+
+  assert.equal(result.approved, false);
+  assert.equal(result.pending, true);
+});
+
+test("does not approve an RRN response that contains a terminal error", () => {
+  const result = parseMinuAgentTransactionResponse({
+    status: "000",
+    entity: {
+      status: null,
+      rrn: "654321987654",
+      error: "DECLINED",
+    },
+  });
+
+  assert.equal(result.approved, false);
+  assert.equal(result.pending, false);
 });

@@ -1,4 +1,4 @@
-type MinuAgentResponse<T = unknown> = {
+export type MinuAgentResponse<T = unknown> = {
   status?: string;
   message?: string;
   entity?: T;
@@ -62,10 +62,10 @@ export type MinuTxnEntity = {
   terminalId?: string;
   type?: string;
   message?: string;
-  error?: string;
+  error?: string | number | null;
   cardNo?: string;
-  status?: string;
-  rrn?: string;
+  status?: string | number | null;
+  rrn?: string | number | null;
 };
 
 export type MinuTxnResult = {
@@ -196,6 +196,54 @@ export async function createMinuAgentInvoice(params: {
   };
 }
 
+export function parseMinuAgentTransactionResponse(
+  data: MinuAgentResponse<MinuTxnEntity>,
+): MinuTxnResult {
+  const topStatus = String(data.status ?? "").trim();
+  const entityStatus = String(data.entity?.status ?? "").trim();
+  const rrn = String(data.entity?.rrn ?? "").trim();
+  const entityError = String(data.entity?.error ?? "").trim();
+  const normalizedEntityStatus = entityStatus.toUpperCase();
+  const normalizedTopStatus = topStatus.toUpperCase();
+  const normalizedEntityError = entityError.toUpperCase();
+  const approvedStatuses = new Set([
+    "0",
+    "00",
+    "000",
+    "SUCCESS",
+    "APPROVED",
+    "PAID",
+    "COMPLETED",
+    "COMPLETE",
+    "OK",
+  ]);
+  const successErrorCodes = new Set(["", "0", "00", "000", "SUCCESS", "OK"]);
+  const hasFailureError = !successErrorCodes.has(normalizedEntityError);
+
+  // Minu's top-level status means the checkTxn API call succeeded. The actual
+  // payment result is normally in entity.status. Some terminal versions leave
+  // that field empty after approval but return a bank RRN, which is also a
+  // successful transaction signal as long as entity.error is not a failure.
+  const approved =
+    normalizedTopStatus === "000" &&
+    (approvedStatuses.has(normalizedEntityStatus) || (Boolean(rrn) && !hasFailureError));
+  const pending =
+    !approved &&
+    ((normalizedTopStatus === "000" && !normalizedEntityStatus && !hasFailureError) ||
+      ["0064", "PENDING", "PROCESSING", ""].includes(normalizedTopStatus));
+  const status = entityStatus || topStatus;
+
+  return {
+    approved,
+    pending,
+    status,
+    message: data.entity?.message || data.message,
+    transactionId: rrn || data.entity?.invoice,
+    entity: data.entity,
+    raw: data,
+  };
+}
+
 export async function checkMinuAgentTransaction(contextInput: MinuAgentContext, invoice: string): Promise<MinuTxnResult> {
   const context = assertMinuAgentContext(contextInput);
   const token = await getMinuAgentToken(context);
@@ -208,28 +256,5 @@ export async function checkMinuAgentTransaction(contextInput: MinuAgentContext, 
     body: JSON.stringify({ invoice }),
   }, context);
 
-  const topStatus = String(data.status || "").trim();
-  const entityStatus = String(data.entity?.status || "").trim();
-  const normalizedEntityStatus = entityStatus.toUpperCase();
-  const normalizedTopStatus = topStatus.toUpperCase();
-
-  // Minu's top-level status means the checkTxn API call succeeded. The actual
-  // payment result is in entity.status: null/empty = not paid yet, "000" = paid.
-  const approved =
-    normalizedTopStatus === "000" &&
-    ["000", "SUCCESS", "APPROVED", "PAID"].includes(normalizedEntityStatus);
-  const pending =
-    (normalizedTopStatus === "000" && !normalizedEntityStatus) ||
-    ["0064", "PENDING", "PROCESSING", ""].includes(normalizedTopStatus);
-  const status = entityStatus || topStatus;
-
-  return {
-    approved,
-    pending,
-    status,
-    message: data.entity?.message || data.message,
-    transactionId: data.entity?.rrn || data.entity?.invoice,
-    entity: data.entity,
-    raw: data,
-  };
+  return parseMinuAgentTransactionResponse(data);
 }
