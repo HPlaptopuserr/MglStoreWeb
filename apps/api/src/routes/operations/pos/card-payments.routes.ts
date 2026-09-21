@@ -9,6 +9,7 @@ import { getVendorMerchantConfig } from "../../../services/vendor-merchant.servi
 import {
   checkMinuAgentTransaction,
   createMinuAgentInvoice,
+  describeMinuAgentInvoiceError,
   isMinuAgentApiError,
   type MinuAgentContext,
 } from "../../../services/minu-pos-agent";
@@ -535,16 +536,21 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
             },
           });
         } catch (err) {
-          const message = err instanceof Error ? err.message : "Minu Agent холболт амжилтгүй боллоо";
+          const rawMessage = err instanceof Error ? err.message : "Minu Agent холболт амжилтгүй боллоо";
           const branchId = minuAgentContext?.branchId || null;
+          const message = describeMinuAgentInvoiceError({
+            message: rawMessage,
+            terminalId: effectiveTerminalId,
+            branchId,
+          });
           const apiError = isMinuAgentApiError(err)
             ? {
                 status: err.status || null,
                 message,
-                rawMessage: err.raw.message || null,
+                rawMessage: err.raw.message || rawMessage,
                 entity: err.raw.entity ?? null,
               }
-            : { message };
+            : { message, rawMessage };
           console.warn("minu agent invoice failed", {
             attemptId: attempt.id,
             invoice,

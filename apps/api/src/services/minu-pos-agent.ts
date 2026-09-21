@@ -38,6 +38,23 @@ export class MinuAgentApiError extends Error {
 export const isMinuAgentApiError = (error: unknown): error is MinuAgentApiError =>
   error instanceof MinuAgentApiError;
 
+export function describeMinuAgentInvoiceError(input: {
+  message: string;
+  terminalId: string;
+  branchId?: string | null;
+}) {
+  const message = input.message.trim();
+  if (!/(төхөөрөмжийн мэдээлэл олдсонгүй|device\s+(information\s+)?not\s+found)/iu.test(message)) {
+    return message;
+  }
+
+  const branch = String(input.branchId || "").trim();
+  return [
+    `Minu дээр terminalId "${input.terminalId}"${branch ? ` нь branchId "${branch}"-д` : ""} бүртгэлгүй байна.`,
+    "T6 төхөөрөмжийн Android Device ID/serial биш, Minu Agent terminalId оруулсан эсэх болон terminal тухайн Minu branch-д хуваарилагдсан эсэхийг шалгана уу.",
+  ].join(" ");
+}
+
 export type MinuTxnEntity = {
   branchId?: string;
   paySource?: string;

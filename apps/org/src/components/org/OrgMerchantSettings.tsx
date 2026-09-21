@@ -486,7 +486,10 @@ export function OrgMerchantSettings() {
       setMinuPassword("");
       setTerminalMessage({
         type: "success",
-        text: `${updated.cardProviderType || terminalProvider} terminal холбогдлоо`,
+        text:
+          updated.cardProviderType === "MINU_AGENT"
+            ? "Minu Agent тохиргоо хадгалагдлаа. Terminal-ийн бүртгэл эхний төлбөрөөр баталгаажна."
+            : `${updated.cardProviderType || terminalProvider} terminal тохиргоо хадгалагдлаа`,
       });
     } catch (error) {
       setTerminalMessage({
@@ -670,7 +673,7 @@ export function OrgMerchantSettings() {
                       }`}
                     >
                       {terminalReady
-                        ? "Картын terminal бэлэн"
+                        ? "Картын terminal тохиргоо хадгалагдсан"
                         : "Terminal холбогдоогүй"}
                     </p>
                     <p
@@ -721,7 +724,8 @@ export function OrgMerchantSettings() {
                 </p>
                 <p className="mt-1 text-sm font-semibold leading-6 text-slate-500">
                   Android PGW нь cashier PC дээрх bridge ашиглана. Minu Agent нь
-                  terminalId шаарддаг.
+                  Minu-с олгосон terminalId шаарддаг. T6-ийн Android Device ID,
+                  serial дугаар биш.
                 </p>
               </div>
 
