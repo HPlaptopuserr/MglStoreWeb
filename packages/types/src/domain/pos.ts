@@ -32,6 +32,9 @@ export interface CardAttempt {
   status: CardAttemptStatus;
   transactionId?: string;
   message?: string;
+  providerStatus?: string;
+  providerError?: string;
+  providerHasRrn?: boolean;
   createdAt: string;
   updatedAt: string;
 }

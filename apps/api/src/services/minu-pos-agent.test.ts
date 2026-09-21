@@ -70,7 +70,24 @@ test("keeps Minu status zero pending until payment proof arrives", () => {
       invoice: "MGL-123",
       status: 0,
       rrn: null,
-      error: 0,
+      error: false,
+    },
+  });
+
+  assert.equal(result.approved, false);
+  assert.equal(result.declined, false);
+  assert.equal(result.pending, true);
+});
+
+test("keeps unknown Minu error values pending instead of declining immediately", () => {
+  const result = parseMinuAgentTransactionResponse({
+    status: "000",
+    message: "Successful",
+    entity: {
+      invoice: "MGL-123",
+      status: 0,
+      rrn: null,
+      error: "0064",
     },
   });
 

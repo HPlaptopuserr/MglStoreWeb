@@ -845,6 +845,9 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
       return res.status(403).json({ message: "Өөр байгууллагын card attempt харах боломжгүй" });
     }
     let freshAttempt = attempt;
+    let providerStatus: string | undefined;
+    let providerError: string | undefined;
+    let providerHasRrn: boolean | undefined;
     const payload = attempt.providerPayload as Record<string, unknown> | null;
     if (
       attempt.status === PosPaymentStatus.PENDING &&
@@ -857,6 +860,9 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
           throw new Error("Minu Agent merchant тохиргоо олдсонгүй");
         }
         const minuStatus = await checkMinuAgentTransaction(minuAgentContext, payload.invoice);
+        providerStatus = String(minuStatus.entity?.status ?? minuStatus.status ?? "").trim() || "PENDING";
+        providerError = String(minuStatus.entity?.error ?? "").trim() || undefined;
+        providerHasRrn = Boolean(String(minuStatus.entity?.rrn ?? "").trim());
         if (minuStatus.approved) {
           freshAttempt = await prisma.cardPaymentAttempt.update({
             where: { id: attempt.id },
@@ -907,6 +913,9 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
       status: freshAttempt.status,
       transactionId: freshAttempt.transactionId,
       message: responseMessage,
+      providerStatus,
+      providerError,
+      providerHasRrn,
       createdAt: freshAttempt.createdAt.toISOString(),
       updatedAt: freshAttempt.updatedAt.toISOString(),
     });

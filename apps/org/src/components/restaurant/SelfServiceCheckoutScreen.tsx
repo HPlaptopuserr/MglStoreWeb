@@ -1122,6 +1122,24 @@ export function SelfServiceCheckoutScreen() {
         approvedAttempt = await getRestaurantCardAttemptStatus(
           attempt.attemptId,
         );
+        if (approvedAttempt.status === "PENDING") {
+          const diagnostic = [
+            approvedAttempt.providerStatus
+              ? `Minu төлөв: ${approvedAttempt.providerStatus}`
+              : "",
+            approvedAttempt.providerError
+              ? `алдаа: ${approvedAttempt.providerError}`
+              : "",
+            approvedAttempt.providerHasRrn ? "RRN ирсэн" : "",
+          ]
+            .filter(Boolean)
+            .join(" · ");
+          setCardMessage(
+            `Терминал дээр картаа уншуулж төлбөрөө баталгаажуулна уу.${
+              diagnostic ? ` ${diagnostic}` : ""
+            }`,
+          );
+        }
       }
     }
 

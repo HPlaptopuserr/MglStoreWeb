@@ -62,7 +62,7 @@ export type MinuTxnEntity = {
   terminalId?: string;
   type?: string;
   message?: string;
-  error?: string | number | null;
+  error?: string | number | boolean | null;
   cardNo?: string;
   status?: string | number | null;
   rrn?: string | number | null;
@@ -225,7 +225,17 @@ export function parseMinuAgentTransactionResponse(
     "ERROR",
     "REJECTED",
   ]);
-  const successErrorCodes = new Set(["", "0", "00", "000", "SUCCESS", "OK"]);
+  const successErrorCodes = new Set([
+    "",
+    "0",
+    "00",
+    "000",
+    "FALSE",
+    "NULL",
+    "UNDEFINED",
+    "SUCCESS",
+    "OK",
+  ]);
   const hasFailureError = !successErrorCodes.has(normalizedEntityError);
 
   // Minu's top-level status means the checkTxn API call succeeded. The actual
@@ -234,10 +244,11 @@ export function parseMinuAgentTransactionResponse(
   // successful transaction signal as long as entity.error is not a failure.
   const approved =
     normalizedTopStatus === "000" &&
-    (approvedStatuses.has(normalizedEntityStatus) || (Boolean(rrn) && !hasFailureError));
+    !hasFailureError &&
+    (approvedStatuses.has(normalizedEntityStatus) || Boolean(rrn));
   const declined =
     !approved &&
-    (hasFailureError ||
+    (declinedStatuses.has(normalizedEntityError) ||
       declinedStatuses.has(normalizedEntityStatus) ||
       declinedStatuses.has(normalizedTopStatus));
   // A successful checkTxn API call is not proof that the card was charged.
