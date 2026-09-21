@@ -102,6 +102,20 @@ type PendingCardCheckout = Omit<PendingCheckout, "invoice"> & {
   cardAttempt: CardAttempt;
 };
 
+function formatCardProviderDiagnostic(attempt: CardAttempt) {
+  return [
+    attempt.providerStatus ? `Minu төлөв: ${attempt.providerStatus}` : "",
+    attempt.providerError ? `алдаа: ${attempt.providerError}` : "",
+    attempt.providerHasRrn === true
+      ? "RRN ирсэн"
+      : attempt.providerHasRrn === false
+        ? "RRN ирээгүй"
+        : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
 const REGISTER_STORAGE_KEY = "org_restaurant_pos_register_id";
 const MENU_REFRESH_INTERVAL_MS = 15_000;
 const DEMO_CASH_PAYMENT_ENABLED = process.env.NODE_ENV !== "production";
@@ -1123,17 +1137,7 @@ export function SelfServiceCheckoutScreen() {
           attempt.attemptId,
         );
         if (approvedAttempt.status === "PENDING") {
-          const diagnostic = [
-            approvedAttempt.providerStatus
-              ? `Minu төлөв: ${approvedAttempt.providerStatus}`
-              : "",
-            approvedAttempt.providerError
-              ? `алдаа: ${approvedAttempt.providerError}`
-              : "",
-            approvedAttempt.providerHasRrn ? "RRN ирсэн" : "",
-          ]
-            .filter(Boolean)
-            .join(" · ");
+          const diagnostic = formatCardProviderDiagnostic(approvedAttempt);
           setCardMessage(
             `Терминал дээр картаа уншуулж төлбөрөө баталгаажуулна уу.${
               diagnostic ? ` ${diagnostic}` : ""
@@ -1144,11 +1148,14 @@ export function SelfServiceCheckoutScreen() {
     }
 
     if (approvedAttempt.status !== "APPROVED") {
-      throw new Error(
+      const diagnostic = formatCardProviderDiagnostic(approvedAttempt);
+      const message =
         approvedAttempt.message ||
-          (approvedAttempt.status === "PENDING"
-            ? "Терминалын төлбөр баталгаажаагүй байна."
-            : "Картын төлбөр амжилтгүй боллоо."),
+        (approvedAttempt.status === "PENDING"
+          ? "Терминалын төлбөр баталгаажаагүй байна."
+          : "Картын төлбөр амжилтгүй боллоо.");
+      throw new Error(
+        `${message}${diagnostic ? ` · ${diagnostic}` : ""}`,
       );
     }
 
