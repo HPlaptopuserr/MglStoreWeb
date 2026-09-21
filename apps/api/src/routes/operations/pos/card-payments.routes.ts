@@ -845,6 +845,7 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
       return res.status(403).json({ message: "Өөр байгууллагын card attempt харах боломжгүй" });
     }
     let freshAttempt = attempt;
+    let providerApiStatus: string | undefined;
     let providerStatus: string | undefined;
     let providerError: string | undefined;
     let providerHasRrn: boolean | undefined;
@@ -860,7 +861,8 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
           throw new Error("Minu Agent merchant тохиргоо олдсонгүй");
         }
         const minuStatus = await checkMinuAgentTransaction(minuAgentContext, payload.invoice);
-        providerStatus = String(minuStatus.entity?.status ?? minuStatus.status ?? "").trim() || "PENDING";
+        providerApiStatus = minuStatus.apiStatus || undefined;
+        providerStatus = minuStatus.terminalStatus || undefined;
         providerError = String(minuStatus.entity?.error ?? "").trim() || undefined;
         providerHasRrn = Boolean(String(minuStatus.entity?.rrn ?? "").trim());
         if (minuStatus.approved) {
@@ -913,6 +915,7 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
       status: freshAttempt.status,
       transactionId: freshAttempt.transactionId,
       message: responseMessage,
+      providerApiStatus,
       providerStatus,
       providerError,
       providerHasRrn,

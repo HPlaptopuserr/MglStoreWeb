@@ -104,8 +104,13 @@ type PendingCardCheckout = Omit<PendingCheckout, "invoice"> & {
 
 function formatCardProviderDiagnostic(attempt: CardAttempt) {
   return [
-    attempt.providerStatus ? `Minu төлөв: ${attempt.providerStatus}` : "",
-    attempt.providerError ? `алдаа: ${attempt.providerError}` : "",
+    attempt.providerApiStatus ? `Minu API: ${attempt.providerApiStatus}` : "",
+    attempt.providerStatus
+      ? `Терминалын төлөв: ${attempt.providerStatus}`
+      : attempt.providerApiStatus
+        ? "Терминалын төлөв: хоосон"
+        : "",
+    attempt.providerError ? `Minu error талбар: ${attempt.providerError}` : "",
     attempt.providerHasRrn === true
       ? "RRN ирсэн"
       : attempt.providerHasRrn === false

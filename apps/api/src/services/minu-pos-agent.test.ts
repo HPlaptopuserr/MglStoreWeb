@@ -96,6 +96,45 @@ test("keeps unknown Minu error values pending instead of declining immediately",
   assert.equal(result.pending, true);
 });
 
+test("keeps API status 000 pending when the terminal has no paid status or RRN", () => {
+  const result = parseMinuAgentTransactionResponse({
+    status: "000",
+    message: "Successful",
+    entity: {
+      invoice: "MGL-123",
+      status: null,
+      rrn: null,
+      error: true,
+    },
+  });
+
+  assert.equal(result.approved, false);
+  assert.equal(result.declined, false);
+  assert.equal(result.pending, true);
+  assert.equal(result.apiStatus, "000");
+  assert.equal(result.terminalStatus, "");
+});
+
+test("accepts documented Minu success entity status 000 even when error is true", () => {
+  const result = parseMinuAgentTransactionResponse({
+    status: "000",
+    message: "Successful",
+    entity: {
+      invoice: "09347095",
+      status: "000",
+      message: "Гүйлгээ амжилттай",
+      rrn: null,
+      error: "true",
+    },
+  });
+
+  assert.equal(result.approved, true);
+  assert.equal(result.declined, false);
+  assert.equal(result.pending, false);
+  assert.equal(result.apiStatus, "000");
+  assert.equal(result.terminalStatus, "000");
+});
+
 test("keeps unknown Minu terminal states pending instead of declining them", () => {
   const result = parseMinuAgentTransactionResponse({
     status: "000",

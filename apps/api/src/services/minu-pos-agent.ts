@@ -72,6 +72,8 @@ export type MinuTxnResult = {
   approved: boolean;
   declined: boolean;
   pending: boolean;
+  apiStatus: string;
+  terminalStatus: string;
   status: string;
   message?: string;
   transactionId?: string;
@@ -237,20 +239,24 @@ export function parseMinuAgentTransactionResponse(
     "OK",
   ]);
   const hasFailureError = !successErrorCodes.has(normalizedEntityError);
+  const explicitlyDeclined =
+    declinedStatuses.has(normalizedEntityError) ||
+    declinedStatuses.has(normalizedEntityStatus) ||
+    declinedStatuses.has(normalizedTopStatus);
 
   // Minu's top-level status means the checkTxn API call succeeded. The actual
   // payment result is normally in entity.status. Some terminal versions leave
   // that field empty after approval but return a bank RRN, which is also a
   // successful transaction signal as long as entity.error is not a failure.
+  // Minu's document shows `error: "true"` on both the pending checkTxn
+  // example and the successful webhook example. It is therefore not a
+  // success/failure boolean. Only an explicit entity status (or an RRN with no
+  // terminal failure code) proves that the card transaction was approved.
   const approved =
+    !explicitlyDeclined &&
     normalizedTopStatus === "000" &&
-    !hasFailureError &&
-    (approvedStatuses.has(normalizedEntityStatus) || Boolean(rrn));
-  const declined =
-    !approved &&
-    (declinedStatuses.has(normalizedEntityError) ||
-      declinedStatuses.has(normalizedEntityStatus) ||
-      declinedStatuses.has(normalizedTopStatus));
+    (approvedStatuses.has(normalizedEntityStatus) || (Boolean(rrn) && !hasFailureError));
+  const declined = !approved && explicitlyDeclined;
   // A successful checkTxn API call is not proof that the card was charged.
   // Unknown and intermediate terminal states must remain pending until Minu
   // returns an explicit paid state or a bank RRN.
@@ -261,6 +267,8 @@ export function parseMinuAgentTransactionResponse(
     approved,
     declined,
     pending,
+    apiStatus: topStatus,
+    terminalStatus: entityStatus,
     status,
     message: data.entity?.message || data.message,
     transactionId: rrn || data.entity?.invoice,
