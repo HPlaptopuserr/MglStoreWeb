@@ -23,7 +23,7 @@ export type EbarimtTinLookupResult = {
 };
 
 export type AttachEbarimtPayload = {
-  status: "SUCCESS" | "FAILED";
+  status: "SUCCESS" | "FAILED" | "RETURNED";
   billId?: string | null;
   receiptId?: string | null;
   qrData?: string | null;
@@ -35,6 +35,12 @@ export type AttachEbarimtPayload = {
   customerTin?: string | null;
   customerRegNo?: string | null;
   payload?: unknown;
+};
+
+export type EbarimtReturnReceiptResult = {
+  id: string;
+  date: string;
+  response: unknown;
 };
 
 type EbarimtInfo = {
@@ -213,6 +219,84 @@ export async function sendLocalEbarimtData(
     register,
     600_000,
   );
+}
+
+function parseMaybeJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const text = value.trim();
+  if (!text) return value;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return value;
+  }
+}
+
+function padDatePart(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function formatPosApiReceiptDate(value: unknown) {
+  const text = String(value ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)) return text;
+
+  const parsed = text ? new Date(text.replace(" ", "T")) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return "";
+  const useUtcParts = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text);
+  const year = useUtcParts ? parsed.getUTCFullYear() : parsed.getFullYear();
+  const month = useUtcParts ? parsed.getUTCMonth() + 1 : parsed.getMonth() + 1;
+  const day = useUtcParts ? parsed.getUTCDate() : parsed.getDate();
+  const hours = useUtcParts ? parsed.getUTCHours() : parsed.getHours();
+  const minutes = useUtcParts ? parsed.getUTCMinutes() : parsed.getMinutes();
+  const seconds = useUtcParts ? parsed.getUTCSeconds() : parsed.getSeconds();
+
+  return `${year}-${padDatePart(month)}-${padDatePart(day)} ${padDatePart(hours)}:${padDatePart(minutes)}:${padDatePart(seconds)}`;
+}
+
+function assertReturnReceiptResponse(raw: unknown) {
+  const parsed = parseMaybeJson(raw);
+  if (typeof parsed !== "object" || parsed === null) return;
+
+  const value = parsed as Record<string, unknown>;
+  const statusCode = Number(
+    value.StatusCode ?? value.statusCode ?? value.status,
+  );
+  if (Number.isFinite(statusCode) && statusCode >= 400) {
+    throw new Error(
+      pickText(value.message, value.Message, value.error) ||
+        `Ebarimt буцаалт амжилтгүй (төлөв ${statusCode})`,
+    );
+  }
+}
+
+export async function returnLocalEbarimtReceipt(
+  receipt: Pick<PosReceipt, "createdAt" | "ebarimt">,
+  register?: EbarimtRegisterConfig | null,
+): Promise<EbarimtReturnReceiptResult | null> {
+  if (String(receipt.ebarimt?.status || "").toUpperCase() !== "SUCCESS") {
+    return null;
+  }
+
+  const id = pickText(receipt.ebarimt?.billId, receipt.ebarimt?.receiptId);
+  if (!id) {
+    throw new Error("Ebarimt буцаахад анхны баримтын ID олдсонгүй.");
+  }
+
+  const date = formatPosApiReceiptDate(
+    receipt.ebarimt?.date || receipt.createdAt,
+  );
+  if (!date) {
+    throw new Error("Ebarimt буцаахад анхны баримтын огноо олдсонгүй.");
+  }
+
+  const response = await fetchPosApi<unknown>(
+    "/rest/receipt",
+    { method: "DELETE", body: JSON.stringify({ id, date }) },
+    register,
+    10_000,
+  );
+  assertReturnReceiptResponse(response);
+  return { id, date, response };
 }
 
 function getBridgeUrls(register?: EbarimtRegisterConfig | null) {

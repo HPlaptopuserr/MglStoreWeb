@@ -234,13 +234,14 @@ export type RestaurantSalesHistoryItem = {
   ticketNo: string | null;
   orderMode: "DINE_IN" | "TO_GO" | "DELIVERY" | null;
   branchName: string;
+  registerId: string | null;
   registerName: string | null;
   cashierName: string;
   paymentMethod: string;
   status: string;
   voidedAt: string | null;
   voidReason: string | null;
-  ebarimt: unknown;
+  ebarimt: PosReceipt["ebarimt"];
   subtotal: number;
   taxTotal: number;
   discountTotal: number;

@@ -12,6 +12,7 @@ import {
   Loader2,
   ReceiptText,
   RefreshCw,
+  RotateCcw,
   Search,
   ShoppingBag,
   WalletCards,
@@ -21,7 +22,15 @@ import { useOrg } from "@/components/org/OrgContext";
 import { money } from "@/lib/org-format";
 import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
 import {
+  attachEbarimtReceipt,
+  returnLocalEbarimtReceipt,
+  sendLocalEbarimtData,
+} from "@/lib/ebarimt";
+import {
+  getRestaurantPosRegisters,
   getRestaurantSalesHistory,
+  voidRestaurantSale,
+  type RestaurantPosRegister,
   type RestaurantSalesHistoryItem,
 } from "@/lib/restaurant-pos-api";
 
@@ -112,6 +121,23 @@ const formatFileDate = (value: Date) => {
 const displayOrderNumber = (sale: RestaurantSalesHistoryItem) =>
   formatRestaurantOrderNumber(sale.ticketNo || sale.receiptNo, sale.id);
 
+const ebarimtStatus = (sale: RestaurantSalesHistoryItem) =>
+  String(sale.ebarimt?.status || "").toUpperCase();
+
+const paymentReturnWarning = (paymentMethod: string) => {
+  const method = paymentMethod.toUpperCase();
+  if (method === "CARD") {
+    return "Картын мөнгөн буцаалтыг POS терминал дээр тусад нь хийнэ.";
+  }
+  if (method === "QPAY" || method === "QR") {
+    return "QR төлбөрийн мөнгөн буцаалтыг банкны систем дээр тусад нь хийнэ.";
+  }
+  if (method === "CASH") {
+    return "Бэлэн мөнгийг хэрэглэгчид буцааж өгсөн эсэхээ шалгана уу.";
+  }
+  return "Төлбөрийн мөнгөн буцаалтыг тухайн төлбөрийн сувгаар тусад нь хийнэ.";
+};
+
 function csvCell(value: unknown) {
   let text = value == null ? "" : String(value);
   if (/^[=+\-@]/.test(text)) text = `'${text}`;
@@ -182,11 +208,16 @@ export default function OrderHistoryScreen() {
   const { user } = useOrg();
   const [rangePreset, setRangePreset] = useState<RangePreset>("WEEK");
   const [sales, setSales] = useState<RestaurantSalesHistoryItem[]>([]);
+  const [registers, setRegisters] = useState<RestaurantPosRegister[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const [expandedSaleId, setExpandedSaleId] = useState("");
+  const [voidingSaleId, setVoidingSaleId] = useState("");
+  const [returningSaleId, setReturningSaleId] = useState("");
 
   const range = useMemo(() => getDateRange(rangePreset), [rangePreset]);
 
@@ -251,6 +282,170 @@ export default function OrderHistoryScreen() {
     void loadSales(controller.signal);
     return () => controller.abort();
   }, [loadSales]);
+
+  useEffect(() => {
+    let active = true;
+    void getRestaurantPosRegisters()
+      .then((items) => {
+        if (active) setRegisters(items);
+      })
+      .catch(() => {
+        if (active) setRegisters([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const returnSaleEbarimt = useCallback(
+    async (sale: RestaurantSalesHistoryItem) => {
+      if (ebarimtStatus(sale) !== "SUCCESS") return "";
+
+      setReturningSaleId(sale.id);
+      try {
+        let register =
+          registers.find((item) => item.id === sale.registerId) || null;
+        if (!register && sale.registerId) {
+          try {
+            const latestRegisters = await getRestaurantPosRegisters();
+            setRegisters(latestRegisters);
+            register =
+              latestRegisters.find((item) => item.id === sale.registerId) ||
+              null;
+          } catch {
+            // The local PosAPI URL fallback can still be used below.
+          }
+        }
+        const returned = await returnLocalEbarimtReceipt(sale, register);
+        if (!returned) return "";
+
+        const original = sale.ebarimt;
+        const attached = await attachEbarimtReceipt(sale.id, {
+          status: "RETURNED",
+          billId: original?.billId ?? null,
+          receiptId: original?.receiptId ?? null,
+          qrData: original?.qrData ?? null,
+          lottery: original?.lottery ?? null,
+          date: original?.date ?? null,
+          error: null,
+          receiptType: original?.receiptType ?? null,
+          customerName: original?.customerName ?? null,
+          customerTin: original?.customerTin ?? null,
+          customerRegNo: original?.customerRegNo ?? null,
+          payload: {
+            returnedAt: new Date().toISOString(),
+            response: returned.response,
+          },
+        });
+        setSales((current) =>
+          current.map((item) =>
+            item.id === sale.id
+              ? { ...item, ebarimt: attached.ebarimt }
+              : item,
+          ),
+        );
+
+        try {
+          await sendLocalEbarimtData(register);
+          return "";
+        } catch (cause) {
+          return cause instanceof Error
+            ? ` Ebarimt буцаалт хадгалагдсан боловч илгээхэд алдаа гарлаа: ${cause.message}`
+            : " Ebarimt буцаалт хадгалагдсан боловч илгээхэд алдаа гарлаа.";
+        }
+      } finally {
+        setReturningSaleId("");
+      }
+    },
+    [registers],
+  );
+
+  const handleVoidSale = useCallback(
+    async (sale: RestaurantSalesHistoryItem) => {
+      const reason = window.prompt(
+        `№${displayOrderNumber(sale)} захиалгыг цуцлах шалтгаан:`,
+        "Хэрэглэгчийн хүсэлтээр",
+      );
+      if (reason === null) return;
+      const normalizedReason = reason.trim();
+      if (!normalizedReason) {
+        setActionError("Захиалга цуцлах шалтгаан оруулна уу.");
+        return;
+      }
+
+      const hasEbarimt = ebarimtStatus(sale) === "SUCCESS";
+      const confirmed = window.confirm(
+        [
+          `№${displayOrderNumber(sale)} захиалгыг цуцлах уу?`,
+          hasEbarimt
+            ? "Ebarimt автоматаар буцаагдана."
+            : "Энэ захиалгад буцаах амжилттай Ebarimt алга.",
+          paymentReturnWarning(sale.paymentMethod),
+        ].join("\n\n"),
+      );
+      if (!confirmed) return;
+
+      setVoidingSaleId(sale.id);
+      setActionError("");
+      setNotice("");
+      try {
+        await voidRestaurantSale(sale.id, normalizedReason);
+        const voidedSale = {
+          ...sale,
+          status: "VOIDED",
+          voidReason: normalizedReason,
+          voidedAt: new Date().toISOString(),
+        };
+        setSales((current) =>
+          current.map((item) => (item.id === sale.id ? voidedSale : item)),
+        );
+
+        try {
+          const sendWarning = await returnSaleEbarimt(sale);
+          setNotice(
+            `№${displayOrderNumber(sale)} захиалга цуцлагдлаа.${
+              hasEbarimt ? " Ebarimt буцаагдлаа." : ""
+            }${sendWarning}`,
+          );
+        } catch (cause) {
+          setActionError(
+            `Захиалга цуцлагдсан боловч Ebarimt буцаалт амжилтгүй боллоо. Доорх “Ebarimt буцаах” товчоор дахин оролдоно уу. ${
+              cause instanceof Error ? cause.message : ""
+            }`.trim(),
+          );
+        }
+      } catch (cause) {
+        setActionError(
+          cause instanceof Error
+            ? cause.message
+            : "Захиалга цуцлахад алдаа гарлаа.",
+        );
+      } finally {
+        setVoidingSaleId("");
+      }
+    },
+    [returnSaleEbarimt],
+  );
+
+  const handleRetryEbarimtReturn = useCallback(
+    async (sale: RestaurantSalesHistoryItem) => {
+      setActionError("");
+      setNotice("");
+      try {
+        const sendWarning = await returnSaleEbarimt(sale);
+        setNotice(
+          `№${displayOrderNumber(sale)} захиалгын Ebarimt буцаагдлаа.${sendWarning}`,
+        );
+      } catch (cause) {
+        setActionError(
+          cause instanceof Error
+            ? cause.message
+            : "Ebarimt буцаахад алдаа гарлаа.",
+        );
+      }
+    },
+    [returnSaleEbarimt],
+  );
 
   const filteredSales = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("mn-MN");
@@ -402,6 +597,19 @@ export default function OrderHistoryScreen() {
           </div>
         </div>
 
+        {notice ? (
+          <div className="mx-5 mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">
+            {notice}
+          </div>
+        ) : null}
+
+        {actionError ? (
+          <div className="mx-5 mt-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold text-amber-800">
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+            {actionError}
+          </div>
+        ) : null}
+
         {error ? (
           <div className="m-5 flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
@@ -437,6 +645,9 @@ export default function OrderHistoryScreen() {
                 {visibleSales.map((sale) => {
                   const expanded = expandedSaleId === sale.id;
                   const voided = sale.status === "VOIDED";
+                  const receiptStatus = ebarimtStatus(sale);
+                  const isVoiding = voidingSaleId === sale.id;
+                  const isReturning = returningSaleId === sale.id;
                   const itemQty = sale.lines.reduce((sum, line) => sum + line.qty, 0);
                   return (
                     <Fragment key={sale.id}>
@@ -510,10 +721,50 @@ export default function OrderHistoryScreen() {
                                 <p>{sale.branchName}</p>
                                 <p className="mt-2">{sale.registerName || "POS касс"}</p>
                                 <p className="mt-2">{sale.cashierName}</p>
+                                {receiptStatus === "RETURNED" ? (
+                                  <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-emerald-700">
+                                    Ebarimt буцаагдсан
+                                  </p>
+                                ) : receiptStatus === "SUCCESS" ? (
+                                  <p className="mt-3 rounded-lg bg-sky-50 p-3 text-sky-700">
+                                    Ebarimt гарсан
+                                  </p>
+                                ) : null}
                                 {sale.voidReason ? (
                                   <p className="mt-3 rounded-lg bg-rose-50 p-3 text-rose-700">
                                     {sale.voidReason}
                                   </p>
+                                ) : null}
+                                {!voided ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleVoidSale(sale)}
+                                    disabled={isVoiding || isReturning}
+                                    className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-rose-600 px-3 text-xs font-black text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {isVoiding || isReturning ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <XCircle className="h-4 w-4" />
+                                    )}
+                                    Захиалга цуцлах
+                                  </button>
+                                ) : receiptStatus === "SUCCESS" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleRetryEbarimtReturn(sale)
+                                    }
+                                    disabled={isReturning}
+                                    className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-3 text-xs font-black text-slate-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {isReturning ? (
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                      <RotateCcw className="h-4 w-4" />
+                                    )}
+                                    Ebarimt буцаах
+                                  </button>
                                 ) : null}
                               </div>
                             </div>
