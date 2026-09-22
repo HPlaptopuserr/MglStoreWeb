@@ -71,13 +71,7 @@ import {
 } from "@/lib/ebarimt";
 import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
 
-type Screen =
-  | "welcome"
-  | "menu"
-  | "checkout"
-  | "payment"
-  | "card"
-  | "success";
+type Screen = "welcome" | "menu" | "checkout" | "payment" | "card" | "success";
 type OrderMode = "DINE_IN" | "TO_GO";
 type PaymentMethod = "QPAY" | "CARD" | "CASH";
 type Category = string;
@@ -102,28 +96,15 @@ type PendingCardCheckout = Omit<PendingCheckout, "invoice"> & {
   cardAttempt: CardAttempt;
 };
 
-function formatCardProviderDiagnostic(attempt: CardAttempt) {
-  return [
-    attempt.providerApiStatus ? `Minu API: ${attempt.providerApiStatus}` : "",
-    attempt.providerStatus
-      ? `Терминалын төлөв: ${attempt.providerStatus}`
-      : attempt.providerApiStatus
-        ? "Терминалын төлөв: хоосон"
-        : "",
-    attempt.providerError ? `Minu error талбар: ${attempt.providerError}` : "",
-    attempt.providerHasRrn === true
-      ? "RRN ирсэн"
-      : attempt.providerHasRrn === false
-        ? "RRN ирээгүй"
-        : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
+type CardPaymentRun = {
+  abortController: AbortController;
+  cancelled: boolean;
+};
 
 const REGISTER_STORAGE_KEY = "org_restaurant_pos_register_id";
 const MENU_REFRESH_INTERVAL_MS = 15_000;
 const DEMO_CASH_PAYMENT_ENABLED = process.env.NODE_ENV !== "production";
+const CARD_PAYMENT_CANCELLED_MESSAGE = "Картын төлбөр цуцлагдлаа.";
 const LONG_RUNNING_CARD_PROVIDERS = new Set([
   "PUSH_ECR",
   "MINU_AGENT",
@@ -139,7 +120,9 @@ function reconcileCartWithProducts(
     return { cart: current, changed: false, notice: "" };
   }
 
-  const productsById = new Map(products.map((product) => [product.id, product]));
+  const productsById = new Map(
+    products.map((product) => [product.id, product]),
+  );
   let removedCount = 0;
   let takeawayRemovedCount = 0;
   let cappedCount = 0;
@@ -148,7 +131,10 @@ function reconcileCartWithProducts(
 
   const cart = current.flatMap<CartLine>((line) => {
     const product = productsById.get(line.product.id);
-    const availableQty = Math.max(0, Math.floor(Number(product?.stockQty) || 0));
+    const availableQty = Math.max(
+      0,
+      Math.floor(Number(product?.stockQty) || 0),
+    );
 
     if (
       product &&
@@ -403,7 +389,9 @@ function SetupState({
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-700">
               <Store className="h-7 w-7" />
             </div>
-            <h1 className="mt-5 text-xl font-black">Касс ажиллахад бэлэн биш байна</h1>
+            <h1 className="mt-5 text-xl font-black">
+              Касс ажиллахад бэлэн биш байна
+            </h1>
             <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">
               {error}
             </p>
@@ -440,10 +428,10 @@ export function SelfServiceCheckoutScreen() {
   const [menuCategories, setMenuCategories] = useState<
     RestaurantMenuCategory[]
   >([]);
-  const [paymentMethod, setPaymentMethod] =
-    useState<PaymentMethod>("QPAY");
-  const [ebarimtBuyerMode, setEbarimtBuyerMode] =
-    useState<"B2C" | "B2B">("B2C");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("QPAY");
+  const [ebarimtBuyerMode, setEbarimtBuyerMode] = useState<"B2C" | "B2B">(
+    "B2C",
+  );
   const [companyRegNo, setCompanyRegNo] = useState("");
   const [companyLookup, setCompanyLookup] =
     useState<EbarimtTinLookupResult | null>(null);
@@ -473,6 +461,7 @@ export function SelfServiceCheckoutScreen() {
   const finalizedInvoiceRef = useRef<string | null>(null);
   const cancellingInvoiceRef = useRef<string | null>(null);
   const finalizedCardAttemptRef = useRef<string | null>(null);
+  const cardPaymentRunRef = useRef<CardPaymentRun | null>(null);
   const ebarimtQrRef = useRef<HTMLDivElement | null>(null);
   const autoPrintedReceiptRef = useRef<string | null>(null);
   const menuRefreshInFlightRef = useRef(false);
@@ -730,10 +719,10 @@ export function SelfServiceCheckoutScreen() {
   const cardProvider = getEffectiveCardProvider(register);
   const cardTerminalReady = Boolean(
     register?.cardEnabled &&
-      cardProvider &&
-      (cardProvider === "ANDROID_PGW"
-        ? register.terminalBridgeUrl
-        : register.cardTerminalId),
+    cardProvider &&
+    (cardProvider === "ANDROID_PGW"
+      ? register.terminalBridgeUrl
+      : register.cardTerminalId),
   );
   const ebarimtReady = Boolean(
     DEMO_CASH_PAYMENT_ENABLED || register?.ebarimtEnabled,
@@ -778,106 +767,111 @@ export function SelfServiceCheckoutScreen() {
     };
   };
 
-  const issueEbarimtForReceipt = useCallback(async (
-    saleReceipt: PosReceipt,
-    buyer: EbarimtBuyer,
-    fallbackPayment: SalePaymentLine,
-  ): Promise<PosReceipt> => {
-    if (!ebarimtReady) return saleReceipt;
+  const issueEbarimtForReceipt = useCallback(
+    async (
+      saleReceipt: PosReceipt,
+      buyer: EbarimtBuyer,
+      fallbackPayment: SalePaymentLine,
+    ): Promise<PosReceipt> => {
+      if (!ebarimtReady) return saleReceipt;
 
-    setEbarimtSubmitting(true);
-    try {
-      const ebarimtPayload = await issueLocalEbarimtReceipt(
-        saleReceipt,
-        saleReceipt.paymentBreakdown?.length
-          ? saleReceipt.paymentBreakdown
-          : [fallbackPayment],
-        register,
-        buyer,
-      );
-      let finalReceipt: PosReceipt = {
-        ...saleReceipt,
-        ebarimt: mapEbarimtPayload(ebarimtPayload),
-      };
+      setEbarimtSubmitting(true);
       try {
-        const saved = await attachEbarimtReceipt(
-          saleReceipt.id,
-          ebarimtPayload,
+        const ebarimtPayload = await issueLocalEbarimtReceipt(
+          saleReceipt,
+          saleReceipt.paymentBreakdown?.length
+            ? saleReceipt.paymentBreakdown
+            : [fallbackPayment],
+          register,
+          buyer,
         );
-        finalReceipt = {
-          ...finalReceipt,
-          ebarimt: saved.ebarimt || finalReceipt.ebarimt,
+        let finalReceipt: PosReceipt = {
+          ...saleReceipt,
+          ebarimt: mapEbarimtPayload(ebarimtPayload),
         };
+        try {
+          const saved = await attachEbarimtReceipt(
+            saleReceipt.id,
+            ebarimtPayload,
+          );
+          finalReceipt = {
+            ...finalReceipt,
+            ebarimt: saved.ebarimt || finalReceipt.ebarimt,
+          };
+        } catch (error) {
+          console.warn(
+            "Self-service eBarimt was issued but could not be attached to the sale",
+            error,
+          );
+        }
+        void sendLocalEbarimtData(register).catch((error) => {
+          console.warn("Self-service eBarimt sendData failed", error);
+        });
+        return finalReceipt;
       } catch (error) {
-        console.warn(
-          "Self-service eBarimt was issued but could not be attached to the sale",
-          error,
-        );
-      }
-      void sendLocalEbarimtData(register).catch((error) => {
-        console.warn("Self-service eBarimt sendData failed", error);
-      });
-      return finalReceipt;
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : "eBarimt баримт үүсгэж чадсангүй";
+        const errorMessage =
+          error instanceof Error
+            ? error.message
+            : "eBarimt баримт үүсгэж чадсангүй";
 
-      if (
-        DEMO_CASH_PAYMENT_ENABLED &&
-        String(fallbackPayment.method).toUpperCase() === "CASH"
-      ) {
-        const testId = `TEST-${
-          saleReceipt.receiptNo.replace(/[^a-z0-9]/gi, "").slice(-20) ||
-          Date.now()
-        }`;
-        const testPayload: AttachEbarimtPayload = {
-          status: "SUCCESS",
-          billId: testId,
-          receiptId: testId,
-          qrData: [
-            "MGLSTORE",
-            "TEST_EBARIMT",
-            testId,
-            saleReceipt.grandTotal,
-            buyer.type,
-          ].join("|"),
-          lottery: "TEST",
-          date: new Date().toISOString(),
+        if (
+          DEMO_CASH_PAYMENT_ENABLED &&
+          String(fallbackPayment.method).toUpperCase() === "CASH"
+        ) {
+          const testId = `TEST-${
+            saleReceipt.receiptNo.replace(/[^a-z0-9]/gi, "").slice(-20) ||
+            Date.now()
+          }`;
+          const testPayload: AttachEbarimtPayload = {
+            status: "SUCCESS",
+            billId: testId,
+            receiptId: testId,
+            qrData: [
+              "MGLSTORE",
+              "TEST_EBARIMT",
+              testId,
+              saleReceipt.grandTotal,
+              buyer.type,
+            ].join("|"),
+            lottery: "TEST",
+            date: new Date().toISOString(),
+            receiptType: buyer.type,
+            customerName: buyer.type === "B2B" ? buyer.name : null,
+            customerTin: buyer.type === "B2B" ? buyer.tin : null,
+            customerRegNo: buyer.type === "B2B" ? buyer.regNo : null,
+            payload: { demo: true, posApiError: errorMessage },
+          };
+          console.warn(
+            "Using a development-only test Ebarimt because PosAPI rejected the demo cash sale",
+            error,
+          );
+          return {
+            ...saleReceipt,
+            ebarimt: mapEbarimtPayload(testPayload),
+          };
+        }
+
+        const failedPayload: AttachEbarimtPayload = {
+          status: "FAILED",
+          error: errorMessage,
           receiptType: buyer.type,
           customerName: buyer.type === "B2B" ? buyer.name : null,
           customerTin: buyer.type === "B2B" ? buyer.tin : null,
           customerRegNo: buyer.type === "B2B" ? buyer.regNo : null,
-          payload: { demo: true, posApiError: errorMessage },
         };
-        console.warn(
-          "Using a development-only test Ebarimt because PosAPI rejected the demo cash sale",
-          error,
+        await attachEbarimtReceipt(saleReceipt.id, failedPayload).catch(
+          () => null,
         );
         return {
           ...saleReceipt,
-          ebarimt: mapEbarimtPayload(testPayload),
+          ebarimt: mapEbarimtPayload(failedPayload),
         };
+      } finally {
+        setEbarimtSubmitting(false);
       }
-
-      const failedPayload: AttachEbarimtPayload = {
-        status: "FAILED",
-        error: errorMessage,
-        receiptType: buyer.type,
-        customerName: buyer.type === "B2B" ? buyer.name : null,
-        customerTin: buyer.type === "B2B" ? buyer.tin : null,
-        customerRegNo: buyer.type === "B2B" ? buyer.regNo : null,
-      };
-      await attachEbarimtReceipt(saleReceipt.id, failedPayload).catch(() => null);
-      return {
-        ...saleReceipt,
-        ebarimt: mapEbarimtPayload(failedPayload),
-      };
-    } finally {
-      setEbarimtSubmitting(false);
-    }
-  }, [ebarimtReady, register]);
+    },
+    [ebarimtReady, register],
+  );
 
   const retryEbarimt = async () => {
     if (!receipt || !ebarimtReady || ebarimtSubmitting) return;
@@ -932,6 +926,15 @@ export function SelfServiceCheckoutScreen() {
     [loadSetup],
   );
 
+  useEffect(() => {
+    return () => {
+      if (cardPaymentRunRef.current) {
+        cardPaymentRunRef.current.cancelled = true;
+        cardPaymentRunRef.current.abortController.abort();
+      }
+    };
+  }, []);
+
   const printCompletedReceipt = useCallback(
     (targetReceipt: PosReceipt) =>
       printSelfServiceReceipt(targetReceipt, {
@@ -942,8 +945,7 @@ export function SelfServiceCheckoutScreen() {
           completedTicketNo || targetReceipt.receiptNo,
           targetReceipt.id,
         ),
-        qrMarkup:
-          ebarimtQrRef.current?.querySelector("svg")?.outerHTML || "",
+        qrMarkup: ebarimtQrRef.current?.querySelector("svg")?.outerHTML || "",
       }),
     [completedTicketNo, orderMode, register, user.organizationName],
   );
@@ -1008,10 +1010,7 @@ export function SelfServiceCheckoutScreen() {
 
   const addProduct = (product: RestaurantPosProduct) => {
     setActionError("");
-    if (
-      orderMode === "TO_GO" &&
-      product.isTakeawayAvailable === false
-    ) {
+    if (orderMode === "TO_GO" && product.isTakeawayAvailable === false) {
       setActionError("Энэ бүтээгдэхүүнийг авч явах боломжгүй");
       return;
     }
@@ -1074,98 +1073,145 @@ export function SelfServiceCheckoutScreen() {
   );
 
   const authorizeCardPayment = async (amount: number): Promise<CardAttempt> => {
-    if (!register || !user.organizationId || !cardTerminalReady || !cardProvider) {
+    if (
+      !register ||
+      !user.organizationId ||
+      !cardTerminalReady ||
+      !cardProvider
+    ) {
       throw new Error(
         "Картын терминал тохируулагдаагүй байна. Ресторан кассын тохиргооноос терминалаа холбоно уу.",
       );
     }
 
-    const terminalId = register.cardTerminalId || "terminal-1";
-    const useClientBridge =
-      cardProvider === "ANDROID_PGW" && Boolean(register.terminalBridgeUrl);
-    const shouldSendBridgeUrl =
-      Boolean(register.terminalBridgeUrl) &&
-      cardProvider !== "MINU_AGENT" &&
-      cardProvider !== "PUSH_ECR";
+    const run: CardPaymentRun = {
+      abortController: new AbortController(),
+      cancelled: false,
+    };
+    if (cardPaymentRunRef.current) {
+      cardPaymentRunRef.current.cancelled = true;
+      cardPaymentRunRef.current.abortController.abort();
+    }
+    cardPaymentRunRef.current = run;
+    const isCancelled = () =>
+      run.cancelled || cardPaymentRunRef.current !== run;
 
-    setCardMessage(
-      cardProvider === "ANDROID_PGW"
-        ? "Картын терминал руу төлбөр илгээж байна..."
-        : "Терминал дээр картаа уншуулна уу...",
-    );
+    try {
+      const terminalId = register.cardTerminalId || "terminal-1";
+      const useClientBridge =
+        cardProvider === "ANDROID_PGW" && Boolean(register.terminalBridgeUrl);
+      const shouldSendBridgeUrl =
+        Boolean(register.terminalBridgeUrl) &&
+        cardProvider !== "MINU_AGENT" &&
+        cardProvider !== "PUSH_ECR";
 
-    const attempt = await createRestaurantCardAttempt({
-      amount,
-      terminalId,
-      bridgeUrl: shouldSendBridgeUrl ? register.terminalBridgeUrl : null,
-      registerId: register.id,
-      organizationId: user.organizationId,
-      clientBridge: useClientBridge,
-    });
+      setCardMessage(
+        cardProvider === "ANDROID_PGW"
+          ? "Картын терминал руу төлбөр илгээж байна..."
+          : "Терминал дээр картаа уншуулна уу...",
+      );
 
-    let approvedAttempt = attempt;
-    if (useClientBridge) {
-      try {
-        const bridgeResult = await chargeRestaurantClientBridge({
-          bridgeUrl: register.terminalBridgeUrl!,
-          attemptId: attempt.attemptId,
-          amount,
-          terminalId,
-        });
-        approvedAttempt = await submitRestaurantClientBridgeResult({
-          attemptId: attempt.attemptId,
-          result: bridgeResult,
-        });
-      } catch (error) {
+      const attempt = await createRestaurantCardAttempt({
+        amount,
+        terminalId,
+        bridgeUrl: shouldSendBridgeUrl ? register.terminalBridgeUrl : null,
+        registerId: register.id,
+        organizationId: user.organizationId,
+        clientBridge: useClientBridge,
+      });
+      if (isCancelled() && attempt.status !== "APPROVED") {
+        throw new Error(CARD_PAYMENT_CANCELLED_MESSAGE);
+      }
+
+      let approvedAttempt = attempt;
+      if (useClientBridge) {
+        try {
+          const bridgeResult = await chargeRestaurantClientBridge({
+            bridgeUrl: register.terminalBridgeUrl!,
+            attemptId: attempt.attemptId,
+            amount,
+            terminalId,
+            signal: run.abortController.signal,
+          });
+          if (isCancelled()) {
+            throw new Error(CARD_PAYMENT_CANCELLED_MESSAGE);
+          }
+          approvedAttempt = await submitRestaurantClientBridgeResult({
+            attemptId: attempt.attemptId,
+            result: bridgeResult,
+          });
+        } catch (error) {
+          if (isCancelled()) {
+            throw new Error(CARD_PAYMENT_CANCELLED_MESSAGE);
+          }
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Картын терминалтай холбогдож чадсангүй.";
+          await submitRestaurantClientBridgeResult({
+            attemptId: attempt.attemptId,
+            result: { status: "FAILED", message },
+          }).catch(() => null);
+          throw new Error(message);
+        }
+      } else {
+        const maxPolls = LONG_RUNNING_CARD_PROVIDERS.has(cardProvider)
+          ? 150
+          : 8;
+        for (let index = 0; index < maxPolls; index += 1) {
+          if (approvedAttempt.status === "APPROVED") break;
+          if (
+            approvedAttempt.status === "DECLINED" ||
+            approvedAttempt.status === "FAILED"
+          ) {
+            break;
+          }
+          if (isCancelled()) {
+            throw new Error(CARD_PAYMENT_CANCELLED_MESSAGE);
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 800));
+          if (isCancelled()) {
+            throw new Error(CARD_PAYMENT_CANCELLED_MESSAGE);
+          }
+          approvedAttempt = await getRestaurantCardAttemptStatus(
+            attempt.attemptId,
+          );
+          if (approvedAttempt.status === "PENDING") {
+            setCardMessage(
+              "Терминал дээр картаа уншуулж төлбөрөө баталгаажуулна уу.",
+            );
+          }
+        }
+      }
+
+      if (isCancelled() && approvedAttempt.status !== "APPROVED") {
+        throw new Error(CARD_PAYMENT_CANCELLED_MESSAGE);
+      }
+
+      if (approvedAttempt.status !== "APPROVED") {
         const message =
-          error instanceof Error
-            ? error.message
-            : "Картын терминалтай холбогдож чадсангүй.";
-        await submitRestaurantClientBridgeResult({
-          attemptId: attempt.attemptId,
-          result: { status: "FAILED", message },
-        }).catch(() => null);
+          approvedAttempt.message ||
+          (approvedAttempt.status === "PENDING"
+            ? "Терминалын төлбөр баталгаажаагүй байна."
+            : "Картын төлбөр амжилтгүй боллоо.");
         throw new Error(message);
       }
-    } else {
-      const maxPolls = LONG_RUNNING_CARD_PROVIDERS.has(cardProvider) ? 150 : 8;
-      for (let index = 0; index < maxPolls; index += 1) {
-        if (approvedAttempt.status === "APPROVED") break;
-        if (
-          approvedAttempt.status === "DECLINED" ||
-          approvedAttempt.status === "FAILED"
-        ) {
-          break;
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 800));
-        approvedAttempt = await getRestaurantCardAttemptStatus(
-          attempt.attemptId,
-        );
-        if (approvedAttempt.status === "PENDING") {
-          const diagnostic = formatCardProviderDiagnostic(approvedAttempt);
-          setCardMessage(
-            `Терминал дээр картаа уншуулж төлбөрөө баталгаажуулна уу.${
-              diagnostic ? ` ${diagnostic}` : ""
-            }`,
-          );
-        }
+
+      setCardMessage("Картын төлбөр баталгаажлаа. Захиалгыг бүртгэж байна...");
+      return approvedAttempt;
+    } finally {
+      if (cardPaymentRunRef.current === run) {
+        cardPaymentRunRef.current = null;
       }
     }
+  };
 
-    if (approvedAttempt.status !== "APPROVED") {
-      const diagnostic = formatCardProviderDiagnostic(approvedAttempt);
-      const message =
-        approvedAttempt.message ||
-        (approvedAttempt.status === "PENDING"
-          ? "Терминалын төлбөр баталгаажаагүй байна."
-          : "Картын төлбөр амжилтгүй боллоо.");
-      throw new Error(
-        `${message}${diagnostic ? ` · ${diagnostic}` : ""}`,
-      );
-    }
-
-    setCardMessage("Картын төлбөр баталгаажлаа. Захиалгыг бүртгэж байна...");
-    return approvedAttempt;
+  const cancelCardPayment = () => {
+    const run = cardPaymentRunRef.current;
+    if (!run || run.cancelled) return;
+    run.cancelled = true;
+    run.abortController.abort();
+    setCardMessage("Төлбөрийг цуцалж, захиалга руу буцаж байна...");
   };
 
   const finalizeCardPayment = async (checkout: PendingCardCheckout) => {
@@ -1352,16 +1398,22 @@ export function SelfServiceCheckoutScreen() {
       setPendingCheckout(checkout);
       setScreen("payment");
     } catch (error) {
-      setActionError(
+      const errorMessage =
         error instanceof Error
           ? error.message
           : paymentMethod === "CARD"
             ? "Картын төлбөр хийж чадсангүй."
             : paymentMethod === "CASH"
               ? "Тест борлуулалт үүсгэж чадсангүй."
-              : "QPay төлбөр үүсгэж чадсангүй.",
-      );
-      if (paymentMethod === "CARD") setScreen("checkout");
+              : "QPay төлбөр үүсгэж чадсангүй.";
+      const cardPaymentCancelled =
+        paymentMethod === "CARD" &&
+        errorMessage === CARD_PAYMENT_CANCELLED_MESSAGE;
+      setActionError(cardPaymentCancelled ? "" : errorMessage);
+      if (paymentMethod === "CARD") {
+        setPendingCardCheckout(null);
+        setScreen("checkout");
+      }
       if (savedTicket && activeShift) {
         await cleanupDraftTicket({
           ticket: savedTicket,
@@ -1466,10 +1518,9 @@ export function SelfServiceCheckoutScreen() {
       if (cancellingInvoiceRef.current === invoiceId) return;
       if (!silent) setCheckingPayment(true);
       try {
-        const status = await getRestaurantQPayInvoiceStatus(
-          invoiceId,
-          { refreshProvider: !silent },
-        );
+        const status = await getRestaurantQPayInvoiceStatus(invoiceId, {
+          refreshProvider: !silent,
+        });
         if (cancellingInvoiceRef.current === invoiceId) return;
         const nextInvoice = { ...pendingCheckout.invoice, ...status };
         const nextCheckout = { ...pendingCheckout, invoice: nextInvoice };
@@ -1498,14 +1549,16 @@ export function SelfServiceCheckoutScreen() {
   );
 
   useEffect(() => {
-    if (!pendingCheckout || pendingCheckout.invoice.status !== "PENDING") return;
+    if (!pendingCheckout || pendingCheckout.invoice.status !== "PENDING")
+      return;
     void checkPayment(true);
     const timer = window.setInterval(() => void checkPayment(true), 3000);
     return () => window.clearInterval(timer);
   }, [checkPayment, pendingCheckout]);
 
   const retryPayment = async () => {
-    if (!pendingCheckout || !register || !user.organizationId || submitting) return;
+    if (!pendingCheckout || !register || !user.organizationId || submitting)
+      return;
     setSubmitting(true);
     setActionError("");
     try {
@@ -1526,7 +1579,8 @@ export function SelfServiceCheckoutScreen() {
   };
 
   const leaveExpiredPayment = async () => {
-    if (!pendingCheckout || pendingCheckout.invoice.status === "PENDING") return;
+    if (!pendingCheckout || pendingCheckout.invoice.status === "PENDING")
+      return;
     setSubmitting(true);
     await cleanupDraftTicket(pendingCheckout);
     setPendingCheckout(null);
@@ -1677,7 +1731,6 @@ export function SelfServiceCheckoutScreen() {
             </div>
           ) : null}
         </section>
-
       </main>
     );
   }
@@ -1712,9 +1765,25 @@ export function SelfServiceCheckoutScreen() {
           ) : null}
 
           {submitting ? (
-            <div className="mt-8 inline-flex items-center gap-3 rounded-full bg-white/10 px-5 py-3 text-sm font-black text-white/70">
-              <Loader2 className="h-5 w-5 animate-spin text-[#f4c34f]" />
-              Терминалын хариуг хүлээж байна
+            <div className="mt-8 flex flex-col items-center gap-4">
+              <div className="inline-flex items-center gap-3 rounded-full bg-white/10 px-5 py-3 text-sm font-black text-white/70">
+                <Loader2 className="h-5 w-5 animate-spin text-[#f4c34f]" />
+                Терминалын хариуг хүлээж байна
+              </div>
+              {!pendingCardCheckout ? (
+                <button
+                  type="button"
+                  onClick={cancelCardPayment}
+                  disabled={
+                    cardMessage ===
+                    "Төлбөрийг цуцалж, захиалга руу буцаж байна..."
+                  }
+                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-6 text-sm font-black text-white/75 transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-50"
+                >
+                  <ArrowLeft className="h-5 w-5" />
+                  Цуцлах · Захиалга руу буцах
+                </button>
+              ) : null}
             </div>
           ) : pendingCardCheckout ? (
             <button
@@ -1797,7 +1866,9 @@ export function SelfServiceCheckoutScreen() {
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="font-semibold text-slate-500">Барааны тоо</span>
+                  <span className="font-semibold text-slate-500">
+                    Барааны тоо
+                  </span>
                   <span className="font-black">{cartQty}</span>
                 </div>
               </div>
@@ -1905,7 +1976,9 @@ export function SelfServiceCheckoutScreen() {
                 )}
               </p>
               <div className="mt-5 flex items-center justify-between border-t border-dashed border-slate-200 pt-5 text-sm">
-                <span className="font-semibold text-slate-500">Нийт төлсөн</span>
+                <span className="font-semibold text-slate-500">
+                  Нийт төлсөн
+                </span>
                 <span className="text-lg font-black">
                   {formatMoney(receipt.grandTotal)}
                 </span>
@@ -1937,8 +2010,8 @@ export function SelfServiceCheckoutScreen() {
                       {isDemoEbarimt
                         ? "Тестийн Ebarimt"
                         : ebarimt.receiptType === "B2B"
-                        ? "Байгууллагын Ebarimt"
-                        : "Хувь хүний Ebarimt"}
+                          ? "Байгууллагын Ebarimt"
+                          : "Хувь хүний Ebarimt"}
                     </p>
                     {isDemoEbarimt ? (
                       <p className="mx-auto mt-2 w-fit rounded-full bg-amber-100 px-3 py-1 text-[11px] font-black text-amber-700">
@@ -1965,7 +2038,8 @@ export function SelfServiceCheckoutScreen() {
                       Ebarimt үүссэнгүй
                     </p>
                     <p className="mt-2 max-w-xs text-xs font-semibold leading-5 text-slate-500">
-                      {ebarimt.error || "PosAPI холболтыг шалгаад дахин оролдоно уу."}
+                      {ebarimt.error ||
+                        "PosAPI холболтыг шалгаад дахин оролдоно уу."}
                     </p>
                     <button
                       type="button"
@@ -2096,13 +2170,21 @@ export function SelfServiceCheckoutScreen() {
               </p>
               <div className="mt-6 space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="font-semibold text-white/55">Барааны дүн</span>
-                  <span className="font-black">{formatMoney(cartSubtotal)}</span>
+                  <span className="font-semibold text-white/55">
+                    Барааны дүн
+                  </span>
+                  <span className="font-black">
+                    {formatMoney(cartSubtotal)}
+                  </span>
                 </div>
                 {packagingFee > 0 ? (
                   <div className="flex justify-between">
-                    <span className="font-semibold text-white/55">Савны үнэ</span>
-                    <span className="font-black">{formatMoney(packagingFee)}</span>
+                    <span className="font-semibold text-white/55">
+                      Савны үнэ
+                    </span>
+                    <span className="font-black">
+                      {formatMoney(packagingFee)}
+                    </span>
                   </div>
                 ) : null}
                 <div className="flex justify-between">
@@ -2111,7 +2193,9 @@ export function SelfServiceCheckoutScreen() {
                 </div>
               </div>
               <div className="mt-6 flex items-end justify-between border-t border-white/10 pt-6">
-                <span className="text-sm font-bold text-white/60">Нийт төлөх</span>
+                <span className="text-sm font-bold text-white/60">
+                  Нийт төлөх
+                </span>
                 <span className="text-3xl font-black tracking-tight">
                   {formatMoney(cartTotal)}
                 </span>
@@ -2164,7 +2248,9 @@ export function SelfServiceCheckoutScreen() {
                           maxLength={7}
                           value={companyRegNo}
                           onChange={(event) => {
-                            const value = event.target.value.replace(/\D/g, "").slice(0, 7);
+                            const value = event.target.value
+                              .replace(/\D/g, "")
+                              .slice(0, 7);
                             setCompanyRegNo(value);
                             setCompanyLookup(null);
                             setCompanyLookupError("");
@@ -2175,7 +2261,9 @@ export function SelfServiceCheckoutScreen() {
                         />
                         <button
                           type="button"
-                          onClick={() => void lookupCompanyBuyer().catch(() => null)}
+                          onClick={() =>
+                            void lookupCompanyBuyer().catch(() => null)
+                          }
                           disabled={
                             companyLookupLoading || companyRegNo.length !== 7
                           }
@@ -2192,7 +2280,8 @@ export function SelfServiceCheckoutScreen() {
                         <div className="mt-2 flex items-start gap-2 rounded-xl bg-emerald-300/10 px-3 py-2 text-xs font-bold leading-5 text-emerald-200">
                           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
                           <span>
-                            {companyLookup.name || "Байгууллага"} · TIN {companyLookup.tin}
+                            {companyLookup.name || "Байгууллага"} · TIN{" "}
+                            {companyLookup.tin}
                           </span>
                         </div>
                       ) : null}
@@ -2304,7 +2393,7 @@ export function SelfServiceCheckoutScreen() {
                   ? "Картаар төлөх"
                   : paymentMethod === "CASH"
                     ? "Тест борлуулалт үүсгэх"
-                  : "QPay-аар төлөх"}
+                    : "QPay-аар төлөх"}
               </button>
               <div className="mt-4 flex items-center justify-center gap-2 text-[11px] font-bold text-white/35">
                 <Check className="h-3.5 w-3.5" />
@@ -2337,7 +2426,8 @@ export function SelfServiceCheckoutScreen() {
               {user.organizationName || "MGL Store"}
             </p>
             <p className="truncate text-[11px] font-bold text-slate-400">
-              {register.branch.name} · {orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}
+              {register.branch.name} ·{" "}
+              {orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}
             </p>
           </div>
         </div>
@@ -2423,7 +2513,8 @@ export function SelfServiceCheckoutScreen() {
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 [@media(max-height:900px)]:gap-2.5">
                 {visibleProducts.map((product) => {
                   const selectedQty =
-                    cart.find((line) => line.product.id === product.id)?.qty || 0;
+                    cart.find((line) => line.product.id === product.id)?.qty ||
+                    0;
                   const soldOut = product.stockQty <= selectedQty;
                   return (
                     <button
@@ -2486,7 +2577,9 @@ export function SelfServiceCheckoutScreen() {
               </span>
               <div>
                 <h2 className="text-base font-black">Таны сагс</h2>
-                <p className="text-xs font-bold text-slate-400">{cartQty} бараа</p>
+                <p className="text-xs font-bold text-slate-400">
+                  {cartQty} бараа
+                </p>
               </div>
             </div>
             {cart.length > 0 ? (
@@ -2575,7 +2668,9 @@ export function SelfServiceCheckoutScreen() {
 
           <div className="flex w-[180px] shrink-0 flex-col justify-center border-l border-slate-100 p-3 sm:w-[280px] sm:p-5">
             <div className="mb-3 flex items-end justify-between gap-2">
-              <span className="hidden text-sm font-bold text-slate-500 sm:inline">Нийт дүн</span>
+              <span className="hidden text-sm font-bold text-slate-500 sm:inline">
+                Нийт дүн
+              </span>
               <span className="text-lg font-black tracking-tight sm:text-2xl">
                 {formatMoney(cartTotal)}
               </span>
@@ -2595,7 +2690,6 @@ export function SelfServiceCheckoutScreen() {
           </div>
         </aside>
       </div>
-
     </main>
   );
 }
