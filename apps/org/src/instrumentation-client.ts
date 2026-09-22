@@ -1,0 +1,1 @@
+import "./polyfills/legacy-browser";
