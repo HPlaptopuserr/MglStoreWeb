@@ -9,6 +9,7 @@ import {
   Pencil,
 } from "lucide-react";
 import { ProductThumbnail } from "./ProductThumbnail";
+import { getInventoryStockStatus, STOCK_STATUS_LABELS } from "./inventory.types";
 
 export interface WarehouseCatalogInventoryItem {
   id: string;
@@ -47,11 +48,8 @@ const STATUS_STYLES: Record<StatusTone, string> = {
 };
 
 function getStatus(item: WarehouseCatalogInventoryItem): InventoryStatus {
-  if (item.quantity === 0) return { label: "Дууссан", tone: "out" };
-  if (item.quantity <= item.minQuantity) {
-    return { label: "Дутагдал", tone: "low" };
-  }
-  return { label: "Хэвийн", tone: "healthy" };
+  const tone = getInventoryStockStatus(item);
+  return { label: STOCK_STATUS_LABELS[tone], tone };
 }
 
 function formatDate(value: string | null) {

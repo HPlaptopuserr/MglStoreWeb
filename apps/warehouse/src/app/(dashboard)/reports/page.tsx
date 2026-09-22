@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
-import { InventoryAuditPanel } from "@/features/inventory";
+import { InventoryAuditPanel, InventoryExportButton } from "@/features/inventory";
 import { TopMovedProductsChart } from "@/features/reports/TopMovedProductsChart";
 import { RankedBarChart } from "@/features/reports/RankedBarChart";
 import {
@@ -395,65 +395,6 @@ export default function ReportsPage() {
     URL.revokeObjectURL(url);
   };
 
-  /* Excel export for inventory */
-  const handleExcelInventory = () => {
-    if (!inventories.length) return;
-    const whName =
-      warehouses.find((w) => w.id === warehouseId)?.name || "Агуулах";
-    const header = `<tr style="background:#1e40af;color:#fff;font-weight:bold">
-      <td>№</td><td>Бараа</td><td>SKU</td><td>Тоо ширхэг</td>
-      <td>Хамгийн бага</td><td>Нэгж үнэ (₮)</td><td>Нийт үнэ (₮)</td><td>Төлөв</td>
-    </tr>`;
-    const bodyRows = inventories
-      .map((item, i) => {
-        const st =
-          item.quantity <= 0
-            ? "Дууссан"
-            : item.minQuantity && item.quantity <= item.minQuantity
-              ? "Дутагдал"
-              : "Хэвийн";
-        return `<tr style="background:${i % 2 === 0 ? "#f8fafc" : "#fff"}">
-        <td>${i + 1}</td>
-        <td>${item.product.name}</td>
-        <td>${item.product.sku || ""}</td>
-        <td style="text-align:right">${item.quantity.toLocaleString()}</td>
-        <td style="text-align:right">${item.minQuantity || ""}</td>
-        <td style="text-align:right">${(item.product.price || 0).toLocaleString()}</td>
-        <td style="text-align:right">${(item.quantity * (item.product.price || 0)).toLocaleString()}</td>
-        <td>${st}</td>
-      </tr>`;
-      })
-      .join("");
-    const footRow = `<tr style="background:#1e40af;color:#fff;font-weight:bold">
-      <td colspan="3">Нийт</td>
-      <td style="text-align:right">${totalStock.toLocaleString()}</td>
-      <td></td><td></td>
-      <td style="text-align:right">${totalValue.toLocaleString()}</td>
-      <td></td>
-    </tr>`;
-    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
-      xmlns:x="urn:schemas-microsoft-com:office:excel"
-      xmlns="http://www.w3.org/TR/REC-html40">
-      <head><meta charset="utf-8"/></head>
-      <body>
-        <table border="1" cellpadding="4" style="font-family:Arial;font-size:12px;border-collapse:collapse">
-          <tr><td colspan="8" style="font-size:16px;font-weight:bold;background:#1e40af;color:#fff">
-            ${whName} — Нөөцийн тайлан (${new Date().toLocaleDateString("mn-MN")})
-          </td></tr>
-          ${header}${bodyRows}${footRow}
-        </table>
-      </body></html>`;
-    const blob = new Blob([html], {
-      type: "application/vnd.ms-excel;charset=utf-8",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `inventory-report-${new Date().toISOString().slice(0, 10)}.xls`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   /* Print — open new window with formatted content */
   const handlePrint = () => {
     const periodLabel =
@@ -714,13 +655,13 @@ export default function ReportsPage() {
           {/* Actions */}
           <div className="flex items-center gap-2">
             {tab === "inventory" && (
-              <button
-                onClick={handleExcelInventory}
-                className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
-              >
-                <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
-                Excel татах
-              </button>
+              <InventoryExportButton
+                warehouseId={warehouseId}
+                warehouseName={selectedWarehouse?.name || "Агуулах"}
+                search=""
+                status="all"
+                disabled={loading || inventories.length === 0}
+              />
             )}
             {tab === "dispatch" && (
               <button

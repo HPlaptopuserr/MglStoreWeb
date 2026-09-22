@@ -23,48 +23,18 @@ import { API, wmsFetch } from "@/lib/api";
 import { WarehouseCategoryPicker } from "@/features/categories";
 import {
   ProductImageEditor,
+  InventoryExportButton,
   StockReservationBreakdown,
   WarehouseInventoryCatalog,
 } from "@/features/inventory";
 import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
-
-type InventoryItem = {
-  id: string;
-  quantity: number;
-  minQuantity: number;
-  maxQuantity: number | null;
-  location: string | null;
-  batchNumber: string | null;
-  expiryDate: string | null;
-  note?: string | null;
-  product: {
-    id: string;
-    name: string;
-    description: string | null;
-    sku: string | null;
-    barcode: string | null;
-    unit: string | null;
-    price: string;
-    costPrice: string | null;
-    businessCategoryId: string | null;
-    supplyType: string;
-    preorderLeadTimeDays: number | null;
-    preorderNote: string | null;
-    isActive: boolean;
-    images: { id: string; url: string }[];
-  };
-};
-
-type StockStatus = "all" | "healthy" | "low" | "out";
-
-type InventorySummary = {
-  total: number;
-  healthy: number;
-  low: number;
-  out: number;
-  totalStock: number;
-  located: number;
-};
+import { fetchInventoryPage } from "@/features/inventory/inventory.api";
+import {
+  getInventoryStockStatus,
+  type InventoryItem,
+  type InventorySummary,
+  type StockStatus,
+} from "@/features/inventory/inventory.types";
 
 type EditInventoryForm = {
   name: string;
@@ -95,7 +65,7 @@ const toDateInputValue = (value: string | null) => {
 };
 
 export default function InventoryPage() {
-  const { selectedWarehouseId } = useWarehouseScope();
+  const { selectedWarehouseId, selectedWarehouse } = useWarehouseScope();
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
@@ -139,51 +109,35 @@ export default function InventoryPage() {
       setLoading(false);
       return;
     }
-    let cancelled = false;
+    const controller = new AbortController();
     const load = async () => {
       setLoading(true);
       setFetchError(false);
       try {
-        const params = new URLSearchParams({
-          page: String(currentPage),
-          limit: String(PAGE_SIZE),
+        const data = await fetchInventoryPage({
+          warehouseId: selectedWarehouseId,
+          page: currentPage,
+          limit: PAGE_SIZE,
           status: statusFilter,
+          search: debouncedSearch,
+          signal: controller.signal,
         });
-        if (debouncedSearch) params.set("search", debouncedSearch);
-        const res = await wmsFetch(
-          `${API}/warehouses/${selectedWarehouseId}/inventory?${params.toString()}`,
-        );
-        if (cancelled) return;
-        if (res.ok) {
-          const data = await res.json();
-          setInventory(data.inventory || []);
-          setTotalItems(data.pagination?.total || 0);
-          setTotalPages(data.pagination?.totalPages || 1);
-          setSummary(
-            data.summary || {
-              total: 0,
-              healthy: 0,
-              low: 0,
-              out: 0,
-              totalStock: 0,
-              located: 0,
-            },
-          );
-        } else {
-          setInventory([]);
-          setFetchError(true);
-        }
+        if (controller.signal.aborted) return;
+        setInventory(data.inventory);
+        setTotalItems(data.pagination.total);
+        setTotalPages(data.pagination.totalPages);
+        setSummary(data.summary);
       } catch {
-        if (cancelled) return;
+        if (controller.signal.aborted) return;
         setInventory([]);
         setFetchError(true);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
     load();
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [
     selectedWarehouseId,
@@ -406,19 +360,13 @@ export default function InventoryPage() {
     }
   };
 
-  const getStatus = (item: InventoryItem): StockStatus => {
-    if (item.quantity === 0) return "out";
-    if (item.quantity <= item.minQuantity) return "low";
-    return "healthy";
-  };
-
   // Reset to page 1 when filter/search changes
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearch, statusFilter, selectedWarehouseId]);
 
   const getStatusLabel = (item: InventoryItem) => {
-    const status = getStatus(item);
+    const status = getInventoryStockStatus(item);
     if (status === "out") {
       return { label: "Дууссан", color: "bg-red-100 text-red-700" };
     } else if (status === "low") {
@@ -518,13 +466,27 @@ export default function InventoryPage() {
         ))}
       </div>
 
-      <div className="flex min-w-0 items-center gap-2.5">
-        <h2 className="text-base font-bold text-slate-900 sm:text-lg">
-          Агуулахын бараа
-        </h2>
-        <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
-          {totalItems} олдлоо
-        </span>
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <h2 className="text-base font-bold text-slate-900 sm:text-lg">
+            Агуулахын бараа
+          </h2>
+          <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-[11px] font-bold text-indigo-700">
+            {totalItems} олдлоо
+          </span>
+        </div>
+        <InventoryExportButton
+          warehouseId={selectedWarehouseId}
+          warehouseName={selectedWarehouse?.name || "Агуулах"}
+          search={debouncedSearch}
+          status={statusFilter}
+          disabled={
+            loading ||
+            fetchError ||
+            totalItems === 0 ||
+            search.trim() !== debouncedSearch
+          }
+        />
       </div>
 
       {/* Vendor-style inventory catalog */}
