@@ -280,13 +280,19 @@ export async function returnLocalEbarimtReceipt(
   receipt: Pick<PosReceipt, "createdAt" | "ebarimt">,
   register?: EbarimtRegisterConfig | null,
 ): Promise<EbarimtReturnReceiptResult | null> {
-  if (String(receipt.ebarimt?.status || "").toUpperCase() !== "SUCCESS") {
+  const status = String(receipt.ebarimt?.status || "").toUpperCase();
+  if (!["SUCCESS", "RETURN_PENDING", "RETURNED"].includes(status)) {
     return null;
   }
 
-  const id = pickText(receipt.ebarimt?.billId, receipt.ebarimt?.receiptId);
-  if (!id) {
-    throw new Error("Ebarimt буцаахад анхны баримтын ID олдсонгүй.");
+  // PosAPI requires the 33-digit batch receipt DDTD. The child receipt ID is
+  // not interchangeable and silently fails to create a seller return request
+  // on some PosAPI versions.
+  const id = pickText(receipt.ebarimt?.billId);
+  if (!id || !/^\d{33}$/.test(id)) {
+    throw new Error(
+      "Ebarimt буцаахад анхны баримтын 33 оронтой багц ДДТД олдсонгүй.",
+    );
   }
 
   const date = formatPosApiReceiptDate(

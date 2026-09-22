@@ -420,7 +420,7 @@ type PosSaleEbarimtFields = {
   ebarimtSyncedAt: Date | null;
 };
 
-const readEbarimtBuyerMetadata = (payload: Prisma.JsonValue | null) => {
+const readEbarimtMetadata = (payload: Prisma.JsonValue | null) => {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return {};
   }
@@ -431,6 +431,16 @@ const readEbarimtBuyerMetadata = (payload: Prisma.JsonValue | null) => {
     return typeof value === "string" && value.trim() ? value.trim() : null;
   };
   const storedType = text("receiptType")?.toUpperCase();
+  const response =
+    source.response &&
+    typeof source.response === "object" &&
+    !Array.isArray(source.response)
+      ? (source.response as Record<string, Prisma.JsonValue>)
+      : null;
+  const responseDate =
+    response && typeof response.date === "string"
+      ? response.date.trim()
+      : null;
 
   return {
     receiptType:
@@ -438,6 +448,7 @@ const readEbarimtBuyerMetadata = (payload: Prisma.JsonValue | null) => {
     customerName: text("customerName"),
     customerTin: text("customerTin"),
     customerRegNo: text("customerRegNo"),
+    posApiDate: text("posApiDate") || text("date") || responseDate || null,
   };
 };
 
@@ -453,16 +464,22 @@ const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) => {
     return null;
   }
 
+  const metadata = readEbarimtMetadata(sale.ebarimtPayload);
   return {
     status: sale.ebarimtStatus,
     billId: sale.ebarimtBillId,
     receiptId: sale.ebarimtReceiptId,
     qrData: sale.ebarimtQrData,
     lottery: sale.ebarimtLottery,
-    date: sale.ebarimtDate?.toISOString() ?? null,
+    // DELETE /rest/receipt requires the exact local timestamp returned by
+    // PosAPI. Do not round-trip it through Date/UTC when the raw value exists.
+    date: metadata.posApiDate ?? sale.ebarimtDate?.toISOString() ?? null,
     error: sale.ebarimtError,
     syncedAt: sale.ebarimtSyncedAt?.toISOString() ?? null,
-    ...readEbarimtBuyerMetadata(sale.ebarimtPayload),
+    receiptType: metadata.receiptType,
+    customerName: metadata.customerName,
+    customerTin: metadata.customerTin,
+    customerRegNo: metadata.customerRegNo,
   };
 };
 
@@ -2171,7 +2188,12 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
 
     const sale = await prisma.posSale.findUnique({
       where: { id: saleId },
-      select: { id: true, organizationId: true, receiptNo: true },
+      select: {
+        id: true,
+        organizationId: true,
+        receiptNo: true,
+        ebarimtPayload: true,
+      },
     });
     if (!sale) {
       return res.status(404).json({ message: "POS борлуулалт олдсонгүй" });
@@ -2213,9 +2235,28 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
       requestedReceiptType === "B2B" || requestedReceiptType === "B2C"
         ? requestedReceiptType
         : null;
+    const previousPayload =
+      sale.ebarimtPayload &&
+      typeof sale.ebarimtPayload === "object" &&
+      !Array.isArray(sale.ebarimtPayload)
+        ? (sale.ebarimtPayload as Record<string, Prisma.JsonValue>)
+        : {};
+    const previousMetadata = readEbarimtMetadata(sale.ebarimtPayload);
+    const requestedDate = cleanText(body.date);
+    const exactPosApiDate =
+      requestedDate &&
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(requestedDate)
+        ? requestedDate
+        : previousMetadata.posApiDate;
     const storedPayload = {
+      ...previousPayload,
       ...(body.payload !== undefined ? { response: body.payload } : {}),
-      ...(receiptType ? { receiptType } : {}),
+      ...(exactPosApiDate ? { posApiDate: exactPosApiDate } : {}),
+      ...(receiptType
+        ? { receiptType }
+        : previousMetadata.receiptType
+          ? { receiptType: previousMetadata.receiptType }
+          : {}),
       ...(cleanText(body.customerName)
         ? { customerName: cleanText(body.customerName)!.slice(0, 200) }
         : {}),

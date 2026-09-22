@@ -324,38 +324,40 @@ export default function OrderHistoryScreen() {
           }
         }
         let currentEbarimt = sale.ebarimt;
-        if (initialStatus === "SUCCESS") {
-          const returned = await returnLocalEbarimtReceipt(sale, register);
-          if (!returned) {
-            throw new Error("Ebarimt буцаалтын хүсэлт үүссэнгүй.");
-          }
-
-          const pending = await attachEbarimtReceipt(sale.id, {
-            status: "RETURN_PENDING",
-            billId: currentEbarimt?.billId ?? null,
-            receiptId: currentEbarimt?.receiptId ?? null,
-            qrData: currentEbarimt?.qrData ?? null,
-            lottery: currentEbarimt?.lottery ?? null,
-            date: currentEbarimt?.date ?? null,
-            error: null,
-            receiptType: currentEbarimt?.receiptType ?? null,
-            customerName: currentEbarimt?.customerName ?? null,
-            customerTin: currentEbarimt?.customerTin ?? null,
-            customerRegNo: currentEbarimt?.customerRegNo ?? null,
-            payload: {
-              returnedAt: new Date().toISOString(),
-              response: returned.response,
-            },
-          });
-          currentEbarimt = pending.ebarimt;
-          setSales((current) =>
-            current.map((item) =>
-              item.id === sale.id
-                ? { ...item, ebarimt: pending.ebarimt }
-                : item,
-            ),
-          );
+        const returned = await returnLocalEbarimtReceipt(sale, register);
+        if (!returned) {
+          throw new Error("Ebarimt буцаалтын хүсэлт үүссэнгүй.");
         }
+
+        // Repeat DELETE on retries as well. A previous sendData attempt may
+        // have run with a timestamp altered by Date/UTC conversion, in which
+        // case resending sendData alone cannot create the app-side action.
+        const pending = await attachEbarimtReceipt(sale.id, {
+          status: "RETURN_PENDING",
+          billId: currentEbarimt?.billId ?? null,
+          receiptId: currentEbarimt?.receiptId ?? null,
+          qrData: currentEbarimt?.qrData ?? null,
+          lottery: currentEbarimt?.lottery ?? null,
+          date: returned.date,
+          error: null,
+          receiptType: currentEbarimt?.receiptType ?? null,
+          customerName: currentEbarimt?.customerName ?? null,
+          customerTin: currentEbarimt?.customerTin ?? null,
+          customerRegNo: currentEbarimt?.customerRegNo ?? null,
+          payload: {
+            returnedAt: new Date().toISOString(),
+            posApiDate: returned.date,
+            response: returned.response,
+          },
+        });
+        currentEbarimt = pending.ebarimt;
+        setSales((current) =>
+          current.map((item) =>
+            item.id === sale.id
+              ? { ...item, ebarimt: pending.ebarimt }
+              : item,
+          ),
+        );
 
         const info = await sendLocalEbarimtData(register);
         const completed = await attachEbarimtReceipt(sale.id, {
@@ -438,7 +440,7 @@ export default function OrderHistoryScreen() {
           const sendWarning = await returnSaleEbarimt(sale);
           setNotice(
             `№${displayOrderNumber(sale)} захиалга цуцлагдлаа.${
-              hasEbarimt ? " Ebarimt буцаагдлаа." : ""
+              hasEbarimt ? " Ebarimt буцаалтын хүсэлт илгээгдлээ." : ""
             }${sendWarning}`,
           );
         } catch (cause) {
@@ -468,7 +470,7 @@ export default function OrderHistoryScreen() {
       try {
         const sendWarning = await returnSaleEbarimt(sale);
         setNotice(
-          `№${displayOrderNumber(sale)} захиалгын Ebarimt буцаагдлаа.${sendWarning}`,
+          `№${displayOrderNumber(sale)} захиалгын Ebarimt буцаалтын хүсэлт дахин илгээгдлээ.${sendWarning}`,
         );
       } catch (cause) {
         setActionError(
@@ -757,7 +759,7 @@ export default function OrderHistoryScreen() {
                                 <p className="mt-2">{sale.cashierName}</p>
                                 {receiptStatus === "RETURNED" ? (
                                   <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-emerald-700">
-                                    Ebarimt буцаагдсан
+                                    Ebarimt буцаалтын хүсэлт илгээгдсэн
                                   </p>
                                 ) : receiptStatus === "RETURN_PENDING" ? (
                                   <p className="mt-3 rounded-lg bg-amber-50 p-3 text-amber-700">
@@ -805,7 +807,7 @@ export default function OrderHistoryScreen() {
                                     )}
                                     {receiptStatus === "RETURN_PENDING" ||
                                     receiptStatus === "RETURNED"
-                                      ? "SendData дахин хийх"
+                                      ? "Ebarimt буцаалтыг дахин илгээх"
                                       : "Ebarimt буцаах"}
                                   </button>
                                 ) : null}

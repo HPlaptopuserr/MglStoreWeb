@@ -82,7 +82,7 @@ type PosSaleEbarimtFields = {
   ebarimtSyncedAt: Date | null;
 };
 
-const readEbarimtBuyerMetadata = (payload: Prisma.JsonValue | null) => {
+const readEbarimtMetadata = (payload: Prisma.JsonValue | null) => {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return {};
   }
@@ -93,6 +93,16 @@ const readEbarimtBuyerMetadata = (payload: Prisma.JsonValue | null) => {
     return typeof value === "string" && value.trim() ? value.trim() : null;
   };
   const storedType = text("receiptType")?.toUpperCase();
+  const response =
+    source.response &&
+    typeof source.response === "object" &&
+    !Array.isArray(source.response)
+      ? (source.response as Record<string, Prisma.JsonValue>)
+      : null;
+  const responseDate =
+    response && typeof response.date === "string"
+      ? response.date.trim()
+      : null;
 
   return {
     receiptType:
@@ -100,6 +110,7 @@ const readEbarimtBuyerMetadata = (payload: Prisma.JsonValue | null) => {
     customerName: text("customerName"),
     customerTin: text("customerTin"),
     customerRegNo: text("customerRegNo"),
+    posApiDate: text("posApiDate") || text("date") || responseDate || null,
   };
 };
 
@@ -115,16 +126,20 @@ const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) => {
     return null;
   }
 
+  const metadata = readEbarimtMetadata(sale.ebarimtPayload);
   return {
     status: sale.ebarimtStatus,
     billId: sale.ebarimtBillId,
     receiptId: sale.ebarimtReceiptId,
     qrData: sale.ebarimtQrData,
     lottery: sale.ebarimtLottery,
-    date: sale.ebarimtDate?.toISOString() ?? null,
+    date: metadata.posApiDate ?? sale.ebarimtDate?.toISOString() ?? null,
     error: sale.ebarimtError,
     syncedAt: sale.ebarimtSyncedAt?.toISOString() ?? null,
-    ...readEbarimtBuyerMetadata(sale.ebarimtPayload),
+    receiptType: metadata.receiptType,
+    customerName: metadata.customerName,
+    customerTin: metadata.customerTin,
+    customerRegNo: metadata.customerRegNo,
   };
 };
 
