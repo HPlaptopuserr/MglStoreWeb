@@ -1027,7 +1027,7 @@ export function SelfServiceCheckoutScreen() {
       printSelfServiceReceipt(targetReceipt, {
         organizationName: user.organizationName || "MGL Store",
         registerName: register?.label || register?.name || "Self service",
-        orderLabel: orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах",
+        orderLabel: orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах",
         ticketNo: formatRestaurantOrderNumber(
           completedTicketNo || targetReceipt.receiptNo,
           targetReceipt.id,
@@ -1348,7 +1348,7 @@ export function SelfServiceCheckoutScreen() {
           clientSaleId: checkout.clientSaleId,
           total: checkout.total,
           packagingFee: checkout.packagingFee,
-          note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}`,
+          note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"}`,
           lines: checkout.lines.map((line) => ({
             productId: line.product.id,
             qty: line.qty,
@@ -1534,7 +1534,7 @@ export function SelfServiceCheckoutScreen() {
         shiftId: activeShift.id,
         source: "SELF_SERVICE",
         orderMode,
-        note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}`,
+        note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"}`,
         lines: cart.map((line) => ({
           productId: line.product.id,
           qty: line.qty,
@@ -1555,7 +1555,7 @@ export function SelfServiceCheckoutScreen() {
           total: cartTotal,
           packagingFee,
           note: `Өөртөө үйлчлэх касс · Тест борлуулалт · ${
-            orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"
+            orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"
           }`,
           lines: cart.map((line) => ({
             productId: line.product.id,
@@ -1707,7 +1707,7 @@ export function SelfServiceCheckoutScreen() {
           total: checkout.total,
           packagingFee: checkout.packagingFee,
           qpayInvoiceId: paidInvoice.invoiceId,
-          note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}`,
+          note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"}`,
           lines: checkout.lines.map((line) => ({
             productId: line.product.id,
             qty: line.qty,
@@ -1963,7 +1963,7 @@ export function SelfServiceCheckoutScreen() {
               <span className="grid h-20 w-20 place-items-center rounded-[24px] bg-white/10 transition group-hover:scale-105">
                 <Utensils className="h-9 w-9" />
               </span>
-              <span className="mt-6 text-2xl font-black">Энд идэх</span>
+              <span className="mt-6 text-2xl font-black">Энд хэрэглэх</span>
               <span className="mt-2 text-sm font-semibold text-white/55">
                 Эндээ тухтай иднэ
               </span>
@@ -2125,7 +2125,7 @@ export function SelfServiceCheckoutScreen() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="font-semibold text-slate-500">Төрөл</span>
                   <span className="font-black">
-                    {orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}
+                    {orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
@@ -2383,7 +2383,7 @@ export function SelfServiceCheckoutScreen() {
                 <div>
                   <h1 className="text-2xl font-black">Таны захиалга</h1>
                   <p className="mt-1 text-sm font-semibold text-slate-500">
-                    {orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}
+                    {orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"}
                   </p>
                 </div>
                 <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">
@@ -2690,7 +2690,7 @@ export function SelfServiceCheckoutScreen() {
             </p>
             <p className="truncate text-[11px] font-bold text-slate-400">
               {register.branch.name} ·{" "}
-              {orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}
+              {orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"}
             </p>
           </div>
         </div>

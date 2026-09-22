@@ -120,7 +120,7 @@ const stationOptions: Array<{
 ];
 
 const orderModeLabels = {
-  DINE_IN: "Энд идэх",
+  DINE_IN: "Энд хэрэглэх",
   TO_GO: "Авч явах",
   DELIVERY: "Хүргэлт",
 } as const;

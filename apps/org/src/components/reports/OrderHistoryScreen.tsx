@@ -56,7 +56,7 @@ const paymentLabels: Record<string, string> = {
 };
 
 const orderModeLabels: Record<string, string> = {
-  DINE_IN: "Энд идэх",
+  DINE_IN: "Энд хэрэглэх",
   TO_GO: "Авч явах",
   DELIVERY: "Хүргэлт",
 };

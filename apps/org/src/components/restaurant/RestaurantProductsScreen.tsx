@@ -636,7 +636,7 @@ export function RestaurantProductsScreen() {
                       {product.sku || "SKU байхгүй"} ·{" "}
                       {product.preparationMinutes ?? 0} мин
                       {product.isTakeawayAvailable === false
-                        ? " · Зөвхөн энд идэх"
+                        ? " · Зөвхөн энд хэрэглэх"
                         : ""}
                     </p>
                   </div>
@@ -1186,7 +1186,8 @@ function MenuItemForm({
                     Авч явах боломжтой
                   </span>
                   <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
-                    Унтраавал энэ хоол зөвхөн энд идэх захиалгад харагдана.
+                    Унтраавал энэ бүтээгдэхүүн зөвхөн энд хэрэглэх захиалгад
+                    харагдана.
                   </span>
                 </span>
               </label>
