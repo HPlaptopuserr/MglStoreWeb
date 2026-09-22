@@ -5,6 +5,7 @@ import {
   ChefHat,
   Clapperboard,
   ClipboardList,
+  Coffee,
   Megaphone,
   MonitorSmartphone,
   Package,
@@ -46,6 +47,7 @@ export function getDashboardKpis(stats: DashboardStats | null) {
 
 export function getDashboardModules(features: OrgFeatureState) {
   if (features.selfService) {
+    const isCafe = features.selfServiceMode === "CAFE";
     return [
       {
         title: "Өөртөө үйлчлэх касс",
@@ -55,22 +57,26 @@ export function getDashboardModules(features: OrgFeatureState) {
         enabled: true,
       },
       {
-        title: "Гал тогооны дэлгэц",
-        desc: "Шинэ захиалгыг хүлээн авч, бэлтгэлийн төлөвийг удирдана.",
+        title: isCafe ? "Бариста дэлгэц" : "Гал тогооны дэлгэц",
+        desc: isCafe
+          ? "Шинэ захиалгыг хүлээн авч, кофе болон уух зүйлсийн бэлтгэлийг удирдана."
+          : "Шинэ захиалгыг хүлээн авч, бэлтгэлийн төлөвийг удирдана.",
         href: "/dashboard/kitchen-display",
-        icon: ChefHat,
+        icon: isCafe ? Coffee : ChefHat,
         enabled: true,
       },
       {
         title: "Бүтээгдэхүүн",
-        desc: "Өөртөө үйлчлэх кассанд харагдах бүтээгдэхүүн, хоол болон үнийг удирдана.",
+        desc: isCafe
+          ? "Кофе шопын кассанд харагдах уух зүйл, бүтээгдэхүүн болон үнийг удирдана."
+          : "Өөртөө үйлчлэх кассанд харагдах бүтээгдэхүүн, хоол болон үнийг удирдана.",
         href: "/dashboard/products",
         icon: Package,
         enabled: true,
       },
       {
         title: "Тохиргоо",
-        desc: "Касс, QPay, карт болон рестораны тохиргоог удирдана.",
+        desc: `Касс, QPay, карт болон ${isCafe ? "кофе шопын" : "рестораны"} тохиргоог удирдана.`,
         href: "/dashboard/settings",
         icon: Settings,
         enabled: true,

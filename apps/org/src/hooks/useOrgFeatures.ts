@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { API } from "@/lib/api";
 import {
+  getSelfServiceMode,
   isFeatureEnabled,
   PREORDER_PRODUCTS_FEATURE_KEY,
   SELF_SERVICE_FEATURE_KEY,
@@ -16,6 +17,7 @@ export const DEFAULT_ORG_FEATURES: OrgFeatureState = {
   preorderProducts: false,
   servicePosts: true,
   selfService: false,
+  selfServiceMode: "RESTAURANT",
 };
 
 export function useOrgFeatures(organizationId?: string | null) {
@@ -62,6 +64,7 @@ export function useOrgFeatures(organizationId?: string | null) {
           SELF_SERVICE_FEATURE_KEY,
           organizationId,
         ),
+        selfServiceMode: getSelfServiceMode(settings, organizationId),
       });
       setLoadedOrganizationId(organizationId);
     };

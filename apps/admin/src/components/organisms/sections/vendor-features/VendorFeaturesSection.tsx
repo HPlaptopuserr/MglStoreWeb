@@ -18,6 +18,8 @@ import {
   Monitor,
   Pencil,
   SlidersHorizontal,
+  Coffee,
+  UtensilsCrossed,
   X,
 } from "lucide-react";
 import { API, adminFetch, getApiErrorMessage } from "@/lib/api";
@@ -35,6 +37,10 @@ type FeatureToggle = {
   enabled: boolean;
   saving: boolean;
 };
+
+type SelfServiceMode = "RESTAURANT" | "CAFE";
+
+const SELF_SERVICE_MODE_KEY = "self-service-mode";
 
 const FEATURES = [
   {
@@ -159,6 +165,9 @@ export function VendorFeaturesSection() {
   const [globalProductsEnabled, setGlobalProductsEnabled] = useState(true);
   const [loadingGlobalProducts, setLoadingGlobalProducts] = useState(true);
   const [savingGlobalProducts, setSavingGlobalProducts] = useState(false);
+  const [selfServiceMode, setSelfServiceMode] =
+    useState<SelfServiceMode>("RESTAURANT");
+  const [savingSelfServiceMode, setSavingSelfServiceMode] = useState(false);
   const [activePanel, setActivePanel] = useState<"features" | "pos" | null>(
     null,
   );
@@ -180,6 +189,9 @@ export function VendorFeaturesSection() {
   const webChannelIsLive =
     globalProductsEnabled && organizationWebProductsEnabled;
   const enabledFeatureCount = toggles.filter((toggle) => toggle.enabled).length;
+  const selfServiceEnabled =
+    toggles.find((toggle) => toggle.key === "self-service-enabled")?.enabled ??
+    false;
 
   useEffect(() => {
     if (!activePanel) return;
@@ -230,6 +242,13 @@ export function VendorFeaturesSection() {
         throw new Error(res.status === 401 ? "unauthorized" : "failed");
       }
       const settings = (await res.json()) as Record<string, string>;
+      setSelfServiceMode(
+        String(settings[`${SELF_SERVICE_MODE_KEY}-${orgId}`] ?? "")
+          .trim()
+          .toUpperCase() === "CAFE"
+          ? "CAFE"
+          : "RESTAURANT",
+      );
       setToggles((prev) =>
         prev.map((t) => {
           const raw = settings[`${t.key}-${orgId}`];
@@ -255,7 +274,8 @@ export function VendorFeaturesSection() {
 
   useEffect(() => {
     if (selectedOrgId) loadFeatures(selectedOrgId);
-    else
+    else {
+      setSelfServiceMode("RESTAURANT");
       setToggles(
         FEATURES.map((f) => ({
           key: f.suffix,
@@ -265,6 +285,7 @@ export function VendorFeaturesSection() {
           saving: false,
         })),
       );
+    }
   }, [selectedOrgId, loadFeatures]);
 
   const handleToggle = async (key: string) => {
@@ -341,6 +362,40 @@ export function VendorFeaturesSection() {
       );
     } finally {
       setSavingGlobalProducts(false);
+    }
+  };
+
+  const handleSelfServiceModeChange = async (mode: SelfServiceMode) => {
+    if (!selectedOrgId || mode === selfServiceMode) return;
+    setSavingSelfServiceMode(true);
+    setError("");
+
+    try {
+      const res = await adminFetch(
+        `${API}/site-settings/vendor-features/${selectedOrgId}/${SELF_SERVICE_MODE_KEY}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: mode }),
+        },
+      );
+      if (!res.ok) {
+        throw new Error(
+          await getApiErrorMessage(
+            res,
+            "Кассын төрөл хадгалахад алдаа гарлаа.",
+          ),
+        );
+      }
+      setSelfServiceMode(mode);
+    } catch (modeError) {
+      setError(
+        modeError instanceof Error
+          ? modeError.message
+          : "Кассын төрөл хадгалахад алдаа гарлаа.",
+      );
+    } finally {
+      setSavingSelfServiceMode(false);
     }
   };
 
@@ -543,6 +598,86 @@ export function VendorFeaturesSection() {
 
             {activePanel === "features" ? (
               <div className="space-y-4">
+                <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-[11px] font-black uppercase tracking-[0.18em] text-violet-500">
+                    Өөртөө үйлчлэх кассын төрөл
+                  </p>
+                  <h4 className="mt-1 text-base font-black text-slate-950">
+                    Байгууллагын үйл ажиллагааг сонгох
+                  </h4>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                    Сонголтоор Org дээрх меню, бүтээгдэхүүний default утга болон
+                    бэлтгэлийн дэлгэцийн нэршил автоматаар өөрчлөгдөнө.
+                  </p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    {(
+                      [
+                        {
+                          value: "RESTAURANT",
+                          label: "Ресторан",
+                          description:
+                            "Хоолны меню, гал тогооны хэсэг болон рестораны урсгал ашиглана.",
+                          icon: UtensilsCrossed,
+                        },
+                        {
+                          value: "CAFE",
+                          label: "Кофе шоп",
+                          description:
+                            "Кофе, уух зүйлсийн меню болон бариста дэлгэц ашиглана.",
+                          icon: Coffee,
+                        },
+                      ] as const
+                    ).map((option) => {
+                      const Icon = option.icon;
+                      const selected = selfServiceMode === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          aria-pressed={selected}
+                          disabled={
+                            !selfServiceEnabled || savingSelfServiceMode
+                          }
+                          onClick={() =>
+                            void handleSelfServiceModeChange(option.value)
+                          }
+                          className={`flex items-start gap-3 rounded-2xl border p-4 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                            selected
+                              ? "border-violet-300 bg-violet-50 ring-2 ring-violet-100"
+                              : "border-slate-200 bg-slate-50 hover:border-slate-300"
+                          }`}
+                        >
+                          <span
+                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                              selected
+                                ? "bg-violet-600 text-white"
+                                : "bg-white text-slate-500"
+                            }`}
+                          >
+                            {savingSelfServiceMode && selected ? (
+                              <Loader2 size={18} className="animate-spin" />
+                            ) : (
+                              <Icon size={18} />
+                            )}
+                          </span>
+                          <span>
+                            <span className="block text-sm font-black text-slate-900">
+                              {option.label}
+                            </span>
+                            <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
+                              {option.description}
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {!selfServiceEnabled ? (
+                    <p className="mt-3 text-xs font-bold text-amber-700">
+                      Төрөл сонгохын өмнө “Өөртөө үйлчлэх касс”-ыг нээнэ үү.
+                    </p>
+                  ) : null}
+                </section>
                 {FEATURE_GROUPS.map((group) => (
                   <section
                     key={group.key}

@@ -12,6 +12,17 @@ export const DEFAULT_RESTAURANT_MENU_CATEGORIES = [
   { code: "DESSERT", name: "Амттан", sortOrder: 80 },
 ] as const;
 
+export const DEFAULT_CAFE_MENU_CATEGORIES = [
+  { code: "COFFEE", name: "Кофе", sortOrder: 10 },
+  { code: "TEA", name: "Цай", sortOrder: 20 },
+  { code: "COLD_DRINK", name: "Хүйтэн уух зүйлс", sortOrder: 30 },
+  { code: "BAKERY", name: "Нарийн боов", sortOrder: 40 },
+  { code: "DESSERT", name: "Амттан", sortOrder: 50 },
+  { code: "LIGHT_MEAL", name: "Хөнгөн хоол", sortOrder: 60 },
+] as const;
+
+const SELF_SERVICE_MODE_KEY = "self-service-mode";
+
 const LEGACY_MOJIBAKE_DEFAULT_NAMES: Readonly<Record<string, string>> = {
   SOUP: "\u0031\u002d\u00d1\u20ac\u0020\u00d1\u2026\u00d0\u00be\u00d0\u00be\u00d0\u00bb",
   HOT: "\u0032\u002d\u00d1\u20ac\u0020\u00d1\u2026\u00d0\u00be\u00d0\u00be\u00d0\u00bb",
@@ -44,8 +55,17 @@ export async function listRestaurantMenuCategories(organizationId: string) {
   });
 
   if (currentCount === 0) {
+    const modeSetting = await prisma.siteSetting.findUnique({
+      where: { key: `${SELF_SERVICE_MODE_KEY}-${organizationId}` },
+      select: { value: true },
+    });
+    const defaultCategories =
+      modeSetting?.value.trim().toUpperCase() === "CAFE"
+        ? DEFAULT_CAFE_MENU_CATEGORIES
+        : DEFAULT_RESTAURANT_MENU_CATEGORIES;
+
     await prisma.restaurantMenuCategory.createMany({
-      data: DEFAULT_RESTAURANT_MENU_CATEGORIES.map((category) => ({
+      data: defaultCategories.map((category) => ({
         organizationId,
         ...category,
       })),

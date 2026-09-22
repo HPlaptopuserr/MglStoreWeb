@@ -1,7 +1,10 @@
+import type { SelfServiceMode } from "@/lib/org-types";
+
 export const SUPPLY_PRODUCTS_FEATURE_KEY = "supply-products-enabled";
 export const SERVICE_POSTS_FEATURE_KEY = "service-posts-enabled";
 export const PREORDER_PRODUCTS_FEATURE_KEY = "preorder-products-enabled";
 export const SELF_SERVICE_FEATURE_KEY = "self-service-enabled";
+export const SELF_SERVICE_MODE_KEY = "self-service-mode";
 
 const TRUE_VALUES = new Set(["1", "true", "on", "yes"]);
 
@@ -15,4 +18,17 @@ export function isFeatureEnabled(
   if (raw === undefined || raw === null || raw === "") return defaultEnabled;
   if (typeof raw === "boolean") return raw;
   return TRUE_VALUES.has(String(raw).trim().toLowerCase());
+}
+
+export function getSelfServiceMode(
+  settings: Record<string, unknown>,
+  organizationId: string,
+): SelfServiceMode {
+  const value = String(
+    settings[`${SELF_SERVICE_MODE_KEY}-${organizationId}`] ?? "",
+  )
+    .trim()
+    .toUpperCase();
+
+  return value === "CAFE" ? "CAFE" : "RESTAURANT";
 }

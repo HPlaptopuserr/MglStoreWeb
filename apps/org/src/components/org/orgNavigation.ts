@@ -5,6 +5,7 @@ import {
   ChefHat,
   ClipboardList,
   Clapperboard,
+  Coffee,
   MonitorSmartphone,
   UtensilsCrossed,
   LayoutDashboard,
@@ -30,6 +31,7 @@ export function getOrgNavItems(
   user?: OrgUser | null,
 ): OrgNavItem[] {
   if (features.selfService) {
+    const isCafe = features.selfServiceMode === "CAFE";
     return [
       {
         label: "Өөртөө үйлчлэх касс",
@@ -37,9 +39,9 @@ export function getOrgNavItems(
         icon: MonitorSmartphone,
       },
       {
-        label: "Гал тогооны дэлгэц",
+        label: isCafe ? "Бариста дэлгэц" : "Гал тогооны дэлгэц",
         href: "/dashboard/kitchen-display",
-        icon: ChefHat,
+        icon: isCafe ? Coffee : ChefHat,
       },
       { label: "Бүтээгдэхүүн", href: "/dashboard/products", icon: Package },
       { label: "Тохиргоо", href: "/dashboard/settings", icon: Settings },

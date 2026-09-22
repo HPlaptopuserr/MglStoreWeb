@@ -6,6 +6,7 @@ import {
   AlertCircle,
   ChefHat,
   Clapperboard,
+  Coffee,
   Clock3,
   ImageIcon,
   Loader2,
@@ -93,32 +94,39 @@ const taxTypes: Array<{ value: TaxType; label: string }> = [
   { value: "NOT_VAT", label: "Монгол Улсын хилийн гаднах борлуулалт" },
 ];
 
-const emptyForm: MenuForm = {
+const createEmptyForm = (isCafe: boolean): MenuForm => ({
   name: "",
   description: "",
   sku: "",
   price: "",
   costPrice: "",
-  menuCategory: "HOT",
-  kitchenStation: "HOT_KITCHEN",
-  preparationMinutes: "15",
+  menuCategory: isCafe ? "COFFEE" : "HOT",
+  kitchenStation: isCafe ? "BAR" : "HOT_KITCHEN",
+  preparationMinutes: isCafe ? "5" : "15",
   isTakeawayAvailable: true,
   imageUrl: "",
   taxType: "VAT_ABLE",
   cityTaxRate: "0",
   classificationCode: EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
   taxProductCode: "",
-};
+});
 
-const stationLabel = (value?: KitchenStation | null) =>
-  kitchenStations.find((station) => station.value === value)?.label ??
-  "Тодорхойгүй";
+const stationLabel = (
+  value: KitchenStation | null | undefined,
+  isCafe: boolean,
+) =>
+  value === "BAR" && isCafe
+    ? "Бариста"
+    : (kitchenStations.find((station) => station.value === value)?.label ??
+      "Тодорхойгүй");
 
 const formatMoney = (value: number) =>
   `${new Intl.NumberFormat("mn-MN").format(Number(value) || 0)}₮`;
 
 export function RestaurantProductsScreen() {
-  const { user } = useOrg();
+  const { user, features } = useOrg();
+  const isCafe = features.selfServiceMode === "CAFE";
+  const defaultForm = useMemo(() => createEmptyForm(isCafe), [isCafe]);
   const [products, setProducts] = useState<RestaurantProduct[]>([]);
   const [menuCategories, setMenuCategories] = useState<
     RestaurantMenuCategory[]
@@ -133,7 +141,7 @@ export function RestaurantProductsScreen() {
   const [formOpen, setFormOpen] = useState(false);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState<MenuForm>(emptyForm);
+  const [form, setForm] = useState<MenuForm>(() => createEmptyForm(isCafe));
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<"ALL" | MenuCategory>(
     "ALL",
@@ -214,8 +222,8 @@ export function RestaurantProductsScreen() {
   const openCreate = () => {
     setEditingId(null);
     setForm({
-      ...emptyForm,
-      menuCategory: menuCategories[0]?.code || emptyForm.menuCategory,
+      ...defaultForm,
+      menuCategory: menuCategories[0]?.code || defaultForm.menuCategory,
     });
     setFormOpen(true);
   };
@@ -231,9 +239,11 @@ export function RestaurantProductsScreen() {
       menuCategory:
         product.menuCategory ||
         menuCategories[0]?.code ||
-        emptyForm.menuCategory,
-      kitchenStation: product.kitchenStation || "HOT_KITCHEN",
-      preparationMinutes: String(product.preparationMinutes ?? 15),
+        defaultForm.menuCategory,
+      kitchenStation: product.kitchenStation || defaultForm.kitchenStation,
+      preparationMinutes: String(
+        product.preparationMinutes ?? Number(defaultForm.preparationMinutes),
+      ),
       isTakeawayAvailable: product.isTakeawayAvailable !== false,
       imageUrl: product.images[0]?.url || "",
       taxType: product.taxType || "VAT_ABLE",
@@ -250,7 +260,7 @@ export function RestaurantProductsScreen() {
     if (saving) return;
     setFormOpen(false);
     setEditingId(null);
-    setForm(emptyForm);
+    setForm(defaultForm);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -266,7 +276,10 @@ export function RestaurantProductsScreen() {
     const cityTaxRate = Number(form.cityTaxRate);
 
     if (!form.name.trim()) {
-      showMessage("error", "Хоолны нэр оруулна уу");
+      showMessage(
+        "error",
+        `${isCafe ? "Бүтээгдэхүүний" : "Хоолны"} нэр оруулна уу`,
+      );
       return;
     }
     if (!Number.isFinite(price) || price < 0) {
@@ -335,21 +348,27 @@ export function RestaurantProductsScreen() {
       );
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(payload?.message || "Хоол хадгалахад алдаа гарлаа");
+        throw new Error(
+          payload?.message || "Бүтээгдэхүүн хадгалахад алдаа гарлаа",
+        );
       }
 
       setFormOpen(false);
       setEditingId(null);
-      setForm(emptyForm);
+      setForm(defaultForm);
       showMessage(
         "success",
-        editingId ? "Хоолны мэдээлэл шинэчлэгдлээ" : "Хоол менюд нэмэгдлээ",
+        editingId
+          ? "Бүтээгдэхүүний мэдээлэл шинэчлэгдлээ"
+          : "Бүтээгдэхүүн менюд нэмэгдлээ",
       );
       await loadProducts();
     } catch (error) {
       showMessage(
         "error",
-        error instanceof Error ? error.message : "Хоол хадгалахад алдаа гарлаа",
+        error instanceof Error
+          ? error.message
+          : "Бүтээгдэхүүн хадгалахад алдаа гарлаа",
       );
     } finally {
       setSaving(false);
@@ -399,16 +418,20 @@ export function RestaurantProductsScreen() {
       });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload?.message || "Хоол устгахад алдаа гарлаа");
+        throw new Error(
+          payload?.message || "Бүтээгдэхүүн устгахад алдаа гарлаа",
+        );
       }
       setProducts((current) =>
         current.filter((item) => item.id !== product.id),
       );
-      showMessage("success", "Хоол устгагдлаа");
+      showMessage("success", "Бүтээгдэхүүн устгагдлаа");
     } catch (error) {
       showMessage(
         "error",
-        error instanceof Error ? error.message : "Хоол устгахад алдаа гарлаа",
+        error instanceof Error
+          ? error.message
+          : "Бүтээгдэхүүн устгахад алдаа гарлаа",
       );
     } finally {
       setDeletingId(null);
@@ -502,14 +525,19 @@ export function RestaurantProductsScreen() {
       <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm font-bold text-emerald-700">
-            <UtensilsCrossed className="h-4 w-4" />
-            Рестораны меню
+            {isCafe ? (
+              <Coffee className="h-4 w-4" />
+            ) : (
+              <UtensilsCrossed className="h-4 w-4" />
+            )}
+            {isCafe ? "Кофе шопын меню" : "Рестораны меню"}
           </div>
           <h1 className="mt-1 text-2xl font-black text-slate-950">
-            Хоол, ундааны бүртгэл
+            {isCafe ? "Кофе, бүтээгдэхүүний бүртгэл" : "Хоол, ундааны бүртгэл"}
           </h1>
           <p className="mt-1 text-sm font-medium text-slate-500">
-            Энд нэмсэн идэвхтэй бүтээгдэхүүн ресторан кассын менюд харагдана.
+            Энд нэмсэн идэвхтэй бүтээгдэхүүн{" "}
+            {isCafe ? "кофе шопын" : "рестораны"} кассын менюд харагдана.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -542,8 +570,16 @@ export function RestaurantProductsScreen() {
       <div className="flex flex-wrap items-center gap-x-8 gap-y-3 border-b border-slate-200 pb-4">
         <Metric label="Нийт меню" value={products.length} />
         <Metric label="Өнөөдөр гарна" value={activeCount} accent="emerald" />
-        <Metric label="Гал тогоо" value={kitchenCount} accent="amber" />
-        <Metric label="Бар" value={barCount} accent="sky" />
+        <Metric
+          label={isCafe ? "Бусад хэсэг" : "Гал тогоо"}
+          value={kitchenCount}
+          accent="amber"
+        />
+        <Metric
+          label={isCafe ? "Бариста" : "Бар"}
+          value={barCount}
+          accent="sky"
+        />
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -568,7 +604,7 @@ export function RestaurantProductsScreen() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Хоол, SKU хайх..."
+            placeholder={`${isCafe ? "Бүтээгдэхүүн" : "Хоол"}, SKU хайх...`}
             className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-10 pr-3 text-sm font-semibold outline-none transition focus:border-slate-400"
           />
         </label>
@@ -582,10 +618,13 @@ export function RestaurantProductsScreen() {
         <div className="flex min-h-72 flex-col items-center justify-center border border-dashed border-slate-300 bg-white px-6 text-center">
           <ChefHat className="h-10 w-10 text-slate-300" />
           <h2 className="mt-4 text-lg font-black text-slate-900">
-            {query ? "Хайлтад тохирох хоол алга" : "Меню хоосон байна"}
+            {query
+              ? `Хайлтад тохирох ${isCafe ? "бүтээгдэхүүн" : "хоол"} алга`
+              : "Меню хоосон байна"}
           </h2>
           <p className="mt-1 max-w-md text-sm font-medium text-slate-500">
-            Шинэ хоол бүртгээд ресторан кассын менюгээ бүрдүүлээрэй.
+            Шинэ {isCafe ? "бүтээгдэхүүн" : "хоол"} бүртгээд{" "}
+            {isCafe ? "кофе шопын" : "рестораны"} кассын менюгээ бүрдүүлээрэй.
           </p>
           {!query ? (
             <button
@@ -594,16 +633,16 @@ export function RestaurantProductsScreen() {
               className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-4 text-sm font-black text-white"
             >
               <Plus className="h-4 w-4" />
-              Эхний хоолоо нэмэх
+              Эхний {isCafe ? "бүтээгдэхүүнээ" : "хоолоо"} нэмэх
             </button>
           ) : null}
         </div>
       ) : (
         <div className="overflow-hidden border border-slate-200 bg-white">
           <div className="grid grid-cols-[minmax(240px,1.5fr)_150px_150px_210px_110px_100px] border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-black text-slate-500 max-xl:grid-cols-[minmax(220px,1fr)_140px_210px_100px_100px]">
-            <span>Хоол</span>
+            <span>{isCafe ? "Бүтээгдэхүүн" : "Хоол"}</span>
             <span className="max-xl:hidden">Ангилал</span>
-            <span>Гал тогоо</span>
+            <span>{isCafe ? "Бэлтгэх хэсэг" : "Гал тогоо"}</span>
             <span>Өнөөдрийн төлөв</span>
             <span className="text-right">Үнэ</span>
             <span className="text-right">Үйлдэл</span>
@@ -646,7 +685,7 @@ export function RestaurantProductsScreen() {
                   {categoryLabel(product.menuCategory)}
                 </span>
                 <span className="text-sm font-bold text-slate-600">
-                  {stationLabel(product.kitchenStation)}
+                  {stationLabel(product.kitchenStation, isCafe)}
                 </span>
                 <button
                   type="button"
@@ -710,6 +749,7 @@ export function RestaurantProductsScreen() {
           menuCategories={menuCategories}
           editing={Boolean(editingId)}
           saving={saving}
+          isCafe={isCafe}
           onChange={setForm}
           onClose={closeForm}
           onSubmit={handleSubmit}
@@ -965,6 +1005,7 @@ function MenuItemForm({
   menuCategories,
   editing,
   saving,
+  isCafe,
   onChange,
   onClose,
   onSubmit,
@@ -973,6 +1014,7 @@ function MenuItemForm({
   menuCategories: RestaurantMenuCategory[];
   editing: boolean;
   saving: boolean;
+  isCafe: boolean;
   onChange: (form: MenuForm) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
@@ -1043,11 +1085,17 @@ function MenuItemForm({
         <header className="flex shrink-0 items-start justify-between border-b border-slate-200 px-6 py-4">
           <div>
             <div className="flex items-center gap-2 text-sm font-bold text-emerald-700">
-              <ChefHat className="h-4 w-4" />
-              Рестораны меню
+              {isCafe ? (
+                <Coffee className="h-4 w-4" />
+              ) : (
+                <ChefHat className="h-4 w-4" />
+              )}
+              {isCafe ? "Кофе шопын меню" : "Рестораны меню"}
             </div>
             <h2 className="mt-1 text-xl font-black text-slate-950">
-              {editing ? "Хоолны мэдээлэл засах" : "Шинэ хоол нэмэх"}
+              {editing
+                ? `${isCafe ? "Бүтээгдэхүүний" : "Хоолны"} мэдээлэл засах`
+                : `Шинэ ${isCafe ? "бүтээгдэхүүн" : "хоол"} нэмэх`}
             </h2>
           </div>
           <button
@@ -1074,12 +1122,17 @@ function MenuItemForm({
         >
           <div className="grid gap-6 p-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(280px,0.75fr)]">
             <div className="space-y-5">
-              <Field label="Хоолны нэр" required>
+              <Field
+                label={isCafe ? "Бүтээгдэхүүний нэр" : "Хоолны нэр"}
+                required
+              >
                 <input
                   required
                   value={form.name}
                   onChange={(event) => update("name", event.target.value)}
-                  placeholder="Жишээ: Үхрийн махан стейк"
+                  placeholder={
+                    isCafe ? "Жишээ: Капучино" : "Жишээ: Үхрийн махан стейк"
+                  }
                   className={inputClass}
                 />
               </Field>
@@ -1101,7 +1154,10 @@ function MenuItemForm({
                   </select>
                 </Field>
 
-                <Field label="Гал тогооны хэсэг" required>
+                <Field
+                  label={isCafe ? "Бэлтгэх хэсэг" : "Гал тогооны хэсэг"}
+                  required
+                >
                   <select
                     value={form.kitchenStation}
                     onChange={(event) =>
@@ -1114,7 +1170,9 @@ function MenuItemForm({
                   >
                     {kitchenStations.map((station) => (
                       <option key={station.value} value={station.value}>
-                        {station.label}
+                        {isCafe && station.value === "BAR"
+                          ? "Бариста"
+                          : station.label}
                       </option>
                     ))}
                   </select>
@@ -1199,7 +1257,11 @@ function MenuItemForm({
                   onChange={(event) =>
                     update("description", event.target.value)
                   }
-                  placeholder="Орц, амт, порцын мэдээлэл..."
+                  placeholder={
+                    isCafe
+                      ? "Орц, хэмжээ, амтны мэдээлэл..."
+                      : "Орц, амт, порцын мэдээлэл..."
+                  }
                   className={`${inputClass} h-auto resize-none py-3`}
                 />
               </Field>
@@ -1210,7 +1272,7 @@ function MenuItemForm({
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-black text-slate-950">
-                      Хоолны зураг
+                      {isCafe ? "Бүтээгдэхүүний зураг" : "Хоолны зураг"}
                     </h3>
                     <p className="mt-1 text-xs font-semibold text-slate-500">
                       JPG, PNG, WebP, GIF · 5MB хүртэл
@@ -1238,7 +1300,7 @@ function MenuItemForm({
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={form.imageUrl}
-                      alt="Хоолны зураг урьдчилан харах"
+                      alt={`${isCafe ? "Бүтээгдэхүүний" : "Хоолны"} зураг урьдчилан харах`}
                       className="h-full w-full object-cover"
                     />
                   ) : (
@@ -1375,7 +1437,8 @@ function MenuItemForm({
 
               <div className="flex items-center gap-3 border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
                 <Clock3 className="h-4 w-4 shrink-0" />
-                Хадгалсны дараа идэвхтэй хоол кассын менюд шууд харагдана.
+                Хадгалсны дараа идэвхтэй бүтээгдэхүүн кассын менюд шууд
+                харагдана.
               </div>
             </div>
           </div>

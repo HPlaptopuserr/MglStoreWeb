@@ -412,7 +412,8 @@ function SetupState({
 }
 
 export function SelfServiceCheckoutScreen() {
-  const { user } = useOrg();
+  const { user, features } = useOrg();
+  const isCafe = features.selfServiceMode === "CAFE";
   const [screen, setScreen] = useState<Screen>("welcome");
   const [orderMode, setOrderMode] = useState<OrderMode | null>(null);
   const [register, setRegister] = useState<RestaurantPosRegister | null>(null);
@@ -745,7 +746,10 @@ export function SelfServiceCheckoutScreen() {
           checkout,
         });
       } catch (error) {
-        console.warn("Could not persist pending self-service QPay payment", error);
+        console.warn(
+          "Could not persist pending self-service QPay payment",
+          error,
+        );
       }
     },
     [orderMode, register, user.organizationId],
@@ -763,7 +767,10 @@ export function SelfServiceCheckoutScreen() {
           checkout,
         });
       } catch (error) {
-        console.warn("Could not persist pending self-service card payment", error);
+        console.warn(
+          "Could not persist pending self-service card payment",
+          error,
+        );
       }
     },
     [orderMode, register, user.organizationId],
@@ -1146,9 +1153,7 @@ export function SelfServiceCheckoutScreen() {
   };
 
   const cleanupDraftTicket = useCallback(
-    async (
-      checkout: Pick<PendingCheckout, "ticket" | "shiftId">,
-    ) => {
+    async (checkout: Pick<PendingCheckout, "ticket" | "shiftId">) => {
       if (!register || checkout.ticket.status !== "OPEN") return;
       try {
         await saveRestaurantTicket({
@@ -1954,7 +1959,9 @@ export function SelfServiceCheckoutScreen() {
                 {user.organizationName || "MGL Store"}
               </p>
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
-                self service
+                {isCafe
+                  ? "coffee shop · self service"
+                  : "restaurant · self service"}
               </p>
             </div>
           </div>
@@ -1987,7 +1994,9 @@ export function SelfServiceCheckoutScreen() {
               Тавтай морилно уу
             </h1>
             <p className="mx-auto mt-4 max-w-xl text-base font-semibold leading-7 text-slate-500 sm:text-lg">
-              Захиалгын төрлөө сонгоод бүтээгдэхүүнээ өөрөө захиалаарай.
+              {isCafe
+                ? "Кофе, уух зүйлээ сонгоод захиалгаа өөрөө хийгээрэй."
+                : "Захиалгын төрлөө сонгоод бүтээгдэхүүнээ өөрөө захиалаарай."}
             </p>
           </div>
 
@@ -2003,7 +2012,7 @@ export function SelfServiceCheckoutScreen() {
               </span>
               <span className="mt-6 text-2xl font-black">Энд хэрэглэх</span>
               <span className="mt-2 text-sm font-semibold text-white/55">
-                Эндээ тухтай иднэ
+                {isCafe ? "Эндээ тухтай ууж, хэрэглэнэ" : "Эндээ тухтай иднэ"}
               </span>
               <ChevronRight className="absolute bottom-7 right-7 h-6 w-6 text-white/35" />
             </button>
@@ -2051,9 +2060,7 @@ export function SelfServiceCheckoutScreen() {
             Картын төлбөр
           </p>
           <h1 className="mt-3 text-4xl font-black tracking-tight">
-            {cardPaymentPending
-              ? "Картаа уншуулна уу"
-              : "Төлбөр баталгаажсан"}
+            {cardPaymentPending ? "Картаа уншуулна уу" : "Төлбөр баталгаажсан"}
           </h1>
           <p className="mx-auto mt-4 max-w-md text-base font-semibold leading-7 text-white/55">
             {cardMessage || "Терминалын дэлгэц дээрх зааврыг дагана уу."}

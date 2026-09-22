@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ChefHat,
   Clock3,
+  Coffee,
   Expand,
   Flame,
   FlaskConical,
@@ -96,7 +97,9 @@ const getSpokenOrderNumber = (value: string) => {
   const parts: string[] = [];
 
   if (hundreds > 0) {
-    parts.push(`${mongolianHundreds[hundreds]} ${remainder > 0 ? "зуун" : "зуу"}`);
+    parts.push(
+      `${mongolianHundreds[hundreds]} ${remainder > 0 ? "зуун" : "зуу"}`,
+    );
   }
   if (tens > 0) {
     parts.push(
@@ -142,8 +145,8 @@ const getElapsedMinutes = (sentAt: string, now: number) => {
 };
 
 const getTicketStation = (ticket: RestaurantKitchenTicket) =>
-  new Set(ticket.items.map((item) => item.kitchenStation).filter(Boolean)).size >
-  1
+  new Set(ticket.items.map((item) => item.kitchenStation).filter(Boolean))
+    .size > 1
     ? "MIXED"
     : ticket.items[0]?.kitchenStation || "HOT_KITCHEN";
 
@@ -264,7 +267,8 @@ const createDemoTickets = (
 };
 
 export function KitchenDisplayScreen() {
-  const { user } = useOrg();
+  const { user, features } = useOrg();
+  const isCafe = features.selfServiceMode === "CAFE";
   const [registers, setRegisters] = useState<RestaurantPosRegister[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [tickets, setTickets] = useState<RestaurantKitchenTicket[]>([]);
@@ -313,8 +317,7 @@ export function KitchenDisplayScreen() {
       ).webkitAudioContext;
     if (!AudioContextConstructor) return null;
 
-    const context =
-      audioContextRef.current || new AudioContextConstructor();
+    const context = audioContextRef.current || new AudioContextConstructor();
     audioContextRef.current = context;
     if (context.state === "suspended") {
       await context.resume().catch(() => undefined);
@@ -322,34 +325,37 @@ export function KitchenDisplayScreen() {
     return context.state === "running" ? context : null;
   }, []);
 
-  const playNewOrderChime = useCallback(async (force = false) => {
-    if (!speakerEnabled && !force) return;
-    const context = await getAudioContext();
-    if (!context) return;
+  const playNewOrderChime = useCallback(
+    async (force = false) => {
+      if (!speakerEnabled && !force) return;
+      const context = await getAudioContext();
+      if (!context) return;
 
-    const startAt = context.currentTime + 0.02;
-    const notes = [
-      { frequency: 880, offset: 0, duration: 0.16 },
-      { frequency: 1174.66, offset: 0.2, duration: 0.24 },
-    ];
-    for (const note of notes) {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      const noteStart = startAt + note.offset;
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(note.frequency, noteStart);
-      gain.gain.setValueAtTime(0.0001, noteStart);
-      gain.gain.exponentialRampToValueAtTime(0.35, noteStart + 0.02);
-      gain.gain.exponentialRampToValueAtTime(
-        0.0001,
-        noteStart + note.duration,
-      );
-      oscillator.connect(gain);
-      gain.connect(context.destination);
-      oscillator.start(noteStart);
-      oscillator.stop(noteStart + note.duration + 0.02);
-    }
-  }, [getAudioContext, speakerEnabled]);
+      const startAt = context.currentTime + 0.02;
+      const notes = [
+        { frequency: 880, offset: 0, duration: 0.16 },
+        { frequency: 1174.66, offset: 0.2, duration: 0.24 },
+      ];
+      for (const note of notes) {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        const noteStart = startAt + note.offset;
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(note.frequency, noteStart);
+        gain.gain.setValueAtTime(0.0001, noteStart);
+        gain.gain.exponentialRampToValueAtTime(0.35, noteStart + 0.02);
+        gain.gain.exponentialRampToValueAtTime(
+          0.0001,
+          noteStart + note.duration,
+        );
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(noteStart);
+        oscillator.stop(noteStart + note.duration + 0.02);
+      }
+    },
+    [getAudioContext, speakerEnabled],
+  );
 
   const loadSetup = useCallback(async () => {
     setLoading(true);
@@ -387,8 +393,7 @@ export function KitchenDisplayScreen() {
       }
       if (!options?.silent) setRefreshing(true);
       try {
-        const nextTickets =
-          await getRestaurantKitchenTickets(selectedBranchId);
+        const nextTickets = await getRestaurantKitchenTickets(selectedBranchId);
         const previousSnapshot = ticketSnapshotRef.current;
         const hasNewTicket =
           previousSnapshot?.branchId === selectedBranchId &&
@@ -472,9 +477,7 @@ export function KitchenDisplayScreen() {
         (ticket) =>
           isActiveStatus(ticket.status) &&
           (stationFilter === "ALL" ||
-            ticket.items.some(
-              (item) => item.kitchenStation === stationFilter,
-            )),
+            ticket.items.some((item) => item.kitchenStation === stationFilter)),
       ),
     [stationFilter, tickets],
   );
@@ -538,41 +541,38 @@ export function KitchenDisplayScreen() {
     setTickets([]);
   };
 
-  const speakMessage = useCallback(
-    (message: string, repetitions = 1) => {
-      if (
-        typeof window === "undefined" ||
-        !("speechSynthesis" in window) ||
-        typeof window.SpeechSynthesisUtterance === "undefined"
-      ) {
-        setError("Энэ browser speaker дуудлага дэмжихгүй байна.");
-        return false;
-      }
+  const speakMessage = useCallback((message: string, repetitions = 1) => {
+    if (
+      typeof window === "undefined" ||
+      !("speechSynthesis" in window) ||
+      typeof window.SpeechSynthesisUtterance === "undefined"
+    ) {
+      setError("Энэ browser speaker дуудлага дэмжихгүй байна.");
+      return false;
+    }
 
-      const voice = window.speechSynthesis
-        .getVoices()
-        .find((item) => item.lang.toLowerCase().startsWith("mn"));
-      for (let index = 0; index < repetitions; index += 1) {
-        const utterance = new window.SpeechSynthesisUtterance(message);
-        utterance.lang = "mn-MN";
-        utterance.rate = 0.82;
-        utterance.pitch = 1;
-        utterance.volume = 1;
-        if (voice) utterance.voice = voice;
-        utterance.onerror = (event) => {
-          if (event.error === "canceled" || event.error === "interrupted") {
-            return;
-          }
-          setError(
-            "Speaker дуудлага ажилласангүй. Төхөөрөмжийн дуу болон Text-to-Speech тохиргоог шалгана уу.",
-          );
-        };
-        window.speechSynthesis.speak(utterance);
-      }
-      return true;
-    },
-    [],
-  );
+    const voice = window.speechSynthesis
+      .getVoices()
+      .find((item) => item.lang.toLowerCase().startsWith("mn"));
+    for (let index = 0; index < repetitions; index += 1) {
+      const utterance = new window.SpeechSynthesisUtterance(message);
+      utterance.lang = "mn-MN";
+      utterance.rate = 0.82;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      if (voice) utterance.voice = voice;
+      utterance.onerror = (event) => {
+        if (event.error === "canceled" || event.error === "interrupted") {
+          return;
+        }
+        setError(
+          "Speaker дуудлага ажилласангүй. Төхөөрөмжийн дуу болон Text-to-Speech тохиргоог шалгана уу.",
+        );
+      };
+      window.speechSynthesis.speak(utterance);
+    }
+    return true;
+  }, []);
 
   const announceReadyOrder = useCallback(
     (ticket: RestaurantKitchenTicket) => {
@@ -582,21 +582,18 @@ export function KitchenDisplayScreen() {
         ticket.restaurantTicket.id,
       );
       speakMessage(
-        `Захиалга ${getSpokenOrderNumber(orderNumber)}, хоолоо аваарай.`,
+        `Захиалга ${getSpokenOrderNumber(orderNumber)}, ${isCafe ? "захиалгаа" : "хоолоо"} аваарай.`,
         2,
       );
     },
-    [speakerEnabled, speakMessage],
+    [isCafe, speakerEnabled, speakMessage],
   );
 
   const toggleSpeaker = () => {
     const nextEnabled = !speakerEnabled;
     setSpeakerEnabled(nextEnabled);
     try {
-      window.localStorage.setItem(
-        SPEAKER_STORAGE_KEY,
-        String(nextEnabled),
-      );
+      window.localStorage.setItem(SPEAKER_STORAGE_KEY, String(nextEnabled));
     } catch {
       // The current session can still use the selected setting.
     }
@@ -618,9 +615,7 @@ export function KitchenDisplayScreen() {
           item.restaurantTicket.id === ticket.restaurantTicket.id &&
           isActiveStatus(item.status),
       );
-      setTickets((current) =>
-        current.filter((item) => item.id !== ticket.id),
-      );
+      setTickets((current) => current.filter((item) => item.id !== ticket.id));
       if (!hasActiveSibling) announceReadyOrder(ticket);
       return;
     }
@@ -633,9 +628,7 @@ export function KitchenDisplayScreen() {
         kitchenTicketId: ticket.id,
         status: "SERVED",
       });
-      setTickets((current) =>
-        current.filter((item) => item.id !== ticket.id),
-      );
+      setTickets((current) => current.filter((item) => item.id !== ticket.id));
       if (updated.orderCompleted) announceReadyOrder(updated);
     } catch (updateError) {
       setError(
@@ -654,11 +647,15 @@ export function KitchenDisplayScreen() {
       <div className="flex h-screen items-center justify-center bg-[#101216] px-6 text-slate-200">
         <div className="text-center">
           <div className="mx-auto flex size-20 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.06] text-slate-100">
-            <ChefHat className="size-10" />
+            {isCafe ? (
+              <Coffee className="size-10" />
+            ) : (
+              <ChefHat className="size-10" />
+            )}
           </div>
           <div className="mt-6 flex items-center justify-center gap-2 text-sm font-black">
             <Loader2 className="size-4 animate-spin text-slate-300" />
-            Гал тогооны дэлгэц ачаалж байна
+            {isCafe ? "Бариста дэлгэц" : "Гал тогооны дэлгэц"} ачаалж байна
           </div>
           <p className="mt-2 text-xs font-semibold text-slate-600">
             Захиалгын мэдээллийг бэлтгэж байна...
@@ -681,12 +678,16 @@ export function KitchenDisplayScreen() {
               <ArrowLeft className="size-5" />
             </Link>
             <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.07] text-slate-100">
-              <ChefHat className="size-7" strokeWidth={2.2} />
+              {isCafe ? (
+                <Coffee className="size-7" strokeWidth={2.2} />
+              ) : (
+                <ChefHat className="size-7" strokeWidth={2.2} />
+              )}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="truncate text-lg font-black tracking-tight sm:text-xl">
-                  Гал тогооны дэлгэц
+                  {isCafe ? "Бариста дэлгэц" : "Гал тогооны дэлгэц"}
                 </h1>
                 <span
                   className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] sm:inline-flex ${
@@ -704,7 +705,7 @@ export function KitchenDisplayScreen() {
                 </span>
               </div>
               <p className="truncate text-xs font-semibold text-slate-500">
-                {user.organizationName || "Ресторан"} ·{" "}
+                {user.organizationName || (isCafe ? "Кофе шоп" : "Ресторан")} ·{" "}
                 {demoMode
                   ? "Демо салбар"
                   : selectedBranch?.name || "Салбар сонгоно уу"}
@@ -749,7 +750,11 @@ export function KitchenDisplayScreen() {
                   ? "Speaker дуудлагыг унтраах"
                   : "Speaker дуудлагыг асаах"
               }
-              title={speakerEnabled ? "Speaker дуудлага асаалттай" : "Speaker дуудлага унтраалттай"}
+              title={
+                speakerEnabled
+                  ? "Speaker дуудлага асаалттай"
+                  : "Speaker дуудлага унтраалттай"
+              }
             >
               {speakerEnabled ? (
                 <Volume2 className="size-4" />
@@ -861,7 +866,9 @@ export function KitchenDisplayScreen() {
           />
         ) : visibleTickets.length === 0 ? (
           <EmptyState
-            title={demoMode ? "Демо захиалга дууслаа" : "Одоогоор захиалга алга"}
+            title={
+              demoMode ? "Демо захиалга дууслаа" : "Одоогоор захиалга алга"
+            }
             description={
               demoMode
                 ? "Демо захиалгуудыг дахин гаргаж дизайн болон товчийг туршина уу."
@@ -928,9 +935,7 @@ function KitchenTicketCard({
   const visibleItems =
     stationFilter === "ALL"
       ? ticket.items
-      : ticket.items.filter(
-          (item) => item.kitchenStation === stationFilter,
-        );
+      : ticket.items.filter((item) => item.kitchenStation === stationFilter);
   const station =
     stationFilter === "ALL" ? getTicketStation(ticket) : stationFilter;
   const orderMode = ticket.restaurantTicket.orderMode;
@@ -994,9 +999,7 @@ function KitchenTicketCard({
             <div className="h-1.5 overflow-hidden rounded-full bg-black/30">
               <div
                 className={`h-full rounded-full transition-[width] duration-500 ${
-                  overdue
-                    ? "bg-rose-400"
-                    : "bg-slate-300"
+                  overdue ? "bg-rose-400" : "bg-slate-300"
                 }`}
                 style={{ width: `${progress}%` }}
               />

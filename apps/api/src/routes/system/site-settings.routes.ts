@@ -88,6 +88,7 @@ const MEMBERSHIP_FRANCHISE_CREDIT_PRICE = 30_000;
 const VENDOR_FEATURE_KEYS = new Set([
   "pos-enabled",
   "self-service-enabled",
+  "self-service-mode",
   "web-products-enabled",
   "supply-products-enabled",
   "preorder-products-enabled",
@@ -96,6 +97,8 @@ const VENDOR_FEATURE_KEYS = new Set([
   "contract-archive-enabled",
 ]);
 const WEB_PRODUCTS_FEATURE_KEY = "web-products-enabled";
+const SELF_SERVICE_MODE_SETTING_KEY = "self-service-mode";
+const SELF_SERVICE_MODES = new Set(["RESTAURANT", "CAFE"]);
 
 function isEnabledSetting(value?: string | null) {
   return ["1", "true", "on", "yes"].includes(
@@ -1873,6 +1876,16 @@ router.put(
       return;
     }
 
+    if (
+      featureKey === SELF_SERVICE_MODE_SETTING_KEY &&
+      !SELF_SERVICE_MODES.has(value.trim().toUpperCase())
+    ) {
+      res.status(400).json({
+        message: "Өөртөө үйлчлэх кассын төрөл RESTAURANT эсвэл CAFE байна",
+      });
+      return;
+    }
+
     try {
       const organization = await prisma.organization.findFirst({
         where: { id: organizationId, deletedAt: null },
@@ -1885,10 +1898,14 @@ router.put(
       }
 
       const settingKey = `${featureKey}-${organizationId}`;
+      const normalizedValue =
+        featureKey === SELF_SERVICE_MODE_SETTING_KEY
+          ? value.trim().toUpperCase()
+          : value;
       const setting = await prisma.siteSetting.upsert({
         where: { key: settingKey },
-        update: { value },
-        create: { key: settingKey, value },
+        update: { value: normalizedValue },
+        create: { key: settingKey, value: normalizedValue },
       });
 
       if (featureKey === WEB_PRODUCTS_FEATURE_KEY) {

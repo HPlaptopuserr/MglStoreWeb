@@ -1,8 +1,11 @@
+export type SelfServiceMode = "RESTAURANT" | "CAFE";
+
 export type OrgFeatureState = {
   supplyProducts: boolean;
   preorderProducts: boolean;
   servicePosts: boolean;
   selfService: boolean;
+  selfServiceMode: SelfServiceMode;
 };
 
 export type DashboardStats = {
