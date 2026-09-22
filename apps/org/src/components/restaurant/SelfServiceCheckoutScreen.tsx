@@ -449,6 +449,9 @@ export function SelfServiceCheckoutScreen() {
   const [receipt, setReceipt] = useState<PosReceipt | null>(null);
   const [completedTicketNo, setCompletedTicketNo] = useState("");
   const [cardMessage, setCardMessage] = useState("");
+  const [cardCancelRequested, setCardCancelRequested] = useState(false);
+  const [returningFromCardPayment, setReturningFromCardPayment] =
+    useState(false);
   const [secondsToReset, setSecondsToReset] = useState(30);
   const [silentPrintEnabled, setSilentPrintEnabled] = useState(false);
   const finalizedInvoiceRef = useRef<string | null>(null);
@@ -1001,6 +1004,8 @@ export function SelfServiceCheckoutScreen() {
       setReceipt(null);
       setCompletedTicketNo("");
       setCardMessage("");
+      setCardCancelRequested(false);
+      setReturningFromCardPayment(false);
       setSecondsToReset(30);
       finalizedInvoiceRef.current = null;
       cancellingInvoiceRef.current = null;
@@ -1181,6 +1186,8 @@ export function SelfServiceCheckoutScreen() {
       cancelled: false,
       terminalCancelRequested: false,
     };
+    setCardCancelRequested(false);
+    setReturningFromCardPayment(false);
     if (cardPaymentRunRef.current) {
       cardPaymentRunRef.current.cancelled = true;
       cardPaymentRunRef.current.abortController.abort();
@@ -1314,12 +1321,14 @@ export function SelfServiceCheckoutScreen() {
     const run = cardPaymentRunRef.current;
     if (!run) {
       if (pendingCardCheckout?.cardAttempt.status === "PENDING") {
+        setCardCancelRequested(true);
         setCardMessage("POS дээр Буцах товч дарна уу.");
       }
       return;
     }
     if (run.cancelled || run.terminalCancelRequested) return;
     run.terminalCancelRequested = true;
+    setCardCancelRequested(true);
     setCardMessage("POS дээр Буцах товч дарна уу.");
   };
 
@@ -1403,6 +1412,33 @@ export function SelfServiceCheckoutScreen() {
       user.organizationId,
     ],
   );
+
+  const returnFromCancelledCardPayment = async () => {
+    if (returningFromCardPayment) return;
+
+    setReturningFromCardPayment(true);
+    const checkout = pendingCardCheckout;
+
+    const run = cardPaymentRunRef.current;
+    if (run) {
+      run.cancelled = true;
+      run.abortController.abort();
+      cardPaymentRunRef.current = null;
+    }
+
+    clearSelfServicePendingPayment();
+    autoRecoverCardAttemptRef.current = null;
+    setPendingCardCheckout(null);
+    setActionError("");
+    setCardMessage("");
+    setCardCancelRequested(false);
+    setReturningFromCardPayment(false);
+    setScreen("checkout");
+
+    if (checkout) {
+      await cleanupDraftTicket(checkout);
+    }
+  };
 
   useEffect(() => {
     const attemptId = pendingCardCheckout?.cardAttempt.attemptId;
@@ -1511,6 +1547,8 @@ export function SelfServiceCheckoutScreen() {
 
     setSubmitting(true);
     setActionError("");
+    setCardCancelRequested(false);
+    setReturningFromCardPayment(false);
     let activeShift = shift;
     let savedTicket: RestaurantTicket | null = null;
     let recoverableCardCheckout: PendingCardCheckout | null = null;
@@ -2037,15 +2075,36 @@ export function SelfServiceCheckoutScreen() {
                 Терминалын хариуг хүлээж байна
               </div>
               {pendingCardCheckout?.cardAttempt.status !== "APPROVED" ? (
-                <button
-                  type="button"
-                  onClick={cancelCardPayment}
-                  disabled={cardMessage === "POS дээр Буцах товч дарна уу."}
-                  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-6 text-sm font-black text-white/75 transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-50"
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                  Цуцлах · Захиалга руу буцах
-                </button>
+                <div className="flex flex-col items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={cancelCardPayment}
+                    disabled={cardCancelRequested}
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-6 text-sm font-black text-white/75 transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-50"
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                    Цуцлах · Захиалга руу буцах
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void returnFromCancelledCardPayment()}
+                    disabled={returningFromCardPayment}
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#f4c34f] px-6 py-3 text-sm font-black text-[#172219] transition hover:bg-[#f7cf6d] disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {returningFromCardPayment ? (
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                    ) : (
+                      <ArrowLeft className="h-5 w-5" />
+                    )}
+                    {returningFromCardPayment
+                      ? "Буцаж байна..."
+                      : "Терминал дээр цуцалсан · Шууд буцах"}
+                  </button>
+                  <p className="max-w-sm text-xs font-semibold leading-5 text-white/45">
+                    Зөвхөн terminal дээр төлбөр цуцлагдсан үед энэ товчийг дарна
+                    уу.
+                  </p>
+                </div>
               ) : null}
             </div>
           ) : pendingCardCheckout?.cardAttempt.status === "APPROVED" ? (
