@@ -99,6 +99,7 @@ type PendingCardCheckout = Omit<PendingCheckout, "invoice"> & {
 type CardPaymentRun = {
   abortController: AbortController;
   cancelled: boolean;
+  terminalCancelRequested: boolean;
 };
 
 const REGISTER_STORAGE_KEY = "org_restaurant_pos_register_id";
@@ -1087,6 +1088,7 @@ export function SelfServiceCheckoutScreen() {
     const run: CardPaymentRun = {
       abortController: new AbortController(),
       cancelled: false,
+      terminalCancelRequested: false,
     };
     if (cardPaymentRunRef.current) {
       cardPaymentRunRef.current.cancelled = true;
@@ -1152,6 +1154,9 @@ export function SelfServiceCheckoutScreen() {
             attemptId: attempt.attemptId,
             result: { status: "FAILED", message },
           }).catch(() => null);
+          if (run.terminalCancelRequested) {
+            throw new Error(CARD_PAYMENT_CANCELLED_MESSAGE);
+          }
           throw new Error(message);
         }
       } else {
@@ -1178,13 +1183,18 @@ export function SelfServiceCheckoutScreen() {
           );
           if (approvedAttempt.status === "PENDING") {
             setCardMessage(
-              "Терминал дээр картаа уншуулж төлбөрөө баталгаажуулна уу.",
+              run.terminalCancelRequested
+                ? "POS дээр Буцах товч дарна уу."
+                : "Терминал дээр картаа уншуулж төлбөрөө баталгаажуулна уу.",
             );
           }
         }
       }
 
-      if (isCancelled() && approvedAttempt.status !== "APPROVED") {
+      if (
+        (isCancelled() || run.terminalCancelRequested) &&
+        approvedAttempt.status !== "APPROVED"
+      ) {
         throw new Error(CARD_PAYMENT_CANCELLED_MESSAGE);
       }
 
@@ -1208,10 +1218,9 @@ export function SelfServiceCheckoutScreen() {
 
   const cancelCardPayment = () => {
     const run = cardPaymentRunRef.current;
-    if (!run || run.cancelled) return;
-    run.cancelled = true;
-    run.abortController.abort();
-    setCardMessage("Төлбөрийг цуцалж, захиалга руу буцаж байна...");
+    if (!run || run.cancelled || run.terminalCancelRequested) return;
+    run.terminalCancelRequested = true;
+    setCardMessage("POS дээр Буцах товч дарна уу.");
   };
 
   const finalizeCardPayment = async (checkout: PendingCardCheckout) => {
@@ -1774,10 +1783,7 @@ export function SelfServiceCheckoutScreen() {
                 <button
                   type="button"
                   onClick={cancelCardPayment}
-                  disabled={
-                    cardMessage ===
-                    "Төлбөрийг цуцалж, захиалга руу буцаж байна..."
-                  }
+                  disabled={cardMessage === "POS дээр Буцах товч дарна уу."}
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-6 text-sm font-black text-white/75 transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-50"
                 >
                   <ArrowLeft className="h-5 w-5" />
