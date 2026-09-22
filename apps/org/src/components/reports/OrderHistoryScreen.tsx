@@ -299,7 +299,14 @@ export default function OrderHistoryScreen() {
 
   const returnSaleEbarimt = useCallback(
     async (sale: RestaurantSalesHistoryItem) => {
-      if (ebarimtStatus(sale) !== "SUCCESS") return "";
+      const initialStatus = ebarimtStatus(sale);
+      if (
+        initialStatus !== "SUCCESS" &&
+        initialStatus !== "RETURN_PENDING" &&
+        initialStatus !== "RETURNED"
+      ) {
+        return "";
+      }
 
       setReturningSaleId(sale.id);
       try {
@@ -316,43 +323,68 @@ export default function OrderHistoryScreen() {
             // The local PosAPI URL fallback can still be used below.
           }
         }
-        const returned = await returnLocalEbarimtReceipt(sale, register);
-        if (!returned) return "";
+        let currentEbarimt = sale.ebarimt;
+        if (initialStatus === "SUCCESS") {
+          const returned = await returnLocalEbarimtReceipt(sale, register);
+          if (!returned) {
+            throw new Error("Ebarimt буцаалтын хүсэлт үүссэнгүй.");
+          }
 
-        const original = sale.ebarimt;
-        const attached = await attachEbarimtReceipt(sale.id, {
+          const pending = await attachEbarimtReceipt(sale.id, {
+            status: "RETURN_PENDING",
+            billId: currentEbarimt?.billId ?? null,
+            receiptId: currentEbarimt?.receiptId ?? null,
+            qrData: currentEbarimt?.qrData ?? null,
+            lottery: currentEbarimt?.lottery ?? null,
+            date: currentEbarimt?.date ?? null,
+            error: null,
+            receiptType: currentEbarimt?.receiptType ?? null,
+            customerName: currentEbarimt?.customerName ?? null,
+            customerTin: currentEbarimt?.customerTin ?? null,
+            customerRegNo: currentEbarimt?.customerRegNo ?? null,
+            payload: {
+              returnedAt: new Date().toISOString(),
+              response: returned.response,
+            },
+          });
+          currentEbarimt = pending.ebarimt;
+          setSales((current) =>
+            current.map((item) =>
+              item.id === sale.id
+                ? { ...item, ebarimt: pending.ebarimt }
+                : item,
+            ),
+          );
+        }
+
+        const info = await sendLocalEbarimtData(register);
+        const completed = await attachEbarimtReceipt(sale.id, {
           status: "RETURNED",
-          billId: original?.billId ?? null,
-          receiptId: original?.receiptId ?? null,
-          qrData: original?.qrData ?? null,
-          lottery: original?.lottery ?? null,
-          date: original?.date ?? null,
+          billId: currentEbarimt?.billId ?? null,
+          receiptId: currentEbarimt?.receiptId ?? null,
+          qrData: currentEbarimt?.qrData ?? null,
+          lottery: currentEbarimt?.lottery ?? null,
+          date: currentEbarimt?.date ?? null,
           error: null,
-          receiptType: original?.receiptType ?? null,
-          customerName: original?.customerName ?? null,
-          customerTin: original?.customerTin ?? null,
-          customerRegNo: original?.customerRegNo ?? null,
+          receiptType: currentEbarimt?.receiptType ?? null,
+          customerName: currentEbarimt?.customerName ?? null,
+          customerTin: currentEbarimt?.customerTin ?? null,
+          customerRegNo: currentEbarimt?.customerRegNo ?? null,
           payload: {
-            returnedAt: new Date().toISOString(),
-            response: returned.response,
+            sentAt: new Date().toISOString(),
+            lastSentDate: info.lastSentDate ?? null,
           },
         });
         setSales((current) =>
           current.map((item) =>
             item.id === sale.id
-              ? { ...item, ebarimt: attached.ebarimt }
+              ? { ...item, ebarimt: completed.ebarimt }
               : item,
           ),
         );
-
-        try {
-          await sendLocalEbarimtData(register);
-          return "";
-        } catch (cause) {
-          return cause instanceof Error
-            ? ` Ebarimt буцаалт хадгалагдсан боловч илгээхэд алдаа гарлаа: ${cause.message}`
-            : " Ebarimt буцаалт хадгалагдсан боловч илгээхэд алдаа гарлаа.";
-        }
+        return info.lastSentDate
+          ? ` SendData амжилттай (${info.lastSentDate}).`
+          : " SendData амжилттай.";
       } finally {
         setReturningSaleId("");
       }
@@ -373,7 +405,9 @@ export default function OrderHistoryScreen() {
         return;
       }
 
-      const hasEbarimt = ebarimtStatus(sale) === "SUCCESS";
+      const hasEbarimt = ["SUCCESS", "RETURN_PENDING"].includes(
+        ebarimtStatus(sale),
+      );
       const confirmed = window.confirm(
         [
           `№${displayOrderNumber(sale)} захиалгыг цуцлах уу?`,
@@ -725,6 +759,10 @@ export default function OrderHistoryScreen() {
                                   <p className="mt-3 rounded-lg bg-emerald-50 p-3 text-emerald-700">
                                     Ebarimt буцаагдсан
                                   </p>
+                                ) : receiptStatus === "RETURN_PENDING" ? (
+                                  <p className="mt-3 rounded-lg bg-amber-50 p-3 text-amber-700">
+                                    Ebarimt SendData хүлээгдэж байна
+                                  </p>
                                 ) : receiptStatus === "SUCCESS" ? (
                                   <p className="mt-3 rounded-lg bg-sky-50 p-3 text-sky-700">
                                     Ebarimt гарсан
@@ -749,7 +787,9 @@ export default function OrderHistoryScreen() {
                                     )}
                                     Захиалга цуцлах
                                   </button>
-                                ) : receiptStatus === "SUCCESS" ? (
+                                ) : receiptStatus === "SUCCESS" ||
+                                  receiptStatus === "RETURN_PENDING" ||
+                                  receiptStatus === "RETURNED" ? (
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -763,7 +803,10 @@ export default function OrderHistoryScreen() {
                                     ) : (
                                       <RotateCcw className="h-4 w-4" />
                                     )}
-                                    Ebarimt буцаах
+                                    {receiptStatus === "RETURN_PENDING" ||
+                                    receiptStatus === "RETURNED"
+                                      ? "SendData дахин хийх"
+                                      : "Ebarimt буцаах"}
                                   </button>
                                 ) : null}
                               </div>

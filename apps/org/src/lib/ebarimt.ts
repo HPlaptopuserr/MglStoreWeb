@@ -23,7 +23,7 @@ export type EbarimtTinLookupResult = {
 };
 
 export type AttachEbarimtPayload = {
-  status: "SUCCESS" | "FAILED" | "RETURNED";
+  status: "SUCCESS" | "FAILED" | "RETURN_PENDING" | "RETURNED";
   billId?: string | null;
   receiptId?: string | null;
   qrData?: string | null;
@@ -43,9 +43,10 @@ export type EbarimtReturnReceiptResult = {
   response: unknown;
 };
 
-type EbarimtInfo = {
+export type EbarimtInfo = {
   operatorTIN?: string;
   posNo?: string;
+  lastSentDate?: string | null;
   merchants?: Array<{
     tin?: string;
     name?: string;
@@ -212,12 +213,18 @@ async function fetchPosApi<T>(
 
 export async function sendLocalEbarimtData(
   register?: EbarimtRegisterConfig | null,
-) {
-  return fetchPosApi<unknown>(
+): Promise<EbarimtInfo> {
+  await fetchPosApi<unknown>(
     "/rest/sendData",
     undefined,
     register,
     600_000,
+  );
+  return fetchPosApi<EbarimtInfo>(
+    "/rest/info",
+    undefined,
+    register,
+    10_000,
   );
 }
 
