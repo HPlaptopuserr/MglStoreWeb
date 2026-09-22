@@ -70,31 +70,23 @@ import {
   type EbarimtTinLookupResult,
 } from "@/lib/ebarimt";
 import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
+import {
+  clearSelfServicePendingPayment,
+  loadSelfServicePendingPayment,
+  saveSelfServicePendingPayment,
+  type SelfServiceCartLine,
+  type SelfServicePendingCardCheckout,
+  type SelfServicePendingCheckout,
+} from "@/lib/self-service-payment-recovery";
 
 type Screen = "welcome" | "menu" | "checkout" | "payment" | "card" | "success";
 type OrderMode = "DINE_IN" | "TO_GO";
 type PaymentMethod = "QPAY" | "CARD" | "CASH";
 type Category = string;
 
-type CartLine = {
-  product: RestaurantPosProduct;
-  qty: number;
-};
-
-type PendingCheckout = {
-  ticket: RestaurantTicket;
-  invoice: RestaurantPosQPayInvoice;
-  clientSaleId: string;
-  shiftId: string;
-  total: number;
-  packagingFee: number;
-  lines: CartLine[];
-  ebarimtBuyer: EbarimtBuyer;
-};
-
-type PendingCardCheckout = Omit<PendingCheckout, "invoice"> & {
-  cardAttempt: CardAttempt;
-};
+type CartLine = SelfServiceCartLine;
+type PendingCheckout = SelfServicePendingCheckout;
+type PendingCardCheckout = SelfServicePendingCardCheckout;
 
 type CardPaymentRun = {
   abortController: AbortController;
@@ -467,6 +459,9 @@ export function SelfServiceCheckoutScreen() {
   const autoPrintedReceiptRef = useRef<string | null>(null);
   const menuRefreshInFlightRef = useRef(false);
   const screenWakeLockRef = useRef<WakeLockSentinel | null>(null);
+  const restoredPendingPaymentRef = useRef(false);
+  const autoRecoverCardAttemptRef = useRef<string | null>(null);
+  const autoRecoverInvoiceRef = useRef<string | null>(null);
 
   const loadSetup = useCallback(async () => {
     setSetupLoading(true);
@@ -481,7 +476,13 @@ export function SelfServiceCheckoutScreen() {
         throw new Error("Энэ байгууллагад идэвхтэй POS register алга байна.");
       }
       const savedRegisterId = window.localStorage.getItem(REGISTER_STORAGE_KEY);
+      const savedPayment = loadSelfServicePendingPayment();
+      const recoveryRegisterId =
+        savedPayment && savedPayment.organizationId === user.organizationId
+          ? savedPayment.registerId
+          : null;
       const nextRegister =
+        registers.find((item) => item.id === recoveryRegisterId) ||
         registers.find((item) => item.id === currentShift?.registerId) ||
         registers.find(
           (item) => item.id === savedRegisterId && item.qpayEnabled,
@@ -513,7 +514,7 @@ export function SelfServiceCheckoutScreen() {
     } finally {
       setSetupLoading(false);
     }
-  }, []);
+  }, [user.organizationId]);
 
   useEffect(() => {
     void loadSetup();
@@ -729,6 +730,86 @@ export function SelfServiceCheckoutScreen() {
     DEMO_CASH_PAYMENT_ENABLED || register?.ebarimtEnabled,
   );
 
+  const persistPendingQPayCheckout = useCallback(
+    (checkout: PendingCheckout, resolvedOrderMode = orderMode) => {
+      if (!register || !user.organizationId || !resolvedOrderMode) return;
+      try {
+        saveSelfServicePendingPayment({
+          organizationId: user.organizationId,
+          registerId: register.id,
+          orderMode: resolvedOrderMode,
+          paymentMethod: "QPAY",
+          checkout,
+        });
+      } catch (error) {
+        console.warn("Could not persist pending self-service QPay payment", error);
+      }
+    },
+    [orderMode, register, user.organizationId],
+  );
+
+  const persistPendingCardCheckout = useCallback(
+    (checkout: PendingCardCheckout, resolvedOrderMode = orderMode) => {
+      if (!register || !user.organizationId || !resolvedOrderMode) return;
+      try {
+        saveSelfServicePendingPayment({
+          organizationId: user.organizationId,
+          registerId: register.id,
+          orderMode: resolvedOrderMode,
+          paymentMethod: "CARD",
+          checkout,
+        });
+      } catch (error) {
+        console.warn("Could not persist pending self-service card payment", error);
+      }
+    },
+    [orderMode, register, user.organizationId],
+  );
+
+  useEffect(() => {
+    if (setupLoading || !register || restoredPendingPaymentRef.current) return;
+    restoredPendingPaymentRef.current = true;
+
+    const savedPayment = loadSelfServicePendingPayment();
+    if (!savedPayment) return;
+    if (
+      savedPayment.organizationId !== user.organizationId ||
+      savedPayment.registerId !== register.id
+    ) {
+      clearSelfServicePendingPayment();
+      return;
+    }
+
+    setOrderMode(savedPayment.orderMode);
+    setCart(savedPayment.checkout.lines);
+    setCompletedEbarimtBuyer(savedPayment.checkout.ebarimtBuyer);
+    setEbarimtBuyerMode(savedPayment.checkout.ebarimtBuyer.type);
+    setActionError("");
+
+    if (savedPayment.paymentMethod === "CARD") {
+      setPaymentMethod("CARD");
+      setPendingCardCheckout(savedPayment.checkout);
+      setCardMessage(
+        savedPayment.checkout.cardAttempt.status === "APPROVED"
+          ? "Төлбөр баталгаажсан. Тасарсан захиалгыг сэргээж бүртгэж байна..."
+          : "Терминалын төлөвийг сэргээж шалгаж байна...",
+      );
+      if (savedPayment.checkout.cardAttempt.status === "APPROVED") {
+        autoRecoverCardAttemptRef.current =
+          savedPayment.checkout.cardAttempt.attemptId;
+      }
+      setScreen("card");
+      return;
+    }
+
+    setPaymentMethod("QPAY");
+    setPendingCheckout(savedPayment.checkout);
+    if (savedPayment.checkout.invoice.status === "PAID") {
+      autoRecoverInvoiceRef.current = savedPayment.checkout.invoice.invoiceId;
+    }
+    setScreen("payment");
+  }, [register, setupLoading, user.organizationId]);
+
   const lookupCompanyBuyer = async (): Promise<EbarimtTinLookupResult> => {
     const normalizedRegNo = companyRegNo.replace(/\D/g, "");
     if (!/^\d{7}$/.test(normalizedRegNo)) {
@@ -774,7 +855,9 @@ export function SelfServiceCheckoutScreen() {
       buyer: EbarimtBuyer,
       fallbackPayment: SalePaymentLine,
     ): Promise<PosReceipt> => {
-      if (!ebarimtReady) return saleReceipt;
+      if (!ebarimtReady || saleReceipt.ebarimt?.status === "SUCCESS") {
+        return saleReceipt;
+      }
 
       setEbarimtSubmitting(true);
       try {
@@ -897,6 +980,7 @@ export function SelfServiceCheckoutScreen() {
 
   const resetOrder = useCallback(
     (options?: { reload?: boolean }) => {
+      clearSelfServicePendingPayment();
       setScreen("welcome");
       setOrderMode(null);
       setActiveCategory("ALL");
@@ -921,6 +1005,8 @@ export function SelfServiceCheckoutScreen() {
       finalizedInvoiceRef.current = null;
       cancellingInvoiceRef.current = null;
       finalizedCardAttemptRef.current = null;
+      autoRecoverCardAttemptRef.current = null;
+      autoRecoverInvoiceRef.current = null;
       autoPrintedReceiptRef.current = null;
       if (options?.reload) void loadSetup();
     },
@@ -1055,7 +1141,9 @@ export function SelfServiceCheckoutScreen() {
   };
 
   const cleanupDraftTicket = useCallback(
-    async (checkout: PendingCheckout) => {
+    async (
+      checkout: Pick<PendingCheckout, "ticket" | "shiftId">,
+    ) => {
       if (!register || checkout.ticket.status !== "OPEN") return;
       try {
         await saveRestaurantTicket({
@@ -1073,7 +1161,10 @@ export function SelfServiceCheckoutScreen() {
     [orderMode, register],
   );
 
-  const authorizeCardPayment = async (amount: number): Promise<CardAttempt> => {
+  const authorizeCardPayment = async (
+    amount: number,
+    onAttemptChange?: (attempt: CardAttempt) => void,
+  ): Promise<CardAttempt> => {
     if (
       !register ||
       !user.organizationId ||
@@ -1121,6 +1212,7 @@ export function SelfServiceCheckoutScreen() {
         organizationId: user.organizationId,
         clientBridge: useClientBridge,
       });
+      onAttemptChange?.(attempt);
       if (isCancelled() && attempt.status !== "APPROVED") {
         throw new Error(CARD_PAYMENT_CANCELLED_MESSAGE);
       }
@@ -1142,6 +1234,7 @@ export function SelfServiceCheckoutScreen() {
             attemptId: attempt.attemptId,
             result: bridgeResult,
           });
+          onAttemptChange?.(approvedAttempt);
         } catch (error) {
           if (isCancelled()) {
             throw new Error(CARD_PAYMENT_CANCELLED_MESSAGE);
@@ -1181,6 +1274,7 @@ export function SelfServiceCheckoutScreen() {
           approvedAttempt = await getRestaurantCardAttemptStatus(
             attempt.attemptId,
           );
+          onAttemptChange?.(approvedAttempt);
           if (approvedAttempt.status === "PENDING") {
             setCardMessage(
               run.terminalCancelRequested
@@ -1218,80 +1312,191 @@ export function SelfServiceCheckoutScreen() {
 
   const cancelCardPayment = () => {
     const run = cardPaymentRunRef.current;
-    if (!run || run.cancelled || run.terminalCancelRequested) return;
+    if (!run) {
+      if (pendingCardCheckout?.cardAttempt.status === "PENDING") {
+        setCardMessage("POS дээр Буцах товч дарна уу.");
+      }
+      return;
+    }
+    if (run.cancelled || run.terminalCancelRequested) return;
     run.terminalCancelRequested = true;
     setCardMessage("POS дээр Буцах товч дарна уу.");
   };
 
-  const finalizeCardPayment = async (checkout: PendingCardCheckout) => {
+  const finalizeCardPayment = useCallback(
+    async (checkout: PendingCardCheckout) => {
+      if (
+        finalizedCardAttemptRef.current === checkout.cardAttempt.attemptId ||
+        !register ||
+        !user.organizationId ||
+        !orderMode
+      ) {
+        return;
+      }
+
+      finalizedCardAttemptRef.current = checkout.cardAttempt.attemptId;
+      setSubmitting(true);
+      setActionError("");
+      setCardMessage("Картын төлбөр баталгаажлаа. Захиалгыг бүртгэж байна...");
+      try {
+        const saleReceipt = await createRestaurantCardSale({
+          shiftId: checkout.shiftId,
+          branchId: register.branchId,
+          registerId: register.id,
+          organizationId: user.organizationId,
+          restaurantTicketId: checkout.ticket.id,
+          clientSaleId: checkout.clientSaleId,
+          total: checkout.total,
+          packagingFee: checkout.packagingFee,
+          note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}`,
+          lines: checkout.lines.map((line) => ({
+            productId: line.product.id,
+            qty: line.qty,
+            unitPrice: Number(line.product.price),
+            discountAmount: 0,
+            taxRate: Number(line.product.taxRate) || 0,
+          })),
+          cardAttemptId: checkout.cardAttempt.attemptId,
+          cardTransactionId: checkout.cardAttempt.transactionId,
+        });
+        clearSelfServicePendingPayment();
+
+        setCompletedEbarimtBuyer(checkout.ebarimtBuyer);
+        setCardMessage(
+          ebarimtReady
+            ? "Төлбөр баталгаажлаа. Ebarimt үүсгэж байна..."
+            : "Төлбөр баталгаажлаа.",
+        );
+        const finalReceipt = await issueEbarimtForReceipt(
+          saleReceipt,
+          checkout.ebarimtBuyer,
+          {
+            method: "CARD",
+            amount: checkout.total,
+            attemptId: checkout.cardAttempt.attemptId,
+            transactionId: checkout.cardAttempt.transactionId,
+          },
+        );
+
+        setCompletedTicketNo(checkout.ticket.ticketNo);
+        setReceipt(finalReceipt);
+        setPendingCardCheckout(null);
+        setScreen("success");
+      } catch (error) {
+        finalizedCardAttemptRef.current = null;
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Карт төлөгдсөн боловч захиалгыг бүртгэж чадсангүй.",
+        );
+        setCardMessage("Картын төлбөр баталгаажсан.");
+        setScreen("card");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [
+      ebarimtReady,
+      issueEbarimtForReceipt,
+      orderMode,
+      register,
+      user.organizationId,
+    ],
+  );
+
+  useEffect(() => {
+    const attemptId = pendingCardCheckout?.cardAttempt.attemptId;
     if (
-      finalizedCardAttemptRef.current === checkout.cardAttempt.attemptId ||
-      !register ||
-      !user.organizationId ||
-      !orderMode
+      !attemptId ||
+      pendingCardCheckout.cardAttempt.status !== "APPROVED" ||
+      autoRecoverCardAttemptRef.current !== attemptId ||
+      submitting
     ) {
       return;
     }
 
-    finalizedCardAttemptRef.current = checkout.cardAttempt.attemptId;
-    setSubmitting(true);
-    setActionError("");
-    setCardMessage("Картын төлбөр баталгаажлаа. Захиалгыг бүртгэж байна...");
-    try {
-      const saleReceipt = await createRestaurantCardSale({
-        shiftId: checkout.shiftId,
-        branchId: register.branchId,
-        registerId: register.id,
-        organizationId: user.organizationId,
-        restaurantTicketId: checkout.ticket.id,
-        clientSaleId: checkout.clientSaleId,
-        total: checkout.total,
-        packagingFee: checkout.packagingFee,
-        note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд идэх" : "Авч явах"}`,
-        lines: checkout.lines.map((line) => ({
-          productId: line.product.id,
-          qty: line.qty,
-          unitPrice: Number(line.product.price),
-          discountAmount: 0,
-          taxRate: Number(line.product.taxRate) || 0,
-        })),
-        cardAttemptId: checkout.cardAttempt.attemptId,
-        cardTransactionId: checkout.cardAttempt.transactionId,
-      });
+    autoRecoverCardAttemptRef.current = null;
+    void finalizeCardPayment(pendingCardCheckout);
+  }, [finalizeCardPayment, pendingCardCheckout, submitting]);
 
-      setCompletedEbarimtBuyer(checkout.ebarimtBuyer);
-      setCardMessage(
-        ebarimtReady
-          ? "Төлбөр баталгаажлаа. Ebarimt үүсгэж байна..."
-          : "Төлбөр баталгаажлаа.",
-      );
-      const finalReceipt = await issueEbarimtForReceipt(
-        saleReceipt,
-        checkout.ebarimtBuyer,
-        {
-          method: "CARD",
-          amount: checkout.total,
-          attemptId: checkout.cardAttempt.attemptId,
-          transactionId: checkout.cardAttempt.transactionId,
-        },
-      );
-
-      setCompletedTicketNo(checkout.ticket.ticketNo);
-      setReceipt(finalReceipt);
-      setScreen("success");
-    } catch (error) {
-      finalizedCardAttemptRef.current = null;
-      setActionError(
-        error instanceof Error
-          ? error.message
-          : "Карт төлөгдсөн боловч захиалгыг бүртгэж чадсангүй.",
-      );
-      setCardMessage("Картын төлбөр баталгаажсан.");
-      setScreen("card");
-    } finally {
-      setSubmitting(false);
+  useEffect(() => {
+    const checkout = pendingCardCheckout;
+    const attemptId = checkout?.cardAttempt.attemptId;
+    if (
+      screen !== "card" ||
+      !checkout ||
+      !attemptId ||
+      checkout.cardAttempt.status !== "PENDING" ||
+      cardPaymentRunRef.current
+    ) {
+      return;
     }
-  };
+
+    let disposed = false;
+    let checking = false;
+    const checkRecoveredAttempt = async () => {
+      if (disposed || checking) return;
+      checking = true;
+      try {
+        const nextAttempt = await getRestaurantCardAttemptStatus(attemptId);
+        if (disposed) return;
+        const nextCheckout: PendingCardCheckout = {
+          ...checkout,
+          cardAttempt: nextAttempt,
+        };
+
+        if (nextAttempt.status === "APPROVED") {
+          persistPendingCardCheckout(nextCheckout);
+          autoRecoverCardAttemptRef.current = attemptId;
+          setPendingCardCheckout(nextCheckout);
+          setActionError("");
+          setCardMessage(
+            "Төлбөр баталгаажсан. Тасарсан захиалгыг сэргээж бүртгэж байна...",
+          );
+          return;
+        }
+
+        if (
+          nextAttempt.status === "DECLINED" ||
+          nextAttempt.status === "FAILED"
+        ) {
+          clearSelfServicePendingPayment();
+          setPendingCardCheckout(null);
+          setActionError(
+            nextAttempt.message ||
+              "Картын төлбөр амжилтгүй болсон тул дахин оролдоно уу.",
+          );
+          setCardMessage("");
+          setScreen("checkout");
+          await cleanupDraftTicket(checkout);
+          return;
+        }
+
+        setCardMessage("Терминалын хариуг автоматаар шалгаж байна...");
+      } catch {
+        if (!disposed) {
+          setCardMessage(
+            "Терминалын төлөвийг шалгах сүлжээ түр тасарсан. Автоматаар дахин оролдоно...",
+          );
+        }
+      } finally {
+        checking = false;
+      }
+    };
+
+    void checkRecoveredAttempt();
+    const timer = window.setInterval(checkRecoveredAttempt, 3_000);
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+    };
+  }, [
+    cleanupDraftTicket,
+    pendingCardCheckout,
+    persistPendingCardCheckout,
+    screen,
+    submitting,
+  ]);
 
   const startPayment = async () => {
     if (
@@ -1308,6 +1513,7 @@ export function SelfServiceCheckoutScreen() {
     setActionError("");
     let activeShift = shift;
     let savedTicket: RestaurantTicket | null = null;
+    let recoverableCardCheckout: PendingCardCheckout | null = null;
     try {
       const ebarimtBuyer = await resolveEbarimtBuyer();
       setCompletedEbarimtBuyer(ebarimtBuyer);
@@ -1373,17 +1579,41 @@ export function SelfServiceCheckoutScreen() {
 
       if (paymentMethod === "CARD") {
         setScreen("card");
-        const cardAttempt = await authorizeCardPayment(cartTotal);
-        const cardCheckout: PendingCardCheckout = {
+        const cardCheckoutBase = {
           ticket: savedTicket,
           clientSaleId,
           shiftId: activeShift.id,
           total: cartTotal,
           packagingFee,
           lines: cart.map((line) => ({ ...line })),
-          cardAttempt,
           ebarimtBuyer,
         };
+        const cardAttempt = await authorizeCardPayment(
+          cartTotal,
+          (nextAttempt) => {
+            const nextCheckout: PendingCardCheckout = {
+              ...cardCheckoutBase,
+              cardAttempt: nextAttempt,
+            };
+            recoverableCardCheckout = nextCheckout;
+            if (
+              nextAttempt.status === "PENDING" ||
+              nextAttempt.status === "APPROVED"
+            ) {
+              persistPendingCardCheckout(nextCheckout);
+              setPendingCardCheckout(nextCheckout);
+            } else {
+              clearSelfServicePendingPayment();
+              setPendingCardCheckout(null);
+            }
+          },
+        );
+        const cardCheckout: PendingCardCheckout = {
+          ...cardCheckoutBase,
+          cardAttempt,
+        };
+        recoverableCardCheckout = cardCheckout;
+        persistPendingCardCheckout(cardCheckout);
         setPendingCardCheckout(cardCheckout);
         await finalizeCardPayment(cardCheckout);
         return;
@@ -1404,6 +1634,7 @@ export function SelfServiceCheckoutScreen() {
         lines: cart.map((line) => ({ ...line })),
         ebarimtBuyer,
       };
+      persistPendingQPayCheckout(checkout);
       setPendingCheckout(checkout);
       setScreen("payment");
     } catch (error) {
@@ -1418,28 +1649,29 @@ export function SelfServiceCheckoutScreen() {
       const cardPaymentCancelled =
         paymentMethod === "CARD" &&
         errorMessage === CARD_PAYMENT_CANCELLED_MESSAGE;
+      const keepCardRecovery =
+        paymentMethod === "CARD" &&
+        !cardPaymentCancelled &&
+        recoverableCardCheckout?.cardAttempt.status === "PENDING";
       setActionError(cardPaymentCancelled ? "" : errorMessage);
       if (paymentMethod === "CARD") {
-        setPendingCardCheckout(null);
-        setScreen("checkout");
+        if (keepCardRecovery && recoverableCardCheckout) {
+          persistPendingCardCheckout(recoverableCardCheckout);
+          setPendingCardCheckout(recoverableCardCheckout);
+          setCardMessage(
+            "Терминалын хариу тасарсан байна. Төлөвийг автоматаар дахин шалгаж байна...",
+          );
+          setScreen("card");
+        } else {
+          clearSelfServicePendingPayment();
+          setPendingCardCheckout(null);
+          setScreen("checkout");
+        }
       }
-      if (savedTicket && activeShift) {
+      if (savedTicket && activeShift && !keepCardRecovery) {
         await cleanupDraftTicket({
           ticket: savedTicket,
-          invoice: {
-            invoiceId: "",
-            amount: cartTotal,
-            qrText: "",
-            status: "EXPIRED",
-            expiresAt: new Date().toISOString(),
-            createdAt: new Date().toISOString(),
-          },
-          clientSaleId: createClientSaleId(),
           shiftId: activeShift.id,
-          total: cartTotal,
-          packagingFee,
-          lines: cart,
-          ebarimtBuyer: { type: "B2C" },
         });
       }
     } finally {
@@ -1484,6 +1716,7 @@ export function SelfServiceCheckoutScreen() {
             taxRate: Number(line.product.taxRate) || 0,
           })),
         });
+        clearSelfServicePendingPayment();
 
         setCompletedEbarimtBuyer(checkout.ebarimtBuyer);
         const finalReceipt = await issueEbarimtForReceipt(
@@ -1518,6 +1751,21 @@ export function SelfServiceCheckoutScreen() {
     [issueEbarimtForReceipt, orderMode, register, user.organizationId],
   );
 
+  useEffect(() => {
+    const invoiceId = pendingCheckout?.invoice.invoiceId;
+    if (
+      !invoiceId ||
+      pendingCheckout.invoice.status !== "PAID" ||
+      autoRecoverInvoiceRef.current !== invoiceId ||
+      submitting
+    ) {
+      return;
+    }
+
+    autoRecoverInvoiceRef.current = null;
+    void finalizePayment(pendingCheckout, pendingCheckout.invoice);
+  }, [finalizePayment, pendingCheckout, submitting]);
+
   const checkPayment = useCallback(
     async (silent = false) => {
       if (!pendingCheckout || pendingCheckout.invoice.status !== "PENDING") {
@@ -1533,6 +1781,7 @@ export function SelfServiceCheckoutScreen() {
         if (cancellingInvoiceRef.current === invoiceId) return;
         const nextInvoice = { ...pendingCheckout.invoice, ...status };
         const nextCheckout = { ...pendingCheckout, invoice: nextInvoice };
+        persistPendingQPayCheckout(nextCheckout);
         if (nextInvoice.status === "PAID") {
           setPendingCheckout(nextCheckout);
           await finalizePayment(nextCheckout, nextInvoice);
@@ -1554,7 +1803,7 @@ export function SelfServiceCheckoutScreen() {
         if (!silent) setCheckingPayment(false);
       }
     },
-    [finalizePayment, pendingCheckout],
+    [finalizePayment, pendingCheckout, persistPendingQPayCheckout],
   );
 
   useEffect(() => {
@@ -1577,7 +1826,9 @@ export function SelfServiceCheckoutScreen() {
         organizationId: user.organizationId,
       });
       finalizedInvoiceRef.current = null;
-      setPendingCheckout({ ...pendingCheckout, invoice });
+      const nextCheckout = { ...pendingCheckout, invoice };
+      persistPendingQPayCheckout(nextCheckout);
+      setPendingCheckout(nextCheckout);
     } catch (error) {
       setActionError(
         error instanceof Error ? error.message : "Шинэ QR үүсгэж чадсангүй.",
@@ -1592,6 +1843,7 @@ export function SelfServiceCheckoutScreen() {
       return;
     setSubmitting(true);
     await cleanupDraftTicket(pendingCheckout);
+    clearSelfServicePendingPayment();
     setPendingCheckout(null);
     setActionError("");
     setScreen("menu");
@@ -1612,6 +1864,7 @@ export function SelfServiceCheckoutScreen() {
     try {
       await cancelRestaurantQPayInvoice(invoiceId);
       await cleanupDraftTicket(pendingCheckout);
+      clearSelfServicePendingPayment();
       finalizedInvoiceRef.current = null;
       setPendingCheckout(null);
       setScreen("menu");
@@ -1745,11 +1998,13 @@ export function SelfServiceCheckoutScreen() {
   }
 
   if (screen === "card") {
+    const cardPaymentPending =
+      submitting || pendingCardCheckout?.cardAttempt.status === "PENDING";
     return (
       <main className="flex min-h-[100dvh] items-center justify-center bg-[#11231d] px-5 py-10 text-white">
         <section className="w-full max-w-xl text-center">
           <div className="relative mx-auto grid h-28 w-28 place-items-center rounded-[32px] bg-white/10 text-[#f4c34f]">
-            {submitting ? (
+            {cardPaymentPending ? (
               <span className="absolute inset-0 animate-ping rounded-[32px] border border-[#f4c34f]/30" />
             ) : null}
             <CreditCard className="h-14 w-14" strokeWidth={1.7} />
@@ -1758,7 +2013,9 @@ export function SelfServiceCheckoutScreen() {
             Картын төлбөр
           </p>
           <h1 className="mt-3 text-4xl font-black tracking-tight">
-            {submitting ? "Картаа уншуулна уу" : "Төлбөр баталгаажсан"}
+            {cardPaymentPending
+              ? "Картаа уншуулна уу"
+              : "Төлбөр баталгаажсан"}
           </h1>
           <p className="mx-auto mt-4 max-w-md text-base font-semibold leading-7 text-white/55">
             {cardMessage || "Терминалын дэлгэц дээрх зааврыг дагана уу."}
@@ -1773,13 +2030,13 @@ export function SelfServiceCheckoutScreen() {
             </div>
           ) : null}
 
-          {submitting ? (
+          {cardPaymentPending ? (
             <div className="mt-8 flex flex-col items-center gap-4">
               <div className="inline-flex items-center gap-3 rounded-full bg-white/10 px-5 py-3 text-sm font-black text-white/70">
                 <Loader2 className="h-5 w-5 animate-spin text-[#f4c34f]" />
                 Терминалын хариуг хүлээж байна
               </div>
-              {!pendingCardCheckout ? (
+              {pendingCardCheckout?.cardAttempt.status !== "APPROVED" ? (
                 <button
                   type="button"
                   onClick={cancelCardPayment}
@@ -1791,7 +2048,7 @@ export function SelfServiceCheckoutScreen() {
                 </button>
               ) : null}
             </div>
-          ) : pendingCardCheckout ? (
+          ) : pendingCardCheckout?.cardAttempt.status === "APPROVED" ? (
             <button
               type="button"
               onClick={() => void finalizeCardPayment(pendingCardCheckout)}
