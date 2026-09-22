@@ -13,7 +13,8 @@ import { getOrgNavItems } from "@/components/org/orgNavigation";
 export default function OrgShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { ready, user, logout } = useOrgSession();
+  const { ready, user, logout, switching, switchError, switchOrganization } =
+    useOrgSession();
   const { features, loading: featuresLoading } = useOrgFeatures(
     user?.organizationId,
   );
@@ -71,7 +72,13 @@ export default function OrgShell({ children }: { children: ReactNode }) {
           <OrgTopbar
             mobileOpen={mobileOpen}
             user={user}
+            organizations={user.organizations || []}
+            switching={switching}
+            switchError={switchError}
             onOpenMenu={() => setMobileOpen(true)}
+            onSwitchOrganization={(organizationId) =>
+              void switchOrganization(organizationId)
+            }
           />
           <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
             {children}

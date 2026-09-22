@@ -4,6 +4,16 @@ export const API_BASE =
 
 export const API = `${API_BASE}/api`;
 
+export type OrgOrganization = {
+  id: string;
+  name: string;
+  role?: string | null;
+  capabilities?: string[];
+  status?: string | null;
+  type?: string | null;
+  businessCategory?: string | null;
+};
+
 export type OrgUser = {
   id: string;
   email?: string | null;
@@ -14,6 +24,7 @@ export type OrgUser = {
   organizationId?: string | null;
   organizationName?: string | null;
   capabilities?: string[];
+  organizations?: OrgOrganization[];
 };
 
 export function getStoredOrgUser(): OrgUser | null {
