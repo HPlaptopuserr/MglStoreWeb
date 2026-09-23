@@ -44,6 +44,13 @@ export function getOrgNavItems(
         icon: isCafe ? Coffee : ChefHat,
       },
       { label: "Бүтээгдэхүүн", href: "/dashboard/products", icon: Package },
+      { label: "Ажилтан ба эрх", href: "/dashboard/members", icon: Users },
+      {
+        label: "Цаг бүртгэлийн тайлан",
+        href: "/dashboard/workforce/attendance",
+        icon: TimerReset,
+        enabled: canViewWorkforceReport(user?.orgRole, user?.capabilities),
+      },
       { label: "Тохиргоо", href: "/dashboard/settings", icon: Settings },
       { label: "Тайлан", href: "/dashboard/reports", icon: BarChart3 },
     ];

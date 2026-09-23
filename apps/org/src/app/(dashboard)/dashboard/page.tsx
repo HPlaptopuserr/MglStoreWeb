@@ -20,7 +20,7 @@ export default function OrgDashboardPage() {
           <SalesHistoryPanel organizationId={user.organizationId} />
         </>
       ) : null}
-      <ModuleGrid features={features} />
+      <ModuleGrid features={features} user={user} />
     </div>
   );
 }

@@ -10,11 +10,14 @@ import {
   MonitorSmartphone,
   Package,
   Settings,
+  TimerReset,
   UtensilsCrossed,
   Users,
 } from "lucide-react";
+import { OrgUser } from "@/lib/api";
 import { money } from "@/lib/org-format";
 import { DashboardStats, OrgFeatureState } from "@/lib/org-types";
+import { canViewWorkforceReport } from "@/lib/workforce-api";
 
 export function getDashboardKpis(stats: DashboardStats | null) {
   return [
@@ -45,7 +48,10 @@ export function getDashboardKpis(stats: DashboardStats | null) {
   ];
 }
 
-export function getDashboardModules(features: OrgFeatureState) {
+export function getDashboardModules(
+  features: OrgFeatureState,
+  user?: OrgUser | null,
+) {
   if (features.selfService) {
     const isCafe = features.selfServiceMode === "CAFE";
     return [
@@ -73,6 +79,20 @@ export function getDashboardModules(features: OrgFeatureState) {
         href: "/dashboard/products",
         icon: Package,
         enabled: true,
+      },
+      {
+        title: "Ажилтан ба эрх",
+        desc: "Ресторан, кофе шопын ажилтнууд болон тэдний ашиглах эрхийг удирдана.",
+        href: "/dashboard/members",
+        icon: Users,
+        enabled: true,
+      },
+      {
+        title: "Цаг бүртгэлийн тайлан",
+        desc: "Ажилтнуудын ирц, ажилласан хугацаа болон цаг бүртгэлийн төлөвийг хянана.",
+        href: "/dashboard/workforce/attendance",
+        icon: TimerReset,
+        enabled: canViewWorkforceReport(user?.orgRole, user?.capabilities),
       },
       {
         title: "Тохиргоо",

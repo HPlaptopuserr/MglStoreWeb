@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { getDashboardModules } from "@/components/dashboard/dashboardConfig";
+import { OrgUser } from "@/lib/api";
 import { OrgFeatureState } from "@/lib/org-types";
 
 export default function ModuleGrid({
   features,
+  user,
 }: {
   features: OrgFeatureState;
+  user?: OrgUser | null;
 }) {
-  const modules = getDashboardModules(features);
+  const modules = getDashboardModules(features, user);
 
   return (
     <section className="grid gap-4 lg:grid-cols-2">

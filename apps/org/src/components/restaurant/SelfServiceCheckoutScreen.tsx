@@ -284,8 +284,8 @@ function printSelfServiceReceipt(
         <style>
           @page { size: 58mm auto; margin: 2mm; }
           * { box-sizing: border-box; }
-          html, body { width: 54mm; max-width: 54mm; }
-          body { margin: 0 auto; overflow-wrap: anywhere; color: #000; background: #fff; font-family: Arial, sans-serif; font-size: 10px; line-height: 1.35; }
+          html, body { width: 48mm; max-width: 48mm; }
+          body { margin: 0; overflow-wrap: anywhere; color: #000; background: #fff; font-family: Arial, sans-serif; font-size: 10px; line-height: 1.35; }
           h1 { margin: 0; text-align: center; font-size: 17px; }
           .center { text-align: center; }
           .muted { color: #333; font-size: 10px; }
