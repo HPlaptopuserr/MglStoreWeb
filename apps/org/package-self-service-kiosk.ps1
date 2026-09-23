@@ -27,6 +27,7 @@ $files = @(
   "install-self-service-kiosk-shortcut.ps1",
   "start-self-service-kiosk.cmd",
   "check-self-service-printer.ps1",
+  "self-service-printer-bridge.ps1",
   "keep-self-service-awake.ps1"
 )
 foreach ($file in $files) {

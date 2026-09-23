@@ -6,7 +6,7 @@
     "dev": "pnpm run legacy:css && next dev -p 3004 --webpack",
     "kiosk": "start-self-service-kiosk.cmd",
     "kiosk:install": "powershell -NoProfile -ExecutionPolicy Bypass -File install-self-service-kiosk-shortcut.ps1",
-    "kiosk:install:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File install-self-service-kiosk-shortcut.ps1 -Url \"http://localhost:3004/dashboard/self-service?silentPrint=1\" -ShortcutName \"MGL Self Service Kiosk DEV\"",
+    "kiosk:install:dev": "powershell -NoProfile -ExecutionPolicy Bypass -File install-self-service-kiosk-shortcut.ps1 -Url \"http://localhost:3004/dashboard/self-service?silentPrint=1&printerCut=1\" -ShortcutName \"MGL Self Service Kiosk DEV\"",
     "kiosk:package": "powershell -NoProfile -ExecutionPolicy Bypass -File package-self-service-kiosk.ps1",
     "build": "pnpm run legacy:css && next build",
     "legacy:css": "node node_modules/tailwindcss-legacy/lib/cli.js -c tailwind.legacy.config.cjs -i styles/legacy-input.css -o public/legacy.css --minify",

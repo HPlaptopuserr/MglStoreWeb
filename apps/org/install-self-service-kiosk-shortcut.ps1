@@ -1,5 +1,5 @@
 param(
-  [string]$Url = "https://org.mglstore.mn/dashboard/self-service?silentPrint=1",
+  [string]$Url = "https://org.mglstore.mn/dashboard/self-service?silentPrint=1&printerCut=1",
   [string]$ShortcutName = "MGL Self Service Kiosk",
   [string]$ShortcutPath = "",
   [string]$InstallDirectory = ""
@@ -9,12 +9,16 @@ $ErrorActionPreference = "Stop"
 
 $launcherSourcePath = Join-Path $PSScriptRoot "start-self-service-kiosk.cmd"
 $printerCheckSourcePath = Join-Path $PSScriptRoot "check-self-service-printer.ps1"
+$printerBridgeSourcePath = Join-Path $PSScriptRoot "self-service-printer-bridge.ps1"
 $keepAwakeSourcePath = Join-Path $PSScriptRoot "keep-self-service-awake.ps1"
 if (-not (Test-Path -LiteralPath $launcherSourcePath)) {
   throw "Kiosk launcher not found: $launcherSourcePath"
 }
 if (-not (Test-Path -LiteralPath $printerCheckSourcePath)) {
   throw "Printer checker not found: $printerCheckSourcePath"
+}
+if (-not (Test-Path -LiteralPath $printerBridgeSourcePath)) {
+  throw "Printer bridge not found: $printerBridgeSourcePath"
 }
 if (-not (Test-Path -LiteralPath $keepAwakeSourcePath)) {
   throw "Kiosk keep-awake helper not found: $keepAwakeSourcePath"
@@ -28,9 +32,11 @@ New-Item -ItemType Directory -Path $InstallDirectory -Force | Out-Null
 
 $launcherPath = Join-Path $InstallDirectory "start-self-service-kiosk.cmd"
 $printerCheckPath = Join-Path $InstallDirectory "check-self-service-printer.ps1"
+$printerBridgePath = Join-Path $InstallDirectory "self-service-printer-bridge.ps1"
 $keepAwakePath = Join-Path $InstallDirectory "keep-self-service-awake.ps1"
 Copy-Item -LiteralPath $launcherSourcePath -Destination $launcherPath -Force
 Copy-Item -LiteralPath $printerCheckSourcePath -Destination $printerCheckPath -Force
+Copy-Item -LiteralPath $printerBridgeSourcePath -Destination $printerBridgePath -Force
 Copy-Item -LiteralPath $keepAwakeSourcePath -Destination $keepAwakePath -Force
 
 $brandIconSourceCandidates = @(

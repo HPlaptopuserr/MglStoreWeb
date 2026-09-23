@@ -10,7 +10,7 @@ if /I "%~1"=="--dry-run" (
 )
 if /I "%~2"=="--dry-run" set "DRY_RUN=1"
 if not defined KIOSK_URL set "KIOSK_URL=%MGL_SELF_SERVICE_URL%"
-if not defined KIOSK_URL set "KIOSK_URL=http://localhost:3004/dashboard/self-service?silentPrint=1"
+if not defined KIOSK_URL set "KIOSK_URL=http://localhost:3004/dashboard/self-service?silentPrint=1&printerCut=1"
 
 set "BROWSER_EXE="
 
@@ -61,6 +61,14 @@ if defined DRY_RUN (
     echo FLAGS=--kiosk
   )
   exit /b 0
+)
+
+if defined SILENT_PRINT_READY if exist "%~dp0self-service-printer-bridge.ps1" (
+  start "" powershell.exe ^
+    -NoProfile ^
+    -WindowStyle Hidden ^
+    -ExecutionPolicy Bypass ^
+    -File "%~dp0self-service-printer-bridge.ps1"
 )
 
 if defined SILENT_PRINT_READY (

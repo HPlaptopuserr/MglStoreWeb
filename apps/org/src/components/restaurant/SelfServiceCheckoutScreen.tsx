@@ -226,6 +226,30 @@ const RECEIPT_BOTTOM_FEED_MM = 10;
 const CSS_SCREEN_DPI = 96;
 const MILLIMETERS_PER_INCH = 25.4;
 const RECEIPT_JOB_GAP_MS = 1_200;
+const LOCAL_PRINTER_BRIDGE_URL = "http://127.0.0.1:17358";
+
+function isLocalPrinterCutEnabled() {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("printerCut") === "1";
+}
+
+async function requestLocalPaperCut() {
+  if (!isLocalPrinterCutEnabled()) return;
+
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 3_000);
+  try {
+    await fetch(`${LOCAL_PRINTER_BRIDGE_URL}/cut`, {
+      method: "POST",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } catch (error) {
+    console.warn("Local receipt cutter is unavailable", error);
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
 
 function printThermalReceiptDocument(
   title: string,
@@ -273,6 +297,7 @@ function printThermalReceiptDocument(
           window.setTimeout(() => {
             printWindow.focus();
             printWindow.print();
+            window.setTimeout(() => void requestLocalPaperCut(), 250);
             cleanup();
           }, 150);
         });
