@@ -218,18 +218,67 @@ const formatPrintDate = (value: string) => {
   }).format(date);
 };
 
-const RECEIPT_PAPER_WIDTH_MM = 58;
-const RECEIPT_CONTENT_WIDTH_MM = 46;
+type ReceiptPaperWidthMm = 58 | 80;
+
+const DEFAULT_RECEIPT_PAPER_WIDTH_MM: ReceiptPaperWidthMm = 80;
+const RECEIPT_SIDE_MARGIN_MM = 6;
 const RECEIPT_MINIMUM_HEIGHT_MM = 40;
+const RECEIPT_MAXIMUM_HEIGHT_MM = 1_000;
 const RECEIPT_BOTTOM_FEED_MM = 10;
 const CSS_SCREEN_DPI = 96;
 const MILLIMETERS_PER_INCH = 25.4;
 const RECEIPT_JOB_GAP_MS = 1_200;
 const LOCAL_PRINTER_BRIDGE_URL = "http://127.0.0.1:17358";
+let detectedReceiptPaperWidthPromise: Promise<ReceiptPaperWidthMm> | null =
+  null;
 
 function isLocalPrinterCutEnabled() {
   if (typeof window === "undefined") return false;
   return new URLSearchParams(window.location.search).get("printerCut") === "1";
+}
+
+function receiptPaperWidthFromPrinterName(
+  printerName: string,
+): ReceiptPaperWidthMm | null {
+  if (/(?:^|\D)58(?:\D|$)/i.test(printerName)) return 58;
+  if (/(?:^|\D)80(?:\D|$)/i.test(printerName)) return 80;
+  return null;
+}
+
+function requestedReceiptPaperWidth(): ReceiptPaperWidthMm | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const value = params.get("paperWidth") || params.get("receiptPaperWidth");
+  return value === "58" ? 58 : value === "80" ? 80 : null;
+}
+
+async function resolveReceiptPaperWidth(): Promise<ReceiptPaperWidthMm> {
+  const requestedWidth = requestedReceiptPaperWidth();
+  if (requestedWidth) return requestedWidth;
+  if (!isLocalPrinterCutEnabled()) return DEFAULT_RECEIPT_PAPER_WIDTH_MM;
+
+  detectedReceiptPaperWidthPromise ??= (async () => {
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 1_500);
+    try {
+      const response = await fetch(`${LOCAL_PRINTER_BRIDGE_URL}/health`, {
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      if (!response.ok) return DEFAULT_RECEIPT_PAPER_WIDTH_MM;
+      const payload = (await response.json()) as { printer?: unknown };
+      return (
+        receiptPaperWidthFromPrinterName(String(payload.printer || "")) ||
+        DEFAULT_RECEIPT_PAPER_WIDTH_MM
+      );
+    } catch {
+      return DEFAULT_RECEIPT_PAPER_WIDTH_MM;
+    } finally {
+      window.clearTimeout(timeout);
+    }
+  })();
+
+  return detectedReceiptPaperWidthPromise;
 }
 
 async function requestLocalPaperCut() {
@@ -257,7 +306,9 @@ function printThermalReceiptDocument(
 ) {
   if (typeof document === "undefined") return false;
 
-  const queuePrint = () => {
+  const queuePrint = async () => {
+    const paperWidthMm = await resolveReceiptPaperWidth();
+    const contentWidthMm = paperWidthMm - RECEIPT_SIDE_MARGIN_MM * 2;
     const iframe = document.createElement("iframe");
     iframe.setAttribute("aria-hidden", "true");
     iframe.style.position = "fixed";
@@ -277,20 +328,24 @@ function printThermalReceiptDocument(
       printWindow.requestAnimationFrame(() => {
         printWindow.requestAnimationFrame(() => {
           const printDocument = printWindow.document;
-          const contentHeightPx = Math.max(
-            printDocument.body.scrollHeight,
-            printDocument.documentElement.scrollHeight,
+          const receiptRoot = printDocument.getElementById("receipt-root");
+          const contentHeightPx = receiptRoot
+            ? Math.max(
+                receiptRoot.scrollHeight,
+                Math.ceil(receiptRoot.getBoundingClientRect().height),
+              )
+            : printDocument.body.scrollHeight;
+          const measuredHeightMm = Math.ceil(
+            (contentHeightPx * MILLIMETERS_PER_INCH) / CSS_SCREEN_DPI +
+              RECEIPT_BOTTOM_FEED_MM,
           );
-          const contentHeightMm = Math.max(
-            RECEIPT_MINIMUM_HEIGHT_MM,
-            Math.ceil(
-              (contentHeightPx * MILLIMETERS_PER_INCH) / CSS_SCREEN_DPI +
-                RECEIPT_BOTTOM_FEED_MM,
-            ),
+          const contentHeightMm = Math.min(
+            RECEIPT_MAXIMUM_HEIGHT_MM,
+            Math.max(RECEIPT_MINIMUM_HEIGHT_MM, measuredHeightMm),
           );
           const pageStyle = printDocument.getElementById("receipt-page-size");
           if (pageStyle) {
-            pageStyle.textContent = `@page { size: ${RECEIPT_PAPER_WIDTH_MM}mm ${contentHeightMm}mm; margin: 0; }`;
+            pageStyle.textContent = `@page { size: ${paperWidthMm}mm ${contentHeightMm}mm; margin: 0; }`;
           }
 
           window.setTimeout(() => {
@@ -308,11 +363,12 @@ function printThermalReceiptDocument(
         <head>
           <meta charset="utf-8" />
           <title>${escapePrintHtml(title)}</title>
-          <style id="receipt-page-size">@page { size: 58mm 200mm; margin: 0; }</style>
+          <style id="receipt-page-size">@page { size: ${paperWidthMm}mm 100mm; margin: 0; }</style>
           <style>
             * { box-sizing: border-box; }
-            html, body { width: ${RECEIPT_CONTENT_WIDTH_MM}mm; max-width: ${RECEIPT_CONTENT_WIDTH_MM}mm; }
+            html, body { width: ${paperWidthMm}mm; min-height: 0; height: auto; }
             body { margin: 0; overflow-wrap: anywhere; color: #000; background: #fff; font-family: Arial, sans-serif; font-size: 10px; line-height: 1.35; }
+            #receipt-root { width: ${contentWidthMm}mm; margin: 0 auto; }
             h1 { margin: 0; text-align: center; font-size: 17px; }
             .center { text-align: center; }
             .muted { color: #333; font-size: 10px; }
@@ -336,14 +392,14 @@ function printThermalReceiptDocument(
             .footer { margin-top: 10px; text-align: center; font-weight: 700; }
           </style>
         </head>
-        <body>${bodyHtml}</body>
+        <body><main id="receipt-root">${bodyHtml}</main></body>
       </html>`;
 
     document.body.appendChild(iframe);
   };
 
-  if (delayMs > 0) window.setTimeout(queuePrint, delayMs);
-  else queuePrint();
+  if (delayMs > 0) window.setTimeout(() => void queuePrint(), delayMs);
+  else void queuePrint();
   return true;
 }
 
