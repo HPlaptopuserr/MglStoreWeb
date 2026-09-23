@@ -219,6 +219,110 @@ const formatPrintDate = (value: string) => {
   }).format(date);
 };
 
+const RECEIPT_PAPER_WIDTH_MM = 58;
+const RECEIPT_CONTENT_WIDTH_MM = 46;
+const RECEIPT_MINIMUM_HEIGHT_MM = 40;
+const RECEIPT_BOTTOM_FEED_MM = 10;
+const CSS_SCREEN_DPI = 96;
+const MILLIMETERS_PER_INCH = 25.4;
+const RECEIPT_JOB_GAP_MS = 1_200;
+
+function printThermalReceiptDocument(
+  title: string,
+  bodyHtml: string,
+  delayMs = 0,
+) {
+  if (typeof document === "undefined") return false;
+
+  const queuePrint = () => {
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+
+    const cleanup = () => window.setTimeout(() => iframe.remove(), 5_000);
+    iframe.onload = () => {
+      const printWindow = iframe.contentWindow;
+      if (!printWindow) {
+        cleanup();
+        return;
+      }
+      printWindow.requestAnimationFrame(() => {
+        printWindow.requestAnimationFrame(() => {
+          const printDocument = printWindow.document;
+          const contentHeightPx = Math.max(
+            printDocument.body.scrollHeight,
+            printDocument.documentElement.scrollHeight,
+          );
+          const contentHeightMm = Math.max(
+            RECEIPT_MINIMUM_HEIGHT_MM,
+            Math.ceil(
+              (contentHeightPx * MILLIMETERS_PER_INCH) / CSS_SCREEN_DPI +
+                RECEIPT_BOTTOM_FEED_MM,
+            ),
+          );
+          const pageStyle = printDocument.getElementById("receipt-page-size");
+          if (pageStyle) {
+            pageStyle.textContent = `@page { size: ${RECEIPT_PAPER_WIDTH_MM}mm ${contentHeightMm}mm; margin: 0; }`;
+          }
+
+          window.setTimeout(() => {
+            printWindow.focus();
+            printWindow.print();
+            cleanup();
+          }, 150);
+        });
+      });
+    };
+
+    iframe.srcdoc = `<!doctype html>
+      <html lang="mn">
+        <head>
+          <meta charset="utf-8" />
+          <title>${escapePrintHtml(title)}</title>
+          <style id="receipt-page-size">@page { size: 58mm 200mm; margin: 0; }</style>
+          <style>
+            * { box-sizing: border-box; }
+            html, body { width: ${RECEIPT_CONTENT_WIDTH_MM}mm; max-width: ${RECEIPT_CONTENT_WIDTH_MM}mm; }
+            body { margin: 0; overflow-wrap: anywhere; color: #000; background: #fff; font-family: Arial, sans-serif; font-size: 10px; line-height: 1.35; }
+            h1 { margin: 0; text-align: center; font-size: 17px; }
+            .center { text-align: center; }
+            .muted { color: #333; font-size: 10px; }
+            .receipt-kind { margin-top: 6px; text-align: center; font-size: 12px; font-weight: 800; }
+            .demo { margin: 6px 0; padding: 5px; border: 2px solid #000; text-align: center; font-size: 13px; font-weight: 800; }
+            .order-number { margin-top: 8px; padding: 8px 4px; border: 2px solid #000; text-align: center; }
+            .order-number strong { display: block; font-size: 23px; line-height: 1.1; letter-spacing: .5px; }
+            .meta, .ebarimt { margin-top: 8px; padding: 7px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; }
+            .row, .total { display: flex; width: 100%; justify-content: space-between; gap: 5px; }
+            .row > span:first-child, .total > span:first-child { flex: 0 0 auto; }
+            .row > span:last-child, .total > span:last-child { min-width: 0; text-align: right; overflow-wrap: anywhere; word-break: break-all; }
+            table { width: 100%; table-layout: fixed; margin-top: 5px; border-collapse: collapse; }
+            td { padding: 5px 0; vertical-align: top; border-bottom: 1px dotted #777; }
+            .amount { width: 30%; text-align: right; white-space: nowrap; font-weight: 700; }
+            .totals { margin-top: 7px; }
+            .total { margin-top: 3px; }
+            .grand { margin-top: 6px; padding-top: 6px; border-top: 2px solid #000; font-size: 15px; font-weight: 800; }
+            .qr { margin-top: 8px; text-align: center; }
+            .qr svg { width: 34mm; height: 34mm; max-width: 100%; }
+            .qr-fallback { overflow-wrap: anywhere; font-family: monospace; font-size: 8px; }
+            .footer { margin-top: 10px; text-align: center; font-weight: 700; }
+          </style>
+        </head>
+        <body>${bodyHtml}</body>
+      </html>`;
+
+    document.body.appendChild(iframe);
+  };
+
+  if (delayMs > 0) window.setTimeout(queuePrint, delayMs);
+  else queuePrint();
+  return true;
+}
+
 function printSelfServiceReceipt(
   receipt: PosReceipt,
   context: {
@@ -253,101 +357,63 @@ function printSelfServiceReceipt(
     )
     .join("");
 
-  const iframe = document.createElement("iframe");
-  iframe.setAttribute("aria-hidden", "true");
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "0";
+  const headerHtml = `
+    <h1>${escapePrintHtml(context.organizationName)}</h1>
+    <div class="center muted">${escapePrintHtml(receipt.branchName)} · ${escapePrintHtml(context.registerName)}</div>`;
+  const orderNumberHtml = `
+    <div class="order-number">
+      <strong>Захиалга №${escapePrintHtml(context.ticketNo)}</strong>
+    </div>`;
+  const metaHtml = `
+    <div class="meta">
+      <div class="row"><span>Баримт:</span><span>${escapePrintHtml(receipt.receiptNo)}</span></div>
+      <div class="row"><span>Огноо:</span><span>${escapePrintHtml(formatPrintDate(receipt.createdAt))}</span></div>
+      <div class="row"><span>Төрөл:</span><span>${escapePrintHtml(context.orderLabel)}</span></div>
+      <div class="row"><span>Төлбөр:</span><span>${paymentLabel}</span></div>
+    </div>`;
+  const itemsAndTotalsHtml = `
+    <table><tbody>${lineRows}</tbody></table>
+    <div class="totals">
+      <div class="total"><span>Дүн:</span><span>${escapePrintHtml(formatMoney(receipt.subTotal))}</span></div>
+      ${receipt.discountTotal > 0 ? `<div class="total"><span>Хөнгөлөлт:</span><span>-${escapePrintHtml(formatMoney(receipt.discountTotal))}</span></div>` : ""}
+      ${receipt.taxTotal > 0 ? `<div class="total"><span>Үүнд НӨАТ:</span><span>${escapePrintHtml(formatMoney(receipt.taxTotal))}</span></div>` : ""}
+      <div class="total grand"><span>НИЙТ:</span><span>${escapePrintHtml(formatMoney(receipt.grandTotal))}</span></div>
+    </div>`;
 
-  const cleanup = () => window.setTimeout(() => iframe.remove(), 1_500);
-  iframe.onload = () => {
-    const printWindow = iframe.contentWindow;
-    if (!printWindow) {
-      cleanup();
-      return;
-    }
-    window.setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-      cleanup();
-    }, 100);
-  };
+  const orderReceiptQueued = printThermalReceiptDocument(
+    `${receipt.receiptNo}-order`,
+    `${headerHtml}
+     <div class="receipt-kind">ЗАХИАЛГЫН БАРИМТ</div>
+     ${orderNumberHtml}
+     ${metaHtml}
+     ${itemsAndTotalsHtml}
+     <div class="footer">Захиалгын дугаараа хадгална уу</div>`,
+  );
 
-  iframe.srcdoc = `<!doctype html>
-    <html lang="mn">
-      <head>
-        <meta charset="utf-8" />
-        <title>${escapePrintHtml(receipt.receiptNo)}</title>
-        <style>
-          @page { size: 58mm auto; margin: 2mm; }
-          * { box-sizing: border-box; }
-          html, body { width: 48mm; max-width: 48mm; }
-          body { margin: 0; overflow-wrap: anywhere; color: #000; background: #fff; font-family: Arial, sans-serif; font-size: 10px; line-height: 1.35; }
-          h1 { margin: 0; text-align: center; font-size: 17px; }
-          .center { text-align: center; }
-          .muted { color: #333; font-size: 10px; }
-          .demo { margin: 6px 0; padding: 5px; border: 2px solid #000; text-align: center; font-size: 13px; font-weight: 800; }
-          .order-number { margin-top: 8px; padding: 8px 4px; border: 2px solid #000; text-align: center; }
-          .order-number strong { display: block; font-size: 23px; line-height: 1.1; letter-spacing: .5px; }
-          .meta, .ebarimt { margin-top: 8px; padding: 7px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; }
-          .row, .total { display: flex; width: 100%; justify-content: space-between; gap: 5px; }
-          .row > span:first-child, .total > span:first-child { flex: 0 0 auto; }
-          .row > span:last-child, .total > span:last-child { min-width: 0; text-align: right; overflow-wrap: anywhere; word-break: break-all; }
-          table { width: 100%; table-layout: fixed; margin-top: 5px; border-collapse: collapse; }
-          td { padding: 5px 0; vertical-align: top; border-bottom: 1px dotted #777; }
-          .amount { width: 30%; text-align: right; white-space: nowrap; font-weight: 700; }
-          .totals { margin-top: 7px; }
-          .total { margin-top: 3px; }
-          .grand { margin-top: 6px; padding-top: 6px; border-top: 2px solid #000; font-size: 15px; font-weight: 800; }
-          .qr { margin-top: 8px; text-align: center; }
-          .qr svg { width: 34mm; height: 34mm; max-width: 100%; }
-          .qr-fallback { overflow-wrap: anywhere; font-family: monospace; font-size: 8px; }
-          .footer { margin-top: 10px; text-align: center; font-weight: 700; }
-        </style>
-      </head>
-      <body>
-        <h1>${escapePrintHtml(context.organizationName)}</h1>
-        <div class="center muted">${escapePrintHtml(receipt.branchName)} · ${escapePrintHtml(context.registerName)}</div>
-        ${isDemo ? '<div class="demo">ТЕСТИЙН БАРИМТ</div>' : ""}
-        <div class="order-number">
-          <strong>Захиалга №${escapePrintHtml(context.ticketNo)}</strong>
-        </div>
-        <div class="meta">
-          <div class="row"><span>Баримт:</span><span>${escapePrintHtml(receipt.receiptNo)}</span></div>
-          <div class="row"><span>Огноо:</span><span>${escapePrintHtml(formatPrintDate(receipt.createdAt))}</span></div>
-          <div class="row"><span>Төрөл:</span><span>${escapePrintHtml(context.orderLabel)}</span></div>
-          <div class="row"><span>Төлбөр:</span><span>${paymentLabel}</span></div>
-        </div>
-        <table><tbody>${lineRows}</tbody></table>
-        <div class="totals">
-          <div class="total"><span>Дүн:</span><span>${escapePrintHtml(formatMoney(receipt.subTotal))}</span></div>
-          ${receipt.discountTotal > 0 ? `<div class="total"><span>Хөнгөлөлт:</span><span>-${escapePrintHtml(formatMoney(receipt.discountTotal))}</span></div>` : ""}
-          ${receipt.taxTotal > 0 ? `<div class="total"><span>Үүнд НӨАТ:</span><span>${escapePrintHtml(formatMoney(receipt.taxTotal))}</span></div>` : ""}
-          <div class="total grand"><span>НИЙТ:</span><span>${escapePrintHtml(formatMoney(receipt.grandTotal))}</span></div>
-        </div>
-        ${
-          ebarimt
-            ? `<div class="ebarimt">
-                <div class="center"><strong>${ebarimt.receiptType === "B2B" ? "БАЙГУУЛЛАГЫН EBARIMT" : "ХУВЬ ХҮНИЙ EBARIMT"}</strong></div>
-                ${ebarimt.customerRegNo ? `<div class="row"><span>Регистр:</span><span>${escapePrintHtml(ebarimt.customerRegNo)}</span></div>` : ""}
-                ${ebarimt.billId ? `<div class="row"><span>ДДТД:</span><span>${escapePrintHtml(ebarimt.billId)}</span></div>` : ""}
-                ${ebarimt.lottery ? `<div class="row"><span>Сугалаа:</span><span>${escapePrintHtml(ebarimt.lottery)}</span></div>` : ""}
-                <div class="qr">${context.qrMarkup || `<div class="qr-fallback">${escapePrintHtml(ebarimt.qrData)}</div>`}</div>
-              </div>`
-            : `<div class="ebarimt center">
-                <strong>ЗАХИАЛГЫН БАРИМТ</strong>
-                <div class="muted">Ebarimt биш</div>
-              </div>`
-        }
-        <div class="footer">Үйлчлүүлсэнд баярлалаа</div>
-      </body>
-    </html>`;
+  if (ebarimt) {
+    const ebarimtHtml = `
+      <div class="ebarimt">
+        <div class="center"><strong>${ebarimt.receiptType === "B2B" ? "БАЙГУУЛЛАГЫН EBARIMT" : "ХУВЬ ХҮНИЙ EBARIMT"}</strong></div>
+        ${ebarimt.customerRegNo ? `<div class="row"><span>Регистр:</span><span>${escapePrintHtml(ebarimt.customerRegNo)}</span></div>` : ""}
+        ${ebarimt.billId ? `<div class="row"><span>ДДТД:</span><span>${escapePrintHtml(ebarimt.billId)}</span></div>` : ""}
+        ${ebarimt.lottery ? `<div class="row"><span>Сугалаа:</span><span>${escapePrintHtml(ebarimt.lottery)}</span></div>` : ""}
+        <div class="qr">${context.qrMarkup || `<div class="qr-fallback">${escapePrintHtml(ebarimt.qrData)}</div>`}</div>
+      </div>`;
 
-  document.body.appendChild(iframe);
-  return true;
+    printThermalReceiptDocument(
+      `${receipt.receiptNo}-ebarimt`,
+      `${headerHtml}
+       ${isDemo ? '<div class="demo">ТЕСТИЙН БАРИМТ</div>' : ""}
+       ${orderNumberHtml}
+       ${metaHtml}
+       ${itemsAndTotalsHtml}
+       ${ebarimtHtml}
+       <div class="footer">Үйлчлүүлсэнд баярлалаа</div>`,
+      RECEIPT_JOB_GAP_MS,
+    );
+  }
+
+  return orderReceiptQueued;
 }
 
 const createClientSaleId = () => {
