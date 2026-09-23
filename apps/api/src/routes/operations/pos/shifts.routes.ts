@@ -41,6 +41,7 @@ import {
   bridgeSharedSecret,
   pushEcrDefaultTerminalId,
   MONEY_EPSILON,
+  SELF_SERVICE_SHIFT_NOTE,
   type AuthUser,
   type ApiError,
   type SaleLineInput,
@@ -313,6 +314,10 @@ router.post("/pos/shifts/open", async (req, res) => {
 
     const branchId = String(req.body.branchId || "").trim();
     const registerId = String(req.body.registerId || "").trim() || null;
+    const isSelfService =
+      String(req.body.source || "")
+        .trim()
+        .toUpperCase() === "SELF_SERVICE";
     const openingCash = Number(req.body.openingCash);
 
     if (!branchId) {
@@ -372,13 +377,21 @@ router.post("/pos/shifts/open", async (req, res) => {
 
     const result = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
-        // Serialize concurrent shift-open requests for this cashier and register.
+        // Serialize concurrent shift-open requests for this cashier and branch.
         await tx.$queryRaw`
         SELECT "id"
         FROM "User"
         WHERE "id" = ${actor.id}
         FOR UPDATE
-      `;
+        `;
+        if (isSelfService) {
+          await tx.$queryRaw`
+          SELECT "id"
+          FROM "Branch"
+          WHERE "id" = ${branchId}
+          FOR UPDATE
+        `;
+        }
         if (registerId) {
           await tx.$queryRaw`
           SELECT "id"
@@ -388,19 +401,67 @@ router.post("/pos/shifts/open", async (req, res) => {
         `;
         }
 
+        if (isSelfService) {
+          const kioskShift = await tx.posShift.findFirst({
+            where: {
+              organizationId: branch.organizationId,
+              branchId,
+              registerId: null,
+              status: ShiftStatus.OPEN,
+              note: SELF_SERVICE_SHIFT_NOTE,
+            },
+            include: {
+              cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
+              branch: { select: { id: true, name: true } },
+              register: { select: { id: true, name: true } },
+            },
+          });
+          if (kioskShift) {
+            return { existingOpen: null, shift: kioskShift, reused: true };
+          }
+
+          const shift = await tx.posShift.create({
+            data: {
+              organizationId: branch.organizationId,
+              branchId,
+              registerId: null,
+              cashierId: actor.id,
+              openingCash: 0,
+              note: SELF_SERVICE_SHIFT_NOTE,
+              status: ShiftStatus.OPEN,
+            },
+            include: {
+              cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
+              branch: { select: { id: true, name: true } },
+              register: { select: { id: true, name: true } },
+            },
+          });
+          return { existingOpen: null, shift, reused: false };
+        }
+
         const existingOpen = await tx.posShift.findFirst({
           where: {
             status: ShiftStatus.OPEN,
-            OR: buildOpenShiftConflictScopes(
-              actor.id,
-              branch.organizationId,
-              registerId,
-            ),
+            AND: [
+              {
+                OR: buildOpenShiftConflictScopes(
+                  actor.id,
+                  branch.organizationId,
+                  registerId,
+                ),
+              },
+              {
+                OR: [
+                  { note: null },
+                  { note: { not: SELF_SERVICE_SHIFT_NOTE } },
+                ],
+              },
+            ],
           },
           select: { id: true, cashierId: true, registerId: true },
         });
         if (existingOpen) {
-          return { existingOpen, shift: null };
+          return { existingOpen, shift: null, reused: false };
         }
 
         const shift = await tx.posShift.create({
@@ -418,7 +479,7 @@ router.post("/pos/shifts/open", async (req, res) => {
             register: { select: { id: true, name: true } },
           },
         });
-        return { existingOpen: null, shift };
+        return { existingOpen: null, shift, reused: false };
       },
     );
 
@@ -431,7 +492,7 @@ router.post("/pos/shifts/open", async (req, res) => {
     }
 
     if (!result.shift) throw new Error("Shift was not created");
-    res.status(201).json(toShiftResponse(result.shift));
+    res.status(result.reused ? 200 : 201).json(toShiftResponse(result.shift));
   } catch (error) {
     console.error("open shift error", error);
     res.status(500).json({ message: "Ээлж нээхэд алдаа гарлаа" });
@@ -611,7 +672,15 @@ router.get("/pos/shifts/register-current", async (req, res) => {
       where: {
         organizationId: register.organizationId,
         status: ShiftStatus.OPEN,
-        OR: [{ cashierId: actor.id }, { registerId }],
+        AND: [
+          { OR: [{ cashierId: actor.id }, { registerId }] },
+          {
+            OR: [
+              { note: null },
+              { note: { not: SELF_SERVICE_SHIFT_NOTE } },
+            ],
+          },
+        ],
       },
       orderBy: { openedAt: "desc" },
       include: {
@@ -647,6 +716,10 @@ router.get("/pos/shifts/current", async (req, res) => {
       where: {
         ...buildCurrentShiftScope(actor),
         status: ShiftStatus.OPEN,
+        OR: [
+          { note: null },
+          { note: { not: SELF_SERVICE_SHIFT_NOTE } },
+        ],
       },
       include: {
         cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
@@ -820,7 +893,12 @@ router.get("/pos/shifts/history", async (req, res) => {
       return res.status(400).json({ message: "from, to буруу огноо формат" });
     }
 
-    const where: any = {};
+    const where: any = {
+      OR: [
+        { note: null },
+        { note: { not: SELF_SERVICE_SHIFT_NOTE } },
+      ],
+    };
     if (status) where.status = status as ShiftStatus;
 
     if (branchId) {

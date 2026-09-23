@@ -22,7 +22,11 @@ import {
   checkSystemQrPayment,
   createSystemQrInvoice,
 } from "../../../services/systemqr";
-import { requirePosUser, type AuthUser } from "./_shared";
+import {
+  requirePosUser,
+  SELF_SERVICE_SHIFT_NOTE,
+  type AuthUser,
+} from "./_shared";
 import {
   createRestaurantMenuCategoryCode,
   listRestaurantMenuCategories,
@@ -2436,6 +2440,8 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
             organizationId: true,
             branchId: true,
             cashierId: true,
+            registerId: true,
+            note: true,
           },
         });
         if (!activeShift) {
@@ -2451,7 +2457,7 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
         if (
           activeShift.organizationId !== access.branch.organizationId ||
           activeShift.branchId !== branchId ||
-          activeShift.cashierId !== actor.id
+          (!isSelfService && activeShift.cashierId !== actor.id)
         ) {
           throw Object.assign(
             new Error("Ticket үүсгэх ээлж кассчин эсвэл салбартай зөрүүтэй"),
@@ -2543,6 +2549,22 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
           throw Object.assign(
             new Error("Зарим бүтээгдэхүүн идэвхгүй эсвэл олдсонгүй"),
             { status: 400 },
+          );
+        }
+        if (
+          isSelfService &&
+          (activeShift.note !== SELF_SERVICE_SHIFT_NOTE ||
+            activeShift.registerId !== null)
+        ) {
+          throw Object.assign(
+            new Error("Self-service захиалгын дотоод ээлж буруу байна"),
+            { status: 409 },
+          );
+        }
+        if (!isSelfService && activeShift.note === SELF_SERVICE_SHIFT_NOTE) {
+          throw Object.assign(
+            new Error("Self-service дотоод ээлжийг энгийн кассанд ашиглах боломжгүй"),
+            { status: 409 },
           );
         }
 

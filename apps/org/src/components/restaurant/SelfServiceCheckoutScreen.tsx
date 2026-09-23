@@ -44,7 +44,6 @@ import {
   createRestaurantCashSale,
   createRestaurantQPayInvoice,
   createRestaurantQPaySale,
-  getCurrentRestaurantPosShift,
   getRestaurantMenuCategories,
   getRestaurantCardAttemptStatus,
   getRestaurantPosProducts,
@@ -562,10 +561,7 @@ export function SelfServiceCheckoutScreen() {
     setSetupLoading(true);
     setSetupError("");
     try {
-      const [registers, currentShift] = await Promise.all([
-        getRestaurantPosRegisters(),
-        getCurrentRestaurantPosShift(),
-      ]);
+      const registers = await getRestaurantPosRegisters();
 
       if (registers.length === 0) {
         throw new Error("Энэ байгууллагад идэвхтэй POS register алга байна.");
@@ -578,7 +574,6 @@ export function SelfServiceCheckoutScreen() {
           : null;
       const nextRegister =
         registers.find((item) => item.id === recoveryRegisterId) ||
-        registers.find((item) => item.id === currentShift?.registerId) ||
         registers.find(
           (item) => item.id === savedRegisterId && item.qpayEnabled,
         ) ||
@@ -593,7 +588,7 @@ export function SelfServiceCheckoutScreen() {
       ]);
 
       setRegister(nextRegister);
-      setShift(currentShift?.status === "OPEN" ? currentShift : null);
+      setShift(null);
       setProducts(nextProducts);
       setMenuCategories(nextCategories);
     } catch (error) {
@@ -1445,6 +1440,7 @@ export function SelfServiceCheckoutScreen() {
       setCardMessage("Картын төлбөр баталгаажлаа. Захиалгыг бүртгэж байна...");
       try {
         const saleReceipt = await createRestaurantCardSale({
+          source: "SELF_SERVICE",
           shiftId: checkout.shiftId,
           branchId: register.branchId,
           registerId: register.id,
@@ -1654,11 +1650,15 @@ export function SelfServiceCheckoutScreen() {
 
       // Sales remain traceable in the POS data model, but kiosk users never
       // need to see or manually manage this internal session.
-      if (!activeShift || activeShift.status !== "OPEN") {
+      if (
+        !activeShift ||
+        activeShift.status !== "OPEN" ||
+        activeShift.registerId !== null
+      ) {
         activeShift = await openRestaurantPosShift({
           branchId: register.branchId,
-          registerId: register.id,
           openingCash: 0,
+          source: "SELF_SERVICE",
         });
         setShift(activeShift);
       }
@@ -1680,6 +1680,7 @@ export function SelfServiceCheckoutScreen() {
 
       if (paymentMethod === "CASH" && DEMO_CASH_PAYMENT_ENABLED) {
         const saleReceipt = await createRestaurantCashSale({
+          source: "SELF_SERVICE",
           shiftId: activeShift.id,
           branchId: register.branchId,
           registerId: register.id,
@@ -1832,6 +1833,7 @@ export function SelfServiceCheckoutScreen() {
       setActionError("");
       try {
         const saleReceipt = await createRestaurantQPaySale({
+          source: "SELF_SERVICE",
           shiftId: checkout.shiftId,
           branchId: register.branchId,
           registerId: register.id,

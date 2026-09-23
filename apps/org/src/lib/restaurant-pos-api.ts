@@ -300,6 +300,7 @@ export type RestaurantKitchenTicket = {
 };
 
 type CreateRestaurantCashSalePayload = {
+  source?: "SELF_SERVICE";
   shiftId: string;
   branchId: string;
   registerId: string;
@@ -577,8 +578,9 @@ export async function getCurrentRestaurantPosShift() {
 
 export async function openRestaurantPosShift(input: {
   branchId: string;
-  registerId: string;
+  registerId?: string;
   openingCash: number;
+  source?: "SELF_SERVICE";
 }) {
   const response = await authFetch(`${API}/pos/shifts/open`, {
     method: "POST",
@@ -1102,6 +1104,7 @@ async function createRestaurantSale(input: CreateRestaurantSalePayload) {
   const response = await authFetch(`${API}/pos/sales`, {
     method: "POST",
     body: JSON.stringify({
+      ...(input.source ? { source: input.source } : {}),
       shiftId: input.shiftId,
       branchId: input.branchId,
       registerId: input.registerId,

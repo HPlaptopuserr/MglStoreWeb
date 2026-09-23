@@ -84,6 +84,7 @@ export type SalePaymentLineInput = {
 };
 
 export type CreateSaleBody = {
+  source?: "SELF_SERVICE";
   shiftId?: string;
   branchId?: string;
   registerId?: string;
@@ -116,6 +117,7 @@ export type AuthUser = {
 };
 
 export const MONEY_EPSILON = 0.01;
+export const SELF_SERVICE_SHIFT_NOTE = "SYSTEM:SELF_SERVICE";
 
 export const toApiError = (status: number, message: string): ApiError => ({
   status,

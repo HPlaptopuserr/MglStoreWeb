@@ -43,6 +43,7 @@ import {
   bridgeSharedSecret,
   pushEcrDefaultTerminalId,
   MONEY_EPSILON,
+  SELF_SERVICE_SHIFT_NOTE,
   type AuthUser,
   type ApiError,
   type SaleLineInput,
@@ -720,6 +721,10 @@ router.post("/pos/sales", async (req, res) => {
     if (!actor) return;
 
     const body = req.body as CreateSaleBody;
+    const isSelfServiceSale =
+      String(body.source || "")
+        .trim()
+        .toUpperCase() === "SELF_SERVICE";
     const lines = Array.isArray(body.lines) ? body.lines : [];
     const registerId = String(body.registerId || "").trim() || null;
     const organizationId = String(body.organizationId || "").trim() || null;
@@ -727,6 +732,12 @@ router.post("/pos/sales", async (req, res) => {
       String(body.restaurantTicketId || "").trim() || null;
     const clientSaleId = String(body.clientSaleId || "").trim();
     const packagingFee = roundMoney(Number(body.packagingFee || 0));
+
+    if (isSelfServiceSale && !restaurantTicketId) {
+      return res.status(400).json({
+        message: "Self-service борлуулалтад рестораны захиалга шаардлагатай",
+      });
+    }
 
     if (
       !Number.isFinite(packagingFee) ||
@@ -1072,6 +1083,7 @@ router.post("/pos/sales", async (req, res) => {
             branchId: true,
             registerId: true,
             cashierId: true,
+            note: true,
           },
         });
         if (!activeShift) {
@@ -1080,10 +1092,23 @@ router.post("/pos/sales", async (req, res) => {
         if (activeShift.status !== ShiftStatus.OPEN) {
           throw toApiError(409, "Энэ ээлж хаагдсан байна. Шинэ ээлж нээнэ үү");
         }
-        if (activeShift.cashierId !== actor.id) {
+        if (!isSelfServiceSale && activeShift.cashierId !== actor.id) {
           throw toApiError(
             403,
             "Зөвхөн өөрийн нээлттэй ээлж дээр борлуулалт бүртгэнэ",
+          );
+        }
+        if (
+          isSelfServiceSale &&
+          (activeShift.note !== SELF_SERVICE_SHIFT_NOTE ||
+            activeShift.registerId !== null)
+        ) {
+          throw toApiError(409, "Self-service борлуулалтын дотоод ээлж буруу байна");
+        }
+        if (!isSelfServiceSale && activeShift.note === SELF_SERVICE_SHIFT_NOTE) {
+          throw toApiError(
+            409,
+            "Self-service дотоод ээлжийг энгийн кассанд ашиглах боломжгүй",
           );
         }
         if (
@@ -1102,7 +1127,7 @@ router.post("/pos/sales", async (req, res) => {
         ) {
           throw toApiError(400, "Ээлж өөр POS касс дээр нээгдсэн байна");
         }
-        if (registerId && !activeShift.registerId) {
+        if (registerId && !activeShift.registerId && !isSelfServiceSale) {
           const conflictingShift = await tx.posShift.findFirst({
             where: {
               id: { not: activeShift.id },
@@ -1467,6 +1492,15 @@ router.post("/pos/sales", async (req, res) => {
           const product = products.find((item) => item.id === productId);
           if (!product) {
             throw toApiError(404, "Бараа олдсонгүй");
+          }
+          if (
+            isSelfServiceSale &&
+            restaurantTicketForSale?.tableId !== null
+          ) {
+            throw toApiError(
+              409,
+              "Self-service борлуулалт ширээний захиалга дээр үүсэх боломжгүй",
+            );
           }
           if (product.isRestaurantMenuItem) {
             allocatedCostByProduct.set(productId, null);

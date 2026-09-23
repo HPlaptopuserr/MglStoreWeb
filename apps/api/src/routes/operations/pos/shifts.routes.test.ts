@@ -6,7 +6,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { prisma, type Prisma } from "@mgl/database";
 import router from "./shifts.routes";
-import { JWT_SECRET } from "./_shared";
+import { JWT_SECRET, SELF_SERVICE_SHIFT_NOTE } from "./_shared";
 
 let server: Server;
 let base: string;
@@ -131,7 +131,15 @@ test("register context identifies the previous cashier without adopting their sh
     {
       organizationId: "store",
       status: "OPEN",
-      OR: [{ cashierId: "owner" }, { registerId: "register" }],
+      AND: [
+        { OR: [{ cashierId: "owner" }, { registerId: "register" }] },
+        {
+          OR: [
+            { note: null },
+            { note: { not: SELF_SERVICE_SHIFT_NOTE } },
+          ],
+        },
+      ],
     },
   );
 });
@@ -266,6 +274,74 @@ test("occupied registers continue rejecting duplicate shift opens", async () => 
     }),
   });
   assert.equal(response.status, 409);
+  assert.equal(create.mock.callCount(), 0);
+});
+test("self-service opens an internal shift without adopting the occupied register", async () => {
+  const find = stub(prisma.posShift, "findFirst", async () => null);
+  const create = stub(prisma.posShift, "create", async () => ({
+    ...shift,
+    id: "self-service-shift",
+    cashierId: "owner",
+    registerId: null,
+    note: SELF_SERVICE_SHIFT_NOTE,
+    register: null,
+  }));
+  const response = await fetch(`${base}/open`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      source: "SELF_SERVICE",
+      branchId: "branch",
+      registerId: "register",
+      openingCash: 0,
+    }),
+  });
+  assert.equal(response.status, 201);
+  assert.deepEqual(
+    (find.mock.calls[0]?.arguments[0] as Prisma.PosShiftFindFirstArgs).where,
+    {
+      organizationId: "store",
+      branchId: "branch",
+      registerId: null,
+      status: "OPEN",
+      note: SELF_SERVICE_SHIFT_NOTE,
+    },
+  );
+  assert.deepEqual(
+    (create.mock.calls[0]?.arguments[0] as Prisma.PosShiftCreateArgs).data,
+    {
+      organizationId: "store",
+      branchId: "branch",
+      registerId: null,
+      cashierId: "owner",
+      openingCash: 0,
+      note: SELF_SERVICE_SHIFT_NOTE,
+      status: "OPEN",
+    },
+  );
+});
+test("self-service reuses the branch internal shift across kiosk users", async () => {
+  stub(prisma.posShift, "findFirst", async () => ({
+    ...shift,
+    id: "self-service-shift",
+    registerId: null,
+    note: SELF_SERVICE_SHIFT_NOTE,
+    register: null,
+  }));
+  const create = stub(prisma.posShift, "create", async () => {
+    throw new Error("must reuse the existing self-service shift");
+  });
+  const response = await fetch(`${base}/open`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      source: "SELF_SERVICE",
+      branchId: "branch",
+      openingCash: 0,
+    }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).id, "self-service-shift");
   assert.equal(create.mock.callCount(), 0);
 });
 test("closed shifts and unsettled restaurant tickets remain protected", async () => {
