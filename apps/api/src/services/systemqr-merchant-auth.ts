@@ -12,6 +12,12 @@ export const isSystemQrMerchantKey = (value?: string | null) => {
 };
 
 export const shouldRetrySystemQrWithMaster = (error: unknown) => {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String((error as { code?: unknown }).code || "")
+      : "";
+  if (code === "SYSTEMQR_MERCHANT_NOT_AUTHORIZED") return true;
+
   const message = error instanceof Error ? error.message : String(error || "");
   return /SystemQR Login[_ ]Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403|createInvoice failed \(002\)/i.test(
     message,

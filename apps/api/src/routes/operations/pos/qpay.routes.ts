@@ -442,7 +442,17 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
   } catch (error) {
     console.error("qpay invoice create error", error);
     const msg = error instanceof Error ? error.message : "QPay invoice үүсгэхэд алдаа гарлаа";
-    return res.status(500).json({ message: msg });
+    const known = error as { code?: unknown; status?: unknown };
+    const errorCode = String(known?.code || "").trim();
+    const errorStatus = Number(known?.status);
+    const httpStatus =
+      Number.isInteger(errorStatus) && errorStatus >= 400 && errorStatus <= 599
+        ? errorStatus
+        : 500;
+    return res.status(httpStatus).json({
+      ...(errorCode ? { code: errorCode } : {}),
+      message: msg,
+    });
   }
 });
 

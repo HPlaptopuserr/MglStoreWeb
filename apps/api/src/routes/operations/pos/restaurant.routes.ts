@@ -1384,9 +1384,12 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
       throw qpayError;
     }
   } catch (error) {
-    const known = error as Error & { status?: number };
+    const known = error as Error & { status?: number; code?: string };
     if (known.status) {
-      return res.status(known.status).json({ message: known.message });
+      return res.status(known.status).json({
+        ...(known.code ? { code: known.code } : {}),
+        message: known.message,
+      });
     }
     console.error("create public restaurant qpay invoice error", error);
     const message =

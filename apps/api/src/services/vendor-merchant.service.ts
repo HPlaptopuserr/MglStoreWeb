@@ -14,6 +14,8 @@ import {
   type QPayRegisterPersonParams,
 } from "./qpay";
 import {
+  findSystemQrSubMerchantByCode,
+  listSystemQrSubMerchants,
   registerSystemQrSubMerchant,
   type SystemQrRegisterSubMerchantParams,
 } from "./systemqr";
@@ -26,6 +28,7 @@ import {
 export type ConnectMerchantResult = {
   success: boolean;
   message: string;
+  code?: string;
   merchantId?: string;
   alreadyRegistered?: boolean;
 };
@@ -141,11 +144,41 @@ export async function connectVendorMerchant(
       };
     }
 
+    let verifiedMerchantId = merchantId.trim();
+    const isSystemQrConnection =
+      isSystemQrMarker(invoiceCode) || isSystemQrMarker(merchantKey);
+    if (isSystemQrConnection) {
+      try {
+        const merchants = await listSystemQrSubMerchants();
+        const merchant = findSystemQrSubMerchantByCode(
+          merchants,
+          verifiedMerchantId,
+        );
+        if (!merchant) {
+          return {
+            success: false,
+            code: "SYSTEMQR_MERCHANT_NOT_FOUND",
+            message:
+              "Энэ Merchant Code Minu SystemQR-ийн submerchant жагсаалтаас олдсонгүй. Кодоо шалгаад дахин холбоно уу.",
+          };
+        }
+        verifiedMerchantId = merchant.merchantCode;
+      } catch (error) {
+        console.error("SystemQR merchant validation error", error);
+        return {
+          success: false,
+          code: "SYSTEMQR_MERCHANT_VALIDATION_FAILED",
+          message:
+            "Merchant Code-ийг Minu талаас шалгаж чадсангүй. SystemQR master нэвтрэх тохиргоо болон Minu API холболтыг шалгаад дахин оролдоно уу.",
+        };
+      }
+    }
+
     // Update organization with merchant credentials
     await prisma.organization.update({
       where: { id: organizationId },
       data: buildMerchantUpdateData(channel, {
-        merchantId: merchantId.trim(),
+        merchantId: verifiedMerchantId,
         merchantKey: merchantKey.trim(),
         invoiceCode: invoiceCode?.trim() || null,
         enabled: true,
@@ -156,7 +189,7 @@ export async function connectVendorMerchant(
     return {
       success: true,
       message: "Мерчант данс амжилттай холбогдлоо",
-      merchantId: merchantId,
+      merchantId: verifiedMerchantId,
     };
   } catch (error) {
     console.error("vendor merchant connect error", error);

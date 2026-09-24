@@ -43,9 +43,9 @@ test("SystemQR auth and explicit 002 create failures retry with the master token
   );
   assert.equal(
     shouldRetrySystemQrWithMaster(
-      new Error(
-        "Minu SystemQR createInvoice failed (002): SystemQR invoice creation failed",
-      ),
+      Object.assign(new Error("Merchant is not authorized"), {
+        code: "SYSTEMQR_MERCHANT_NOT_AUTHORIZED",
+      }),
     ),
     true,
   );
