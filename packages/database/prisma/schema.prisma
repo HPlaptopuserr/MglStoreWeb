@@ -78,6 +78,10 @@ model User {
   posShifts                        PosShift[]                     @relation("PosShiftCashier")
   posSales                         PosSale[]                      @relation("PosSaleCashier")
   receivedPosGoodsReceipts         PosGoodsReceipt[]              @relation("PosGoodsReceiptReceivedBy")
+  createdCafeDailyStocks           CafeDailyStock[]               @relation("CafeDailyStockCreatedBy")
+  updatedCafeDailyStocks           CafeDailyStock[]               @relation("CafeDailyStockUpdatedBy")
+  receivedCafeDailyStockReceipts   CafeDailyStockReceipt[]        @relation("CafeDailyStockReceiptReceivedBy")
+  voidedCafeDailyStockReceipts     CafeDailyStockReceipt[]        @relation("CafeDailyStockReceiptVoidedBy")
   posCreditSales                   PosCreditSale[]                @relation("PosCreditSaleCashier")
   posLoyaltyTransactions           PosLoyaltyTransaction[]        @relation("PosLoyaltyCustomer")
   openedRestaurantTickets          RestaurantTicket[]             @relation("RestaurantTicketOpenedBy")
@@ -454,6 +458,8 @@ model Organization {
   posCreditCustomers               PosCreditCustomer[]
   posCreditSales                   PosCreditSale[]
   posLoyaltyTransactions           PosLoyaltyTransaction[]
+  cafeDailyStocks                  CafeDailyStock[]
+  cafeDailyStockReceipts           CafeDailyStockReceipt[]
   restaurantMenuCategories         RestaurantMenuCategory[]
   restaurantTables                 RestaurantTable[]
   restaurantTickets                RestaurantTicket[]
@@ -971,6 +977,8 @@ model Branch {
   posGoodsReceipts       PosGoodsReceipt[]
   posCreditSales         PosCreditSale[]
   posLoyaltyTransactions PosLoyaltyTransaction[]
+  cafeDailyStocks        CafeDailyStock[]
+  cafeDailyStockReceipts CafeDailyStockReceipt[]
   restaurantTables       RestaurantTable[]
   restaurantTickets      RestaurantTicket[]
   kitchenTickets         KitchenTicket[]
@@ -1135,6 +1143,8 @@ model Product {
   stockRequestItems      WarehouseStockRequestItem[]   @relation("StockRequestProducts")
   posSaleLines           PosSaleLine[]
   posGoodsReceiptItems   PosGoodsReceiptItem[]
+  cafeDailyStocks        CafeDailyStock[]
+  cafeDailyStockReceipts CafeDailyStockReceipt[]
   returnItems            DispatchReturnItem[]          @relation("ReturnProducts")
   productInteractions    ProductInteraction[]
   productInterestScores  ProductInterestScore[]
@@ -2937,6 +2947,61 @@ model RestaurantMenuCategory {
 
   @@unique([organizationId, code])
   @@index([organizationId, sortOrder])
+}
+
+/// Coffee-shop daily preparation/intake sheet. Sales are calculated from
+/// completed POS sale lines and are intentionally not duplicated here.
+model CafeDailyStock {
+  id             String       @id @default(uuid())
+  organizationId String
+  branchId       String
+  productId      String
+  businessDate   DateTime     @db.Date
+  openingQty     Decimal      @default(0) @db.Decimal(18, 3)
+  wasteQty       Decimal      @default(0) @db.Decimal(18, 3)
+  note           String?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdBy      User?        @relation("CafeDailyStockCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy      User?        @relation("CafeDailyStockUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, productId, businessDate])
+  @@index([organizationId, businessDate])
+  @@index([branchId, businessDate])
+  @@index([productId, businessDate])
+}
+
+/// Immutable receipt lines for products prepared or received during a cafe
+/// business day. Voiding keeps the audit trail while removing the quantity
+/// from that day's received total.
+model CafeDailyStockReceipt {
+  id             String       @id @default(uuid())
+  batchId        String
+  organizationId String
+  branchId       String
+  productId      String
+  businessDate   DateTime     @db.Date
+  quantity       Decimal      @db.Decimal(18, 3)
+  note           String?
+  receivedById   String?
+  voidedAt       DateTime?
+  voidedById     String?
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch         Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  product        Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  receivedBy     User?        @relation("CafeDailyStockReceiptReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+  voidedBy       User?        @relation("CafeDailyStockReceiptVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, businessDate])
+  @@index([branchId, businessDate, voidedAt])
+  @@index([productId, businessDate, voidedAt])
+  @@index([batchId])
 }
 
 model RestaurantTicket {

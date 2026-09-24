@@ -7,6 +7,7 @@ import catalogRoutes from "./catalog.routes";
 import registersRoutes from "./registers.routes";
 import restaurantRoutes from "./restaurant.routes";
 import goodsReceiptsRoutes from "./goods-receipts.routes";
+import cafeDailyStockRoutes from "./cafe-daily-stock.routes";
 
 const router: ExpressRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(catalogRoutes);
 router.use(registersRoutes);
 router.use(restaurantRoutes);
 router.use(goodsReceiptsRoutes);
+router.use(cafeDailyStockRoutes);
 
 export default router;

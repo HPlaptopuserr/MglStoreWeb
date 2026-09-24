@@ -79,6 +79,51 @@ export type RestaurantPosProduct = {
   preparationMinutes: number | null;
 };
 
+export type CafeDailyStockItem = {
+  productId: string;
+  name: string;
+  sku: string | null;
+  unit: string;
+  imageUrl: string | null;
+  isActive: boolean;
+  menuCategory: string | null;
+  categoryName: string;
+  openingQty: number;
+  receivedQty: number;
+  soldQty: number;
+  wasteQty: number;
+  remainingQty: number;
+  note: string;
+  updatedAt: string | null;
+};
+
+export type CafeDailyStockResponse = {
+  date: string;
+  branch: { id: string; name: string };
+  totals: {
+    openingQty: number;
+    receivedQty: number;
+    soldQty: number;
+    wasteQty: number;
+    remainingQty: number;
+  };
+  negativeCount: number;
+  items: CafeDailyStockItem[];
+  receipts: Array<{
+    id: string;
+    batchId: string;
+    productId: string;
+    productName: string;
+    unit: string;
+    quantity: number;
+    note: string;
+    createdAt: string;
+    receivedBy: string;
+    voidedAt: string | null;
+    voidedBy: string | null;
+  }>;
+};
+
 export type RestaurantTicketLine = {
   id: string;
   productId: string;
@@ -666,6 +711,64 @@ export async function getRestaurantPosProducts(
     cache: "no-store",
   });
   return readApiResponse<RestaurantPosProduct[]>(response);
+}
+
+export async function getCafeDailyStock(input: {
+  branchId: string;
+  date: string;
+}) {
+  const params = new URLSearchParams({
+    branchId: input.branchId,
+    date: input.date,
+  });
+  const response = await authFetch(
+    `${API}/restaurant/pos/cafe-daily-stock?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<CafeDailyStockResponse>(response);
+}
+
+export async function saveCafeDailyStock(input: {
+  branchId: string;
+  date: string;
+  items: Array<{
+    productId: string;
+    openingQty: number;
+    wasteQty: number;
+    note: string;
+  }>;
+}) {
+  const response = await authFetch(`${API}/restaurant/pos/cafe-daily-stock`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<CafeDailyStockResponse>(response);
+}
+
+export async function createCafeDailyStockReceipt(input: {
+  branchId: string;
+  date: string;
+  note: string;
+  items: Array<{ productId: string; quantity: number }>;
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/pos/cafe-daily-stock/receipts`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return readApiResponse<CafeDailyStockResponse>(response);
+}
+
+export async function voidCafeDailyStockReceipt(input: {
+  receiptId: string;
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/pos/cafe-daily-stock/receipts/${encodeURIComponent(input.receiptId)}`,
+    { method: "DELETE" },
+  );
+  return readApiResponse<CafeDailyStockResponse>(response);
 }
 
 export async function getRestaurantMenuCategories(organizationId: string) {

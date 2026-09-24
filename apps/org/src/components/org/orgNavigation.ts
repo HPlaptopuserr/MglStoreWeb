@@ -44,6 +44,15 @@ export function getOrgNavItems(
         icon: isCafe ? Coffee : ChefHat,
       },
       { label: "Бүтээгдэхүүн", href: "/dashboard/products", icon: Package },
+      ...(isCafe
+        ? [
+            {
+              label: "Өдрийн бараа орлого",
+              href: "/dashboard/daily-stock",
+              icon: ClipboardList,
+            },
+          ]
+        : []),
       { label: "Ажилтан ба эрх", href: "/dashboard/members", icon: Users },
       {
         label: "Цаг бүртгэлийн тайлан",

@@ -80,6 +80,17 @@ export function getDashboardModules(
         icon: Package,
         enabled: true,
       },
+      ...(isCafe
+        ? [
+            {
+              title: "Өдрийн бараа орлого",
+              desc: "Өдрийн орлого, борлуулалт, хорогдол болон үлдэгдлийг бүтээгдэхүүн тус бүрээр хянана.",
+              href: "/dashboard/daily-stock",
+              icon: ClipboardList,
+              enabled: true,
+            },
+          ]
+        : []),
       {
         title: "Ажилтан ба эрх",
         desc: "Ресторан, кофе шопын ажилтнууд болон тэдний ашиглах эрхийг удирдана.",
