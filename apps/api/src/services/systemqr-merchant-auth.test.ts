@@ -4,6 +4,7 @@ import {
   decodeSystemQrMerchantAuth,
   encodeSystemQrMerchantAuth,
   isSystemQrMerchantKey,
+  shouldRetrySystemQrWithMaster,
 } from "./systemqr-merchant-auth";
 
 test("SystemQR merchant auth preserves a username that differs from merchant code", () => {
@@ -30,5 +31,26 @@ test("invalid versioned SystemQR auth never exposes a bogus password", () => {
   assert.deepEqual(
     decodeSystemQrMerchantAuth("systemqr:v1:not-base64-json", "merchant-001"),
     { username: "merchant-001" },
+  );
+});
+
+test("SystemQR auth and explicit 002 create failures retry with the master token", () => {
+  assert.equal(
+    shouldRetrySystemQrWithMaster(
+      new Error("SystemQR Login_Error: Хэрэглэгчийн нэр эсвэл нууц үг буруу байна"),
+    ),
+    true,
+  );
+  assert.equal(
+    shouldRetrySystemQrWithMaster(
+      new Error(
+        "Minu SystemQR createInvoice failed (002): SystemQR invoice creation failed",
+      ),
+    ),
+    true,
+  );
+  assert.equal(
+    shouldRetrySystemQrWithMaster(new Error("fetch failed")),
+    false,
   );
 });

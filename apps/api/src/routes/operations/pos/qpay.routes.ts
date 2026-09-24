@@ -13,8 +13,8 @@ import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.
 import {
   getVendorMerchantConfig,
   getVendorSystemQrConfig,
-  refreshVendorSystemQrCredentials,
 } from "../../../services/vendor-merchant.service";
+import { shouldRetrySystemQrWithMaster } from "../../../services/systemqr-merchant-auth";
 import {
   cancelSystemQrInvoice,
   checkSystemQrPayment,
@@ -347,40 +347,17 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
           systemQr = await createSystemQrInvoice(systemQrInvoiceParams, systemQrAuth.username, systemQrAuth.password);
         } catch (systemQrError) {
           const message = systemQrError instanceof Error ? systemQrError.message : String(systemQrError);
-          if (!systemQrAuth.password || !/SystemQR Login Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403/i.test(message)) {
+          if (
+            !systemQrAuth.password ||
+            !shouldRetrySystemQrWithMaster(systemQrError)
+          ) {
             throw systemQrError;
           }
-
-          let repaired = false;
-          if (effectiveOrganizationId) {
-            try {
-              systemQrAuth = await refreshVendorSystemQrCredentials(
-                effectiveOrganizationId,
-                "POS",
-              );
-              systemQr = await createSystemQrInvoice(
-                systemQrInvoiceParams,
-                systemQrAuth.username,
-                systemQrAuth.password,
-              );
-              repaired = true;
-              console.info("[SystemQR] refreshed invalid subMerchant credentials", {
-                organizationId: effectiveOrganizationId,
-                merchantCode: systemQrAuth.merchantCode,
-              });
-            } catch (refreshError) {
-              console.warn(
-                "[SystemQR] subMerchant credential refresh failed; trying master token",
-                refreshError instanceof Error
-                  ? refreshError.message
-                  : String(refreshError),
-              );
-            }
-          }
-
-          if (!repaired) {
-            systemQr = await createSystemQrInvoice(systemQrInvoiceParams);
-          }
+          console.warn(
+            "[SystemQR] subMerchant invoice failed; trying master token",
+            message,
+          );
+          systemQr = await createSystemQrInvoice(systemQrInvoiceParams);
         }
 
         if (!systemQr) {
