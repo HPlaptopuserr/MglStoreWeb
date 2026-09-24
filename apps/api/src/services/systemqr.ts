@@ -85,9 +85,6 @@ export interface SystemQrSubMerchantListItem {
   createdDate?: string | null;
 }
 
-export const SYSTEMQR_MERCHANT_NOT_AUTHORIZED =
-  "SYSTEMQR_MERCHANT_NOT_AUTHORIZED";
-
 export class SystemQrProviderError extends Error {
   readonly code: string;
   readonly status: number;
@@ -133,12 +130,12 @@ export function createSystemQrInvoiceProviderError(
 
   if (normalizedStatus === "002") {
     return new SystemQrProviderError({
-      code: SYSTEMQR_MERCHANT_NOT_AUTHORIZED,
-      status: 403,
+      code: "SYSTEMQR_INVOICE_CREATE_FAILED",
+      status: 502,
       providerStatus: normalizedStatus,
       providerMessage: normalizedMessage || undefined,
       message:
-        "Энэ Minu Dynamic QR merchant-д MGL Store-оос нэхэмжлэх үүсгэх эрх идэвхгүй байна. Minu талаас тухайн merchantCode-д MGL Store master хэрэглэгчийн create/check/cancel эрхийг идэвхжүүлнэ үү.",
+        "Minu SystemQR нэхэмжлэх үүсгэж чадсангүй (002). Түр дахин оролдоно уу. Алдаа давтагдвал Minu талаас SystemQR createInvoice үйлчилгээг шалгуулна уу.",
     });
   }
 

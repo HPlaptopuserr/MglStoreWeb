@@ -14,7 +14,10 @@ import {
   getVendorMerchantConfig,
   getVendorSystemQrConfig,
 } from "../../../services/vendor-merchant.service";
-import { shouldRetrySystemQrWithMaster } from "../../../services/systemqr-merchant-auth";
+import {
+  resolveRegisterSystemQrMerchantCode,
+  shouldRetrySystemQrWithMaster,
+} from "../../../services/systemqr-merchant-auth";
 import {
   cancelSystemQrInvoice,
   checkSystemQrPayment,
@@ -60,27 +63,16 @@ async function resolveSystemQrConfig(
     qpayTerminalId: string | null;
   } | null,
 ) {
-  // Dynamic QR is configured per organization. A register can still contain
-  // an older SystemQR merchant code from the legacy POS setup, so prefer the
-  // organization connection whenever it exists. Otherwise one stale register
-  // can send invoices to an invalid sub-merchant even though the organization
-  // is connected correctly.
-  const organizationConfig = organizationId
-    ? await getVendorSystemQrConfig(organizationId, "POS")
-    : null;
-  if (organizationConfig) return organizationConfig;
+  // Preserve the register-level merchant used by existing POS installations.
+  // Organization settings are only a fallback for registers that have not
+  // configured SystemQR themselves.
+  const registerMerchantCode =
+    resolveRegisterSystemQrMerchantCode(registerQpayConfig);
+  if (registerMerchantCode) return { merchantCode: registerMerchantCode };
 
-  // Keep legacy register-only SystemQR setups working when the organization
-  // has not yet been migrated to the org-level merchant settings.
-  if (
-    registerQpayConfig?.qpayEnabled &&
-    registerQpayConfig.qpayMerchantId &&
-    isSystemQrMarker(registerQpayConfig.qpayTerminalId)
-  ) {
-    return { merchantCode: registerQpayConfig.qpayMerchantId.trim() };
-  }
+  if (!organizationId) return null;
 
-  return null;
+  return getVendorSystemQrConfig(organizationId, "POS");
 }
 
 type ReconciliablePosQPayInvoice = {

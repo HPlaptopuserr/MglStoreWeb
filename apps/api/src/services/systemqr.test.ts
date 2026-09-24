@@ -3,7 +3,6 @@ import test from "node:test";
 import {
   createSystemQrInvoiceProviderError,
   findSystemQrSubMerchantByCode,
-  SYSTEMQR_MERCHANT_NOT_AUTHORIZED,
 } from "./systemqr";
 
 const merchants = [
@@ -33,16 +32,16 @@ test("manual SystemQR merchant validation rejects an unknown code", () => {
   );
 });
 
-test("SystemQR createInvoice 002 has a stable public error code", () => {
+test("SystemQR createInvoice 002 stays a generic provider failure", () => {
   const error = createSystemQrInvoiceProviderError(
     "002",
     "SystemQR invoice creation failed",
   );
 
-  assert.equal(error.code, SYSTEMQR_MERCHANT_NOT_AUTHORIZED);
-  assert.equal(error.status, 403);
+  assert.equal(error.code, "SYSTEMQR_INVOICE_CREATE_FAILED");
+  assert.equal(error.status, 502);
   assert.equal(error.providerStatus, "002");
-  assert.match(error.message, /create\/check\/cancel/);
+  assert.match(error.message, /createInvoice/);
 });
 
 test("other SystemQR createInvoice failures remain provider errors", () => {

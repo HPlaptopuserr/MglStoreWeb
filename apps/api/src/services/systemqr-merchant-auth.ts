@@ -11,12 +11,34 @@ export const isSystemQrMerchantKey = (value?: string | null) => {
   return normalized === SYSTEMQR_MARKER || normalized.startsWith(`${SYSTEMQR_MARKER}:`);
 };
 
+export const resolveRegisterSystemQrMerchantCode = (register?: {
+  qpayEnabled?: boolean | null;
+  qpayMerchantId?: string | null;
+  qpayTerminalId?: string | null;
+} | null) => {
+  if (
+    !register?.qpayEnabled ||
+    !String(register.qpayMerchantId || "").trim() ||
+    !isSystemQrMerchantKey(register.qpayTerminalId)
+  ) {
+    return null;
+  }
+
+  return String(register.qpayMerchantId).trim();
+};
+
 export const shouldRetrySystemQrWithMaster = (error: unknown) => {
   const code =
     error && typeof error === "object" && "code" in error
       ? String((error as { code?: unknown }).code || "")
       : "";
-  if (code === "SYSTEMQR_MERCHANT_NOT_AUTHORIZED") return true;
+  const providerStatus =
+    error && typeof error === "object" && "providerStatus" in error
+      ? String((error as { providerStatus?: unknown }).providerStatus || "")
+      : "";
+  if (code === "SYSTEMQR_MERCHANT_NOT_AUTHORIZED" || providerStatus === "002") {
+    return true;
+  }
 
   const message = error instanceof Error ? error.message : String(error || "");
   return /SystemQR Login[_ ]Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403|createInvoice failed \(002\)/i.test(

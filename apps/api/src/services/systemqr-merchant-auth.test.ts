@@ -4,8 +4,28 @@ import {
   decodeSystemQrMerchantAuth,
   encodeSystemQrMerchantAuth,
   isSystemQrMerchantKey,
+  resolveRegisterSystemQrMerchantCode,
   shouldRetrySystemQrWithMaster,
 } from "./systemqr-merchant-auth";
+
+test("existing POS register SystemQR merchant remains the primary merchant", () => {
+  assert.equal(
+    resolveRegisterSystemQrMerchantCode({
+      qpayEnabled: true,
+      qpayMerchantId: " REGISTER-MERCHANT ",
+      qpayTerminalId: "SYSTEMQR",
+    }),
+    "REGISTER-MERCHANT",
+  );
+  assert.equal(
+    resolveRegisterSystemQrMerchantCode({
+      qpayEnabled: false,
+      qpayMerchantId: "REGISTER-MERCHANT",
+      qpayTerminalId: "SYSTEMQR",
+    }),
+    null,
+  );
+});
 
 test("SystemQR merchant auth preserves a username that differs from merchant code", () => {
   const stored = encodeSystemQrMerchantAuth("aru-login", "secret-password");
@@ -44,7 +64,8 @@ test("SystemQR auth and explicit 002 create failures retry with the master token
   assert.equal(
     shouldRetrySystemQrWithMaster(
       Object.assign(new Error("Merchant is not authorized"), {
-        code: "SYSTEMQR_MERCHANT_NOT_AUTHORIZED",
+        code: "SYSTEMQR_INVOICE_CREATE_FAILED",
+        providerStatus: "002",
       }),
     ),
     true,

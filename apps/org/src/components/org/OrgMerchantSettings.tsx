@@ -918,8 +918,8 @@ export function OrgMerchantSettings() {
           </div>
           <p className="text-xs font-semibold leading-5 text-slate-500">
             Merchant Code-ийг хадгалахын өмнө Minu SystemQR жагсаалтаас
-            шалгана. QR үүсгэхийн тулд Minu талаас энэ merchant-д MGL Store
-            master хэрэглэгчийн create/check/cancel эрх идэвхтэй байх ёстой.
+            шалгана. QR үүсгэхийн тулд тухайн merchant Minu SystemQR талд
+            идэвхтэй байх ёстой.
           </p>
         </div>
       ) : (
