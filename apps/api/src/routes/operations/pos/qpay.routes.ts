@@ -10,14 +10,7 @@ import {
   createQPayInvoice,
 } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
-import {
-  getVendorMerchantConfig,
-  getVendorSystemQrConfig,
-} from "../../../services/vendor-merchant.service";
-import {
-  resolveRegisterSystemQrMerchantCode,
-  shouldRetrySystemQrWithMaster,
-} from "../../../services/systemqr-merchant-auth";
+import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
 import {
   cancelSystemQrInvoice,
   checkSystemQrPayment,
@@ -39,6 +32,12 @@ const router: ExpressRouter = Router();
 const isSystemQrMarker = (value?: string | null) =>
   String(value || "").trim().toUpperCase() === "SYSTEMQR" ||
   String(value || "").trim().toLowerCase().startsWith("systemqr");
+
+const getSystemQrPassword = (value?: string | null) => {
+  const marker = String(value || "").trim();
+  if (!marker.toLowerCase().startsWith("systemqr:")) return undefined;
+  return marker.slice("systemqr:".length) || undefined;
+};
 
 const isPublicCallbackBaseUrl = (value?: string | null) => {
   if (!value) return false;
@@ -63,16 +62,34 @@ async function resolveSystemQrConfig(
     qpayTerminalId: string | null;
   } | null,
 ) {
-  // Preserve the register-level merchant used by existing POS installations.
-  // Organization settings are only a fallback for registers that have not
-  // configured SystemQR themselves.
-  const registerMerchantCode =
-    resolveRegisterSystemQrMerchantCode(registerQpayConfig);
-  if (registerMerchantCode) return { merchantCode: registerMerchantCode };
+  if (
+    registerQpayConfig?.qpayEnabled &&
+    registerQpayConfig.qpayMerchantId &&
+    isSystemQrMarker(registerQpayConfig.qpayTerminalId)
+  ) {
+    return { merchantCode: registerQpayConfig.qpayMerchantId.trim() };
+  }
 
   if (!organizationId) return null;
 
-  return getVendorSystemQrConfig(organizationId, "POS");
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: {
+      qpayEnabled: true,
+      qpayMerchantId: true,
+      qpayMerchantKey: true,
+      qpayInvoiceCode: true,
+    },
+  });
+
+  if (!org?.qpayEnabled || !org.qpayMerchantId) return null;
+  if (!isSystemQrMarker(org.qpayInvoiceCode) && !isSystemQrMarker(org.qpayMerchantKey)) return null;
+
+  return {
+    merchantCode: org.qpayMerchantId.trim(),
+    username: org.qpayMerchantId.trim(),
+    password: getSystemQrPassword(org.qpayMerchantKey),
+  };
 }
 
 type ReconciliablePosQPayInvoice = {
@@ -344,26 +361,16 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
             ? `${publicUrl}/api/pos/qpay/cb?invoiceId=${invoice.id}`
             : undefined,
         };
-        let systemQr: Awaited<ReturnType<typeof createSystemQrInvoice>> | null = null;
+        let systemQr: Awaited<ReturnType<typeof createSystemQrInvoice>>;
         try {
           systemQr = await createSystemQrInvoice(systemQrInvoiceParams, systemQrAuth.username, systemQrAuth.password);
         } catch (systemQrError) {
           const message = systemQrError instanceof Error ? systemQrError.message : String(systemQrError);
-          if (
-            !systemQrAuth.password ||
-            !shouldRetrySystemQrWithMaster(systemQrError)
-          ) {
+          if (!systemQrAuth.password || !/SystemQR Login Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403/i.test(message)) {
             throw systemQrError;
           }
-          console.warn(
-            "[SystemQR] subMerchant invoice failed; trying master token",
-            message,
-          );
+          console.warn("[SystemQR] subMerchant auth failed; trying master token", message);
           systemQr = await createSystemQrInvoice(systemQrInvoiceParams);
-        }
-
-        if (!systemQr) {
-          throw new Error("Minu Dynamic QR invoice үүссэнгүй");
         }
 
         qpayData = {
@@ -434,17 +441,7 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
   } catch (error) {
     console.error("qpay invoice create error", error);
     const msg = error instanceof Error ? error.message : "QPay invoice үүсгэхэд алдаа гарлаа";
-    const known = error as { code?: unknown; status?: unknown };
-    const errorCode = String(known?.code || "").trim();
-    const errorStatus = Number(known?.status);
-    const httpStatus =
-      Number.isInteger(errorStatus) && errorStatus >= 400 && errorStatus <= 599
-        ? errorStatus
-        : 500;
-    return res.status(httpStatus).json({
-      ...(errorCode ? { code: errorCode } : {}),
-      message: msg,
-    });
+    return res.status(500).json({ message: msg });
   }
 });
 

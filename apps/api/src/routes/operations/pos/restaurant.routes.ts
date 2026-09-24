@@ -18,7 +18,6 @@ import {
   getVendorMerchantConfig,
   getVendorSystemQrConfig,
 } from "../../../services/vendor-merchant.service";
-import { shouldRetrySystemQrWithMaster } from "../../../services/systemqr-merchant-auth";
 import {
   checkSystemQrPayment,
   createSystemQrInvoice,
@@ -1320,14 +1319,12 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
               : String(systemQrError);
           if (
             !systemQrConfig.password ||
-            !shouldRetrySystemQrWithMaster(systemQrError)
+            !/SystemQR Login Error|username or password|credential|unauthorized|401|403/i.test(
+              message,
+            )
           ) {
             throw systemQrError;
           }
-          console.warn(
-            "[Restaurant SystemQR] subMerchant invoice failed; trying master token",
-            message,
-          );
           systemQr = await createSystemQrInvoice(systemQrInvoiceParams);
         }
 
@@ -1384,12 +1381,9 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
       throw qpayError;
     }
   } catch (error) {
-    const known = error as Error & { status?: number; code?: string };
+    const known = error as Error & { status?: number };
     if (known.status) {
-      return res.status(known.status).json({
-        ...(known.code ? { code: known.code } : {}),
-        message: known.message,
-      });
+      return res.status(known.status).json({ message: known.message });
     }
     console.error("create public restaurant qpay invoice error", error);
     const message =

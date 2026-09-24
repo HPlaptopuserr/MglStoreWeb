@@ -85,71 +85,6 @@ export interface SystemQrSubMerchantListItem {
   createdDate?: string | null;
 }
 
-export class SystemQrProviderError extends Error {
-  readonly code: string;
-  readonly status: number;
-  readonly providerStatus: string;
-  readonly providerMessage?: string;
-
-  constructor(params: {
-    code: string;
-    message: string;
-    status: number;
-    providerStatus: string;
-    providerMessage?: string;
-  }) {
-    super(params.message);
-    this.name = "SystemQrProviderError";
-    this.code = params.code;
-    this.status = params.status;
-    this.providerStatus = params.providerStatus;
-    this.providerMessage = params.providerMessage;
-  }
-}
-
-export function findSystemQrSubMerchantByCode(
-  merchants: SystemQrSubMerchantListItem[],
-  merchantCode: string,
-) {
-  const normalizedCode = String(merchantCode || "").trim().toLowerCase();
-  if (!normalizedCode) return null;
-
-  return (
-    merchants.find(
-      (merchant) => merchant.merchantCode.trim().toLowerCase() === normalizedCode,
-    ) || null
-  );
-}
-
-export function createSystemQrInvoiceProviderError(
-  providerStatus: string | null | undefined,
-  providerMessage?: string | null,
-) {
-  const normalizedStatus = String(providerStatus || "unknown").trim();
-  const normalizedMessage = String(providerMessage || "").trim();
-
-  if (normalizedStatus === "002") {
-    return new SystemQrProviderError({
-      code: "SYSTEMQR_INVOICE_CREATE_FAILED",
-      status: 502,
-      providerStatus: normalizedStatus,
-      providerMessage: normalizedMessage || undefined,
-      message:
-        "Minu SystemQR нэхэмжлэх үүсгэж чадсангүй (002). Түр дахин оролдоно уу. Алдаа давтагдвал Minu талаас SystemQR createInvoice үйлчилгээг шалгуулна уу.",
-    });
-  }
-
-  return new SystemQrProviderError({
-    code: "SYSTEMQR_INVOICE_CREATE_FAILED",
-    status: 502,
-    providerStatus: normalizedStatus,
-    providerMessage: normalizedMessage || undefined,
-    message: `Minu SystemQR createInvoice failed (${normalizedStatus}): ${
-      normalizedMessage || "SystemQR invoice creation failed"
-    }. Дэлгүүрийн Minu Dynamic QR merchantCode/Sub-Merchant Code зөв эсэхийг Minu талаас шалгана уу.`,
-  });
-}
-
 // In-memory token cache to avoid logging in on every request
 const tokenCache = new Map<string, { token: string; expiresAt: number }>();
 
@@ -466,7 +401,11 @@ export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams,
     }), username, password);
 
     if (data.status !== "000") {
-      throw createSystemQrInvoiceProviderError(data.status, data.message);
+      throw new Error(
+        `Minu SystemQR createInvoice failed (${data.status || "unknown"}): ${
+          data.message || "SystemQR invoice creation failed"
+        }. Дэлгүүрийн Minu Dynamic QR merchantCode/Sub-Merchant Code зөв эсэхийг Minu талаас шалгана уу.`,
+      );
     }
 
     // Map entity to generic format used by frontend

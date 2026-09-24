@@ -896,31 +896,24 @@ export function OrgMerchantSettings() {
       </div>
 
       {tab === "manual" ? (
-        <div className="space-y-2">
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
-            <Field label="Merchant Code / Submerchant code">
-              <input
-                value={manualMerchantCode}
-                onChange={(event) => setManualMerchantCode(event.target.value)}
-                placeholder="Жишээ: MGL_STEPPE_1783745574137"
-                className={inputClass}
-              />
-            </Field>
-            <button
-              type="button"
-              onClick={() => void handleManualConnect()}
-              disabled={submitting || !manualMerchantCode.trim()}
-              className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Холбох
-            </button>
-          </div>
-          <p className="text-xs font-semibold leading-5 text-slate-500">
-            Merchant Code-ийг хадгалахын өмнө Minu SystemQR жагсаалтаас
-            шалгана. QR үүсгэхийн тулд тухайн merchant Minu SystemQR талд
-            идэвхтэй байх ёстой.
-          </p>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+          <Field label="Merchant Code / Submerchant code">
+            <input
+              value={manualMerchantCode}
+              onChange={(event) => setManualMerchantCode(event.target.value)}
+              placeholder="Жишээ: MC000123"
+              className={inputClass}
+            />
+          </Field>
+          <button
+            type="button"
+            onClick={() => void handleManualConnect()}
+            disabled={submitting || !manualMerchantCode.trim()}
+            className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+          >
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Холбох
+          </button>
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2">
