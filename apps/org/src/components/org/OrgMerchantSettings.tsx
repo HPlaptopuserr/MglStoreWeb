@@ -83,6 +83,8 @@ function buildQuery(organizationId: string | null) {
 
 export function OrgMerchantSettings() {
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [canRecoverSystemQrCredentials, setCanRecoverSystemQrCredentials] =
+    useState(false);
   const [status, setStatus] = useState<MerchantStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -237,7 +239,12 @@ export function OrgMerchantSettings() {
   }, []);
 
   useEffect(() => {
-    setOrganizationId(getStoredOrgUser()?.organizationId || null);
+    const user = getStoredOrgUser();
+    const platformRole = String(user?.role || "").toUpperCase();
+    setOrganizationId(user?.organizationId || null);
+    setCanRecoverSystemQrCredentials(
+      platformRole === "ADMIN" || platformRole === "SUPER_ADMIN",
+    );
   }, []);
 
   useEffect(() => {
@@ -521,6 +528,43 @@ export function OrgMerchantSettings() {
       setMessage({
         type: "success",
         text: data.message || "Merchant салгагдлаа",
+      });
+      await loadStatus();
+    } catch (error) {
+      setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Серверийн алдаа",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRecoverSystemQrCredentials = async () => {
+    const confirmed = window.confirm(
+      "Minu нууц үгийг шинэчилснээр хуучин credential хүчингүй болно. Энэ merchant-ийг өөр систем ашигладаггүй бол үргэлжлүүлнэ үү.",
+    );
+    if (!confirmed) return;
+
+    setSubmitting(true);
+    setMessage(null);
+    try {
+      const response = await authFetch(
+        `${API}/vendor/merchant/systemqr/recover-credentials`,
+        {
+          method: "POST",
+          body: JSON.stringify(organizationId ? { organizationId } : {}),
+        },
+      );
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        throw new Error(
+          data?.message || "Minu нэвтрэх эрх сэргээхэд алдаа гарлаа",
+        );
+      }
+      setMessage({
+        type: "success",
+        text: data.message || "Minu нэвтрэх эрх сэргээгдлээ",
       });
       await loadStatus();
     } catch (error) {
@@ -852,15 +896,32 @@ export function OrgMerchantSettings() {
                 ) : null}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void handleDisconnect()}
-              disabled={submitting}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 text-sm font-black text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
-            >
-              <Unplug className="h-4 w-4" />
-              Салгах
-            </button>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              {canRecoverSystemQrCredentials ? (
+                <button
+                  type="button"
+                  onClick={() => void handleRecoverSystemQrCredentials()}
+                  disabled={submitting}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-white px-3 text-sm font-black text-indigo-700 hover:bg-indigo-50 disabled:opacity-60"
+                >
+                  {submitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Нэвтрэх эрх сэргээх
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void handleDisconnect()}
+                disabled={submitting}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 text-sm font-black text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
+              >
+                <Unplug className="h-4 w-4" />
+                Салгах
+              </button>
+            </div>
           </div>
         </div>
       ) : (

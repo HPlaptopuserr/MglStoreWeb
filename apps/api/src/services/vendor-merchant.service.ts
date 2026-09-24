@@ -15,8 +15,14 @@ import {
 } from "./qpay";
 import {
   registerSystemQrSubMerchant,
+  resetSystemQrSubMerchantPassword,
   type SystemQrRegisterSubMerchantParams,
 } from "./systemqr";
+import {
+  decodeSystemQrMerchantAuth,
+  encodeSystemQrMerchantAuth,
+  isSystemQrMerchantKey,
+} from "./systemqr-merchant-auth";
 
 export type ConnectMerchantResult = {
   success: boolean;
@@ -46,16 +52,7 @@ const isSystemQrMarker = (value?: string | null) =>
   String(value || "")
     .trim()
     .toUpperCase() === "SYSTEMQR" ||
-  String(value || "")
-    .trim()
-    .toLowerCase()
-    .startsWith("systemqr");
-
-const getSystemQrPassword = (value?: string | null) => {
-  const marker = String(value || "").trim();
-  if (!marker.toLowerCase().startsWith("systemqr:")) return undefined;
-  return marker.slice("systemqr:".length) || undefined;
-};
+  isSystemQrMerchantKey(value);
 
 const buildMerchantUpdateData = (
   channel: MerchantChannel,
@@ -487,12 +484,99 @@ export async function getVendorSystemQrConfig(
     return null;
   }
 
-  const password = getSystemQrPassword(selected.merchantKey);
   const merchantCode = String(selected.merchantId).trim();
+  const auth = decodeSystemQrMerchantAuth(selected.merchantKey, merchantCode);
   return {
     merchantCode,
-    ...(password ? { username: merchantCode, password } : {}),
+    ...(auth.password
+      ? { username: auth.username || merchantCode, password: auth.password }
+      : {}),
   };
+}
+
+export async function recoverVendorSystemQrCredentials(
+  organizationId: string,
+  channel: MerchantChannel = "POS",
+): Promise<ConnectMerchantResult & { username?: string }> {
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: {
+      qpayEnabled: true,
+      qpayMerchantId: true,
+      qpayMerchantKey: true,
+      qpayInvoiceCode: true,
+      qpayConnectedAt: true,
+      webQpayEnabled: true,
+      webQpayMerchantId: true,
+      webQpayMerchantKey: true,
+      webQpayInvoiceCode: true,
+      webQpayConnectedAt: true,
+    },
+  });
+
+  if (!org) {
+    return { success: false, message: "Байгууллага олдсонгүй" };
+  }
+
+  const selected = pickMerchantFields(org, channel);
+  const merchantCode = String(selected.merchantId || "").trim();
+  if (
+    !selected.enabled ||
+    !merchantCode ||
+    (!isSystemQrMarker(selected.invoiceCode) &&
+      !isSystemQrMarker(selected.merchantKey))
+  ) {
+    return {
+      success: false,
+      message: "Энэ байгууллагад Minu Dynamic QR merchant холбогдоогүй байна.",
+    };
+  }
+
+  try {
+    const result = await resetSystemQrSubMerchantPassword(merchantCode);
+    const returnedMerchantCode = String(result.merchantCode || "").trim();
+    const username = String(result.username || returnedMerchantCode).trim();
+    const password = String(result.password || "");
+
+    if (returnedMerchantCode !== merchantCode) {
+      throw new Error("Minu өөр merchant-ийн мэдээлэл буцаалаа. Тохиргоо хадгалагдсангүй.");
+    }
+    if (!username || !password) {
+      throw new Error("Minu шинэ username/password буцаасангүй.");
+    }
+
+    await prisma.organization.update({
+      where: { id: organizationId },
+      data: buildMerchantUpdateData(channel, {
+        merchantId: merchantCode,
+        merchantKey: encodeSystemQrMerchantAuth(username, password),
+        invoiceCode: "SYSTEMQR",
+        enabled: true,
+        connectedAt: selected.connectedAt || new Date(),
+      }),
+    });
+
+    return {
+      success: true,
+      message: "Minu Dynamic QR нэвтрэх эрх сэргээгдэж, аюулгүй хадгалагдлаа.",
+      merchantId: merchantCode,
+      username,
+    };
+  } catch (error) {
+    console.error("recoverVendorSystemQrCredentials error", {
+      organizationId,
+      channel,
+      merchantCode,
+      error,
+    });
+    return {
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "Minu Dynamic QR нэвтрэх эрх сэргээхэд алдаа гарлаа.",
+    };
+  }
 }
 
 export type RegisterVendorParams =
@@ -551,7 +635,10 @@ export async function registerVendorWithSystemQr(
       data: buildMerchantUpdateData(channel, {
         merchantId: result.merchantCode,
         merchantKey: result.password
-          ? `systemqr:${result.password}`
+          ? encodeSystemQrMerchantAuth(
+              result.username || result.merchantCode,
+              result.password,
+            )
           : "systemqr",
         invoiceCode: "SYSTEMQR",
         bankAccounts,

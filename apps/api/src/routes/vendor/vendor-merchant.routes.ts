@@ -5,6 +5,7 @@ import {
   disconnectVendorMerchant,
   getVendorMerchantStatus,
   normalizeMerchantChannel,
+  recoverVendorSystemQrCredentials,
   registerVendorWithSystemQr,
   registerVendorWithQPay,
 } from "../../services/vendor-merchant.service";
@@ -294,6 +295,58 @@ router.post("/vendor/merchant/disconnect", requireAuth, async (req, res) => {
     });
   }
 });
+
+/**
+ * POST /api/vendor/merchant/systemqr/recover-credentials
+ * Explicitly reset and persist credentials for the currently connected
+ * SystemQR submerchant. This is intentionally never called automatically.
+ */
+router.post(
+  "/vendor/merchant/systemqr/recover-credentials",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const userId = (req as any).userId as string;
+      const platformRole = String((req as any).user?.role || "").toUpperCase();
+      const explicitOrgId = req.body?.organizationId as string | undefined;
+      const channel = normalizeMerchantChannel(req.body?.channel);
+
+      if (platformRole !== "ADMIN" && platformRole !== "SUPER_ADMIN") {
+        return res.status(403).json({
+          success: false,
+          message: "Системийн админ эрх шаардлагатай.",
+        });
+      }
+
+      const organizationId = await resolveOrganizationId(userId, explicitOrgId);
+
+      if (!organizationId) {
+        return res.status(404).json({
+          success: false,
+          message: "Байгууллага олдсонгүй.",
+        });
+      }
+
+      const result = await recoverVendorSystemQrCredentials(
+        organizationId,
+        channel,
+      );
+      if (!result.success) return res.status(400).json(result);
+
+      return res.json({
+        success: true,
+        message: result.message,
+        merchantId: result.merchantId,
+      });
+    } catch (error) {
+      console.error("SystemQR credential recovery error", error);
+      return res.status(500).json({
+        success: false,
+        message: "Minu Dynamic QR нэвтрэх эрх сэргээхэд серверийн алдаа гарлаа.",
+      });
+    }
+  },
+);
 
 /**
  * POST /api/vendor/merchant/register
