@@ -11,6 +11,16 @@ import type {
 import { EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE } from "@mgl/types";
 import { API, authFetch } from "@/lib/api";
 
+export const EBARIMT_CAFE_BEVERAGE_CLASSIFICATION_CODE = "6340000";
+
+export function getRestaurantMenuClassificationCode(mode: unknown) {
+  return String(mode ?? "")
+    .trim()
+    .toUpperCase() === "CAFE"
+    ? EBARIMT_CAFE_BEVERAGE_CLASSIFICATION_CODE
+    : EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE;
+}
+
 export type RestaurantPosRegister = {
   id: string;
   name: string;
@@ -786,6 +796,7 @@ export async function enableRestaurantMenuProduct(input: {
   menuCategory: NonNullable<RestaurantPosProduct["menuCategory"]>;
   kitchenStation: NonNullable<RestaurantPosProduct["kitchenStation"]>;
   preparationMinutes: number;
+  classificationCode: string;
 }) {
   const response = await authFetch(
     `${API}/products/${encodeURIComponent(input.productId)}`,
@@ -796,6 +807,7 @@ export async function enableRestaurantMenuProduct(input: {
         menuCategory: input.menuCategory,
         kitchenStation: input.kitchenStation,
         preparationMinutes: input.preparationMinutes,
+        classificationCode: input.classificationCode,
       }),
     },
   );
@@ -810,6 +822,7 @@ export async function createRestaurantMenuProduct(input: {
   menuCategory: NonNullable<RestaurantPosProduct["menuCategory"]>;
   kitchenStation: NonNullable<RestaurantPosProduct["kitchenStation"]>;
   preparationMinutes: number;
+  classificationCode: string;
 }) {
   const response = await authFetch(`${API}/products`, {
     method: "POST",
@@ -826,7 +839,7 @@ export async function createRestaurantMenuProduct(input: {
       preparationMinutes: input.preparationMinutes,
       taxType: "VAT_ABLE",
       cityTaxRate: 0,
-      classificationCode: EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
+      classificationCode: input.classificationCode,
       images: [],
     }),
   });

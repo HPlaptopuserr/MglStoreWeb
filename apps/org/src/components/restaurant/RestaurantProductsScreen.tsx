@@ -24,12 +24,12 @@ import { API, authFetch } from "@/lib/api";
 import {
   createRestaurantMenuCategory,
   deleteRestaurantMenuCategory,
+  getRestaurantMenuClassificationCode,
   getRestaurantMenuCategories,
   updateRestaurantMenuCategory,
   type RestaurantMenuCategory,
 } from "@/lib/restaurant-pos-api";
 import {
-  EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
   getEbarimtTaxProductCodes,
   isValidEbarimtClassificationCode,
   isValidEbarimtTaxProductCode,
@@ -107,7 +107,9 @@ const createEmptyForm = (isCafe: boolean): MenuForm => ({
   imageUrl: "",
   taxType: "VAT_ABLE",
   cityTaxRate: "0",
-  classificationCode: EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
+  classificationCode: getRestaurantMenuClassificationCode(
+    isCafe ? "CAFE" : "RESTAURANT",
+  ),
   taxProductCode: "",
 });
 
@@ -249,8 +251,7 @@ export function RestaurantProductsScreen() {
       taxType: product.taxType || "VAT_ABLE",
       cityTaxRate: String(product.cityTaxRate ?? 0),
       classificationCode:
-        product.classificationCode ||
-        EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
+        product.classificationCode || defaultForm.classificationCode,
       taxProductCode: product.taxProductCode || "",
     });
     setFormOpen(true);

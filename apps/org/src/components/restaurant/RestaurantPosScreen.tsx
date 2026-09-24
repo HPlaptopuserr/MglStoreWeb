@@ -61,6 +61,7 @@ import {
   getRestaurantQPayInvoiceStatus,
   getRestaurantDiningTables,
   getRestaurantMenuCategories,
+  getRestaurantMenuClassificationCode,
   getRestaurantPosProducts,
   getRestaurantPosRegisters,
   getRestaurantSalesHistory,
@@ -653,7 +654,9 @@ function printRestaurantReceipt(
 }
 
 export function RestaurantPosScreen() {
-  const { user } = useOrg();
+  const { user, features } = useOrg();
+  const defaultMenuClassificationCode =
+    getRestaurantMenuClassificationCode(features.selfServiceMode);
   const [registers, setRegisters] = useState<RestaurantPosRegister[]>([]);
   const [selectedRegisterId, setSelectedRegisterId] = useState("");
   const [shift, setShift] = useState<PosShift | null>(null);
@@ -2038,6 +2041,7 @@ export function RestaurantPosScreen() {
         menuCategory: menuProductCategory,
         kitchenStation: menuProductStation,
         preparationMinutes: readPreparationMinutes(),
+        classificationCode: defaultMenuClassificationCode,
       });
       setNotice(`"${product.name}" рестораны менюд нэмэгдлээ.`);
       setProductManagerOpen(false);
@@ -2086,6 +2090,7 @@ export function RestaurantPosScreen() {
         menuCategory: menuProductCategory,
         kitchenStation: menuProductStation,
         preparationMinutes: readPreparationMinutes(),
+        classificationCode: defaultMenuClassificationCode,
       });
       setNotice(`"${name}" шинээр үүсэж, рестораны менюд нэмэгдлээ.`);
       setProductManagerOpen(false);

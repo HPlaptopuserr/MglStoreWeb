@@ -883,6 +883,18 @@ async function isOrgFeatureEnabled(
   return TRUE_VALUES.has(String(raw).trim().toLowerCase());
 }
 
+async function getDefaultRestaurantClassificationCode(
+  organizationId: string,
+) {
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: `self-service-mode-${organizationId}` },
+    select: { value: true },
+  });
+  return setting?.value.trim().toUpperCase() === "CAFE"
+    ? "6340000"
+    : EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE;
+}
+
 /* ─── GET /products/health — check env config ───────────────────────── */
 router.get("/products/health", (_req, res) => {
   return res.json({
@@ -3534,12 +3546,14 @@ router.post(
       }
       const normalizedTaxType = normalizeTaxType(taxType);
       const restaurantMenuEnabled = isTruthyQueryValue(isRestaurantMenuItem);
+      const restaurantClassificationFallback = restaurantMenuEnabled
+        ? String(classificationCode ?? "").trim() ||
+          (await getDefaultRestaurantClassificationCode(organizationId))
+        : EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE;
       const normalizedClassificationCode = normalizeClassificationCode(
         classificationCode,
-        restaurantMenuEnabled
-          ? EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE
-            : EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
-        );
+        restaurantClassificationFallback,
+      );
       const normalizedTaxProductCode = normalizeTaxProductCode(
         normalizedTaxType,
         taxProductCode,
