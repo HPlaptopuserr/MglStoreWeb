@@ -10,7 +10,11 @@ import {
   createQPayInvoice,
 } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
-import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
+import {
+  getVendorMerchantConfig,
+  getVendorSystemQrConfig,
+  refreshVendorSystemQrCredentials,
+} from "../../../services/vendor-merchant.service";
 import {
   cancelSystemQrInvoice,
   checkSystemQrPayment,
@@ -32,12 +36,6 @@ const router: ExpressRouter = Router();
 const isSystemQrMarker = (value?: string | null) =>
   String(value || "").trim().toUpperCase() === "SYSTEMQR" ||
   String(value || "").trim().toLowerCase().startsWith("systemqr");
-
-const getSystemQrPassword = (value?: string | null) => {
-  const marker = String(value || "").trim();
-  if (!marker.toLowerCase().startsWith("systemqr:")) return undefined;
-  return marker.slice("systemqr:".length) || undefined;
-};
 
 const isPublicCallbackBaseUrl = (value?: string | null) => {
   if (!value) return false;
@@ -72,24 +70,7 @@ async function resolveSystemQrConfig(
 
   if (!organizationId) return null;
 
-  const org = await prisma.organization.findUnique({
-    where: { id: organizationId },
-    select: {
-      qpayEnabled: true,
-      qpayMerchantId: true,
-      qpayMerchantKey: true,
-      qpayInvoiceCode: true,
-    },
-  });
-
-  if (!org?.qpayEnabled || !org.qpayMerchantId) return null;
-  if (!isSystemQrMarker(org.qpayInvoiceCode) && !isSystemQrMarker(org.qpayMerchantKey)) return null;
-
-  return {
-    merchantCode: org.qpayMerchantId.trim(),
-    username: org.qpayMerchantId.trim(),
-    password: getSystemQrPassword(org.qpayMerchantKey),
-  };
+  return getVendorSystemQrConfig(organizationId, "POS");
 }
 
 type ReconciliablePosQPayInvoice = {
@@ -361,7 +342,7 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
             ? `${publicUrl}/api/pos/qpay/cb?invoiceId=${invoice.id}`
             : undefined,
         };
-        let systemQr: Awaited<ReturnType<typeof createSystemQrInvoice>>;
+        let systemQr: Awaited<ReturnType<typeof createSystemQrInvoice>> | null = null;
         try {
           systemQr = await createSystemQrInvoice(systemQrInvoiceParams, systemQrAuth.username, systemQrAuth.password);
         } catch (systemQrError) {
@@ -369,8 +350,41 @@ router.post("/pos/payments/qpay/invoice", async (req, res) => {
           if (!systemQrAuth.password || !/SystemQR Login Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403/i.test(message)) {
             throw systemQrError;
           }
-          console.warn("[SystemQR] subMerchant auth failed; trying master token", message);
-          systemQr = await createSystemQrInvoice(systemQrInvoiceParams);
+
+          let repaired = false;
+          if (effectiveOrganizationId) {
+            try {
+              systemQrAuth = await refreshVendorSystemQrCredentials(
+                effectiveOrganizationId,
+                "POS",
+              );
+              systemQr = await createSystemQrInvoice(
+                systemQrInvoiceParams,
+                systemQrAuth.username,
+                systemQrAuth.password,
+              );
+              repaired = true;
+              console.info("[SystemQR] refreshed invalid subMerchant credentials", {
+                organizationId: effectiveOrganizationId,
+                merchantCode: systemQrAuth.merchantCode,
+              });
+            } catch (refreshError) {
+              console.warn(
+                "[SystemQR] subMerchant credential refresh failed; trying master token",
+                refreshError instanceof Error
+                  ? refreshError.message
+                  : String(refreshError),
+              );
+            }
+          }
+
+          if (!repaired) {
+            systemQr = await createSystemQrInvoice(systemQrInvoiceParams);
+          }
+        }
+
+        if (!systemQr) {
+          throw new Error("Minu Dynamic QR invoice үүссэнгүй");
         }
 
         qpayData = {

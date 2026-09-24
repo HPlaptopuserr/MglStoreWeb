@@ -15,8 +15,14 @@ import {
 } from "./qpay";
 import {
   registerSystemQrSubMerchant,
+  resetSystemQrSubMerchantPassword,
   type SystemQrRegisterSubMerchantParams,
 } from "./systemqr";
+import {
+  decodeSystemQrMerchantAuth,
+  encodeSystemQrMerchantAuth,
+  isSystemQrMerchantKey,
+} from "./systemqr-merchant-auth";
 
 export type ConnectMerchantResult = {
   success: boolean;
@@ -46,16 +52,7 @@ const isSystemQrMarker = (value?: string | null) =>
   String(value || "")
     .trim()
     .toUpperCase() === "SYSTEMQR" ||
-  String(value || "")
-    .trim()
-    .toLowerCase()
-    .startsWith("systemqr");
-
-const getSystemQrPassword = (value?: string | null) => {
-  const marker = String(value || "").trim();
-  if (!marker.toLowerCase().startsWith("systemqr:")) return undefined;
-  return marker.slice("systemqr:".length) || undefined;
-};
+  isSystemQrMerchantKey(value);
 
 const buildMerchantUpdateData = (
   channel: MerchantChannel,
@@ -487,11 +484,50 @@ export async function getVendorSystemQrConfig(
     return null;
   }
 
-  const password = getSystemQrPassword(selected.merchantKey);
   const merchantCode = String(selected.merchantId).trim();
+  const auth = decodeSystemQrMerchantAuth(selected.merchantKey, merchantCode);
   return {
     merchantCode,
-    ...(password ? { username: merchantCode, password } : {}),
+    ...(auth.password
+      ? { username: auth.username || merchantCode, password: auth.password }
+      : {}),
+  };
+}
+
+/**
+ * Repairs legacy managed SystemQR rows whose registration username was not
+ * persisted separately from merchantCode. Minu returns a fresh credential pair
+ * and the pair is stored atomically for later invoice/status requests.
+ */
+export async function refreshVendorSystemQrCredentials(
+  organizationId: string,
+  channel: MerchantChannel = "POS",
+) {
+  const current = await getVendorSystemQrConfig(organizationId, channel);
+  if (!current?.merchantCode) {
+    throw new Error("Minu Dynamic QR merchant тохиргоо олдсонгүй");
+  }
+
+  const reset = await resetSystemQrSubMerchantPassword(current.merchantCode);
+  const username = String(reset.username || current.merchantCode).trim();
+  const password = String(reset.password || "").trim();
+  if (!password) {
+    throw new Error("Minu Dynamic QR шинэ нууц үг буцаасангүй");
+  }
+
+  const merchantKey = encodeSystemQrMerchantAuth(username, password);
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data:
+      channel === "WEB"
+        ? { webQpayMerchantKey: merchantKey }
+        : { qpayMerchantKey: merchantKey },
+  });
+
+  return {
+    merchantCode: current.merchantCode,
+    username,
+    password,
   };
 }
 
@@ -550,9 +586,10 @@ export async function registerVendorWithSystemQr(
       where: { id: organizationId },
       data: buildMerchantUpdateData(channel, {
         merchantId: result.merchantCode,
-        merchantKey: result.password
-          ? `systemqr:${result.password}`
-          : "systemqr",
+        merchantKey: encodeSystemQrMerchantAuth(
+          result.username,
+          result.password,
+        ),
         invoiceCode: "SYSTEMQR",
         bankAccounts,
         enabled: true,

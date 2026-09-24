@@ -17,6 +17,7 @@ import type { QPayMerchantContext } from "../../../services/qpay.types";
 import {
   getVendorMerchantConfig,
   getVendorSystemQrConfig,
+  refreshVendorSystemQrCredentials,
 } from "../../../services/vendor-merchant.service";
 import {
   checkSystemQrPayment,
@@ -1319,13 +1320,32 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
               : String(systemQrError);
           if (
             !systemQrConfig.password ||
-            !/SystemQR Login Error|username or password|credential|unauthorized|401|403/i.test(
+            !/SystemQR Login Error|Хэрэглэгчийн нэр эсвэл нууц үг|username or password|credential|unauthorized|401|403/i.test(
               message,
             )
           ) {
             throw systemQrError;
           }
-          systemQr = await createSystemQrInvoice(systemQrInvoiceParams);
+
+          try {
+            const refreshed = await refreshVendorSystemQrCredentials(
+              table.organizationId,
+              "POS",
+            );
+            systemQr = await createSystemQrInvoice(
+              systemQrInvoiceParams,
+              refreshed.username,
+              refreshed.password,
+            );
+          } catch (refreshError) {
+            console.warn(
+              "[Restaurant SystemQR] credential refresh failed; trying master token",
+              refreshError instanceof Error
+                ? refreshError.message
+                : String(refreshError),
+            );
+            systemQr = await createSystemQrInvoice(systemQrInvoiceParams);
+          }
         }
 
         qpayData = {
