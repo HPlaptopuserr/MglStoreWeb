@@ -15,7 +15,7 @@ import {
   getSystemQrCityList,
   getSystemQrKhorooList,
 } from "../../services/systemqr";
-import { prisma } from "@mgl/database";
+import { OrgRole, prisma } from "@mgl/database";
 import { getMinuAgentToken } from "../../services/minu-pos-agent";
 
 const router: ExpressRouter = Router();
@@ -48,6 +48,23 @@ async function resolveOrganizationId(userId: string, explicitOrgId?: string): Pr
   }
   const member = await prisma.organizationMember.findFirst({
     where: { userId },
+    select: { organizationId: true },
+  });
+  return member?.organizationId || null;
+}
+
+async function resolveOwnedOrganizationId(
+  userId: string,
+  explicitOrgId?: string,
+): Promise<string | null> {
+  const member = await prisma.organizationMember.findFirst({
+    where: {
+      userId,
+      ...(explicitOrgId ? { organizationId: explicitOrgId } : {}),
+      role: OrgRole.OWNER,
+      isActive: true,
+      deletedAt: null,
+    },
     select: { organizationId: true },
   });
   return member?.organizationId || null;
@@ -307,23 +324,17 @@ router.post(
   async (req, res) => {
     try {
       const userId = (req as any).userId as string;
-      const platformRole = String((req as any).user?.role || "").toUpperCase();
       const explicitOrgId = req.body?.organizationId as string | undefined;
       const channel = normalizeMerchantChannel(req.body?.channel);
-
-      if (platformRole !== "ADMIN" && platformRole !== "SUPER_ADMIN") {
-        return res.status(403).json({
-          success: false,
-          message: "Системийн админ эрх шаардлагатай.",
-        });
-      }
-
-      const organizationId = await resolveOrganizationId(userId, explicitOrgId);
+      const organizationId = await resolveOwnedOrganizationId(
+        userId,
+        explicitOrgId,
+      );
 
       if (!organizationId) {
-        return res.status(404).json({
+        return res.status(403).json({
           success: false,
-          message: "Байгууллага олдсонгүй.",
+          message: "Тухайн байгууллагын OWNER эрх шаардлагатай.",
         });
       }
 

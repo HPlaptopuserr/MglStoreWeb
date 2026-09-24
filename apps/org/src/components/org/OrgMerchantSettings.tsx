@@ -240,10 +240,14 @@ export function OrgMerchantSettings() {
 
   useEffect(() => {
     const user = getStoredOrgUser();
-    const platformRole = String(user?.role || "").toUpperCase();
-    setOrganizationId(user?.organizationId || null);
+    const activeOrganizationId = user?.organizationId || null;
+    const activeOrganizationRole =
+      user?.organizations?.find(
+        (organization) => organization.id === activeOrganizationId,
+      )?.role || user?.orgRole;
+    setOrganizationId(activeOrganizationId);
     setCanRecoverSystemQrCredentials(
-      platformRole === "ADMIN" || platformRole === "SUPER_ADMIN",
+      String(activeOrganizationRole || "").toUpperCase() === "OWNER",
     );
   }, []);
 
