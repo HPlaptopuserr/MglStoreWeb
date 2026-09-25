@@ -1,6 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { ProductImage } from "./ProductImage";
+import {
+  ProductImageFeedbackProvider,
+  ProductImageNotice,
+} from "./ProductImageFeedback";
+
 import {
   ArrowLeft,
   Banknote,
@@ -222,6 +228,7 @@ type ReceiptPaperWidthMm = 58 | 80;
 
 const DEFAULT_RECEIPT_PAPER_WIDTH_MM: ReceiptPaperWidthMm = 80;
 const RECEIPT_SIDE_MARGIN_MM = 6;
+const RECEIPT_QR_SIZE_MM = 52;
 const RECEIPT_MINIMUM_HEIGHT_MM = 40;
 const RECEIPT_MAXIMUM_HEIGHT_MM = 1_000;
 const RECEIPT_BOTTOM_FEED_MM = 10;
@@ -309,6 +316,7 @@ function printThermalReceiptDocument(
   const queuePrint = async () => {
     const paperWidthMm = await resolveReceiptPaperWidth();
     const contentWidthMm = paperWidthMm - RECEIPT_SIDE_MARGIN_MM * 2;
+    const qrSizeMm = Math.min(RECEIPT_QR_SIZE_MM, contentWidthMm);
     const iframe = document.createElement("iframe");
     iframe.setAttribute("aria-hidden", "true");
     iframe.style.position = "fixed";
@@ -386,8 +394,8 @@ function printThermalReceiptDocument(
             .totals { margin-top: 7px; }
             .total { margin-top: 3px; }
             .grand { margin-top: 6px; padding-top: 6px; border-top: 2px solid #000; font-size: 15px; font-weight: 800; }
-            .qr { margin-top: 8px; text-align: center; }
-            .qr svg { width: 34mm; height: 34mm; max-width: 100%; }
+            .qr { margin-top: 8px; text-align: center; break-inside: avoid; page-break-inside: avoid; }
+            .qr svg { display: block; width: ${qrSizeMm}mm; height: ${qrSizeMm}mm; margin: 0 auto; }
             .qr-fallback { overflow-wrap: anywhere; font-family: monospace; font-size: 8px; }
             .footer { margin-top: 10px; text-align: center; font-weight: 700; }
           </style>
@@ -577,6 +585,14 @@ function SetupState({
 }
 
 export function SelfServiceCheckoutScreen() {
+  return (
+    <ProductImageFeedbackProvider>
+      <SelfServiceCheckoutContent />
+    </ProductImageFeedbackProvider>
+  );
+}
+
+function SelfServiceCheckoutContent() {
   const { user, features } = useOrg();
   const isCafe = features.selfServiceMode === "CAFE";
   const [screen, setScreen] = useState<Screen>("welcome");
@@ -2525,6 +2541,7 @@ export function SelfServiceCheckoutScreen() {
                           value={ebarimt.qrData}
                           size={170}
                           level="M"
+                          fgColor="#000000"
                           className="h-[170px] w-[170px]"
                         />
                       ) : (
@@ -2635,6 +2652,8 @@ export function SelfServiceCheckoutScreen() {
             </p>
           </header>
 
+          <ProductImageNotice className="mt-5" />
+
           {catalogNotice ? (
             <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
               {catalogNotice}
@@ -2662,18 +2681,11 @@ export function SelfServiceCheckoutScreen() {
                     className="grid grid-cols-[64px_1fr_auto] items-center gap-4 py-4"
                   >
                     <div className="h-16 w-16 overflow-hidden rounded-2xl bg-slate-100">
-                      {line.product.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={line.product.imageUrl}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="grid h-full w-full place-items-center text-slate-300">
-                          <PackageOpen className="h-6 w-6" />
-                        </div>
-                      )}
+                      <ProductImage
+                        src={line.product.imageUrl}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
                     </div>
                     <div className="min-w-0">
                       <p className="truncate text-sm font-black">
@@ -3029,6 +3041,8 @@ export function SelfServiceCheckoutScreen() {
               </span>
             </div>
 
+            <ProductImageNotice className="mb-4" />
+
             {visibleProducts.length === 0 ? (
               <div className="grid min-h-64 place-items-center rounded-[28px] border-2 border-dashed border-slate-200 bg-white/50 text-center">
                 <div>
@@ -3054,18 +3068,11 @@ export function SelfServiceCheckoutScreen() {
                       className="group overflow-hidden rounded-[24px] border border-black/5 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-55"
                     >
                       <span className="relative block aspect-[4/3] overflow-hidden bg-gradient-to-br from-[#e4eee8] via-[#f0e8d5] to-[#e8d1a5] [@media(max-height:900px)]:h-[120px] [@media(max-height:900px)]:aspect-auto">
-                        {product.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={product.imageUrl}
-                            alt={product.name}
-                            className="h-full w-full object-contain transition duration-500 group-hover:scale-105"
-                          />
-                        ) : (
-                          <span className="absolute inset-0 grid place-items-center text-[#13795b]/50">
-                            <PackageOpen className="h-10 w-10" />
-                          </span>
-                        )}
+                        <ProductImage
+                          src={product.imageUrl}
+                          alt={product.name}
+                          className="h-full w-full object-contain transition duration-500 group-hover:scale-105"
+                        />
                         {selectedQty > 0 ? (
                           <span className="absolute right-3 top-3 grid h-9 min-w-9 place-items-center rounded-full bg-[#11231d] px-2 text-sm font-black text-white shadow-lg">
                             {selectedQty}
@@ -3147,18 +3154,11 @@ export function SelfServiceCheckoutScreen() {
                   >
                     <div className="flex gap-3">
                       <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100">
-                        {line.product.imageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={line.product.imageUrl}
-                            alt=""
-                            className="h-full w-full object-cover"
-                          />
-                        ) : (
-                          <div className="grid h-full w-full place-items-center text-slate-300">
-                            <PackageOpen className="h-5 w-5" />
-                          </div>
-                        )}
+                        <ProductImage
+                          src={line.product.imageUrl}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="line-clamp-2 text-sm font-black leading-5">

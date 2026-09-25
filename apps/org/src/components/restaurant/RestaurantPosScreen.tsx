@@ -1,6 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { ProductImage } from "./ProductImage";
+import {
+  ProductImageFeedbackProvider,
+  ProductImageNotice,
+} from "./ProductImageFeedback";
+
 import {
   type FormEvent,
   useCallback,
@@ -654,6 +660,14 @@ function printRestaurantReceipt(
 }
 
 export function RestaurantPosScreen() {
+  return (
+    <ProductImageFeedbackProvider>
+      <RestaurantPosContent />
+    </ProductImageFeedbackProvider>
+  );
+}
+
+function RestaurantPosContent() {
   const { user, features } = useOrg();
   const defaultMenuClassificationCode =
     getRestaurantMenuClassificationCode(features.selfServiceMode);
@@ -3605,6 +3619,8 @@ export function RestaurantPosScreen() {
               </label>
             </div>
           </header>
+
+          <ProductImageNotice className="mt-3" />
 
           {setupLoading ? (
             <div className="mt-3 flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-slate-300">
@@ -6836,8 +6852,7 @@ function DishVisual({
       aria-hidden="true"
     >
       {imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+        <ProductImage
           src={imageUrl}
           alt=""
           className="absolute inset-1 h-[calc(100%-0.5rem)] w-[calc(100%-0.5rem)] rounded-full object-cover"
