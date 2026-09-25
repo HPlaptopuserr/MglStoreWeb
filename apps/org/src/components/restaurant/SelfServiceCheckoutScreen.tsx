@@ -411,6 +411,7 @@ function printSelfServiceReceipt(
     orderLabel: string;
     ticketNo: string;
     qrMarkup: string;
+    splitOrderAndEbarimt: boolean;
   },
 ) {
   if (typeof document === "undefined") return false;
@@ -460,6 +461,33 @@ function printSelfServiceReceipt(
       <div class="total grand"><span>НИЙТ:</span><span>${escapePrintHtml(formatMoney(receipt.grandTotal))}</span></div>
     </div>`;
 
+  const ebarimtHtml = ebarimt
+    ? `
+      <div class="ebarimt">
+        <div class="center"><strong>${ebarimt.receiptType === "B2B" ? "БАЙГУУЛЛАГЫН EBARIMT" : "ХУВЬ ХҮНИЙ EBARIMT"}</strong></div>
+        ${ebarimt.customerRegNo ? `<div class="row"><span>Регистр:</span><span>${escapePrintHtml(ebarimt.customerRegNo)}</span></div>` : ""}
+        ${ebarimt.billId ? `<div class="row"><span>ДДТД:</span><span>${escapePrintHtml(ebarimt.billId)}</span></div>` : ""}
+        ${ebarimt.lottery ? `<div class="row"><span>Сугалаа:</span><span>${escapePrintHtml(ebarimt.lottery)}</span></div>` : ""}
+        <div class="qr">${context.qrMarkup || `<div class="qr-fallback">${escapePrintHtml(ebarimt.qrData)}</div>`}</div>
+      </div>`
+    : `<div class="ebarimt center">
+        <strong>ЗАХИАЛГЫН БАРИМТ</strong>
+        <div class="muted">Ebarimt биш</div>
+      </div>`;
+
+  if (!context.splitOrderAndEbarimt) {
+    return printThermalReceiptDocument(
+      receipt.receiptNo,
+      `${headerHtml}
+       ${isDemo ? '<div class="demo">ТЕСТИЙН БАРИМТ</div>' : ""}
+       ${orderNumberHtml}
+       ${metaHtml}
+       ${itemsAndTotalsHtml}
+       ${ebarimtHtml}
+       <div class="footer">Үйлчлүүлсэнд баярлалаа</div>`,
+    );
+  }
+
   const orderReceiptQueued = printThermalReceiptDocument(
     `${receipt.receiptNo}-order`,
     `${headerHtml}
@@ -471,15 +499,6 @@ function printSelfServiceReceipt(
   );
 
   if (ebarimt) {
-    const ebarimtHtml = `
-      <div class="ebarimt">
-        <div class="center"><strong>${ebarimt.receiptType === "B2B" ? "БАЙГУУЛЛАГЫН EBARIMT" : "ХУВЬ ХҮНИЙ EBARIMT"}</strong></div>
-        ${ebarimt.customerRegNo ? `<div class="row"><span>Регистр:</span><span>${escapePrintHtml(ebarimt.customerRegNo)}</span></div>` : ""}
-        ${ebarimt.billId ? `<div class="row"><span>ДДТД:</span><span>${escapePrintHtml(ebarimt.billId)}</span></div>` : ""}
-        ${ebarimt.lottery ? `<div class="row"><span>Сугалаа:</span><span>${escapePrintHtml(ebarimt.lottery)}</span></div>` : ""}
-        <div class="qr">${context.qrMarkup || `<div class="qr-fallback">${escapePrintHtml(ebarimt.qrData)}</div>`}</div>
-      </div>`;
-
     printThermalReceiptDocument(
       `${receipt.receiptNo}-ebarimt`,
       `${headerHtml}
@@ -1187,8 +1206,9 @@ export function SelfServiceCheckoutScreen() {
           targetReceipt.id,
         ),
         qrMarkup: ebarimtQrRef.current?.querySelector("svg")?.outerHTML || "",
+        splitOrderAndEbarimt: isCafe,
       }),
-    [completedTicketNo, orderMode, register, user.organizationName],
+    [completedTicketNo, isCafe, orderMode, register, user.organizationName],
   );
 
   useEffect(() => {
