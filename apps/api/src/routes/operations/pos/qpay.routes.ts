@@ -16,6 +16,7 @@ import {
   checkSystemQrPayment,
   createSystemQrInvoice,
 } from "../../../services/systemqr";
+import { decodeSystemQrMerchantAuth } from "../../../services/systemqr-merchant-auth";
 import {
   requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
   roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
@@ -32,12 +33,6 @@ const router: ExpressRouter = Router();
 const isSystemQrMarker = (value?: string | null) =>
   String(value || "").trim().toUpperCase() === "SYSTEMQR" ||
   String(value || "").trim().toLowerCase().startsWith("systemqr");
-
-const getSystemQrPassword = (value?: string | null) => {
-  const marker = String(value || "").trim();
-  if (!marker.toLowerCase().startsWith("systemqr:")) return undefined;
-  return marker.slice("systemqr:".length) || undefined;
-};
 
 const isPublicCallbackBaseUrl = (value?: string | null) => {
   if (!value) return false;
@@ -85,10 +80,13 @@ async function resolveSystemQrConfig(
   if (!org?.qpayEnabled || !org.qpayMerchantId) return null;
   if (!isSystemQrMarker(org.qpayInvoiceCode) && !isSystemQrMarker(org.qpayMerchantKey)) return null;
 
+  const merchantCode = org.qpayMerchantId.trim();
+  const auth = decodeSystemQrMerchantAuth(org.qpayMerchantKey, merchantCode);
   return {
-    merchantCode: org.qpayMerchantId.trim(),
-    username: org.qpayMerchantId.trim(),
-    password: getSystemQrPassword(org.qpayMerchantKey),
+    merchantCode,
+    ...(auth.password
+      ? { username: auth.username || merchantCode, password: auth.password }
+      : {}),
   };
 }
 
