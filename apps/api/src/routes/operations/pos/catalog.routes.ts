@@ -56,6 +56,7 @@ import {
 } from "./_shared";
 import { calculatePosCreditPayable } from "./credit-interest";
 import { productImageOrderBy } from "../../../lib/product-images";
+import { sendCatalogResponse } from "../../../lib/catalog-response";
 import {
   fromPosStoredStockQuantity,
   normalizePosMeasureUnit,
@@ -209,6 +210,7 @@ router.get("/pos/products", async (req, res) => {
     if (!actor) return;
 
     const branchId = String(req.query.branchId || "").trim();
+    const requestedOrganizationId = String(req.query.organizationId || "").trim();
     const restaurantMenuOnly = ["1", "true", "yes", "on"].includes(
       String(req.query.restaurantMenu || "")
         .trim()
@@ -219,23 +221,27 @@ router.get("/pos/products", async (req, res) => {
         .trim()
         .toLowerCase(),
     );
-    if (!branchId) {
-      return res.status(400).json({ message: "branchId шаардлагатай" });
+    if (!branchId && !requestedOrganizationId) {
+      return res.status(400).json({ message: "branchId эсвэл organizationId шаардлагатай" });
     }
 
-    const branch = await prisma.branch.findUnique({
+    const branch = branchId ? await prisma.branch.findUnique({
       where: { id: branchId },
       select: { organizationId: true },
-    });
-    if (!branch) {
+    }) : null;
+    if (branchId && !branch) {
       return res.status(404).json({ message: "Салбар олдсонгүй" });
+    }
+    const organizationId = branch?.organizationId || requestedOrganizationId;
+    if (requestedOrganizationId && organizationId !== requestedOrganizationId) {
+      return res.status(403).json({ message: "Салбар сонгосон байгууллагад хамаарахгүй байна" });
     }
 
     if (actor.role !== "ADMIN") {
       const membership = await prisma.organizationMember.findFirst({
         where: {
           userId: actor.id,
-          organizationId: branch.organizationId,
+          organizationId,
           isActive: true,
         },
         select: { id: true },
@@ -249,7 +255,7 @@ router.get("/pos/products", async (req, res) => {
 
     const products = await prisma.product.findMany({
       where: {
-        organizationId: branch.organizationId,
+        organizationId,
         OR: [
           { sku: null },
           { sku: { not: SELF_SERVICE_TAKEAWAY_PACKAGING_SKU } },
@@ -300,7 +306,7 @@ router.get("/pos/products", async (req, res) => {
           take: 1,
         },
       },
-      orderBy: { name: "asc" },
+      orderBy: [{ name: "asc" }, { id: "asc" }],
     });
 
     const response = products
@@ -342,7 +348,7 @@ router.get("/pos/products", async (req, res) => {
         return a.name.localeCompare(b.name);
       });
 
-    res.status(200).json(response);
+    return sendCatalogResponse(req, res, response);
   } catch (error) {
     console.error("get pos products error", error);
     res.status(500).json({ message: "Бараа жагсаалт авахад алдаа гарлаа" });

@@ -88,6 +88,7 @@ import {
   invalidatePublicProductListCache,
   productListCache,
 } from "../../services/product-list-cache.service";
+import { findOrganizationCatalogSearchPage } from "../../services/organization-catalog-search.service";
 
 const router: ExpressRouter = Router();
 const PRODUCT_IMAGE_CACHE_CONTROL =
@@ -1335,8 +1336,17 @@ router.get("/products", optionalAuth, async (req, res) => {
       }
     }
 
+    const catalogSearchPage =
+      isOwnOrganizationCatalog && search
+        ? await findOrganizationCatalogSearchPage({ where, search, limit, offset })
+        : null;
+    const catalogSearchOrder = new Map(
+      catalogSearchPage?.ids.map((id, index) => [id, index]),
+    );
     const totalCountPromise = includeMeta
-      ? prisma.product.count({ where })
+      ? catalogSearchPage
+        ? Promise.resolve(catalogSearchPage.total)
+        : prisma.product.count({ where })
       : null;
     const organizationTotalPromise =
       includeMeta && isOwnOrganizationCatalog
@@ -1367,7 +1377,9 @@ router.get("/products", optionalAuth, async (req, res) => {
         : 0;
 
     const products = await prisma.product.findMany({
-      where,
+      where: catalogSearchPage
+        ? { AND: [where, { id: { in: catalogSearchPage.ids } }] }
+        : where,
       orderBy:
         sort === "price_asc"
           ? [
@@ -1394,9 +1406,11 @@ router.get("/products", optionalAuth, async (req, res) => {
                     { discounts: { _count: "desc" } },
                     { createdAt: "desc" },
                   ]
-                : [{ createdAt: "desc" }, { marketplacePriority: "desc" }],
+                : [{ createdAt: "desc" }, { marketplacePriority: "desc" }, { id: "asc" }],
       ...(useDatabasePagination ? { skip: offset } : {}),
-      ...(productCandidateLimit > 0 ? { take: productCandidateLimit } : {}),
+      ...(!catalogSearchPage && productCandidateLimit > 0
+        ? { take: productCandidateLimit }
+        : {}),
       include: {
         images: {
           select: { id: true, url: true },
@@ -1434,6 +1448,11 @@ router.get("/products", optionalAuth, async (req, res) => {
 
     if (compact) {
       const totalCount = await totalCountPromise;
+      if (catalogSearchPage) {
+        products.sort(
+          (a, b) => (catalogSearchOrder.get(a.id) ?? 0) - (catalogSearchOrder.get(b.id) ?? 0),
+        );
+      }
       const compactProducts = products.map((product) => ({
         id: product.id,
         name: product.name,
@@ -1610,6 +1629,9 @@ router.get("/products", optionalAuth, async (req, res) => {
       })
       .filter((product) => !search || product.searchScore > 0)
       .sort((a, b) => {
+        if (catalogSearchPage) {
+          return (catalogSearchOrder.get(a.id) ?? 0) - (catalogSearchOrder.get(b.id) ?? 0);
+        }
         const aIsCatalogReady = a.images.length > 0 && Number(a.price) >= 100;
         const bIsCatalogReady = b.images.length > 0 && Number(b.price) >= 100;
         if (aIsCatalogReady !== bIsCatalogReady) {
@@ -1669,9 +1691,9 @@ router.get("/products", optionalAuth, async (req, res) => {
       );
     }
 
-    if (limit > 0 && !useDatabasePagination) {
+    if (!catalogSearchPage && limit > 0 && !useDatabasePagination) {
       response = response.slice(offset, offset + limit);
-    } else if (offset > 0 && !useDatabasePagination) {
+    } else if (!catalogSearchPage && offset > 0 && !useDatabasePagination) {
       response = response.slice(offset);
     }
 

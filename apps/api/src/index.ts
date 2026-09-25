@@ -118,6 +118,7 @@ app.use(
       callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
+    exposedHeaders: ["ETag", "X-MGL-Catalog-Count"],
   }),
 );
 

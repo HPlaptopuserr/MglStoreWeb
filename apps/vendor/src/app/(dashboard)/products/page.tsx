@@ -313,6 +313,7 @@ export default function ProductsPage() {
         throw new Error(`${message} (HTTP ${res.status})`);
       }
       const data = await res.json();
+      if (controller.signal.aborted) return;
       const productRows: Product[] = Array.isArray(data)
         ? data
         : Array.isArray(data.products)
@@ -330,7 +331,7 @@ export default function ProductsPage() {
           : productRows.length,
       );
     } catch (error: unknown) {
-      if (error instanceof DOMException && error.name === "AbortError") return;
+      if (controller.signal.aborted) return;
       showToast(
         "error",
         error instanceof Error ? error.message : "Бараа ачаалахад алдаа гарлаа",
@@ -391,7 +392,11 @@ export default function ProductsPage() {
   }, []);
 
   useEffect(() => {
-    fetchProducts();
+    void fetchProducts();
+    return () => productsRequestRef.current?.abort();
+  }, [fetchProducts]);
+
+  useEffect(() => {
     fetchCategories();
     fetchSellerPaymentStatus();
     const orgId = getOrgId();
@@ -427,7 +432,7 @@ export default function ProductsPage() {
         }
       })
       .catch(() => {});
-  }, [fetchProducts, fetchCategories, fetchSellerPaymentStatus]);
+  }, [fetchCategories, fetchSellerPaymentStatus]);
 
   useEffect(() => {
     if (
@@ -780,25 +785,6 @@ export default function ProductsPage() {
     preorderFeatureLoaded && showPreorderProducts && typeFilter === "preorder";
   const visibleProducts = products;
 
-  const filtered = visibleProducts
-    .filter((p) => {
-      const query = debouncedSearchQuery.toLowerCase();
-      const matchSearch =
-        p.name.toLowerCase().includes(query) ||
-        (p.sku || "").toLowerCase().includes(query) ||
-        (p.barcode || "").toLowerCase().includes(query) ||
-        (p.taxProductCode || "").toLowerCase().includes(query) ||
-        (p.classificationCode || "").toLowerCase().includes(query);
-
-      return matchSearch;
-    })
-    .sort(
-      (a, b) =>
-        (b.marketplacePriority || 0) - (a.marketplacePriority || 0) ||
-        new Date(b.createdAt || 0).getTime() -
-          new Date(a.createdAt || 0).getTime(),
-    );
-
   return (
     <div className="min-w-0 space-y-4 bg-slate-50/50">
       {/* Toast */}
@@ -943,7 +929,7 @@ export default function ProductsPage() {
             />
             <input
               className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-white text-sm font-medium outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all shadow-sm"
-              placeholder="Нэр, SKU, татварын код хайх..."
+              placeholder="Нэр, баркод, SKU, татварын код хайх..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -1485,7 +1471,7 @@ export default function ProductsPage() {
               </p>
             </div>
           </div>
-        ) : filtered.length === 0 ? (
+        ) : visibleProducts.length === 0 ? (
           <div className="rounded-3xl border border-slate-200 bg-white py-32 text-center shadow-sm">
             <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-slate-50 border border-slate-100">
               <Package size={32} className="text-slate-300" />
@@ -1542,7 +1528,7 @@ export default function ProductsPage() {
           </div>
         ) : (
           <VendorProductCatalog
-            products={filtered}
+            products={visibleProducts}
             deletingId={deletingId}
             onSelect={setSelectedProduct}
             onEdit={openEdit}

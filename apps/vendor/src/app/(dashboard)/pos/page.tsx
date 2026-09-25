@@ -104,13 +104,14 @@ import {
 import { printThermalDocument } from "@/features/pos/utils/print-thermal-document";
 import { API, authFetch } from "@/lib/api";
 import { RegisterShiftConflict } from "@/features/pos/components/RegisterShiftConflict";
+import { CatalogSyncStatus } from "@/features/pos/components/CatalogSyncStatus";
 import {
   isFeatureEnabled,
   MULTI_PRICE_SALES_FEATURE_KEY,
   POS_FEATURE_KEY,
 } from "@/lib/vendor-features";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
-import { formatPosQuantity } from "@mgl/types";
+import { createProductSearchScorer, formatPosQuantity } from "@mgl/types";
 
 type PosView = "register" | "checkout" | "history";
 
@@ -588,6 +589,7 @@ export default function PosDemoPage() {
   });
   const [customerDisplaySuccess, setCustomerDisplaySuccess] = useState<CustomerDisplaySuccess | null>(null);
   const [registerConfig, setRegisterConfig] = useState<RegisterConfig | null>(null);
+  const [registerDiscoveryDoneFor, setRegisterDiscoveryDoneFor] = useState("");
   const effectiveEbarimtEnabled = EBARIMT_ENABLED && Boolean(registerConfig?.ebarimtEnabled);
   const ebarimtStatusText = !EBARIMT_ENABLED
     ? "eBarimt систем идэвхгүй байна."
@@ -647,8 +649,10 @@ export default function PosDemoPage() {
   const registerStorageKey = getPosRegisterIdKey(organizationId);
   const registerBranchId = posEnabled ? (registerConfig?.branchId ?? "") : "";
   const posProductsState = usePosProducts(registerBranchId);
-  const ownProductsState = useOwnProducts(registerBranchId || !posEnabled ? "" : organizationId);
-  const { products, loading, error } = registerBranchId ? posProductsState : ownProductsState;
+  const ownProductsState = useOwnProducts(registerBranchId || !posEnabled || registerDiscoveryDoneFor !== organizationId ? "" : organizationId);
+  const productCatalog = registerBranchId ? posProductsState : ownProductsState;
+  const { products, loading: catalogLoading, error, hasSnapshot, refreshing, refreshProducts } = productCatalog;
+  const loading = catalogLoading || (posEnabled && !registerBranchId && registerDiscoveryDoneFor !== organizationId);
   const reloadProducts = registerBranchId ? posProductsState.reload : ownProductsState.reload;
   const { state, totals, addProduct, dispatch } = usePosCart();
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
@@ -1380,11 +1384,13 @@ export default function PosDemoPage() {
     const token = localStorage.getItem("vendor_token");
     if (!token) return;
 
+    let cancelled = false;
     fetch(`${API}/pos/registers/mine`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => (r.ok ? r.json() : []))
       .then((list: RegisterConfig[]) => {
+        if (cancelled) return;
         const ownRegisters = Array.isArray(list)
           ? list.filter((register) => register.organizationId === organizationId)
           : [];
@@ -1400,7 +1406,9 @@ export default function PosDemoPage() {
           setShowRegisterPicker(true);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setRegisterDiscoveryDoneFor(organizationId); });
+    return () => { cancelled = true; };
   }, [organizationId, posEnabled, registerConfig, registerStorageKey]);
 
 
@@ -1555,12 +1563,12 @@ export default function PosDemoPage() {
       result = result.filter((item) => (item.categoryName || "Бусад") === selectedCategory);
     }
     if (!lowerSearch) return result;
-    return result.filter(
-      (item) =>
-        item.name.toLowerCase().includes(lowerSearch) ||
-        item.sku.toLowerCase().includes(lowerSearch) ||
-        String(item.barcode || "").toLowerCase().includes(lowerSearch),
-    );
+    const score = createProductSearchScorer(lowerSearch);
+    return result
+      .map((product) => ({ product, score: score(product) }))
+      .filter((entry) => entry.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .map(({ product }) => product);
   }, [products, lowerSearch, selectedCategory]);
 
   const filteredCreditGroups = useMemo(() => {
@@ -1958,13 +1966,25 @@ export default function PosDemoPage() {
     dispatch({ type: "clear-cart" });
   }, [selectedCreditRepayment, state.cart, dispatch]);
 
-  const processScan = (code: string) => {
+  const processScan = async (code: string) => {
     const normalized = code.trim();
     if (!normalized) return;
 
     setLastScannedCode(normalized);
 
-    const found = productCodeIndex.get(normalizeProductCode(normalized));
+    let found = productCodeIndex.get(normalizeProductCode(normalized));
+    if (!found) {
+      setScanMessage("Шинэ бараа бүртгэгдсэн эсэхийг шалгаж байна…");
+      try {
+        const latest = await refreshProducts();
+        const targetCode = normalizeProductCode(normalized);
+        found = latest.find((product) => [product.sku, product.barcode, product.id].some((value) => normalizeProductCode(String(value || "")) === targetCode));
+      } catch (error: unknown) {
+        setScanMessage(error instanceof Error ? error.message : "Барааны бүртгэлийг шалгаж чадсангүй.");
+        setScanStatus("not-found");
+        return;
+      }
+    }
 
     if (!found) {
       setSearchInput(normalized);
@@ -4525,7 +4545,7 @@ export default function PosDemoPage() {
                 </h2>
                 <p className="text-[11px] text-slate-500">
                   {listMode === "products"
-                    ? `${filtered.length} бараа харагдаж байна`
+                    ? `${products.length} бараанаас ${filtered.length} харагдаж байна`
                     : `${filteredCreditGroups.length} зээлдэгч, ${filteredCreditRowCount} бараа байна`}
                 </p>
               </div>
@@ -4582,11 +4602,13 @@ export default function PosDemoPage() {
                 onClick={listMode === "products" ? reloadProducts : () => void reloadCreditSales()}
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
               >
-                <RefreshCw size={15} />
+                <RefreshCw size={15} className={listMode === "products" && refreshing ? "animate-spin" : ""} />
                 Сэргээх
               </button>
               </div>
             </div>
+
+            {listMode === "products" && <div className="mb-2"><CatalogSyncStatus count={products.length} {...productCatalog} /></div>}
 
             {listMode === "products" && (
             <div className="mb-2 flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1.5">
@@ -4762,7 +4784,7 @@ export default function PosDemoPage() {
               <div className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
                 <Loader2 className="animate-spin text-slate-400" size={20} />
               </div>
-            ) : error ? (
+            ) : error && !hasSnapshot ? (
               <div className="rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
                 {error}
               </div>

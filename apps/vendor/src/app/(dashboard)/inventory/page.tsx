@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AlertCircle, Boxes, Loader2, PackageSearch, Search } from "lucide-react";
 import { formatPosQuantity } from "@mgl/types";
 import { useOwnProducts } from "@/features/pos";
+import { CatalogSyncStatus } from "@/features/pos/components/CatalogSyncStatus";
 
 function getCurrentOrganizationId() {
   if (typeof window === "undefined") return "";
@@ -18,7 +19,8 @@ function getCurrentOrganizationId() {
 export default function CashierInventoryPage() {
   const [organizationId] = useState(getCurrentOrganizationId);
   const [query, setQuery] = useState("");
-  const { products, loading, error, reload } = useOwnProducts(organizationId);
+  const catalog = useOwnProducts(organizationId);
+  const { products, loading, error, reload, hasSnapshot } = catalog;
 
   const filteredProducts = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("mn-MN");
@@ -61,11 +63,12 @@ export default function CashierInventoryPage() {
         />
       </label>
 
+      <CatalogSyncStatus count={products.length} {...catalog} />
       {loading ? (
         <div className="flex min-h-64 items-center justify-center rounded-3xl border border-slate-200 bg-white">
           <Loader2 className="h-7 w-7 animate-spin text-blue-600" aria-label="Ачаалж байна" />
         </div>
-      ) : error ? (
+      ) : error && !hasSnapshot ? (
         <div className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-3xl border border-rose-200 bg-rose-50 px-6 text-center">
           <AlertCircle className="h-8 w-8 text-rose-500" aria-hidden="true" />
           <p className="text-sm font-semibold text-rose-700">{error}</p>
