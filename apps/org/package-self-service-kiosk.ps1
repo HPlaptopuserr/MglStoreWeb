@@ -26,6 +26,7 @@ $files = @(
   "install-self-service-kiosk.cmd",
   "install-self-service-kiosk-shortcut.ps1",
   "start-self-service-kiosk.cmd",
+  "configure-self-service-printing.ps1",
   "check-self-service-printer.ps1",
   "self-service-printer-bridge.ps1",
   "keep-self-service-awake.ps1"

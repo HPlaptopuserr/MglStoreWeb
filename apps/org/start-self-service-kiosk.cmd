@@ -63,6 +63,17 @@ if defined DRY_RUN (
   exit /b 0
 )
 
+if exist "%~dp0configure-self-service-printing.ps1" (
+  powershell.exe ^
+    -NoProfile ^
+    -ExecutionPolicy Bypass ^
+    -File "%~dp0configure-self-service-printing.ps1" ^
+    -ProfilePath "!KIOSK_PROFILE!"
+  if errorlevel 1 (
+    echo [WARNING] Browser print header/footer settings could not be updated.
+  )
+)
+
 if defined SILENT_PRINT_READY if exist "%~dp0self-service-printer-bridge.ps1" (
   start "" powershell.exe ^
     -NoProfile ^

@@ -8,11 +8,15 @@ param(
 $ErrorActionPreference = "Stop"
 
 $launcherSourcePath = Join-Path $PSScriptRoot "start-self-service-kiosk.cmd"
+$printConfigSourcePath = Join-Path $PSScriptRoot "configure-self-service-printing.ps1"
 $printerCheckSourcePath = Join-Path $PSScriptRoot "check-self-service-printer.ps1"
 $printerBridgeSourcePath = Join-Path $PSScriptRoot "self-service-printer-bridge.ps1"
 $keepAwakeSourcePath = Join-Path $PSScriptRoot "keep-self-service-awake.ps1"
 if (-not (Test-Path -LiteralPath $launcherSourcePath)) {
   throw "Kiosk launcher not found: $launcherSourcePath"
+}
+if (-not (Test-Path -LiteralPath $printConfigSourcePath)) {
+  throw "Kiosk print configuration helper not found: $printConfigSourcePath"
 }
 if (-not (Test-Path -LiteralPath $printerCheckSourcePath)) {
   throw "Printer checker not found: $printerCheckSourcePath"
@@ -31,10 +35,12 @@ $InstallDirectory = [System.IO.Path]::GetFullPath($InstallDirectory)
 New-Item -ItemType Directory -Path $InstallDirectory -Force | Out-Null
 
 $launcherPath = Join-Path $InstallDirectory "start-self-service-kiosk.cmd"
+$printConfigPath = Join-Path $InstallDirectory "configure-self-service-printing.ps1"
 $printerCheckPath = Join-Path $InstallDirectory "check-self-service-printer.ps1"
 $printerBridgePath = Join-Path $InstallDirectory "self-service-printer-bridge.ps1"
 $keepAwakePath = Join-Path $InstallDirectory "keep-self-service-awake.ps1"
 Copy-Item -LiteralPath $launcherSourcePath -Destination $launcherPath -Force
+Copy-Item -LiteralPath $printConfigSourcePath -Destination $printConfigPath -Force
 Copy-Item -LiteralPath $printerCheckSourcePath -Destination $printerCheckPath -Force
 Copy-Item -LiteralPath $printerBridgeSourcePath -Destination $printerBridgePath -Force
 Copy-Item -LiteralPath $keepAwakeSourcePath -Destination $keepAwakePath -Force
