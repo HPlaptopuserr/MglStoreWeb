@@ -8,6 +8,7 @@ import {
   recoverVendorSystemQrCredentials,
   registerVendorWithSystemQr,
   registerVendorWithQPay,
+  saveVendorSystemQrCredentials,
 } from "../../services/vendor-merchant.service";
 import { getQPayCityList, getQPayDistrictList } from "../../services/qpay";
 import {
@@ -354,6 +355,47 @@ router.post(
       return res.status(500).json({
         success: false,
         message: "Minu Dynamic QR нэвтрэх эрх сэргээхэд серверийн алдаа гарлаа.",
+      });
+    }
+  },
+);
+
+/**
+ * POST /api/vendor/merchant/systemqr/credentials
+ * Validate Minu credentials and save them for the connected merchant.
+ */
+router.post(
+  "/vendor/merchant/systemqr/credentials",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const userId = (req as any).userId as string;
+      const explicitOrgId = req.body?.organizationId as string | undefined;
+      const channel = normalizeMerchantChannel(req.body?.channel);
+      const organizationId = await resolveOwnedOrganizationId(
+        userId,
+        explicitOrgId,
+      );
+      if (!organizationId) {
+        return res.status(403).json({
+          success: false,
+          message: "Тухайн байгууллагын OWNER эрх шаардлагатай.",
+        });
+      }
+
+      const result = await saveVendorSystemQrCredentials(
+        organizationId,
+        String(req.body?.username || ""),
+        String(req.body?.password || ""),
+        channel,
+      );
+      if (!result.success) return res.status(400).json(result);
+      return res.json(result);
+    } catch (error) {
+      console.error("SystemQR credential save error", error);
+      return res.status(500).json({
+        success: false,
+        message: "Minu credential хадгалахад серверийн алдаа гарлаа.",
       });
     }
   },

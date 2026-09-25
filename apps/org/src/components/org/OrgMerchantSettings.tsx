@@ -85,6 +85,12 @@ export function OrgMerchantSettings() {
   const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [canRecoverSystemQrCredentials, setCanRecoverSystemQrCredentials] =
     useState(false);
+  const [systemQrCredentialPassword, setSystemQrCredentialPassword] =
+    useState("");
+  const [systemQrCredentialMessage, setSystemQrCredentialMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
   const [status, setStatus] = useState<MerchantStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -552,6 +558,7 @@ export function OrgMerchantSettings() {
 
     setSubmitting(true);
     setMessage(null);
+    setSystemQrCredentialMessage(null);
     try {
       const response = await authFetch(
         `${API}/vendor/merchant/systemqr/recover-credentials`,
@@ -570,9 +577,60 @@ export function OrgMerchantSettings() {
         type: "success",
         text: data.message || "Minu нэвтрэх эрх сэргээгдлээ",
       });
+      setSystemQrCredentialMessage({
+        type: "success",
+        text: data.message || "Minu нэвтрэх эрх сэргээгдлээ",
+      });
       await loadStatus();
     } catch (error) {
       setMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Серверийн алдаа",
+      });
+      setSystemQrCredentialMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Серверийн алдаа",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSaveSystemQrCredentials = async () => {
+    const username = String(status?.merchantId || "").trim();
+    if (!username || !systemQrCredentialPassword) {
+      setSystemQrCredentialMessage({
+        type: "error",
+        text: "Minu password оруулна уу.",
+      });
+      return;
+    }
+
+    setSubmitting(true);
+    setSystemQrCredentialMessage(null);
+    try {
+      const response = await authFetch(
+        `${API}/vendor/merchant/systemqr/credentials`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            username,
+            password: systemQrCredentialPassword,
+            ...(organizationId ? { organizationId } : {}),
+          }),
+        },
+      );
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.message || "Minu credential хадгалахад алдаа гарлаа");
+      }
+      setSystemQrCredentialPassword("");
+      setSystemQrCredentialMessage({
+        type: "success",
+        text: data.message || "Minu credential хадгалагдлаа.",
+      });
+    } catch (error) {
+      setSystemQrCredentialMessage({
         type: "error",
         text: error instanceof Error ? error.message : "Серверийн алдаа",
       });
@@ -927,6 +985,51 @@ export function OrgMerchantSettings() {
               </button>
             </div>
           </div>
+          {canRecoverSystemQrCredentials ? (
+            <div className="mt-4 rounded-xl border border-emerald-200 bg-white/80 p-3">
+              <p className="text-xs font-black uppercase tracking-wide text-emerald-800">
+                Minu submerchant credential
+              </p>
+              <p className="mt-1 text-xs font-semibold text-slate-600">
+                Username: <span className="font-mono">{status?.merchantId}</span>
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_170px]">
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={systemQrCredentialPassword}
+                  onChange={(event) =>
+                    setSystemQrCredentialPassword(event.target.value)
+                  }
+                  placeholder="Minu-гээс өгсөн password"
+                  disabled={submitting}
+                  className={inputClass}
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleSaveSystemQrCredentials()}
+                  disabled={submitting || !systemQrCredentialPassword}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 text-sm font-black text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {submitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  Шалгаж хадгалах
+                </button>
+              </div>
+              {systemQrCredentialMessage ? (
+                <p
+                  className={`mt-2 text-sm font-bold ${
+                    systemQrCredentialMessage.type === "success"
+                      ? "text-emerald-700"
+                      : "text-rose-700"
+                  }`}
+                >
+                  {systemQrCredentialMessage.text}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-900">

@@ -133,6 +133,18 @@ async function getSystemQrToken(username?: string, password?: string): Promise<s
   return token;
 }
 
+export async function validateSystemQrCredentials(
+  username: string,
+  password: string,
+): Promise<void> {
+  const normalizedUsername = String(username || "").trim();
+  const normalizedPassword = String(password || "");
+  if (!normalizedUsername || !normalizedPassword) {
+    throw new Error("SystemQR username болон password шаардлагатай");
+  }
+  await getSystemQrToken(normalizedUsername, normalizedPassword);
+}
+
 function clearSystemQrToken(username?: string, password?: string) {
   const { qrpayBaseUrl, reqUsername, reqPassword } = resolveSystemQrCredentials(username, password);
   tokenCache.delete(getSystemQrTokenCacheKey(qrpayBaseUrl, reqUsername, reqPassword));

@@ -16,6 +16,7 @@ import {
 import {
   registerSystemQrSubMerchant,
   resetSystemQrSubMerchantPassword,
+  validateSystemQrCredentials,
   type SystemQrRegisterSubMerchantParams,
 } from "./systemqr";
 import {
@@ -575,6 +576,93 @@ export async function recoverVendorSystemQrCredentials(
         error instanceof Error
           ? error.message
           : "Minu Dynamic QR нэвтрэх эрх сэргээхэд алдаа гарлаа.",
+    };
+  }
+}
+
+export async function saveVendorSystemQrCredentials(
+  organizationId: string,
+  username: string,
+  password: string,
+  channel: MerchantChannel = "POS",
+): Promise<ConnectMerchantResult> {
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: {
+      qpayEnabled: true,
+      qpayMerchantId: true,
+      qpayMerchantKey: true,
+      qpayInvoiceCode: true,
+      qpayConnectedAt: true,
+      webQpayEnabled: true,
+      webQpayMerchantId: true,
+      webQpayMerchantKey: true,
+      webQpayInvoiceCode: true,
+      webQpayConnectedAt: true,
+    },
+  });
+
+  if (!org) return { success: false, message: "Байгууллага олдсонгүй" };
+
+  const selected = pickMerchantFields(org, channel);
+  const merchantCode = String(selected.merchantId || "").trim();
+  const normalizedUsername = String(username || "").trim();
+  const normalizedPassword = String(password || "");
+  if (
+    !selected.enabled ||
+    !merchantCode ||
+    (!isSystemQrMarker(selected.invoiceCode) &&
+      !isSystemQrMarker(selected.merchantKey))
+  ) {
+    return {
+      success: false,
+      message: "Энэ байгууллагад Minu Dynamic QR merchant холбогдоогүй байна.",
+    };
+  }
+  if (normalizedUsername !== merchantCode) {
+    return {
+      success: false,
+      message: "Minu username нь холбогдсон merchant code-той таарахгүй байна.",
+    };
+  }
+  if (!normalizedPassword) {
+    return { success: false, message: "Minu password оруулна уу." };
+  }
+
+  try {
+    await validateSystemQrCredentials(normalizedUsername, normalizedPassword);
+    await prisma.organization.update({
+      where: { id: organizationId },
+      data: buildMerchantUpdateData(channel, {
+        merchantId: merchantCode,
+        merchantKey: encodeSystemQrMerchantAuth(
+          normalizedUsername,
+          normalizedPassword,
+        ),
+        invoiceCode: "SYSTEMQR",
+        enabled: true,
+        connectedAt: selected.connectedAt || new Date(),
+      }),
+    });
+
+    return {
+      success: true,
+      message: "Minu credential шалгагдаж, байгууллагын тохиргоонд хадгалагдлаа.",
+      merchantId: merchantCode,
+    };
+  } catch (error) {
+    console.error("saveVendorSystemQrCredentials error", {
+      organizationId,
+      channel,
+      merchantCode,
+      error,
+    });
+    const message = error instanceof Error ? error.message : "";
+    return {
+      success: false,
+      message: /login|username|password|credential|401|403/i.test(message)
+        ? "Minu username эсвэл password буруу байна."
+        : message || "Minu credential хадгалахад алдаа гарлаа.",
     };
   }
 }
