@@ -55,6 +55,7 @@ import {
   runtimeEnv,
 } from "./_shared";
 import { calculatePosCreditPayable } from "./credit-interest";
+import { productImageOrderBy } from "../../../lib/product-images";
 import {
   fromPosStoredStockQuantity,
   normalizePosMeasureUnit,
@@ -280,7 +281,11 @@ router.get("/pos/products", async (req, res) => {
         preparationMinutes: true,
         category: { select: { name: true } },
         businessCategory: { select: { name: true } },
-        images: { select: { url: true }, take: 1 },
+        images: {
+          select: { url: true },
+          orderBy: productImageOrderBy(),
+          take: 1,
+        },
         warehouseInventories: {
           where: {
             quantity: { gt: 0 },

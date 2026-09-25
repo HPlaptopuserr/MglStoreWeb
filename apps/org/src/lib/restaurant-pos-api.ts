@@ -710,7 +710,16 @@ export async function getRestaurantPosProducts(
   const response = await authFetch(`${API}/pos/products?${params.toString()}`, {
     cache: "no-store",
   });
-  return readApiResponse<RestaurantPosProduct[]>(response);
+  const products = await readApiResponse<RestaurantPosProduct[]>(response);
+  return products.map((product) => ({
+    ...product,
+    imageUrl:
+      product.imageUrl &&
+      (product.imageUrl.startsWith("data:image/") ||
+        product.imageUrl.includes("/storage/v1/object/public/"))
+        ? `${API}/products/${encodeURIComponent(product.id)}/primary-image`
+        : product.imageUrl,
+  }));
 }
 
 export async function getCafeDailyStock(input: {

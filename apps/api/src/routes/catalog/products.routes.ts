@@ -59,6 +59,10 @@ import {
   productImageOrderBy,
   toOrderedProductImages,
 } from "../../lib/product-images";
+import {
+  decodeInlineProductImage,
+  resolveProductImageRemoteUrl,
+} from "../../lib/product-image-delivery";
 import { getPreorderCapacityProgress } from "../../services/preorder-capacity.service";
 import {
   getKhanBankPreorderRates,
@@ -88,6 +92,9 @@ import {
 } from "../../services/product-list-cache.service";
 
 const router: ExpressRouter = Router();
+const PRODUCT_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const PRODUCT_IMAGE_CACHE_CONTROL =
+  "public, max-age=3600, stale-while-revalidate=86400";
 
 router.get(
   "/vendor/preorder-exchange-rates",
@@ -896,6 +903,76 @@ async function getDefaultRestaurantClassificationCode(
 }
 
 /* ─── GET /products/health — check env config ───────────────────────── */
+router.get("/products/:id/primary-image", async (req, res) => {
+  try {
+    const image = await prisma.productImage.findFirst({
+      where: { productId: req.params.id },
+      select: { url: true },
+      orderBy: productImageOrderBy(),
+    });
+
+    if (!image?.url) {
+      return res.status(404).end();
+    }
+
+    const inline = decodeInlineProductImage(image.url);
+    if (inline) {
+      if (inline.body.length > PRODUCT_IMAGE_MAX_BYTES) {
+        return res.status(413).end();
+      }
+      res.setHeader("Cache-Control", PRODUCT_IMAGE_CACHE_CONTROL);
+      res.type(inline.contentType);
+      return res.send(inline.body);
+    }
+
+    const remoteUrl = resolveProductImageRemoteUrl(
+      image.url,
+      process.env.SUPABASE_URL,
+    );
+    if (!remoteUrl) {
+      return res.status(404).end();
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12_000);
+    try {
+      const upstream = await fetch(remoteUrl, {
+        signal: controller.signal,
+        headers: { Accept: "image/*" },
+      });
+      if (!upstream.ok) {
+        return res.status(upstream.status === 404 ? 404 : 502).end();
+      }
+
+      const contentType = upstream.headers.get("content-type") || "";
+      if (!contentType.toLowerCase().startsWith("image/")) {
+        return res.status(502).end();
+      }
+
+      const declaredSize = Number(upstream.headers.get("content-length") || 0);
+      if (declaredSize > PRODUCT_IMAGE_MAX_BYTES) {
+        return res.status(413).end();
+      }
+
+      const body = Buffer.from(await upstream.arrayBuffer());
+      if (!body.length) return res.status(404).end();
+      if (body.length > PRODUCT_IMAGE_MAX_BYTES) return res.status(413).end();
+
+      res.setHeader("Cache-Control", PRODUCT_IMAGE_CACHE_CONTROL);
+      res.type(contentType);
+      return res.send(body);
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch (error) {
+    console.error("product primary image proxy error", {
+      productId: req.params.id,
+      error,
+    });
+    return res.status(502).end();
+  }
+});
+
 router.get("/products/health", (_req, res) => {
   return res.json({
     supabaseUrl: process.env.SUPABASE_URL ? "set" : "MISSING",
