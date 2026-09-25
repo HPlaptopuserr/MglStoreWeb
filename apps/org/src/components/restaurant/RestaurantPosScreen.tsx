@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ProductImage } from "./ProductImage";
+import { TestReceiptPrintButton } from "./TestReceiptPrintButton";
 import {
   ProductImageFeedbackProvider,
   ProductImageNotice,
@@ -6475,6 +6476,11 @@ function RestaurantPosContent() {
                           <Printer className="h-4 w-4" />
                           Дахин хэвлэх
                         </button>
+                        <TestReceiptPrintButton
+                          receipt={mapSalesHistoryToReceipt(selectedSalesHistory)}
+                          organizationName={user.organizationName || "MGL Store Restaurant"}
+                          registerName={selectedSalesHistory.registerName || "Restaurant POS"}
+                        />
                         {selectedSalesHistory.status !== "VOIDED" ? (
                           <button
                             type="button"
