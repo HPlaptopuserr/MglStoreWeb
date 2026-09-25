@@ -879,7 +879,7 @@ export function SelfServiceCheckoutScreen() {
     0,
   );
   const packagingFee =
-    orderMode === "TO_GO" && cart.length > 0
+    !isCafe && orderMode === "TO_GO" && cart.length > 0
       ? SELF_SERVICE_TAKEAWAY_PACKAGING_FEE
       : 0;
   const cartTotal = cartSubtotal + packagingFee;
