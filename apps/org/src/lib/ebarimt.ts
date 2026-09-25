@@ -381,27 +381,33 @@ export async function lookupEbarimtTin(
     throw new Error("Байгууллагын регистр 7 оронтой байна");
   }
   const bridgeResult = await lookupTinFromBridge(normalized, register);
-  if (bridgeResult) return bridgeResult;
+  if (bridgeResult?.name) return bridgeResult;
 
-  const response = await fetch(
-    `/api/ebarimt/tin?regNo=${encodeURIComponent(normalized)}`,
-    { cache: "no-store" },
-  );
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(
-      payload?.message || `eBarimt TIN лавлагаа амжилтгүй (HTTP ${response.status})`,
+  try {
+    const response = await fetch(
+      `/api/ebarimt/tin?regNo=${encodeURIComponent(normalized)}`,
+      { cache: "no-store" },
     );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        payload?.message ||
+          `eBarimt TIN лавлагаа амжилтгүй (HTTP ${response.status})`,
+      );
+    }
+    const tin = normalizeTin(payload?.tin);
+    if (!/^\d{11,14}$/.test(tin)) {
+      throw new Error("Байгууллагын TIN мэдээлэл дутуу ирлээ");
+    }
+    return {
+      regNo: String(payload?.regNo || normalized).replace(/\D/g, ""),
+      tin,
+      name: pickText(payload?.name),
+    };
+  } catch (error) {
+    if (bridgeResult) return bridgeResult;
+    throw error;
   }
-  const tin = normalizeTin(payload?.tin);
-  if (!/^\d{11,14}$/.test(tin)) {
-    throw new Error("Байгууллагын TIN мэдээлэл дутуу ирлээ");
-  }
-  return {
-    regNo: String(payload?.regNo || normalized).replace(/\D/g, ""),
-    tin,
-    name: pickText(payload?.name),
-  };
 }
 
 function selectMerchant(

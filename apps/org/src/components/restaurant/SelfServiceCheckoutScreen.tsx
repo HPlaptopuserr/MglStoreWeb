@@ -596,6 +596,7 @@ export function SelfServiceCheckoutScreen() {
     useState<EbarimtTinLookupResult | null>(null);
   const [companyLookupLoading, setCompanyLookupLoading] = useState(false);
   const [companyLookupError, setCompanyLookupError] = useState("");
+  const companyLookupRequestRef = useRef(0);
   const [ebarimtSubmitting, setEbarimtSubmitting] = useState(false);
   const [completedEbarimtBuyer, setCompletedEbarimtBuyer] =
     useState<EbarimtBuyer>({ type: "B2C" });
@@ -981,31 +982,59 @@ export function SelfServiceCheckoutScreen() {
     setScreen("payment");
   }, [register, setupLoading, user.organizationId]);
 
-  const lookupCompanyBuyer = async (): Promise<EbarimtTinLookupResult> => {
+  const lookupCompanyBuyer = useCallback(async (): Promise<
+    EbarimtTinLookupResult
+  > => {
     const normalizedRegNo = companyRegNo.replace(/\D/g, "");
     if (!/^\d{7}$/.test(normalizedRegNo)) {
       throw new Error("Байгууллагын регистр 7 оронтой байна");
     }
     if (companyLookup?.regNo === normalizedRegNo) return companyLookup;
 
+    const requestId = ++companyLookupRequestRef.current;
     setCompanyLookupLoading(true);
     setCompanyLookupError("");
     try {
       const result = await lookupEbarimtTin(normalizedRegNo, register);
-      setCompanyLookup(result);
+      if (requestId === companyLookupRequestRef.current) {
+        setCompanyLookup(result);
+      }
       return result;
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : "Байгууллагын мэдээлэл шалгаж чадсангүй";
-      setCompanyLookup(null);
-      setCompanyLookupError(message);
+      if (requestId === companyLookupRequestRef.current) {
+        setCompanyLookup(null);
+        setCompanyLookupError(message);
+      }
       throw new Error(message);
     } finally {
-      setCompanyLookupLoading(false);
+      if (requestId === companyLookupRequestRef.current) {
+        setCompanyLookupLoading(false);
+      }
     }
-  };
+  }, [companyLookup, companyRegNo, register]);
+
+  useEffect(() => {
+    if (ebarimtBuyerMode !== "B2B" || companyRegNo.length !== 7) return;
+    if (companyLookup?.regNo === companyRegNo) return;
+    if (companyLookupLoading) return;
+    if (companyLookupError) return;
+
+    const timer = window.setTimeout(() => {
+      void lookupCompanyBuyer().catch(() => null);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [
+    companyLookup?.regNo,
+    companyLookupError,
+    companyLookupLoading,
+    companyRegNo,
+    ebarimtBuyerMode,
+    lookupCompanyBuyer,
+  ]);
 
   const resolveEbarimtBuyer = async (): Promise<EbarimtBuyer> => {
     if (!ebarimtReady || ebarimtBuyerMode === "B2C") {
@@ -2749,8 +2778,10 @@ export function SelfServiceCheckoutScreen() {
                             const value = event.target.value
                               .replace(/\D/g, "")
                               .slice(0, 7);
+                            companyLookupRequestRef.current += 1;
                             setCompanyRegNo(value);
                             setCompanyLookup(null);
+                            setCompanyLookupLoading(false);
                             setCompanyLookupError("");
                             setActionError("");
                           }}
