@@ -30,6 +30,7 @@ import {
   type RestaurantMenuCategory,
 } from "@/lib/restaurant-pos-api";
 import {
+  SELF_SERVICE_TAKEAWAY_PACKAGING_FEE,
   getEbarimtTaxProductCodes,
   isValidEbarimtClassificationCode,
   isValidEbarimtTaxProductCode,
@@ -55,6 +56,12 @@ type RestaurantProduct = {
   isActive: boolean;
   isRestaurantMenuItem: boolean;
   isTakeawayAvailable: boolean;
+  takeawayPackagingFee: number;
+  isSoldByPiece: boolean;
+  pieceSmallPackSize: number;
+  pieceSmallPackFee: number;
+  pieceLargePackSize: number;
+  pieceLargePackFee: number;
   menuCategory: MenuCategory | null;
   kitchenStation: KitchenStation | null;
   preparationMinutes: number | null;
@@ -71,6 +78,12 @@ type MenuForm = {
   kitchenStation: KitchenStation;
   preparationMinutes: string;
   isTakeawayAvailable: boolean;
+  takeawayPackagingFee: string;
+  isSoldByPiece: boolean;
+  pieceSmallPackSize: string;
+  pieceSmallPackFee: string;
+  pieceLargePackSize: string;
+  pieceLargePackFee: string;
   imageUrl: string;
   taxType: TaxType;
   cityTaxRate: string;
@@ -104,6 +117,14 @@ const createEmptyForm = (isCafe: boolean): MenuForm => ({
   kitchenStation: isCafe ? "BAR" : "HOT_KITCHEN",
   preparationMinutes: isCafe ? "5" : "15",
   isTakeawayAvailable: true,
+  takeawayPackagingFee: isCafe
+    ? "0"
+    : String(SELF_SERVICE_TAKEAWAY_PACKAGING_FEE),
+  isSoldByPiece: false,
+  pieceSmallPackSize: "3",
+  pieceSmallPackFee: "300",
+  pieceLargePackSize: "6",
+  pieceLargePackFee: "800",
   imageUrl: "",
   taxType: "VAT_ABLE",
   cityTaxRate: "0",
@@ -247,6 +268,12 @@ export function RestaurantProductsScreen() {
         product.preparationMinutes ?? Number(defaultForm.preparationMinutes),
       ),
       isTakeawayAvailable: product.isTakeawayAvailable !== false,
+      takeawayPackagingFee: String(product.takeawayPackagingFee ?? 0),
+      isSoldByPiece: product.isSoldByPiece === true,
+      pieceSmallPackSize: String(product.pieceSmallPackSize ?? 3),
+      pieceSmallPackFee: String(product.pieceSmallPackFee ?? 300),
+      pieceLargePackSize: String(product.pieceLargePackSize ?? 6),
+      pieceLargePackFee: String(product.pieceLargePackFee ?? 800),
       imageUrl: product.images[0]?.url || "",
       taxType: product.taxType || "VAT_ABLE",
       cityTaxRate: String(product.cityTaxRate ?? 0),
@@ -274,6 +301,11 @@ export function RestaurantProductsScreen() {
     const price = Number(form.price);
     const costPrice = form.costPrice.trim() ? Number(form.costPrice) : null;
     const preparationMinutes = Number(form.preparationMinutes);
+    const takeawayPackagingFee = Number(form.takeawayPackagingFee || 0);
+    const pieceSmallPackSize = Number(form.pieceSmallPackSize);
+    const pieceSmallPackFee = Number(form.pieceSmallPackFee || 0);
+    const pieceLargePackSize = Number(form.pieceLargePackSize);
+    const pieceLargePackFee = Number(form.pieceLargePackFee || 0);
     const cityTaxRate = Number(form.cityTaxRate);
 
     if (!form.name.trim()) {
@@ -297,6 +329,37 @@ export function RestaurantProductsScreen() {
       preparationMinutes > 1440
     ) {
       showMessage("error", "Бэлтгэх хугацаа 0-1440 минут байна");
+      return;
+    }
+    if (
+      !Number.isInteger(takeawayPackagingFee) ||
+      takeawayPackagingFee < 0 ||
+      takeawayPackagingFee > 10_000_000
+    ) {
+      showMessage("error", "Савны үнэ 0-10,000,000₮ бүхэл тоо байна");
+      return;
+    }
+    if (
+      form.isTakeawayAvailable &&
+      form.isSoldByPiece &&
+      (!Number.isInteger(pieceSmallPackSize) ||
+        pieceSmallPackSize < 1 ||
+        pieceSmallPackSize > 10_000 ||
+        !Number.isInteger(pieceLargePackSize) ||
+        pieceLargePackSize < 1 ||
+        pieceLargePackSize > 10_000 ||
+        pieceSmallPackSize >= pieceLargePackSize ||
+        !Number.isInteger(pieceSmallPackFee) ||
+        pieceSmallPackFee < 0 ||
+        pieceSmallPackFee > 10_000_000 ||
+        !Number.isInteger(pieceLargePackFee) ||
+        pieceLargePackFee < 0 ||
+        pieceLargePackFee > 10_000_000)
+    ) {
+      showMessage(
+        "error",
+        "Ширхэгийн жижиг/том савны багтаамж, үнийг зөв оруулна уу",
+      );
       return;
     }
     if (!Number.isFinite(cityTaxRate) || cityTaxRate < 0 || cityTaxRate > 100) {
@@ -327,7 +390,7 @@ export function RestaurantProductsScreen() {
             name: form.name.trim(),
             description: form.description.trim() || null,
             sku: form.sku.trim() || null,
-            unit: "порц",
+            unit: form.isSoldByPiece ? "ширхэг" : "порц",
             price,
             costPrice,
             stock: 0,
@@ -337,6 +400,14 @@ export function RestaurantProductsScreen() {
             kitchenStation: form.kitchenStation,
             preparationMinutes,
             isTakeawayAvailable: form.isTakeawayAvailable,
+            takeawayPackagingFee: form.isTakeawayAvailable
+              ? takeawayPackagingFee
+              : 0,
+            isSoldByPiece: form.isSoldByPiece,
+            pieceSmallPackSize,
+            pieceSmallPackFee,
+            pieceLargePackSize,
+            pieceLargePackFee,
             taxType: form.taxType,
             cityTaxRate,
             classificationCode: form.classificationCode.trim(),
@@ -677,7 +748,9 @@ export function RestaurantProductsScreen() {
                       {product.preparationMinutes ?? 0} мин
                       {product.isTakeawayAvailable === false
                         ? " · Зөвхөн энд хэрэглэх"
-                        : ""}
+                        : product.isSoldByPiece
+                          ? ` · Ширхэгийн сав ${product.pieceSmallPackSize}ш/${formatMoney(product.pieceSmallPackFee)}, ${product.pieceLargePackSize}ш/${formatMoney(product.pieceLargePackFee)}`
+                          : ` · Сав ${formatMoney(product.takeawayPackagingFee)}`}
                     </p>
                   </div>
                 </div>
@@ -1250,6 +1323,102 @@ function MenuItemForm({
                   </span>
                 </span>
               </label>
+
+              <label className="flex cursor-pointer items-start gap-3 border border-slate-200 bg-slate-50 p-4">
+                <input
+                  type="checkbox"
+                  checked={form.isSoldByPiece}
+                  onChange={(event) =>
+                    update("isSoldByPiece", event.target.checked)
+                  }
+                  className="mt-0.5 h-5 w-5 rounded border-slate-300 accent-slate-950"
+                />
+                <span>
+                  <span className="block text-sm font-black text-slate-950">
+                    Ширхэгээр зарагддаг хоол
+                  </span>
+                  <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
+                    Бууз, хуушуур зэрэг ширхэгийн тоогоор савны үнийг шатлан
+                    бодно.
+                  </span>
+                </span>
+              </label>
+
+              {form.isSoldByPiece ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Жижиг савны багтаамж" suffix="ш">
+                    <input
+                      type="number"
+                      min="1"
+                      max="10000"
+                      step="1"
+                      disabled={!form.isTakeawayAvailable}
+                      value={form.pieceSmallPackSize}
+                      onChange={(event) =>
+                        update("pieceSmallPackSize", event.target.value)
+                      }
+                      className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400`}
+                    />
+                  </Field>
+                  <Field label="Жижиг савны үнэ" suffix="₮">
+                    <input
+                      type="number"
+                      min="0"
+                      max="10000000"
+                      step="1"
+                      disabled={!form.isTakeawayAvailable}
+                      value={form.pieceSmallPackFee}
+                      onChange={(event) =>
+                        update("pieceSmallPackFee", event.target.value)
+                      }
+                      className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400`}
+                    />
+                  </Field>
+                  <Field label="Том савны багтаамж" suffix="ш">
+                    <input
+                      type="number"
+                      min="1"
+                      max="10000"
+                      step="1"
+                      disabled={!form.isTakeawayAvailable}
+                      value={form.pieceLargePackSize}
+                      onChange={(event) =>
+                        update("pieceLargePackSize", event.target.value)
+                      }
+                      className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400`}
+                    />
+                  </Field>
+                  <Field label="Том савны үнэ" suffix="₮">
+                    <input
+                      type="number"
+                      min="0"
+                      max="10000000"
+                      step="1"
+                      disabled={!form.isTakeawayAvailable}
+                      value={form.pieceLargePackFee}
+                      onChange={(event) =>
+                        update("pieceLargePackFee", event.target.value)
+                      }
+                      className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400`}
+                    />
+                  </Field>
+                </div>
+              ) : (
+                <Field label="Авч явах савны үнэ" suffix="₮">
+                  <input
+                    type="number"
+                    min="0"
+                    max="10000000"
+                    step="1"
+                    disabled={!form.isTakeawayAvailable}
+                    value={form.takeawayPackagingFee}
+                    onChange={(event) =>
+                      update("takeawayPackagingFee", event.target.value)
+                    }
+                    className={`${inputClass} disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400`}
+                  />
+                </Field>
+              )}
 
               <Field label="Тайлбар">
                 <textarea

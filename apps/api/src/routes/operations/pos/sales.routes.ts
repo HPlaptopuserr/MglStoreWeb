@@ -59,9 +59,9 @@ import {
   resolvePosCreditDueDate,
 } from "./credit-interest";
 import { resolvePosSaleLineCost } from "./pos-sale-cost";
+import { calculateTakeawayPackagingFee } from "./takeaway-packaging";
 import {
   EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
-  SELF_SERVICE_TAKEAWAY_PACKAGING_FEE,
   SELF_SERVICE_TAKEAWAY_PACKAGING_SKU,
   formatPosQuantity,
   fromPosStoredStockQuantity,
@@ -739,13 +739,9 @@ router.post("/pos/sales", async (req, res) => {
       });
     }
 
-    if (
-      !Number.isFinite(packagingFee) ||
-      (!moneyMatches(packagingFee, 0) &&
-        !moneyMatches(packagingFee, SELF_SERVICE_TAKEAWAY_PACKAGING_FEE))
-    ) {
+    if (!Number.isFinite(packagingFee) || packagingFee < 0) {
       return res.status(400).json({
-        message: `Савны үнэ 0 эсвэл ${SELF_SERVICE_TAKEAWAY_PACKAGING_FEE}₮ байх ёстой`,
+        message: "Савны үнэ 0 буюу түүнээс их тоо байх ёстой",
       });
     }
     if (packagingFee > 0 && !restaurantTicketId) {
@@ -895,6 +891,69 @@ router.post("/pos/sales", async (req, res) => {
 
     const productIds = Array.from(qtyByProduct.keys());
     const receiptNo = `POS-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Date.now().toString().slice(-6)}`;
+
+    if (restaurantTicketId) {
+      const [ticketForPackaging, productsForPackaging] = await Promise.all([
+        prisma.restaurantTicket.findFirst({
+          where: {
+            id: restaurantTicketId,
+            organizationId: idempotencyOrganizationId,
+          },
+          select: { orderMode: true },
+        }),
+        prisma.product.findMany({
+          where: {
+            id: { in: productIds },
+            organizationId: idempotencyOrganizationId,
+            deletedAt: null,
+            isActive: true,
+          },
+          select: {
+            id: true,
+            takeawayPackagingFee: true,
+            isSoldByPiece: true,
+            pieceSmallPackSize: true,
+            pieceSmallPackFee: true,
+            pieceLargePackSize: true,
+            pieceLargePackFee: true,
+          },
+        }),
+      ]);
+      if (
+        ticketForPackaging &&
+        productsForPackaging.length === productIds.length
+      ) {
+        const fractionalPieceProduct = productsForPackaging.find(
+          (product) =>
+            product.isSoldByPiece &&
+            !Number.isInteger(qtyByProduct.get(product.id) || 0),
+        );
+        if (fractionalPieceProduct) {
+          return res.status(400).json({
+            message: "Ширхэгээр зарагддаг хоолны тоо бүхэл байна",
+          });
+        }
+        const expectedPackagingFee =
+          ticketForPackaging.orderMode === RestaurantOrderMode.TO_GO
+            ? calculateTakeawayPackagingFee(
+                productsForPackaging.map((product) => ({
+                  quantity: qtyByProduct.get(product.id) || 0,
+                  unitFee: Number(product.takeawayPackagingFee || 0),
+                  isSoldByPiece: product.isSoldByPiece,
+                  pieceSmallPackSize: product.pieceSmallPackSize,
+                  pieceSmallPackFee: Number(product.pieceSmallPackFee || 0),
+                  pieceLargePackSize: product.pieceLargePackSize,
+                  pieceLargePackFee: Number(product.pieceLargePackFee || 0),
+                })),
+              )
+            : 0;
+        if (!moneyMatches(packagingFee, expectedPackagingFee)) {
+          return res.status(409).json({
+            message: `Савны үнэ шинэчлэгдсэн байна. Зөв дүн: ${expectedPackagingFee}₮`,
+          });
+        }
+      }
+    }
 
     const preLineTotals = lines.map((line) => {
       const qty = Number(line.qty || 0);
@@ -1233,6 +1292,12 @@ router.post("/pos/sales", async (req, res) => {
             barcode: true,
             stock: true,
             isRestaurantMenuItem: true,
+            takeawayPackagingFee: true,
+            isSoldByPiece: true,
+            pieceSmallPackSize: true,
+            pieceSmallPackFee: true,
+            pieceLargePackSize: true,
+            pieceLargePackFee: true,
             unit: true,
             organizationId: true,
             taxType: true,
@@ -1259,6 +1324,36 @@ router.post("/pos/sales", async (req, res) => {
               );
             }
           }
+        }
+
+        const fractionalPieceProduct = products.find(
+          (product) =>
+            product.isSoldByPiece &&
+            !Number.isInteger(qtyByProduct.get(product.id) || 0),
+        );
+        if (fractionalPieceProduct) {
+          throw toApiError(400, "Ширхэгээр зарагддаг хоолны тоо бүхэл байна");
+        }
+
+        const expectedPackagingFee =
+          restaurantTicketForSale?.orderMode === RestaurantOrderMode.TO_GO
+            ? calculateTakeawayPackagingFee(
+                products.map((product) => ({
+                  quantity: qtyByProduct.get(product.id) || 0,
+                  unitFee: Number(product.takeawayPackagingFee || 0),
+                  isSoldByPiece: product.isSoldByPiece,
+                  pieceSmallPackSize: product.pieceSmallPackSize,
+                  pieceSmallPackFee: Number(product.pieceSmallPackFee || 0),
+                  pieceLargePackSize: product.pieceLargePackSize,
+                  pieceLargePackFee: Number(product.pieceLargePackFee || 0),
+                })),
+              )
+            : 0;
+        if (!moneyMatches(packagingFee, expectedPackagingFee)) {
+          throw toApiError(
+            409,
+            `Савны үнэ шинэчлэгдсэн байна. Зөв дүн: ${expectedPackagingFee}₮`,
+          );
         }
 
         const packagingProduct =
@@ -1314,6 +1409,12 @@ router.post("/pos/sales", async (req, res) => {
                   barcode: true,
                   stock: true,
                   isRestaurantMenuItem: true,
+                  takeawayPackagingFee: true,
+                  isSoldByPiece: true,
+                  pieceSmallPackSize: true,
+                  pieceSmallPackFee: true,
+                  pieceLargePackSize: true,
+                  pieceLargePackFee: true,
                   unit: true,
                   organizationId: true,
                   taxType: true,

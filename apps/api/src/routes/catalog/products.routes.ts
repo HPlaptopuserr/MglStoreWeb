@@ -19,6 +19,7 @@ import {
   fromPosStoredStockQuantity,
   normalizePosMeasureUnit,
   requiresEbarimtTaxProductCode,
+  SELF_SERVICE_TAKEAWAY_PACKAGING_FEE,
   SELF_SERVICE_TAKEAWAY_PACKAGING_SKU,
   toPosStoredStockQuantity,
 } from "@mgl/types";
@@ -495,6 +496,24 @@ const normalizePreparationMinutes = (value: unknown) => {
   return parsed;
 };
 
+const normalizeTakeawayPackagingFee = (value: unknown, fallback = 0) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 10_000_000) {
+    return undefined;
+  }
+  return parsed;
+};
+
+const normalizePiecePackSize = (value: unknown, fallback: number) => {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 10_000) {
+    return undefined;
+  }
+  return parsed;
+};
+
 function emptyProductInterestProfile() {
   return {
     productScores: new Map<string, number>(),
@@ -898,6 +917,16 @@ async function getDefaultRestaurantClassificationCode(
   return setting?.value.trim().toUpperCase() === "CAFE"
     ? "6340000"
     : EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE;
+}
+
+async function getDefaultTakeawayPackagingFee(organizationId: string) {
+  const setting = await prisma.siteSetting.findUnique({
+    where: { key: `self-service-mode-${organizationId}` },
+    select: { value: true },
+  });
+  return setting?.value.trim().toUpperCase() === "CAFE"
+    ? 0
+    : SELF_SERVICE_TAKEAWAY_PACKAGING_FEE;
 }
 
 /* ─── GET /products/:id/primary-image ───────────────────────────────── */
@@ -3480,6 +3509,12 @@ router.post(
         taxProductCode,
         isRestaurantMenuItem,
         isTakeawayAvailable,
+        takeawayPackagingFee,
+        isSoldByPiece,
+        pieceSmallPackSize,
+        pieceSmallPackFee,
+        pieceLargePackSize,
+        pieceLargePackFee,
         menuCategory,
         kitchenStation,
         preparationMinutes,
@@ -3602,6 +3637,52 @@ router.post(
       }
       const normalizedTaxType = normalizeTaxType(taxType);
       const restaurantMenuEnabled = isTruthyQueryValue(isRestaurantMenuItem);
+      const takeawayAvailable =
+        isTakeawayAvailable === undefined
+          ? true
+          : isTruthyQueryValue(isTakeawayAvailable);
+      const defaultTakeawayPackagingFee = restaurantMenuEnabled
+        ? await getDefaultTakeawayPackagingFee(organizationId)
+        : 0;
+      const normalizedTakeawayPackagingFee = normalizeTakeawayPackagingFee(
+        restaurantMenuEnabled && takeawayAvailable ? takeawayPackagingFee : 0,
+        defaultTakeawayPackagingFee,
+      );
+      if (normalizedTakeawayPackagingFee === undefined) {
+        return res.status(400).json({
+          message: "Савны үнэ 0-10,000,000₮ бүхэл тоо байна",
+        });
+      }
+      const soldByPiece =
+        restaurantMenuEnabled && isTruthyQueryValue(isSoldByPiece);
+      const normalizedPieceSmallPackSize = normalizePiecePackSize(
+        soldByPiece ? pieceSmallPackSize : undefined,
+        3,
+      );
+      const normalizedPieceLargePackSize = normalizePiecePackSize(
+        soldByPiece ? pieceLargePackSize : undefined,
+        6,
+      );
+      const normalizedPieceSmallPackFee = normalizeTakeawayPackagingFee(
+        soldByPiece ? pieceSmallPackFee : undefined,
+        300,
+      );
+      const normalizedPieceLargePackFee = normalizeTakeawayPackagingFee(
+        soldByPiece ? pieceLargePackFee : undefined,
+        800,
+      );
+      if (
+        normalizedPieceSmallPackSize === undefined ||
+        normalizedPieceLargePackSize === undefined ||
+        normalizedPieceSmallPackFee === undefined ||
+        normalizedPieceLargePackFee === undefined ||
+        normalizedPieceSmallPackSize >= normalizedPieceLargePackSize
+      ) {
+        return res.status(400).json({
+          message:
+            "Ширхэгийн савны багтаамж, үнэ буруу байна. Жижиг савны багтаамж том саваас бага байна.",
+        });
+      }
       const restaurantClassificationFallback = restaurantMenuEnabled
         ? String(classificationCode ?? "").trim() ||
           (await getDefaultRestaurantClassificationCode(organizationId))
@@ -3801,10 +3882,13 @@ router.post(
             classificationCode: normalizedClassificationCode,
             taxProductCode: normalizedTaxProductCode,
             isRestaurantMenuItem: restaurantMenuEnabled,
-            isTakeawayAvailable:
-              isTakeawayAvailable === undefined
-                ? true
-                : isTruthyQueryValue(isTakeawayAvailable),
+            isTakeawayAvailable: takeawayAvailable,
+            takeawayPackagingFee: normalizedTakeawayPackagingFee,
+            isSoldByPiece: soldByPiece,
+            pieceSmallPackSize: normalizedPieceSmallPackSize,
+            pieceSmallPackFee: normalizedPieceSmallPackFee,
+            pieceLargePackSize: normalizedPieceLargePackSize,
+            pieceLargePackFee: normalizedPieceLargePackFee,
             menuCategory: normalizedMenuCategory,
             kitchenStation: normalizedKitchenStation,
             preparationMinutes: restaurantMenuEnabled
@@ -4022,6 +4106,12 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       taxProductCode,
       isRestaurantMenuItem,
       isTakeawayAvailable,
+      takeawayPackagingFee,
+      isSoldByPiece,
+      pieceSmallPackSize,
+      pieceSmallPackFee,
+      pieceLargePackSize,
+      pieceLargePackFee,
       menuCategory,
       kitchenStation,
       preparationMinutes,
@@ -4208,6 +4298,76 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     }
     if (isTakeawayAvailable !== undefined) {
       data.isTakeawayAvailable = isTruthyQueryValue(isTakeawayAvailable);
+    }
+    const nextTakeawayAvailable =
+      isTakeawayAvailable !== undefined
+        ? isTruthyQueryValue(isTakeawayAvailable)
+        : existing.isTakeawayAvailable;
+    if (
+      takeawayPackagingFee !== undefined ||
+      !nextRestaurantMenuEnabled ||
+      !nextTakeawayAvailable
+    ) {
+      const normalizedTakeawayPackagingFee = normalizeTakeawayPackagingFee(
+        nextRestaurantMenuEnabled && nextTakeawayAvailable
+          ? takeawayPackagingFee
+          : 0,
+        Number(existing.takeawayPackagingFee || 0),
+      );
+      if (normalizedTakeawayPackagingFee === undefined) {
+        return res.status(400).json({
+          message: "Савны үнэ 0-10,000,000₮ бүхэл тоо байна",
+        });
+      }
+      data.takeawayPackagingFee = normalizedTakeawayPackagingFee;
+    }
+    const nextIsSoldByPiece =
+      nextRestaurantMenuEnabled &&
+      (isSoldByPiece !== undefined
+        ? isTruthyQueryValue(isSoldByPiece)
+        : existing.isSoldByPiece);
+    if (
+      isSoldByPiece !== undefined ||
+      pieceSmallPackSize !== undefined ||
+      pieceSmallPackFee !== undefined ||
+      pieceLargePackSize !== undefined ||
+      pieceLargePackFee !== undefined ||
+      !nextRestaurantMenuEnabled ||
+      !nextTakeawayAvailable
+    ) {
+      const normalizedPieceSmallPackSize = normalizePiecePackSize(
+        nextIsSoldByPiece ? pieceSmallPackSize : undefined,
+        existing.pieceSmallPackSize,
+      );
+      const normalizedPieceLargePackSize = normalizePiecePackSize(
+        nextIsSoldByPiece ? pieceLargePackSize : undefined,
+        existing.pieceLargePackSize,
+      );
+      const normalizedPieceSmallPackFee = normalizeTakeawayPackagingFee(
+        nextIsSoldByPiece ? pieceSmallPackFee : undefined,
+        Number(existing.pieceSmallPackFee || 0),
+      );
+      const normalizedPieceLargePackFee = normalizeTakeawayPackagingFee(
+        nextIsSoldByPiece ? pieceLargePackFee : undefined,
+        Number(existing.pieceLargePackFee || 0),
+      );
+      if (
+        normalizedPieceSmallPackSize === undefined ||
+        normalizedPieceLargePackSize === undefined ||
+        normalizedPieceSmallPackFee === undefined ||
+        normalizedPieceLargePackFee === undefined ||
+        normalizedPieceSmallPackSize >= normalizedPieceLargePackSize
+      ) {
+        return res.status(400).json({
+          message:
+            "Ширхэгийн савны багтаамж, үнэ буруу байна. Жижиг савны багтаамж том саваас бага байна.",
+        });
+      }
+      data.isSoldByPiece = nextIsSoldByPiece;
+      data.pieceSmallPackSize = normalizedPieceSmallPackSize;
+      data.pieceSmallPackFee = normalizedPieceSmallPackFee;
+      data.pieceLargePackSize = normalizedPieceLargePackSize;
+      data.pieceLargePackFee = normalizedPieceLargePackFee;
     }
     if (
       menuCategory !== undefined ||

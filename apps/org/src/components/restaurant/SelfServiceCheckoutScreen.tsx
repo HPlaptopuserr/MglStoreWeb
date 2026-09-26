@@ -33,13 +33,13 @@ import {
   UserRound,
 } from "lucide-react";
 import { QrGenerator } from "@mgl/ui";
-import type {
-  CardAttempt,
-  PosReceipt,
-  PosShift,
-  SalePaymentLine,
+import {
+  calculateTakeawayPackagingFee,
+  type CardAttempt,
+  type PosReceipt,
+  type PosShift,
+  type SalePaymentLine,
 } from "@mgl/types";
-import { SELF_SERVICE_TAKEAWAY_PACKAGING_FEE } from "@mgl/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOrg } from "@/components/org/OrgContext";
 import {
@@ -575,8 +575,18 @@ function SelfServiceCheckoutContent() {
     0,
   );
   const packagingFee =
-    !isCafe && orderMode === "TO_GO" && cart.length > 0
-      ? SELF_SERVICE_TAKEAWAY_PACKAGING_FEE
+    orderMode === "TO_GO"
+      ? calculateTakeawayPackagingFee(
+          cart.map((line) => ({
+            quantity: line.qty,
+            unitFee: Number(line.product.takeawayPackagingFee || 0),
+            isSoldByPiece: line.product.isSoldByPiece,
+            pieceSmallPackSize: line.product.pieceSmallPackSize,
+            pieceSmallPackFee: Number(line.product.pieceSmallPackFee || 0),
+            pieceLargePackSize: line.product.pieceLargePackSize,
+            pieceLargePackFee: Number(line.product.pieceLargePackFee || 0),
+          })),
+        )
       : 0;
   const cartTotal = cartSubtotal + packagingFee;
   const cardProvider = getEffectiveCardProvider(register);

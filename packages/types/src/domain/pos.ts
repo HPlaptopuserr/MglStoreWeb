@@ -6,6 +6,53 @@ export const SELF_SERVICE_TAKEAWAY_PACKAGING_FEE = 800;
 export const SELF_SERVICE_TAKEAWAY_PACKAGING_SKU =
   "__MGL_SELF_SERVICE_TAKEAWAY_PACKAGING__";
 
+export type TakeawayPackagingFeeLine = {
+  quantity: number;
+  unitFee: number;
+  isSoldByPiece?: boolean;
+  pieceSmallPackSize?: number;
+  pieceSmallPackFee?: number;
+  pieceLargePackSize?: number;
+  pieceLargePackFee?: number;
+};
+
+const calculatePiecePackagingFee = (line: TakeawayPackagingFeeLine) => {
+  const quantity = Math.max(0, Math.floor(Number(line.quantity) || 0));
+  const smallPackSize = Math.max(
+    1,
+    Math.floor(Number(line.pieceSmallPackSize) || 0),
+  );
+  const largePackSize = Math.max(
+    smallPackSize + 1,
+    Math.floor(Number(line.pieceLargePackSize) || 0),
+  );
+  const smallPackFee = Math.max(0, Number(line.pieceSmallPackFee) || 0);
+  const largePackFee = Math.max(0, Number(line.pieceLargePackFee) || 0);
+
+  const fullLargePacks = Math.floor(quantity / largePackSize);
+  const remainder = quantity % largePackSize;
+  const remainderFee =
+    remainder === 0
+      ? 0
+      : remainder <= smallPackSize
+        ? smallPackFee
+        : largePackFee;
+
+  return fullLargePacks * largePackFee + remainderFee;
+};
+
+export const calculateTakeawayPackagingFee = (
+  lines: readonly TakeawayPackagingFeeLine[],
+) => {
+  const total = lines.reduce((sum, line) => {
+    if (line.isSoldByPiece) {
+      return sum + calculatePiecePackagingFee(line);
+    }
+    return sum + Math.max(0, Number(line.quantity) || 0) * line.unitFee;
+  }, 0);
+  return Math.round(total * 100) / 100;
+};
+
 // ─── QPay ────────────────────────────────────────────────────────────────────
 
 export type QPayInvoiceStatus = "PENDING" | "PAID" | "EXPIRED";
