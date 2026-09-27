@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ProductImage } from "./ProductImage";
 import { KitchenPrinterSettingsButton } from "./KitchenPrinterSettingsButton";
+import { ProductImagePreviewDialog } from "./ProductImagePreviewDialog";
 import {
   ProductImageFeedbackProvider,
   ProductImageNotice,
@@ -32,6 +33,7 @@ import {
   Trash2,
   Utensils,
   UserRound,
+  ZoomIn,
 } from "lucide-react";
 import { QrGenerator } from "@mgl/ui";
 import {
@@ -300,6 +302,8 @@ function SelfServiceCheckoutContent() {
   const [activeCategory, setActiveCategory] = useState<Category>("ALL");
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [previewProduct, setPreviewProduct] =
+    useState<RestaurantPosProduct | null>(null);
   const [setupLoading, setSetupLoading] = useState(true);
   const [setupError, setSetupError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -897,6 +901,7 @@ function SelfServiceCheckoutContent() {
       setActiveCategory("ALL");
       setQuery("");
       setCart([]);
+      setPreviewProduct(null);
       setPaymentMethod("QPAY");
       setEbarimtBuyerMode("B2C");
       setCompanyRegNo("");
@@ -2842,19 +2847,29 @@ function SelfServiceCheckoutContent() {
                     0;
                   const soldOut = product.stockQty <= selectedQty;
                   return (
-                    <button
+                    <article
                       key={product.id}
-                      type="button"
-                      onClick={() => addProduct(product)}
-                      disabled={soldOut}
-                      className="group overflow-hidden rounded-[24px] border border-black/5 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-55"
+                      className={`group overflow-hidden rounded-[24px] border border-black/5 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg ${
+                        soldOut ? "opacity-55" : ""
+                      }`}
                     >
-                      <span className="relative block aspect-[4/3] overflow-hidden bg-gradient-to-br from-[#e4eee8] via-[#f0e8d5] to-[#e8d1a5] [@media(max-height:900px)]:h-[120px] [@media(max-height:900px)]:aspect-auto">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewProduct(product)}
+                        disabled={!product.imageUrl}
+                        className="relative block aspect-[4/3] w-full overflow-hidden bg-gradient-to-br from-[#e4eee8] via-[#f0e8d5] to-[#e8d1a5] text-left disabled:cursor-default [@media(max-height:900px)]:h-[120px] [@media(max-height:900px)]:aspect-auto"
+                        aria-label={`${product.name} зургийг томоор харах`}
+                      >
                         <ProductImage
                           src={product.imageUrl}
                           alt={product.name}
                           className="h-full w-full object-contain transition duration-500 group-hover:scale-105"
                         />
+                        {product.imageUrl ? (
+                          <span className="absolute bottom-3 left-3 grid h-9 w-9 place-items-center rounded-full bg-black/55 text-white shadow-lg transition group-hover:scale-105">
+                            <ZoomIn className="h-4 w-4" />
+                          </span>
+                        ) : null}
                         {selectedQty > 0 ? (
                           <span className="absolute right-3 top-3 grid h-9 min-w-9 place-items-center rounded-full bg-[#11231d] px-2 text-sm font-black text-white shadow-lg">
                             {selectedQty}
@@ -2865,8 +2880,13 @@ function SelfServiceCheckoutContent() {
                             Дууссан
                           </span>
                         ) : null}
-                      </span>
-                      <span className="block p-4 [@media(max-height:900px)]:p-3">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => addProduct(product)}
+                        disabled={soldOut}
+                        className="block w-full p-4 text-left disabled:cursor-not-allowed [@media(max-height:900px)]:p-3"
+                      >
                         <span className="line-clamp-2 min-h-10 text-sm font-black leading-5 [@media(max-height:900px)]:line-clamp-1 [@media(max-height:900px)]:min-h-5">
                           {product.name}
                         </span>
@@ -2878,8 +2898,8 @@ function SelfServiceCheckoutContent() {
                             <Plus className="h-4 w-4" />
                           </span>
                         </span>
-                      </span>
-                    </button>
+                      </button>
+                    </article>
                   );
                 })}
               </div>
@@ -3001,6 +3021,31 @@ function SelfServiceCheckoutContent() {
           </div>
         </aside>
       </div>
+      <ProductImagePreviewDialog
+        product={previewProduct}
+        formattedPrice={
+          previewProduct ? formatMoney(Number(previewProduct.price)) : ""
+        }
+        selectedQty={
+          previewProduct
+            ? cart.find((line) => line.product.id === previewProduct.id)?.qty ||
+              0
+            : 0
+        }
+        addDisabled={
+          !previewProduct ||
+          previewProduct.stockQty <=
+            (cart.find((line) => line.product.id === previewProduct.id)?.qty ||
+              0) ||
+          (orderMode === "TO_GO" &&
+            previewProduct.isTakeawayAvailable === false)
+        }
+        onAdd={() => {
+          if (!previewProduct) return;
+          addProduct(previewProduct);
+        }}
+        onClose={() => setPreviewProduct(null)}
+      />
     </main>
   );
 }
