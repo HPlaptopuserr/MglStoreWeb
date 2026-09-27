@@ -2,6 +2,7 @@
 
 import { Loader2, Printer, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   getLocalPrinterInventory,
   loadKitchenPrinterSettings,
@@ -109,7 +110,8 @@ export function KitchenPrinterSettingsButton() {
         <Printer className="h-5 w-5" />
       </button>
 
-      {open ? (
+      {open
+        ? createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4">
           <div className="w-full max-w-lg rounded-[28px] bg-white p-6 text-left shadow-2xl">
             <div className="flex items-start justify-between gap-4">
@@ -234,8 +236,10 @@ export function KitchenPrinterSettingsButton() {
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+        </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }
