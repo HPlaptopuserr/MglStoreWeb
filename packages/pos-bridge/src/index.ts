@@ -66,11 +66,29 @@ loadBridgeEnv();
 const PORT = parseInt(process.env.BRIDGE_PORT ?? "7420", 10);
 const PROVIDER = (process.env.BRIDGE_PROVIDER ?? "mock").toLowerCase();
 const BRIDGE_SHARED_SECRET = String(process.env.BRIDGE_SHARED_SECRET ?? "").trim();
+
+const positiveIntEnv = (name: string, fallback: number) => {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+};
+
+const boolEnv = (name: string, fallback = true) => {
+  const value = String(process.env[name] ?? "").trim().toLowerCase();
+  if (!value) return fallback;
+  return ["1", "true", "yes", "y", "on"].includes(value);
+};
+
+const BRIDGE_STARTUP_HEALTH_CHECK = boolEnv("BRIDGE_STARTUP_HEALTH_CHECK", true);
+const BRIDGE_STARTUP_HEALTH_DELAY_MS = positiveIntEnv("BRIDGE_STARTUP_HEALTH_DELAY_MS", 3_000);
+const BRIDGE_STARTUP_HEALTH_RETRY_MS = positiveIntEnv("BRIDGE_STARTUP_HEALTH_RETRY_MS", 5_000);
+const BRIDGE_STARTUP_HEALTH_MAX_ATTEMPTS = positiveIntEnv("BRIDGE_STARTUP_HEALTH_MAX_ATTEMPTS", 60);
+const BRIDGE_HEALTH_KEEPALIVE_MS = positiveIntEnv("BRIDGE_HEALTH_KEEPALIVE_MS", 60_000);
 const EBARIMT_INFO_API_URL = String(process.env.EBARIMT_INFO_API_URL || "https://api.ebarimt.mn").trim();
 const EBARIMT_TIN_LOOKUP_TIMEOUT_MS = positiveIntEnv("EBARIMT_TIN_LOOKUP_TIMEOUT_MS", 10_000);
 
 type HttpTextResult = {
   statusCode: number;
+  contentType: string;
   body: string;
 };
 
@@ -100,11 +118,6 @@ const timingSafeEqualHex = (provided: string, expected: string): boolean => {
   if (providedBuf.length !== expectedBuf.length) return false;
   return crypto.timingSafeEqual(providedBuf, expectedBuf);
 };
-
-function positiveIntEnv(name: string, fallback: number) {
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
 
 function buildInfoApiUrl(rawBaseUrl: string, endpointName: string) {
   const trimmed = rawBaseUrl.trim().replace(/\/+$/, "");
@@ -150,6 +163,7 @@ function requestText(url: URL, timeoutMs: number): Promise<HttpTextResult> {
         response.on("end", () => {
           resolve({
             statusCode: response.statusCode || 0,
+            contentType: String(response.headers["content-type"] || "application/json"),
             body,
           });
         });
@@ -179,6 +193,8 @@ function buildProvider(): CardTerminalProvider {
 
 const provider = buildProvider();
 const app = express();
+let providerHealthInFlight = false;
+let providerHealthKeepAliveStarted = false;
 
 // Allow admin/vendor web apps to call local bridge health and charge endpoints.
 app.use((_req: Request, res: Response, next) => {
@@ -326,6 +342,62 @@ app.post("/charge", async (req: Request, res: Response) => {
 });
 
 /* ─── Start ─────────────────────────────────────────────────────── */
+async function warmUpProviderHealth(reason: string) {
+  if (!provider.health) return true;
+  if (providerHealthInFlight) return false;
+
+  providerHealthInFlight = true;
+  try {
+    const health = await provider.health();
+    const serialPath = "serialPath" in health && health.serialPath ? ` (${health.serialPath})` : "";
+    if (health.ok) {
+      console.log(`[bridge] ${reason} health ok${serialPath}: ${health.message || "connected"}`);
+      return true;
+    }
+
+    console.warn(`[bridge] ${reason} health not ready${serialPath}: ${health.message || "not connected"}`);
+    return false;
+  } catch (error) {
+    console.warn(`[bridge] ${reason} health failed: ${error instanceof Error ? error.message : String(error)}`);
+    return false;
+  } finally {
+    providerHealthInFlight = false;
+  }
+}
+
+function startProviderHealthKeepAlive() {
+  if (!provider.health || providerHealthKeepAliveStarted || BRIDGE_HEALTH_KEEPALIVE_MS <= 0) return;
+  providerHealthKeepAliveStarted = true;
+  setInterval(() => {
+    void warmUpProviderHealth("keep-alive");
+  }, BRIDGE_HEALTH_KEEPALIVE_MS);
+}
+
+function startProviderHealthWarmUp() {
+  if (!provider.health || !BRIDGE_STARTUP_HEALTH_CHECK) return;
+
+  let attempts = 0;
+  const run = async () => {
+    attempts += 1;
+    const ok = await warmUpProviderHealth(`startup ${attempts}/${BRIDGE_STARTUP_HEALTH_MAX_ATTEMPTS}`);
+    if (ok) {
+      startProviderHealthKeepAlive();
+      return;
+    }
+
+    if (attempts < BRIDGE_STARTUP_HEALTH_MAX_ATTEMPTS) {
+      setTimeout(run, BRIDGE_STARTUP_HEALTH_RETRY_MS);
+      return;
+    }
+
+    console.warn("[bridge] Startup health warm-up gave up; keep-alive checks will continue in the background.");
+    startProviderHealthKeepAlive();
+  };
+
+  setTimeout(run, BRIDGE_STARTUP_HEALTH_DELAY_MS);
+}
+
 app.listen(PORT, "127.0.0.1", () => {
   console.log(`[bridge] Listening on http://127.0.0.1:${PORT}`);
+  startProviderHealthWarmUp();
 });

@@ -1,28 +1,80 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 
 cd /d "%~dp0"
 title MGL POS Bridge Installer
 
 set "INSTALL_DIR=%LOCALAPPDATA%\MGLStore\pos-bridge"
+set "IS_INSTALLED="
+set "NO_START="
+set "NO_PAUSE="
+set "ROBOCOPY_EXCLUDED_DIRS=.git .turbo release"
 
-if /I not "%~1"=="--installed" (
+if exist "%CD%\..\..\pnpm-workspace.yaml" (
+  set "ROBOCOPY_EXCLUDED_DIRS=.git .turbo release node_modules"
+)
+
+:parse_args
+if "%~1"=="" goto after_parse_args
+if /I "%~1"=="--installed" set "IS_INSTALLED=1"
+if /I "%~1"=="--no-start" set "NO_START=1"
+if /I "%~1"=="--no-pause" set "NO_PAUSE=1"
+shift
+goto parse_args
+
+:after_parse_args
+
+ver | find "6.1." >nul
+if not errorlevel 1 (
+  if not exist "windows-7-compatible.marker" (
+    echo [ERROR] Ene POS Bridge package Windows 7-d tohirohgui shine Node.js runtime-tai baina.
+    echo [ERROR] mgl-pos-bridge-legacy-win7.zip package-iig ashiglana uu.
+    echo.
+    if not defined NO_PAUSE pause
+    exit /b 1
+  )
+)
+
+if not defined IS_INSTALLED (
   if /I not "%CD%"=="%INSTALL_DIR%" (
     echo [SETUP] Bridge-iig cashier PC deer suulgaj baina...
     echo [SETUP] Source: %CD%
     echo [SETUP] Target: %INSTALL_DIR%
     echo.
 
-    if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
-    robocopy "%CD%" "%INSTALL_DIR%" /MIR /XD ".git" ".turbo" "release" /XF "bridge.env" >nul
-    if errorlevel 8 (
-      echo [ERROR] Bridge files huulahad aldaa garlaa.
-      pause
-      exit /b 1
+    if exist "%~dp0stop-installed-bridge.ps1" (
+      echo [SETUP] Huuchin bridge process-iig zogsooj baina...
+      powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-installed-bridge.ps1" -BridgeDir "%INSTALL_DIR%"
+      if errorlevel 1 (
+        echo [WARN] Huuchin bridge process-iig buren zogsooj chadsangui. File copy hiij shalgana.
+      )
     )
 
-    call "%INSTALL_DIR%\install-android-pgw.cmd" --installed
-    exit /b %ERRORLEVEL%
+    if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+    echo [SETUP] Bridge files-iig shinechilj baina...
+    robocopy "%CD%" "%INSTALL_DIR%" /MIR /XD %ROBOCOPY_EXCLUDED_DIRS% /XF "bridge.env" /R:3 /W:1 /NP /LOG:"%TEMP%\mgl-pos-bridge-install-robocopy.log" >nul
+    if errorlevel 8 (
+      echo [ERROR] Bridge files huulahad aldaa garlaa.
+      if exist "%TEMP%\mgl-pos-bridge-install-robocopy.log" type "%TEMP%\mgl-pos-bridge-install-robocopy.log"
+      if not defined NO_PAUSE pause
+      exit /b 1
+    )
+    echo [OK] Bridge files shinechlegdlee.
+
+    if defined NO_START (
+      if defined NO_PAUSE (
+        call "%INSTALL_DIR%\install-android-pgw.cmd" --installed --no-start --no-pause
+      ) else (
+        call "%INSTALL_DIR%\install-android-pgw.cmd" --installed --no-start
+      )
+    ) else (
+      if defined NO_PAUSE (
+        call "%INSTALL_DIR%\install-android-pgw.cmd" --installed --no-pause
+      ) else (
+        call "%INSTALL_DIR%\install-android-pgw.cmd" --installed
+      )
+    )
+    exit /b !ERRORLEVEL!
   )
 )
 
@@ -43,7 +95,7 @@ if exist "%NODE_EXE%" (
     echo esvel ene PC deer Node.js LTS suulgaad dahin ajilluulna uu.
     echo https://nodejs.org/
     echo.
-    pause
+    if not defined NO_PAUSE pause
     exit /b 1
   )
   echo [OK] System Node.js baina.
@@ -77,56 +129,101 @@ if not exist "dist\index.js" (
     echo   pnpm --filter @mgl/pos-bridge package:windows
     echo gej portable package uusgeed cashier PC ruu huulna uu.
     echo.
-    pause
+    if not defined NO_PAUSE pause
     exit /b 1
   )
   call pnpm build
   if errorlevel 1 (
     echo [ERROR] Bridge build amjiltgui bolloo.
-    pause
+    if not defined NO_PAUSE pause
+    exit /b 1
+  )
+)
+
+if not exist "node_modules\body-parser" (
+  echo [SETUP] Production dependencies dutuu baina. npm install hiij baina...
+  where npm >nul 2>nul
+  if errorlevel 1 (
+    echo [ERROR] npm oldsongui tul dependency suulgaj chadsangui.
+    echo Developer machine deer:
+    echo   pnpm --filter @mgl/pos-bridge package:windows
+    echo gej portable package uusgeed cashier PC ruu huulna uu.
+    echo.
+    if not defined NO_PAUSE pause
+    exit /b 1
+  )
+  call npm install --omit=dev --no-audit --no-fund
+  if errorlevel 1 (
+    echo [ERROR] Production dependencies suulgahad aldaa garlaa.
+    if not defined NO_PAUSE pause
     exit /b 1
   )
 )
 
 if not exist "start-windows.cmd" (
   echo [ERROR] start-windows.cmd oldsongui.
-  pause
+  if not defined NO_PAUSE pause
   exit /b 1
 )
 
-set "STARTUP_DIR=%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup"
-set "SHORTCUT=%STARTUP_DIR%\MGL POS Bridge.lnk"
-set "PS_FILE=%TEMP%\mgl-pos-bridge-startup.ps1"
+if not exist "register-startup-task.ps1" (
+  echo [ERROR] register-startup-task.ps1 oldsongui.
+  if not defined NO_PAUSE pause
+  exit /b 1
+)
 
-echo [SETUP] Windows Startup shortcut uusgej baina...
-(
-  echo $ErrorActionPreference = 'Stop'
-  echo $shell = New-Object -ComObject WScript.Shell
-  echo $shortcut = $shell.CreateShortcut('%SHORTCUT%')
-  echo $shortcut.TargetPath = $env:ComSpec
-  echo $shortcut.Arguments = '/c ""%~dp0start-windows.cmd""'
-  echo $shortcut.WorkingDirectory = '%~dp0'
-  echo $shortcut.WindowStyle = 7
-  echo $shortcut.Description = 'MGL POS Bridge for Android PGW terminal'
-  echo $shortcut.Save()
-) > "%PS_FILE%"
+if not exist "start-windows-task.ps1" (
+  echo [ERROR] start-windows-task.ps1 oldsongui.
+  if not defined NO_PAUSE pause
+  exit /b 1
+)
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%PS_FILE%"
+if not exist "stop-installed-bridge.ps1" (
+  echo [ERROR] stop-installed-bridge.ps1 oldsongui.
+  if not defined NO_PAUSE pause
+  exit /b 1
+)
+
+if not exist "check-bridge-ready.ps1" (
+  echo [ERROR] check-bridge-ready.ps1 oldsongui.
+  if not defined NO_PAUSE pause
+  exit /b 1
+)
+
+echo [SETUP] Windows Scheduled Task uusgeed bridge-iig asaaj baina...
+if defined NO_START (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0register-startup-task.ps1" -BridgeDir "%CD%"
+) else (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0register-startup-task.ps1" -BridgeDir "%CD%" -StartNow
+)
 if errorlevel 1 (
-  echo [ERROR] Startup shortcut uusgej chadsangui.
-  pause
+  echo [ERROR] Scheduled Task uusgeh esvel bridge-iig asaahad aldaa garlaa.
+  if not defined NO_PAUSE pause
   exit /b 1
 )
-
-del "%PS_FILE%" >nul 2>nul
 
 echo.
 echo [OK] Suulgalt duuslaa.
-echo [OK] PC login hiih burd bridge automataar asna.
+echo [OK] PC login hiisnii daraa bridge automataar asna.
+echo [OK] Bridge untrah uyd Windows dahin asaah gej oroldono.
 echo [OK] Health URL: http://127.0.0.1:7420/health
 echo.
-echo Odoo bridge-iig shuud asaay.
-echo Terminal USB-eer zalgagdsan esehiig shalgaad Enter darna uu.
-pause
 
-call "%~dp0start-windows.cmd"
+if defined NO_START (
+  echo [OK] --no-start songoson tul bridge-iig odoo shuud asaahgui.
+  exit /b 0
+)
+
+echo [OK] Bridge background deer asah gej baina.
+echo [OK] Ene installer console-iig haasan ch bridge ajillasan heveeree baina.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0check-bridge-ready.ps1" -BridgeDir "%CD%" -TimeoutSeconds 25
+if errorlevel 1 (
+  echo.
+  echo [WARN] Bridge asahgui baina. Deerh log-iig zurag avaad yavuulna uu.
+  echo [WARN] Turshij uzeh bol start-windows.cmd-iig ajilluulaad aldaag ni harj bolno.
+  if not defined NO_PAUSE pause
+  exit /b 1
+)
+
+if not defined NO_PAUSE pause
+exit /b 0
