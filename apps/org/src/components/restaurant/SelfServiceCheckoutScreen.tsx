@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ProductImage } from "./ProductImage";
+import { KitchenPrinterSettingsButton } from "./KitchenPrinterSettingsButton";
 import {
   ProductImageFeedbackProvider,
   ProductImageNotice,
@@ -79,6 +80,7 @@ import {
   formatReceiptMoney as formatMoney,
   printThermalPosReceipt,
 } from "@/lib/thermal-receipt-printing";
+import { printKitchenTicket } from "@/lib/kitchen-ticket-printing";
 import {
   clearSelfServicePendingPayment,
   loadSelfServicePendingPayment,
@@ -310,6 +312,9 @@ function SelfServiceCheckoutContent() {
     useState<PendingCardCheckout | null>(null);
   const [receipt, setReceipt] = useState<PosReceipt | null>(null);
   const [completedTicketNo, setCompletedTicketNo] = useState("");
+  const [completedKitchenTicket, setCompletedKitchenTicket] =
+    useState<RestaurantTicket | null>(null);
+  const [kitchenPrintError, setKitchenPrintError] = useState("");
   const [cardMessage, setCardMessage] = useState("");
   const [cardCancelRequested, setCardCancelRequested] = useState(false);
   const [returningFromCardPayment, setReturningFromCardPayment] =
@@ -322,6 +327,7 @@ function SelfServiceCheckoutContent() {
   const cardPaymentRunRef = useRef<CardPaymentRun | null>(null);
   const ebarimtQrRef = useRef<HTMLDivElement | null>(null);
   const autoPrintedReceiptRef = useRef<string | null>(null);
+  const autoPrintedKitchenTicketRef = useRef<string | null>(null);
   const menuRefreshInFlightRef = useRef(false);
   const screenWakeLockRef = useRef<WakeLockSentinel | null>(null);
   const restoredPendingPaymentRef = useRef(false);
@@ -905,6 +911,8 @@ function SelfServiceCheckoutContent() {
       setPendingCardCheckout(null);
       setReceipt(null);
       setCompletedTicketNo("");
+      setCompletedKitchenTicket(null);
+      setKitchenPrintError("");
       setCardMessage("");
       setCardCancelRequested(false);
       setReturningFromCardPayment(false);
@@ -915,6 +923,7 @@ function SelfServiceCheckoutContent() {
       autoRecoverCardAttemptRef.current = null;
       autoRecoverInvoiceRef.current = null;
       autoPrintedReceiptRef.current = null;
+      autoPrintedKitchenTicketRef.current = null;
       if (options?.reload) void loadSetup();
     },
     [loadSetup],
@@ -944,6 +953,63 @@ function SelfServiceCheckoutContent() {
       }),
     [completedTicketNo, isCafe, orderMode, register, user.organizationName],
   );
+
+  const printCompletedKitchenTicket = useCallback(async () => {
+    if (!completedKitchenTicket || isCafe) return false;
+    return printKitchenTicket({
+      heading: "ГАЛ ТОГООНЫ ЗАХИАЛГА",
+      organizationName: user.organizationName || "MGL Store",
+      registerName:
+        register?.branch.name ||
+        register?.label ||
+        register?.name ||
+        "Self service",
+      ticketNo: formatRestaurantOrderNumber(
+        completedKitchenTicket.ticketNo,
+        completedKitchenTicket.id,
+      ),
+      orderLabel:
+        orderMode === "DINE_IN" ? "ЭНД ХЭРЭГЛЭХ" : "АВЧ ЯВАХ",
+      createdAt: new Date().toLocaleString("mn-MN"),
+      items: completedKitchenTicket.items
+        .filter((item) => Number(item.qty) > 0)
+        .map((item) => ({
+          name: item.name,
+          qty: Number(item.qty),
+          note: item.note || undefined,
+        })),
+    });
+  }, [completedKitchenTicket, isCafe, orderMode, register, user.organizationName]);
+
+  useEffect(() => {
+    if (isCafe || screen !== "success" || !completedKitchenTicket) return;
+    const printKey = completedKitchenTicket.id;
+    if (autoPrintedKitchenTicketRef.current === printKey) return;
+    autoPrintedKitchenTicketRef.current = printKey;
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const printed = await printCompletedKitchenTicket();
+        if (!printed && !cancelled) {
+          autoPrintedKitchenTicketRef.current = null;
+        }
+        if (!cancelled) setKitchenPrintError("");
+      } catch (error) {
+        if (cancelled) return;
+        autoPrintedKitchenTicketRef.current = null;
+        setKitchenPrintError(
+          error instanceof Error
+            ? error.message
+            : "Гал тогооны захиалгыг хэвлэж чадсангүй.",
+        );
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [completedKitchenTicket, isCafe, printCompletedKitchenTicket, screen]);
 
   useEffect(() => {
     if (!silentPrintEnabled || screen !== "success" || !receipt) {
@@ -1290,6 +1356,7 @@ function SelfServiceCheckoutContent() {
         );
 
         setCompletedTicketNo(checkout.ticket.ticketNo);
+        setCompletedKitchenTicket(checkout.ticket);
         setReceipt(finalReceipt);
         setPendingCardCheckout(null);
         setScreen("success");
@@ -1517,6 +1584,7 @@ function SelfServiceCheckoutContent() {
           { method: "CASH", amount: cartTotal },
         );
         setCompletedTicketNo(savedTicket.ticketNo);
+        setCompletedKitchenTicket(savedTicket);
         setReceipt(finalReceipt);
         setScreen("success");
         return;
@@ -1677,6 +1745,7 @@ function SelfServiceCheckoutContent() {
 
         setReceipt(finalReceipt);
         setCompletedTicketNo(checkout.ticket.ticketNo);
+        setCompletedKitchenTicket(checkout.ticket);
         setPendingCheckout((current) =>
           current
             ? { ...current, invoice: { ...current.invoice, ...paidInvoice } }
@@ -1869,6 +1938,7 @@ function SelfServiceCheckoutContent() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {!isCafe ? <KitchenPrinterSettingsButton /> : null}
             <button
               type="button"
               onClick={requestFullscreen}
@@ -2292,6 +2362,29 @@ function SelfServiceCheckoutContent() {
               </div>
             ) : null}
           </div>
+
+          {kitchenPrintError ? (
+            <div className="mx-auto mt-6 max-w-xl rounded-2xl bg-rose-400/10 px-5 py-4 text-sm font-bold text-rose-100">
+              <p>Гал тогооны принтер: {kitchenPrintError}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setKitchenPrintError("");
+                  void printCompletedKitchenTicket().catch((error) =>
+                    setKitchenPrintError(
+                      error instanceof Error
+                        ? error.message
+                        : "Гал тогооны захиалгыг хэвлэж чадсангүй.",
+                    ),
+                  );
+                }}
+                className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white/10 px-4 text-xs font-black text-white"
+              >
+                <Printer className="h-4 w-4" />
+                Дахин хэвлэх
+              </button>
+            </div>
+          ) : null}
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <button
