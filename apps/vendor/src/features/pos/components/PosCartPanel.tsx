@@ -1,3 +1,4 @@
+import { CartScrollArea } from "./CartScrollArea";
 import styles from "./PosCartPanel.module.css";
 import { Minus, Plus, ReceiptText, Trash2 } from "lucide-react";
 import type { CartLine, CartTotals } from "../types/pos.types";
@@ -240,20 +241,18 @@ export function PosCartPanel({
         </div>
       ) : (
         <>
-          <div className="min-h-0 flex-1 overflow-auto bg-slate-50/70 p-2.5">
-            <div className="space-y-2">
-              {lines.map((line, index) => (
-                <PosCartLineRow
-                  key={line.productId}
-                  line={line}
-                  index={index}
-                  onRemove={onRemove}
-                  onSetQty={onSetQty}
-                  onSetPrice={onSetPrice}
-                />
-              ))}
-            </div>
-          </div>
+          <CartScrollArea>
+            {lines.map((line, index) => (
+              <PosCartLineRow
+                key={line.productId}
+                line={line}
+                index={index}
+                onRemove={onRemove}
+                onSetQty={onSetQty}
+                onSetPrice={onSetPrice}
+              />
+            ))}
+          </CartScrollArea>
           <PosCartSummary lines={lines} totals={totals} />
         </>
       )}
