@@ -365,6 +365,12 @@ export interface CloseShiftPayload {
 // ─── Receipt ─────────────────────────────────────────────────────────────────
 
 export interface ReceiptLine {
+  sku?: string | null;
+  barcode?: string | null;
+  discount?: number;
+  unitCost?: number | null;
+  costTotal?: number | null;
+  catalog?: { category: string | null; description: string | null };
   productId: string;
   name: string;
   qty: number;
@@ -382,6 +388,9 @@ export interface ReceiptLine {
 }
 
 export interface PosReceipt {
+  registerName?: string | null;
+  shiftId?: string;
+  cashierEmail?: string;
   id: string;
   receiptNo: string;
   branchName: string;

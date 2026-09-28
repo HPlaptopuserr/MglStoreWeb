@@ -1,61 +1,52 @@
 import type { PosReceipt } from "@mgl/types";
+import { buildSalesExportRows } from "./sales-export-rows";
 
 export async function exportDailySales(receipts: PosReceipt[], date: string) {
-  const XLSX = await import("xlsx");
-  const summary = new Map<
-    string,
-    { name: string; unit: string; qty: number; amount: number }
-  >();
-  const details = receipts
-    .filter((receipt) => receipt.status === "COMPLETED")
-    .flatMap((receipt) =>
-      receipt.lines.map((line) => {
-        const unit = line.measureUnit || "ш";
-        const key = JSON.stringify([line.productId, unit]);
-        const row = summary.get(key) || {
-          name: line.name,
-          unit,
-          qty: 0,
-          amount: 0,
-        };
-        row.qty += line.qty;
-        row.amount += line.lineTotal;
-        summary.set(key, row);
-        return {
-          Огноо: new Date(receipt.createdAt).toLocaleString("sv-SE", {
-            timeZone: "Asia/Ulaanbaatar",
-          }),
-          Баримт: receipt.receiptNo,
-          Салбар: receipt.branchName,
-          Ажилтан: receipt.cashierName,
-          Бараа: line.name,
-          Нэгж: unit,
-          "Тоо хэмжээ": line.qty,
-          "Нэгж үнэ": line.unitPrice,
-          "Борлуулалтын дүн": line.lineTotal,
-        };
-      }),
-    );
-  if (!details.length)
+  const rows = buildSalesExportRows(receipts);
+  if (!rows.details.length)
     throw new Error("Сонгосон шүүлтүүрт зарагдсан бараа байхгүй байна.");
+  const XLSX = await import("xlsx");
   const workbook = XLSX.utils.book_new();
-  const totals = [...summary.values()].map((row) => ({
-    Бараа: row.name,
-    Нэгж: row.unit,
-    "Тоо хэмжээ": Math.round(row.qty * 1000) / 1000,
-    "Борлуулалтын дүн": Math.round(row.amount * 100) / 100,
-  }));
-  const summarySheet = XLSX.utils.json_to_sheet(totals);
-  summarySheet["!cols"] = [{ wch: 40 }, { wch: 10 }, { wch: 18 }, { wch: 24 }];
-  const detailSheet = XLSX.utils.json_to_sheet(details);
-  detailSheet["!cols"] = [22, 24, 24, 28, 40, 10, 18, 18, 24].map((wch) => ({
-    wch,
-  }));
-  XLSX.utils.book_append_sheet(workbook, summarySheet, "Бараагаар нэгтгэл");
-  XLSX.utils.book_append_sheet(
-    workbook,
-    detailSheet,
-    "Борлуулалтын дэлгэрэнгүй",
-  );
+  const sheets = [
+    { name: "Бараагаар нэгтгэл", rows: rows.totals },
+    { name: "Борлуулалтын дэлгэрэнгүй", rows: rows.details },
+    { name: "Баримтууд", rows: rows.sales },
+    { name: "Төлбөрийн задаргаа", rows: rows.payments },
+    {
+      name: "Тайлбар",
+      rows: [
+        {
+          Тайлбар:
+            "Цаг нь Asia/Ulaanbaatar бүсээр. Сонгосон өдөр болон ажилтны шүүлтүүр үйлчилнэ. Буцаагдсан баримтыг оруулаагүй.",
+        },
+        {
+          Тайлбар:
+            "Үнэ, SKU, баркод, өртөг, татвар нь борлуулалтын үед хадгалсан утга. Ангилал, тайлбар нь одоогийн барааны бүртгэлээс авсан. Хадгалагдаагүй мэдээлэл хоосон байна.",
+        },
+        {
+          Тайлбар:
+            "Барааны мөрийн дүнг дэлгэрэнгүй sheet-ээс, баримтын нийт дүнг Баримтууд sheet-ээс, төлбөрийн дүнг Төлбөрийн задаргаа sheet-ээс нэгтгэнэ. Sheet-үүдийн дүнг хооронд нь нэмж болохгүй.",
+        },
+        {
+          Тайлбар:
+            "SKU, баркод болон ID нь эхний тэг, урт дугаарыг хадгалах текст төрөлтэй. Холимог төлбөрийн задаргаа хадгалагдаагүй бол зөвхөн баримтын нийт төлбөрийг харуулна.",
+        },
+      ],
+    },
+  ];
+  for (const { name, rows: data } of sheets) {
+    const sheet = XLSX.utils.json_to_sheet(data);
+    const headers = Object.keys(data[0] ?? {});
+    sheet["!cols"] = headers.map((header) => ({
+      wch:
+        header === "Тайлбар"
+          ? 100
+          : header.includes("ID")
+            ? 36
+            : Math.max(18, Math.min(42, header.length + 4)),
+    }));
+    if (sheet["!ref"]) sheet["!autofilter"] = { ref: sheet["!ref"] };
+    XLSX.utils.book_append_sheet(workbook, sheet, name);
+  }
   XLSX.writeFile(workbook, `POS-borluulalt-${date}.xlsx`);
 }
