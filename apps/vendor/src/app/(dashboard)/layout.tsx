@@ -13,6 +13,7 @@ import {
   canSwitchToOrganization,
   organizationDestination,
 } from "@/features/session/vendor-session.model";
+import { VendorNavigationActionsProvider } from "@/features/session/VendorNavigationActions";
 import { VendorOrganizationSwitcher } from "@/features/session/VendorOrganizationSwitcher";
 import {
   VendorSessionFeedback,
@@ -84,6 +85,7 @@ export default function VendorDashboardLayout({
       organizations={availableOrganizations}
       selectedId={user.organizationId}
       disabled={switching}
+      compact={isPosRoute}
       onChange={(id) => void switchOrganization(id)}
     />
   ) : null;
@@ -120,55 +122,46 @@ export default function VendorDashboardLayout({
   return (
     <>
       {mode === "owner" && <VendorUpdateAnnouncement />}
-      <DashboardLayout
-        variant="vendor"
-        onSignOut={logout}
-        userName={name}
-        userEmail={user.email || ""}
-        userRole={mode === "cashier" ? "Кассын ажилтан" : "Дэлгүүрийн эзэмшигч"}
-        userInitials={name.slice(0, 2).toUpperCase()}
-        organizationName={user.organizationName}
-        showPos={enabled(POS_FEATURE_KEY)}
-        showSupplyProducts={enabled(SUPPLY_PRODUCTS_FEATURE_KEY)}
-        showPreorderProducts={enabled(PREORDER_PRODUCTS_FEATURE_KEY)}
-        showServicePosts={enabled(SERVICE_POSTS_FEATURE_KEY, true)}
-        showContractArchive={enabled(CONTRACT_ARCHIVE_FEATURE_KEY)}
-        vendorAccessMode={mode}
-        vendorBottomSlot={
-          mode === "owner" ? (
-            <VendorTutorialButton variant="sidebar" />
-          ) : undefined
-        }
-        notificationComponent={
-          <>
-            {selector}
-            {mode === "owner" && <NotificationDropdown />}
-          </>
-        }
-      >
-        {isPosRoute && hasOtherOrganization && (
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-            <div>
-              <p className="text-sm font-semibold text-slate-900">
-                Дэлгүүр солих
-              </p>
-              <p className="mt-0.5 text-xs text-slate-500">
-                Эрхтэй дэлгүүрээ сонгож шилжинэ үү.
-              </p>
+      <VendorNavigationActionsProvider actions={isPosRoute ? selector : null}>
+        <DashboardLayout
+          variant="vendor"
+          onSignOut={logout}
+          userName={name}
+          userEmail={user.email || ""}
+          userRole={
+            mode === "cashier" ? "Кассын ажилтан" : "Дэлгүүрийн эзэмшигч"
+          }
+          userInitials={name.slice(0, 2).toUpperCase()}
+          organizationName={user.organizationName}
+          showPos={enabled(POS_FEATURE_KEY)}
+          showSupplyProducts={enabled(SUPPLY_PRODUCTS_FEATURE_KEY)}
+          showPreorderProducts={enabled(PREORDER_PRODUCTS_FEATURE_KEY)}
+          showServicePosts={enabled(SERVICE_POSTS_FEATURE_KEY, true)}
+          showContractArchive={enabled(CONTRACT_ARCHIVE_FEATURE_KEY)}
+          vendorAccessMode={mode}
+          vendorBottomSlot={
+            mode === "owner" ? (
+              <VendorTutorialButton variant="sidebar" />
+            ) : undefined
+          }
+          notificationComponent={
+            <>
+              {selector}
+              {mode === "owner" && <NotificationDropdown />}
+            </>
+          }
+        >
+          {switchError && (
+            <div
+              role="alert"
+              className="mb-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-800"
+            >
+              {switchError}
             </div>
-            {selector}
-          </div>
-        )}
-        {switchError && (
-          <div
-            role="alert"
-            className="mb-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm leading-6 text-rose-800"
-          >
-            {switchError}
-          </div>
-        )}
-        {children}
-      </DashboardLayout>
+          )}
+          {children}
+        </DashboardLayout>
+      </VendorNavigationActionsProvider>
     </>
   );
 }

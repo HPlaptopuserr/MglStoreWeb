@@ -1,6 +1,7 @@
 "use client";
 
 import { normalizeCashPayment, summarizeCashPayments, type CashPaymentDetails } from "@mgl/types";
+import { VendorNavigationActions } from "@/features/session/VendorNavigationActions";
 import { SalesHistoryDialog } from "@/features/pos/components/SalesHistoryDialog";
 import { CashChangeNotice } from "@/features/pos/components/CashChangeNotice";
 
@@ -4158,8 +4159,9 @@ export default function PosDemoPage() {
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600">
+        <div className="flex min-w-0 items-center gap-2">
+          <VendorNavigationActions />
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-600">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             Онлайн
           </span>
