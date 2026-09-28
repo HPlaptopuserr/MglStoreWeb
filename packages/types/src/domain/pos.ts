@@ -1,3 +1,5 @@
+import type { CashPaymentDetails } from "./cash-payment";
+
 // ─── Payment method ───────────────────────────────────────────────────────────
 
 export type SalePaymentMethod = "CASH" | "CARD" | "QR" | "CREDIT";
@@ -190,6 +192,7 @@ export interface CartTotals {
 // ─── Sale ────────────────────────────────────────────────────────────────────
 
 export interface SalePaymentLine {
+  cash?: CashPaymentDetails;
   method: SalePaymentMethod;
   amount: number;
   attemptId?: string;
@@ -401,6 +404,7 @@ export interface PosReceipt {
     customerRegNo?: string | null;
   } | null;
   paymentBreakdown?: Array<{
+    cash?: CashPaymentDetails;
     method: string;
     amount: number;
     transactionId?: string;

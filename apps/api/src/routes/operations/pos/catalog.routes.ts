@@ -1,3 +1,4 @@
+import { readCashPayment } from "@mgl/types";
 import { Router, type Router as ExpressRouter } from "express";
 import {
   prisma,
@@ -512,6 +513,7 @@ router.get("/pos/receipts", async (req, res) => {
               return {
                 method,
                 amount,
+                cash: readCashPayment(method, amount, source.cash),
                 invoiceId: String(source.invoiceId || "") || undefined,
                 transactionId: String(source.transactionId || "") || undefined,
               };

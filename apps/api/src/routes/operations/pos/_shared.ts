@@ -59,6 +59,7 @@ export type SaleLineInput = {
 };
 
 export type SalePaymentLineInput = {
+  cash?: unknown;
   method: string;
   amount: number;
   attemptId?: string;

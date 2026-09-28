@@ -28,3 +28,5 @@ export * from "./responses/api";
 export * from "./responses/order.response";
 export * from "./responses/product.response";
 export * from "./responses/product-image.response";
+
+export * from "./domain/cash-payment";

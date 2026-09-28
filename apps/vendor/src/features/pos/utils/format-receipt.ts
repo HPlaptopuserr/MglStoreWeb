@@ -2,7 +2,7 @@ import type { PosReceipt } from "../types/receipt.types";
 import { formatPosQuantity } from "@mgl/types";
 
 const formatMoney = (value: number) =>
-  `₮${Math.round(value).toLocaleString("mn-MN")}`;
+  `₮${value.toLocaleString("mn-MN", { maximumFractionDigits: 2 })}`;
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: "Бэлэн мөнгө",
@@ -43,10 +43,15 @@ export function formatReceipt(receipt: PosReceipt): string {
     receipt.paymentBreakdown && receipt.paymentBreakdown.length > 0
       ? [
           "Төлбөрийн задаргаа:",
-          ...receipt.paymentBreakdown.map(
-            (item) =>
-              `- ${formatPaymentMethod(item.method)}: ${formatMoney(item.amount)}`,
-          ),
+          ...receipt.paymentBreakdown.flatMap((item) => [
+            `- ${item.method === "CASH" && item.cash ? "Бэлнээр тооцсон" : formatPaymentMethod(item.method)}: ${formatMoney(item.amount)}`,
+            ...(item.method === "CASH" && item.cash
+              ? [
+                  `  Авсан мөнгө: ${formatMoney(item.cash.receivedAmount)}`,
+                  `  Хариулт: ${formatMoney(item.cash.changeAmount)}`,
+                ]
+              : []),
+          ]),
         ]
       : [];
 

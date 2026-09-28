@@ -1,5 +1,8 @@
 "use client";
 
+import { normalizeCashPayment, summarizeCashPayments, type CashPaymentDetails } from "@mgl/types";
+import { CashChangeNotice } from "@/features/pos/components/CashChangeNotice";
+
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal, flushSync } from "react-dom";
@@ -587,6 +590,7 @@ export default function PosDemoPage() {
     visible: false,
     text: "",
   });
+  const [cashChangeReceipt, setCashChangeReceipt] = useState<PosReceipt | null>(null);
   const [customerDisplaySuccess, setCustomerDisplaySuccess] = useState<CustomerDisplaySuccess | null>(null);
   const [registerConfig, setRegisterConfig] = useState<RegisterConfig | null>(null);
   const [registerDiscoveryDoneFor, setRegisterDiscoveryDoneFor] = useState("");
@@ -905,7 +909,9 @@ export default function PosDemoPage() {
     }
   };
 
-  const showSuccessOverlay = (text: string) => {
+  const showSuccessOverlay = (text: string, receipt?: PosReceipt) => {
+    const cash = summarizeCashPayments(receipt?.paymentBreakdown ?? []);
+    if (cash && receipt) setCashChangeReceipt(receipt);
     if (successOverlayTimerRef.current !== null) {
       window.clearTimeout(successOverlayTimerRef.current);
       successOverlayTimerRef.current = null;
@@ -916,7 +922,7 @@ export default function PosDemoPage() {
     }
     setSuccessOverlay({ visible: true, text });
     setCustomerDisplaySuccess({
-      text,
+      text: cash ? `${text} · Хариулт: ${cash.changeAmount.toLocaleString("mn-MN")} ₮` : text,
       amount: totals.grandTotal,
       ts: Date.now(),
     });
@@ -925,7 +931,7 @@ export default function PosDemoPage() {
       setSuccessOverlay({ visible: false, text: "" });
       successOverlayTimerRef.current = null;
     }, 1800);
-    customerDisplaySuccessTimerRef.current = window.setTimeout(() => {
+    if (!cash) customerDisplaySuccessTimerRef.current = window.setTimeout(() => {
       setCustomerDisplaySuccess(null);
       customerDisplaySuccessTimerRef.current = null;
     }, 3500);
@@ -1690,6 +1696,7 @@ export default function PosDemoPage() {
     state.cart.length > 0 &&
     (paymentEntries.length > 0 || payableTotal <= 0) &&
     remaining <= 0 &&
+    Math.round(confirmedPaid * 100) === Math.round(payableTotal * 100) &&
     !hasPendingPayment &&
     !isCardProcessing &&
     !creditRepaymentSubmitting &&
@@ -2077,7 +2084,7 @@ export default function PosDemoPage() {
     setView("register");
     setScanStatus("success");
     setScanMessage(finalMessage);
-    showSuccessOverlay("Төлбөр амжилттай");
+    showSuccessOverlay("Төлбөр амжилттай", finalReceipt);
 
     setReceiptHistory((items) => [finalReceipt, ...items.filter((item) => item.id !== finalReceipt.id)]);
     setSelectedReceiptId(finalReceipt.id);
@@ -2243,6 +2250,7 @@ export default function PosDemoPage() {
       transactionId: item.transactionId,
       invoiceId: item.invoiceId,
       credit: item.credit,
+      cash: item.cash,
     }));
     const isCreditSale = paymentBreakdown.some((item) => item.method === "CREDIT");
     const finalMethod = paymentBreakdown.length === 1 ? paymentBreakdown[0].method : "MIXED";
@@ -2326,7 +2334,7 @@ export default function PosDemoPage() {
         setView("register");
         setScanStatus("success");
         setScanMessage(`Төлбөр амжилттай.${loyaltyMessage} eBarimt баримтын төрлөө сонгоно уу.`);
-        showSuccessOverlay("Төлбөр амжилттай");
+        showSuccessOverlay("Төлбөр амжилттай", finalReceipt);
         return;
       }
 
@@ -2374,7 +2382,7 @@ export default function PosDemoPage() {
       setView("register");
       setScanStatus("success");
       setScanMessage(finalMessage);
-      showSuccessOverlay("Төлбөр амжилттай");
+      showSuccessOverlay("Төлбөр амжилттай", finalReceipt);
 
       setReceiptHistory((items) => [finalReceipt, ...items.filter((item) => item.id !== finalReceipt.id)]);
       setSelectedReceiptId(finalReceipt.id);
@@ -2418,7 +2426,7 @@ export default function PosDemoPage() {
     }
   };
 
-  const addPaymentEntry = async (method: PaymentMethod, amount: number, credit?: SaleCreditPaymentMeta) => {
+  const addPaymentEntry = async (method: PaymentMethod, amount: number, credit?: SaleCreditPaymentMeta, cash?: CashPaymentDetails) => {
     if (selectedCreditRepayment && method === "CREDIT") {
       setScanStatus("not-found");
       setScanMessage("Зээлийн төлөлтийг дахин зээлээр хийх боломжгүй.");
@@ -2427,6 +2435,7 @@ export default function PosDemoPage() {
 
     const safeAmount = roundMoney(Math.max(0, Math.min(amount, remaining)));
     if (safeAmount <= 0) return;
+    const confirmedCash = normalizeCashPayment(method, safeAmount, cash);
 
     if (method === "CARD") {
       const pendingId = `CARD-${Date.now()}`;
@@ -2594,6 +2603,7 @@ export default function PosDemoPage() {
         amount: safeAmount,
         status: "confirmed",
         credit,
+        cash: confirmedCash,
       },
     ]);
   };
@@ -2843,6 +2853,7 @@ export default function PosDemoPage() {
       phone: prev.phone,
       mode: prev.mode === "REDEEM" ? "EARN" : prev.mode,
     }));
+    setCashChangeReceipt(null);
     setView("checkout");
 
     setAutoCheckoutActive(false);
@@ -3468,6 +3479,7 @@ export default function PosDemoPage() {
   return (
     <>
       <MobileBlock />
+      <CashChangeNotice receipt={cashChangeReceipt} onDismiss={() => { setCashChangeReceipt(null); setCustomerDisplaySuccess(null); }} />
       {pendingEbarimtSale && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-2xl">
@@ -4106,6 +4118,7 @@ export default function PosDemoPage() {
           onClearLoyaltyRedeemSession={clearLoyaltyRedeemSession}
           creditBorrowers={creditBorrowers}
           onAddPayment={addPaymentEntry}
+          cashTenderEnabled={!selectedCreditRepayment}
           onRequestQPay={requestQPay}
           onMarkQPayPaid={markQPayPaid}
           onRemovePayment={removePaymentEntry}

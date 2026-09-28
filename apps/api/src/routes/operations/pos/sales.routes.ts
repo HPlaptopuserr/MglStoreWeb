@@ -1,3 +1,4 @@
+import { normalizeCashPayment } from "@mgl/types";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 import {
@@ -806,16 +807,33 @@ router.post("/pos/sales", async (req, res) => {
         .json({ message: "Зарах барааны мөрүүд хоосон байна" });
     }
 
-    const normalizedPayments = Array.isArray(body.paymentBreakdown)
-      ? body.paymentBreakdown.map((item) => ({
-          method: normalizePaymentMethod(item.method),
-          amount: Number(item.amount || 0),
-          attemptId: item.attemptId,
-          transactionId: item.transactionId,
-          invoiceId: item.invoiceId,
-          credit: item.credit,
-        }))
-      : [];
+    const normalizePayment = (item: SalePaymentLineInput) => {
+      const method = normalizePaymentMethod(item.method);
+      const cash = normalizeCashPayment(
+        String(method),
+        Number(item.amount),
+        item.cash,
+      );
+      return {
+        method,
+        amount: Number(item.amount || 0),
+        attemptId: item.attemptId,
+        transactionId: item.transactionId,
+        invoiceId: item.invoiceId,
+        credit: item.credit,
+        ...(cash ? { cash: { ...cash } } : {}),
+      };
+    };
+    let normalizedPayments: ReturnType<typeof normalizePayment>[];
+    try {
+      normalizedPayments = Array.isArray(body.paymentBreakdown)
+        ? body.paymentBreakdown.map(normalizePayment)
+        : [];
+    } catch (error: unknown) {
+      return res.status(400).json({
+        message: error instanceof Error ? error.message : "Бэлэн төлбөрийн мэдээлэл буруу",
+      });
+    }
     const persistedPaymentBreakdown = normalizedPayments.map((item) => ({
       method: String(item.method || "").toUpperCase(),
       amount: roundMoney(Number(item.amount || 0)),
@@ -824,6 +842,7 @@ router.post("/pos/sales", async (req, res) => {
         ? { transactionId: String(item.transactionId) }
         : {}),
       ...(item.invoiceId ? { invoiceId: String(item.invoiceId) } : {}),
+      ...(item.cash ? { cash: item.cash } : {}),
     }));
 
     for (const item of normalizedPayments) {

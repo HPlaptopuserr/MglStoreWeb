@@ -1,6 +1,9 @@
 import type { PosReceipt } from "../types/receipt.types";
 import type { SalePayload, SalePaymentMethod } from "../types/pos.types";
-import { assertNonEmptyString, sanitizeReceiptNote } from "../utils/pos-security";
+import {
+  assertNonEmptyString,
+  sanitizeReceiptNote,
+} from "../utils/pos-security";
 import { PosApiError, posRequest } from "./_pos-client";
 
 export function createSale(payload: SalePayload): Promise<PosReceipt> {
@@ -16,6 +19,7 @@ export function createSale(payload: SalePayload): Promise<PosReceipt> {
     transactionId: line.transactionId,
     invoiceId: line.invoiceId,
     credit: line.credit,
+    cash: line.cash,
   }));
 
   const safePayload: SalePayload = {
@@ -24,14 +28,20 @@ export function createSale(payload: SalePayload): Promise<PosReceipt> {
     branchId: assertNonEmptyString(payload.branchId, "branchId"),
     registerId: payload.registerId,
     organizationId: payload.organizationId,
-    clientSaleId: assertNonEmptyString(payload.clientSaleId || "", "clientSaleId"),
+    clientSaleId: assertNonEmptyString(
+      payload.clientSaleId || "",
+      "clientSaleId",
+    ),
     paymentMethod: assertNonEmptyString(payload.paymentMethod, "paymentMethod"),
     paymentBreakdown: safeBreakdown,
     loyalty: payload.loyalty
       ? {
           mode: payload.loyalty.mode,
           phone: payload.loyalty.phone?.replace(/\D/g, ""),
-          redeemPoints: Math.max(0, Math.floor(Number(payload.loyalty.redeemPoints || 0))),
+          redeemPoints: Math.max(
+            0,
+            Math.floor(Number(payload.loyalty.redeemPoints || 0)),
+          ),
           redeemSessionId: payload.loyalty.redeemSessionId,
         }
       : undefined,
@@ -47,7 +57,11 @@ export function createSale(payload: SalePayload): Promise<PosReceipt> {
     body: safePayload,
   }).catch((error) => {
     // Local dev/demo fallback: backend may not expose /pos/sales yet.
-    if (error instanceof PosApiError && error.status === 404) {
+    if (
+      error instanceof PosApiError &&
+      error.status === 404 &&
+      !safeBreakdown?.some((line) => line.cash)
+    ) {
       return buildMockReceipt(safePayload);
     }
     throw error;
@@ -60,7 +74,8 @@ function buildMockReceipt(payload: SalePayload): PosReceipt {
     const lineSubTotal = line.qty * line.unitPrice;
     const lineDiscount = line.discountAmount * line.qty;
     const taxable = Math.max(0, lineSubTotal - lineDiscount);
-    const taxRate = line.taxType === "VAT_ABLE" ? Math.max(0, line.taxRate || 0) : 0;
+    const taxRate =
+      line.taxType === "VAT_ABLE" ? Math.max(0, line.taxRate || 0) : 0;
     const taxAmount = taxRate > 0 ? taxable * (taxRate / (100 + taxRate)) : 0;
     return {
       productId: line.productId,
@@ -78,7 +93,10 @@ function buildMockReceipt(payload: SalePayload): PosReceipt {
     };
   });
 
-  const subTotal = lines.reduce((sum, line) => sum + line.qty * line.unitPrice, 0);
+  const subTotal = lines.reduce(
+    (sum, line) => sum + line.qty * line.unitPrice,
+    0,
+  );
   const taxTotal = lines.reduce((sum, line) => sum + line.taxAmount, 0);
   const discountTotal = payload.lines.reduce(
     (sum, line) => sum + line.discountAmount * line.qty,
@@ -98,6 +116,7 @@ function buildMockReceipt(payload: SalePayload): PosReceipt {
       transactionId: item.transactionId,
       invoiceId: item.invoiceId,
       credit: item.credit,
+      cash: item.cash,
     })),
     createdAt: now,
     lines,
@@ -106,14 +125,23 @@ function buildMockReceipt(payload: SalePayload): PosReceipt {
     discountTotal,
     grandTotal,
     loyalty:
-      payload.loyalty && payload.loyalty.mode !== "NONE" && payload.loyalty.phone
+      payload.loyalty &&
+      payload.loyalty.mode !== "NONE" &&
+      payload.loyalty.phone
         ? {
             mode: payload.loyalty.mode,
             phone: payload.loyalty.phone,
             earnedPoints:
-              payload.loyalty.mode === "EARN" ? Math.max(0, Math.floor(grandTotal * 0.01)) : 0,
+              payload.loyalty.mode === "EARN"
+                ? Math.max(0, Math.floor(grandTotal * 0.01))
+                : 0,
             redeemedPoints:
-              payload.loyalty.mode === "REDEEM" ? Math.max(0, Math.floor(Number(payload.loyalty.redeemPoints || 0))) : 0,
+              payload.loyalty.mode === "REDEEM"
+                ? Math.max(
+                    0,
+                    Math.floor(Number(payload.loyalty.redeemPoints || 0)),
+                  )
+                : 0,
             balanceAfter: null,
             earnRate: 0.01,
             membershipBadge: "STANDARD",
