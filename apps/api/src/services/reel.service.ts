@@ -9,10 +9,14 @@ import {
   type Prisma,
 } from "@mgl/database";
 import { getReviewStatusForVendorMutation } from "./vendor-content-review.service";
+import { withPrivateReelPlayback } from "./private-reel-storage.service";
+import { publicReelAccess, reelListAccess } from "./reel-access-policy";
 
 export interface CreateReelInput {
-  organizationId: string;
+  id?: string;
+  organizationId?: string | null;
   authorId: string;
+  visibility?: "PUBLIC" | "PRIVATE";
   title?: string | null;
   caption?: string | null;
   description?: string | null;
@@ -32,11 +36,12 @@ export interface CreateReelInput {
 }
 
 export interface ListReelsInput {
-  organizationId?: string;
+  organizationId?: string | null;
   businessCategoryId?: string;
   productId?: string;
   authorId?: string;
   includePending?: boolean;
+  includePrivate?: boolean;
   limit?: number;
   offset?: number;
   cursor?: string;
@@ -138,6 +143,7 @@ async function assertOptionalRelations(input: CreateReelInput) {
   }
 
   if (input.productId) {
+    if (!input.organizationId) throw new Error("Байгууллага шаардлагатай");
     const product = await prisma.product.findFirst({
       where: {
         id: input.productId,
@@ -151,7 +157,8 @@ async function assertOptionalRelations(input: CreateReelInput) {
 }
 
 export async function createReel(input: CreateReelInput) {
-  await assertOrganizationExists(input.organizationId);
+  if (input.organizationId)
+    await assertOrganizationExists(input.organizationId);
   await assertOptionalRelations(input);
 
   const review = await getReviewStatusForVendorMutation();
@@ -160,8 +167,9 @@ export async function createReel(input: CreateReelInput) {
       ? new Date()
       : null;
 
-  return prisma.reel.create({
+  const reel = await prisma.reel.create({
     data: {
+      id: input.id,
       organizationId: input.organizationId,
       authorId: input.authorId,
       title: input.title,
@@ -181,11 +189,11 @@ export async function createReel(input: CreateReelInput) {
       tags: input.tags || [],
       metadata: input.metadata,
       status: ReelStatus.READY,
-      visibility: ReelVisibility.PUBLIC,
+      visibility: input.visibility ?? ReelVisibility.PUBLIC,
       reviewStatus: review.reviewStatus,
       reviewedAt: review.reviewedAt,
       reviewedById: review.reviewedById,
-      publishedAt,
+      publishedAt: input.visibility === "PRIVATE" ? null : publishedAt,
       assets: {
         create: {
           kind: ReelAssetKind.ORIGINAL,
@@ -209,18 +217,16 @@ export async function createReel(input: CreateReelInput) {
     },
     include: createReelInclude(),
   });
+  return withPrivateReelPlayback(reel);
 }
 
 export async function listReels(input: ListReelsInput) {
   const limit = normalizeLimit(input.limit);
   const where: Prisma.ReelWhereInput = {
-    deletedAt: null,
-    status: ReelStatus.READY,
-    visibility: ReelVisibility.PUBLIC,
-    ...(input.includePending
-      ? {}
-      : { reviewStatus: VendorContentReviewStatus.APPROVED }),
-    ...(input.organizationId ? { organizationId: input.organizationId } : {}),
+    ...reelListAccess(input),
+    ...(input.organizationId !== undefined
+      ? { organizationId: input.organizationId }
+      : {}),
     ...(input.businessCategoryId
       ? { businessCategoryId: input.businessCategoryId }
       : {}),
@@ -231,7 +237,7 @@ export async function listReels(input: ListReelsInput) {
   const reels = await prisma.reel.findMany({
     where,
     include: createReelInclude(),
-    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     take: limit + 1,
     ...(input.cursor
       ? { cursor: { id: input.cursor }, skip: 1 }
@@ -243,22 +249,21 @@ export async function listReels(input: ListReelsInput) {
   const hasMore = reels.length > limit;
   const items = hasMore ? reels.slice(0, limit) : reels;
   return {
-    items,
+    items: await Promise.all(items.map(withPrivateReelPlayback)),
     nextCursor: hasMore ? items[items.length - 1]?.id || null : null,
   };
 }
 
 export async function getReelById(id: string, includePending = false) {
-  return prisma.reel.findFirst({
+  const reel = await prisma.reel.findFirst({
     where: {
       id,
       deletedAt: null,
-      ...(includePending
-        ? {}
-        : { reviewStatus: VendorContentReviewStatus.APPROVED }),
+      ...(includePending ? {} : publicReelAccess),
     },
     include: createReelInclude(),
   });
+  return reel ? withPrivateReelPlayback(reel) : null;
 }
 
 export async function updateReel(
