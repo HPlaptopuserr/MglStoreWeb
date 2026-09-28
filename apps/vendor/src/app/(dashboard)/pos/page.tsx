@@ -1,6 +1,7 @@
 "use client";
 
 import { normalizeCashPayment, summarizeCashPayments, type CashPaymentDetails } from "@mgl/types";
+import { SalesHistoryDialog } from "@/features/pos/components/SalesHistoryDialog";
 import { CashChangeNotice } from "@/features/pos/components/CashChangeNotice";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -49,7 +50,6 @@ import {
   type CheckoutPaymentEntry,
   type CheckoutLoyaltyState,
   type CheckoutLoyaltyRedeemSession,
-  ReceiptPreview,
   usePosCart,
   useCreateSale,
   useOwnProducts,
@@ -116,7 +116,7 @@ import {
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { createProductSearchScorer, formatPosQuantity } from "@mgl/types";
 
-type PosView = "register" | "checkout" | "history";
+type PosView = "register" | "checkout";
 
 const CUSTOMER_DISPLAY_CHANNEL = "mgl-pos-customer-display";
 
@@ -575,6 +575,7 @@ export default function PosDemoPage() {
   const [loyaltyRedeemSession, setLoyaltyRedeemSession] =
     useState<CheckoutLoyaltyRedeemSession | null>(null);
   const [loyaltyRedeemLoading, setLoyaltyRedeemLoading] = useState(false);
+  const [salesHistoryOpen, setSalesHistoryOpen] = useState(false);
   const [view, setView] = useState<PosView>("register");
   const [displayOpened, setDisplayOpened] = useState(false);
   const [customerDisplayTheme, setCustomerDisplayTheme] =
@@ -3007,73 +3008,6 @@ export default function PosDemoPage() {
     }, 1000);
   };
 
-  const receiptHistoryPanel = (
-    <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-bold text-slate-900">Сүүлийн баримтууд</h3>
-          <p className="text-[11px] text-slate-500">Refresh хийсэн ч current ээлжээс дахин татна</p>
-        </div>
-        <button
-          type="button"
-          onClick={reloadReceiptHistory}
-          className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-        >
-          Шинэчлэх
-        </button>
-      </div>
-
-      {receiptHistoryError && (
-        <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
-          {receiptHistoryError}
-        </div>
-      )}
-
-      <div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
-        {receiptHistoryLoading && receiptHistory.length === 0 ? (
-          <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Баримт ачаалж байна...
-          </div>
-        ) : receiptHistory.length === 0 ? (
-          <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-            Энэ ээлж дээр борлуулалт алга байна.
-          </div>
-        ) : (
-          receiptHistory.map((receipt) => {
-            const isSelected = receipt.id === receiptForPreview?.id;
-            const isVoided = receipt.status === "VOIDED";
-            return (
-              <button
-                key={receipt.id}
-                type="button"
-                onClick={() => setSelectedReceiptId(receipt.id)}
-                className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-                  isSelected
-                    ? "border-amber-300 bg-amber-50"
-                    : "border-slate-200 bg-white hover:bg-slate-50"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold text-slate-900">#{receipt.receiptNo}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                    isVoided ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-600"
-                  }`}>
-                    {isVoided ? "Буцаагдсан" : "Амжилттай"}
-                  </span>
-                </div>
-                <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
-                  <span>{new Date(receipt.createdAt).toLocaleString("mn-MN")}</span>
-                  <span className="font-bold text-slate-800">{formatMoney(receipt.grandTotal)}</span>
-                </div>
-              </button>
-            );
-          })
-        )}
-      </div>
-    </div>
-  );
-
   const cashDrawerPanel = (
     <div className="rounded-xl border border-emerald-200 bg-white p-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -3479,6 +3413,19 @@ export default function PosDemoPage() {
   return (
     <>
       <MobileBlock />
+      {salesHistoryOpen && (
+        <SalesHistoryDialog
+          receipts={receiptHistory}
+          selectedReceipt={receiptForPreview}
+          register={registerConfig}
+          loading={receiptHistoryLoading}
+          error={receiptHistoryError}
+          onSelect={setSelectedReceiptId}
+          onRefresh={reloadReceiptHistory}
+          onVoided={handleReceiptVoided}
+          onClose={() => setSalesHistoryOpen(false)}
+        />
+      )}
       <CashChangeNotice receipt={cashChangeReceipt} onDismiss={() => { setCashChangeReceipt(null); setCustomerDisplaySuccess(null); }} />
       {pendingEbarimtSale && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
@@ -4185,14 +4132,16 @@ export default function PosDemoPage() {
                   setShowShiftPanel(false);
                   setShowShiftHistoryPanel(false);
                   setShowCashDrawerPanel(false);
-                  setView(tab.id as PosView);
                   if (tab.id === "history") {
+                    setSalesHistoryOpen(true);
                     reloadReceiptHistory();
+                  } else {
+                    setView("register");
                   }
                 }
               }}
               className={`h-9 rounded-lg px-4 text-sm font-bold transition-colors ${
-                (tab.id === "shift" ? showShiftHistoryPanel : view === tab.id || (view === "checkout" && tab.id === "register"))
+                (tab.id === "shift" ? showShiftHistoryPanel : tab.id === "history" ? salesHistoryOpen : !salesHistoryOpen)
                   ? "bg-blue-600 text-white shadow-sm"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
               }`}
@@ -4362,35 +4311,6 @@ export default function PosDemoPage() {
       )}
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(380px,0.58fr)_minmax(720px,1.42fr)] gap-3 2xl:grid-cols-[minmax(430px,0.54fr)_minmax(860px,1.46fr)]">
-        {view === "history" ? (
-          <section className="flex min-h-0 flex-col gap-3">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm flex-1 min-h-0 flex flex-col md:flex-row gap-4">
-              <div className="w-full md:w-1/3 flex flex-col overflow-hidden">
-                <div className="flex-1 overflow-y-auto pr-2">
-                  {receiptHistoryPanel}
-                </div>
-              </div>
-              <div className="w-full md:w-2/3 bg-slate-50 rounded-xl border border-slate-200 flex flex-col overflow-hidden p-4">
-                <div className="flex-1 overflow-y-auto">
-                  {receiptForPreview ? (
-                    <div className="max-w-md mx-auto bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
-                      <ReceiptPreview
-                        receipt={receiptForPreview}
-                        register={registerConfig}
-                        className="w-full"
-                        onVoided={handleReceiptVoided}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-slate-500 text-sm font-medium">
-                      Баримт сонгоно уу
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </section>
-        ) : (
         <section className="flex min-h-0 flex-col gap-3">
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="hidden mb-3 flex-wrap items-center justify-between gap-3">
@@ -4864,7 +4784,6 @@ export default function PosDemoPage() {
             )}
           </div>
         </section>
-        )}
 
         <section ref={paymentSectionRef} className="flex min-h-0 flex-col gap-3 pr-1">
             <PosCartPanel
