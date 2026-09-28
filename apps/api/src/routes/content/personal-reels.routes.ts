@@ -22,7 +22,9 @@ import {
   type StoredReelVideo,
 } from "../../services/reel-storage.service";
 
-export const PERSONAL_REEL_MAX_BYTES = 100 * 1024 * 1024;
+import { REEL_VIDEO_MAX_BYTES } from "../../services/reel-upload-limits";
+
+export const PERSONAL_REEL_MAX_BYTES = REEL_VIDEO_MAX_BYTES;
 const mimeTypes = new Set([
   "video/mp4",
   "video/quicktime",
@@ -50,7 +52,7 @@ const uploadVideo: RequestHandler = (req, res, next) => {
       error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE";
     res.status(tooLarge ? 413 : 400).json({
       message: tooLarge
-        ? "100 MB-аас бага видео сонгоорой."
+        ? "50 MB-аас бага видео сонгоорой."
         : "Видео файлыг шалгаад дахин сонгоорой.",
     });
   });

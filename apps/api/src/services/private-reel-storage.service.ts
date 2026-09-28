@@ -1,4 +1,5 @@
 import { getSupabase } from "../lib/supabase";
+import { REEL_VIDEO_MAX_BYTES } from "./reel-upload-limits";
 
 export const PRIVATE_REELS_BUCKET =
   process.env.SUPABASE_PRIVATE_REELS_BUCKET || "private-reels";
@@ -14,7 +15,7 @@ async function checkBucket() {
   }
   const created = await storage.createBucket(PRIVATE_REELS_BUCKET, {
     public: false,
-    fileSizeLimit: 100 * 1024 * 1024,
+    fileSizeLimit: REEL_VIDEO_MAX_BYTES,
     allowedMimeTypes: [
       "video/mp4",
       "video/quicktime",

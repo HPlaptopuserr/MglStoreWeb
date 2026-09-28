@@ -169,7 +169,7 @@ test("own list cannot be redirected to another author and includes review status
     assert.equal(app.listed[0]?.includePending, true);
     assert.equal(app.listed[0]?.includePrivate, true);
     const capabilities = await app.request("/capabilities");
-    assert.equal((await capabilities.json()).maxBytes, 100 * 1024 * 1024);
+    assert.equal((await capabilities.json()).maxBytes, 50 * 1024 * 1024);
   } finally {
     app.close();
   }
