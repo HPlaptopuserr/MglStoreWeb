@@ -2,6 +2,7 @@
 
 import { normalizeCashPayment, summarizeCashPayments, type CashPaymentDetails } from "@mgl/types";
 import { VendorNavigationActions } from "@/features/session/VendorNavigationActions";
+import registerLayout from "@/features/pos/components/PosRegisterLayout.module.css";
 import { PosProductList } from "@/features/pos/components/PosProductList";
 import { SalesHistoryDialog } from "@/features/pos/components/SalesHistoryDialog";
 import { CashChangeNotice } from "@/features/pos/components/CashChangeNotice";
@@ -3562,8 +3563,8 @@ export default function PosDemoPage() {
           </div>
         </div>
       )}
-    <div className="hidden min-h-screen bg-slate-50 p-4 md:block">
-      <div className="mx-auto flex h-[calc(100vh-2rem)] max-w-[1800px] flex-col gap-3 overflow-hidden">
+    <div className={`${registerLayout.shell} hidden bg-slate-50 md:block`}>
+      <div className={registerLayout.frame}>
       {/* ── Register setup banner ────────────────────────────────── */}
       {!registerConfig && !showSetupPanel && !showRegisterPicker && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
@@ -4112,7 +4113,7 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      <div className="flex h-11 shrink-0 items-center justify-between rounded-xl border border-slate-200 bg-white px-2 shadow-sm">
+      <div className={`${registerLayout.toolbar} rounded-xl border border-slate-200 bg-white shadow-sm`}>
         <div className="flex h-full items-center gap-1">
           {(
             [
@@ -4313,8 +4314,8 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[minmax(380px,0.58fr)_minmax(720px,1.42fr)] gap-3 2xl:grid-cols-[minmax(430px,0.54fr)_minmax(860px,1.46fr)]">
-        <section className="flex min-h-0 flex-col gap-3">
+      <div className={registerLayout.workspace}>
+        <section className={registerLayout.column}>
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="hidden mb-3 flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -4517,7 +4518,7 @@ export default function PosDemoPage() {
               </div>
 
               <div className="flex items-center gap-2">
-              <div className="relative w-full max-w-xs">
+              <div className="relative min-w-0 flex-1">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   value={searchInput}
@@ -4747,9 +4748,9 @@ export default function PosDemoPage() {
           </div>
         </section>
 
-        <section ref={paymentSectionRef} className="flex min-h-0 flex-col gap-3 pr-1">
+        <section ref={paymentSectionRef} className={registerLayout.column}>
             <PosCartPanel
-              className="min-h-[360px] flex-[1_1_360px]"
+              className="flex-1"
               lines={state.cart}
               totals={totals}
               onSetPrice={
@@ -4789,22 +4790,10 @@ export default function PosDemoPage() {
               </div>
             )}
 
-            <div className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex h-9 items-end border-b border-slate-100 px-4">
-                <button
-                  type="button"
-                  className="h-9 border-b-2 border-blue-600 px-3 text-xs font-black text-blue-600"
-                >
-                  eBarimt
-                </button>
-                <button
-                  type="button"
-                  className="h-9 px-3 text-xs font-bold text-slate-500"
-                >
-                  Төлбөр
-                </button>
-              </div>
-              <div className="p-2.5">
+            <details className="shrink-0 rounded-xl border border-slate-200 bg-white shadow-sm">
+              <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-blue-600">eBarimt · {ebarimtStatusText}</summary>
+              <div className="max-h-44 overflow-y-auto p-2.5">
+
                 {receiptForPreview?.ebarimt?.status === "SUCCESS" && receiptForPreview.ebarimt.qrData ? (
                   <>
                     <div className="mb-2 flex items-center justify-between gap-3 text-xs">
@@ -4863,7 +4852,7 @@ export default function PosDemoPage() {
                   </div>
                 )}
               </div>
-            </div>
+            </details>
 
             <PosPaymentPanel
               totals={totals}

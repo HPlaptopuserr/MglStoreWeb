@@ -1,3 +1,4 @@
+import styles from "./PosCartPanel.module.css";
 import { Minus, Plus, ReceiptText, Trash2 } from "lucide-react";
 import type { CartLine, CartTotals } from "../types/pos.types";
 import { formatPosQuantity, POS_WEIGHT_STEP_KG } from "@mgl/types";
@@ -41,16 +42,20 @@ function PosCartLineRow({
   const taxLabel = `${line.taxType || "VAT_ABLE"}${line.taxRate ? ` / ${line.taxRate}%` : ""}`;
 
   return (
-    <article className="grid grid-cols-[34px_minmax(0,1fr)_104px_126px_28px] items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/20">
-      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-xs font-black text-blue-700">
+    <article
+      className={`${styles.line} items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1.5 shadow-sm transition hover:border-blue-200 hover:bg-blue-50/20`}
+    >
+      <div
+        className={`${styles.index} flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-xs font-black text-blue-700`}
+      >
         {index + 1}
       </div>
 
-      <div className="min-w-0">
-        <p className="truncate text-sm font-black leading-tight text-slate-950">
+      <div className={styles.details}>
+        <p className="break-words text-sm font-black leading-tight text-slate-950">
           {line.name}
         </p>
-        <p className="mt-0.5 truncate text-[10px] font-bold text-slate-500">
+        <p className="mt-0.5 break-words text-[10px] font-bold text-slate-500">
           Нэгж: {money(line.unitPrice)} /{" "}
           {line.measureUnit === "kg" ? "кг" : "ш"} · Нөөц:{" "}
           {formatPosQuantity(line.stockQty, line.measureUnit)}
@@ -87,7 +92,9 @@ function PosCartLineRow({
         </p>
       </div>
 
-      <div className="flex h-8 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
+      <div
+        className={`${styles.quantity} flex h-8 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50`}
+      >
         <button
           type="button"
           onClick={() => onSetQty(line.productId, line.qty - quantityStep)}
@@ -121,7 +128,9 @@ function PosCartLineRow({
         </button>
       </div>
 
-      <div className="rounded-lg bg-slate-950 px-2.5 py-1.5 text-right">
+      <div
+        className={`${styles.amount} rounded-lg bg-slate-950 px-2.5 py-1.5 text-right`}
+      >
         <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-400">
           Мөрийн дүн
         </p>
@@ -133,7 +142,7 @@ function PosCartLineRow({
       <button
         type="button"
         onClick={() => onRemove(line.productId)}
-        className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-500"
+        className={`${styles.remove} inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-500`}
         aria-label="Сагснаас хасах"
       >
         <Trash2 size={14} />
@@ -156,7 +165,7 @@ function PosCartSummary({
         <span className="tabular-nums">{lines.length} мөр</span>
       </div>
 
-      <div className="grid grid-cols-3 gap-1.5 text-[10px]">
+      <div className="grid grid-cols-3 gap-1.5 break-words text-[10px] [overflow-wrap:anywhere]">
         <div className="rounded-lg bg-slate-50 px-2 py-1.5">
           <p className="font-bold text-slate-500">Барааны дүн</p>
           <p className="text-[11px] font-black tabular-nums text-slate-950">
@@ -177,7 +186,7 @@ function PosCartSummary({
         </div>
       </div>
 
-      <div className="mt-1.5 flex items-end justify-between border-t border-dashed border-slate-300 pt-1.5">
+      <div className="mt-1.5 flex flex-wrap items-end justify-between gap-2 border-t border-dashed border-slate-300 pt-1.5">
         <span className="text-sm font-black text-slate-700">Нийт дүн</span>
         <span className="text-2xl font-black leading-none tabular-nums text-blue-600">
           {money(totals?.grandTotal ?? 0)}
@@ -198,7 +207,7 @@ export function PosCartPanel({
 }: Props) {
   return (
     <section
-      className={`flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}
+      className={`${styles.panel} flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}
     >
       <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-4 py-3">
         <h3 className="inline-flex items-center gap-2 text-lg font-black text-slate-950">

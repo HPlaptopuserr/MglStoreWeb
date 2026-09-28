@@ -1,0 +1,17 @@
+.panel {
+  container-type: inline-size;
+  min-width: 0;
+}
+.methods {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(150px, 1.1fr);
+  gap: 8px;
+}
+@container (max-width: 560px) {
+  .methods {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .submit {
+    grid-column: 1 / -1;
+  }
+}

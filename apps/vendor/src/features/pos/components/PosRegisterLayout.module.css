@@ -1,0 +1,57 @@
+.shell {
+  container-type: inline-size;
+  min-width: 0;
+}
+.frame {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: calc(100dvh - 24px);
+  min-height: 520px;
+  min-width: 0;
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px;
+  flex-shrink: 0;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  min-width: 0;
+}
+@container (max-width: 760px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+  }
+  .toolbar > div {
+    flex-wrap: wrap;
+  }
+}
+@container (max-width: 580px) {
+  .frame {
+    height: auto;
+    min-height: 0;
+  }
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .column {
+    min-height: 440px;
+  }
+}

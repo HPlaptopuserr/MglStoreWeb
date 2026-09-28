@@ -1,0 +1,45 @@
+.panel {
+  container-type: inline-size;
+  min-width: 0;
+}
+.line {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 104px minmax(110px, 126px) 28px;
+}
+.details {
+  min-width: 0;
+}
+.quantity {
+  width: 104px;
+}
+.amount {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@container (max-width: 620px) {
+  .line {
+    grid-template-columns: minmax(0, 1fr) minmax(100px, auto);
+  }
+  .index {
+    display: none;
+  }
+  .details {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .remove {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    align-self: start;
+  }
+  .quantity {
+    grid-column: 1;
+    grid-row: 2;
+  }
+  .amount {
+    grid-column: 2;
+    grid-row: 2;
+    max-width: 190px;
+  }
+}

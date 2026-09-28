@@ -1,6 +1,10 @@
+import styles from "./PosPaymentPanel.module.css";
 import { Banknote, CreditCard, HandCoins, QrCode } from "lucide-react";
 import type { CartTotals } from "../types/pos.types";
-import { PAYMENT_METHODS, type PaymentMethod } from "../constants/payment-methods";
+import {
+  PAYMENT_METHODS,
+  type PaymentMethod,
+} from "../constants/payment-methods";
 
 type Props = {
   totals: CartTotals;
@@ -32,8 +36,10 @@ export function PosPaymentPanel({
   } as const;
 
   return (
-    <section className="shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
-      <div className="grid grid-cols-[repeat(4,minmax(0,1fr))_minmax(190px,0.9fr)] gap-2">
+    <section
+      className={`${styles.panel} shrink-0 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm`}
+    >
+      <div className={styles.methods}>
         {PAYMENT_METHODS.map((method) => {
           const isActive = paymentMethod === method.value;
           const Icon = paymentIcon[method.value];
@@ -42,7 +48,7 @@ export function PosPaymentPanel({
               key={method.value}
               type="button"
               onClick={() => onChangeMethod(method.value as PaymentMethod)}
-              className={`flex h-12 flex-col items-center justify-center rounded-lg border text-xs font-black transition-colors ${
+              className={`flex min-h-14 flex-col items-center justify-center rounded-lg border text-xs font-black transition-colors ${
                 isActive
                   ? "border-blue-600 bg-blue-50 text-blue-700"
                   : "border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50"
@@ -52,7 +58,9 @@ export function PosPaymentPanel({
               <span className="mt-1">
                 {method.value === "QR" ? "QR төлбөр" : method.label}
               </span>
-              <span className="text-[10px] font-bold opacity-70">{shortcuts[method.value]}</span>
+              <span className="text-[10px] font-bold opacity-70">
+                {shortcuts[method.value]}
+              </span>
             </button>
           );
         })}
@@ -60,7 +68,7 @@ export function PosPaymentPanel({
           type="button"
           disabled={disabled}
           onClick={onSubmit}
-          className="flex h-12 items-center justify-between rounded-lg bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40"
+          className={`${styles.submit} flex min-h-11 items-center justify-between gap-2 rounded-lg bg-blue-600 px-4 text-sm font-black text-white shadow-sm transition-colors hover:bg-blue-700 active:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-40`}
         >
           <span>Төлбөр авах</span>
           <span className="text-xs opacity-80">F12</span>
