@@ -1,5 +1,6 @@
 "use client";
 
+import { markedUpPrice } from "./receipt-pricing";
 import { FormEvent, useEffect, useState } from "react";
 import { Loader2, PackagePlus, X } from "lucide-react";
 import { EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE } from "@mgl/types";
@@ -12,6 +13,7 @@ export interface CreatedReceiptProduct {
   barcode: string | null;
   stock: number;
   costPrice?: number | null;
+  manualReceiptPrice?: string;
   unit: "pcs" | "kg" | null;
   isActive: boolean;
   supplyType: string;
@@ -19,6 +21,7 @@ export interface CreatedReceiptProduct {
 
 interface QuickProductCreateModalProps {
   open: boolean;
+  markupPercent?: string;
   organizationId: string;
   initialCode: string;
   onClose: () => void;
@@ -56,6 +59,7 @@ async function readError(response: Response) {
 
 export function QuickProductCreateModal({
   open,
+  markupPercent = "",
   organizationId,
   initialCode,
   onClose,
@@ -64,19 +68,28 @@ export function QuickProductCreateModal({
   const [form, setForm] = useState<FormState>(() =>
     createInitialForm(initialCode),
   );
+  const [manualPrice, setManualPrice] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!open) return;
     setForm(createInitialForm(initialCode));
+    setManualPrice(false);
     setError("");
   }, [initialCode, open]);
 
   if (!open) return null;
 
   const update = (field: keyof FormState, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }));
+    if (field === "price") setManualPrice(true);
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+      ...(field === "costPrice" && !manualPrice && markupPercent
+        ? { price: markedUpPrice(value, markupPercent) }
+        : {}),
+    }));
     setError("");
   };
 
@@ -119,7 +132,10 @@ export function QuickProductCreateModal({
         }),
       });
       if (!response.ok) throw new Error(await readError(response));
-      onCreated((await response.json()) as CreatedReceiptProduct);
+      onCreated({
+        ...((await response.json()) as CreatedReceiptProduct),
+        ...(manualPrice ? { manualReceiptPrice: form.price } : {}),
+      });
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Бараа бүртгэхэд алдаа гарлаа",

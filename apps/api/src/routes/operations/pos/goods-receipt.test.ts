@@ -121,3 +121,22 @@ test("requires supplier, register and at least one valid product line", () => {
   });
   assert.equal(missingUnitCost.ok, false);
 });
+
+test("keeps optional sale prices and rejects conflicting prices across lots", () => {
+  const line = { productId: "p", quantity: 1, unitCost: 100, salePrice: 130 };
+  const parse = (items: unknown[]) =>
+    parsePosGoodsReceiptInput({ registerId: "r", supplierName: "s", items });
+  const result = parse([line, { ...line, batchNumber: "second" }]);
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.value.items[0].salePrice, 130);
+  assert.equal(
+    parse([line, { ...line, batchNumber: "second", salePrice: 140 }]).ok,
+    false,
+  );
+  for (const salePrice of [-1, NaN, Infinity, 1_000_000_001, null, ""]) {
+    assert.equal(parse([{ ...line, salePrice }]).ok, false);
+  }
+  const optional = parse([{ productId: "p", quantity: 1, unitCost: 100 }]);
+  assert.equal(optional.ok, true);
+  if (optional.ok) assert.equal(optional.value.items[0].salePrice, undefined);
+});

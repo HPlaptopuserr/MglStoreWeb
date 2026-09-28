@@ -217,6 +217,12 @@ router.post("/pos/goods-receipts", async (req, res) => {
         });
 
         for (const item of input.items) {
+          if (item.salePrice !== undefined) {
+            await tx.product.update({
+              where: { id: item.productId },
+              data: { price: item.salePrice },
+            });
+          }
           await tx.posGoodsReceiptItem.create({
             data: {
               receiptId,

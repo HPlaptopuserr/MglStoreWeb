@@ -1,5 +1,7 @@
 "use client";
 
+import { markedUpPrice } from "@/features/receive/receipt-pricing";
+import { ReceiptMarkupControl } from "@/features/receive/ReceiptMarkupControl";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -35,6 +37,8 @@ type ProductOption = {
   barcode?: string | null;
   stock: number;
   costPrice?: number | null;
+  price?: number;
+  manualReceiptPrice?: string;
   unit?: PosMeasureUnit | string | null;
   isActive?: boolean;
   supplyType?: string;
@@ -53,6 +57,8 @@ type ReceiptLine = {
   product: ProductOption;
   quantity: number;
   unitCost: string;
+  salePrice: string;
+  manualPrice: boolean;
   batchNumber: string;
   expiryDate: string;
 };
@@ -97,6 +103,17 @@ async function readJson<T>(response: Response, fallbackMessage: string) {
 }
 
 export default function GoodsReceiptsPage() {
+  const [markup, setMarkup] = useState("");
+  const changeMarkup = (value: string) => {
+    setMarkup(value);
+    setLines((current) =>
+      current.map((line) =>
+        line.manualPrice
+          ? line
+          : { ...line, salePrice: markedUpPrice(line.unitCost, value) },
+      ),
+    );
+  };
   const searchRef = useRef<HTMLInputElement>(null);
   const [registers, setRegisters] = useState<PosRegisterOption[]>([]);
   const [selectedRegisterId, setSelectedRegisterId] = useState("");
@@ -219,6 +236,10 @@ export default function GoodsReceiptsPage() {
     id: `${product.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     product,
     quantity: 1,
+    salePrice:
+      product.manualReceiptPrice ??
+      markedUpPrice(String(product.costPrice ?? ""), markup),
+    manualPrice: product.manualReceiptPrice !== undefined,
     unitCost:
       product.costPrice == null || Number(product.costPrice) < 0
         ? ""
@@ -272,6 +293,7 @@ export default function GoodsReceiptsPage() {
       barcode: product.barcode,
       stock: Number(product.stock || 0),
       costPrice: product.costPrice,
+      manualReceiptPrice: product.manualReceiptPrice,
       unit: product.unit,
       isActive: product.isActive,
       supplyType: product.supplyType,
@@ -304,12 +326,22 @@ export default function GoodsReceiptsPage() {
 
   const setLotField = (
     lineId: string,
-    field: "batchNumber" | "expiryDate" | "unitCost",
+    field: "batchNumber" | "expiryDate" | "unitCost" | "salePrice",
     value: string,
   ) => {
     setLines((current) =>
       current.map((line) =>
-        line.id === lineId ? { ...line, [field]: value } : line,
+        line.id === lineId
+          ? {
+              ...line,
+              [field]: value,
+              ...(field === "salePrice"
+                ? { manualPrice: true }
+                : field === "unitCost" && !line.manualPrice
+                  ? { salePrice: markedUpPrice(value, markup) }
+                  : {}),
+            }
+          : line,
       ),
     );
     setSubmitError("");
@@ -357,6 +389,18 @@ export default function GoodsReceiptsPage() {
       return;
     }
 
+    if (
+      lines.some(
+        (line) =>
+          line.salePrice.trim() &&
+          (!Number.isFinite(Number(line.salePrice)) ||
+            Number(line.salePrice) < 0 ||
+            Number(line.salePrice) > 1_000_000_000),
+      )
+    ) {
+      setSubmitError("Зарах үнэ 0-1,000,000,000₮ хооронд байна.");
+      return;
+    }
     setSubmitting(true);
     setSubmitError("");
     setSuccess(null);
@@ -376,6 +420,9 @@ export default function GoodsReceiptsPage() {
               line.product.unit,
             ),
             unitCost: Number(line.unitCost),
+            salePrice: line.salePrice.trim()
+              ? Number(line.salePrice)
+              : undefined,
             batchNumber: line.batchNumber.trim() || undefined,
             expiryDate: line.expiryDate || undefined,
           })),
@@ -653,6 +700,7 @@ export default function GoodsReceiptsPage() {
               </div>
 
               <div className="mt-5 space-y-2">
+                <ReceiptMarkupControl value={markup} onChange={changeMarkup} />
                 {lines.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-12 text-center">
                     <PackageCheck className="mx-auto h-9 w-9 text-slate-300" />
@@ -754,7 +802,53 @@ export default function GoodsReceiptsPage() {
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                      <div className="mt-3 grid gap-3 border-t border-slate-200 pt-3 sm:grid-cols-3">
+                      <div className="mt-3 grid gap-3 border-t border-slate-200 pt-3 sm:grid-cols-2">
+                        <label className="block">
+                          <span className="mb-1 block text-[11px] font-bold text-slate-500">
+                            Зарах үнэ (₮){" "}
+                            {line.manualPrice ? "· Гараар" : "· Автомат"}
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="1000000000"
+                            step="0.01"
+                            value={line.salePrice}
+                            onChange={(event) =>
+                              setLotField(
+                                line.id,
+                                "salePrice",
+                                event.target.value,
+                              )
+                            }
+                            placeholder="Өөрчлөхгүй"
+                            className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"
+                          />
+                          {line.manualPrice && (
+                            <button
+                              type="button"
+                              className="mt-1 text-xs text-cyan-700"
+                              onClick={() =>
+                                setLines((current) =>
+                                  current.map((item) =>
+                                    item.id === line.id
+                                      ? {
+                                          ...item,
+                                          manualPrice: false,
+                                          salePrice: markedUpPrice(
+                                            item.unitCost,
+                                            markup,
+                                          ),
+                                        }
+                                      : item,
+                                  ),
+                                )
+                              }
+                            >
+                              Автоматаар бодох
+                            </button>
+                          )}
+                        </label>
                         <label className="block">
                           <span className="mb-1 block text-[11px] font-bold text-slate-500">
                             Нэгж авсан үнэ *
@@ -925,6 +1019,7 @@ export default function GoodsReceiptsPage() {
         />
       )}
       <QuickProductCreateModal
+        markupPercent={markup}
         open={createProductOpen}
         organizationId={getOrganizationId()}
         initialCode={newProductCode}

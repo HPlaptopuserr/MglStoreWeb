@@ -2,6 +2,7 @@ export type PosGoodsReceiptLine = {
   productId: string;
   quantity: number;
   unitCost: number;
+  salePrice?: number;
   batchNumber: string | null;
   expiryDate: Date | null;
 };
@@ -69,6 +70,7 @@ export function parsePosGoodsReceiptInput(
     };
   }
 
+  const pricesByProduct = new Map<string, number>();
   const linesByLot = new Map<string, PosGoodsReceiptLine>();
   for (const rawItem of input.items) {
     if (!rawItem || typeof rawItem !== "object") {
@@ -79,6 +81,27 @@ export function parsePosGoodsReceiptInput(
     const productId = cleanText(item.productId, 100);
     const quantity = Number(item.quantity);
     const unitCost = Number(item.unitCost);
+    const salePrice =
+      item.salePrice === undefined ? undefined : Number(item.salePrice);
+    if (
+      salePrice !== undefined &&
+      (item.salePrice === null ||
+        item.salePrice === "" ||
+        !Number.isFinite(salePrice) ||
+        salePrice < 0 ||
+        salePrice > 1_000_000_000)
+    ) {
+      return { ok: false, message: "Зарах үнэ 0-1,000,000,000₮ хооронд байна" };
+    }
+    if (salePrice !== undefined && productId) {
+      const previous = pricesByProduct.get(productId);
+      if (previous !== undefined && previous !== salePrice)
+        return {
+          ok: false,
+          message: "Нэг барааны олон цувралд ижил зарах үнэ оруулна уу",
+        };
+      pricesByProduct.set(productId, salePrice);
+    }
     const batchNumber = cleanText(item.batchNumber, 80);
     const parsedExpiryDate = parseExpiryDate(item.expiryDate);
     if (!productId) {
@@ -125,6 +148,9 @@ export function parsePosGoodsReceiptInput(
     linesByLot.set(lotKey, {
       productId,
       quantity: nextQuantity,
+      ...(pricesByProduct.has(productId)
+        ? { salePrice: pricesByProduct.get(productId) }
+        : {}),
       unitCost,
       batchNumber,
       expiryDate,
