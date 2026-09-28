@@ -386,6 +386,7 @@ export interface PosReceipt {
   receiptNo: string;
   branchName: string;
   cashierName: string;
+  cashierId?: string;
   paymentMethod: string;
   status?: string;
   voidedAt?: string | null;

@@ -1,35 +1,27 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, ReceiptText, RefreshCw, X } from "lucide-react";
 import type { PosReceipt, RegisterConfig } from "@mgl/types";
 import { DailySalesExport } from "./DailySalesExport";
+import { useSalesHistory } from "../hooks/useSalesHistory";
 import { ReceiptPreview } from "./ReceiptPreview";
 
 interface Props {
-  receipts: PosReceipt[];
-  selectedReceipt: PosReceipt | null;
   register: RegisterConfig | null;
-  loading: boolean;
-  error: string;
-  onSelect: (id: string) => void;
-  onRefresh: () => void;
   onVoided: (message: string) => void;
   onClose: () => void;
 }
 
-export function SalesHistoryDialog({
-  receipts,
-  selectedReceipt,
-  register,
-  loading,
-  error,
-  onSelect,
-  onRefresh,
-  onVoided,
-  onClose,
-}: Props) {
+export function SalesHistoryDialog({ register, onVoided, onClose }: Props) {
+  const history = useSalesHistory(register?.branchId);
+  const { receipts, loading, error } = history;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selectedReceipt =
+    receipts.find((receipt) => receipt.id === selectedId) ?? null;
+  const onSelect = setSelectedId;
+  const onRefresh = history.refresh;
   const dialogRef = useRef<HTMLDialogElement>(null);
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -66,8 +58,8 @@ export function SalesHistoryDialog({
               Борлуулалтын түүх
             </h2>
             <p className="mt-1 text-xs text-slate-500">
-              Одоогийн ээлжийн {receipts.length} баримт · Дэлгэрэнгүй харах,
-              дахин хэвлэх
+              Салбарын {receipts.length} баримт · Дэлгэрэнгүй харах, дахин
+              хэвлэх
             </p>
           </div>
           <button
@@ -80,14 +72,24 @@ export function SalesHistoryDialog({
             <X size={20} />
           </button>
         </header>
-        <DailySalesExport branchId={register?.branchId} />
+        <DailySalesExport
+          date={history.date}
+          onDateChange={history.setDate}
+          cashier={history.cashier}
+          onCashierChange={history.setCashier}
+          employees={history.employees}
+          receipts={receipts}
+          loading={loading}
+          demo={history.demo}
+          onDemoChange={history.setDemo}
+        />
         <div className="grid min-h-0 flex-1 grid-rows-[minmax(140px,0.4fr)_minmax(0,0.6fr)] md:grid-cols-[minmax(280px,0.38fr)_minmax(0,0.62fr)] md:grid-rows-1">
           <section
             aria-label="Баримтын жагсаалт"
             className="flex min-h-0 flex-col border-b border-slate-200 p-4 md:border-b-0 md:border-r"
           >
             <div className="mb-3 flex shrink-0 items-center justify-between gap-2">
-              <h3 className="text-sm font-bold">Сүүлийн баримтууд</h3>
+              <h3 className="text-sm font-bold">Шүүсэн баримтууд</h3>
               <button
                 type="button"
                 onClick={onRefresh}
@@ -120,7 +122,7 @@ export function SalesHistoryDialog({
                 </p>
               ) : receipts.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
-                  Энэ ээлжид борлуулалт бүртгэгдээгүй байна.
+                  Сонгосон өдөр, ажилтанд тохирох баримт байхгүй байна.
                 </div>
               ) : (
                 receipts.map((receipt) => (
@@ -140,12 +142,35 @@ export function SalesHistoryDialog({
           >
             {selectedReceipt ? (
               <div className="mx-auto w-full max-w-xl">
-                <ReceiptPreview
-                  receipt={selectedReceipt}
-                  register={register}
-                  onVoided={onVoided}
-                  className="w-full shadow-sm"
-                />
+                {history.demo ? (
+                  <div className="rounded-xl border border-amber-200 bg-white p-4">
+                    <h3 className="font-bold">
+                      {selectedReceipt.receiptNo} · Тест баримт
+                    </h3>
+                    <p className="mt-2 text-sm">
+                      {selectedReceipt.cashierName}
+                    </p>
+                    {selectedReceipt.lines.map((line) => (
+                      <p key={line.productId} className="mt-3 text-sm">
+                        {line.name} · {line.qty} {line.measureUnit} · ₮
+                        {line.lineTotal.toLocaleString("mn-MN")}
+                      </p>
+                    ))}
+                    <p className="mt-3 text-xs text-amber-700">
+                      Тест баримтыг буцаах, төлбөр хийх боломжгүй.
+                    </p>
+                  </div>
+                ) : (
+                  <ReceiptPreview
+                    receipt={selectedReceipt}
+                    register={register}
+                    onVoided={(message) => {
+                      onVoided(message);
+                      history.refresh();
+                    }}
+                    className="w-full shadow-sm"
+                  />
+                )}
               </div>
             ) : (
               <div className="flex h-full min-h-32 flex-col items-center justify-center gap-3 text-center text-sm text-slate-500">
@@ -188,9 +213,14 @@ function ReceiptHistoryItem({
           {voided ? "Буцаагдсан" : "Амжилттай"}
         </span>
       </div>
+      <p className="mt-2 break-words text-xs text-slate-600">
+        {receipt.cashierName}
+      </p>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-slate-500">
-          {new Date(receipt.createdAt).toLocaleString("mn-MN")}
+          {new Date(receipt.createdAt).toLocaleString("mn-MN", {
+            timeZone: "Asia/Ulaanbaatar",
+          })}
         </span>
         <strong className="text-sm tabular-nums">
           ₮

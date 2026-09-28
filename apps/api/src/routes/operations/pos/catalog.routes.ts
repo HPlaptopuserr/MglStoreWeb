@@ -376,13 +376,15 @@ router.get("/pos/receipts", async (req, res) => {
     const date = String(req.query.date || "").trim();
     const branchId = String(req.query.branchId || "").trim();
     let where: Prisma.PosSaleWhereInput;
-    if (date && branchId && !shiftId) {
-      const start = new Date(`${date}T00:00:00+08:00`);
+    if (branchId && !shiftId) {
+      const start = date ? new Date(`${date}T00:00:00+08:00`) : null;
       if (
-        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-        !Number.isFinite(start.getTime()) ||
-        new Date(start.getTime() + 8 * 3600000).toISOString().slice(0, 10) !==
-          date
+        date &&
+        (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+          !start ||
+          !Number.isFinite(start.getTime()) ||
+          new Date(start.getTime() + 8 * 3600000).toISOString().slice(0, 10) !==
+            date)
       ) {
         return res.status(400).json({ message: "Огноо буруу байна" });
       }
@@ -402,8 +404,17 @@ router.get("/pos/receipts", async (req, res) => {
       }
       where = {
         branchId,
-        status: PosSaleStatus.COMPLETED,
-        createdAt: { gte: start, lt: new Date(start.getTime() + 86400000) },
+        ...(req.query.includeVoided === "true"
+          ? {}
+          : { status: PosSaleStatus.COMPLETED }),
+        ...(start
+          ? {
+              createdAt: {
+                gte: start,
+                lt: new Date(start.getTime() + 86400000),
+              },
+            }
+          : {}),
       };
     } else {
       if (!shiftId || date || branchId)
@@ -442,6 +453,7 @@ router.get("/pos/receipts", async (req, res) => {
       where,
       select: {
         id: true,
+        cashierId: true,
         receiptNo: true,
         paymentMethod: true,
         paymentBreakdown: true,
@@ -587,6 +599,7 @@ router.get("/pos/receipts", async (req, res) => {
         receiptNo: sale.receiptNo,
         branchName: sale.branch.name,
         cashierName: sale.cashier.email,
+        cashierId: sale.cashierId,
         paymentMethod: sale.paymentMethod,
         status: sale.status,
         voidedAt: sale.voidedAt?.toISOString() ?? null,

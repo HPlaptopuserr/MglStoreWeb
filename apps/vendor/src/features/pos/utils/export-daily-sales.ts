@@ -27,6 +27,7 @@ export async function exportDailySales(receipts: PosReceipt[], date: string) {
           }),
           Баримт: receipt.receiptNo,
           Салбар: receipt.branchName,
+          Ажилтан: receipt.cashierName,
           Бараа: line.name,
           Нэгж: unit,
           "Тоо хэмжээ": line.qty,
@@ -36,7 +37,7 @@ export async function exportDailySales(receipts: PosReceipt[], date: string) {
       }),
     );
   if (!details.length)
-    throw new Error("Сонгосон өдөр зарагдсан бараа байхгүй байна.");
+    throw new Error("Сонгосон шүүлтүүрт зарагдсан бараа байхгүй байна.");
   const workbook = XLSX.utils.book_new();
   const totals = [...summary.values()].map((row) => ({
     Бараа: row.name,
@@ -47,7 +48,7 @@ export async function exportDailySales(receipts: PosReceipt[], date: string) {
   const summarySheet = XLSX.utils.json_to_sheet(totals);
   summarySheet["!cols"] = [{ wch: 40 }, { wch: 10 }, { wch: 18 }, { wch: 24 }];
   const detailSheet = XLSX.utils.json_to_sheet(details);
-  detailSheet["!cols"] = [22, 24, 24, 40, 10, 18, 18, 24].map((wch) => ({
+  detailSheet["!cols"] = [22, 24, 24, 28, 40, 10, 18, 18, 24].map((wch) => ({
     wch,
   }));
   XLSX.utils.book_append_sheet(workbook, summarySheet, "Бараагаар нэгтгэл");

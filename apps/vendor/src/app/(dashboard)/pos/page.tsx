@@ -3418,13 +3418,7 @@ export default function PosDemoPage() {
       <MobileBlock />
       {salesHistoryOpen && (
         <SalesHistoryDialog
-          receipts={receiptHistory}
-          selectedReceipt={receiptForPreview}
           register={registerConfig}
-          loading={receiptHistoryLoading}
-          error={receiptHistoryError}
-          onSelect={setSelectedReceiptId}
-          onRefresh={reloadReceiptHistory}
           onVoided={handleReceiptVoided}
           onClose={() => setSalesHistoryOpen(false)}
         />
