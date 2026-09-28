@@ -313,7 +313,7 @@ export async function reviewReel(
 
 export async function recordReelInteraction(input: RecordReelInteractionInput) {
   const reel = await prisma.reel.findFirst({
-    where: { id: input.reelId, deletedAt: null },
+    where: { id: input.reelId, ...publicReelAccess },
     select: { id: true, organizationId: true },
   });
   if (!reel) throw new Error("Reel олдсонгүй");
@@ -363,8 +363,9 @@ export async function setReelLike(input: SetReelLikeInput) {
   }
 
   return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Reel" WHERE id = ${input.reelId} FOR UPDATE`;
     const reel = await tx.reel.findFirst({
-      where: { id: input.reelId, deletedAt: null },
+      where: { id: input.reelId, ...publicReelAccess },
       select: { id: true, organizationId: true, likeCount: true },
     });
     if (!reel) throw new Error("Reel олдсонгүй");

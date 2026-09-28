@@ -733,6 +733,10 @@ router.get("/dm/conversations/:id/messages", requireAuth, async (req, res) => {
   const user = (req as any).user as AuthPayload;
   const { id } = req.params;
   const after = req.query.after as string | undefined;
+  const before = typeof req.query.before === "string" ? req.query.before : undefined;
+  if ((before && after) || (before && !Number.isFinite(Date.parse(before))) || (after && !Number.isFinite(Date.parse(after)))) {
+    return res.status(400).json({ message: "Мессежийн хуудас буруу байна" });
+  }
   const limit = Math.min(Number(req.query.limit) || 50, 100);
 
   try {
@@ -754,7 +758,7 @@ router.get("/dm/conversations/:id/messages", requireAuth, async (req, res) => {
     const messages = await prisma.directMessage.findMany({
       where: {
         conversationId: id,
-        ...(after ? { createdAt: { gt: new Date(after) } } : {}),
+        ...(after ? { createdAt: { gt: new Date(after) } } : before ? { createdAt: { lt: new Date(before) } } : {}),
       },
       orderBy: { createdAt: after ? "asc" : "desc" },
       take: limit,

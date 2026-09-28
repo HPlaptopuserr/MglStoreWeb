@@ -42,6 +42,7 @@ async function setup() {
   let discarded = 0;
   let failCreate = false;
   let failAfterCommit = false;
+  let failRecoveryLookup = false;
   const privateUploads: boolean[] = [];
   const deleted: string[] = [];
   const app = express();
@@ -61,7 +62,11 @@ async function setup() {
         listed.push(input);
         return { items: [], nextCursor: null };
       },
-      find: async (id) => records.get(id) ?? null,
+      find: async (id) => {
+        if (failRecoveryLookup && records.has(id))
+          throw new Error("lookup unavailable");
+        return records.get(id) ?? null;
+      },
       get: async (id) => ({ ...records.get(id), reviewStatus: "PENDING" }),
       create: async (input) => {
         if (failCreate) throw new Error("database unavailable");
@@ -111,6 +116,10 @@ async function setup() {
     records,
     deleted,
     privateUploads,
+    failRecovery() {
+      failAfterCommit = true;
+      failRecoveryLookup = true;
+    },
     failSigning() {
       failAfterCommit = true;
     },
@@ -283,4 +292,18 @@ test("a response signing failure after commit never deletes the stored clip", as
   } finally {
     app.close();
   }
+});
+
+test("uncertain recovery never deletes a committed video", async (t) => {
+  const state = await setup();
+  t.after(state.close);
+  state.failRecovery();
+  const response = await fetch(state.url, {
+    method: "POST",
+    headers: { authorization: "Bearer test" },
+    body: form(),
+  });
+  assert.equal(response.status, 503);
+  assert.equal(state.records.size, 1);
+  assert.equal(state.discarded, 0);
 });

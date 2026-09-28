@@ -240,16 +240,25 @@ export function createPersonalReelsRouter(
       } catch {
         // A DB commit may have succeeded even if signing the response failed.
         // Never delete the file belonging to a successfully persisted reel.
-        const existing = await deps.find(id).catch(() => null);
+        let existing: PersonalReelOwner | null;
+        try {
+          existing = await deps.find(id);
+        } catch {
+          // An unavailable lookup is not proof the transaction failed.
+          return res
+            .status(503)
+            .json({
+              message:
+                "Видео хадгалсан эсэхийг шалгаж чадсангүй. Түр хүлээгээд дахин оролдоорой.",
+            });
+        }
         if (owns(existing, user.userId)) {
           try {
             return res.status(200).json(jsonSafe(await deps.get(id)));
           } catch {
-            return res
-              .status(503)
-              .json({
-                message: "Видео хадгалагдсан. Түр хүлээгээд дахин оролдоорой.",
-              });
+            return res.status(503).json({
+              message: "Видео хадгалагдсан. Түр хүлээгээд дахин оролдоорой.",
+            });
           }
         }
         if (stored) {

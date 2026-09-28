@@ -30,7 +30,10 @@ import {
   storeReelVideo,
 } from "../../services/reel-storage.service";
 
+import { createReelSocialRouter } from "./reel-social.routes";
+
 const router: ExpressRouter = Router();
+router.use(createReelSocialRouter());
 router.use(createPersonalReelsRouter());
 
 const REEL_VIDEO_LIMIT_BYTES = Number(
