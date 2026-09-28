@@ -103,9 +103,7 @@ const readEbarimtMetadata = (payload: Prisma.JsonValue | null) => {
       ? (source.response as Record<string, Prisma.JsonValue>)
       : null;
   const responseDate =
-    response && typeof response.date === "string"
-      ? response.date.trim()
-      : null;
+    response && typeof response.date === "string" ? response.date.trim() : null;
 
   return {
     receiptType:
@@ -211,7 +209,9 @@ router.get("/pos/products", async (req, res) => {
     if (!actor) return;
 
     const branchId = String(req.query.branchId || "").trim();
-    const requestedOrganizationId = String(req.query.organizationId || "").trim();
+    const requestedOrganizationId = String(
+      req.query.organizationId || "",
+    ).trim();
     const restaurantMenuOnly = ["1", "true", "yes", "on"].includes(
       String(req.query.restaurantMenu || "")
         .trim()
@@ -223,19 +223,25 @@ router.get("/pos/products", async (req, res) => {
         .toLowerCase(),
     );
     if (!branchId && !requestedOrganizationId) {
-      return res.status(400).json({ message: "branchId эсвэл organizationId шаардлагатай" });
+      return res
+        .status(400)
+        .json({ message: "branchId эсвэл organizationId шаардлагатай" });
     }
 
-    const branch = branchId ? await prisma.branch.findUnique({
-      where: { id: branchId },
-      select: { organizationId: true },
-    }) : null;
+    const branch = branchId
+      ? await prisma.branch.findUnique({
+          where: { id: branchId },
+          select: { organizationId: true },
+        })
+      : null;
     if (branchId && !branch) {
       return res.status(404).json({ message: "Салбар олдсонгүй" });
     }
     const organizationId = branch?.organizationId || requestedOrganizationId;
     if (requestedOrganizationId && organizationId !== requestedOrganizationId) {
-      return res.status(403).json({ message: "Салбар сонгосон байгууллагад хамаарахгүй байна" });
+      return res
+        .status(403)
+        .json({ message: "Салбар сонгосон байгууллагад хамаарахгүй байна" });
     }
 
     if (actor.role !== "ADMIN") {
@@ -367,38 +373,73 @@ router.get("/pos/receipts", async (req, res) => {
     if (!actor) return;
 
     const shiftId = String(req.query.shiftId || "").trim();
-    if (!shiftId) {
-      return res.status(400).json({ message: "shiftId шаардлагатай" });
-    }
-
-    const shift = await prisma.posShift.findUnique({
-      where: { id: shiftId },
-      select: {
-        id: true,
-        cashierId: true,
-        branchId: true,
-        organizationId: true,
-      },
-    });
-    if (!shift) {
-      return res.status(404).json({ message: "Ээлж олдсонгүй" });
-    }
-
-    if (
-      shift.cashierId !== actor.id &&
-      actor.role !== "ADMIN" &&
-      actor.role !== "SUPER_ADMIN"
-    ) {
-      const allowed = await hasOrgMembership(actor.id, shift.organizationId);
-      if (!allowed) {
+    const date = String(req.query.date || "").trim();
+    const branchId = String(req.query.branchId || "").trim();
+    let where: Prisma.PosSaleWhereInput;
+    if (date && branchId && !shiftId) {
+      const start = new Date(`${date}T00:00:00+08:00`);
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+        !Number.isFinite(start.getTime()) ||
+        new Date(start.getTime() + 8 * 3600000).toISOString().slice(0, 10) !==
+          date
+      ) {
+        return res.status(400).json({ message: "Огноо буруу байна" });
+      }
+      const branch = await prisma.branch.findUnique({
+        where: { id: branchId },
+        select: { organizationId: true },
+      });
+      if (!branch) return res.status(404).json({ message: "Салбар олдсонгүй" });
+      if (
+        actor.role !== "ADMIN" &&
+        actor.role !== "SUPER_ADMIN" &&
+        !(await hasOrgMembership(actor.id, branch.organizationId))
+      ) {
         return res
           .status(403)
-          .json({ message: "Энэ ээлжийн мэдээлэл харах эрхгүй" });
+          .json({ message: "Энэ салбарын мэдээлэл харах эрхгүй" });
       }
+      where = {
+        branchId,
+        status: PosSaleStatus.COMPLETED,
+        createdAt: { gte: start, lt: new Date(start.getTime() + 86400000) },
+      };
+    } else {
+      if (!shiftId || date || branchId)
+        return res
+          .status(400)
+          .json({ message: "shiftId эсвэл branchId, date шаардлагатай" });
+      const shift = await prisma.posShift.findUnique({
+        where: { id: shiftId },
+        select: {
+          id: true,
+          cashierId: true,
+          branchId: true,
+          organizationId: true,
+        },
+      });
+      if (!shift) {
+        return res.status(404).json({ message: "Ээлж олдсонгүй" });
+      }
+
+      if (
+        shift.cashierId !== actor.id &&
+        actor.role !== "ADMIN" &&
+        actor.role !== "SUPER_ADMIN"
+      ) {
+        const allowed = await hasOrgMembership(actor.id, shift.organizationId);
+        if (!allowed) {
+          return res
+            .status(403)
+            .json({ message: "Энэ ээлжийн мэдээлэл харах эрхгүй" });
+        }
+      }
+      where = { shiftId };
     }
 
     const sales = await prisma.posSale.findMany({
-      where: { shiftId },
+      where,
       select: {
         id: true,
         receiptNo: true,

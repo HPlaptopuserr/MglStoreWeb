@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, ReceiptText, RefreshCw, X } from "lucide-react";
 import type { PosReceipt, RegisterConfig } from "@mgl/types";
+import { DailySalesExport } from "./DailySalesExport";
 import { ReceiptPreview } from "./ReceiptPreview";
 
 interface Props {
@@ -79,6 +80,7 @@ export function SalesHistoryDialog({
             <X size={20} />
           </button>
         </header>
+        <DailySalesExport branchId={register?.branchId} />
         <div className="grid min-h-0 flex-1 grid-rows-[minmax(140px,0.4fr)_minmax(0,0.6fr)] md:grid-cols-[minmax(280px,0.38fr)_minmax(0,0.62fr)] md:grid-rows-1">
           <section
             aria-label="Баримтын жагсаалт"
