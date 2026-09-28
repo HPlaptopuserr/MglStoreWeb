@@ -3,9 +3,7 @@
 import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import {
-  Delete,
   ChevronRight,
-  RotateCcw,
   Clock,
   Settings,
   X,
@@ -28,6 +26,7 @@ import type { PaymentMethod } from "../constants/payment-methods";
 import { CreditPaymentDialog } from "./CreditPaymentDialog";
 import { formatPosQuantity, type CashPaymentDetails } from "@mgl/types";
 import { CashPaymentPanel } from "./CashPaymentPanel";
+import { PaymentKeypad } from "./PaymentKeypad";
 import { useCashPayment } from "../hooks/useCashPayment";
 
 type Props = {
@@ -121,15 +120,6 @@ const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
   { value: "QR", label: "QPay" },
   { value: "CREDIT", label: "Зээл" },
 ];
-
-const QUICK_AMOUNTS = [10_000, 20_000, 50_000, 100_000];
-
-const NUMPAD_ROWS = [
-  ["1", "2", "3"],
-  ["4", "5", "6"],
-  ["7", "8", "9"],
-  [".", "0", "⌫"],
-] as const;
 
 export function PosCheckoutView({
   lines,
@@ -351,14 +341,12 @@ export function PosCheckoutView({
       </header>
 
       {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* ── Left: payment selector + numpad ── */}
-        <div className="flex w-[400px] shrink-0 flex-col gap-4 overflow-y-auto overscroll-contain border-r border-zinc-800 p-6 max-[1500px]:w-[340px] max-[1500px]:gap-3 max-[1500px]:p-4 max-[1180px]:w-[300px] max-[1180px]:gap-2.5 max-[1180px]:p-3 [@media(max-height:850px)]:w-[340px] [@media(max-height:850px)]:gap-2.5 [@media(max-height:850px)]:p-3">
+        <div className="flex min-h-0 w-[360px] shrink-0 flex-col gap-2 overflow-y-auto overscroll-contain border-r border-zinc-800 p-3 min-[1600px]:w-[400px] min-[1600px]:p-4">
           {/* Payment method tabs */}
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 mb-3">
-              Төлбөрийн хэлбэр
-            </p>
+          <div className="shrink-0">
+            <p className="sr-only">Төлбөрийн хэлбэр</p>
             <div className="grid grid-cols-4 gap-2">
               {PAYMENT_OPTIONS.map((opt) => {
                 const isActive = paymentMethod === opt.value;
@@ -379,7 +367,7 @@ export function PosCheckoutView({
                       onChangeMethod(opt.value);
                     }}
                     disabled={disabled || cashPayment.submitting}
-                    className={`flex flex-col items-center gap-1.5 rounded-xl border py-4 text-sm font-bold transition-all max-[1500px]:py-3 max-[1500px]:text-xs max-[1180px]:py-2.5 [@media(max-height:850px)]:py-2.5 ${
+                    className={`flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-1 text-xs font-bold transition-colors ${
                       isActive
                         ? "bg-zinc-100 text-zinc-900 border-zinc-100 shadow-lg shadow-zinc-900"
                         : "bg-zinc-900 text-zinc-500 border-zinc-800 hover:border-zinc-600 hover:text-zinc-300"
@@ -435,7 +423,7 @@ export function PosCheckoutView({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid shrink-0 grid-cols-2 gap-2">
             <button
               type="button"
               onClick={handlePrimaryAction}
@@ -469,75 +457,19 @@ export function PosCheckoutView({
             </button>
           </div>
 
-          {/* Numpad */}
-          <div className="grid grid-cols-3 gap-2">
-            {NUMPAD_ROWS.flat().map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => handleNumpad(key)}
-                disabled={disabled || cashPayment.submitting}
-                aria-label={key === "⌫" ? "Сүүлийн цифр арилгах" : key}
-                className={`select-none rounded-xl py-4 text-lg font-bold transition-all max-[1500px]:py-3 max-[1500px]:text-base max-[1180px]:py-2.5 [@media(max-height:850px)]:py-2.5 ${
-                  key === "⌫"
-                    ? "bg-zinc-800 text-amber-400 hover:bg-amber-950 hover:border-amber-800 border border-zinc-700"
-                    : "bg-zinc-900 text-white border border-zinc-800 hover:bg-zinc-800 hover:border-zinc-600 active:scale-95"
-                }`}
-              >
-                {key === "⌫" ? <Delete size={18} className="mx-auto" /> : key}
-              </button>
-            ))}
-          </div>
-
-          {/* Quick-amount row */}
-          <div className="grid grid-cols-4 gap-2">
-            <button
-              type="button"
-              onClick={() => setEnteredAmount("")}
-              aria-label="Оруулсан дүнг цэвэрлэх"
-              disabled={disabled || cashPayment.submitting}
-              className="flex items-center justify-center rounded-lg border border-zinc-700 bg-zinc-800 py-2.5 text-xs font-bold text-rose-400 transition-colors hover:border-rose-800 hover:bg-rose-950 max-[1280px]:py-2 max-[760px]:text-[10px]"
-            >
-              <RotateCcw size={13} />
-            </button>
-            {QUICK_AMOUNTS.map((amt) => (
-              <button
-                key={amt}
-                type="button"
-                onClick={() => setEnteredAmount(String(amt))}
-                disabled={disabled || cashPayment.submitting}
-                className="rounded-lg border border-zinc-800 bg-zinc-900 py-2.5 text-xs font-bold text-zinc-300 transition-colors hover:border-zinc-600 hover:bg-zinc-800 max-[1500px]:py-2 max-[1180px]:text-[10px]"
-              >
-                ₮{amt >= 1000 ? `${amt / 1000}К` : amt}
-              </button>
-            ))}
-          </div>
-
-          <div
-            className={`rounded-xl border px-5 py-4 max-[1500px]:px-3 max-[1500px]:py-3 [@media(max-height:850px)]:py-2.5 ${
-              remaining <= 0
-                ? "bg-emerald-950 border-emerald-800"
-                : "bg-amber-950 border-amber-800"
-            }`}
-          >
-            <p className="text-[10px] uppercase tracking-widest text-zinc-500">
-              Төлбөрийн төлөв
-            </p>
+          <PaymentKeypad
+            disabled={disabled || cashPayment.submitting}
+            onKey={handleNumpad}
+            onAmount={setEnteredAmount}
+          />
+          {pendingTotal > 0 && (
             <p
-              className={`mt-1 text-3xl font-black tabular-nums max-[1500px]:text-2xl max-[1180px]:text-xl ${
-                remaining <= 0 ? "text-emerald-400" : "text-amber-400"
-              }`}
+              role="status"
+              className="shrink-0 rounded-xl border border-amber-800 bg-amber-950 px-3 py-2 text-xs text-amber-200"
             >
-              {remaining <= 0
-                ? "Төлөгдсөн"
-                : `Үлдэгдэл ₮ ${remaining.toLocaleString()}`}
+              Хүлээгдэж буй QPay: ₮{pendingTotal.toLocaleString()}
             </p>
-            {pendingTotal > 0 && (
-              <p className="mt-1 text-xs text-zinc-400">
-                Хүлээгдэж буй QPay: ₮{pendingTotal.toLocaleString()}
-              </p>
-            )}
-          </div>
+          )}
         </div>
 
         {/* ── Right: order summary ── */}
