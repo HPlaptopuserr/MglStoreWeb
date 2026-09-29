@@ -8,7 +8,10 @@ import {
 } from "../utils/sales-history-filters";
 
 export function useSalesHistory(branchId?: string) {
-  const [date, setDate] = useState(() => salesDay(new Date().toISOString()));
+  const [range, setRange] = useState(() => {
+    const today = salesDay(new Date().toISOString());
+    return { start: today, end: today };
+  });
   const [cashier, setCashier] = useState("");
   const [demo, setDemo] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -61,12 +64,12 @@ export function useSalesHistory(branchId?: string) {
     [data],
   );
   const receipts = useMemo(
-    () => filterSalesHistory(data, date, cashier),
-    [data, date, cashier],
+    () => filterSalesHistory(data, range.start, cashier, range.end),
+    [data, range, cashier],
   );
   return {
-    date,
-    setDate,
+    range,
+    setRange,
     cashier,
     setCashier,
     demo,

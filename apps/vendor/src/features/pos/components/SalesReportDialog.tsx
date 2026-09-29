@@ -69,8 +69,8 @@ export function SalesReportDialog({ branchId, onClose }: Props) {
           </button>
         </header>
         <DailySalesExport
-          date={history.date}
-          onDateChange={history.setDate}
+          range={history.range}
+          onRangeChange={history.setRange}
           cashier={history.cashier}
           onCashierChange={history.setCashier}
           employees={history.employees}

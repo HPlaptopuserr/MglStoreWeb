@@ -7,8 +7,8 @@ import { exportDailySales } from "../utils/export-daily-sales";
 import { salesDay } from "../utils/sales-history-filters";
 
 interface Props {
-  date: string;
-  onDateChange: (date: string) => void;
+  range: { start: string; end: string };
+  onRangeChange: (range: { start: string; end: string }) => void;
   cashier: string;
   onCashierChange: (cashier: string) => void;
   employees: { id: string; name: string }[];
@@ -18,8 +18,8 @@ interface Props {
   onDemoChange: (demo: boolean) => void;
 }
 export function DailySalesExport({
-  date,
-  onDateChange,
+  range,
+  onRangeChange,
   cashier,
   onCashierChange,
   employees,
@@ -30,14 +30,21 @@ export function DailySalesExport({
 }: Props) {
   const [exporting, setExporting] = useState(false);
   const [message, setMessage] = useState("");
+  const invalidRange = Boolean(
+    range.start && range.end && range.start > range.end,
+  );
+  const period =
+    !range.start && !range.end
+      ? "all-days"
+      : `${range.start || "beginning"}_${range.end || "latest"}`;
   async function download() {
-    if (loading || exporting) return;
+    if (loading || exporting || invalidRange) return;
     setExporting(true);
     setMessage("");
     try {
       await exportDailySales(
         receipts,
-        `${demo ? "TEST-" : ""}${date || "all-days"}${cashier ? "-employee" : ""}`,
+        `${demo ? "TEST-" : ""}${period}${cashier ? "-employee" : ""}`,
       );
       setMessage("Excel файл татагдлаа.");
     } catch (error) {
@@ -52,41 +59,70 @@ export function DailySalesExport({
     "min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm focus-visible:outline-blue-600";
   return (
     <div className="shrink-0 border-b border-slate-200 bg-slate-50 px-5 py-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
-          Огноо
-          <select
-            aria-label="Огнооны хүрээ"
-            value={date ? "day" : "all"}
-            onChange={(e) => {
-              onDateChange(
-                e.target.value === "all"
-                  ? ""
-                  : salesDay(new Date().toISOString()),
-              );
-              setMessage("");
-            }}
-            className={fieldClass}
-          >
-            <option value="day">Өдөр сонгох</option>
-            <option value="all">Бүх өдөр</option>
-          </select>
-        </label>
-        {date && (
-          <label className="flex flex-col gap-1 text-xs font-semibold text-slate-600">
-            Борлуулалтын өдөр
-            <input
-              aria-label="Борлуулалтын өдөр"
-              type="date"
-              value={date}
-              onChange={(e) => {
-                onDateChange(e.target.value);
+      <div
+        className="mb-3 flex flex-wrap gap-2"
+        aria-label="Хугацааны хурдан сонголт"
+      >
+        {[
+          { label: "Өнөөдөр", days: 1 },
+          { label: "Сүүлийн 7 хоног", days: 7 },
+          { label: "Бүх өдөр", days: 0 },
+        ].map(({ label, days }) => {
+          const today = salesDay(new Date().toISOString());
+          const start = days
+            ? salesDay(
+                new Date(Date.now() - (days - 1) * 86400000).toISOString(),
+              )
+            : "";
+          const end = days ? today : "";
+          const active = range.start === start && range.end === end;
+          return (
+            <button
+              key={label}
+              type="button"
+              aria-pressed={active}
+              onClick={() => {
+                onRangeChange({ start, end });
                 setMessage("");
               }}
-              className={fieldClass}
-            />
-          </label>
-        )}
+              className={`min-h-9 rounded-full border px-3 text-xs font-semibold transition focus-visible:outline-blue-600 ${active ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50"}`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold text-slate-600">
+          Эхлэх огноо
+          <input
+            type="date"
+            value={range.start}
+            max={range.end || undefined}
+            aria-invalid={invalidRange}
+            aria-describedby={invalidRange ? "sales-range-error" : undefined}
+            onChange={(event) => {
+              onRangeChange({ ...range, start: event.target.value });
+              setMessage("");
+            }}
+            className={`${fieldClass} w-full min-w-0`}
+          />
+        </label>
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold text-slate-600">
+          Дуусах огноо
+          <input
+            type="date"
+            value={range.end}
+            min={range.start || undefined}
+            aria-invalid={invalidRange}
+            aria-describedby={invalidRange ? "sales-range-error" : undefined}
+            onChange={(event) => {
+              onRangeChange({ ...range, end: event.target.value });
+              setMessage("");
+            }}
+            className={`${fieldClass} w-full min-w-0`}
+          />
+        </label>
         <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold text-slate-600">
           Ажилтан
           <select
@@ -96,7 +132,7 @@ export function DailySalesExport({
               onCashierChange(e.target.value);
               setMessage("");
             }}
-            className={`${fieldClass} max-w-64`}
+            className={`${fieldClass} w-full min-w-0`}
           >
             <option value="">Бүх ажилтан</option>
             {employees.map((employee) => (
@@ -110,6 +146,7 @@ export function DailySalesExport({
           type="button"
           onClick={download}
           disabled={
+            invalidRange ||
             loading ||
             exporting ||
             !receipts.some(
@@ -140,9 +177,18 @@ export function DailySalesExport({
           </label>
         )}
       </div>
+      {invalidRange && (
+        <p
+          id="sales-range-error"
+          role="alert"
+          className="mt-2 text-sm text-rose-700"
+        >
+          Эхлэх огноо дуусах огнооноос хойш байж болохгүй.
+        </p>
+      )}
       <p className="mt-2 text-xs text-slate-500">
         {receipts.length} баримт · Улаанбаатарын цагаар · Excel нь шүүлтүүрийг
-        дагана, буцаалтыг оруулахгүй
+        дагана · Эхлэх, дуусах өдрийг бүтнээр хамруулна · Буцаалтыг оруулахгүй
       </p>
       {demo && (
         <p

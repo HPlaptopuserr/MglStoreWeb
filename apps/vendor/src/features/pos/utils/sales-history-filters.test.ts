@@ -23,3 +23,31 @@ test("Mongolian day boundary uses Ulaanbaatar time", () => {
   assert.equal(salesDay("2026-09-28T15:59:59Z"), "2026-09-28");
   assert.equal(salesDay("2026-09-28T16:00:00Z"), "2026-09-29");
 });
+
+test("date ranges include both days and compose with cashier filtering", () => {
+  assert.equal(
+    filterSalesHistory(receipts, "2026-09-28", "", "2026-09-29").length,
+    4,
+  );
+  assert.equal(
+    filterSalesHistory(receipts, "2026-09-27", "demo-cashier-0", "2026-09-29")
+      .length,
+    3,
+  );
+  assert.equal(
+    filterSalesHistory(receipts, "2026-09-29", "", "2026-09-28").length,
+    0,
+  );
+  assert.equal(filterSalesHistory(receipts, "", "", "2026-09-28").length, 4);
+  assert.equal(filterSalesHistory(receipts, "2026-09-28", "", "").length, 4);
+  const boundaries = [
+    "2026-09-27T15:59:59Z",
+    "2026-09-27T16:00:00Z",
+    "2026-09-29T15:59:59Z",
+    "2026-09-29T16:00:00Z",
+  ].map((createdAt) => ({ ...receipts[0], createdAt }));
+  assert.equal(
+    filterSalesHistory(boundaries, "2026-09-28", "", "2026-09-29").length,
+    2,
+  );
+});
