@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canReleaseExpiredCheckoutAfterCancelFailure } from "./pos-qpay-cancel-policy";
+import { canReleaseCheckoutAfterCancelFailure } from "./pos-qpay-cancel-policy";
 
 test("releases an expired checkout after a successful unpaid provider recheck", () => {
   assert.equal(
-    canReleaseExpiredCheckoutAfterCancelFailure({
+    canReleaseCheckoutAfterCancelFailure({
       invoiceStatus: "EXPIRED",
       providerRecheckCompleted: true,
       providerPaymentConfirmed: false,
@@ -13,17 +13,28 @@ test("releases an expired checkout after a successful unpaid provider recheck", 
   );
 });
 
-test("keeps checkout when invoice is pending, paid, or provider recheck failed", () => {
+test("releases a pending checkout after a successful unpaid provider recheck", () => {
   assert.equal(
-    canReleaseExpiredCheckoutAfterCancelFailure({
+    canReleaseCheckoutAfterCancelFailure({
       invoiceStatus: "PENDING",
       providerRecheckCompleted: true,
       providerPaymentConfirmed: false,
     }),
+    true,
+  );
+});
+
+test("keeps checkout when payment is confirmed, recheck failed, or status is terminal", () => {
+  assert.equal(
+    canReleaseCheckoutAfterCancelFailure({
+      invoiceStatus: "PENDING",
+      providerRecheckCompleted: true,
+      providerPaymentConfirmed: true,
+    }),
     false,
   );
   assert.equal(
-    canReleaseExpiredCheckoutAfterCancelFailure({
+    canReleaseCheckoutAfterCancelFailure({
       invoiceStatus: "EXPIRED",
       providerRecheckCompleted: true,
       providerPaymentConfirmed: true,
@@ -31,9 +42,17 @@ test("keeps checkout when invoice is pending, paid, or provider recheck failed",
     false,
   );
   assert.equal(
-    canReleaseExpiredCheckoutAfterCancelFailure({
+    canReleaseCheckoutAfterCancelFailure({
       invoiceStatus: "EXPIRED",
       providerRecheckCompleted: false,
+      providerPaymentConfirmed: false,
+    }),
+    false,
+  );
+  assert.equal(
+    canReleaseCheckoutAfterCancelFailure({
+      invoiceStatus: "PAID",
+      providerRecheckCompleted: true,
       providerPaymentConfirmed: false,
     }),
     false,

@@ -1,5 +1,5 @@
 import { isPaymentRequestId, matchesPaymentRequest } from "../../../services/payment-request-identity";
-import { canReleaseExpiredCheckoutAfterCancelFailure } from "../../../services/pos-qpay-cancel-policy";
+import { canReleaseCheckoutAfterCancelFailure } from "../../../services/pos-qpay-cancel-policy";
 import { verifiedQPayPaymentId } from "../../../services/qpay-payment-verification";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
@@ -584,7 +584,7 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
         }
 
         if (
-          !canReleaseExpiredCheckoutAfterCancelFailure({
+          !canReleaseCheckoutAfterCancelFailure({
             invoiceStatus: invoice.status,
             providerRecheckCompleted,
             providerPaymentConfirmed,
@@ -602,7 +602,7 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
         providerCancelWarning =
           error instanceof Error ? error.message : String(error);
         console.warn(
-          "[SystemQR] Expired unpaid checkout released after provider cancel failure",
+          "[SystemQR] Unpaid checkout released after provider cancel failure",
           { invoiceId: invoice.id, providerCancelWarning },
         );
       }
@@ -638,7 +638,7 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
               }),
           cancelledById: actor.id,
           cancelReason: providerCancelWarning
-            ? "EXPIRED_PROVIDER_CANCEL_FAILED"
+            ? "PROVIDER_CANCEL_FAILED_UNPAID"
             : "SELF_SERVICE_ORDER_CHANGE",
         } as unknown as Prisma.JsonObject,
       },
@@ -659,7 +659,7 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
       ...(providerCancelWarning
         ? {
             warning:
-              "Minu цуцлалт алдаатай байсан ч хугацаа дууссан төлбөрийг дахин шалгахад төлөгдөөгүй тул checkout-ийг хаалаа.",
+              "Minu цуцлалт алдаатай байсан ч төлбөрийг дахин шалгахад төлөгдөөгүй тул checkout-ийг хаалаа.",
           }
         : {}),
     });

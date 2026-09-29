@@ -1,10 +1,10 @@
-export function canReleaseExpiredCheckoutAfterCancelFailure(input: {
+export function canReleaseCheckoutAfterCancelFailure(input: {
   invoiceStatus: string;
   providerRecheckCompleted: boolean;
   providerPaymentConfirmed: boolean;
 }) {
   return (
-    input.invoiceStatus === "EXPIRED" &&
+    ["PENDING", "EXPIRED"].includes(input.invoiceStatus) &&
     input.providerRecheckCompleted &&
     !input.providerPaymentConfirmed
   );
