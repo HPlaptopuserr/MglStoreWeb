@@ -77,11 +77,15 @@ export function buildSalesExportRows(receipts: PosReceipt[]) {
       row.qty += line.qty;
       row.amount += line.lineTotal;
       summary.set(key, row);
+      const receiptContext = context(receipt);
+      const { Ажилтан, Огноо, "Цаг (Улаанбаатар)": saleTime, ...metadata } = receiptContext;
       return {
-        ...context(receipt),
-        "Төлбөрийн хэлбэр": paymentNames(receipt),
-        "Барааны ID": line.productId,
         Бараа: line.name,
+        Ажилтан,
+        Огноо,
+        "Цаг (Улаанбаатар)": saleTime,
+        "Төлбөрийн хэлбэр": paymentNames(receipt),
+        ...metadata,
         SKU: line.sku ?? "",
         Баркод: line.barcode ?? "",
         "Ангилал (одоогийн)": line.catalog?.category ?? "",
@@ -105,7 +109,6 @@ export function buildSalesExportRows(receipts: PosReceipt[]) {
     }),
   );
   const totals = [...summary.values()].map((row) => ({
-    "Барааны ID": row.productId,
     Бараа: row.name,
     SKU: row.sku,
     Баркод: row.barcode,

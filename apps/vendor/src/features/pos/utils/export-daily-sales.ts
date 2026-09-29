@@ -8,8 +8,8 @@ export async function exportDailySales(receipts: PosReceipt[], date: string) {
   const XLSX = await import("xlsx");
   const workbook = XLSX.utils.book_new();
   const sheets = [
-    { name: "Бараагаар нэгтгэл", rows: rows.totals },
     { name: "Борлуулалтын дэлгэрэнгүй", rows: rows.details },
+    { name: "Бараагаар нэгтгэл", rows: rows.totals },
     { name: "Баримтууд", rows: rows.sales },
     { name: "Төлбөрийн задаргаа", rows: rows.payments },
     {

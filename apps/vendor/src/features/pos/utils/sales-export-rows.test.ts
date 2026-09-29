@@ -51,3 +51,11 @@ test("missing historical cost stays blank rather than reporting a zero cost", ()
     assert.equal(receipt.paymentBreakdown?.reduce((sum, payment) => sum + payment.amount, 0), receipt.grandTotal);
   }
 });
+
+test("export leads with item, seller, date, time and payment without product IDs", () => {
+  const rows = buildSalesExportRows(createSalesHistoryDemo());
+  assert.deepEqual(Object.keys(rows.details[0]).slice(0, 5), ["Бараа", "Ажилтан", "Огноо", "Цаг (Улаанбаатар)", "Төлбөрийн хэлбэр"]);
+  for (const row of [...rows.details, ...rows.totals]) {
+    assert.equal("Барааны ID" in row, false);
+  }
+});
