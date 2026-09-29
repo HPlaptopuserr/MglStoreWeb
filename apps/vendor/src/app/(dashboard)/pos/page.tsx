@@ -4,7 +4,7 @@ import { normalizeCashPayment, summarizeCashPayments, type CashPaymentDetails } 
 import { VendorNavigationActions } from "@/features/session/VendorNavigationActions";
 import registerLayout from "@/features/pos/components/PosRegisterLayout.module.css";
 import { PosProductList } from "@/features/pos/components/PosProductList";
-import { SalesHistoryDialog } from "@/features/pos/components/SalesHistoryDialog";
+import { CurrentShiftHistory } from "@/features/pos/components/CurrentShiftHistory";
 import { CashChangeNotice } from "@/features/pos/components/CashChangeNotice";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -3416,13 +3416,6 @@ export default function PosDemoPage() {
   return (
     <>
       <MobileBlock />
-      {salesHistoryOpen && (
-        <SalesHistoryDialog
-          register={registerConfig}
-          onVoided={handleReceiptVoided}
-          onClose={() => setSalesHistoryOpen(false)}
-        />
-      )}
       <CashChangeNotice receipt={cashChangeReceipt} onDismiss={() => { setCashChangeReceipt(null); setCustomerDisplaySuccess(null); }} />
       {pendingEbarimtSale && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
@@ -3871,6 +3864,7 @@ export default function PosDemoPage() {
                           );
                           setShowShiftPanel(false);
                           setShowShiftHistoryPanel(false);
+                          setSalesHistoryOpen(false);
                           setView("register");
                           setOpeningCashInput("");
                           setScanMessage("Ээлж нээгдлээ. Борлуулалтаа эхлүүлнэ үү.");
@@ -4121,6 +4115,7 @@ export default function PosDemoPage() {
               type="button"
               onClick={() => {
                 if (tab.id === "shift") {
+                  setSalesHistoryOpen(false);
                   setShowShiftPanel(true);
                   setShowShiftHistoryPanel(true);
                   setShowCashDrawerPanel(false);
@@ -4133,12 +4128,13 @@ export default function PosDemoPage() {
                     setSalesHistoryOpen(true);
                     reloadReceiptHistory();
                   } else {
+                    setSalesHistoryOpen(false);
                     setView("register");
                   }
                 }
               }}
               className={`h-9 rounded-lg px-4 text-sm font-bold transition-colors ${
-                (tab.id === "shift" ? showShiftHistoryPanel : tab.id === "history" ? salesHistoryOpen : !salesHistoryOpen)
+                (tab.id === "shift" ? showShiftHistoryPanel : tab.id === "history" ? salesHistoryOpen : !salesHistoryOpen && !showShiftHistoryPanel)
                   ? "bg-blue-600 text-white shadow-sm"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
               }`}
@@ -4310,6 +4306,7 @@ export default function PosDemoPage() {
 
       <div className={registerLayout.workspace}>
         <section className={registerLayout.column}>
+          {salesHistoryOpen ? <CurrentShiftHistory receipts={receiptHistory} selectedReceipt={receiptForPreview} register={registerConfig} loading={receiptHistoryLoading} error={receiptHistoryError} onSelect={setSelectedReceiptId} onRefresh={reloadReceiptHistory} onVoided={handleReceiptVoided} /> : <>
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="hidden mb-3 flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -4740,6 +4737,7 @@ export default function PosDemoPage() {
               />
             )}
           </div>
+          </>}
         </section>
 
         <section ref={paymentSectionRef} className={registerLayout.column}>

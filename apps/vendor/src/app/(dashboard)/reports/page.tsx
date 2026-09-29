@@ -13,6 +13,7 @@ import {
   Search,
   SlidersHorizontal,
 } from "lucide-react";
+import { SalesReportEntry } from "@/features/reports/SalesReportEntry";
 import { API, authFetch } from "@/lib/api";
 import type { Product } from "@/features/products";
 import {
@@ -71,6 +72,7 @@ function readVendorSession(): VendorSession {
 
 export default function ReportsPage() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [organizationId, setOrganizationId] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -107,6 +109,7 @@ export default function ReportsPage() {
       return;
     }
 
+    setOrganizationId(session.organizationId);
     setOrganizationName(session.organizationName || "");
     setLoading(true);
     setError(null);
@@ -346,6 +349,7 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6 pb-10">
+      <SalesReportEntry organizationId={organizationId} />
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-2 text-indigo-600">

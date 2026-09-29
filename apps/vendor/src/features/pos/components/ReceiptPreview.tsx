@@ -16,9 +16,10 @@ type Props = {
   register?: RegisterConfig | null;
   onVoided?: (message: string) => void;
   className?: string;
+  allowReturns?: boolean;
 };
 
-export function ReceiptPreview({ receipt, register, onVoided, className = "" }: Props) {
+export function ReceiptPreview({ receipt, register, onVoided, allowReturns = true, className = "" }: Props) {
   const [terminalVoiding, setTerminalVoiding] = useState(false);
   const [terminalVoidResult, setTerminalVoidResult] = useState<{ succeed: boolean; message?: string } | null>(null);
   const [saleVoiding, setSaleVoiding] = useState(false);
@@ -157,7 +158,7 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
             <Printer className="h-3.5 w-3.5" />
             Хэвлэх
           </button>
-          {!isVoided && cardLine && !terminalVoidResult?.succeed && (
+          {allowReturns && !isVoided && cardLine && !terminalVoidResult?.succeed && (
             <button
               type="button"
               onClick={handleTerminalVoid}
@@ -168,7 +169,7 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
               Terminal буцаалт
             </button>
           )}
-          {!isVoided && !saleVoidResult?.succeed && (
+          {allowReturns && !isVoided && !saleVoidResult?.succeed && (
             <button
               type="button"
               onClick={handleSaleVoid}

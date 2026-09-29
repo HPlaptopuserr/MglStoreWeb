@@ -3,19 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, ReceiptText, RefreshCw, X } from "lucide-react";
-import type { PosReceipt, RegisterConfig } from "@mgl/types";
 import { DailySalesExport } from "./DailySalesExport";
 import { useSalesHistory } from "../hooks/useSalesHistory";
+import { ReceiptHistoryItem } from "./ReceiptHistoryItem";
 import { ReceiptPreview } from "./ReceiptPreview";
 
 interface Props {
-  register: RegisterConfig | null;
-  onVoided: (message: string) => void;
+  branchId: string;
   onClose: () => void;
 }
 
-export function SalesHistoryDialog({ register, onVoided, onClose }: Props) {
-  const history = useSalesHistory(register?.branchId);
+export function SalesReportDialog({ branchId, onClose }: Props) {
+  const history = useSalesHistory(branchId);
   const { receipts, loading, error } = history;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selectedReceipt =
@@ -55,7 +54,7 @@ export function SalesHistoryDialog({ register, onVoided, onClose }: Props) {
               className="flex items-center gap-2 text-lg font-bold"
             >
               <ReceiptText className="h-5 w-5 text-blue-600" />
-              Борлуулалтын түүх
+              Борлуулалтын дэлгэрэнгүй тайлан
             </h2>
             <p className="mt-1 text-xs text-slate-500">
               Салбарын {receipts.length} баримт · Дэлгэрэнгүй харах, дахин
@@ -66,7 +65,7 @@ export function SalesHistoryDialog({ register, onVoided, onClose }: Props) {
             type="button"
             onClick={onClose}
             autoFocus
-            aria-label="Борлуулалтын түүх хаах"
+            aria-label="Борлуулалтын дэлгэрэнгүй тайлан хаах"
             className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600"
           >
             <X size={20} />
@@ -162,12 +161,8 @@ export function SalesHistoryDialog({ register, onVoided, onClose }: Props) {
                   </div>
                 ) : (
                   <ReceiptPreview
+                    allowReturns={false}
                     receipt={selectedReceipt}
-                    register={register}
-                    onVoided={(message) => {
-                      onVoided(message);
-                      history.refresh();
-                    }}
                     className="w-full shadow-sm"
                   />
                 )}
@@ -183,52 +178,5 @@ export function SalesHistoryDialog({ register, onVoided, onClose }: Props) {
       </div>
     </dialog>,
     document.body,
-  );
-}
-
-function ReceiptHistoryItem({
-  receipt,
-  selected,
-  onSelect,
-}: {
-  receipt: PosReceipt;
-  selected: boolean;
-  onSelect: (id: string) => void;
-}) {
-  const voided = receipt.status === "VOIDED";
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(receipt.id)}
-      aria-pressed={selected}
-      className={`w-full rounded-xl border p-3 text-left transition focus-visible:outline-2 focus-visible:outline-blue-600 ${selected ? "border-blue-300 bg-blue-50" : "border-slate-200 bg-white hover:border-blue-200 hover:bg-slate-50"}`}
-    >
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="break-all text-sm font-bold">
-          #{receipt.receiptNo}
-        </span>
-        <span
-          className={`rounded-full px-2 py-1 text-[10px] font-bold ${voided ? "bg-rose-50 text-rose-600" : "bg-emerald-50 text-emerald-700"}`}
-        >
-          {voided ? "Буцаагдсан" : "Амжилттай"}
-        </span>
-      </div>
-      <p className="mt-2 break-words text-xs text-slate-600">
-        {receipt.cashierName}
-      </p>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs text-slate-500">
-          {new Date(receipt.createdAt).toLocaleString("mn-MN", {
-            timeZone: "Asia/Ulaanbaatar",
-          })}
-        </span>
-        <strong className="text-sm tabular-nums">
-          ₮
-          {receipt.grandTotal.toLocaleString("mn-MN", {
-            maximumFractionDigits: 2,
-          })}
-        </strong>
-      </div>
-    </button>
   );
 }
