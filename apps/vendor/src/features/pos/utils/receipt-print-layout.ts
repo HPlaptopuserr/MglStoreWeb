@@ -66,4 +66,4 @@ export const receiptPrintCss = `
 
 `;
 
-export const receiptPrintFooter = `<footer class="receipt-thanks"><strong>Баярлалаа!</strong><p>Та дахин үйлчлүүлээрэй.</p></footer>`;
+export const receiptPrintFooter = `<footer class="receipt-thanks"><strong>Мөнгөө Монголдоо үлдээе</strong><p>Эм Жи Эл Стороор дахин үйлчлүүлээрэй!</p></footer>`;
