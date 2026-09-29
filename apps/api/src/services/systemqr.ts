@@ -484,10 +484,10 @@ export async function cancelSystemQrInvoice(
   username?: string,
   password?: string,
 ) {
-  const { deeplinkBaseUrl } = systemQrEnv();
+  const { deeplinkBaseUrl, qrpayBaseUrl } = systemQrEnv();
 
   try {
-    const data = await fetchSystemQrJsonWithTokenRetry<any>(
+    const dynamicQrResult = await fetchSystemQrJsonWithTokenRetry<any>(
       (token) =>
         paymentProviderFetch(`${deeplinkBaseUrl}/subMerchant/cancelQr`, {
           method: "POST",
@@ -504,10 +504,30 @@ export async function cancelSystemQrInvoice(
       password,
     );
 
-    if (data.status !== "000") {
+    if (dynamicQrResult.status === "000") return;
+
+    // Some Minu environments expose cancellation only through the original
+    // qrpay endpoint even though create/check use the Dynamic QR endpoints.
+    const legacyResult = await fetchSystemQrJsonWithTokenRetry<any>(
+      (token) =>
+        paymentProviderFetch(`${qrpayBaseUrl}/cancelQr`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ invoiceNumber: params.invoiceNumber }),
+        }),
+      username,
+      password,
+    );
+
+    if (legacyResult.status !== "000") {
       throw new Error(
-        `Minu Dynamic QR cancel failed (${data.status || "unknown"}): ${
-          data.message || "SystemQR invoice cancellation failed"
+        `Minu Dynamic QR cancel failed (${dynamicQrResult.status || "unknown"}): ${
+          dynamicQrResult.message || "SystemQR invoice cancellation failed"
+        }; legacy cancel failed (${legacyResult.status || "unknown"}): ${
+          legacyResult.message || "SystemQR invoice cancellation failed"
         }`,
       );
     }

@@ -92,3 +92,59 @@ test("cancelSystemQrInvoice cancels the exact Minu invoice", async (t) => {
     },
   ]);
 });
+
+test("cancelSystemQrInvoice falls back to the legacy Minu cancel endpoint", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalBaseUrl = process.env.SYSTEMQR_BASE_URL;
+  const originalDeeplinkUrl = process.env.SYSTEMQR_DEEPLINK_URL;
+  const requests: Array<{ url: string; body: unknown }> = [];
+
+  process.env.SYSTEMQR_BASE_URL = "https://systemqr.example/qrpay";
+  process.env.SYSTEMQR_DEEPLINK_URL = "https://systemqr.example/deeplink";
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    requests.push({
+      url,
+      body: init?.body ? JSON.parse(String(init.body)) : null,
+    });
+    if (url.endsWith("/login")) {
+      return Response.json({ status: "000", entity: "test-token" });
+    }
+    if (url.includes("/subMerchant/cancelQr")) {
+      return Response.json({ status: "001", message: "Системийн алдаа" });
+    }
+    return Response.json({ status: "000", message: "success" });
+  };
+
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalBaseUrl === undefined) delete process.env.SYSTEMQR_BASE_URL;
+    else process.env.SYSTEMQR_BASE_URL = originalBaseUrl;
+    if (originalDeeplinkUrl === undefined) delete process.env.SYSTEMQR_DEEPLINK_URL;
+    else process.env.SYSTEMQR_DEEPLINK_URL = originalDeeplinkUrl;
+  });
+
+  await cancelSystemQrInvoice(
+    { merchantCode: "MERCHANT-123", invoiceNumber: "MINU-123" },
+    "merchant-user-fallback",
+    "merchant-password-fallback",
+  );
+
+  assert.deepEqual(requests, [
+    {
+      url: "https://systemqr.example/qrpay/login",
+      body: {
+        username: "merchant-user-fallback",
+        password: "merchant-password-fallback",
+      },
+    },
+    {
+      url: "https://systemqr.example/deeplink/subMerchant/cancelQr",
+      body: { merchantCode: "MERCHANT-123", invoiceNumber: "MINU-123" },
+    },
+    {
+      url: "https://systemqr.example/qrpay/cancelQr",
+      body: { invoiceNumber: "MINU-123" },
+    },
+  ]);
+});
