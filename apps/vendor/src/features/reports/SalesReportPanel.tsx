@@ -7,11 +7,19 @@ import { SoldProductsList } from "@/features/pos/components/SoldProductsList";
 
 interface Props {
   branchId: string;
+  demo: boolean;
+  onDemoChange: (demo: boolean) => void;
   range: { start: string; end: string };
   onRangeChange: (range: { start: string; end: string }) => void;
 }
-export function SalesReportPanel({ branchId, range, onRangeChange }: Props) {
-  const history = useSalesHistory(branchId, range);
+export function SalesReportPanel({
+  branchId,
+  range,
+  onRangeChange,
+  demo,
+  onDemoChange,
+}: Props) {
+  const history = useSalesHistory(branchId, range, demo);
   const completed = useMemo(
     () => history.receipts.filter((receipt) => receipt.status === "COMPLETED"),
     [history.receipts],
@@ -26,8 +34,8 @@ export function SalesReportPanel({ branchId, range, onRangeChange }: Props) {
         employees={history.employees}
         receipts={completed}
         loading={history.loading}
-        demo={history.demo}
-        onDemoChange={history.setDemo}
+        demo={demo}
+        onDemoChange={onDemoChange}
       />
       <div className="flex justify-end">
         <button

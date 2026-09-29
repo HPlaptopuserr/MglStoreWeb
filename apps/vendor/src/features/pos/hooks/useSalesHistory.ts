@@ -10,13 +10,16 @@ import {
 export function useSalesHistory(
   branchId?: string,
   selectedRange?: { start: string; end: string },
+  demoOverride?: boolean,
 ) {
   const [range, setRange] = useState(() => {
     const today = salesDay(new Date().toISOString());
     return { start: today, end: today };
   });
   const [cashier, setCashier] = useState("");
-  const [demo, setDemo] = useState(false);
+  const [localDemo, setDemo] = useState(false);
+  const demo = demoOverride ?? localDemo;
+  const demoDay = demo ? selectedRange?.end : undefined;
   const [revision, setRevision] = useState(0);
   const [data, setData] = useState<PosReceipt[]>([]);
   const [loading, setLoading] = useState(true);
@@ -32,7 +35,9 @@ export function useSalesHistory(
         if (demo && process.env.NODE_ENV !== "production") {
           const { createSalesHistoryDemo } =
             await import("../utils/sales-history-demo");
-          rows = createSalesHistoryDemo();
+          rows = createSalesHistoryDemo(
+            demoDay ? new Date(`${demoDay}T12:00:00+08:00`) : new Date(),
+          );
         } else {
           if (!branchId)
             throw new Error("Салбарын мэдээлэл олдсонгүй. Кассаа сонгоно уу.");
@@ -56,7 +61,7 @@ export function useSalesHistory(
     }
     void load();
     return () => controller.abort();
-  }, [branchId, demo, revision]);
+  }, [branchId, demo, demoDay, revision]);
   const employees = useMemo(
     () =>
       [

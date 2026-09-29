@@ -9,10 +9,14 @@ interface Branch {
 }
 export function SalesReportEntry({
   organizationId,
+  demo,
+  onDemoChange,
   range,
   onRangeChange,
 }: {
   organizationId: string;
+  demo: boolean;
+  onDemoChange: (demo: boolean) => void;
   range: { start: string; end: string };
   onRangeChange: (range: { start: string; end: string }) => void;
 }) {
@@ -98,10 +102,12 @@ export function SalesReportEntry({
           Бүртгэлтэй салбар байхгүй байна.
         </p>
       )}
-      {branchId && !loading && (
+      {(branchId || demo) && !loading && (
         <SalesReportPanel
           key={branchId}
           branchId={branchId}
+          demo={demo}
+          onDemoChange={onDemoChange}
           range={range}
           onRangeChange={onRangeChange}
         />

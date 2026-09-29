@@ -13,6 +13,8 @@ import {
   Search,
   SlidersHorizontal,
 } from "lucide-react";
+import { createReportDemo } from "@/features/reports/report-demo";
+import { salesDay } from "@/features/pos/utils/sales-history-filters";
 import { SalesReportEntry } from "@/features/reports/SalesReportEntry";
 import { API, authFetch } from "@/lib/api";
 import type { Product } from "@/features/products";
@@ -71,6 +73,7 @@ function readVendorSession(): VendorSession {
 }
 
 export default function ReportsPage() {
+  const [demo, setDemo] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [organizationId, setOrganizationId] = useState("");
   const [organizationName, setOrganizationName] = useState("");
@@ -209,21 +212,31 @@ export default function ReportsPage() {
     void loadBestSellingProducts();
   }, [loadBestSellingProducts]);
 
+  const demoData = useMemo(
+    () =>
+      createReportDemo(toDate || salesDay(new Date().toISOString()), fromDate),
+    [toDate, fromDate],
+  );
+  const reportProducts = demo ? demoData.products : products;
+  const reportBestSelling = demo
+    ? demoData.bestSellingProducts
+    : bestSellingProducts;
+
   const categories = useMemo(
     () =>
       Array.from(
         new Set(
-          products
+          reportProducts
             .map((product) => product.businessCategory?.name)
             .filter((name): name is string => Boolean(name)),
         ),
       ).sort((a, b) => a.localeCompare(b, "mn")),
-    [products],
+    [reportProducts],
   );
 
   const baseFilteredProducts = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("mn");
-    return products.filter((product) => {
+    return reportProducts.filter((product) => {
       const matchesSearch =
         !query ||
         product.name.toLocaleLowerCase("mn").includes(query) ||
@@ -237,7 +250,7 @@ export default function ReportsPage() {
         category === "all" || product.businessCategory?.name === category;
       return matchesSearch && matchesStatus && matchesCategory;
     });
-  }, [category, products, search, status]);
+  }, [category, reportProducts, search, status]);
 
   const filteredProducts = useMemo(() => {
     return baseFilteredProducts.filter((product) =>
@@ -279,15 +292,23 @@ export default function ReportsPage() {
     setExportFormat(null);
     setExporting(format);
     try {
-      const exportProducts = baseFilteredProducts.filter((product) =>
+      const exportProducts = (
+        demo
+          ? createReportDemo(exportToDate || salesDay(new Date().toISOString()))
+              .products
+          : baseFilteredProducts
+      ).filter((product) =>
         isProductInDateRange(product, exportFromDate, exportToDate),
       );
       if (exportProducts.length === 0) {
         throw new Error("Сонгосон хугацаанд тайланд оруулах бараа олдсонгүй.");
       }
 
-      let periodBestSellingProducts = bestSellingProducts;
-      if (exportFromDate !== fromDate || exportToDate !== toDate) {
+      let periodBestSellingProducts = demo
+        ? createReportDemo(exportToDate || salesDay(new Date().toISOString()))
+            .bestSellingProducts
+        : bestSellingProducts;
+      if (!demo && (exportFromDate !== fromDate || exportToDate !== toDate)) {
         const session = readVendorSession();
         if (!session.organizationId) {
           throw new Error("Байгууллагын мэдээлэл олдсонгүй.");
@@ -331,7 +352,9 @@ export default function ReportsPage() {
         `Хүлээн авсан / бүртгэсэн: ${exportFromDate} - ${exportToDate}`,
       ].filter((value): value is string => Boolean(value));
       const options = {
-        organizationName,
+        organizationName: demo
+          ? "TEST — Туршилтын байгууллага"
+          : organizationName,
         products: exportProducts,
         filterDescription: filters.join(" · "),
         bestSellingProducts: periodBestSellingProducts,
@@ -651,7 +674,24 @@ export default function ReportsPage() {
         </div>
       </section>
 
-      {error && (
+      {process.env.NODE_ENV !== "production" && (
+        <label className="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-900">
+          <input
+            type="checkbox"
+            checked={demo}
+            onChange={(event) => {
+              setDemo(event.target.checked);
+              setError(null);
+              setSearch("");
+              setCategory("all");
+              setStatus("all");
+            }}
+          />
+          Тест өгөгдөл — бүх тайлан, хүснэгт, Excel-д үйлчилнэ. Бодит бүртгэлд
+          хадгалахгүй.
+        </label>
+      )}
+      {error && !demo && (
         <div
           role="alert"
           className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
@@ -661,14 +701,16 @@ export default function ReportsPage() {
       )}
       <ProductReportSummary totals={totals} />
       <BestSellingProducts
-        products={bestSellingProducts}
-        loading={salesLoading}
-        error={salesError}
+        products={reportBestSelling}
+        loading={!demo && salesLoading}
+        error={demo ? null : salesError}
         onRetry={() => void loadBestSellingProducts()}
       />
 
       <SalesReportEntry
         organizationId={organizationId}
+        demo={demo}
+        onDemoChange={setDemo}
         range={{ start: fromDate, end: toDate }}
         onRangeChange={({ start, end }) => {
           setFromDate(start);
