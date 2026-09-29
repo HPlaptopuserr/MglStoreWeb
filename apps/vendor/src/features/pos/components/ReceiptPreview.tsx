@@ -9,7 +9,7 @@ import { voidPushEcr } from "../api/payments";
 import { returnLocalEbarimtReceipt, sendLocalEbarimtData } from "../api/ebarimt";
 import { voidSale } from "../api/void-sale";
 import { formatReceipt } from "../utils/format-receipt";
-import { receiptPrintLayout, receiptPrintCss } from "../utils/receipt-print-layout";
+import { receiptPrintLayout, receiptPrintCss, receiptPrintFooter } from "../utils/receipt-print-layout";
 import { printThermalDocument } from "../utils/print-thermal-document";
 
 type Props = {
@@ -41,7 +41,7 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
   const handlePrint = () => {
     const qrMarkup = ebarimtQrRef.current?.innerHTML || "";
     printThermalDocument({
-      bodyHtml: `${receiptPrintLayout(receipt)}${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR код</p>${qrMarkup}</div>` : ""}`,
+      bodyHtml: `${receiptPrintLayout(receipt)}${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR код</p>${qrMarkup}</div>` : ""}${receiptPrintFooter}`,
       extraCss: `${receiptPrintCss}
 
         .ebarimt-qr { margin-top: 3mm; text-align: center; }
