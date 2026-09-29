@@ -50,6 +50,10 @@ type Props = {
   onRemovePayment: (id: string) => void;
   onResetPayments: () => void;
   onFinalize: () => void;
+  onFinalizeCash: (
+    amount: number,
+    cash: CashPaymentDetails,
+  ) => void | Promise<void>;
   canFinalize: boolean;
   onBack: () => void;
   disabled?: boolean;
@@ -137,6 +141,7 @@ export function PosCheckoutView({
   onRemovePayment,
   onResetPayments,
   onFinalize,
+  onFinalizeCash,
   canFinalize,
   onBack,
   disabled,
@@ -248,6 +253,11 @@ export function PosCheckoutView({
   const handlePrimaryAction = () => {
     const amount = paymentAmount;
     if (amount <= 0) return;
+
+    if (isCashTender) {
+      runPaymentAction(amount);
+      return;
+    }
 
     if (!loyaltyPromptSeen) {
       setLoyaltyPromptStep("ASK");
@@ -423,38 +433,55 @@ export function PosCheckoutView({
             </div>
           )}
 
+          {isCashTender && (
+            <button
+              type="button"
+              onClick={() => {
+                setLoyaltyPromptStep("ASK");
+                setLoyaltyPanelOpen(true);
+              }}
+              disabled={disabled || cashPayment.submitting}
+              className="shrink-0 rounded-lg border border-zinc-700 px-3 py-2 text-xs text-zinc-300 hover:bg-zinc-800"
+            >
+              M Point ашиглах (заавал биш)
+            </button>
+          )}
           <div className="grid shrink-0 grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={handlePrimaryAction}
-              disabled={
-                disabled ||
-                cashPayment.submitting ||
-                remaining <= 0 ||
-                (isCashTender && !cashPayment.preview)
-              }
-              className="rounded-xl bg-amber-500 px-3 py-3 text-xs font-black text-black hover:bg-amber-400 disabled:opacity-40 max-[1500px]:py-2.5 max-[1180px]:text-[11px] [@media(max-height:850px)]:py-2"
-            >
-              {cashPayment.submitting
-                ? "Бүртгэж байна…"
-                : isCashTender
-                  ? loyaltyPromptSeen
-                    ? "Бэлэн төлбөр батлах"
-                    : "Үргэлжлүүлэх"
-                  : paymentMethod === "QR"
-                    ? `QPay ₮${paymentAmount.toLocaleString()}`
-                    : `${PAYMENT_OPTIONS.find((item) => item.value === paymentMethod)?.label || "Төлбөр"} ₮${paymentAmount.toLocaleString()}`}
-            </button>
-            <button
-              type="button"
-              onClick={onResetPayments}
-              disabled={
-                disabled || paymentEntries.length === 0 || hasConfirmedQPay
-              }
-              className="rounded-xl border border-zinc-700 px-3 py-3 text-xs font-bold text-zinc-300 hover:border-zinc-500 disabled:opacity-40 max-[1500px]:py-2.5 max-[1180px]:text-[11px] [@media(max-height:850px)]:py-2"
-            >
-              Төлбөрүүд цэвэрлэх
-            </button>
+            {(!isCashTender ||
+              (cashPayment.preview &&
+                cashPayment.preview.amount < remaining)) && (
+              <button
+                type="button"
+                onClick={handlePrimaryAction}
+                disabled={
+                  disabled ||
+                  cashPayment.submitting ||
+                  remaining <= 0 ||
+                  (isCashTender && !cashPayment.preview)
+                }
+                className="rounded-xl bg-amber-500 px-3 py-3 text-xs font-black text-black hover:bg-amber-400 disabled:opacity-40 max-[1500px]:py-2.5 max-[1180px]:text-[11px] [@media(max-height:850px)]:py-2"
+              >
+                {cashPayment.submitting
+                  ? "Бүртгэж байна…"
+                  : isCashTender
+                    ? "Хэсэгчилсэн төлбөр нэмэх"
+                    : paymentMethod === "QR"
+                      ? `QPay ₮${paymentAmount.toLocaleString()}`
+                      : `${PAYMENT_OPTIONS.find((item) => item.value === paymentMethod)?.label || "Төлбөр"} ₮${paymentAmount.toLocaleString()}`}
+              </button>
+            )}
+            {paymentEntries.length > 0 && (
+              <button
+                type="button"
+                onClick={onResetPayments}
+                disabled={
+                  disabled || paymentEntries.length === 0 || hasConfirmedQPay
+                }
+                className="rounded-xl border border-zinc-700 px-3 py-3 text-xs font-bold text-zinc-300 hover:border-zinc-500 disabled:opacity-40 max-[1500px]:py-2.5 max-[1180px]:text-[11px] [@media(max-height:850px)]:py-2"
+              >
+                Төлбөрүүд цэвэрлэх
+              </button>
+            )}
           </div>
 
           <PaymentKeypad
@@ -703,8 +730,30 @@ export function PosCheckoutView({
           <div className="space-y-2 shrink-0">
             <button
               type="button"
-              onClick={onFinalize}
-              disabled={disabled || !canFinalize}
+              onClick={() => {
+                if (canFinalize) {
+                  onFinalize();
+                  return;
+                }
+                const preview = cashPayment.preview;
+                if (!isCashTender || !preview || preview.amount < remaining)
+                  return;
+                void cashPayment.submit(() =>
+                  onFinalizeCash(preview.amount, preview.cash),
+                );
+              }}
+              disabled={
+                disabled ||
+                cashPayment.submitting ||
+                (!canFinalize &&
+                  !(
+                    isCashTender &&
+                    cashPayment.preview &&
+                    cashPayment.preview.amount >= remaining &&
+                    remaining > 0 &&
+                    !paymentEntries.some((entry) => entry.status === "pending")
+                  ))
+              }
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-amber-500 px-6 py-4 text-base font-black text-black shadow-lg shadow-amber-900/30 transition-colors hover:bg-amber-400 active:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-40 max-[1500px]:py-3 max-[1500px]:text-sm [@media(max-height:850px)]:py-2.5"
             >
               Гүйлгээ батлах

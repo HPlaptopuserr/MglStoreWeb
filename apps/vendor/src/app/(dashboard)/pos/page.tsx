@@ -1696,6 +1696,13 @@ export default function PosDemoPage() {
     [paymentEntries],
   );
 
+  const loyaltyReady = (loyalty.mode === "NONE" ||
+      (loyalty.found &&
+        loyalty.phone.replace(/\D/g, "").length >= 6 &&
+        (loyalty.mode !== "REDEEM" ||
+          (loyaltyRedeemSession?.status === "CONFIRMED" &&
+            loyaltyRedeemSession.requestedPoints === Math.floor(loyalty.redeemPoints || 0)))));
+
   const canFinalizeSale =
     state.cart.length > 0 &&
     (paymentEntries.length > 0 || payableTotal <= 0) &&
@@ -1704,12 +1711,7 @@ export default function PosDemoPage() {
     !hasPendingPayment &&
     !isCardProcessing &&
     !creditRepaymentSubmitting &&
-    (loyalty.mode === "NONE" ||
-      (loyalty.found &&
-        loyalty.phone.replace(/\D/g, "").length >= 6 &&
-        (loyalty.mode !== "REDEEM" ||
-          (loyaltyRedeemSession?.status === "CONFIRMED" &&
-            loyaltyRedeemSession.requestedPoints === Math.floor(loyalty.redeemPoints || 0)))));
+    loyaltyReady;
 
   const productCodeIndex = useMemo(() => {
     const index = new Map<string, (typeof products)[number]>();
@@ -4062,13 +4064,19 @@ export default function PosDemoPage() {
           onRemovePayment={removePaymentEntry}
           onResetPayments={resetPaymentEntries}
           onFinalize={handleCreateDemoSale}
+          onFinalizeCash={async (amount, cash) => {
+            if (saleLoading || autoFinalizingRef.current || hasPendingPayment || amount !== remaining || remaining <= 0) return;
+            if (!loyaltyReady) throw new Error("M Point мэдээллээ гүйцээх эсвэл ашиглахгүй сонголтыг сонгоно уу.");
+            await addPaymentEntry("CASH", amount, undefined, cash);
+            setAutoCheckoutActive(true);
+          }}
           canFinalize={canFinalizeSale}
           onBack={() => {
             clearProgressTicker();
             setAutoCheckoutActive(false);
             setView("register");
           }}
-          disabled={saleLoading || creditRepaymentSubmitting || state.cart.length === 0 || isCardProcessing}
+          disabled={saleLoading || autoCheckoutActive || autoFinalizing || creditRepaymentSubmitting || state.cart.length === 0 || isCardProcessing}
         />
       )}
 
