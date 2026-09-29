@@ -33,3 +33,21 @@ test("missing historical cost stays blank rather than reporting a zero cost", ()
   assert.equal(rows.details[0]["Нэгж өртөг (борлуулалтын үеийн)"], "");
   assert.equal(rows.details[0]["Нийт өртөг (борлуулалтын үеийн)"], "");
 });
+
+ test("demo fills every export column and reconciles discounts and payments", () => {
+  const receipts = createSalesHistoryDemo();
+  const rows = buildSalesExportRows(receipts);
+  for (const sheet of Object.values(rows)) {
+    for (const row of sheet) {
+      for (const [column, value] of Object.entries(row)) {
+        assert.notEqual(value, "", `Missing demo value: ${column}`);
+        assert.notEqual(value, undefined);
+        assert.notEqual(value, null);
+      }
+    }
+  }
+  for (const receipt of receipts) {
+    assert.equal(receipt.subTotal - receipt.discountTotal, receipt.grandTotal);
+    assert.equal(receipt.paymentBreakdown?.reduce((sum, payment) => sum + payment.amount, 0), receipt.grandTotal);
+  }
+});
