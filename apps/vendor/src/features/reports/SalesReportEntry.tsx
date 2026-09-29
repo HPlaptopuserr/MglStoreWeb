@@ -1,33 +1,28 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import dynamic from "next/dynamic";
 import { API, authFetch } from "@/lib/api";
-const SalesReportDialog = dynamic(
-  () =>
-    import("@/features/pos/components/SalesReportDialog").then(
-      (module) => module.SalesReportDialog,
-    ),
-  { ssr: false },
-);
+import { SalesReportPanel } from "./SalesReportPanel";
 interface Branch {
   id: string;
   name: string;
 }
 export function SalesReportEntry({
   organizationId,
+  range,
+  onRangeChange,
 }: {
   organizationId: string;
+  range: { start: string; end: string };
+  onRangeChange: (range: { start: string; end: string }) => void;
 }) {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [branchId, setBranchId] = useState("");
-  const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    setOpen(false);
     setBranches([]);
     setBranchId("");
     setError("");
@@ -57,14 +52,14 @@ export function SalesReportEntry({
     return () => controller.abort();
   }, [organizationId, revision]);
   return (
-    <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+    <section className="rounded-2xl border border-slate-200 bg-white p-4">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-bold text-slate-900">
-            Борлуулалтын дэлгэрэнгүй тайлан
+            Зарагдсан барааны дэлгэрэнгүй
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            Өдөр, ажилтнаар шүүх · Бараа, баримт, төлбөрийн Excel тайлан
+            Бараа бүрээр · Зарсан ажилтан, огноо, төлбөрийн хэлбэр
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -84,14 +79,6 @@ export function SalesReportEntry({
               </option>
             ))}
           </select>
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            disabled={!branchId || loading}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            Тайлан нээх
-          </button>
         </div>
       </div>
       {error && (
@@ -111,8 +98,13 @@ export function SalesReportEntry({
           Бүртгэлтэй салбар байхгүй байна.
         </p>
       )}
-      {open && branchId && (
-        <SalesReportDialog branchId={branchId} onClose={() => setOpen(false)} />
+      {branchId && !loading && (
+        <SalesReportPanel
+          key={branchId}
+          branchId={branchId}
+          range={range}
+          onRangeChange={onRangeChange}
+        />
       )}
     </section>
   );

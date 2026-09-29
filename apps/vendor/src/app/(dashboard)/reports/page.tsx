@@ -55,7 +55,7 @@ function isProductInDateRange(
     ...(product.receiptLots || []).map((lot) => lot.receivedAt),
   ].some((value) => {
     const date = toUlaanbaatarDate(value);
-    return date >= rangeFrom && date <= rangeTo;
+    return (!rangeFrom || date >= rangeFrom) && (!rangeTo || date <= rangeTo);
   });
 }
 
@@ -164,8 +164,10 @@ export default function ReportsPage() {
     try {
       const params = new URLSearchParams({
         organizationId: session.organizationId,
-        from: `${fromDate}T00:00:00.000Z`,
-        to: `${toDate}T23:59:59.999Z`,
+        from: fromDate
+          ? `${fromDate}T00:00:00.000+08:00`
+          : new Date(0).toISOString(),
+        to: toDate ? `${toDate}T23:59:59.999+08:00` : new Date().toISOString(),
         limit: "10",
       });
       const response = await authFetch(
@@ -292,8 +294,12 @@ export default function ReportsPage() {
         }
         const params = new URLSearchParams({
           organizationId: session.organizationId,
-          from: `${exportFromDate}T00:00:00.000Z`,
-          to: `${exportToDate}T23:59:59.999Z`,
+          from: exportFromDate
+            ? `${exportFromDate}T00:00:00.000+08:00`
+            : new Date(0).toISOString(),
+          to: exportToDate
+            ? `${exportToDate}T23:59:59.999+08:00`
+            : new Date().toISOString(),
           limit: "10",
         });
         const response = await authFetch(
@@ -349,7 +355,6 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6 pb-10">
-      <SalesReportEntry organizationId={organizationId} />
       <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <div className="mb-2 flex items-center gap-2 text-indigo-600">
@@ -660,6 +665,15 @@ export default function ReportsPage() {
         loading={salesLoading}
         error={salesError}
         onRetry={() => void loadBestSellingProducts()}
+      />
+
+      <SalesReportEntry
+        organizationId={organizationId}
+        range={{ start: fromDate, end: toDate }}
+        onRangeChange={({ start, end }) => {
+          setFromDate(start);
+          setToDate(end);
+        }}
       />
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">

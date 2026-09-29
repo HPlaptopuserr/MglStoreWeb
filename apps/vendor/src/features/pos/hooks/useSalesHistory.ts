@@ -7,7 +7,10 @@ import {
   salesDay,
 } from "../utils/sales-history-filters";
 
-export function useSalesHistory(branchId?: string) {
+export function useSalesHistory(
+  branchId?: string,
+  selectedRange?: { start: string; end: string },
+) {
   const [range, setRange] = useState(() => {
     const today = salesDay(new Date().toISOString());
     return { start: today, end: today };
@@ -63,9 +66,11 @@ export function useSalesHistory(branchId?: string) {
       ].map(([id, name]) => ({ id, name })),
     [data],
   );
+  const start = selectedRange?.start ?? range.start;
+  const end = selectedRange?.end ?? range.end;
   const receipts = useMemo(
-    () => filterSalesHistory(data, range.start, cashier, range.end),
-    [data, range, cashier],
+    () => filterSalesHistory(data, start, cashier, end),
+    [data, start, end, cashier],
   );
   return {
     range,

@@ -25,6 +25,7 @@ export function SoldProductsList({ receipts }: { receipts: PosReceipt[] }) {
               "Бараа",
               "Зарсан ажилтан",
               "Огноо / цаг",
+              "Төлбөрийн хэлбэр",
               "Тоо хэмжээ",
               "Дүн",
             ].map((title) => (
@@ -54,6 +55,9 @@ export function SoldProductsList({ receipts }: { receipts: PosReceipt[] }) {
                 <span className="mt-1 block text-xs">
                   {row["Цаг (Улаанбаатар)"]}
                 </span>
+              </td>
+              <td className="min-w-28 px-3 py-3 text-slate-700">
+                {row["Төлбөрийн хэлбэр"]}
               </td>
               <td className="whitespace-nowrap px-3 py-3 tabular-nums">
                 {row["Тоо хэмжээ"].toLocaleString("mn-MN", {
