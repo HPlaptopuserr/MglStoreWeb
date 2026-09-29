@@ -1101,6 +1101,12 @@ model Product {
   taxProductCode         String?
   isRestaurantMenuItem   Boolean                       @default(false)
   isTakeawayAvailable    Boolean                       @default(true)
+  takeawayPackagingFee   Decimal                       @default(0) @db.Decimal(18, 2)
+  isSoldByPiece          Boolean                       @default(false)
+  pieceSmallPackSize     Int                           @default(3)
+  pieceSmallPackFee      Decimal                       @default(300) @db.Decimal(18, 2)
+  pieceLargePackSize     Int                           @default(6)
+  pieceLargePackFee      Decimal                       @default(800) @db.Decimal(18, 2)
   menuCategory           String?
   kitchenStation         String?
   preparationMinutes     Int?

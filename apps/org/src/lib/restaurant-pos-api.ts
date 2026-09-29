@@ -74,6 +74,12 @@ export type RestaurantPosProduct = {
   isActive: boolean;
   isRestaurantMenuItem: boolean;
   isTakeawayAvailable: boolean;
+  takeawayPackagingFee: number;
+  isSoldByPiece: boolean;
+  pieceSmallPackSize: number;
+  pieceSmallPackFee: number;
+  pieceLargePackSize: number;
+  pieceLargePackFee: number;
   menuCategory: string | null;
   kitchenStation: "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR" | null;
   preparationMinutes: number | null;

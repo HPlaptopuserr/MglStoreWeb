@@ -132,6 +132,198 @@ function Write-HttpResponse {
   $Stream.Flush()
 }
 
+function Write-JsonResponse {
+  param(
+    [System.Net.Sockets.NetworkStream]$Stream,
+    [int]$StatusCode,
+    [string]$StatusText,
+    [object]$Payload,
+    [string]$Origin
+  )
+
+  $body = $Payload | ConvertTo-Json -Compress -Depth 12
+  Write-HttpResponse $Stream $StatusCode $StatusText $body $Origin
+}
+
+function Read-RequestBody {
+  param(
+    [System.IO.StreamReader]$Reader,
+    [hashtable]$Headers
+  )
+
+  $contentLength = 0
+  if ($Headers.ContainsKey("content-length")) {
+    $contentLength = [int]$Headers["content-length"]
+  }
+  if ($contentLength -le 0) { return "" }
+  if ($contentLength -gt 1048576) { throw "Request body is too large" }
+
+  # The web client sends JSON with non-ASCII characters escaped as \uXXXX.
+  # Therefore Content-Length bytes and the character count are identical here.
+  $buffer = New-Object char[] $contentLength
+  $offset = 0
+  while ($offset -lt $contentLength) {
+    $read = $Reader.Read($buffer, $offset, $contentLength - $offset)
+    if ($read -le 0) { break }
+    $offset += $read
+  }
+  return [string]::new($buffer, 0, $offset)
+}
+
+function Get-PrinterInventory {
+  $defaultSettings = New-Object System.Drawing.Printing.PrinterSettings
+  $defaultPrinter = if ($defaultSettings.IsValid) {
+    [string]$defaultSettings.PrinterName
+  } else {
+    ""
+  }
+  $printers = @(
+    [System.Drawing.Printing.PrinterSettings]::InstalledPrinters |
+      ForEach-Object { [string]$_ }
+  )
+
+  return @{
+    ok = $true
+    defaultPrinter = $defaultPrinter
+    printers = $printers
+  }
+}
+
+function Print-KitchenTicket {
+  param([object]$Payload)
+
+  $printerName = [string]$Payload.printerName
+  if ([string]::IsNullOrWhiteSpace($printerName)) {
+    throw "Kitchen printer is not selected"
+  }
+
+  $printerSettings = New-Object System.Drawing.Printing.PrinterSettings
+  $printerSettings.PrinterName = $printerName
+  if (-not $printerSettings.IsValid) {
+    throw "Kitchen printer was not found: $printerName"
+  }
+
+  $paperWidthMm = [int]$Payload.paperWidthMm
+  if ($paperWidthMm -ne 58 -and $paperWidthMm -ne 80) {
+    $paperWidthMm = 80
+  }
+  $paperWidth = [Math]::Round($paperWidthMm / 25.4 * 100)
+  $items = @($Payload.items)
+  if ($items.Count -eq 0) {
+    throw "Kitchen ticket has no items"
+  }
+  $itemNoteCount = @($items | Where-Object { [string]$_.note }).Count
+  $orderNoteHeight = if ([string]$Payload.note) { 80 } else { 0 }
+  $paperHeight = [Math]::Max(
+    300,
+    230 + ($items.Count * 55) + ($itemNoteCount * 30) + $orderNoteHeight
+  )
+
+  $document = New-Object System.Drawing.Printing.PrintDocument
+  $document.DocumentName = "MGL Kitchen Order $([string]$Payload.ticketNo)"
+  $document.PrinterSettings.PrinterName = $printerName
+  $document.PrintController = New-Object System.Drawing.Printing.StandardPrintController
+  $document.DefaultPageSettings.PaperSize = New-Object System.Drawing.Printing.PaperSize(
+    "MGL Kitchen Ticket",
+    $paperWidth,
+    $paperHeight
+  )
+  $document.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(8, 8, 5, 8)
+  $document.OriginAtMargins = $true
+
+  $printHandler = [System.Drawing.Printing.PrintPageEventHandler]{
+    param($sender, $eventArgs)
+
+    $graphics = $eventArgs.Graphics
+    $width = [single]$eventArgs.MarginBounds.Width
+    $y = [single]0
+    $black = [System.Drawing.Brushes]::Black
+    $regularFont = New-Object System.Drawing.Font("Arial", 9, [System.Drawing.FontStyle]::Regular)
+    $smallFont = New-Object System.Drawing.Font("Arial", 8, [System.Drawing.FontStyle]::Regular)
+    $boldFont = New-Object System.Drawing.Font("Arial", 11, [System.Drawing.FontStyle]::Bold)
+    $ticketFont = New-Object System.Drawing.Font("Arial", 21, [System.Drawing.FontStyle]::Bold)
+    $center = New-Object System.Drawing.StringFormat
+    $center.Alignment = [System.Drawing.StringAlignment]::Center
+    $left = New-Object System.Drawing.StringFormat
+    $left.Alignment = [System.Drawing.StringAlignment]::Near
+
+    try {
+      $organizationName = [string]$Payload.organizationName
+      if ($organizationName) {
+        $graphics.DrawString($organizationName, $boldFont, $black, (New-Object System.Drawing.RectangleF(0, $y, $width, 28)), $center)
+        $y += 28
+      }
+      $heading = [string]$Payload.heading
+      if (-not $heading) { $heading = "KITCHEN ORDER" }
+      $graphics.DrawString($heading, $regularFont, $black, (New-Object System.Drawing.RectangleF(0, $y, $width, 22)), $center)
+      $y += 25
+      $ticketNo = [string]$Payload.ticketNo
+      $graphics.DrawString("#$ticketNo", $ticketFont, $black, (New-Object System.Drawing.RectangleF(0, $y, $width, 48)), $center)
+      $y += 50
+
+      $orderLabel = [string]$Payload.orderLabel
+      $registerName = [string]$Payload.registerName
+      $createdAt = [string]$Payload.createdAt
+      $meta = @($orderLabel, $registerName, $createdAt) | Where-Object { $_ }
+      if ($meta.Count -gt 0) {
+        $graphics.DrawString(($meta -join " | "), $smallFont, $black, (New-Object System.Drawing.RectangleF(0, $y, $width, 34)), $center)
+        $y += 36
+      }
+
+      $graphics.DrawLine([System.Drawing.Pens]::Black, 0, $y, $width, $y)
+      $y += 12
+
+      foreach ($item in $items) {
+        $qty = [int]$item.qty
+        $name = [string]$item.name
+        $itemText = "$qty x $name"
+        $itemHeight = [Math]::Max(34, [Math]::Ceiling($graphics.MeasureString($itemText, $boldFont, [int]$width).Height) + 4)
+        $graphics.DrawString($itemText, $boldFont, $black, (New-Object System.Drawing.RectangleF(0, $y, $width, $itemHeight)), $left)
+        $y += $itemHeight
+
+        $itemNote = [string]$item.note
+        if ($itemNote) {
+          $noteText = "  - $itemNote"
+          $noteHeight = [Math]::Max(24, [Math]::Ceiling($graphics.MeasureString($noteText, $regularFont, [int]$width).Height) + 3)
+          $graphics.DrawString($noteText, $regularFont, $black, (New-Object System.Drawing.RectangleF(0, $y, $width, $noteHeight)), $left)
+          $y += $noteHeight
+        }
+        $y += 8
+      }
+
+      $orderNote = [string]$Payload.note
+      if ($orderNote) {
+        $graphics.DrawLine([System.Drawing.Pens]::Black, 0, $y, $width, $y)
+        $y += 10
+        $graphics.DrawString("NOTE: $orderNote", $boldFont, $black, (New-Object System.Drawing.RectangleF(0, $y, $width, 70)), $left)
+        $y += 72
+      }
+
+      $graphics.DrawLine([System.Drawing.Pens]::Black, 0, $y, $width, $y)
+      $eventArgs.HasMorePages = $false
+    }
+    finally {
+      $regularFont.Dispose()
+      $smallFont.Dispose()
+      $boldFont.Dispose()
+      $ticketFont.Dispose()
+      $center.Dispose()
+      $left.Dispose()
+    }
+  }
+
+  $document.add_PrintPage($printHandler)
+  try {
+    $document.Print()
+    Start-Sleep -Milliseconds 250
+    [MglRawPrinter]::Cut($printerName)
+  }
+  finally {
+    $document.remove_PrintPage($printHandler)
+    $document.Dispose()
+  }
+}
+
 $listener = [System.Net.Sockets.TcpListener]::new(
   [System.Net.IPAddress]::Loopback,
   $Port
@@ -141,6 +333,7 @@ try {
   $listener.Start()
   while ($true) {
     $client = $listener.AcceptTcpClient()
+    $origin = ""
     try {
       $stream = $client.GetStream()
       $reader = New-Object System.IO.StreamReader(
@@ -181,8 +374,13 @@ try {
       elseif ($method -eq "GET" -and $path -eq "/health") {
         $settings = New-Object System.Drawing.Printing.PrinterSettings
         $printerName = [string]$settings.PrinterName
-        $safeName = $printerName.Replace("\", "\\").Replace('"', '\"')
-        Write-HttpResponse $stream 200 "OK" "{`"ok`":true,`"printer`":`"$safeName`"}" $origin
+        Write-JsonResponse $stream 200 "OK" @{
+          ok = $true
+          printer = $printerName
+        } $origin
+      }
+      elseif ($method -eq "GET" -and $path -eq "/printers") {
+        Write-JsonResponse $stream 200 "OK" (Get-PrinterInventory) $origin
       }
       elseif ($method -eq "POST" -and $path -eq "/cut") {
         $settings = New-Object System.Drawing.Printing.PrinterSettings
@@ -190,7 +388,14 @@ try {
           throw "Windows default printer is not configured"
         }
         [MglRawPrinter]::Cut([string]$settings.PrinterName)
-        Write-HttpResponse $stream 200 "OK" '{"ok":true}' $origin
+        Write-JsonResponse $stream 200 "OK" @{ ok = $true } $origin
+      }
+      elseif ($method -eq "POST" -and $path -eq "/kitchen/print") {
+        $body = Read-RequestBody $reader $headers
+        if (-not $body) { throw "Kitchen print payload is empty" }
+        $payload = $body | ConvertFrom-Json
+        Print-KitchenTicket $payload
+        Write-JsonResponse $stream 200 "OK" @{ ok = $true } $origin
       }
       else {
         Write-HttpResponse $stream 404 "Not Found" '{"ok":false,"message":"Not found"}' $origin
@@ -198,7 +403,10 @@ try {
     }
     catch {
       try {
-        Write-HttpResponse $stream 500 "Internal Server Error" '{"ok":false,"message":"Printer cut failed"}' ""
+        Write-JsonResponse $stream 500 "Internal Server Error" @{
+          ok = $false
+          message = [string]$_.Exception.Message
+        } $origin
       }
       catch {}
     }

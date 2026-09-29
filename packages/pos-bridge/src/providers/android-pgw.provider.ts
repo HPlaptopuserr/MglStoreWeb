@@ -19,7 +19,9 @@ type AndroidPgwConfig = {
   appendCrlf: boolean;
 };
 
-type PgwResponse = Record<string, string | number | boolean | null>;
+export type PgwResponse = Record<string, string | number | boolean | null>;
+
+type PgwDecision = "APPROVED" | "DECLINED" | "UNKNOWN";
 
 const intEnv = (name: string, fallback: number) => {
   const value = Number(process.env[name]);
@@ -83,7 +85,7 @@ const parseValue = (value: string): string | number | boolean | null => {
   return trimmed.replace(/^"(.*)"$/, "$1");
 };
 
-const parsePgwResponse = (raw: string): PgwResponse => {
+export const parsePgwResponse = (raw: string): PgwResponse => {
   const body = raw
     .trim()
     .replace(/^</, "")
@@ -92,7 +94,7 @@ const parsePgwResponse = (raw: string): PgwResponse => {
     .replace(/\}$/, "");
 
   const result: PgwResponse = {};
-  const pairPattern = /([A-Za-z][A-Za-z0-9_]*)\s*:\s*("(?:\\.|[^"])*"|[^,}]*)/g;
+  const pairPattern = /"?([A-Za-z][A-Za-z0-9_]*)"?\s*:\s*("(?:\\.|[^"])*"|[^,}]*)/g;
   let match: RegExpExecArray | null;
 
   while ((match = pairPattern.exec(body))) {
@@ -102,32 +104,144 @@ const parsePgwResponse = (raw: string): PgwResponse => {
   return result;
 };
 
+const normalizeResponseKey = (key: string) => key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+
+const responseValue = (response: PgwResponse, ...aliases: string[]) => {
+  const entries = Object.entries(response);
+  for (const alias of aliases) {
+    const normalizedAlias = normalizeResponseKey(alias);
+    const match = entries.find(([key]) => normalizeResponseKey(key) === normalizedAlias);
+    if (match) return match[1];
+  }
+  return null;
+};
+
+const responseText = (response: PgwResponse, ...aliases: string[]) =>
+  String(responseValue(response, ...aliases) ?? "").trim();
+
 const responseCode = (response: PgwResponse) =>
-  String(response.code ?? response.Code ?? response.responseCode ?? "").trim();
+  responseText(response, "code", "response", "responseCode", "respCode", "resultCode");
 
 const responseMessage = (response: PgwResponse) =>
-  String(response.desc ?? response.description ?? response.message ?? "").trim();
+  responseText(response, "desc", "description", "message", "responseMessage", "errorMessage");
+
+const responseRrn = (response: PgwResponse) =>
+  responseText(response, "rrn", "invoice", "traceNo", "systemRef", "transactionId");
+
+const responseApprovalCode = (response: PgwResponse) =>
+  responseText(response, "appCode", "approvalCode", "approveCode", "authCode", "authorizationCode");
+
+const responseTerminal = (response: PgwResponse) =>
+  responseText(response, "terminal", "terminalId", "tid");
+
+const APPROVED_STATUS_VALUES = new Set([
+  "APPROVED",
+  "SUCCESS",
+  "SUCCEEDED",
+  "SUCCESSFUL",
+  "TRUE",
+]);
+
+const DECLINED_STATUS_VALUES = new Set([
+  "CANCEL",
+  "CANCELED",
+  "CANCELLED",
+  "DECLINED",
+  "ERROR",
+  "FAILED",
+  "FAILURE",
+  "FALSE",
+  "REJECTED",
+]);
+
+export const classifyPgwResponse = (response: PgwResponse): PgwDecision => {
+  const code = responseCode(response);
+  const normalizedCode = code.toUpperCase();
+  const status = responseText(
+    response,
+    "status",
+    "result",
+    "transactionStatus",
+    "paymentStatus",
+    "success",
+    "succeed",
+    "approved",
+  ).toUpperCase();
+
+  // An explicit failure always wins, even when a declined response happens to
+  // include a trace/reference number.
+  if (DECLINED_STATUS_VALUES.has(status) || DECLINED_STATUS_VALUES.has(normalizedCode)) {
+    return "DECLINED";
+  }
+  if (/^\d+$/.test(code) && !/^0+$/.test(code)) return "DECLINED";
+
+  if (code && /^0+$/.test(code)) return "APPROVED";
+  if (APPROVED_STATUS_VALUES.has(status) || APPROVED_STATUS_VALUES.has(normalizedCode)) {
+    return "APPROVED";
+  }
+
+  // Some Android PGW releases omit the response code on a successful sale,
+  // but still return both the retrieval reference and bank approval code.
+  if (responseRrn(response) && responseApprovalCode(response)) return "APPROVED";
+
+  return "UNKNOWN";
+};
+
+const normalizeFrame = (value: string) => value.trim().replace(/\s+/g, "");
+
+export const completePgwFrames = (raw: string) => raw.match(/<[\s\S]*?>/g) || [];
+
+export const terminalResultFrame = (raw: string, command: string) => {
+  const normalizedCommand = normalizeFrame(command);
+  const responseFrames = completePgwFrames(raw).filter(
+    (frame) => normalizeFrame(frame) !== normalizedCommand,
+  );
+  return responseFrames.at(-1) || "";
+};
+
+const withoutCommandEcho = (raw: string, command: string) => {
+  const normalizedCommand = normalizeFrame(command);
+  return completePgwFrames(raw)
+    .reduce(
+      (remaining, frame) =>
+        normalizeFrame(frame) === normalizedCommand ? remaining.replace(frame, "") : remaining,
+      raw,
+    )
+    .trim();
+};
+
+const isFinalTerminalResponse = (raw: string) => {
+  const parsed = parsePgwResponse(raw);
+  if (classifyPgwResponse(parsed) !== "UNKNOWN") return true;
+
+  const upper = raw.toUpperCase();
+  return (
+    upper.includes("CANCEL") ||
+    upper.includes("DECLIN") ||
+    upper.includes("FAILED") ||
+    upper.includes("ERROR")
+  );
+};
 
 const hasTerminalResponse = (raw: string) => {
   const text = raw.trim();
   if (!text) return false;
   const upper = text.toUpperCase();
   return (
-    text.includes(">") ||
     text.includes("}") ||
     upper.includes("CONNECTED") ||
     upper.includes("CANCEL") ||
     upper.includes("DECLIN") ||
     upper.includes("FAILED") ||
     upper.includes("ERROR") ||
-    /\b(code|Code|responseCode)\s*:/.test(text)
+    /\b(code|response_?code|resp_?code|result_?code|status|result|rrn|app_?code)\s*:/i.test(text)
   );
 };
 
 export class AndroidPgwProvider implements CardTerminalProvider {
   private readonly config: AndroidPgwConfig;
   private activePath: string | null = null;
-  private busy = false;
+  private commandQueue: Promise<void> = Promise.resolve();
 
   constructor(config: AndroidPgwConfig = buildConfig()) {
     this.config = config;
@@ -162,13 +276,20 @@ export class AndroidPgwProvider implements CardTerminalProvider {
     const raw = await this.sendCommand(command, this.config.timeoutMs, true);
     const parsed = parsePgwResponse(raw);
     const code = responseCode(parsed);
-    const approved = code === "0";
-    const rrn = String(parsed.rrn ?? parsed.RRN ?? parsed.invoice ?? parsed.traceNo ?? "").trim();
-    const terminal = String(parsed.terminal ?? parsed.terminalID ?? "").trim();
-    const message = responseMessage(parsed) || (approved ? "Approved" : `Declined (${code || "unknown"})`);
+    const decision = classifyPgwResponse(parsed);
+    const rrn = responseRrn(parsed);
+    const terminal = responseTerminal(parsed);
+    const parsedKeys = Object.keys(parsed).join(", ") || "none";
+    const message =
+      responseMessage(parsed) ||
+      (decision === "APPROVED"
+        ? "Approved"
+        : decision === "DECLINED"
+          ? `Declined${code ? ` (${code})` : ""}`
+          : `Terminal result was not recognized (fields: ${parsedKeys})`);
 
     return {
-      status: approved ? "APPROVED" : "DECLINED",
+      status: decision === "UNKNOWN" ? "FAILED" : decision,
       transactionId: rrn || String(parsed.data ?? params.attemptId),
       message,
       provider: "ANDROID_PGW",
@@ -186,34 +307,44 @@ export class AndroidPgwProvider implements CardTerminalProvider {
   }
 
   private async sendCommand(command: string, timeoutMs: number, allowDiscovery = false): Promise<string> {
-    if (this.busy) {
-      throw new Error("Android PGW terminal is busy");
+    return this.runExclusive(() => this.sendCommandUnlocked(command, timeoutMs, allowDiscovery));
+  }
+
+  private async runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.commandQueue;
+    let release: () => void = () => undefined;
+    this.commandQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await previous.catch(() => undefined);
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+
+  private async sendCommandUnlocked(command: string, timeoutMs: number, allowDiscovery = false): Promise<string> {
+    const configuredPath = this.normalizedConfiguredPath();
+    const firstPath = this.activePath || configuredPath || (allowDiscovery ? await this.discoverConnectedPath() : "");
+    if (!firstPath) {
+      throw new Error("ANDROID_PGW_PORT is required, or set ANDROID_PGW_PORT=auto to discover the terminal");
     }
 
-    this.busy = true;
     try {
-      const configuredPath = this.normalizedConfiguredPath();
-      const firstPath = this.activePath || configuredPath || (allowDiscovery ? await this.discoverConnectedPath() : "");
-      if (!firstPath) {
-        throw new Error("ANDROID_PGW_PORT is required, or set ANDROID_PGW_PORT=auto to discover the terminal");
+      const raw = await this.sendCommandToPath(firstPath, command, timeoutMs);
+      this.activePath = firstPath;
+      return raw;
+    } catch (error) {
+      if (!allowDiscovery || !this.isPortMissingError(error)) {
+        throw error;
       }
-
-      try {
-        const raw = await this.sendCommandToPath(firstPath, command, timeoutMs);
-        this.activePath = firstPath;
-        return raw;
-      } catch (error) {
-        if (!allowDiscovery || !this.isPortMissingError(error)) {
-          throw error;
-        }
-        this.activePath = null;
-        const discoveredPath = await this.discoverConnectedPath(firstPath);
-        const raw = await this.sendCommandToPath(discoveredPath, command, timeoutMs);
-        this.activePath = discoveredPath;
-        return raw;
-      }
-    } finally {
-      this.busy = false;
+      this.activePath = null;
+      const discoveredPath = await this.discoverConnectedPath(firstPath);
+      const raw = await this.sendCommandToPath(discoveredPath, command, timeoutMs);
+      this.activePath = discoveredPath;
+      return raw;
     }
   }
 
@@ -274,7 +405,12 @@ export class AndroidPgwProvider implements CardTerminalProvider {
         settled = true;
         clearTimeout(timer);
         if (idleTimer) clearTimeout(idleTimer);
-        port.removeAllListeners();
+        // Keep the error listener attached while/after close. On Windows the
+        // serialport binding can emit an asynchronous "Operation aborted"
+        // error when close cancels a pending write. Removing every listener
+        // first turns that expected cleanup error into an uncaught event and
+        // terminates the entire POS Bridge process.
+        port.removeAllListeners("data");
         if (port.isOpen) {
           port.close(() => {
             error ? reject(error) : resolve(value || "");
@@ -291,14 +427,30 @@ export class AndroidPgwProvider implements CardTerminalProvider {
       port.on("data", (chunk: Buffer) => {
         chunks.push(chunk);
         const current = Buffer.concat(chunks).toString("utf8");
-        if (current.includes(">") || current.toUpperCase().includes("CONNECTED")) {
+        if (current.toUpperCase().includes("CONNECTED")) {
           finish(undefined, current.trim());
           return;
         }
-        if (hasTerminalResponse(current)) {
+
+        const framedResult = terminalResultFrame(current, command);
+        if (framedResult && isFinalTerminalResponse(framedResult)) {
+          finish(undefined, framedResult.trim());
+          return;
+        }
+
+        // Android/USB serial drivers may echo the command first. Waiting for
+        // a different, final frame prevents <{amount,data}> from being parsed
+        // as a declined payment before the terminal sends its actual result.
+        const unframedResult = withoutCommandEcho(current, command);
+        const terminalCandidate = framedResult || unframedResult;
+        if (terminalCandidate && hasTerminalResponse(terminalCandidate)) {
           if (idleTimer) clearTimeout(idleTimer);
           idleTimer = setTimeout(() => {
-            finish(undefined, Buffer.concat(chunks).toString("utf8").trim());
+            const buffered = Buffer.concat(chunks).toString("utf8");
+            finish(
+              undefined,
+              terminalResultFrame(buffered, command) || withoutCommandEcho(buffered, command),
+            );
           }, this.config.responseIdleMs);
         }
       });
