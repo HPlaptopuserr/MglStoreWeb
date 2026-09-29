@@ -9,11 +9,13 @@ type RequestOptions = {
 
 export class PosApiError extends Error {
   status: number;
+  code?: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string) {
     super(message);
     this.name = "PosApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -42,7 +44,12 @@ export async function posRequest<T>(
     const raw = await res.text().catch(() => "");
     const message = posErrorMessage(raw, res.status);
 
-    throw new PosApiError(`${message} (HTTP ${res.status})`, res.status);
+    let code: string | undefined;
+    try {
+      const data: unknown = JSON.parse(raw);
+      if (data && typeof data === "object" && "code" in data && typeof data.code === "string") code = data.code;
+    } catch { /* Non-JSON errors have no machine-readable code. */ }
+    throw new PosApiError(`${message} (HTTP ${res.status})`, res.status, code);
   }
 
   return (await res.json()) as T;

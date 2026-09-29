@@ -6,5 +6,6 @@ onlyBuiltDependencies:
   - '@prisma/client'
   - '@prisma/engines'
   - prisma
+  - onnxruntime-node
   - sharp
   - unrs-resolver

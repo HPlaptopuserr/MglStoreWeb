@@ -1,3 +1,4 @@
+import { paymentProviderFetch } from "./payment-provider-fetch";
 /**
  * QPay V2 API service
  * Docs: https://developer.qpay.mn
@@ -78,7 +79,7 @@ async function fetchNewToken(
     terminalId,
   });
 
-  const res = await fetch(`${baseUrl}/auth/token`, {
+  const res = await paymentProviderFetch(`${baseUrl}/auth/token`, {
     method: "POST",
     headers: {
       Authorization: `Basic ${credentials}`,
@@ -138,7 +139,7 @@ async function authorizedFetch(
   const { cacheKey } = getContextIdentity(context);
   const token = await getAccessToken(context);
 
-  const res = await fetch(url, {
+  const res = await paymentProviderFetch(url, {
     ...options,
     headers: {
       ...(options.headers || {}),
@@ -151,7 +152,7 @@ async function authorizedFetch(
     console.warn("QPay 401 — cache арилгаж дахин оролдож байна:", cacheKey);
     tokenCache.delete(cacheKey);
     const retryToken = await getAccessToken(context);
-    return fetch(url, {
+    return paymentProviderFetch(url, {
       ...options,
       headers: {
         ...(options.headers || {}),
@@ -418,7 +419,7 @@ export async function registerQPayMerchantCompany(
   const { quickqrBaseUrl } = env();
   const token = await getMasterToken();
 
-  const res = await fetch(`${quickqrBaseUrl}/merchant/company`, {
+  const res = await paymentProviderFetch(`${quickqrBaseUrl}/merchant/company`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -462,7 +463,7 @@ export async function registerQPayMerchantPerson(
   const { quickqrBaseUrl } = env();
   const token = await getMasterToken();
 
-  const res = await fetch(`${quickqrBaseUrl}/merchant/person`, {
+  const res = await paymentProviderFetch(`${quickqrBaseUrl}/merchant/person`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(params),
@@ -502,7 +503,7 @@ export async function registerQPayMerchantPerson(
 export async function getQPayCityList(): Promise<{ code: string; name: string }[]> {
   const { quickqrBaseUrl } = env();
   const token = await getMasterToken();
-  const res = await fetch(`${quickqrBaseUrl}/aimaghot`, {
+  const res = await paymentProviderFetch(`${quickqrBaseUrl}/aimaghot`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return [];
@@ -513,7 +514,7 @@ export async function getQPayCityList(): Promise<{ code: string; name: string }[
 export async function getQPayDistrictList(cityCode: string): Promise<{ code: string; name: string }[]> {
   const { quickqrBaseUrl } = env();
   const token = await getMasterToken();
-  const res = await fetch(`${quickqrBaseUrl}/sumduureg/${cityCode}`, {
+  const res = await paymentProviderFetch(`${quickqrBaseUrl}/sumduureg/${cityCode}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) return [];

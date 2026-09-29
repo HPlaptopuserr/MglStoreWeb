@@ -1560,13 +1560,21 @@ router.post("/pos/sales", async (req, res) => {
 
         for (const qpayLine of qpayLines) {
           const invoiceId = String(qpayLine.invoiceId || "").trim();
-          await tx.qPayInvoice.update({
-            where: { id: invoiceId },
+          const claimed = await tx.qPayInvoice.updateMany({
+            where: {
+              id: invoiceId,
+              status: PosQPayStatus.PAID,
+              saleReference: null,
+              consumedAt: null,
+            },
             data: {
               saleReference: receiptNo,
               consumedAt: new Date(),
             },
           });
+          if (claimed.count !== 1) {
+            throw toApiError(409, "QR төлбөр өөр борлуулалтад ашиглагдсан байна");
+          }
         }
 
         const multiPriceSetting = await tx.siteSetting.findUnique({

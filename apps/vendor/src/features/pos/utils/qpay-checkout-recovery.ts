@@ -5,7 +5,6 @@ import type {
 } from "../components/PosCheckoutView";
 
 const STORAGE_PREFIX = "mglstore.pos.qpay-checkout.v1";
-const MAX_RECOVERY_AGE_MS = 24 * 60 * 60 * 1000;
 
 export type QPayCheckoutRecovery = {
   clientSaleId: string;
@@ -41,9 +40,7 @@ const isPaymentEntry = (value: unknown): value is CheckoutPaymentEntry => {
 const hasQPayInvoice = (entries: CheckoutPaymentEntry[]) =>
   entries.some(
     (entry) =>
-      entry.method === "QR" &&
-      typeof entry.invoiceId === "string" &&
-      entry.invoiceId.length > 0,
+      entry.method === "QR" && typeof entry.invoiceId === "string" && entry.invoiceId.length > 0,
   );
 
 export function loadQPayCheckoutRecovery(
@@ -66,7 +63,6 @@ export function loadQPayCheckoutRecovery(
       !parsed.clientSaleId ||
       !hasQPayInvoice(paymentEntries) ||
       !Number.isFinite(updatedAt) ||
-      Date.now() - updatedAt > MAX_RECOVERY_AGE_MS ||
       !parsed.loyalty
     ) {
       window.localStorage.removeItem(storageKey(organizationId));
@@ -91,7 +87,7 @@ export function loadQPayCheckoutRecovery(
       updatedAt,
     };
   } catch {
-    window.localStorage.removeItem(storageKey(organizationId));
+    // Storage may be unavailable; a failed read must not delete payment evidence.
     return null;
   }
 }
