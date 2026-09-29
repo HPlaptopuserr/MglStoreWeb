@@ -91,12 +91,6 @@ export function buildSalesExportRows(receipts: PosReceipt[]) {
         "Нэгж үнэ": line.unitPrice,
         "Нэгж өртөг (борлуулалтын үеийн)": line.unitCost ?? "",
         "Нийт өртөг (борлуулалтын үеийн)": line.costTotal ?? "",
-        Хөнгөлөлт: line.discount ?? "",
-        "НӨАТ хувь": line.taxRate ?? "",
-        "НӨАТ дүн": line.taxAmount,
-        "НХАТ хувь": line.cityTaxRate ?? "",
-        "НХАТ дүн": line.cityTaxAmount ?? "",
-        "Татварын бүтээгдэхүүний код": line.taxProductCode ?? "",
         "Борлуулалтын дүн": line.lineTotal,
       };
     }),
