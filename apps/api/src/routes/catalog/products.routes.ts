@@ -3458,7 +3458,7 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
 router.post(
   "/products",
   requireAuth,
-  requireOrgPermission({ from: "body" }, Permission.MANAGE_PRODUCTS),
+  requireOrgPermission({ from: "body" }, Permission.CREATE_PRODUCTS),
   async (req, res) => {
     try {
       const {

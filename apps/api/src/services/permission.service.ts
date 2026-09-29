@@ -13,6 +13,7 @@ const ORG_ROLE_PERMISSIONS: Record<string, Permission[]> = {
   OWNER: [
     Permission.MANAGE_ORG_SETTINGS,
     Permission.MANAGE_ORG_MEMBERS,
+    Permission.CREATE_PRODUCTS,
     Permission.MANAGE_PRODUCTS,
     Permission.APPROVE_PRODUCTS,
     Permission.MANAGE_ORDERS,
@@ -26,6 +27,7 @@ const ORG_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     Permission.MANAGE_SERVICES,
   ],
   ADMIN: [
+    Permission.CREATE_PRODUCTS,
     Permission.MANAGE_PRODUCTS,
     Permission.APPROVE_PRODUCTS,
     Permission.MANAGE_ORDERS,
@@ -45,7 +47,7 @@ const ORG_ROLE_PERMISSIONS: Record<string, Permission[]> = {
 
 /** Capability → additional permissions granted */
 const CAPABILITY_PERMISSIONS: Record<string, Permission[]> = {
-  [Capability.POS_CASHIER]: [Permission.OPERATE_POS],
+  [Capability.POS_CASHIER]: [Permission.OPERATE_POS, Permission.CREATE_PRODUCTS],
   [Capability.DELIVERY_DRIVER]: [Permission.MAKE_DELIVERIES],
   [Capability.STOCK_MANAGER]: [Permission.MANAGE_STOCK, Permission.REQUEST_STOCK],
   [Capability.ORDER_PROCESSOR]: [Permission.MANAGE_ORDERS, Permission.VIEW_ORDERS],
