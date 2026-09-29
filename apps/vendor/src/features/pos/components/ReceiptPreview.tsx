@@ -10,6 +10,7 @@ import { returnLocalEbarimtReceipt, sendLocalEbarimtData } from "../api/ebarimt"
 import { voidSale } from "../api/void-sale";
 import { formatReceipt } from "../utils/format-receipt";
 import { receiptPrintLayout, receiptPrintCss, receiptPrintFooter } from "../utils/receipt-print-layout";
+import { withDemoEbarimt } from "../utils/receipt-preview-demo";
 import { printThermalDocument } from "../utils/print-thermal-document";
 
 type Props = {
@@ -25,6 +26,7 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
   const [terminalVoidResult, setTerminalVoidResult] = useState<{ succeed: boolean; message?: string } | null>(null);
   const [saleVoiding, setSaleVoiding] = useState(false);
   const [saleVoidResult, setSaleVoidResult] = useState<{ succeed: boolean; message?: string } | null>(null);
+  const [demoQr, setDemoQr] = useState(true);
   const ebarimtQrRef = useRef<HTMLDivElement>(null);
 
   if (!receipt) return null;
@@ -33,15 +35,18 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
     (payment) => payment.method === "CARD" && payment.traceno && payment.terminalId,
   );
   const isVoided = receipt.status === "VOIDED";
+  const canPreviewDemo = process.env.NODE_ENV !== "production" && !receipt.ebarimt?.qrData;
+  const showingDemo = canPreviewDemo && demoQr;
+  const displayReceipt = showingDemo ? withDemoEbarimt(receipt) : receipt;
   const ebarimtQrData =
-    receipt.ebarimt?.status === "SUCCESS" && receipt.ebarimt.qrData
-      ? receipt.ebarimt.qrData
+    displayReceipt.ebarimt?.status === "SUCCESS" && displayReceipt.ebarimt.qrData
+      ? displayReceipt.ebarimt.qrData
       : "";
 
   const handlePrint = () => {
     const qrMarkup = ebarimtQrRef.current?.innerHTML || "";
     printThermalDocument({
-      bodyHtml: `${receiptPrintLayout(receipt)}${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR код</p>${qrMarkup}</div>` : ""}${receiptPrintFooter}`,
+      bodyHtml: `${showingDemo ? '<p style="text-align:center;font-weight:bold">ТЕСТ БАРИМТ — eBarimt-д бүртгэгдэхгүй</p>' : ""}${receiptPrintLayout(displayReceipt)}${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">{showingDemo ? "ТЕСТ QR — eBarimt-д бүртгэгдэхгүй" : "eBarimt QR код"}</p>${qrMarkup}</div>` : ""}${receiptPrintFooter}`,
       extraCss: `${receiptPrintCss}
 
         .ebarimt-qr { margin-top: 3mm; text-align: center; }
@@ -195,8 +200,14 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
         </div>
       )}
 
+      {canPreviewDemo && (
+        <label className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+          <input type="checkbox" checked={demoQr} onChange={event => setDemoQr(event.target.checked)} />
+          Тест QR, сугалааны дугаар харуулах — eBarimt-д бүртгэгдэхгүй
+        </label>
+      )}
       <pre className="mt-2 min-h-44 flex-1 whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
-        {formatReceipt(receipt)}
+        {formatReceipt(displayReceipt)}
       </pre>
 
       {!ebarimtQrData && (
@@ -208,7 +219,7 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
       )}
       {ebarimtQrData && (
         <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-center">
-          <p className="mb-2 text-xs font-bold text-emerald-700">eBarimt QR код</p>
+          <p className="mb-2 text-xs font-bold text-emerald-700">{showingDemo ? "ТЕСТ QR — eBarimt-д бүртгэгдэхгүй" : "eBarimt QR код"}</p>
           <div ref={ebarimtQrRef} className="inline-flex rounded-lg bg-white p-2">
             <QRCodeSVG value={ebarimtQrData} size={152} level="M" includeMargin />
           </div>
