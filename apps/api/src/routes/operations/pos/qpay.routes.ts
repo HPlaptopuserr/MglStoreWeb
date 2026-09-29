@@ -1,4 +1,5 @@
 import { isPaymentRequestId, matchesPaymentRequest } from "../../../services/payment-request-identity";
+import { canReleaseExpiredCheckoutAfterCancelFailure } from "../../../services/pos-qpay-cancel-policy";
 import { verifiedQPayPaymentId } from "../../../services/qpay-payment-verification";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
@@ -523,8 +524,21 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
       : null;
     const systemProvider =
       String(payload.provider || "").toUpperCase() === "SYSTEMQR";
+    const alreadyReleased = Boolean(
+      payload.cancelledAt || payload.checkoutAbandonedAt,
+    );
+    if (invoice.status === PosQPayStatus.EXPIRED && alreadyReleased) {
+      return res.json({
+        invoiceId: invoice.id,
+        amount: Number(invoice.amount),
+        qrText: invoice.qrText,
+        status: PosQPayStatus.EXPIRED,
+        expiresAt: invoice.expiresAt.toISOString(),
+        createdAt: invoice.createdAt.toISOString(),
+      });
+    }
 
-
+    let providerCancelWarning: string | null = null;
     if (systemProvider) {
       const resolved = await resolveSystemQrConfig(
         invoice.organizationId,
@@ -555,8 +569,42 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
           });
         }
       } catch (error) {
-        // An ambiguous cancellation must not let the cashier collect payment again.
-        throw error;
+        let providerPaymentConfirmed = false;
+        let providerRecheckCompleted = false;
+        try {
+          providerPaymentConfirmed = await reconcilePosQPayInvoicePayment(
+            invoice,
+          );
+          providerRecheckCompleted = true;
+        } catch (recheckError) {
+          console.error(
+            "[SystemQR] Payment recheck after cancellation failure failed",
+            recheckError,
+          );
+        }
+
+        if (
+          !canReleaseExpiredCheckoutAfterCancelFailure({
+            invoiceStatus: invoice.status,
+            providerRecheckCompleted,
+            providerPaymentConfirmed,
+          })
+        ) {
+          if (providerPaymentConfirmed) {
+            return res.status(409).json({
+              message:
+                "Төлбөр баталгаажсан тул гүйлгээг цуцлах боломжгүй",
+            });
+          }
+          throw error;
+        }
+
+        providerCancelWarning =
+          error instanceof Error ? error.message : String(error);
+        console.warn(
+          "[SystemQR] Expired unpaid checkout released after provider cancel failure",
+          { invoiceId: invoice.id, providerCancelWarning },
+        );
       }
     } else {
       let merchantContext = registerConfig
@@ -569,18 +617,29 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
       await cancelQPayInvoice(providerInvoiceId, merchantContext || undefined);
     }
 
-    const cancelledAt = new Date();
+    const checkoutReleasedAt = new Date();
     const updated = await prisma.qPayInvoice.updateMany({
       where: { id, status: { in: [PosQPayStatus.PENDING, PosQPayStatus.EXPIRED] } },
       data: {
         status: PosQPayStatus.EXPIRED,
-        expiresAt: cancelledAt,
+        expiresAt: checkoutReleasedAt,
         webhookPayload: {
           ...payload,
-          cancelledAt: cancelledAt.toISOString(),
+          ...(providerCancelWarning
+            ? {
+                checkoutAbandonedAt: checkoutReleasedAt.toISOString(),
+                providerCancellationConfirmed: false,
+                providerCancelWarning,
+                requiresPaymentReconciliation: true,
+              }
+            : {
+                cancelledAt: checkoutReleasedAt.toISOString(),
+                providerCancellationConfirmed: true,
+              }),
           cancelledById: actor.id,
-          cancelReason: "SELF_SERVICE_ORDER_CHANGE",
-
+          cancelReason: providerCancelWarning
+            ? "EXPIRED_PROVIDER_CANCEL_FAILED"
+            : "SELF_SERVICE_ORDER_CHANGE",
         } as unknown as Prisma.JsonObject,
       },
     });
@@ -595,9 +654,14 @@ router.post("/pos/payments/qpay/cancel", async (req, res) => {
       amount: Number(invoice.amount),
       qrText: invoice.qrText,
       status: PosQPayStatus.EXPIRED,
-      expiresAt: cancelledAt.toISOString(),
+      expiresAt: checkoutReleasedAt.toISOString(),
       createdAt: invoice.createdAt.toISOString(),
-
+      ...(providerCancelWarning
+        ? {
+            warning:
+              "Minu цуцлалт алдаатай байсан ч хугацаа дууссан төлбөрийг дахин шалгахад төлөгдөөгүй тул checkout-ийг хаалаа.",
+          }
+        : {}),
     });
   } catch (error) {
     console.error("qpay invoice cancel error", error);
