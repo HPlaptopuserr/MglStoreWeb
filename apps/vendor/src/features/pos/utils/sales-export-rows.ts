@@ -24,10 +24,7 @@ function context(receipt: PosReceipt) {
     }),
     Салбар: receipt.branchName,
     Касс: receipt.registerName ?? "",
-    "Ээлжийн ID": receipt.shiftId ?? "",
     Ажилтан: receipt.cashierName,
-    "Ажилтны ID": receipt.cashierId ?? "",
-    "Ажилтны имэйл": receipt.cashierEmail ?? "",
   };
 }
 function paymentNames(receipt: PosReceipt) {
@@ -102,7 +99,6 @@ export function buildSalesExportRows(receipts: PosReceipt[]) {
         "НӨАТ дүн": line.taxAmount,
         "НХАТ хувь": line.cityTaxRate ?? "",
         "НХАТ дүн": line.cityTaxAmount ?? "",
-        "Ангиллын код": line.classificationCode ?? "",
         "Татварын бүтээгдэхүүний код": line.taxProductCode ?? "",
         "Борлуулалтын дүн": line.lineTotal,
       };
