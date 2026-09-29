@@ -240,11 +240,11 @@ export default function Dashboard() {
         </div>
         <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:gap-3 sm:overflow-visible sm:px-0 sm:pb-0">
           <Link
-            href="/sales"
+            href="/reports"
             className="flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 transition-colors"
           >
             <ReceiptText size={15} />
-            Борлуулалт
+            Тайлан
           </Link>
           {showPos && (
             <Link

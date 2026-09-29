@@ -89,12 +89,6 @@ const VENDOR_NAV_GROUPS: Array<
             icon: RotateCcw,
           },
           {
-            id: "sales",
-            label: "Борлуулалт",
-            href: "/sales",
-            icon: BarChart2,
-          },
-          {
             id: "payments",
             label: "Төлбөр",
             href: "/payments",
