@@ -15,7 +15,6 @@ const timeZone = "Asia/Ulaanbaatar";
 function context(receipt: PosReceipt) {
   const time = new Date(receipt.createdAt);
   return {
-    "Борлуулалтын ID": receipt.id,
     Баримт: receipt.receiptNo,
     Огноо: new Intl.DateTimeFormat("sv-SE", { timeZone }).format(time),
     "Цаг (Улаанбаатар)": time.toLocaleTimeString("en-GB", {
@@ -89,12 +88,10 @@ export function buildSalesExportRows(receipts: PosReceipt[]) {
         "Тайлбар (одоогийн)": line.catalog?.description ?? "",
         Нэгж: unit,
         "Тоо хэмжээ": line.qty,
-        "Үнийн төрөл": line.priceType ?? "",
         "Нэгж үнэ": line.unitPrice,
         "Нэгж өртөг (борлуулалтын үеийн)": line.unitCost ?? "",
         "Нийт өртөг (борлуулалтын үеийн)": line.costTotal ?? "",
         Хөнгөлөлт: line.discount ?? "",
-        "Татварын төрөл": line.taxType ?? "",
         "НӨАТ хувь": line.taxRate ?? "",
         "НӨАТ дүн": line.taxAmount,
         "НХАТ хувь": line.cityTaxRate ?? "",

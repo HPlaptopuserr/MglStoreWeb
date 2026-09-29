@@ -38,7 +38,7 @@ export function SoldProductsList({ receipts }: { receipts: PosReceipt[] }) {
         <tbody className="divide-y divide-slate-100">
           {rows.map((row, index) => (
             <tr
-              key={`${row["Борлуулалтын ID"]}-${index}`}
+              key={`${row["Баримт"]}-${index}`}
               className="transition-colors hover:bg-blue-50/50"
             >
               <td className="min-w-36 px-3 py-3">
