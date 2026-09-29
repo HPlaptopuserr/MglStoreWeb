@@ -2765,6 +2765,100 @@ export default function PosDemoPage() {
     clientSaleIdRef.current = null;
   };
 
+  const cancelCheckoutAndClearCart = async () => {
+    if (qpayCreatingRef.current) {
+      setScanStatus("not-found");
+      setScanMessage(
+        "QR нэхэмжлэл үүсгэж байна. Хариу ирсний дараа гүйлгээг цуцална уу.",
+      );
+      return;
+    }
+
+    if (isCardProcessing) {
+      setScanStatus("not-found");
+      setScanMessage(
+        "Картын төлбөр боловсруулагдаж байна. Дууссаны дараа гүйлгээг цуцална уу.",
+      );
+      return;
+    }
+
+    if (paymentEntries.some((entry) => entry.status === "confirmed")) {
+      setScanStatus("not-found");
+      setScanMessage(
+        "Баталгаажсан төлбөртэй тул сагсыг цэвэрлэх боломжгүй. Гүйлгээг эхлээд дуусгана уу.",
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Энэ гүйлгээг цуцалж, сагсан дахь бүх барааг арилгах уу?",
+    );
+    if (!confirmed) return;
+
+    const pendingQpayIds = paymentEntries
+      .filter(
+        (entry) =>
+          entry.method === "QR" &&
+          entry.status === "pending" &&
+          entry.invoiceId,
+      )
+      .map((entry) => entry.invoiceId as string);
+
+    try {
+      for (const invoiceId of pendingQpayIds) {
+        await cancelQPayInvoice(invoiceId);
+      }
+    } catch (error) {
+      for (const invoiceId of pendingQpayIds) {
+        try {
+          const invoice = await getQPayInvoiceStatus(invoiceId);
+          if (invoice.status === "PAID") {
+            setPaymentEntries((current) =>
+              current.map((entry) =>
+                entry.id === invoiceId
+                  ? { ...entry, status: "confirmed" }
+                  : entry,
+              ),
+            );
+            setQpayModal(null);
+            clearProgressTicker();
+            setScanStatus("success");
+            setScanMessage(
+              "QR төлбөр баталгаажсан тул гүйлгээг цуцлаагүй. “Гүйлгээ батлах” товчийг дарна уу.",
+            );
+            showSuccessOverlay("QR төлбөр хүлээн авлаа");
+            return;
+          }
+        } catch {
+          // Keep the checkout when provider confirmation is unavailable.
+        }
+      }
+
+      setScanStatus("not-found");
+      setScanMessage(
+        error instanceof Error
+          ? `${error.message} Төлбөрийн мэдээлэл болон сагсыг аюулгүй байдлын үүднээс хэвээр үлдээлээ.`
+          : "QR төлөвийг баталгаажуулж чадсангүй. Төлбөрийн мэдээлэл болон сагсыг хэвээр үлдээлээ.",
+      );
+      return;
+    }
+
+    clearProgressTicker();
+    setAutoCheckoutActive(false);
+    setPaymentEntries([]);
+    setQpayModal(null);
+    setLoyalty(initialLoyaltyState);
+    setLoyaltyRedeemSession(null);
+    setCustomerDisplaySuccess(null);
+    setCashChangeReceipt(null);
+    clientSaleIdRef.current = null;
+    clearQPayCheckoutRecovery(organizationId);
+    dispatch({ type: "clear-cart" });
+    setView("register");
+    setScanStatus("idle");
+    setScanMessage("Гүйлгээ цуцлагдаж, сагс цэвэрлэгдлээ.");
+  };
+
   const lookupLoyalty = async () => {
     const phone = loyalty.phone.replace(/\D/g, "");
     if (phone.length < 6) {
@@ -4140,6 +4234,7 @@ export default function PosDemoPage() {
             setAutoCheckoutActive(false);
             setView("register");
           }}
+          onCancelCheckout={cancelCheckoutAndClearCart}
           disabled={saleLoading || autoCheckoutActive || autoFinalizing || creditRepaymentSubmitting || state.cart.length === 0 || isCardProcessing}
         />
       )}
