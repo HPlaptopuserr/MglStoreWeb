@@ -57,6 +57,9 @@ export function loadQPayCheckoutRecovery(
       ? parsed.paymentEntries.filter(isPaymentEntry)
       : [];
     const updatedAt = Number(parsed.updatedAt || 0);
+    const qpayModalExpiry = Date.parse(
+      String(parsed.qpayModal?.expiresAt || ""),
+    );
 
     if (
       typeof parsed.clientSaleId !== "string" ||
@@ -75,7 +78,9 @@ export function loadQPayCheckoutRecovery(
       qpayModal:
         parsed.qpayModal &&
         typeof parsed.qpayModal.invoiceId === "string" &&
-        Number.isFinite(parsed.qpayModal.amount)
+        Number.isFinite(parsed.qpayModal.amount) &&
+        Number.isFinite(qpayModalExpiry) &&
+        qpayModalExpiry > Date.now()
           ? { ...parsed.qpayModal, open: true }
           : null,
       loyalty: {

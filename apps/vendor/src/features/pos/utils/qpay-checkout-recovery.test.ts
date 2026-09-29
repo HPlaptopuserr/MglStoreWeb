@@ -22,6 +22,23 @@ test("pending QR references survive reload and remain organization scoped", () =
     assert.equal(loadQPayCheckoutRecovery("org-2"), null);
     for (const [key, raw] of storage) storage.set(key, JSON.stringify({ ...JSON.parse(raw), updatedAt: Date.now() - 48 * 60 * 60 * 1000 }));
     assert.equal(loadQPayCheckoutRecovery("org-1")?.paymentEntries[0].invoiceId, "invoice-1", "unresolved money must not disappear after 24 hours");
+    recovery.qpayModal = {
+      open: true,
+      invoiceId: "invoice-1",
+      amount: 100,
+      qrText: "expired-qr",
+      qrImage: "",
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    };
+    saveQPayCheckoutRecovery("org-1", recovery);
+    assert.equal(loadQPayCheckoutRecovery("org-1")?.qpayModal, null, "expired QR must not reopen after refresh");
+    recovery.qpayModal = {
+      ...recovery.qpayModal,
+      qrText: "active-qr",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    };
+    saveQPayCheckoutRecovery("org-1", recovery);
+    assert.equal(loadQPayCheckoutRecovery("org-1")?.qpayModal?.qrText, "active-qr");
     recovery.paymentEntries = [{ id: "qr", method: "QR", status: "confirmed", amount: 100, invoiceId: "invoice-1" }];
     saveQPayCheckoutRecovery("org-1", recovery);
     assert.equal(loadQPayCheckoutRecovery("org-1")?.paymentEntries[0].invoiceId, "invoice-1");

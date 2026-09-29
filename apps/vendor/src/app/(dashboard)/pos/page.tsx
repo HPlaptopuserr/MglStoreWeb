@@ -3076,9 +3076,14 @@ export default function PosDemoPage() {
 
             if (status.status === "EXPIRED") {
               // Keep the invoice for reconciliation: a bank payment may arrive late.
+              setQpayModal((current) =>
+                current?.invoiceId === invoiceId ? null : current,
+              );
               clearProgressTicker();
               setScanStatus("not-found");
-              setScanMessage("QR-ийн хугацаа дууссан. Төлсөн бол дахин төлөхгүй. Төлбөрийн баталгаажилтыг үргэлжлүүлэн шалгаж байна.");
+              setScanMessage(
+                "QR-ийн хугацаа дууссан. Төлсөн бол дахин төлөхгүй. Төлөвөө шалгах эсвэл “Гүйлгээ цуцалж, сагс цэвэрлэх” товчийг дарна уу.",
+              );
             }
           } catch {
             if (!controller.signal.aborted) {
@@ -4925,7 +4930,15 @@ export default function PosDemoPage() {
                   : undefined
               }
               onClear={() => {
-                if (blockQPayCartMutation()) return;
+                if (
+                  qpayCreatingRef.current ||
+                  paymentEntries.some(
+                    (item) => item.method === "QR" && item.invoiceId,
+                  )
+                ) {
+                  void cancelCheckoutAndClearCart();
+                  return;
+                }
                 dispatch({ type: "clear-cart" });
                 resetCreditRepaymentMode();
               }}

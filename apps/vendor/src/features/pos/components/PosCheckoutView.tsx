@@ -178,6 +178,9 @@ export function PosCheckoutView({
   const hasConfirmedQPay = paymentEntries.some(
     (item) => item.method === "QR" && item.status === "confirmed",
   );
+  const hasPendingQPay = paymentEntries.some(
+    (item) => item.method === "QR" && item.status === "pending",
+  );
   const hasCustomAmount = parsedAmount > 0;
   const paymentAmount = isCashTender
     ? (cashPayment.preview?.amount ?? 0)
@@ -594,15 +597,29 @@ export function PosCheckoutView({
           {!qpayModal?.open && statusMessage && statusTone === "not-found" && (
             <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4">
               <p className="text-[10px] font-bold uppercase tracking-widest text-rose-300">
-                {paymentMethod === "CARD"
-                  ? "Картын төлбөр амжилтгүй"
-                  : paymentMethod === "QR"
-                    ? "QPay QR үүссэнгүй"
-                    : "Төлбөр амжилтгүй"}
+                {hasPendingQPay
+                  ? "QPay төлбөрийн анхааруулга"
+                  : paymentMethod === "CARD"
+                    ? "Картын төлбөр амжилтгүй"
+                    : paymentMethod === "QR"
+                      ? "QPay QR үүссэнгүй"
+                      : "Төлбөр амжилтгүй"}
               </p>
               <p className="mt-2 text-sm font-semibold text-rose-100">
                 {statusMessage}
               </p>
+              {hasPendingQPay && (
+                <button
+                  type="button"
+                  onClick={() => void handleCancelCheckout()}
+                  disabled={disabled || cancelCheckoutLoading}
+                  className="mt-4 inline-flex items-center justify-center rounded-lg border border-rose-400/50 bg-rose-500/15 px-4 py-2 text-xs font-black text-rose-100 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {cancelCheckoutLoading
+                    ? "Цуцалж байна..."
+                    : "Гүйлгээ цуцалж, сагс цэвэрлэх"}
+                </button>
+              )}
             </div>
           )}
 
