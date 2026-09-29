@@ -961,10 +961,14 @@ router.get("/products/:id/primary-image", async (req, res) => {
 });
 
 router.get("/products/health", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
   return res.json({
     supabaseUrl: process.env.SUPABASE_URL ? "set" : "MISSING",
     supabaseKey: process.env.SUPABASE_SERVICE_KEY ? "set" : "MISSING",
     nodeEnv: process.env.NODE_ENV || "not set",
+    revision: String(
+      process.env.RENDER_GIT_COMMIT || process.env.GIT_COMMIT_SHA || "unknown",
+    ).slice(0, 8),
   });
 });
 
