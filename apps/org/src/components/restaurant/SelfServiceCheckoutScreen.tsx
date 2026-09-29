@@ -2918,23 +2918,9 @@ function SelfServiceCheckoutContent() {
                     cart.find((line) => line.product.id === product.id)?.qty ||
                     0;
                   const soldOut = product.stockQty <= selectedQty;
-                  const productCategory = categoryLabel(
-                    resolveProductCategory(product),
-                  );
-                  const productMeta = [
-                    productCategory,
-                    product.preparationMinutes
-                      ? `${product.preparationMinutes} мин`
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ");
-                  const categoryBadgeClass =
-                    product.kitchenStation === "BAR"
-                      ? "bg-blue-600"
-                      : product.kitchenStation === "COLD_KITCHEN"
-                        ? "bg-emerald-600"
-                        : "bg-[#ff5a0a]";
+                  const productMeta = product.preparationMinutes
+                    ? `${product.preparationMinutes} мин`
+                    : "";
                   return (
                     <article
                       key={product.id}
@@ -2952,13 +2938,8 @@ function SelfServiceCheckoutContent() {
                         <ProductImage
                           src={product.imageUrl}
                           alt={product.name}
-                          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                          className="h-full w-full object-contain transition duration-500 group-hover:scale-105"
                         />
-                        <span
-                          className={`absolute left-2 top-2 max-w-[70%] truncate rounded-md px-2 py-1 text-[8px] font-black text-white shadow-sm ${categoryBadgeClass}`}
-                        >
-                          {productCategory}
-                        </span>
                         {product.imageUrl ? (
                           <span className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-black/45 text-white shadow-lg backdrop-blur-sm transition group-hover:scale-105">
                             <ZoomIn className="h-3.5 w-3.5" />
