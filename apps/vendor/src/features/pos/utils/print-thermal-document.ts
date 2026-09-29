@@ -57,10 +57,7 @@ export function printThermalDocument({
 
   popup.onload = () => {
     popup.requestAnimationFrame(() => {
-      const contentHeightPx = Math.max(
-        popup.document.body.scrollHeight,
-        popup.document.documentElement.scrollHeight,
-      );
+      const contentHeightPx = popup.document.body.getBoundingClientRect().height;
       const contentHeightMm = Math.max(
         MINIMUM_RECEIPT_HEIGHT_MM,
         Math.ceil((contentHeightPx * MILLIMETERS_PER_INCH) / SCREEN_DPI + RECEIPT_BOTTOM_FEED_MM),

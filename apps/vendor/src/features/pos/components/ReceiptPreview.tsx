@@ -9,6 +9,7 @@ import { voidPushEcr } from "../api/payments";
 import { returnLocalEbarimtReceipt, sendLocalEbarimtData } from "../api/ebarimt";
 import { voidSale } from "../api/void-sale";
 import { formatReceipt } from "../utils/format-receipt";
+import { receiptPrintLayout, receiptPrintCss } from "../utils/receipt-print-layout";
 import { printThermalDocument } from "../utils/print-thermal-document";
 
 type Props = {
@@ -38,16 +39,11 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
       : "";
 
   const handlePrint = () => {
-    const content = formatReceipt(receipt)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
     const qrMarkup = ebarimtQrRef.current?.innerHTML || "";
     printThermalDocument({
-      bodyHtml: `<pre>${content}</pre>${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR код</p>${qrMarkup}</div>` : ""}`,
-      extraCss: `
+      bodyHtml: `${receiptPrintLayout(receipt)}${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR код</p>${qrMarkup}</div>` : ""}`,
+      extraCss: `${receiptPrintCss}
+
         .ebarimt-qr { margin-top: 3mm; text-align: center; }
         .ebarimt-qr svg { width: 42mm; height: 42mm; }
         .ebarimt-qr-title { margin: 0 0 2mm; font-family: sans-serif; font-size: 9pt; font-weight: 700; }
