@@ -4312,9 +4312,11 @@ export default function PosDemoPage() {
         </div>
       )}
 
+      {salesHistoryOpen && <CurrentShiftHistory receipts={receiptHistory} selectedReceipt={receiptForPreview} register={registerConfig} loading={receiptHistoryLoading} error={receiptHistoryError} onSelect={setSelectedReceiptId} onRefresh={reloadReceiptHistory} onVoided={handleReceiptVoided} onClose={() => setSalesHistoryOpen(false)} />}
+
       <div className={registerLayout.workspace}>
         <section className={registerLayout.column}>
-          {salesHistoryOpen ? <CurrentShiftHistory receipts={receiptHistory} selectedReceipt={receiptForPreview} register={registerConfig} loading={receiptHistoryLoading} error={receiptHistoryError} onSelect={setSelectedReceiptId} onRefresh={reloadReceiptHistory} onVoided={handleReceiptVoided} /> : <>
+
           <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="hidden mb-3 flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -4745,7 +4747,6 @@ export default function PosDemoPage() {
               />
             )}
           </div>
-          </>}
         </section>
 
         <section ref={paymentSectionRef} className={registerLayout.column}>

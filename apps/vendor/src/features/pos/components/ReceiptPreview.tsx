@@ -199,10 +199,17 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
         </div>
       )}
 
-      <pre className="mt-2 min-h-44 flex-1 overflow-auto rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
+      <pre className="mt-2 min-h-44 flex-1 whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-xs text-slate-700">
         {formatReceipt(receipt)}
       </pre>
 
+      {!ebarimtQrData && (
+        <p role="status" className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          {receipt.ebarimt?.status === "SUCCESS"
+            ? "eBarimt бүртгэгдсэн боловч энэ баримтын QR мэдээлэл ирээгүй байна."
+            : "Энэ баримтад eBarimt QR үүсээгүй байна."}
+        </p>
+      )}
       {ebarimtQrData && (
         <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-center">
           <p className="mb-2 text-xs font-bold text-emerald-700">eBarimt QR код</p>
