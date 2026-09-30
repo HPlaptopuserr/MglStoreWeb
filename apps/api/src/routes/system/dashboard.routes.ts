@@ -22,7 +22,10 @@ import { requirePosUser } from "../operations/pos/_shared";
 
 import adminSalesStoresRouter from "./admin-sales-stores.routes";
 
+import posStoreStatisticsRouter from "./pos-store-statistics.routes";
+
 const router: RouterType = Router();
+router.use(posStoreStatisticsRouter);
 router.use(adminSalesStoresRouter);
 
 /* ─── GET /admin/dashboard/stats ─────────────────────── */

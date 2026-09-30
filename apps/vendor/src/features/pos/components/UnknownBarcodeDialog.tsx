@@ -66,13 +66,6 @@ export function UnknownBarcodeDialog({
     setSaveError("");
   }, [barcode, open]);
 
-  useEffect(() => {
-    if (suggestions.length === 0 || selectedId) return;
-    setSelectedId(suggestions[0].id);
-    setName(suggestions[0].canonicalName);
-    if (suggestions[0].suggestedPrice !== null)
-      setPrice(String(suggestions[0].suggestedPrice));
-  }, [selectedId, suggestions]);
 
   if (!open) return null;
 

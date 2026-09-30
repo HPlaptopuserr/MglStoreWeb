@@ -1,3 +1,6 @@
+import { findMasterCatalogIds } from "../../services/master-catalog-search.service";
+import { CatalogEditError, catalogEditSelect, saveCatalogEdit } from "../../services/master-catalog-editor.service";
+import { Prisma } from "@mgl/database";
 import { Router, type Response, type Router as ExpressRouter } from "express";
 import multer from "multer";
 import * as XLSX from "xlsx";
@@ -204,27 +207,12 @@ function canAccessMasterCatalogAdmin(req: Parameters<typeof requireAuth>[0]) {
   );
 }
 
-async function buildMasterCatalogDataset(search = "", take?: number) {
+async function buildMasterCatalogDataset(search = "", take?: number, scopeIds?: string[]) {
   const since = new Date();
   since.setDate(since.getDate() - 90);
-  const normalizedSearch = normalizeMasterName(search);
+  const orderedIds = scopeIds ?? (search.trim() ? await findMasterCatalogIds(search) : undefined);
   const masters = await prisma.masterProduct.findMany({
-    where: {
-      status: "ACTIVE",
-      ...(normalizedSearch
-        ? {
-            OR: [
-              { normalizedName: { contains: normalizedSearch } },
-              { barcode: { contains: search.trim() } },
-              {
-                aliases: {
-                  some: { normalizedValue: { contains: normalizedSearch } },
-                },
-              },
-            ],
-          }
-        : {}),
-    },
+    where: {status: "ACTIVE", ...(orderedIds ? {id:{in:orderedIds}} : {})},
     select: {
       id: true,
       canonicalName: true,
@@ -244,6 +232,10 @@ async function buildMasterCatalogDataset(search = "", take?: number) {
     orderBy: { canonicalName: "asc" },
     ...(take ? { take } : {}),
   });
+  if (orderedIds) {
+    const ranks = new Map(orderedIds.map((id,index)=>[id,index]));
+    masters.sort((a,b)=>(ranks.get(a.id)??0)-(ranks.get(b.id)??0));
+  }
   const productToMaster = new Map<string, string>();
   masters.forEach((master) =>
     master.products.forEach((product) =>
@@ -2775,7 +2767,7 @@ router.post(
               },
               update: {
                 ...productData,
-                barcode: masterProduct.barcode || normalizedBarcode,
+                barcode: normalizedBarcode,
                 masterProductId: masterProduct.id,
                 deletedAt: null,
                 ...(imageUrls.length > 0 && {
@@ -2789,7 +2781,7 @@ router.post(
                 organizationId,
                 sku: normalizedSku,
                 ...productData,
-                barcode: masterProduct.barcode || normalizedBarcode,
+                barcode: normalizedBarcode,
                 masterProductId: masterProduct.id,
                 ...(imageUrls.length > 0 && {
                   images: { create: toOrderedProductImages(imageUrls) },
@@ -2821,7 +2813,7 @@ router.post(
                 organizationId,
                 sku: null,
                 ...productData,
-                barcode: masterProduct.barcode || normalizedBarcode,
+                barcode: normalizedBarcode,
                 masterProductId: masterProduct.id,
                 ...(imageUrls.length > 0 && {
                   images: { create: toOrderedProductImages(imageUrls) },
@@ -3073,16 +3065,15 @@ router.get("/products/master-catalog/admin", requireAuth, async (req, res) => {
   try {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 50));
-    const rows = await buildMasterCatalogDataset(
-      String(req.query.search || ""),
-    );
+    const ids = await findMasterCatalogIds(String(req.query.search || "").slice(0,200));
     const start = (page - 1) * limit;
+    const rows = await buildMasterCatalogDataset("", undefined, ids.slice(start,start+limit));
     return res.json({
-      items: rows.slice(start, start + limit),
-      total: rows.length,
+      items: rows,
+      total: ids.length,
       page,
       limit,
-      hasMore: start + limit < rows.length,
+      hasMore: start + limit < ids.length,
       unlinkedProductCount: await prisma.product.count({
         where: { masterProductId: null, deletedAt: null },
       }),
@@ -3092,6 +3083,25 @@ router.get("/products/master-catalog/admin", requireAuth, async (req, res) => {
     return res
       .status(500)
       .json({ message: "Нэгдсэн барааны сан авахад алдаа гарлаа" });
+  }
+});
+
+router.get("/products/master-catalog/admin/:id", requireAuth, async (req, res) => {
+  if (!canAccessMasterCatalogAdmin(req)) return res.status(403).json({message: "Нэгдсэн барааны сан засах эрхгүй"});
+  try {
+    const item = await prisma.masterProduct.findUnique({where:{id:String(req.params.id)},select:catalogEditSelect});
+    if (!item) return res.status(404).json({message:"Бараа олдсонгүй"});
+    res.setHeader("Cache-Control", "no-store");
+    return res.json(item);
+  } catch { return res.status(500).json({message:"Барааны мэдээлэл ачаалсангүй"}); }
+});
+router.patch("/products/master-catalog/admin/:id", requireAuth, async (req, res) => {
+  if (!canAccessMasterCatalogAdmin(req)) return res.status(403).json({message: "Нэгдсэн барааны сан засах эрхгүй"});
+  try { return res.json(await saveCatalogEdit(String(req.params.id), req.body)); }
+  catch(error: unknown) {
+    if (error instanceof CatalogEditError) return res.status(error.status).json({message:error.message});
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return res.status(409).json({message:"Энэ баркод өөр нэгдсэн бараанд бүртгэлтэй байна"});
+    return res.status(500).json({message:"Барааны мэдээлэл хадгалсангүй"});
   }
 });
 
@@ -3133,69 +3143,11 @@ router.get("/products/master-catalog/search", requireAuth, async (req, res) => {
       take: 40,
     });
 
-    const masterIds = products.map((product) => product.id);
-    const sourceProducts = masterIds.length
-      ? await prisma.product.findMany({
-          where: {
-            deletedAt: null,
-            isActive: true,
-            reviewStatus: "APPROVED",
-            OR: [
-              { masterProductId: { in: masterIds } },
-              ...(barcode ? [{ barcode }] : []),
-            ],
-          },
-          select: {
-            id: true,
-            masterProductId: true,
-            name: true,
-            sku: true,
-            barcode: true,
-            unit: true,
-            description: true,
-            price: true,
-            taxType: true,
-            cityTaxRate: true,
-            classificationCode: true,
-            taxProductCode: true,
-            updatedAt: true,
-            images: {
-              select: { url: true },
-              orderBy: productImageOrderBy(),
-              take: 1,
-            },
-            businessCategory: { select: { id: true, name: true } },
-          },
-        })
-      : [];
-
-    const completenessScore = (product: (typeof sourceProducts)[number]) =>
-      1 +
-      (product.name.trim() ? 2 : 0) +
-      (product.images[0]?.url ? 3 : 0) +
-      (product.description?.trim() ? 2 : 0) +
-      (product.unit?.trim() ? 1 : 0) +
-      (product.businessCategory ? 2 : 0) +
-      (product.sku?.trim() ? 1 : 0) +
-      (Number(product.price) > 0 ? 1 : 0) +
-      (product.taxProductCode?.trim() ? 1 : 0) +
-      (product.classificationCode.trim() !== "6212991" ? 1 : 0);
-
-    const bestSourceByMasterId = new Map<
-      string,
-      (typeof sourceProducts)[number]
-    >();
-    for (const source of sourceProducts) {
-      const masterId = source.masterProductId;
-      if (!masterId || !masterIds.includes(masterId)) continue;
-      const current = bestSourceByMasterId.get(masterId);
-      const isBetter =
-        !current ||
-        completenessScore(source) > completenessScore(current) ||
-        (completenessScore(source) === completenessScore(current) &&
-          source.updatedAt > current.updatedAt);
-      if (isBetter) bestSourceByMasterId.set(masterId, source);
-    }
+    const categories = await prisma.businessCategory.findMany({
+      where: { name: { in: products.flatMap(product => product.categoryName ? [product.categoryName] : []) } },
+      select: {id:true,name:true},
+    });
+    const categoryIds = new Map(categories.map(category => [category.name, category.id]));
 
     const seen = new Set<string>();
     return res.json(
@@ -3210,24 +3162,16 @@ router.get("/products/master-catalog/search", requireAuth, async (req, res) => {
         })
         .slice(0, 12)
         .map(({ _count, ...product }) => {
-          const source = bestSourceByMasterId.get(product.id);
           return {
             ...product,
-            canonicalName: source?.name || product.canonicalName,
-            barcode: source?.barcode || product.barcode,
-            unit: source?.unit || product.unit,
-            description: source?.description || product.description,
-            imageUrl: source?.images[0]?.url || product.imageUrl,
-            categoryName:
-              source?.businessCategory?.name || product.categoryName,
-            businessCategoryId: source?.businessCategory?.id ?? null,
-            suggestedSku: source?.sku ?? null,
-            suggestedPrice: source ? Number(source.price) : null,
-            taxType: source?.taxType ?? null,
-            cityTaxRate: source ? Number(source.cityTaxRate) : null,
-            classificationCode: source?.classificationCode ?? null,
-            taxProductCode: source?.taxProductCode ?? null,
-            sourceCompleteness: source ? completenessScore(source) : 0,
+            businessCategoryId: product.categoryName ? categoryIds.get(product.categoryName) ?? null : null,
+            suggestedSku: null,
+            suggestedPrice: null,
+            taxType: null,
+            cityTaxRate: null,
+            classificationCode: null,
+            taxProductCode: null,
+            sourceCompleteness: [product.canonicalName, product.barcode, product.unit, product.description, product.imageUrl, product.categoryName].filter(Boolean).length,
             usageCount: _count.products,
             exactBarcodeMatch: Boolean(barcode && product.barcode === barcode),
           };
@@ -3871,11 +3815,12 @@ router.post(
             organizationId,
             masterProductId: masterProduct.id,
             submittedById: actorId,
-            name: masterProduct.canonicalName,
+            // Preserve the owner's submitted values; selecting a catalog entry only pre-fills the form.
+            name: String(name).trim(),
             description: description ? String(description).trim() : null,
             specifications: normalizedSpecifications,
             sku: normalizedSku,
-            barcode: masterProduct.barcode || normalizedBarcode,
+            barcode: normalizedBarcode,
             unit: normalizedUnit,
             price: priceNum,
             wholesalePrice: wholesalePriceNum,
