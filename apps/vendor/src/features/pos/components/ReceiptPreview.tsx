@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Loader2, Printer, RotateCcw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { PosReceipt } from "../types/receipt.types";
@@ -9,9 +9,8 @@ import { voidPushEcr } from "../api/payments";
 import { returnLocalEbarimtReceipt, sendLocalEbarimtData } from "../api/ebarimt";
 import { voidSale } from "../api/void-sale";
 import { formatReceipt } from "../utils/format-receipt";
-import { receiptPrintLayout, receiptPrintCss, receiptPrintFooter } from "../utils/receipt-print-layout";
+import { printReceipt } from "../utils/print-receipt";
 import { withDemoEbarimt } from "../utils/receipt-preview-demo";
-import { printThermalDocument } from "../utils/print-thermal-document";
 
 type Props = {
   receipt: PosReceipt | null;
@@ -27,7 +26,6 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
   const [saleVoiding, setSaleVoiding] = useState(false);
   const [saleVoidResult, setSaleVoidResult] = useState<{ succeed: boolean; message?: string } | null>(null);
   const [demoQr, setDemoQr] = useState(true);
-  const ebarimtQrRef = useRef<HTMLDivElement>(null);
 
   if (!receipt) return null;
 
@@ -43,18 +41,7 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
       ? displayReceipt.ebarimt.qrData
       : "";
 
-  const handlePrint = () => {
-    const qrMarkup = ebarimtQrRef.current?.innerHTML || "";
-    printThermalDocument({
-      bodyHtml: `${showingDemo ? '<p style="text-align:center;font-weight:bold">ТЕСТ БАРИМТ — eBarimt-д бүртгэгдэхгүй</p>' : ""}${receiptPrintLayout(displayReceipt)}${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">{showingDemo ? "ТЕСТ QR — eBarimt-д бүртгэгдэхгүй" : "eBarimt QR код"}</p>${qrMarkup}</div>` : ""}${receiptPrintFooter}`,
-      extraCss: `${receiptPrintCss}
-
-        .ebarimt-qr { margin-top: 3mm; text-align: center; }
-        .ebarimt-qr svg { width: 42mm; height: 42mm; }
-        .ebarimt-qr-title { margin: 0 0 2mm; font-family: sans-serif; font-size: 9pt; font-weight: 700; }
-      `,
-    });
-  };
+  const handlePrint = () => printReceipt(displayReceipt, { demo: showingDemo });
 
   const handleTerminalVoid = async () => {
     if (!cardLine?.traceno || !cardLine?.terminalId) return;
@@ -220,7 +207,7 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
       {ebarimtQrData && (
         <div className="mt-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 text-center">
           <p className="mb-2 text-xs font-bold text-emerald-700">{showingDemo ? "ТЕСТ QR — eBarimt-д бүртгэгдэхгүй" : "eBarimt QR код"}</p>
-          <div ref={ebarimtQrRef} className="inline-flex rounded-lg bg-white p-2">
+          <div className="inline-flex rounded-lg bg-white p-2">
             <QRCodeSVG value={ebarimtQrData} size={152} level="M" includeMargin />
           </div>
         </div>

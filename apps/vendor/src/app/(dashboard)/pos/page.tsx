@@ -1,4 +1,6 @@
 "use client";
+import { printReceipt as printSaleReceipt } from "@/features/pos/utils/print-receipt";
+import { ReceiptPrintNotice } from "@/features/pos/components/ReceiptPrintNotice";
 import { reconcilePaymentEntry } from "@/features/pos/utils/reconcile-payment-entry";
 import { cancelQPayInvoice } from "@/features/pos/api/qpay";
 
@@ -11,8 +13,7 @@ import { CashChangeNotice } from "@/features/pos/components/CashChangeNotice";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createPortal, flushSync } from "react-dom";
-import { createRoot } from "react-dom/client";
+import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 function MobileBlock() {
   return (
@@ -69,7 +70,6 @@ import {
   type PosReceipt,
   type SaleCreditPaymentMeta,
   type SalePaymentLine,
-  formatReceipt,
   createCardAttempt,
   chargeClientBridge,
   submitClientBridgeResult,
@@ -512,49 +512,12 @@ const escapeHtml = (value: string): string =>
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-const renderEbarimtQrMarkup = (value?: string | null) => {
-  const qrValue = String(value || "").trim();
-  if (typeof document === "undefined" || !qrValue) return "";
-
-  const container = document.createElement("div");
-  container.style.position = "fixed";
-  container.style.left = "-9999px";
-  container.style.top = "-9999px";
-  document.body.appendChild(container);
-
-  const root = createRoot(container);
-  try {
-    flushSync(() => {
-      root.render(<QRCodeSVG value={qrValue} size={160} level="M" includeMargin />);
-    });
-    return container.innerHTML;
-  } finally {
-    root.unmount();
-    container.remove();
-  }
-};
-
-const printReceipt = (receipt: PosReceipt) => {
-  if (typeof window === "undefined") return;
-
-  const content = escapeHtml(formatReceipt(receipt));
-  const ebarimtQrData =
-    receipt.ebarimt?.status === "SUCCESS" && receipt.ebarimt.qrData
-      ? receipt.ebarimt.qrData
-      : "";
-  const qrMarkup = renderEbarimtQrMarkup(ebarimtQrData);
-  printThermalDocument({
-    bodyHtml: `<pre>${content}</pre>${ebarimtQrData ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR код</p>${qrMarkup || `<p class="ebarimt-qr-fallback">${escapeHtml(ebarimtQrData)}</p>`}</div>` : ""}`,
-    extraCss: `
-      .ebarimt-qr { margin-top: 3mm; text-align: center; }
-      .ebarimt-qr svg { width: 42mm; height: 42mm; }
-      .ebarimt-qr-title { margin: 0 0 2mm; font-family: sans-serif; font-size: 9pt; font-weight: 700; }
-      .ebarimt-qr-fallback { white-space: normal; overflow-wrap: anywhere; font-size: 8pt; }
-    `,
-  });
-};
-
 export default function PosDemoPage() {
+  const [printableReceipt, setPrintableReceipt] = useState<PosReceipt | null>(null);
+  const printReceipt = (receipt: PosReceipt) => {
+    setPrintableReceipt(receipt);
+    printSaleReceipt(receipt);
+  };
   const router = useRouter();
   const [organizationId, setOrganizationId] = useState("");
   const [posAccess, setPosAccess] = useState<"checking" | "enabled" | "disabled">("checking");
@@ -2630,11 +2593,13 @@ export default function PosDemoPage() {
   };
 
   const qpayCreatingRef = useRef(false);
+  const [qpayCreating, setQpayCreating] = useState(false);
   const requestQPay = async (amount: number) => {
     if (qpayCreatingRef.current || cardPaymentRunRef.current || paymentEntries.some(item => item.status === "pending")) return;
     const safeAmount = roundMoney(Math.max(0, Math.min(amount, remaining)));
     if (safeAmount <= 0) return;
     qpayCreatingRef.current = true;
+    setQpayCreating(true);
     const requestId = crypto.randomUUID();
     clientSaleIdRef.current ||= crypto.randomUUID();
     const pendingEntry: CheckoutPaymentEntry = { id: requestId, invoiceId: requestId, method: "QR", amount: safeAmount, status: "pending" };
@@ -2643,7 +2608,7 @@ export default function PosDemoPage() {
     try {
       saveQPayCheckoutRecovery(organizationId, { clientSaleId: clientSaleIdRef.current, paymentEntries: pendingEntries, qpayModal: null, loyalty, loyaltyRedeemSession });
       setPaymentEntries(pendingEntries);
-      startProgressTicker("QR төлбөр хүлээж байна");
+      startProgressTicker("QR бэлтгэж байна…");
       const invoice = await createQPayInvoice({
         requestId,
         amount: safeAmount,
@@ -2668,6 +2633,7 @@ export default function PosDemoPage() {
         status: "pending",
         invoiceId: invoice.invoiceId,
       };
+      clearProgressTicker();
       setQpayModal(modalPayload);
       setPaymentEntries(prev => reconcilePaymentEntry(prev, requestId, qpayEntry));
       setScanStatus("idle");
@@ -2686,10 +2652,12 @@ export default function PosDemoPage() {
         : "QR хүсэлтийн хариу тодорхойгүй байна. Ижил нэхэмжлэлийн төлөвийг шалгаж байна; дахин төлөхгүй хүлээнэ үү.");
     } finally {
       qpayCreatingRef.current = false;
+      setQpayCreating(false);
     }
   };
 
   const markQPayPaid = (id: string) => {
+    if (qpayCreatingRef.current) return;
     void (async () => {
       try {
         const invoice = await getQPayInvoiceStatus(id);
@@ -3039,6 +3007,9 @@ export default function PosDemoPage() {
   ]);
 
   useEffect(() => {
+    // The recovery reference exists before the server has created the invoice.
+    // Start status requests only once creation settles (including uncertain failures).
+    if (qpayCreating) return;
     const pendingQpayIds = paymentEntries
       .filter((item) => item.method === "QR" && item.status === "pending" && item.invoiceId)
       .map((item) => item.invoiceId as string);
@@ -3047,13 +3018,16 @@ export default function PosDemoPage() {
 
     const controller = new AbortController();
     const inFlight = new Set<string>();
+    const lastProviderCheck = new Map<string, number>();
     const poll = () => {
       pendingQpayIds.forEach((invoiceId) => {
         if (inFlight.has(invoiceId) || controller.signal.aborted) return;
         inFlight.add(invoiceId);
         void (async () => {
           try {
-            const status = await getQPayInvoiceStatus(invoiceId, controller.signal);
+            const refreshProvider = Date.now() - (lastProviderCheck.get(invoiceId) || 0) >= 15000;
+            if (refreshProvider) lastProviderCheck.set(invoiceId, Date.now());
+            const status = await getQPayInvoiceStatus(invoiceId, controller.signal, refreshProvider);
             if (controller.signal.aborted) return;
 
             if (status.status === "PENDING" && status.qrText && !qpayModal) {
@@ -3061,7 +3035,7 @@ export default function PosDemoPage() {
             }
             if (status.status === "PAID") {
               setPaymentEntries((prev) =>
-                prev.map((item) => (item.id === invoiceId ? { ...item, status: "confirmed" } : item)),
+                prev.map((item) => (item.invoiceId === invoiceId ? { ...item, status: "confirmed" } : item)),
               );
               setAutoCheckoutActive(false);
 
@@ -3097,10 +3071,18 @@ export default function PosDemoPage() {
       });
     };
     poll();
-    const timer = window.setInterval(poll, 15000);
+    const timer = window.setInterval(poll, 3000);
+    const resume = () => { if (document.visibilityState === "visible") poll(); };
+    window.addEventListener("focus", resume);
+    document.addEventListener("visibilitychange", resume);
 
-    return () => { controller.abort(); window.clearInterval(timer); };
-  }, [paymentEntries, qpayModal?.invoiceId]);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      window.removeEventListener("focus", resume);
+      document.removeEventListener("visibilitychange", resume);
+    };
+  }, [paymentEntries, qpayModal?.invoiceId, qpayCreating]);
 
   useEffect(() => {
     if (!loyaltyRedeemSession?.id || loyaltyRedeemSession.status !== "PENDING") return;
@@ -3581,6 +3563,7 @@ export default function PosDemoPage() {
   return (
     <>
       <MobileBlock />
+      <ReceiptPrintNotice receipt={printableReceipt} onDismiss={() => setPrintableReceipt(null)} />
       <CashChangeNotice receipt={cashChangeReceipt} onDismiss={() => { setCashChangeReceipt(null); setCustomerDisplaySuccess(null); }} />
       {pendingEbarimtSale && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm">
@@ -4240,7 +4223,7 @@ export default function PosDemoPage() {
             setView("register");
           }}
           onCancelCheckout={cancelCheckoutAndClearCart}
-          disabled={saleLoading || autoCheckoutActive || autoFinalizing || creditRepaymentSubmitting || state.cart.length === 0 || isCardProcessing}
+          disabled={qpayCreating || saleLoading || autoCheckoutActive || autoFinalizing || creditRepaymentSubmitting || state.cart.length === 0 || isCardProcessing}
         />
       )}
 
