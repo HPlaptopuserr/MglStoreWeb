@@ -1,5 +1,6 @@
 export type PosGoodsReceiptLine = {
   productId: string;
+  masterProductId?: string;
   quantity: number;
   unitCost: number;
   salePrice?: number;
@@ -78,7 +79,10 @@ export function parsePosGoodsReceiptInput(
     }
 
     const item = rawItem as Record<string, unknown>;
-    const productId = cleanText(item.productId, 100);
+    const masterProductId = cleanText(item.masterProductId, 100);
+    const productId = masterProductId ? `catalog:${masterProductId}` : cleanText(item.productId, 100);
+    if (masterProductId && item.productId) return { ok: false, message: "Барааны эх сурвалж давхар байна" };
+    if (masterProductId && item.salePrice === undefined) return { ok: false, message: "Шинэ барааны зарах үнийг оруулна уу" };
     const quantity = Number(item.quantity);
     const unitCost = Number(item.unitCost);
     const salePrice =
@@ -147,6 +151,7 @@ export function parsePosGoodsReceiptInput(
     }
     linesByLot.set(lotKey, {
       productId,
+      ...(masterProductId ? { masterProductId } : {}),
       quantity: nextQuantity,
       ...(pricesByProduct.has(productId)
         ? { salePrice: pricesByProduct.get(productId) }

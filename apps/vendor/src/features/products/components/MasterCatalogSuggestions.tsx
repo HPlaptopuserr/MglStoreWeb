@@ -22,15 +22,22 @@ export function MasterCatalogSuggestions({
 }: Props) {
   const [products, setProducts] = useState<MasterCatalogProduct[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
   const normalizedName = name.trim();
   const normalizedBarcode = barcode.trim();
 
   useEffect(() => {
     if (disabled || (!normalizedBarcode && normalizedName.length < 2)) {
       setProducts([]);
+      setLoading(false);
+      setError(false);
       return;
     }
 
+    setProducts([]);
+    setLoading(true);
+    setError(false);
     const controller = new AbortController();
     const timer = window.setTimeout(
       async () => {
@@ -49,12 +56,12 @@ export function MasterCatalogSuggestions({
           );
           if (!response.ok) throw new Error("Catalog search failed");
           const body: unknown = await response.json();
+          if (controller.signal.aborted) return;
           setProducts(
             Array.isArray(body) ? (body as MasterCatalogProduct[]) : [],
           );
         } catch (error) {
-          if (!(error instanceof DOMException && error.name === "AbortError"))
-            setProducts([]);
+          if (!controller.signal.aborted) { setProducts([]); setError(true); }
         } finally {
           if (!controller.signal.aborted) setLoading(false);
         }
@@ -66,10 +73,12 @@ export function MasterCatalogSuggestions({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [disabled, normalizedBarcode, normalizedName]);
+  }, [disabled, normalizedBarcode, normalizedName, retry]);
 
 
-  if (disabled || (!loading && products.length === 0)) return null;
+  if (disabled || (!normalizedBarcode && normalizedName.length < 2)) return null;
+  if (error) return <div role="alert" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Нэгдсэн сангийн саналыг ачаалж чадсангүй. <button type="button" onClick={() => setRetry((value) => value + 1)} className="font-semibold underline">Дахин оролдох</button></div>;
+  if (!loading && products.length === 0) return <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">Нэгдсэн санд тохирох бараа олдсонгүй. Мэдээллээ бөглөөд шинэ бараагаар бүртгэнэ үү.</p>;
 
   return (
     <section
@@ -86,15 +95,15 @@ export function MasterCatalogSuggestions({
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-sm font-black text-indigo-950">
-            Нэгдсэн сангаас олдлоо
+            {loading ? "Нэгдсэн сангаас хайж байна…" : selectedId ? "Барааны мэдээллийг сонголоо" : "Энэ таны бүртгэх бараа мөн үү?"}
           </p>
-          <p className="text-[11px] font-semibold text-indigo-500">
-            Сонговол барааны мэдээлэл автоматаар бөглөгдөнө
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            {selectedId ? "Доор нэр, мэдээллээ шалгаад өөрийн үнэ, үлдэгдлээ оруулна уу." : "Нэгдсэн сангаас олдлоо. Мөн бол сонгож нэр, ангилал, зургийг бөглүүлнэ үү."}
           </p>
         </div>
         {!loading && (
           <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-black text-indigo-600 ring-1 ring-indigo-100">
-            {products.length} санал
+            {products.length} бараа
           </span>
         )}
       </div>
@@ -109,7 +118,7 @@ export function MasterCatalogSuggestions({
                 type="button"
                 onClick={() => onSelect(product)}
                 aria-pressed={selected}
-                className={`flex w-full items-center gap-3 px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${selected ? "bg-white" : "hover:bg-white/80"}`}
+                className={`flex w-full flex-wrap items-center gap-3 px-4 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 ${selected ? "bg-white" : "hover:bg-white/80"}`}
               >
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-indigo-100 bg-white">
                   {product.imageUrl ? (
@@ -122,27 +131,27 @@ export function MasterCatalogSuggestions({
                     <ImageIcon size={18} className="text-indigo-300" />
                   )}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-black text-slate-900">
+                <div className="min-w-0 flex-1 basis-40">
+                  <p className="break-words text-sm font-bold text-slate-900">
                     {product.canonicalName}
                   </p>
-                  <p className="truncate text-xs font-medium text-slate-500">
-                    {[product.brand, product.barcode, product.categoryName]
+                  <p className="break-words text-xs font-medium text-slate-500">
+                    {[product.barcode ? `Баркод: ${product.barcode}` : null, product.brand, product.categoryName]
                       .filter(Boolean)
                       .join(" · ") || "Үндсэн мэдээлэл"}
                   </p>
-                  <p className="mt-0.5 flex items-center gap-1 text-[11px] font-bold text-indigo-600">
+                  {product.usageCount > 0 && <p className="mt-0.5 flex items-center gap-1 text-[11px] font-bold text-indigo-600">
                     <Sparkles size={11} /> {product.usageCount} дэлгүүр ашиглаж
                     байна
-                  </p>
+                  </p>}
                 </div>
                 <span
-                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${selected ? "bg-emerald-100 text-emerald-600" : "bg-white text-indigo-400"}`}
+                  className={`flex min-h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold ${selected ? "bg-emerald-100 text-emerald-700" : "bg-indigo-600 text-white shadow-sm"}`}
                 >
                   {selected ? (
-                    <Check size={16} />
+                    <><Check size={16} /><span>Мэдээлэл бөглөгдсөн</span></>
                   ) : (
-                    <span className="text-lg leading-none">+</span>
+                    <span>Энэ барааг ашиглах</span>
                   )}
                 </span>
               </button>
@@ -150,6 +159,7 @@ export function MasterCatalogSuggestions({
           })}
         </div>
       )}
+      {!loading && !selectedId && <p className="border-t border-indigo-100 bg-white/70 px-4 py-3 text-xs leading-5 text-slate-500">Өөр бараа бол сонголт хийхгүйгээр доорх мэдээллээ бөглөөрэй. Зарах үнэ, үлдэгдлээ та өөрөө оруулна.</p>}
     </section>
   );
 }

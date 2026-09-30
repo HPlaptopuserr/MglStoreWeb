@@ -2,18 +2,20 @@
 
 import { markedUpPrice } from "@/features/receive/receipt-pricing";
 import { ReceiptMarkupControl } from "@/features/receive/ReceiptMarkupControl";
+import { ReceiptSourceFields, type PosRegisterOption } from "@/features/receive/ReceiptSourceFields";
+import { MasterCatalogSuggestions } from "@/features/products/components/MasterCatalogSuggestions";
+import type { MasterCatalogProduct } from "@/features/products/types";
+import { ReceiptLinesTable } from "@/features/receive/ReceiptLinesTable";
+import type { ProductOption, ReceiptLine } from "@/features/receive/receipt-types";
+import { ReceiptDocumentHeader } from "@/features/receive/ReceiptDocumentHeader";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Building2,
   CheckCircle2,
-  ChevronDown,
   Loader2,
-  Minus,
   PackageCheck,
   Plus,
   Search,
-  Trash2,
 } from "lucide-react";
 import { API, authFetch } from "@/lib/api";
 import {
@@ -27,41 +29,7 @@ import {
   POS_WEIGHT_STEP_KG,
   roundPosQuantity,
   toPosStoredStockQuantity,
-  type PosMeasureUnit,
 } from "@mgl/types";
-
-type ProductOption = {
-  id: string;
-  name: string;
-  sku?: string | null;
-  barcode?: string | null;
-  stock: number;
-  costPrice?: number | null;
-  price?: number;
-  manualReceiptPrice?: string;
-  unit?: PosMeasureUnit | string | null;
-  isActive?: boolean;
-  supplyType?: string;
-};
-
-type PosRegisterOption = {
-  id: string;
-  name: string;
-  label?: string | null;
-  branchId: string;
-  branch: { id: string; name: string };
-};
-
-type ReceiptLine = {
-  id: string;
-  product: ProductOption;
-  quantity: number;
-  unitCost: string;
-  salePrice: string;
-  manualPrice: boolean;
-  batchNumber: string;
-  expiryDate: string;
-};
 
 type GoodsReceiptResult = {
   id: string;
@@ -130,6 +98,7 @@ export default function GoodsReceiptsPage() {
   const [submitError, setSubmitError] = useState("");
   const [success, setSuccess] = useState<GoodsReceiptResult | null>(null);
   const [createProductOpen, setCreateProductOpen] = useState(false);
+  const [initialMaster, setInitialMaster] = useState<MasterCatalogProduct | null>(null);
   const [newProductCode, setNewProductCode] = useState("");
 
   const loadData = useCallback(async () => {
@@ -280,6 +249,7 @@ export default function GoodsReceiptsPage() {
   };
 
   const openProductCreate = (code = search) => {
+    setInitialMaster(null);
     setNewProductCode(code.trim());
     setCreateProductOpen(true);
     setSubmitError("");
@@ -357,10 +327,11 @@ export default function GoodsReceiptsPage() {
         (value) => normalize(value) === normalizedSearch,
       ),
     );
-    const product = exact || matchingProducts[0];
+    if (!normalizedSearch) return;
+    const product = exact || (matchingProducts.length === 1 ? matchingProducts[0] : undefined);
     if (product) {
       addProduct(product);
-    } else if (normalizedSearch) {
+    } else if (matchingProducts.length === 0) {
       openProductCreate(search);
     }
   };
@@ -401,6 +372,9 @@ export default function GoodsReceiptsPage() {
       setSubmitError("Зарах үнэ 0-1,000,000,000₮ хооронд байна.");
       return;
     }
+    if (lines.some(line => line.product.id.startsWith("catalog:") && !line.salePrice.trim())) {
+      setSubmitError("Шинэ барааны зарах үнийг баримтын мөрөнд оруулна уу."); return;
+    }
     setSubmitting(true);
     setSubmitError("");
     setSuccess(null);
@@ -414,7 +388,7 @@ export default function GoodsReceiptsPage() {
           documentNo: documentNo.trim() || undefined,
           note: note.trim() || undefined,
           items: lines.map((line) => ({
-            productId: line.product.id,
+            ...(line.product.id.startsWith("catalog:") ? { masterProductId: line.product.masterProductId } : { productId: line.product.id }),
             quantity: toPosStoredStockQuantity(
               line.quantity,
               line.product.unit,
@@ -449,6 +423,7 @@ export default function GoodsReceiptsPage() {
       setNote("");
       setSearch("");
       setLines([]);
+      void loadData();
     } catch (error) {
       setSubmitError(
         error instanceof Error
@@ -470,34 +445,15 @@ export default function GoodsReceiptsPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 p-4 sm:p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-black text-slate-950">
-              Бараа хүлээн авах
-            </h1>
-            <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-cyan-700">
-              POS хүлээн авалт
-            </span>
-          </div>
-          <p className="mt-1 text-sm text-slate-500">
-            Агуулахын хүлээн авалтаас тусдаа, касс/салбарын борлуулах үлдэгдэлд
-            бараа нэмнэ.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => openProductCreate("")}
-          className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm hover:bg-slate-50"
-        >
-          <Plus className="h-4 w-4" />
-          Шинэ бүтээгдэхүүн бүртгэх
-        </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div><h1 className="text-xl font-bold text-slate-900">Бараа хүлээн авах</h1><p className="mt-1 text-sm text-slate-500">Орлогын баримтаа бөглөж, бараагаа үлдэгдэлд нэмнэ.</p></div>
+        <button type="button" onClick={() => openProductCreate("")} className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Plus size={16} /> Шинэ бараа</button>
       </div>
 
       {loadError && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">
           {loadError}
+          <button type="button" onClick={() => void loadData()} className="ml-3 underline">Дахин ачаалах</button>
         </div>
       )}
       {success && (
@@ -513,7 +469,7 @@ export default function GoodsReceiptsPage() {
         </div>
       )}
 
-      {registers.length === 0 ? (
+      {loadError ? null : registers.length === 0 ? (
         <div className="rounded-3xl border border-amber-200 bg-amber-50 p-8 text-center">
           <PackageCheck className="mx-auto h-10 w-10 text-amber-500" />
           <h2 className="mt-3 text-lg font-black text-amber-950">
@@ -531,102 +487,16 @@ export default function GoodsReceiptsPage() {
           </Link>
         </div>
       ) : (
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="space-y-6">
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
-              <div className="mb-5 flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-cyan-600" />
-                <h2 className="text-base font-black text-slate-950">
-                  Ерөнхий мэдээлэл
-                </h2>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                    Хүлээн авах касс / салбар
-                  </span>
-                  <div className="relative">
-                    <select
-                      value={selectedRegisterId}
-                      onChange={(event) =>
-                        setSelectedRegisterId(event.target.value)
-                      }
-                      className="h-11 w-full appearance-none rounded-xl border border-slate-200 bg-white px-3 pr-9 text-sm font-bold text-slate-900 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
-                    >
-                      {registers.map((register) => (
-                        <option key={register.id} value={register.id}>
-                          {register.branch.name} ·{" "}
-                          {register.label || register.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  </div>
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                    Нийлүүлэгч байгууллага{" "}
-                    <span className="text-rose-500">*</span>
-                  </span>
-                  <input
-                    value={supplierName}
-                    maxLength={160}
-                    onChange={(event) => setSupplierName(event.target.value)}
-                    placeholder="Жишээ: Нийлүүлэгч ХХК"
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                    Регистр / ТТД
-                  </span>
-                  <input
-                    value={supplierRegisterNo}
-                    maxLength={32}
-                    onChange={(event) =>
-                      setSupplierRegisterNo(event.target.value)
-                    }
-                    placeholder="Заавал биш"
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
-                  />
-                </label>
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                    Падаан / баримтын №
-                  </span>
-                  <input
-                    value={documentNo}
-                    maxLength={80}
-                    onChange={(event) => setDocumentNo(event.target.value)}
-                    placeholder="Заавал биш"
-                    className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
-                  />
-                </label>
-              </div>
-              <label className="mt-4 block">
-                <span className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                  Тэмдэглэл
-                </span>
-                <textarea
-                  value={note}
-                  maxLength={500}
-                  rows={2}
-                  onChange={(event) => setNote(event.target.value)}
-                  placeholder="Жолооч, хүргэлт эсвэл бусад тайлбар"
-                  className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
-                />
-              </label>
-              <p className="mt-2 text-xs text-slate-500">
-                Нийлүүлэгч системд бүртгэлтэй байх шаардлагагүй. Ямар ч
-                байгууллагын нэрийг шууд оруулж болно.
-              </p>
-            </section>
+        <fieldset disabled={submitting} className="min-w-0 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm disabled:opacity-70">
+          <ReceiptDocumentHeader />
+          <div className="space-y-0">
+            <ReceiptSourceFields registers={registers} selectedRegisterId={selectedRegisterId} setSelectedRegisterId={setSelectedRegisterId} supplierName={supplierName} setSupplierName={setSupplierName} supplierRegisterNo={supplierRegisterNo} setSupplierRegisterNo={setSupplierRegisterNo} documentNo={documentNo} setDocumentNo={setDocumentNo} note={note} setNote={setNote} />
 
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <section className="border-b border-slate-200 p-4 sm:p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-base font-black text-slate-950">
-                    Хүлээн авах бараа
+                    Барааны жагсаалт
                   </h2>
                   <p className="text-xs text-slate-500">
                     Нэр, SKU эсвэл баркодоор хайж нэмнэ
@@ -645,6 +515,7 @@ export default function GoodsReceiptsPage() {
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
+                  aria-label="Барааг нэр, SKU, баркодоор хайх"
                   ref={searchRef}
                   value={search}
                   onChange={(event) => {
@@ -655,10 +526,9 @@ export default function GoodsReceiptsPage() {
                   placeholder="Баркод уншуулах эсвэл бараа хайх"
                   className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold outline-none focus:border-cyan-500 focus:bg-white focus:ring-2 focus:ring-cyan-100"
                 />
-                {normalizedSearch && (
-                  <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
-                    {matchingProducts.length > 0 ? (
-                      matchingProducts.map((product) => (
+                {normalizedSearch && matchingProducts.length > 0 && (
+                  <div className="relative z-10 mt-2 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl">
+                    {matchingProducts.map((product) => (
                         <button
                           key={product.id}
                           type="button"
@@ -680,27 +550,28 @@ export default function GoodsReceiptsPage() {
                           </div>
                           <Plus className="h-4 w-4 shrink-0 text-cyan-600" />
                         </button>
-                      ))
-                    ) : (
-                      <div className="px-3 py-5 text-center">
-                        <p className="text-xs font-semibold text-slate-500">
-                          Тохирох бараа олдсонгүй
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => openProductCreate(search)}
-                          className="mt-2 inline-block text-xs font-black text-cyan-700"
-                        >
-                          Шинэ бүтээгдэхүүн бүртгэх
-                        </button>
-                      </div>
-                    )}
+                      ))}
                   </div>
                 )}
               </div>
 
+              {normalizedSearch && matchingProducts.length === 0 && !createProductOpen && (
+                <div className="mt-3">
+                  <MasterCatalogSuggestions
+                    name={search}
+                    barcode={/^\d{4,}$/.test(search.trim()) ? search.trim() : ""}
+                    selectedId=""
+                    onSelect={(product) => {
+                      addProduct({ id: `catalog:${product.id}`, masterProductId: product.id, name: product.canonicalName, barcode: product.barcode, unit: normalizePosMeasureUnit(product.unit), stock: 0 });
+                    }}
+                  />
+                </div>
+              )}
               <div className="mt-5 space-y-2">
-                <ReceiptMarkupControl value={markup} onChange={changeMarkup} />
+                <details className="rounded-xl border border-slate-200 p-3">
+                  <summary className="cursor-pointer text-sm font-semibold text-slate-600">Зарах үнэ тооцох тохиргоо {markup ? `· +${markup}%` : "· Заавал биш"}</summary>
+                  <div className="mt-3"><ReceiptMarkupControl value={markup} onChange={changeMarkup} /></div>
+                </details>
                 {lines.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-12 text-center">
                     <PackageCheck className="mx-auto h-9 w-9 text-slate-300" />
@@ -709,237 +580,17 @@ export default function GoodsReceiptsPage() {
                     </p>
                   </div>
                 ) : (
-                  lines.map((line) => (
-                    <div
-                      key={line.id}
-                      className="rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3"
-                    >
-                      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-black text-slate-900">
-                            {line.product.name}
-                          </p>
-                          <p className="truncate text-[11px] text-slate-500">
-                            {line.product.sku ||
-                              line.product.barcode ||
-                              "Кодгүй"}{" "}
-                            · Одоогийн үлдэгдэл{" "}
-                            {formatPosQuantity(
-                              Number(line.product.stock || 0),
-                              line.product.unit,
-                            )}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1 rounded-xl border border-slate-200 bg-white p-1">
-                          <button
-                            type="button"
-                            aria-label={`${line.product.name} тоо хасах`}
-                            onClick={() =>
-                              setQuantity(
-                                line.id,
-                                line.quantity -
-                                  (normalizePosMeasureUnit(
-                                    line.product.unit,
-                                  ) === "kg"
-                                    ? 0.1
-                                    : 1),
-                              )
-                            }
-                            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
-                          >
-                            <Minus className="h-3.5 w-3.5" />
-                          </button>
-                          <input
-                            type="number"
-                            min={
-                              normalizePosMeasureUnit(line.product.unit) ===
-                              "kg"
-                                ? POS_WEIGHT_STEP_KG
-                                : 1
-                            }
-                            max={1_000_000}
-                            step={
-                              normalizePosMeasureUnit(line.product.unit) ===
-                              "kg"
-                                ? POS_WEIGHT_STEP_KG
-                                : 1
-                            }
-                            value={line.quantity}
-                            onChange={(event) =>
-                              setQuantity(line.id, Number(event.target.value))
-                            }
-                            className="h-7 w-16 text-center text-sm font-black outline-none"
-                          />
-                          <button
-                            type="button"
-                            aria-label={`${line.product.name} тоо нэмэх`}
-                            onClick={() =>
-                              setQuantity(
-                                line.id,
-                                line.quantity +
-                                  (normalizePosMeasureUnit(
-                                    line.product.unit,
-                                  ) === "kg"
-                                    ? 0.1
-                                    : 1),
-                              )
-                            }
-                            className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
-                          >
-                            <Plus className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                        <button
-                          type="button"
-                          aria-label={`${line.product.name} устгах`}
-                          onClick={() =>
-                            setLines((current) =>
-                              current.filter((item) => item.id !== line.id),
-                            )
-                          }
-                          className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                      <div className="mt-3 grid gap-3 border-t border-slate-200 pt-3 sm:grid-cols-2">
-                        <label className="block">
-                          <span className="mb-1 block text-[11px] font-bold text-slate-500">
-                            Зарах үнэ (₮){" "}
-                            {line.manualPrice ? "· Гараар" : "· Автомат"}
-                          </span>
-                          <input
-                            type="number"
-                            min="0"
-                            max="1000000000"
-                            step="0.01"
-                            value={line.salePrice}
-                            onChange={(event) =>
-                              setLotField(
-                                line.id,
-                                "salePrice",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="Өөрчлөхгүй"
-                            className="h-10 w-full rounded-xl border border-slate-200 px-3 text-sm"
-                          />
-                          {line.manualPrice && (
-                            <button
-                              type="button"
-                              className="mt-1 text-xs text-cyan-700"
-                              onClick={() =>
-                                setLines((current) =>
-                                  current.map((item) =>
-                                    item.id === line.id
-                                      ? {
-                                          ...item,
-                                          manualPrice: false,
-                                          salePrice: markedUpPrice(
-                                            item.unitCost,
-                                            markup,
-                                          ),
-                                        }
-                                      : item,
-                                  ),
-                                )
-                              }
-                            >
-                              Автоматаар бодох
-                            </button>
-                          )}
-                        </label>
-                        <label className="block">
-                          <span className="mb-1 block text-[11px] font-bold text-slate-500">
-                            Нэгж авсан үнэ *
-                          </span>
-                          <input
-                            type="number"
-                            min="0"
-                            max="1000000000"
-                            step="0.01"
-                            required
-                            value={line.unitCost}
-                            onChange={(event) =>
-                              setLotField(
-                                line.id,
-                                "unitCost",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="0₮"
-                            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
-                          />
-                          {line.unitCost && (
-                            <span className="mt-1 block text-[10px] text-slate-400">
-                              Нийт{" "}
-                              {new Intl.NumberFormat("mn-MN").format(
-                                Number(line.unitCost) * line.quantity,
-                              )}
-                              ₮
-                            </span>
-                          )}
-                        </label>
-                        <label className="block">
-                          <span className="mb-1 block text-[11px] font-bold text-slate-500">
-                            Багцын дугаар (заавал биш)
-                          </span>
-                          <input
-                            value={line.batchNumber}
-                            maxLength={80}
-                            onChange={(event) =>
-                              setLotField(
-                                line.id,
-                                "batchNumber",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="Жишээ: LOT-2026-09"
-                            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
-                          />
-                        </label>
-                        <label className="block">
-                          <span className="mb-1 block text-[11px] font-bold text-slate-500">
-                            Дуусах хугацаа (байвал)
-                          </span>
-                          <input
-                            type="date"
-                            value={line.expiryDate}
-                            onChange={(event) =>
-                              setLotField(
-                                line.id,
-                                "expiryDate",
-                                event.target.value,
-                              )
-                            }
-                            className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
-                          />
-                        </label>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between gap-3 text-[11px]">
-                        <span className="text-slate-500">
-                          Савлагаан дээр LOT дугаар эсвэл дуусах хугацаа байвал
-                          оруулна.
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => addSeparateLot(line.product)}
-                          className="shrink-0 font-black text-cyan-700 hover:text-cyan-800"
-                        >
-                          + Өөр үнэ/хугацаатай багц нэмэх
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                  <ReceiptLinesTable lines={lines} total={totalPurchaseCost} onQuantity={setQuantity} onField={setLotField} onRemove={(id) => setLines(current => current.filter(line => line.id !== id))} onAddLot={addSeparateLot} onAutomaticPrice={(id) => setLines(current => current.map(line => line.id === id ? { ...line, manualPrice: false, salePrice: markedUpPrice(line.unitCost, markup) } : line))} />
                 )}
               </div>
             </section>
           </div>
 
-          <aside>
-            <div className="sticky top-24 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <footer className="grid gap-6 bg-slate-50/50 p-4 sm:p-6 md:grid-cols-2">
+            <div className="text-sm leading-6 text-slate-500"><p className="font-semibold text-slate-800">Баримтыг шалгаад баталгаажуулна уу</p><p className="mt-2">Нийлүүлэгч, хүлээн авах салбар, тоо хэмжээ болон үнийг нягтална уу. Баталгаажуулсны дараа баримтын дугаар үүсэж, үлдэгдэл нэмэгдэнэ.</p><p className="mt-4 text-xs">Зарах үнэ бөглөсөн мөрийн борлуулах үнэ мөн шинэчлэгдэнэ.</p></div>
+            <div className="md:ml-auto w-full max-w-md">
               <h2 className="text-base font-black text-slate-950">
-                Хүлээн авалтын дүн
+                Баримтын дүн
               </h2>
               <div className="mt-5 space-y-3">
                 <div className="flex items-center justify-between text-sm">
@@ -980,6 +631,7 @@ export default function GoodsReceiptsPage() {
                   </span>
                 </div>
               </div>
+              {(!supplierName.trim() || lines.length === 0) && <p className="mt-4 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">{!supplierName.trim() ? "Нийлүүлэгчийн нэрийг оруулна уу. " : ""}{lines.length === 0 ? "Хүлээн авах бараагаа хайж нэмнэ үү." : ""}</p>}
               {submitError && (
                 <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
                   {submitError}
@@ -1001,7 +653,7 @@ export default function GoodsReceiptsPage() {
                 ) : (
                   <PackageCheck className="h-4 w-4" />
                 )}
-                {submitting ? "Бүртгэж байна..." : "Бараа хүлээн авах"}
+                {submitting ? "Бүртгэж байна..." : "Баримтыг баталгаажуулж хүлээн авах"}
               </button>
               <p className="mt-3 text-center text-[11px] leading-relaxed text-slate-500">
                 Хүлээн авсан тоо үлдэгдэлд нэмэгдэнэ. Ижил барааны хугацаа,
@@ -1009,8 +661,8 @@ export default function GoodsReceiptsPage() {
                 борлуулалтаар түрүүлж хасагдана.
               </p>
             </div>
-          </aside>
-        </div>
+          </footer>
+        </fieldset>
       )}
       {!loading && (
         <GoodsReceiptDocumentList
@@ -1023,6 +675,7 @@ export default function GoodsReceiptsPage() {
         open={createProductOpen}
         organizationId={getOrganizationId()}
         initialCode={newProductCode}
+        initialMaster={initialMaster}
         onClose={() => setCreateProductOpen(false)}
         onCreated={handleProductCreated}
       />

@@ -7,7 +7,9 @@ import {
 } from "../../../services/inventory.service";
 import { canAccessPosOrganization, requirePosUser } from "./_shared";
 import { parsePosGoodsReceiptInput } from "./goods-receipt";
-import { fromPosStoredStockQuantity } from "@mgl/types";
+import { fromPosStoredStockQuantity, normalizePosMeasureUnit } from "@mgl/types";
+
+class ReceiptInputError extends Error {}
 
 const router: ExpressRouter = Router();
 
@@ -156,28 +158,6 @@ router.post("/pos/goods-receipts", async (req, res) => {
         .json({ message: "Энэ кассаар бараа хүлээн авах эрхгүй байна" });
     }
 
-    const productIds = Array.from(
-      new Set(input.items.map((item) => item.productId)),
-    );
-    const products = await prisma.product.findMany({
-      where: {
-        id: { in: productIds },
-        organizationId: register.organizationId,
-        isActive: true,
-        deletedAt: null,
-      },
-      select: { id: true, name: true, sku: true, barcode: true, unit: true },
-    });
-    if (products.length !== productIds.length) {
-      return res.status(400).json({
-        message:
-          "Зарим бараа энэ кассын байгууллагад бүртгэлгүй эсвэл идэвхгүй байна",
-      });
-    }
-
-    const productById = new Map(
-      products.map((product) => [product.id, product]),
-    );
     const receiptId = crypto.randomUUID();
     const receivedAt = new Date();
     const receiptNo = `PGR-${receivedAt
@@ -200,6 +180,51 @@ router.post("/pos/goods-receipts", async (req, res) => {
 
     const updatedProducts = await prisma.$transaction(
       async (tx) => {
+        // Serialize new catalog adoption for this organization across concurrent receipts.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${register.organizationId}))`;
+        const resolved = new Map<string, string>();
+        for (const item of input.items) {
+          if (!item.masterProductId) continue;
+          let id = resolved.get(item.masterProductId);
+          if (!id) {
+            const master = await tx.masterProduct.findFirst({ where: { id: item.masterProductId, status: "ACTIVE" } });
+            if (!master) throw new ReceiptInputError("Нэгдсэн сангийн бараа олдсонгүй. Дахин сонгоно уу.");
+            const existing = await tx.product.findFirst({ where: {
+              organizationId: register.organizationId, deletedAt: null,
+              OR: [{ masterProductId: master.id }, ...(master.barcode ? [{ barcode: master.barcode }] : [])],
+            } });
+            if (existing && (!existing.isActive || existing.supplyType !== "IN_STOCK")) throw new ReceiptInputError("Бараа идэвхгүй эсвэл захиалгын төрөлтэй байна.");
+            if (existing && normalizePosMeasureUnit(existing.unit) !== normalizePosMeasureUnit(master.unit)) throw new ReceiptInputError("Хэмжих нэгж зөрж байна. Дэлгүүрийн бүртгэлтэй барааг сонгоно уу.");
+            const category = master.categoryName ? await tx.businessCategory.findFirst({ where: { name: master.categoryName }, select: { id: true } }) : null;
+            const product = existing ?? await tx.product.create({ data: {
+              organizationId: register.organizationId, masterProductId: master.id,
+              name: master.canonicalName, barcode: master.barcode,
+              sku: master.barcode ? null : `CAT-${crypto.randomUUID()}`,
+              unit: normalizePosMeasureUnit(master.unit), price: item.salePrice!, costPrice: item.unitCost,
+              description: master.description, businessCategoryId: category?.id,
+              ...(master.imageUrl ? { images: { create: [{ url: master.imageUrl }] } } : {}),
+            } });
+            id = product.id; resolved.set(master.id, id);
+          }
+          item.productId = id;
+        }
+    const productIds = Array.from(
+      new Set(input.items.map((item) => item.productId)),
+    );
+    const products = await tx.product.findMany({
+      where: {
+        id: { in: productIds },
+        organizationId: register.organizationId,
+        isActive: true,
+        deletedAt: null,
+      },
+      select: { id: true, name: true, sku: true, barcode: true, unit: true },
+    });
+    if (products.length !== productIds.length) {
+      throw new ReceiptInputError("Зарим бараа энэ кассын байгууллагад бүртгэлгүй эсвэл идэвхгүй байна");
+    }
+
+
         await tx.posGoodsReceipt.create({
           data: {
             id: receiptId,
@@ -252,17 +277,19 @@ router.post("/pos/goods-receipts", async (req, res) => {
           });
         }
 
-        return tx.product.findMany({
+        const stocks = await tx.product.findMany({
           where: { id: { in: productIds } },
           select: { id: true, stock: true },
         });
+        return { stocks, products };
       },
       { timeout: 30_000 },
     );
 
     const stockByProduct = new Map(
-      updatedProducts.map((product) => [product.id, product.stock]),
+      updatedProducts.stocks.map((product) => [product.id, product.stock]),
     );
+    const productById = new Map(updatedProducts.products.map(product => [product.id, product]));
     const totalQuantity = input.items.reduce(
       (total, item) => total + item.quantity,
       0,
@@ -306,6 +333,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
       }),
     });
   } catch (error) {
+    if (error instanceof ReceiptInputError) return res.status(400).json({ message: error.message });
     console.error("POS goods receipt error", error);
     return res
       .status(500)

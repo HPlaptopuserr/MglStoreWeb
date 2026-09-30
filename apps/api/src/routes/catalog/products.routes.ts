@@ -3349,6 +3349,29 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
   }
 });
 
+// Exact lookup is scoped to the authenticated store, including inactive products.
+router.get(
+  "/products/registration/barcode",
+  requireAuth,
+  requireOrgPermission({ from: "query" }, Permission.CREATE_PRODUCTS),
+  async (req, res) => {
+    const organizationId = String(req.query.organizationId || "").trim();
+    const barcode = String(req.query.barcode || "").trim();
+    if (!barcode || barcode.length > 128) {
+      return res.status(400).json({ message: "Баркод 1–128 тэмдэгт байна." });
+    }
+    try {
+      const product = await prisma.product.findFirst({
+        where: { organizationId, barcode: { equals: barcode, mode: "insensitive" }, deletedAt: null },
+        include: { images: true, businessCategory: { select: { id: true, name: true } } },
+      });
+      return res.json({ product });
+    } catch {
+      return res.status(500).json({ message: "Баркод шалгаж чадсангүй. Дахин оролдоно уу." });
+    }
+  },
+);
+
 router.get("/products/:id", optionalAuth, async (req, res) => {
   try {
     const product = await prisma.product.findUnique({

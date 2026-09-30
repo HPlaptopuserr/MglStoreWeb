@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   X,
   Banknote,
@@ -34,7 +34,10 @@ import {
   requiresEbarimtTaxProductCode,
 } from "@mgl/types";
 
+import { BarcodeRegistrationStep } from "./BarcodeRegistrationStep";
+
 interface Props {
+  organizationId: string;
   form: FormState;
   setForm: React.Dispatch<React.SetStateAction<FormState>>;
   editingId: string | null;
@@ -209,6 +212,7 @@ function getClassificationCodeSuggestions(query: string) {
 }
 
 export function ProductFormModal({
+  organizationId,
   form,
   setForm,
   editingId,
@@ -219,6 +223,9 @@ export function ProductFormModal({
   onClose,
   onSave,
 }: Props) {
+  const [catalogCategoryNotice, setCatalogCategoryNotice] = useState("");
+  const [checkedBarcode, setCheckedBarcode] = useState<string | null>(null);
+  const needsBarcodeCheck = !editingId && checkedBarcode === null;
   const isPreorder = form.supplyType === "CHINA_PREORDER";
   const selectedCategory = useMemo(
     () => findBusinessCategory(categories, form.businessCategoryId),
@@ -262,6 +269,7 @@ export function ProductFormModal({
       form.name,
     );
 
+    setCatalogCategoryNotice("");
     setForm((current) => ({
       ...current,
       businessCategoryId: id,
@@ -300,9 +308,9 @@ export function ProductFormModal({
       : undefined;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="w-full max-w-4xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 flex flex-col max-h-[90vh]">
+      <div className={`w-full ${needsBarcodeCheck ? "max-w-xl" : "max-w-4xl"} bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 flex flex-col max-h-[90vh]`}>
         {/* Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-6 py-5 border-b border-slate-100 bg-white z-10 shrink-0">
+        <div className="flex flex-row items-start justify-between gap-3 px-6 py-5 border-b border-slate-100 bg-white z-10 shrink-0">
           <div>
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">
               {editingId
@@ -312,14 +320,17 @@ export function ProductFormModal({
                   : "Шинэ бараа бүртгэх"}
             </h2>
             <p className="text-sm font-medium text-slate-500 mt-1">
-              {isPreorder
+              {needsBarcodeCheck
+                ? "Баркодтой эсвэл баркодгүй бараа нэмэх"
+                : isPreorder
                 ? "Хятадаас захиалгаар ирэх барааны мэдээллийг тусад нь бүртгэнэ."
                 : "Бэлэн байгаа барааны мэдээллийг доорх талбаруудад оруулна уу"}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="hidden sm:flex w-10 h-10 rounded-full items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+            aria-label="Цонх хаах"
+            className="flex shrink-0 w-10 h-10 rounded-full items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
           >
             <X size={20} />
           </button>
@@ -327,21 +338,81 @@ export function ProductFormModal({
 
         {/* Form Body */}
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <form id="product-form" onSubmit={onSave} className="p-6">
+          {needsBarcodeCheck ? (
+            <BarcodeRegistrationStep organizationId={organizationId} initialBarcode={form.barcode} onOpenExisting={onSwitchToEdit} onContinue={(barcode) => {
+              setForm((current) => ({ ...current, barcode, masterProductId: "" }));
+              setCheckedBarcode(barcode);
+            }} />
+          ) : <form id="product-form" onSubmit={(event) => {
+            if (!editingId && form.barcode !== checkedBarcode) { event.preventDefault(); setCheckedBarcode(null); return; }
+            onSave(event);
+          }} className="p-6 space-y-6">
+            {!editingId && <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-indigo-50 p-4 text-sm"><span className="font-semibold text-indigo-900">Алхам 2 / 2 · {checkedBarcode ? `Баркод: ${checkedBarcode}` : "Баркодгүй бараа"}</span><button type="button" onClick={() => setCheckedBarcode(null)} className="font-semibold text-indigo-700 underline underline-offset-4">Баркод өөрчлөх</button></div>}
+            <MasterCatalogSuggestions
+              name={form.name}
+              barcode={form.barcode}
+              selectedId={form.masterProductId}
+              disabled={Boolean(editingId)}
+              onSelect={(product) => {
+                const matchedCategory = findBusinessCategoryByName(
+                  categories,
+                  product.categoryName,
+                );
+                const catalogCategory = (product.businessCategoryId
+                  ? findBusinessCategory(categories, product.businessCategoryId)
+                  : null) || matchedCategory;
+                setCatalogCategoryNotice(catalogCategory ? "" : product.categoryName
+                  ? `Нэгдсэн сангийн «${product.categoryName}» ангилал сонголтод алга. Тохирох ангиллыг сонгоно уу.`
+                  : "Энэ барааны нэгдсэн санд ангилал бүртгээгүй байна. Ангиллыг сонгоно уу.");
+                setForm((current) => ({
+                  ...current,
+                  masterProductId: product.id,
+                  name: product.canonicalName,
+                  unit: normalizePosMeasureUnit(product.unit),
+                  barcode: checkedBarcode ?? current.barcode,
+                  description: current.description.trim()
+                    ? current.description
+                    : product.description || "",
+                  images:
+                    current.images.length > 0 || !product.imageUrl
+                      ? current.images
+                      : [product.imageUrl],
+                  businessCategoryId:
+                    catalogCategory?.id || current.businessCategoryId || "",
+                  sku: current.sku || product.suggestedSku || "",
+                  price:
+                    current.price ||
+                    (product.suggestedPrice !== null
+                      ? String(product.suggestedPrice)
+                      : ""),
+                  taxType: product.taxType || current.taxType,
+                  cityTaxRate:
+                    product.cityTaxRate !== null
+                      ? String(product.cityTaxRate)
+                      : current.cityTaxRate,
+                  taxProductCode:
+                    product.taxProductCode || current.taxProductCode,
+                  classificationCode:
+                    product.classificationCode ||
+                    (!current.businessCategoryId && matchedCategory
+                      ? (getCategoryAutomaticClassificationCode(
+                          matchedCategory,
+                          product.canonicalName,
+                        ) ?? current.classificationCode)
+                      : current.classificationCode),
+                }));
+              }}
+            />
+            {catalogCategoryNotice && !form.businessCategoryId && <p role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">{catalogCategoryNotice}</p>}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
               {/* Left Column: Basic Info */}
               <div className="lg:col-span-7 space-y-6">
-                <div className="space-y-4">
-                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                    <Type size={16} className="text-indigo-500" />
-                    Үндсэн мэдээлэл
-                  </h3>
-
                   <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">
+                    <label htmlFor="product-name" className="text-sm font-semibold text-slate-700">
                       Барааны нэр <span className="text-red-500">*</span>
                     </label>
                     <input
+                      id="product-name"
                       required
                       className="w-full h-12 px-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all placeholder:text-slate-400"
                       placeholder="Жишээ: Цэвэр ус 0.5л"
@@ -349,127 +420,7 @@ export function ProductFormModal({
                       onChange={(e) => applyProductName(e.target.value)}
                     />
                   </div>
-
-                  <div className="space-y-2">
-                    <VendorSkuGenerator
-                      productName={form.name}
-                      products={products}
-                      value={form.sku || ""}
-                      onChange={(sku) => setForm((f) => ({ ...f, sku }))}
-                    />
-                    {duplicateProduct && (
-                      <div className="flex flex-col gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl mt-2 animate-in fade-in slide-in-from-top-2">
-                        <div className="flex items-start gap-2">
-                          <AlertTriangle
-                            size={16}
-                            className="text-amber-500 mt-0.5 shrink-0"
-                          />
-                          <div className="flex-1">
-                            <p className="text-sm font-bold text-amber-800 leading-tight">
-                              Бүртгэлтэй код олдлоо!
-                            </p>
-                            <p className="text-xs text-amber-600 mt-0.5">
-                              Энэ SKU эсвэл Barcode{" "}
-                              <span className="font-bold">
-                                {duplicateProduct.name}
-                              </span>{" "}
-                              бараанд ашиглагдаж байна.
-                            </p>
-                          </div>
-                        </div>
-                        {onSwitchToEdit && (
-                          <button
-                            type="button"
-                            onClick={() => onSwitchToEdit(duplicateProduct)}
-                            className="flex items-center justify-center gap-1.5 w-full bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold py-2 rounded-lg transition-colors"
-                          >
-                            Тус барааны мэдээллийг засах{" "}
-                            <ArrowRight size={14} />
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-semibold text-slate-700">
-                      Баркод (Barcode)
-                    </label>
-                    <div className="relative">
-                      <PackageSearch
-                        size={18}
-                        className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
-                      />
-                      <input
-                        className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all placeholder:text-slate-400"
-                        placeholder="Жишээ: 865604212512"
-                        value={form.barcode}
-                        onChange={(e) =>
-                          setForm((f) => ({
-                            ...f,
-                            barcode: e.target.value,
-                            masterProductId: "",
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  <MasterCatalogSuggestions
-                    name={form.name}
-                    barcode={form.barcode}
-                    selectedId={form.masterProductId}
-                    disabled={Boolean(editingId)}
-                    onSelect={(product) => {
-                      const matchedCategory = findBusinessCategoryByName(
-                        categories,
-                        product.categoryName,
-                      );
-                      setForm((current) => ({
-                        ...current,
-                        masterProductId: product.id,
-                        name: product.canonicalName,
-                        unit: normalizePosMeasureUnit(product.unit),
-                        barcode: product.barcode || current.barcode,
-                        description: current.description.trim()
-                          ? current.description
-                          : product.description || "",
-                        images:
-                          current.images.length > 0 || !product.imageUrl
-                            ? current.images
-                            : [product.imageUrl],
-                        businessCategoryId:
-                          current.businessCategoryId ||
-                          product.businessCategoryId ||
-                          matchedCategory?.id ||
-                          "",
-                        sku: current.sku || product.suggestedSku || "",
-                        price:
-                          current.price ||
-                          (product.suggestedPrice !== null
-                            ? String(product.suggestedPrice)
-                            : ""),
-                        taxType: product.taxType || current.taxType,
-                        cityTaxRate:
-                          product.cityTaxRate !== null
-                            ? String(product.cityTaxRate)
-                            : current.cityTaxRate,
-                        taxProductCode:
-                          product.taxProductCode || current.taxProductCode,
-                        classificationCode:
-                          product.classificationCode ||
-                          (!current.businessCategoryId && matchedCategory
-                            ? (getCategoryAutomaticClassificationCode(
-                                matchedCategory,
-                                product.canonicalName,
-                              ) ?? current.classificationCode)
-                            : current.classificationCode),
-                      }));
-                    }}
-                  />
-                </div>
-
-                <div className="space-y-4 pt-2">
+                <div className="space-y-4">
                   <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                     <Banknote size={16} className="text-emerald-500" />
                     Үнэ & Нөөц
@@ -874,6 +825,83 @@ export function ProductFormModal({
                   </details>
                 </div>
 
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                    <Type size={16} className="text-indigo-500" />
+                    Үндсэн мэдээлэл
+                  </h3>
+
+
+
+                  <div className="space-y-2">
+                    <VendorSkuGenerator
+                      productName={form.name}
+                      products={products}
+                      value={form.sku || ""}
+                      onChange={(sku) => setForm((f) => ({ ...f, sku }))}
+                    />
+                    {duplicateProduct && (
+                      <div className="flex flex-col gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl mt-2 animate-in fade-in slide-in-from-top-2">
+                        <div className="flex items-start gap-2">
+                          <AlertTriangle
+                            size={16}
+                            className="text-amber-500 mt-0.5 shrink-0"
+                          />
+                          <div className="flex-1">
+                            <p className="text-sm font-bold text-amber-800 leading-tight">
+                              Бүртгэлтэй код олдлоо!
+                            </p>
+                            <p className="text-xs text-amber-600 mt-0.5">
+                              Энэ SKU эсвэл Barcode{" "}
+                              <span className="font-bold">
+                                {duplicateProduct.name}
+                              </span>{" "}
+                              бараанд ашиглагдаж байна.
+                            </p>
+                          </div>
+                        </div>
+                        {onSwitchToEdit && (
+                          <button
+                            type="button"
+                            onClick={() => onSwitchToEdit(duplicateProduct)}
+                            className="flex items-center justify-center gap-1.5 w-full bg-amber-100 hover:bg-amber-200 text-amber-800 text-xs font-bold py-2 rounded-lg transition-colors"
+                          >
+                            Тус барааны мэдээллийг засах{" "}
+                            <ArrowRight size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">
+                      Баркод (Barcode)
+                    </label>
+                    <div className="relative">
+                      <PackageSearch
+                        size={18}
+                        className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"
+                      />
+                      <input
+                        className="w-full h-12 pl-11 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-slate-900 text-sm outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 focus:bg-white transition-all placeholder:text-slate-400"
+                        placeholder="Жишээ: 865604212512"
+                        value={form.barcode}
+                        readOnly={!editingId}
+                        onChange={(e) =>
+                          setForm((f) => ({
+                            ...f,
+                            barcode: e.target.value,
+                            masterProductId: "",
+                          }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+
+                </div>
+
                 {isPreorder && (
                   <div className="space-y-4 pt-2">
                     <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
@@ -1136,11 +1164,11 @@ export function ProductFormModal({
                 </div>
               </div>
             </div>
-          </form>
+          </form>}
         </div>
 
         {/* Footer actions */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50 shrink-0">
+        {!needsBarcodeCheck && <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50/50 shrink-0">
           <button
             type="button"
             onClick={onClose}
@@ -1151,13 +1179,13 @@ export function ProductFormModal({
           <button
             type="submit"
             form="product-form"
-            disabled={saving}
+            disabled={saving || needsBarcodeCheck}
             className="flex items-center gap-2 h-11 px-8 rounded-xl bg-indigo-600 text-white text-sm font-bold shadow-lg shadow-indigo-500/25 hover:bg-indigo-700 active:scale-[0.98] disabled:opacity-60 disabled:hover:bg-indigo-600 disabled:active:scale-100 transition-all"
           >
             {saving && <Loader2 size={18} className="animate-spin" />}
             {editingId ? "Хадгалах" : "Бүртгэх"}
           </button>
-        </div>
+        </div>}
       </div>
     </div>
   );

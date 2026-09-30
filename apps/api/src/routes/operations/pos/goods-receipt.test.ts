@@ -140,3 +140,15 @@ test("keeps optional sale prices and rejects conflicting prices across lots", ()
   assert.equal(optional.ok, true);
   if (optional.ok) assert.equal(optional.value.items[0].salePrice, undefined);
 });
+
+test("catalog receipt preserves explicit source and requires selling price", () => {
+  const body = { registerId: "register-1", supplierName: "Supplier", items: [{ masterProductId: "master-1", quantity: 2, unitCost: 100, salePrice: 150 }] };
+  const result = parsePosGoodsReceiptInput(body);
+  assert.equal(result.ok, true);
+  if (result.ok) {
+    assert.equal(result.value.items[0].masterProductId, "master-1");
+    assert.equal(result.value.items[0].productId, "catalog:master-1");
+  }
+  assert.equal(parsePosGoodsReceiptInput({ ...body, items: [{ ...body.items[0], salePrice: undefined }] }).ok, false);
+  assert.equal(parsePosGoodsReceiptInput({ ...body, items: [{ ...body.items[0], productId: "other" }] }).ok, false);
+});
