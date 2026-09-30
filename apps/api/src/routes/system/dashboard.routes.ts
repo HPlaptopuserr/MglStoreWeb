@@ -20,7 +20,10 @@ import {
 } from "../../services/organization-activity.service";
 import { requirePosUser } from "../operations/pos/_shared";
 
+import adminSalesStoresRouter from "./admin-sales-stores.routes";
+
 const router: RouterType = Router();
+router.use(adminSalesStoresRouter);
 
 /* ─── GET /admin/dashboard/stats ─────────────────────── */
 router.get(

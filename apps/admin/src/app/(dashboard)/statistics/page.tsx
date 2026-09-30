@@ -19,6 +19,7 @@ import { StatisticsHeroCards } from "./_components/StatisticsHeroCards";
 import { StatisticsMetricPanel } from "./_components/StatisticsMetricPanel";
 import { StatisticsRankingCharts } from "./_components/StatisticsRankingCharts";
 import { SystemFinancialOverview } from "./_components/SystemFinancialOverview";
+import { SalesStoresSummary } from "./_components/SalesStoresSummary";
 import { TopProductsList } from "./_components/TopProductsList";
 import {
   dayOptions,
@@ -352,6 +353,8 @@ export default function StatisticsPage() {
           </div>
         </div>
       </section>
+
+      <SalesStoresSummary days={days} />
 
       <StatisticsHeroCards data={data} loading={loading} />
       <SystemFinancialOverview
