@@ -21,6 +21,10 @@ import { getMinuAgentToken } from "../../services/minu-pos-agent";
 
 const router: ExpressRouter = Router();
 
+function getRequestUserId(req: any): string {
+  return String(req.user?.userId || req.user?.id || req.userId || "");
+}
+
 function minuConnectErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "");
 
@@ -77,7 +81,7 @@ async function resolveOwnedOrganizationId(
  */
 router.get("/vendor/merchant/status", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = getRequestUserId(req);
     const explicitOrgId = req.query.organizationId as string | undefined;
     const channel = normalizeMerchantChannel(req.query.channel as string | undefined);
     const organizationId = await resolveOrganizationId(userId, explicitOrgId);
@@ -103,7 +107,7 @@ router.get("/vendor/merchant/status", requireAuth, async (req, res) => {
  */
 router.get("/vendor/merchant/minu/status", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = getRequestUserId(req);
     const explicitOrgId = req.query.organizationId as string | undefined;
     const organizationId = await resolveOrganizationId(userId, explicitOrgId);
 
@@ -144,7 +148,7 @@ router.get("/vendor/merchant/minu/status", requireAuth, async (req, res) => {
  */
 router.post("/vendor/merchant/minu/connect", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = getRequestUserId(req);
     const { username, password, branchId, organizationId: explicitOrgId } = req.body as {
       username?: string;
       password?: string;
@@ -210,7 +214,7 @@ router.post("/vendor/merchant/minu/connect", requireAuth, async (req, res) => {
  */
 router.post("/vendor/merchant/minu/disconnect", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = getRequestUserId(req);
     const explicitOrgId = req.body?.organizationId as string | undefined;
     const organizationId = await resolveOrganizationId(userId, explicitOrgId);
 
@@ -243,7 +247,7 @@ router.post("/vendor/merchant/minu/disconnect", requireAuth, async (req, res) =>
  */
 router.post("/vendor/merchant/connect", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = getRequestUserId(req);
     const { merchantId, merchantKey, invoiceCode, organizationId: explicitOrgId } = req.body;
     const channel = normalizeMerchantChannel(req.body?.channel);
 
@@ -288,7 +292,7 @@ router.post("/vendor/merchant/connect", requireAuth, async (req, res) => {
  */
 router.post("/vendor/merchant/disconnect", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = getRequestUserId(req);
     const explicitOrgId = req.body?.organizationId as string | undefined;
     const channel = normalizeMerchantChannel(req.body?.channel);
     const organizationId = await resolveOrganizationId(userId, explicitOrgId);
@@ -324,7 +328,7 @@ router.post(
   requireAuth,
   async (req, res) => {
     try {
-      const userId = (req as any).userId as string;
+      const userId = getRequestUserId(req);
       const explicitOrgId = req.body?.organizationId as string | undefined;
       const channel = normalizeMerchantChannel(req.body?.channel);
       const organizationId = await resolveOwnedOrganizationId(
@@ -369,7 +373,7 @@ router.post(
   requireAuth,
   async (req, res) => {
     try {
-      const userId = (req as any).userId as string;
+      const userId = getRequestUserId(req);
       const explicitOrgId = req.body?.organizationId as string | undefined;
       const channel = normalizeMerchantChannel(req.body?.channel);
       const organizationId = await resolveOwnedOrganizationId(
@@ -408,7 +412,7 @@ router.post(
  */
 router.post("/vendor/merchant/register", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = getRequestUserId(req);
     const { type, provider, channel: _channel, organizationId: explicitOrgId, ...rest } = req.body;
     const channel = normalizeMerchantChannel(_channel);
 
@@ -477,7 +481,7 @@ router.get("/vendor/merchant/systemqr/categories", requireAuth, async (_req, res
  */
 router.put("/vendor/merchant/bank-accounts", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = getRequestUserId(req);
     const { bank_accounts, organizationId: explicitOrgId } = req.body;
     const channel = normalizeMerchantChannel(req.body?.channel);
 
@@ -517,7 +521,7 @@ router.put("/vendor/merchant/bank-accounts", requireAuth, async (req, res) => {
  */
 router.get("/vendor/merchant/bank-accounts", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = getRequestUserId(req);
     const explicitOrgId = req.query.organizationId as string | undefined;
     const channel = normalizeMerchantChannel(req.query.channel as string | undefined);
     const organizationId = await resolveOrganizationId(userId, explicitOrgId);
@@ -575,7 +579,7 @@ router.get("/vendor/merchant/districts/:cityCode", requireAuth, async (req, res)
  */
 router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const userId = getRequestUserId(req);
     const { registerNumber } = req.params;
     const explicitOrgId = req.query.organizationId as string | undefined;
     const channel = normalizeMerchantChannel(req.query.channel as string | undefined);
