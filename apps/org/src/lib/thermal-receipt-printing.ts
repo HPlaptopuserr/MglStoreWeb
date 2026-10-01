@@ -232,12 +232,17 @@ export function printThermalPosReceipt(
   const ebarimt =
     receipt.ebarimt?.status === "SUCCESS" ? receipt.ebarimt : null;
   const isDemo = ebarimt?.billId?.startsWith("TEST-") === true;
+  const normalizedPaymentMethod = String(receipt.paymentMethod).toUpperCase();
   const paymentLabel =
-    String(receipt.paymentMethod).toUpperCase() === "CARD"
+    normalizedPaymentMethod === "CARD"
       ? "Карт"
-      : String(receipt.paymentMethod).toUpperCase() === "CASH"
-        ? "Тест төлбөр"
-        : "QR";
+      : normalizedPaymentMethod === "CASH"
+        ? isDemo
+          ? "Тест төлбөр"
+          : "Бэлэн"
+        : normalizedPaymentMethod === "CREDIT"
+          ? "Зээл"
+          : "QR";
   const lineRows = receipt.lines
     .map(
       (line) => `
