@@ -10,7 +10,7 @@ test("POS vendor access is limited to the organization selected in the token", (
   assert.equal(canAccessPosOrganization(vendor, "org-other"), false);
 });
 
-test("only owners and explicitly assigned cashiers can operate POS", () => {
+test("owners, organization managers and explicitly assigned cashiers can operate POS", () => {
   const base = {
     role: "USER",
     organizationId: "org-current",
@@ -24,6 +24,7 @@ test("only owners and explicitly assigned cashiers can operate POS", () => {
     true,
   );
   assert.equal(canOperatePos({ ...base, orgRole: "OWNER" }), true);
+  assert.equal(canOperatePos({ ...base, orgRole: "ADMIN" }), true);
   assert.equal(
     canOperatePos({ ...base, organizationId: null, capabilities: [Capability.POS_CASHIER] }),
     false,
