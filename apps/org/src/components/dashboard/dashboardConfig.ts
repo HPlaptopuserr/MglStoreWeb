@@ -1,4 +1,5 @@
 import {
+  Banknote,
   BarChart3,
   Boxes,
   Building2,
@@ -62,6 +63,17 @@ export function getDashboardModules(
         icon: MonitorSmartphone,
         enabled: true,
       },
+      ...(!isCafe
+        ? [
+            {
+              title: "Бэлэн мөнгөний касс",
+              desc: "Менежер хэрэглэгчийн захиалгыг оруулж, бэлэн мөнгийг хүлээн авч борлуулалт үүсгэнэ.",
+              href: "/dashboard/restaurant-pos",
+              icon: Banknote,
+              enabled: true,
+            },
+          ]
+        : []),
       {
         title: isCafe ? "Бариста дэлгэц" : "Гал тогооны дэлгэц",
         desc: isCafe

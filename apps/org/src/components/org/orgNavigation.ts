@@ -1,4 +1,5 @@
 import {
+  Banknote,
   BarChart3,
   Boxes,
   Building2,
@@ -38,6 +39,15 @@ export function getOrgNavItems(
         href: "/dashboard/self-service",
         icon: MonitorSmartphone,
       },
+      ...(!isCafe
+        ? [
+            {
+              label: "Бэлэн мөнгөний касс",
+              href: "/dashboard/restaurant-pos",
+              icon: Banknote,
+            },
+          ]
+        : []),
       {
         label: isCafe ? "Бариста дэлгэц" : "Гал тогооны дэлгэц",
         href: "/dashboard/kitchen-display",
