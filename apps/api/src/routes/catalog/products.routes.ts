@@ -93,6 +93,7 @@ import {
   productListCache,
 } from "../../services/product-list-cache.service";
 import { findOrganizationCatalogSearchPage } from "../../services/organization-catalog-search.service";
+import { normalizeLowStockThreshold } from "../../lib/low-stock";
 
 const router: ExpressRouter = Router();
 const PRODUCT_IMAGE_CACHE_CONTROL =
@@ -1615,6 +1616,7 @@ router.get("/products", optionalAuth, async (req, res) => {
         return {
           ...visibleProduct,
           stock: fromPosStoredStockQuantity(product.stock, product.unit),
+          lowStockThreshold: Number(product.lowStockThreshold),
           ...preorderCapacityByProductId.get(product.id),
           ...(isOwnOrganizationCatalog
             ? {
@@ -3429,6 +3431,7 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
     return res.json({
       ...safeProduct,
       stock: fromPosStoredStockQuantity(product.stock, product.unit),
+      lowStockThreshold: Number(product.lowStockThreshold),
       ...preorderCapacityByProductId.get(product.id),
       ...(canBypassVisibility
         ? {
@@ -3490,6 +3493,7 @@ router.post(
         kitchenStation,
         preparationMinutes,
         stock,
+        lowStockThreshold,
         expiryDate,
         supplyType,
         preorderLeadTimeDays,
@@ -3597,6 +3601,18 @@ router.post(
         return res
           .status(400)
           .json({ message: "Нөөц 0-2,147,483,647 хооронд байх ёстой" });
+      }
+      const normalizedLowStockThreshold = normalizeLowStockThreshold(
+        lowStockThreshold,
+        normalizedUnit,
+      );
+      if (normalizedLowStockThreshold === undefined) {
+        return res.status(400).json({
+          message:
+            normalizedUnit === "kg"
+              ? "Барааны доод үлдэгдэл 0.001 кг нарийвчлалтай зөв байх ёстой"
+              : "Барааны доод үлдэгдэл бүхэл ширхэгээр зөв байх ёстой",
+        });
       }
 
       const parsedExpiryDate =
@@ -3867,6 +3883,7 @@ router.post(
               ? normalizedPreparationMinutes
               : null,
             stock: stockNum,
+            lowStockThreshold: normalizedLowStockThreshold,
             supplyType: normalizedSupplyType,
             preorderLeadTimeDays:
               normalizedSupplyType === "CHINA_PREORDER"
@@ -3950,6 +3967,7 @@ router.post(
         return {
           ...createdProduct,
           stock: fromPosStoredStockQuantity(created.stock, created.unit),
+          lowStockThreshold: Number(created.lowStockThreshold),
           preorderSupplierFrontImageUrl:
             supplierDocument?.frontImageUrl ?? null,
           preorderSupplierBackImageUrl: supplierDocument?.backImageUrl ?? null,
@@ -4088,6 +4106,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       kitchenStation,
       preparationMinutes,
       stock,
+      lowStockThreshold,
       expiryDate,
       supplyType,
       preorderLeadTimeDays,
@@ -4423,6 +4442,21 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       data.stock = convertedStock;
       stockNumForInventory = convertedStock;
     }
+    if (lowStockThreshold !== undefined) {
+      const normalizedLowStockThreshold = normalizeLowStockThreshold(
+        lowStockThreshold,
+        nextUnit,
+      );
+      if (normalizedLowStockThreshold === undefined) {
+        return res.status(400).json({
+          message:
+            nextUnit === "kg"
+              ? "Барааны доод үлдэгдэл 0.001 кг нарийвчлалтай зөв байх ёстой"
+              : "Барааны доод үлдэгдэл бүхэл ширхэгээр зөв байх ёстой",
+        });
+      }
+      data.lowStockThreshold = normalizedLowStockThreshold;
+    }
     if (supplyType !== undefined) {
       if (
         nextSupplyType === "CHINA_PREORDER" &&
@@ -4552,6 +4586,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       return {
         ...updatedProduct,
         stock: fromPosStoredStockQuantity(updated.stock, updated.unit),
+        lowStockThreshold: Number(updated.lowStockThreshold),
         preorderSupplierFrontImageUrl: supplierDocument?.frontImageUrl ?? null,
         preorderSupplierBackImageUrl: supplierDocument?.backImageUrl ?? null,
         expiryDate: currentExpiryDate?.toISOString() ?? null,

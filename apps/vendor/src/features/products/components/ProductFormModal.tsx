@@ -604,6 +604,44 @@ export function ProductFormModal({
                     {!isPreorder && (
                       <div className="space-y-2">
                         <label className="text-sm font-semibold text-slate-700">
+                          Барааны доод үлдэгдэл (
+                          {form.unit === "kg" ? "кг" : "ширхэг"})
+                        </label>
+                        <div className="relative">
+                          <AlertTriangle
+                            size={18}
+                            className="absolute left-4 top-1/2 -translate-y-1/2 text-amber-500"
+                          />
+                          <input
+                            type="number"
+                            min="0"
+                            max={
+                              form.unit === "kg"
+                                ? "2147483.647"
+                                : "2147483647"
+                            }
+                            step={form.unit === "kg" ? "0.001" : "1"}
+                            className="w-full h-12 pl-11 pr-4 rounded-xl border border-amber-200 bg-amber-50/50 text-slate-900 text-sm outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10 focus:bg-white transition-all font-medium"
+                            placeholder="5"
+                            value={form.lowStockThreshold}
+                            onChange={(e) =>
+                              setForm((current) => ({
+                                ...current,
+                                lowStockThreshold: e.target.value,
+                              }))
+                            }
+                          />
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Үлдэгдэл энэ хэмжээнд хүрэхэд агуулахаас захиалах
+                          мэдэгдэл гарна.
+                        </p>
+                      </div>
+                    )}
+
+                    {!isPreorder && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-semibold text-slate-700">
                           Дуусах хугацаа
                         </label>
                         <div className="relative">

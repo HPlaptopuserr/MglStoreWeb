@@ -23,6 +23,7 @@ export function createReportDemo(day: string, start = "") {
       classificationCode: line.classificationCode ?? "",
       taxProductCode: line.taxProductCode ?? "",
       stock: 50 + index * 20,
+      lowStockThreshold: 5,
       unit: "pcs",
       supplyType: "IN_STOCK",
       isActive: true,

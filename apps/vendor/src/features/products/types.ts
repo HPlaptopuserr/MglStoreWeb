@@ -42,6 +42,7 @@ export interface Product {
   classificationCode: string;
   taxProductCode: string | null;
   stock: number;
+  lowStockThreshold: number;
   unit: PosMeasureUnit | null;
   expiryDate?: string | null;
   receiptLots?: ProductReceiptLot[];
@@ -84,6 +85,7 @@ export interface FormState {
   classificationCode: string;
   taxProductCode: string;
   stock: string;
+  lowStockThreshold: string;
   unit: PosMeasureUnit;
   expiryDate: string;
   supplyType: "IN_STOCK" | "CHINA_PREORDER";

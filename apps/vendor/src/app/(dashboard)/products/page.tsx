@@ -62,6 +62,7 @@ const normalizeProductForDisplay = (product: Product): Product => {
   const unit = normalizePosMeasureUnit(product.unit);
   return {
     ...product,
+    lowStockThreshold: Number(product.lowStockThreshold ?? 5),
     unit,
   };
 };
@@ -81,6 +82,7 @@ const EMPTY_FORM: FormState = {
   classificationCode: EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
   taxProductCode: "",
   stock: "0",
+  lowStockThreshold: "5",
   unit: "pcs",
   expiryDate: "",
   supplyType: "IN_STOCK",
@@ -501,6 +503,7 @@ export default function ProductsPage() {
         p.classificationCode || EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
       taxProductCode: p.taxProductCode || "",
       stock: String(p.stock),
+      lowStockThreshold: String(p.lowStockThreshold ?? 5),
       unit: normalizePosMeasureUnit(p.unit),
       expiryDate: toDateInputValue(p.expiryDate),
       supplyType: p.supplyType || "IN_STOCK",
@@ -579,6 +582,25 @@ export default function ProductsPage() {
         form.unit === "kg"
           ? "Нөөцийг 0.001 кг нарийвчлалтай зөв оруулна уу"
           : "Нөөцийг бүхэл ширхэгээр зөв оруулна уу",
+      );
+    }
+
+    const lowStockThreshold = Number(form.lowStockThreshold || 0);
+    if (
+      !Number.isFinite(lowStockThreshold) ||
+      lowStockThreshold < 0 ||
+      (form.unit === "pcs" && !Number.isInteger(lowStockThreshold)) ||
+      (form.unit === "kg" &&
+        Math.abs(
+          lowStockThreshold * 1_000 - Math.round(lowStockThreshold * 1_000),
+        ) > 0.000001) ||
+      lowStockThreshold > (form.unit === "kg" ? 2_147_483.647 : 2_147_483_647)
+    ) {
+      return showToast(
+        "error",
+        form.unit === "kg"
+          ? "Барааны доод үлдэгдлийг 0.001 кг нарийвчлалтай зөв оруулна уу"
+          : "Барааны доод үлдэгдлийг бүхэл ширхэгээр зөв оруулна уу",
       );
     }
 
@@ -666,6 +688,7 @@ export default function ProductsPage() {
           ? form.taxProductCode.trim()
           : null,
         stock: stockNum,
+        lowStockThreshold,
         unit: form.supplyType === "CHINA_PREORDER" ? "pcs" : form.unit,
         expiryDate,
         supplyType: form.supplyType,
