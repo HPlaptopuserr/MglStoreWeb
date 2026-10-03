@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Loader2 } from "lucide-react";
 import type { PosReceipt } from "@mgl/types";
-import { exportDailySales } from "../utils/export-daily-sales";
+import type { SalesReportView } from "../utils/export-daily-sales";
+import { SalesReportActions } from "./SalesReportActions";
 import { salesDay } from "../utils/sales-history-filters";
 
 interface Props {
@@ -16,6 +16,9 @@ interface Props {
   loading: boolean;
   demo: boolean;
   onDemoChange: (demo: boolean) => void;
+  view?: SalesReportView;
+  onViewChange?: (view: SalesReportView) => void;
+  onRefresh?: () => void;
 }
 export function DailySalesExport({
   range,
@@ -27,9 +30,11 @@ export function DailySalesExport({
   loading,
   demo,
   onDemoChange,
+  view,
+  onViewChange,
+  onRefresh,
 }: Props) {
-  const [exporting, setExporting] = useState(false);
-  const [message, setMessage] = useState("");
+  const [referenceTime] = useState(() => Date.now());
   const invalidRange = Boolean(
     range.start && range.end && range.start > range.end,
   );
@@ -37,24 +42,6 @@ export function DailySalesExport({
     !range.start && !range.end
       ? "all-days"
       : `${range.start || "beginning"}_${range.end || "latest"}`;
-  async function download() {
-    if (loading || exporting || invalidRange) return;
-    setExporting(true);
-    setMessage("");
-    try {
-      await exportDailySales(
-        receipts,
-        `${demo ? "TEST-" : ""}${period}${cashier ? "-employee" : ""}`,
-      );
-      setMessage("Excel файл татагдлаа.");
-    } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Excel татахад алдаа гарлаа.",
-      );
-    } finally {
-      setExporting(false);
-    }
-  }
   const fieldClass =
     "min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm focus-visible:outline-blue-600";
   return (
@@ -68,10 +55,10 @@ export function DailySalesExport({
           { label: "Сүүлийн 7 хоног", days: 7 },
           { label: "Бүх өдөр", days: 0 },
         ].map(({ label, days }) => {
-          const today = salesDay(new Date().toISOString());
+          const today = salesDay(new Date(referenceTime).toISOString());
           const start = days
             ? salesDay(
-                new Date(Date.now() - (days - 1) * 86400000).toISOString(),
+                new Date(referenceTime - (days - 1) * 86400000).toISOString(),
               )
             : "";
           const end = days ? today : "";
@@ -83,7 +70,6 @@ export function DailySalesExport({
               aria-pressed={active}
               onClick={() => {
                 onRangeChange({ start, end });
-                setMessage("");
               }}
               className={`min-h-9 rounded-full border px-3 text-xs font-semibold transition focus-visible:outline-blue-600 ${active ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-600 hover:border-blue-300 hover:bg-blue-50"}`}
             >
@@ -92,7 +78,7 @@ export function DailySalesExport({
           );
         })}
       </div>
-      <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <label className="flex min-w-0 flex-col gap-1 text-xs font-semibold text-slate-600">
           Эхлэх огноо
           <input
@@ -103,7 +89,6 @@ export function DailySalesExport({
             aria-describedby={invalidRange ? "sales-range-error" : undefined}
             onChange={(event) => {
               onRangeChange({ ...range, start: event.target.value });
-              setMessage("");
             }}
             className={`${fieldClass} w-full min-w-0`}
           />
@@ -118,7 +103,6 @@ export function DailySalesExport({
             aria-describedby={invalidRange ? "sales-range-error" : undefined}
             onChange={(event) => {
               onRangeChange({ ...range, end: event.target.value });
-              setMessage("");
             }}
             className={`${fieldClass} w-full min-w-0`}
           />
@@ -130,7 +114,6 @@ export function DailySalesExport({
             value={cashier}
             onChange={(e) => {
               onCashierChange(e.target.value);
-              setMessage("");
             }}
             className={`${fieldClass} w-full min-w-0`}
           >
@@ -142,27 +125,6 @@ export function DailySalesExport({
             ))}
           </select>
         </label>
-        <button
-          type="button"
-          onClick={download}
-          disabled={
-            invalidRange ||
-            loading ||
-            exporting ||
-            !receipts.some(
-              (receipt) =>
-                receipt.status === "COMPLETED" && receipt.lines.length > 0,
-            )
-          }
-          className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
-        >
-          {exporting ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <Download size={16} />
-          )}
-          {exporting ? "Бэлтгэж байна…" : "Excel татах"}
-        </button>
         {process.env.NODE_ENV !== "production" && (
           <label className="flex min-h-10 items-center gap-2 text-xs font-semibold text-amber-800">
             <input
@@ -170,7 +132,6 @@ export function DailySalesExport({
               checked={demo}
               onChange={(e) => {
                 onDemoChange(e.target.checked);
-                setMessage("");
               }}
             />
             Тест өгөгдөл
@@ -199,11 +160,17 @@ export function DailySalesExport({
           нөлөөлөхгүй.
         </p>
       )}
-      {message && (
-        <p role="status" className="mt-2 text-sm text-slate-700">
-          {message}
-        </p>
-      )}
+      <div className="mt-4">
+        <SalesReportActions
+          key={JSON.stringify([range, cashier, demo])}
+          receipts={receipts}
+          period={`${demo ? "TEST-" : ""}${period}${cashier ? "-employee" : ""}`}
+          disabled={loading || invalidRange}
+          view={view}
+          onViewChange={onViewChange}
+          onRefresh={onRefresh}
+        />
+      </div>
     </div>
   );
 }

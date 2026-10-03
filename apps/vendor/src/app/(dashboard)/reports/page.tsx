@@ -15,13 +15,13 @@ import {
 } from "lucide-react";
 import { createReportDemo } from "@/features/reports/report-demo";
 import { salesDay } from "@/features/pos/utils/sales-history-filters";
+import { ProductReportTable } from "@/features/reports/ProductReportTable";
 import { SalesReportEntry } from "@/features/reports/SalesReportEntry";
 import { API, authFetch } from "@/lib/api";
 import type { Product } from "@/features/products";
 import {
   BestSellingProducts,
   type BestSellingProduct,
-  calculateMarginPercent,
   calculateProductReportTotals,
   exportProductReportToExcel,
   exportProductReportToPdf,
@@ -34,9 +34,6 @@ interface VendorSession {
   organizationId?: string;
   organizationName?: string;
 }
-
-const money = (value: number) =>
-  `${Math.round(value).toLocaleString("mn-MN")} ₮`;
 
 function toUlaanbaatarDate(value: string) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -718,93 +715,18 @@ export default function ReportsPage() {
         }}
       />
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 sm:px-5">
-          <h2 className="text-sm font-black text-slate-800">
-            Бүтээгдэхүүний задаргаа
-          </h2>
-          <span className="text-xs font-semibold text-slate-400">
-            {filteredProducts.length} мөр
-          </span>
-        </div>
-        {loading ? (
-          <div className="flex min-h-56 items-center justify-center gap-2 text-sm text-slate-500">
-            <Loader2 className="h-5 w-5 animate-spin text-indigo-500" />
-            Тайлан ачаалж байна...
-          </div>
-        ) : filteredProducts.length === 0 ? (
-          <div className="flex min-h-56 flex-col items-center justify-center px-6 text-center">
-            <FileText className="mb-3 h-9 w-9 text-slate-300" />
-            <p className="font-bold text-slate-600">
-              Тохирох бүтээгдэхүүн олдсонгүй
-            </p>
-            <p className="mt-1 text-sm text-slate-400">
-              Хайлт эсвэл шүүлтүүрээ өөрчилнө үү.
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-[920px] w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-4 py-3">Бүтээгдэхүүн</th>
-                  <th className="px-4 py-3">Ангилал</th>
-                  <th className="px-4 py-3 text-right">Авсан үнэ</th>
-                  <th className="px-4 py-3 text-right">Зарах үнэ</th>
-                  <th className="px-4 py-3 text-right">Бөөний үнэ</th>
-                  <th className="px-4 py-3 text-right">Үлдэгдэл</th>
-                  <th className="px-4 py-3 text-right">Ашгийн хувь</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredProducts.map((product) => {
-                  const margin = calculateMarginPercent(product);
-                  return (
-                    <tr
-                      key={product.id}
-                      className="transition hover:bg-slate-50"
-                    >
-                      <td className="px-4 py-3">
-                        <p className="font-bold text-slate-900">
-                          {product.name}
-                        </p>
-                        <p className="mt-0.5 text-xs text-slate-400">
-                          {product.sku || product.barcode || "Кодгүй"}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-slate-600">
-                        {product.businessCategory?.name || "Ангилалгүй"}
-                      </td>
-                      <td className="px-4 py-3 text-right text-slate-700">
-                        {product.costPrice == null
-                          ? "—"
-                          : money(product.costPrice)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-bold text-slate-900">
-                        {money(product.price)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-slate-600">
-                        {product.wholesalePrice == null
-                          ? "—"
-                          : money(product.wholesalePrice)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-slate-700">
-                        {product.stock.toLocaleString("mn-MN")}{" "}
-                        {product.unit === "kg" ? "кг" : "ш"}
-                      </td>
-                      <td
-                        className={`px-4 py-3 text-right font-bold ${margin != null && margin < 0 ? "text-red-600" : "text-emerald-600"}`}
-                      >
-                        {margin == null ? "—" : `${margin.toFixed(1)}%`}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <ProductReportTable
+        key={JSON.stringify([search, status, category, fromDate, toDate, demo])}
+        products={filteredProducts}
+        organizationName={demo ? "TEST — Туршилтын байгууллага" : organizationName}
+        filterDescription={[
+          status === "active" ? "Идэвхтэй" : status === "inactive" ? "Идэвхгүй" : "Бүх төлөв",
+          category === "all" ? "Бүх ангилал" : category,
+          search.trim() ? `Хайлт: ${search.trim()}` : null,
+          `Хүлээн авсан / бүртгэсэн: ${fromDate || "Бүх өдөр"} - ${toDate || "Бүх өдөр"}`,
+        ].filter(Boolean).join(" · ")}
+        loading={loading && !demo}
+      />
       <p className="text-xs leading-5 text-slate-400">
         Боломжит ашиг гэдэг нь одоогийн үлдэгдлийг бүгдийг нь зарах үнээр
         борлуулсны дараах урьдчилсан ашиг юм. Авсан үнэ бүртгээгүй барааны

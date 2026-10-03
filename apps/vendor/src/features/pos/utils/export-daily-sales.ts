@@ -1,20 +1,34 @@
 import type { PosReceipt } from "@mgl/types";
 import { buildSalesExportRows } from "./sales-export-rows";
 
-export async function exportDailySales(receipts: PosReceipt[], date: string) {
+export type SalesReportView = "summary" | "details";
+export type SalesExportView = SalesReportView | "all";
+
+export function buildSalesExportSheets(
+  receipts: PosReceipt[],
+  view: SalesExportView,
+) {
   const rows = buildSalesExportRows(receipts);
   if (!rows.details.length)
     throw new Error("Сонгосон шүүлтүүрт зарагдсан бараа байхгүй байна.");
-  const XLSX = await import("xlsx");
-  const workbook = XLSX.utils.book_new();
   const sheets = [
-    { name: "Борлуулалтын дэлгэрэнгүй", rows: rows.details },
-    { name: "Бараагаар нэгтгэл", rows: rows.totals },
-    { name: "Баримтууд", rows: rows.sales },
-    { name: "Төлбөрийн задаргаа", rows: rows.payments },
+    ...(view !== "details"
+      ? [{ name: "Бараагаар нэгтгэл", rows: rows.totals }]
+      : []),
+    ...(view !== "summary"
+      ? [
+          { name: "Борлуулалтын дэлгэрэнгүй", rows: rows.details },
+          { name: "Баримтууд", rows: rows.sales },
+          { name: "Төлбөрийн задаргаа", rows: rows.payments },
+        ]
+      : []),
     {
       name: "Тайлбар",
       rows: [
+        {
+          Тайлбар:
+            "Зарагдсан тоо хэмжээ нь барааны зарагдсан нийт хэмжээ (ш эсвэл кг). Баримтын тоо нь тухайн бараа орсон борлуулалтын баримтын тоо.",
+        },
         {
           Тайлбар:
             "Цаг нь Asia/Ulaanbaatar бүсээр. Сонгосон өдөр болон ажилтны шүүлтүүр үйлчилнэ. Буцаагдсан баримтыг оруулаагүй.",
@@ -25,7 +39,9 @@ export async function exportDailySales(receipts: PosReceipt[], date: string) {
         },
         {
           Тайлбар:
-            "Барааны мөрийн дүнг дэлгэрэнгүй sheet-ээс, баримтын нийт дүнг Баримтууд sheet-ээс, төлбөрийн дүнг Төлбөрийн задаргаа sheet-ээс нэгтгэнэ. Sheet-үүдийн дүнг хооронд нь нэмж болохгүй.",
+            view === "summary"
+              ? "Бараа бүрийг нэг мөрөөр нэгтгэсэн. Зарагдсан хэмжээ болон борлуулалтын дүн нь сонгосон шүүлтүүрт тохирсон бүх борлуулалтын нийлбэр."
+              : "Барааны мөрийн дүнг дэлгэрэнгүй sheet-ээс, баримтын нийт дүнг Баримтууд sheet-ээс, төлбөрийн дүнг Төлбөрийн задаргаа sheet-ээс нэгтгэнэ. Sheet-үүдийн дүнг хооронд нь нэмж болохгүй.",
         },
         {
           Тайлбар:
@@ -34,6 +50,17 @@ export async function exportDailySales(receipts: PosReceipt[], date: string) {
       ],
     },
   ];
+  return sheets;
+}
+
+export async function exportDailySales(
+  receipts: PosReceipt[],
+  date: string,
+  view: SalesExportView = "all",
+) {
+  const sheets = buildSalesExportSheets(receipts, view);
+  const XLSX = await import("xlsx");
+  const workbook = XLSX.utils.book_new();
   for (const { name, rows: data } of sheets) {
     const sheet = XLSX.utils.json_to_sheet(data);
     const headers = Object.keys(data[0] ?? {});
@@ -48,5 +75,8 @@ export async function exportDailySales(receipts: PosReceipt[], date: string) {
     if (sheet["!ref"]) sheet["!autofilter"] = { ref: sheet["!ref"] };
     XLSX.utils.book_append_sheet(workbook, sheet, name);
   }
-  XLSX.writeFile(workbook, `POS-borluulalt-${date}.xlsx`);
+  XLSX.writeFile(
+    workbook,
+    `POS-borluulalt-${view === "summary" ? "negtgel-" : view === "details" ? "delgerengui-" : ""}${date}.xlsx`,
+  );
 }
