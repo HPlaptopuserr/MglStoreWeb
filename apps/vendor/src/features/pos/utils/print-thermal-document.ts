@@ -16,9 +16,34 @@ export function printThermalDocument({
 }: ThermalPrintDocumentOptions): boolean {
   if (typeof window === "undefined") return false;
 
-  const popup = window.open("", "_blank", "width=420,height=760");
-  if (!popup) return false;
-
+  // Async payment completion may no longer have browser user activation.
+  // A same-origin iframe does not depend on permission to open popups.
+  const frame = document.createElement("iframe");
+  frame.title = "Баримт хэвлэх";
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;left:-10000px;top:0;width:420px;height:760px;border:0;";
+  document.body.appendChild(frame);
+  const popup = frame.contentWindow;
+  if (!popup) { frame.remove(); return false; }
+  let started = false;
+  const cleanup = () => frame.remove();
+  const startPrint = () => {
+    if (started) return;
+    started = true;
+    void popup.document.fonts.ready.then(() => {
+      popup.requestAnimationFrame(() => {
+        const height = popup.document.body.getBoundingClientRect().height;
+        const mm = Math.max(MINIMUM_RECEIPT_HEIGHT_MM,
+          Math.ceil(height * MILLIMETERS_PER_INCH / SCREEN_DPI + RECEIPT_BOTTOM_FEED_MM));
+        const style = popup.document.getElementById("thermal-page-size");
+        if (style) style.textContent = `@page { size: ${paperWidthMm}mm ${mm}mm; margin: 0; }`;
+        popup.addEventListener("afterprint", cleanup, { once: true });
+        try { popup.focus(); popup.print(); } catch { cleanup(); }
+        // Do not close after 500ms: some devices open the print dialog asynchronously.
+      });
+    });
+  };
+  frame.onload = startPrint;
   popup.document.write(`
     <!doctype html>
     <html>
@@ -55,23 +80,6 @@ export function printThermalDocument({
   `);
   popup.document.close();
 
-  popup.onload = () => {
-    popup.requestAnimationFrame(() => {
-      const contentHeightPx = popup.document.body.getBoundingClientRect().height;
-      const contentHeightMm = Math.max(
-        MINIMUM_RECEIPT_HEIGHT_MM,
-        Math.ceil((contentHeightPx * MILLIMETERS_PER_INCH) / SCREEN_DPI + RECEIPT_BOTTOM_FEED_MM),
-      );
-      const pageStyle = popup.document.getElementById("thermal-page-size");
-      if (pageStyle) {
-        pageStyle.textContent = `@page { size: ${paperWidthMm}mm ${contentHeightMm}mm; margin: 0; }`;
-      }
-
-      popup.focus();
-      popup.print();
-      window.setTimeout(() => popup.close(), 500);
-    });
-  };
-
+  if (popup.document.readyState === "complete") startPrint();
   return true;
 }

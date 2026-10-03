@@ -57,7 +57,7 @@ export function VendorOwnerDialog({
         {currentOwner && (
           <p>
             Одоогийн эзэмшигч {currentOwner.fullName || currentOwner.email}{" "}
-            Admin эрхтэй болно.
+            Менежер эрхтэй болно.
           </p>
         )}
       </div>

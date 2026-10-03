@@ -47,8 +47,8 @@ type Props = {
   ) => void | Promise<void>;
   onRequestQPay: (amount: number) => void | Promise<void>;
   onMarkQPayPaid: (id: string) => void;
-  onRemovePayment: (id: string) => void;
-  onResetPayments: () => void;
+  onRemovePayment: (id: string) => void | Promise<void>;
+  onResetPayments: () => void | Promise<void>;
   onFinalize: () => void;
   onFinalizeCash: (
     amount: number,
@@ -56,6 +56,7 @@ type Props = {
   ) => void | Promise<void>;
   canFinalize: boolean;
   onBack: () => void;
+  onCancelCheckout: () => void | Promise<void>;
   disabled?: boolean;
   transactionId?: string;
   loyalty: CheckoutLoyaltyState;
@@ -144,6 +145,7 @@ export function PosCheckoutView({
   onFinalizeCash,
   canFinalize,
   onBack,
+  onCancelCheckout,
   disabled,
   transactionId = "TXN-0001",
   loyalty,
@@ -165,6 +167,7 @@ export function PosCheckoutView({
   >("ASK");
   const [pendingPaymentAmount, setPendingPaymentAmount] = useState(0);
   const [creditDialogOpen, setCreditDialogOpen] = useState(false);
+  const [cancelCheckoutLoading, setCancelCheckoutLoading] = useState(false);
 
   const isCashTender = cashTenderEnabled && paymentMethod === "CASH";
   const cashPayment = useCashPayment(enteredAmount, remaining);
@@ -174,6 +177,9 @@ export function PosCheckoutView({
     .reduce((sum, item) => sum + item.amount, 0);
   const hasConfirmedQPay = paymentEntries.some(
     (item) => item.method === "QR" && item.status === "confirmed",
+  );
+  const hasPendingQPay = paymentEntries.some(
+    (item) => item.method === "QR" && item.status === "pending",
   );
   const hasCustomAmount = parsedAmount > 0;
   const paymentAmount = isCashTender
@@ -301,6 +307,16 @@ export function PosCheckoutView({
     setEnteredAmount("");
   };
 
+  const handleCancelCheckout = async () => {
+    if (cancelCheckoutLoading || disabled) return;
+    setCancelCheckoutLoading(true);
+    try {
+      await onCancelCheckout();
+    } finally {
+      setCancelCheckoutLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-hidden overscroll-contain bg-zinc-950">
       {/* Header */}
@@ -325,7 +341,7 @@ export function PosCheckoutView({
             onClick={onBack}
             className="rounded-md border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition-colors hover:border-zinc-500 max-[760px]:px-2.5 max-[760px]:py-1 max-[760px]:text-[10px]"
           >
-            REGISTER
+            Сагс руу буцах
           </button>
           <button
             type="button"
@@ -342,10 +358,17 @@ export function PosCheckoutView({
           </button>
           <button
             type="button"
-            onClick={onBack}
-            className="rounded-md border border-zinc-700 p-1.5 text-zinc-500 transition-colors hover:border-zinc-500 hover:text-zinc-300 max-[760px]:p-1"
+            onClick={() => void handleCancelCheckout()}
+            disabled={disabled || cancelCheckoutLoading}
+            title="Гүйлгээ цуцалж, сагс цэвэрлэх"
+            aria-label="Гүйлгээ цуцалж, сагс цэвэрлэх"
+            className="rounded-md border border-rose-900/70 p-1.5 text-rose-400 transition-colors hover:border-rose-600 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-40 max-[760px]:p-1"
           >
-            <X size={14} />
+            {cancelCheckoutLoading ? (
+              <RefreshCw size={14} className="animate-spin" />
+            ) : (
+              <X size={14} />
+            )}
           </button>
         </div>
       </header>
@@ -473,7 +496,7 @@ export function PosCheckoutView({
             {paymentEntries.length > 0 && (
               <button
                 type="button"
-                onClick={onResetPayments}
+                onClick={() => void onResetPayments()}
                 disabled={
                   disabled || paymentEntries.length === 0 || hasConfirmedQPay
                 }
@@ -574,15 +597,29 @@ export function PosCheckoutView({
           {!qpayModal?.open && statusMessage && statusTone === "not-found" && (
             <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4">
               <p className="text-[10px] font-bold uppercase tracking-widest text-rose-300">
-                {paymentMethod === "CARD"
-                  ? "Картын төлбөр амжилтгүй"
-                  : paymentMethod === "QR"
-                    ? "QPay QR үүссэнгүй"
-                    : "Төлбөр амжилтгүй"}
+                {hasPendingQPay
+                  ? "QPay төлбөрийн анхааруулга"
+                  : paymentMethod === "CARD"
+                    ? "Картын төлбөр амжилтгүй"
+                    : paymentMethod === "QR"
+                      ? "QPay QR үүссэнгүй"
+                      : "Төлбөр амжилтгүй"}
               </p>
               <p className="mt-2 text-sm font-semibold text-rose-100">
                 {statusMessage}
               </p>
+              {hasPendingQPay && (
+                <button
+                  type="button"
+                  onClick={() => void handleCancelCheckout()}
+                  disabled={disabled || cancelCheckoutLoading}
+                  className="mt-4 inline-flex items-center justify-center rounded-lg border border-rose-400/50 bg-rose-500/15 px-4 py-2 text-xs font-black text-rose-100 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {cancelCheckoutLoading
+                    ? "Цуцалж байна..."
+                    : "Гүйлгээ цуцалж, сагс цэвэрлэх"}
+                </button>
+              )}
             </div>
           )}
 
@@ -658,7 +695,7 @@ export function PosCheckoutView({
                       ) && (
                         <button
                           type="button"
-                          onClick={() => onRemovePayment(entry.id)}
+                          onClick={() => void onRemovePayment(entry.id)}
                           className="rounded-md border border-zinc-700 px-2 py-1 text-[10px] font-bold text-zinc-400 hover:border-zinc-500"
                         >
                           {entry.method === "QR" ? "QR цуцлах" : "Устгах"}

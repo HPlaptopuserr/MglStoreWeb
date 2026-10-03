@@ -284,6 +284,7 @@ export const canOperatePos = (
   Boolean(
     actor.organizationId &&
       (actor.orgRole === "OWNER" ||
+        actor.orgRole === "ADMIN" ||
         actor.capabilities.includes(Capability.POS_CASHIER)),
   );
 

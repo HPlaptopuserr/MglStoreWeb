@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { ProductImage } from "./ProductImage";
+import { KitchenPrinterSettingsButton } from "./KitchenPrinterSettingsButton";
+import { ProductImagePreviewDialog } from "./ProductImagePreviewDialog";
 import {
   ProductImageFeedbackProvider,
   ProductImageNotice,
@@ -31,15 +33,16 @@ import {
   Trash2,
   Utensils,
   UserRound,
+  ZoomIn,
 } from "lucide-react";
 import { QrGenerator } from "@mgl/ui";
-import type {
-  CardAttempt,
-  PosReceipt,
-  PosShift,
-  SalePaymentLine,
+import {
+  calculateTakeawayPackagingFee,
+  type CardAttempt,
+  type PosReceipt,
+  type PosShift,
+  type SalePaymentLine,
 } from "@mgl/types";
-import { SELF_SERVICE_TAKEAWAY_PACKAGING_FEE } from "@mgl/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOrg } from "@/components/org/OrgContext";
 import {
@@ -79,6 +82,7 @@ import {
   formatReceiptMoney as formatMoney,
   printThermalPosReceipt,
 } from "@/lib/thermal-receipt-printing";
+import { printKitchenTicket } from "@/lib/kitchen-ticket-printing";
 import {
   clearSelfServicePendingPayment,
   loadSelfServicePendingPayment,
@@ -187,6 +191,23 @@ function reconcileCartWithProducts(
   ].filter(Boolean);
 
   return { cart, changed, notice: notices.join(" ") };
+}
+
+function categoryEmoji(category: string, label: string) {
+  const normalized = `${category} ${label}`.toLocaleLowerCase("mn");
+  if (category === "ALL") return "🍽️";
+  if (normalized.includes("1-р") || normalized.includes("шөл")) return "🍲";
+  if (normalized.includes("2-р") || normalized.includes("хуур")) return "🍛";
+  if (normalized.includes("сет")) return "🍱";
+  if (
+    normalized.includes("уух") ||
+    normalized.includes("ундаа") ||
+    normalized.includes("кофе")
+  ) {
+    return "🥤";
+  }
+  if (normalized.includes("зууш") || normalized.includes("салат")) return "🥗";
+  return "🥘";
 }
 
 async function loadSelfServiceProducts(branchId: string) {
@@ -298,6 +319,8 @@ function SelfServiceCheckoutContent() {
   const [activeCategory, setActiveCategory] = useState<Category>("ALL");
   const [query, setQuery] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [previewProduct, setPreviewProduct] =
+    useState<RestaurantPosProduct | null>(null);
   const [setupLoading, setSetupLoading] = useState(true);
   const [setupError, setSetupError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -310,6 +333,9 @@ function SelfServiceCheckoutContent() {
     useState<PendingCardCheckout | null>(null);
   const [receipt, setReceipt] = useState<PosReceipt | null>(null);
   const [completedTicketNo, setCompletedTicketNo] = useState("");
+  const [completedKitchenTicket, setCompletedKitchenTicket] =
+    useState<RestaurantTicket | null>(null);
+  const [kitchenPrintError, setKitchenPrintError] = useState("");
   const [cardMessage, setCardMessage] = useState("");
   const [cardCancelRequested, setCardCancelRequested] = useState(false);
   const [returningFromCardPayment, setReturningFromCardPayment] =
@@ -322,6 +348,7 @@ function SelfServiceCheckoutContent() {
   const cardPaymentRunRef = useRef<CardPaymentRun | null>(null);
   const ebarimtQrRef = useRef<HTMLDivElement | null>(null);
   const autoPrintedReceiptRef = useRef<string | null>(null);
+  const autoPrintedKitchenTicketRef = useRef<string | null>(null);
   const menuRefreshInFlightRef = useRef(false);
   const screenWakeLockRef = useRef<WakeLockSentinel | null>(null);
   const restoredPendingPaymentRef = useRef(false);
@@ -538,6 +565,15 @@ function SelfServiceCheckoutContent() {
     return ["ALL", ...configured, ...(hasOther ? ["OTHER"] : [])];
   }, [menuCategories, orderModeProducts, resolveProductCategory]);
 
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<Category, number>([["ALL", orderModeProducts.length]]);
+    orderModeProducts.forEach((product) => {
+      const category = resolveProductCategory(product);
+      counts.set(category, (counts.get(category) || 0) + 1);
+    });
+    return counts;
+  }, [orderModeProducts, resolveProductCategory]);
+
   const categoryLabel = useCallback(
     (category: Category) => {
       if (category === "ALL") return "Бүгд";
@@ -575,8 +611,18 @@ function SelfServiceCheckoutContent() {
     0,
   );
   const packagingFee =
-    !isCafe && orderMode === "TO_GO" && cart.length > 0
-      ? SELF_SERVICE_TAKEAWAY_PACKAGING_FEE
+    orderMode === "TO_GO"
+      ? calculateTakeawayPackagingFee(
+          cart.map((line) => ({
+            quantity: line.qty,
+            unitFee: Number(line.product.takeawayPackagingFee || 0),
+            isSoldByPiece: line.product.isSoldByPiece,
+            pieceSmallPackSize: line.product.pieceSmallPackSize,
+            pieceSmallPackFee: Number(line.product.pieceSmallPackFee || 0),
+            pieceLargePackSize: line.product.pieceLargePackSize,
+            pieceLargePackFee: Number(line.product.pieceLargePackFee || 0),
+          })),
+        )
       : 0;
   const cartTotal = cartSubtotal + packagingFee;
   const cardProvider = getEffectiveCardProvider(register);
@@ -881,6 +927,7 @@ function SelfServiceCheckoutContent() {
       setActiveCategory("ALL");
       setQuery("");
       setCart([]);
+      setPreviewProduct(null);
       setPaymentMethod("QPAY");
       setEbarimtBuyerMode("B2C");
       setCompanyRegNo("");
@@ -895,6 +942,8 @@ function SelfServiceCheckoutContent() {
       setPendingCardCheckout(null);
       setReceipt(null);
       setCompletedTicketNo("");
+      setCompletedKitchenTicket(null);
+      setKitchenPrintError("");
       setCardMessage("");
       setCardCancelRequested(false);
       setReturningFromCardPayment(false);
@@ -905,6 +954,7 @@ function SelfServiceCheckoutContent() {
       autoRecoverCardAttemptRef.current = null;
       autoRecoverInvoiceRef.current = null;
       autoPrintedReceiptRef.current = null;
+      autoPrintedKitchenTicketRef.current = null;
       if (options?.reload) void loadSetup();
     },
     [loadSetup],
@@ -934,6 +984,63 @@ function SelfServiceCheckoutContent() {
       }),
     [completedTicketNo, isCafe, orderMode, register, user.organizationName],
   );
+
+  const printCompletedKitchenTicket = useCallback(async () => {
+    if (!completedKitchenTicket || isCafe) return false;
+    return printKitchenTicket({
+      heading: "ГАЛ ТОГООНЫ ЗАХИАЛГА",
+      organizationName: user.organizationName || "MGL Store",
+      registerName:
+        register?.branch.name ||
+        register?.label ||
+        register?.name ||
+        "Self service",
+      ticketNo: formatRestaurantOrderNumber(
+        completedKitchenTicket.ticketNo,
+        completedKitchenTicket.id,
+      ),
+      orderLabel:
+        orderMode === "DINE_IN" ? "ЭНД ХЭРЭГЛЭХ" : "АВЧ ЯВАХ",
+      createdAt: new Date().toLocaleString("mn-MN"),
+      items: completedKitchenTicket.items
+        .filter((item) => Number(item.qty) > 0)
+        .map((item) => ({
+          name: item.name,
+          qty: Number(item.qty),
+          note: item.note || undefined,
+        })),
+    });
+  }, [completedKitchenTicket, isCafe, orderMode, register, user.organizationName]);
+
+  useEffect(() => {
+    if (isCafe || screen !== "success" || !completedKitchenTicket) return;
+    const printKey = completedKitchenTicket.id;
+    if (autoPrintedKitchenTicketRef.current === printKey) return;
+    autoPrintedKitchenTicketRef.current = printKey;
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const printed = await printCompletedKitchenTicket();
+        if (!printed && !cancelled) {
+          autoPrintedKitchenTicketRef.current = null;
+        }
+        if (!cancelled) setKitchenPrintError("");
+      } catch (error) {
+        if (cancelled) return;
+        autoPrintedKitchenTicketRef.current = null;
+        setKitchenPrintError(
+          error instanceof Error
+            ? error.message
+            : "Гал тогооны захиалгыг хэвлэж чадсангүй.",
+        );
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [completedKitchenTicket, isCafe, printCompletedKitchenTicket, screen]);
 
   useEffect(() => {
     if (!silentPrintEnabled || screen !== "success" || !receipt) {
@@ -1280,6 +1387,7 @@ function SelfServiceCheckoutContent() {
         );
 
         setCompletedTicketNo(checkout.ticket.ticketNo);
+        setCompletedKitchenTicket(checkout.ticket);
         setReceipt(finalReceipt);
         setPendingCardCheckout(null);
         setScreen("success");
@@ -1507,6 +1615,7 @@ function SelfServiceCheckoutContent() {
           { method: "CASH", amount: cartTotal },
         );
         setCompletedTicketNo(savedTicket.ticketNo);
+        setCompletedKitchenTicket(savedTicket);
         setReceipt(finalReceipt);
         setScreen("success");
         return;
@@ -1667,6 +1776,7 @@ function SelfServiceCheckoutContent() {
 
         setReceipt(finalReceipt);
         setCompletedTicketNo(checkout.ticket.ticketNo);
+        setCompletedKitchenTicket(checkout.ticket);
         setPendingCheckout((current) =>
           current
             ? { ...current, invoice: { ...current.invoice, ...paidInvoice } }
@@ -1859,6 +1969,7 @@ function SelfServiceCheckoutContent() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {!isCafe ? <KitchenPrinterSettingsButton /> : null}
             <button
               type="button"
               onClick={requestFullscreen}
@@ -2283,6 +2394,29 @@ function SelfServiceCheckoutContent() {
             ) : null}
           </div>
 
+          {kitchenPrintError ? (
+            <div className="mx-auto mt-6 max-w-xl rounded-2xl bg-rose-400/10 px-5 py-4 text-sm font-bold text-rose-100">
+              <p>Гал тогооны принтер: {kitchenPrintError}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setKitchenPrintError("");
+                  void printCompletedKitchenTicket().catch((error) =>
+                    setKitchenPrintError(
+                      error instanceof Error
+                        ? error.message
+                        : "Гал тогооны захиалгыг хэвлэж чадсангүй.",
+                    ),
+                  );
+                }}
+                className="mt-3 inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-white/10 px-4 text-xs font-black text-white"
+              >
+                <Printer className="h-4 w-4" />
+                Дахин хэвлэх
+              </button>
+            </div>
+          ) : null}
+
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <button
               type="button"
@@ -2627,100 +2761,146 @@ function SelfServiceCheckoutContent() {
   }
 
   return (
-    <main className="h-[100dvh] overflow-hidden bg-[#f5f6f3] text-[#10221c]">
-      <header className="flex h-[78px] items-center gap-4 border-b border-black/5 bg-white px-4 sm:px-6 [@media(max-height:900px)]:h-16">
+    <main className="h-[100dvh] overflow-hidden bg-[#eef3f7] text-[#10221c]">
+      <header className="flex h-[70px] items-center gap-3 border-b border-slate-200/80 bg-white px-3 sm:px-5 [@media(max-height:820px)]:h-[60px]">
         <button
           type="button"
           onClick={() => resetOrder()}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-slate-100 text-slate-600 transition hover:bg-slate-200"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-orange-200 hover:bg-orange-50 hover:text-[#f45b0b]"
           aria-label="Эхлэл рүү буцах"
         >
           <ArrowLeft className="h-5 w-5" />
         </button>
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#11231d] text-white">
-            <Store className="h-5 w-5" />
+        <div className="flex min-w-0 max-w-[290px] items-center gap-2.5">
+          <span className="grid h-10 min-w-10 shrink-0 place-items-center rounded-xl bg-[#ff5a0a] px-2 text-xs font-black uppercase text-white shadow-[0_7px_18px_rgba(255,90,10,0.25)]">
+            {(user.organizationName || "MGL Store").trim().slice(0, 2)}
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-black">
-              {user.organizationName || "MGL Store"}
-            </p>
-            <p className="truncate text-[11px] font-bold text-slate-400">
-              {register.branch.name} ·{" "}
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate text-sm font-black">
+                {user.organizationName || "MGL Store"}
+              </p>
+              <span className="hidden shrink-0 rounded-full bg-orange-50 px-2 py-0.5 text-[9px] font-black uppercase text-[#f45b0b] md:inline">
+                Нээлттэй
+              </span>
+            </div>
+            <p className="truncate text-[10px] font-bold text-slate-400">
+              {register.branch.name} · {register.name} ·{" "}
               {orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"}
             </p>
           </div>
         </div>
-        <div className="relative ml-auto hidden w-full max-w-sm sm:block">
+        <div className="relative ml-auto hidden w-full max-w-[460px] sm:block">
           <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Бүтээгдэхүүн хайх..."
-            className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-semibold outline-none transition focus:border-[#13795b] focus:bg-white"
+            placeholder="Бүтээгдэхүүн хайх... (жишээ: Бууз, Гуляш)"
+            className="h-10 w-full rounded-xl border border-slate-200 bg-[#f6f8fa] pl-11 pr-4 text-xs font-semibold outline-none transition focus:border-orange-300 focus:bg-white focus:ring-4 focus:ring-orange-100"
           />
         </div>
+        <span className="hidden h-9 shrink-0 items-center rounded-xl border border-slate-200 px-3 text-[10px] font-black text-slate-600 lg:flex">
+          MN
+        </span>
         <button
           type="button"
           onClick={requestFullscreen}
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-slate-200 text-slate-500"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-orange-200 hover:text-[#f45b0b]"
           aria-label="Бүтэн дэлгэц"
         >
           <Expand className="h-5 w-5" />
         </button>
       </header>
 
-      <div className="flex h-[calc(100dvh-78px)] flex-col [@media(max-height:900px)]:h-[calc(100dvh-64px)]">
+      <div className="flex h-[calc(100dvh-70px)] flex-col [@media(max-height:820px)]:h-[calc(100dvh-60px)]">
         <section className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {catalogNotice ? (
             <div className="mx-4 mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800 sm:mx-6">
               {catalogNotice}
             </div>
           ) : null}
-          <div className="border-b border-black/5 bg-white px-4 sm:px-6">
-            <div className="flex gap-2 overflow-x-auto py-3 [scrollbar-width:none] [@media(max-height:900px)]:py-2 [&::-webkit-scrollbar]:hidden">
-              {visibleCategories.map((category) => (
-                <button
-                  key={category}
-                  type="button"
-                  onClick={() => setActiveCategory(category)}
-                  className={`h-11 shrink-0 rounded-2xl px-5 text-sm font-black transition [@media(max-height:900px)]:h-9 ${
-                    activeCategory === category
-                      ? "bg-[#11231d] text-white shadow-md"
-                      : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                  }`}
-                >
-                  {categoryLabel(category)}
-                </button>
-              ))}
+          <div className="border-b border-slate-200/80 bg-white px-3 sm:px-5">
+            <div className="flex gap-2 overflow-x-auto py-2.5 [scrollbar-width:none] [@media(max-height:820px)]:py-2 [&::-webkit-scrollbar]:hidden">
+              {visibleCategories.map((category) => {
+                const label = categoryLabel(category);
+                const active = activeCategory === category;
+                return (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => setActiveCategory(category)}
+                    className={`flex h-[54px] min-w-[138px] shrink-0 items-center gap-2.5 rounded-xl border px-3 text-left transition [@media(max-height:820px)]:h-12 ${
+                      active
+                        ? "border-[#ff5a0a] bg-[#ff5a0a] text-white shadow-[0_7px_18px_rgba(255,90,10,0.22)]"
+                        : "border-slate-200 bg-white text-slate-700 hover:border-orange-200 hover:bg-orange-50/50"
+                    }`}
+                  >
+                    <span
+                      className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-base ${
+                        active ? "bg-white/20" : "bg-slate-100"
+                      }`}
+                    >
+                      {categoryEmoji(category, label)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-xs font-black uppercase">
+                        {label}
+                      </span>
+                      <span
+                        className={`mt-0.5 block text-[9px] font-bold ${
+                          active ? "text-white/75" : "text-slate-400"
+                        }`}
+                      >
+                        {category === "ALL" ? "Бүх сонголт" : "Ангилал"}
+                      </span>
+                    </span>
+                    <span
+                      className={`grid min-w-6 place-items-center rounded-full px-1.5 py-1 text-[9px] font-black ${
+                        active
+                          ? "bg-white text-[#f45b0b]"
+                          : "bg-slate-100 text-slate-500"
+                      }`}
+                    >
+                      {categoryCounts.get(category) || 0}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-5 sm:px-6 [@media(max-height:900px)]:pb-3 [@media(max-height:900px)]:pt-3">
-            <div className="relative mb-5 sm:hidden">
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 pt-3 sm:px-5 [@media(max-height:820px)]:pb-2 [@media(max-height:820px)]:pt-2">
+            <div className="relative mb-3 sm:hidden">
               <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder="Бүтээгдэхүүн хайх..."
-                className="h-12 w-full rounded-2xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-semibold outline-none"
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-11 pr-4 text-sm font-semibold outline-none focus:border-orange-300"
               />
             </div>
-            <div className="mb-5 flex items-end justify-between gap-4 [@media(max-height:900px)]:mb-3">
-              <div>
-                <h1 className="text-2xl font-black tracking-tight [@media(max-height:900px)]:text-xl">
-                  {categoryLabel(activeCategory)}
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <div className="flex min-w-0 items-baseline gap-2">
+                <h1 className="shrink-0 text-xl font-black tracking-tight [@media(max-height:820px)]:text-lg">
+                  Цэс
                 </h1>
-                <p className="mt-1 text-sm font-semibold text-slate-400 [@media(max-height:900px)]:hidden">
-                  Сонгох бүтээгдэхүүн дээрээ дарна уу
+                <p className="truncate text-xs font-bold text-slate-500">
+                  {categoryLabel(activeCategory)} · {visibleProducts.length} бүтээгдэхүүн
                 </p>
               </div>
-              <span className="text-xs font-black text-slate-400">
-                {visibleProducts.length} бүтээгдэхүүн
-              </span>
+              <div className="hidden items-center gap-2 text-[10px] font-bold text-slate-500 md:flex">
+                <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 shadow-sm">
+                  <ZoomIn className="h-3 w-3 text-[#f45b0b]" />
+                  Зураг дээр дарж томруулна
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 shadow-sm">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Бэлэн байна
+                </span>
+              </div>
             </div>
 
-            <ProductImageNotice className="mb-4" />
+            <ProductImageNotice className="mb-3" />
 
             {visibleProducts.length === 0 ? (
               <div className="grid min-h-64 place-items-center rounded-[28px] border-2 border-dashed border-slate-200 bg-white/50 text-center">
@@ -2732,28 +2912,41 @@ function SelfServiceCheckoutContent() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 [@media(max-height:900px)]:gap-2.5">
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 [@media(max-height:820px)]:gap-2">
                 {visibleProducts.map((product) => {
                   const selectedQty =
                     cart.find((line) => line.product.id === product.id)?.qty ||
                     0;
                   const soldOut = product.stockQty <= selectedQty;
+                  const productMeta = product.preparationMinutes
+                    ? `${product.preparationMinutes} мин`
+                    : "";
                   return (
-                    <button
+                    <article
                       key={product.id}
-                      type="button"
-                      onClick={() => addProduct(product)}
-                      disabled={soldOut}
-                      className="group overflow-hidden rounded-[24px] border border-black/5 bg-white text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-55"
+                      className={`group overflow-hidden rounded-2xl border border-slate-200/80 bg-white text-left shadow-[0_3px_12px_rgba(15,35,29,0.05)] transition hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-[0_10px_28px_rgba(15,35,29,0.11)] ${
+                        soldOut ? "opacity-55" : ""
+                      }`}
                     >
-                      <span className="relative block aspect-[4/3] overflow-hidden bg-gradient-to-br from-[#e4eee8] via-[#f0e8d5] to-[#e8d1a5] [@media(max-height:900px)]:h-[120px] [@media(max-height:900px)]:aspect-auto">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewProduct(product)}
+                        disabled={!product.imageUrl}
+                        className="relative block aspect-[16/10] w-full overflow-hidden bg-gradient-to-br from-[#e4eee8] via-[#f0e8d5] to-[#e8d1a5] text-left disabled:cursor-default [@media(max-height:820px)]:h-[102px] [@media(max-height:820px)]:aspect-auto"
+                        aria-label={`${product.name} зургийг томоор харах`}
+                      >
                         <ProductImage
                           src={product.imageUrl}
                           alt={product.name}
                           className="h-full w-full object-contain transition duration-500 group-hover:scale-105"
                         />
+                        {product.imageUrl ? (
+                          <span className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-black/45 text-white shadow-lg backdrop-blur-sm transition group-hover:scale-105">
+                            <ZoomIn className="h-3.5 w-3.5" />
+                          </span>
+                        ) : null}
                         {selectedQty > 0 ? (
-                          <span className="absolute right-3 top-3 grid h-9 min-w-9 place-items-center rounded-full bg-[#11231d] px-2 text-sm font-black text-white shadow-lg">
+                          <span className="absolute bottom-2 right-2 grid h-7 min-w-7 place-items-center rounded-full bg-[#11231d] px-2 text-xs font-black text-white shadow-lg">
                             {selectedQty}
                           </span>
                         ) : null}
@@ -2762,21 +2955,34 @@ function SelfServiceCheckoutContent() {
                             Дууссан
                           </span>
                         ) : null}
-                      </span>
-                      <span className="block p-4 [@media(max-height:900px)]:p-3">
-                        <span className="line-clamp-2 min-h-10 text-sm font-black leading-5 [@media(max-height:900px)]:line-clamp-1 [@media(max-height:900px)]:min-h-5">
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => addProduct(product)}
+                        disabled={soldOut}
+                        className="block w-full p-3 text-left disabled:cursor-not-allowed [@media(max-height:820px)]:p-2.5"
+                      >
+                        <span className="line-clamp-1 text-[13px] font-black leading-5">
                           {product.name}
                         </span>
-                        <span className="mt-3 flex items-center justify-between gap-2 [@media(max-height:900px)]:mt-2">
-                          <span className="text-base font-black text-[#13795b]">
-                            {formatMoney(Number(product.price))}
+                        <span className="block truncate text-[9px] font-semibold text-slate-400">
+                          {productMeta}
+                        </span>
+                        <span className="mt-2 flex items-end justify-between gap-2">
+                          <span>
+                            <span className="block text-[8px] font-bold uppercase tracking-wider text-slate-400">
+                              Үнэ
+                            </span>
+                            <span className="text-sm font-black text-[#10221c]">
+                              {formatMoney(Number(product.price))}
+                            </span>
                           </span>
-                          <span className="grid h-8 w-8 place-items-center rounded-full bg-slate-100 text-slate-600 transition group-hover:bg-[#d9a62e] group-hover:text-[#172219]">
-                            <Plus className="h-4 w-4" />
+                          <span className="grid h-8 w-8 place-items-center rounded-lg bg-[#ff5a0a] text-white shadow-[0_5px_12px_rgba(255,90,10,0.28)] transition group-hover:scale-105 group-hover:bg-[#e94e00]">
+                            <Plus className="h-[18px] w-[18px]" />
                           </span>
                         </span>
-                      </span>
-                    </button>
+                      </button>
+                    </article>
                   );
                 })}
               </div>
@@ -2784,16 +2990,21 @@ function SelfServiceCheckoutContent() {
           </div>
         </section>
 
-        <aside className="flex h-[164px] shrink-0 border-t border-black/5 bg-white shadow-[0_-12px_40px_rgba(15,35,29,0.08)] sm:h-[176px] [@media(max-height:900px)]:h-32">
-          <div className="hidden w-[190px] shrink-0 items-center justify-between border-r border-slate-100 px-5 py-4 sm:flex">
+        <aside className="flex h-[112px] shrink-0 border-t border-slate-200 bg-white shadow-[0_-10px_32px_rgba(15,35,29,0.08)] [@media(max-height:820px)]:h-[98px]">
+          <div className="hidden w-[180px] shrink-0 items-center justify-between border-r border-slate-100 px-4 py-3 sm:flex">
             <div className="flex items-center gap-3">
-              <span className="grid h-10 w-10 place-items-center rounded-2xl bg-[#eef5f1] text-[#13795b]">
+              <span className="relative grid h-10 w-10 place-items-center rounded-xl border border-orange-100 bg-orange-50 text-[#f45b0b]">
                 <ShoppingBag className="h-5 w-5" />
+                {cartQty > 0 ? (
+                  <span className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-[#ff5a0a] px-1 text-[9px] font-black text-white">
+                    {cartQty}
+                  </span>
+                ) : null}
               </span>
               <div>
-                <h2 className="text-base font-black">Таны сагс</h2>
-                <p className="text-xs font-bold text-slate-400">
-                  {cartQty} бараа
+                <h2 className="text-sm font-black">Таны сагс</h2>
+                <p className="text-[10px] font-bold text-slate-400">
+                  {cartQty} бүтээгдэхүүн
                 </p>
               </div>
             </div>
@@ -2809,63 +3020,61 @@ function SelfServiceCheckoutContent() {
             ) : null}
           </div>
 
-          <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden px-3 py-3 [scrollbar-width:thin] sm:px-4">
+          <div className="min-w-0 flex-1 overflow-x-auto overflow-y-hidden px-2.5 py-2.5 [scrollbar-width:thin] sm:px-3">
             {cart.length === 0 ? (
               <div className="flex h-full min-w-[210px] items-center justify-center gap-3 text-center">
-                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-slate-100 text-slate-300">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-300">
                   <ShoppingBag className="h-5 w-5" />
                 </span>
                 <div className="text-left">
                   <p className="text-sm font-black text-slate-500">
                     Сагс хоосон байна
                   </p>
-                  <p className="mt-1 text-xs font-semibold text-slate-400">
+                  <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
                     Бүтээгдэхүүнээ сонгоно уу.
                   </p>
                 </div>
               </div>
             ) : (
-              <div className="flex h-full gap-3">
+              <div className="flex h-full gap-2.5">
                 {cart.map((line) => (
                   <article
                     key={line.product.id}
-                    className="flex h-full w-[230px] shrink-0 flex-col justify-between rounded-2xl border border-slate-100 bg-slate-50/70 p-3 sm:w-[260px]"
+                    className="flex h-full w-[210px] shrink-0 items-center gap-2.5 rounded-xl border border-slate-200 bg-white p-2 shadow-sm sm:w-[230px]"
                   >
-                    <div className="flex gap-3">
-                      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-slate-100">
+                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-slate-100">
                         <ProductImage
                           src={line.product.imageUrl}
                           alt=""
                           className="h-full w-full object-cover"
                         />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="line-clamp-2 text-sm font-black leading-5">
-                          {line.product.name}
-                        </p>
-                        <p className="mt-1 text-xs font-black text-[#13795b]">
-                          {formatMoney(Number(line.product.price) * line.qty)}
-                        </p>
-                      </div>
                     </div>
-                    <div className="mt-3 flex items-center justify-end gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[11px] font-black leading-4">
+                        {line.product.name}
+                      </p>
+                      <p className="text-[10px] font-black text-[#f45b0b]">
+                        {formatMoney(Number(line.product.price) * line.qty)}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
                       <button
                         type="button"
                         onClick={() => changeQuantity(line.product.id, -1)}
-                        className="grid h-9 w-9 place-items-center rounded-xl bg-slate-100 text-slate-600"
+                        className="grid h-7 w-7 place-items-center rounded-lg bg-slate-100 text-slate-600"
                       >
-                        <Minus className="h-4 w-4" />
+                        <Minus className="h-3.5 w-3.5" />
                       </button>
-                      <span className="w-8 text-center text-sm font-black">
+                      <span className="w-5 text-center text-xs font-black">
                         {line.qty}
                       </span>
                       <button
                         type="button"
                         onClick={() => changeQuantity(line.product.id, 1)}
                         disabled={line.qty >= line.product.stockQty}
-                        className="grid h-9 w-9 place-items-center rounded-xl bg-[#11231d] text-white disabled:opacity-35"
+                        className="grid h-7 w-7 place-items-center rounded-lg bg-[#ff5a0a] text-white disabled:opacity-35"
                       >
-                        <Plus className="h-4 w-4" />
+                        <Plus className="h-3.5 w-3.5" />
                       </button>
                     </div>
                   </article>
@@ -2874,12 +3083,12 @@ function SelfServiceCheckoutContent() {
             )}
           </div>
 
-          <div className="flex w-[180px] shrink-0 flex-col justify-center border-l border-slate-100 p-3 sm:w-[280px] sm:p-5">
-            <div className="mb-3 flex items-end justify-between gap-2">
-              <span className="hidden text-sm font-bold text-slate-500 sm:inline">
+          <div className="flex w-[172px] shrink-0 items-center gap-2 border-l border-slate-100 p-2.5 sm:w-[310px] sm:p-3">
+            <div className="hidden min-w-[92px] sm:block">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
                 Нийт дүн
               </span>
-              <span className="text-lg font-black tracking-tight sm:text-2xl">
+              <span className="block text-xl font-black tracking-tight">
                 {formatMoney(cartTotal)}
               </span>
             </div>
@@ -2887,17 +3096,40 @@ function SelfServiceCheckoutContent() {
               type="button"
               onClick={openCheckout}
               disabled={cart.length === 0}
-              className="flex h-12 w-full items-center justify-between rounded-2xl bg-[#11231d] px-4 text-sm font-black text-white transition hover:bg-[#1b382f] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 sm:h-14 sm:px-5 sm:text-base"
+              className="flex h-14 min-w-0 flex-1 items-center justify-between rounded-xl bg-[#ff5a0a] px-3 text-sm font-black text-white shadow-[0_8px_20px_rgba(255,90,10,0.28)] transition hover:bg-[#e94e00] disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none sm:px-5"
             >
-              <span>Төлөх</span>
-              <span className="flex items-center gap-2">
-                {formatMoney(cartTotal)}
-                <ChevronRight className="h-5 w-5" />
-              </span>
+              <span className="sm:hidden">{formatMoney(cartTotal)}</span>
+              <span className="hidden sm:inline">Захиалах</span>
+              <ChevronRight className="h-5 w-5 shrink-0" />
             </button>
           </div>
         </aside>
       </div>
+      <ProductImagePreviewDialog
+        product={previewProduct}
+        formattedPrice={
+          previewProduct ? formatMoney(Number(previewProduct.price)) : ""
+        }
+        selectedQty={
+          previewProduct
+            ? cart.find((line) => line.product.id === previewProduct.id)?.qty ||
+              0
+            : 0
+        }
+        addDisabled={
+          !previewProduct ||
+          previewProduct.stockQty <=
+            (cart.find((line) => line.product.id === previewProduct.id)?.qty ||
+              0) ||
+          (orderMode === "TO_GO" &&
+            previewProduct.isTakeawayAvailable === false)
+        }
+        onAdd={() => {
+          if (!previewProduct) return;
+          addProduct(previewProduct);
+        }}
+        onClose={() => setPreviewProduct(null)}
+      />
     </main>
   );
 }

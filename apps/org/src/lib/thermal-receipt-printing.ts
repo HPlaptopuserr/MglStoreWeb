@@ -232,12 +232,17 @@ export function printThermalPosReceipt(
   const ebarimt =
     receipt.ebarimt?.status === "SUCCESS" ? receipt.ebarimt : null;
   const isDemo = ebarimt?.billId?.startsWith("TEST-") === true;
+  const normalizedPaymentMethod = String(receipt.paymentMethod).toUpperCase();
   const paymentLabel =
-    String(receipt.paymentMethod).toUpperCase() === "CARD"
+    normalizedPaymentMethod === "CARD"
       ? "Карт"
-      : String(receipt.paymentMethod).toUpperCase() === "CASH"
-        ? "Тест төлбөр"
-        : "QR";
+      : normalizedPaymentMethod === "CASH"
+        ? isDemo
+          ? "Тест төлбөр"
+          : "Бэлэн"
+        : normalizedPaymentMethod === "CREDIT"
+          ? "Зээл"
+          : "QR";
   const lineRows = receipt.lines
     .map(
       (line) => `
@@ -278,6 +283,7 @@ export function printThermalPosReceipt(
     ? `
       <div class="ebarimt">
         <div class="center"><strong>${isDemo ? "ТЕСТ QR · ТАТВАРЫН БАРИМТ БИШ" : ebarimt.receiptType === "B2B" ? "БАЙГУУЛЛАГЫН EBARIMT" : "ХУВЬ ХҮНИЙ EBARIMT"}</strong></div>
+        ${ebarimt.customerName ? `<div class="row"><span>Байгууллага:</span><span>${escapePrintHtml(ebarimt.customerName)}</span></div>` : ""}
         ${ebarimt.customerRegNo ? `<div class="row"><span>Регистр:</span><span>${escapePrintHtml(ebarimt.customerRegNo)}</span></div>` : ""}
         ${ebarimt.billId ? `<div class="row"><span>ДДТД:</span><span>${escapePrintHtml(ebarimt.billId)}</span></div>` : ""}
         ${ebarimt.lottery ? `<div class="row"><span>Сугалаа:</span><span>${escapePrintHtml(ebarimt.lottery)}</span></div>` : ""}

@@ -25,7 +25,12 @@ import {
   AuditAction,
 } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
-import { Permission, hasPlatformPermission, isFullAdmin } from "@mgl/types";
+import {
+  Permission,
+  fromPosStoredStockQuantity,
+  hasPlatformPermission,
+  isFullAdmin,
+} from "@mgl/types";
 import {
   adjustStock,
   syncProductStock,
@@ -77,6 +82,7 @@ import {
 } from "../../services/stock-request-routing.policy";
 import { recommendationService } from "../../services/recommendations/recommendation.service";
 import { canViewStockOrderOwnership } from "../../services/stock-order-visibility.policy";
+import { isLowStock } from "../../lib/low-stock";
 
 const router: ExpressRouter = Router();
 const padaanUploadsDir = path.resolve(
@@ -2167,6 +2173,8 @@ router.get(
                   sku: true,
                   price: true,
                   stock: true,
+                  lowStockThreshold: true,
+                  unit: true,
                   images: {
                     take: 1,
                     select: { url: true },
@@ -2188,19 +2196,23 @@ router.get(
         orderBy: [{ completedAt: "desc" }, { warehouse: { name: "asc" } }],
       });
 
-      const catalogItems = completedRequests.flatMap(
-        (request: (typeof completedRequests)[number]) =>
+      const seenCatalogProducts = new Set<string>();
+      const catalogItems = completedRequests
+        .flatMap((request: (typeof completedRequests)[number]) =>
           request.items.map((item: (typeof request.items)[number]) => {
-            const quantity = item.approvedQuantity ?? item.quantity;
-            const alertThreshold = 5;
+            const quantity = fromPosStoredStockQuantity(
+              item.product.stock,
+              item.product.unit,
+            );
+            const alertThreshold = Number(item.product.lowStockThreshold ?? 5);
 
             return {
               id: item.id,
               quantity,
-              minQuantity: 0,
+              minQuantity: alertThreshold,
               maxQuantity: null,
               alertThreshold,
-              isLowStock: quantity <= alertThreshold,
+              isLowStock: isLowStock(quantity, alertThreshold),
               location: null,
               source: "warehouse" as const,
               warehouse: request.warehouse,
@@ -2213,7 +2225,13 @@ router.get(
               },
             };
           }),
-      );
+        )
+        .filter((item) => {
+          const key = `${item.warehouse.id}:${item.product.id}`;
+          if (seenCatalogProducts.has(key)) return false;
+          seenCatalogProducts.add(key);
+          return true;
+        });
 
       const categoriesMap = new Map<
         string,

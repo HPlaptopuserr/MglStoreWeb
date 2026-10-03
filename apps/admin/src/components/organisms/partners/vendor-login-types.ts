@@ -39,7 +39,7 @@ export type PersonalAccountOption = {
 
 export const vendorLoginRoleLabel: Record<VendorLoginRole, string> = {
   OWNER: "Owner",
-  ADMIN: "Admin",
+  ADMIN: "Менежер",
   STAFF: "Staff",
   VIEWER: "Viewer",
 };

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { BarChart3, Boxes, FileText } from "lucide-react";
 import { salesDay } from "@/features/pos/utils/sales-history-filters";
+import { ProductReportTable } from "@/features/reports/ProductReportTable";
 import { SalesReportEntry } from "@/features/reports/SalesReportEntry";
 import { useProductReportData } from "@/features/reports/useProductReportData";
 import { ProductInventoryReport } from "@/features/reports/ProductInventoryReport";

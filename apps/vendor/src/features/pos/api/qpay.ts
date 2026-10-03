@@ -23,9 +23,9 @@ export async function createQPayInvoice(payload: {
   });
 }
 
-export function getQPayInvoiceStatus(invoiceId: string, signal?: AbortSignal): Promise<QPayInvoice> {
+export function getQPayInvoiceStatus(invoiceId: string, signal?: AbortSignal, refreshProvider = true): Promise<QPayInvoice> {
   const timeout = AbortSignal.timeout(70_000);
-  return posRequest<QPayInvoice>(`/pos/payments/qpay/status/${encodeURIComponent(invoiceId)}?refresh=1`, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
+  return posRequest<QPayInvoice>(`/pos/payments/qpay/status/${encodeURIComponent(invoiceId)}?refresh=${refreshProvider ? "1" : "0"}`, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
 }
 
 export function confirmQPayInvoice(invoiceId: string): Promise<QPayInvoice> {

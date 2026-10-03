@@ -96,7 +96,7 @@ export function VendorLoginContextOverview({
               Энэ байгууллагад login user одоогоор харагдахгүй байна.
             </p>
             <p className="mx-auto mt-2 max-w-2xl text-xs font-semibold leading-5 text-slate-500">
-              “Login эрх олгох” товчоор owner/admin user үүсгэнэ.
+              “Login эрх олгох” товчоор owner/менежер user үүсгэнэ.
               {reportedUsers > 0 &&
                 " Stats дээр хэрэглэгч байгаа боловч login members API-аас ирээгүй байна. Серверээ refresh/restart хийсний дараа дахин шалгана уу."}
             </p>

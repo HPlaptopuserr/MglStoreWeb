@@ -20,6 +20,7 @@ import { QrGenerator } from "@mgl/ui";
 import {
   ArrowLeft,
   Banknote,
+  Building2,
   ChefHat,
   CheckCircle2,
   ChevronDown,
@@ -39,6 +40,7 @@ import {
   Search,
   Send,
   Trash2,
+  UserRound,
   Users,
   UtensilsCrossed,
   X,
@@ -105,7 +107,20 @@ import type {
   PosShift,
   PosShiftHistoryItem,
   SaleCreditPaymentMeta,
+  SalePaymentLine,
 } from "@mgl/types";
+import {
+  attachEbarimtReceipt,
+  issueLocalEbarimtReceipt,
+  mapEbarimtPayload,
+  sendLocalEbarimtData,
+  type AttachEbarimtPayload,
+  type EbarimtBuyer,
+  type EbarimtTinLookupResult,
+  lookupEbarimtTin,
+} from "@/lib/ebarimt";
+import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
+import { printThermalPosReceipt } from "@/lib/thermal-receipt-printing";
 
 type OrderMode = "DINE_IN" | "TO_GO" | "DELIVERY";
 type MenuCategory = string;
@@ -159,6 +174,13 @@ type PendingQPayCheckout = {
   lines: SaleLinePayload[];
   orderMode: OrderMode;
   tableLabel: string;
+  ebarimtBuyer: EbarimtBuyer;
+};
+
+type PaidReceiptContext = {
+  orderMode: OrderMode;
+  tableLabel: string;
+  ticketNo: string;
 };
 
 type CardPaymentRun = {
@@ -473,6 +495,8 @@ type RestaurantReceiptPrintContext = {
   organizationName: string;
   registerName: string;
   orderLabel: string;
+  ticketNo: string;
+  qrMarkup?: string;
 };
 
 const escapeReceiptHtml = (value: unknown) =>
@@ -544,120 +568,14 @@ function printRestaurantReceipt(
   receipt: PosReceipt,
   context: RestaurantReceiptPrintContext,
 ) {
-  if (typeof document === "undefined") return;
-
-  const money = (value: number) =>
-    `${Math.round(Number(value) || 0).toLocaleString("mn-MN")} ₮`;
-  const lineRows = receipt.lines
-    .map(
-      (line) => `
-        <tr>
-          <td>
-            <div class="item-name">${escapeReceiptHtml(line.name)}</div>
-            <div class="item-detail">${line.qty} × ${money(line.unitPrice)}</div>
-          </td>
-          <td class="amount">${money(line.lineTotal)}</td>
-        </tr>
-      `,
-    )
-    .join("");
-
-  const iframe = document.createElement("iframe");
-  iframe.setAttribute("aria-hidden", "true");
-  iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "0";
-
-  const cleanup = () => {
-    window.setTimeout(() => iframe.remove(), 800);
-  };
-
-  iframe.onload = () => {
-    const printWindow = iframe.contentWindow;
-    if (!printWindow) {
-      cleanup();
-      return;
-    }
-    window.setTimeout(() => {
-      printWindow.focus();
-      printWindow.print();
-      cleanup();
-    }, 80);
-  };
-
-  iframe.srcdoc = `<!doctype html>
-    <html lang="mn">
-      <head>
-        <meta charset="utf-8" />
-        <title>${escapeReceiptHtml(receipt.receiptNo)}</title>
-        <style>
-          @page { size: 80mm auto; margin: 4mm; }
-          * { box-sizing: border-box; }
-          body {
-            width: 72mm;
-            margin: 0 auto;
-            color: #000;
-            background: #fff;
-            font-family: Arial, Helvetica, sans-serif;
-            font-size: 11px;
-            line-height: 1.35;
-          }
-          h1 { margin: 0; text-align: center; font-size: 16px; }
-          .center { text-align: center; }
-          .muted { color: #333; }
-          .meta { margin-top: 8px; padding: 6px 0; border-top: 1px dashed #000; border-bottom: 1px dashed #000; }
-          .meta-row, .total-row { display: flex; justify-content: space-between; gap: 8px; }
-          table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-          td { padding: 5px 0; vertical-align: top; border-bottom: 1px dotted #777; }
-          .item-name { font-weight: 700; }
-          .item-detail { margin-top: 2px; color: #333; font-size: 10px; }
-          .amount { width: 30%; text-align: right; white-space: nowrap; font-weight: 700; }
-          .totals { margin-top: 8px; }
-          .total-row { margin-top: 3px; }
-          .grand-total { margin-top: 6px; padding-top: 6px; border-top: 2px solid #000; font-size: 15px; font-weight: 800; }
-          .footer { margin-top: 12px; text-align: center; }
-        </style>
-      </head>
-      <body>
-        <h1>${escapeReceiptHtml(context.organizationName)}</h1>
-        <div class="center muted">${escapeReceiptHtml(receipt.branchName)}</div>
-        <div class="center muted">${escapeReceiptHtml(context.registerName)}</div>
-
-        <div class="meta">
-          <div class="meta-row"><span>Баримт:</span><strong>${escapeReceiptHtml(receipt.receiptNo)}</strong></div>
-          <div class="meta-row"><span>Огноо:</span><span>${escapeReceiptHtml(formatReceiptDate(receipt.createdAt))}</span></div>
-          <div class="meta-row"><span>Кассчин:</span><span>${escapeReceiptHtml(receipt.cashierName)}</span></div>
-          <div class="meta-row"><span>Захиалга:</span><span>${escapeReceiptHtml(context.orderLabel)}</span></div>
-          <div class="meta-row"><span>Төлбөр:</span><span>${escapeReceiptHtml(paymentMethodLabel(receipt.paymentMethod))}</span></div>
-        </div>
-
-        <table><tbody>${lineRows}</tbody></table>
-
-        <div class="totals">
-          <div class="total-row"><span>Дүн:</span><span>${money(receipt.subTotal)}</span></div>
-          ${
-            receipt.discountTotal > 0
-              ? `<div class="total-row"><span>Хөнгөлөлт:</span><span>-${money(receipt.discountTotal)}</span></div>`
-              : ""
-          }
-          ${
-            receipt.taxTotal > 0
-              ? `<div class="total-row"><span>Үүнд НӨАТ:</span><span>${money(receipt.taxTotal)}</span></div>`
-              : ""
-          }
-          <div class="total-row grand-total"><span>НИЙТ:</span><span>${money(receipt.grandTotal)}</span></div>
-        </div>
-
-        <div class="footer">
-          <strong>Үйлчлүүлсэнд баярлалаа</strong>
-        </div>
-      </body>
-    </html>`;
-
-  document.body.appendChild(iframe);
+  return printThermalPosReceipt(receipt, {
+    organizationName: context.organizationName,
+    registerName: context.registerName,
+    orderLabel: context.orderLabel,
+    ticketNo: context.ticketNo,
+    qrMarkup: context.qrMarkup || "",
+    splitOrderAndEbarimt: false,
+  });
 }
 
 export function RestaurantPosScreen() {
@@ -700,6 +618,14 @@ function RestaurantPosContent() {
   const [query, setQuery] = useState("");
   const [orderMode, setOrderMode] = useState<OrderMode>("DINE_IN");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
+  const [ebarimtBuyerMode, setEbarimtBuyerMode] = useState<"B2C" | "B2B">(
+    "B2C",
+  );
+  const [companyRegNo, setCompanyRegNo] = useState("");
+  const [companyLookup, setCompanyLookup] =
+    useState<EbarimtTinLookupResult | null>(null);
+  const [companyLookupLoading, setCompanyLookupLoading] = useState(false);
+  const [companyLookupError, setCompanyLookupError] = useState("");
   const [diningTables, setDiningTables] = useState<DiningTable[]>([]);
   const [selectedTableId, setSelectedTableId] = useState("");
   const [tablesLoading, setTablesLoading] = useState(false);
@@ -783,6 +709,8 @@ function RestaurantPosContent() {
     useState<RestaurantCustomerDisplaySuccess | null>(null);
   const [notice, setNotice] = useState("");
   const [lastReceipt, setLastReceipt] = useState<PosReceipt | null>(null);
+  const [lastReceiptContext, setLastReceiptContext] =
+    useState<PaidReceiptContext | null>(null);
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
   const [salesHistoryOpen, setSalesHistoryOpen] = useState(false);
   const [salesHistory, setSalesHistory] = useState<RestaurantSalesHistoryItem[]>(
@@ -809,6 +737,8 @@ function RestaurantPosContent() {
   const [qrLoadingTableId, setQrLoadingTableId] = useState("");
   const [qrError, setQrError] = useState("");
   const qrPrintRef = useRef<HTMLDivElement>(null);
+  const ebarimtQrRef = useRef<HTMLDivElement>(null);
+  const companyLookupRequestRef = useRef(0);
   const customerDisplayChannelRef = useRef<BroadcastChannel | null>(null);
   const qpayFinalizedInvoiceRef = useRef<string | null>(null);
   const cardPaymentRunRef = useRef<CardPaymentRun | null>(null);
@@ -819,6 +749,74 @@ function RestaurantPosContent() {
       registers.find((register) => register.id === selectedRegisterId) ?? null,
     [registers, selectedRegisterId],
   );
+  const ebarimtReady = Boolean(selectedRegister?.ebarimtEnabled);
+  const lookupCompanyBuyer = useCallback(async (): Promise<
+    EbarimtTinLookupResult
+  > => {
+    const normalizedRegNo = companyRegNo.replace(/\D/g, "");
+    if (!/^\d{7}$/.test(normalizedRegNo)) {
+      throw new Error("Байгууллагын регистр 7 оронтой байна");
+    }
+    if (companyLookup?.regNo === normalizedRegNo) return companyLookup;
+
+    const requestId = ++companyLookupRequestRef.current;
+    setCompanyLookupLoading(true);
+    setCompanyLookupError("");
+    try {
+      const result = await lookupEbarimtTin(normalizedRegNo, selectedRegister);
+      if (requestId === companyLookupRequestRef.current) {
+        setCompanyLookup(result);
+      }
+      return result;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Байгууллагын мэдээлэл шалгаж чадсангүй";
+      if (requestId === companyLookupRequestRef.current) {
+        setCompanyLookup(null);
+        setCompanyLookupError(message);
+      }
+      throw new Error(message);
+    } finally {
+      if (requestId === companyLookupRequestRef.current) {
+        setCompanyLookupLoading(false);
+      }
+    }
+  }, [companyLookup, companyRegNo, selectedRegister]);
+
+  useEffect(() => {
+    if (!ebarimtReady || ebarimtBuyerMode !== "B2B") return;
+    if (companyRegNo.length !== 7) return;
+    if (companyLookup?.regNo === companyRegNo) return;
+    if (companyLookupLoading || companyLookupError) return;
+
+    const timer = window.setTimeout(() => {
+      void lookupCompanyBuyer().catch(() => null);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [
+    companyLookup?.regNo,
+    companyLookupError,
+    companyLookupLoading,
+    companyRegNo,
+    ebarimtBuyerMode,
+    ebarimtReady,
+    lookupCompanyBuyer,
+  ]);
+
+  const resolveEbarimtBuyer = async (): Promise<EbarimtBuyer> => {
+    if (!ebarimtReady || ebarimtBuyerMode === "B2C") {
+      return { type: "B2C" };
+    }
+    const company = await lookupCompanyBuyer();
+    return {
+      type: "B2B",
+      regNo: company.regNo,
+      tin: company.tin,
+      name: company.name,
+    };
+  };
   const shiftMatchesRegister =
     Boolean(shift?.registerId) && shift?.registerId === selectedRegister?.id;
   const countedCashItems = useMemo(
@@ -1525,6 +1523,11 @@ function RestaurantPosContent() {
     selectedTable.currentTicket && !selectedTicketPaid,
   );
   const hasUnsentItems = ticketLines.some((line) => line.qty > line.sentQty);
+  const ebarimtBuyerReady =
+    !ebarimtReady ||
+    paymentMethod === "CREDIT" ||
+    ebarimtBuyerMode === "B2C" ||
+    (companyLookup?.regNo === companyRegNo && Boolean(companyLookup.tin));
   const canCheckout =
     Boolean(selectedRegister && shiftMatchesRegister) &&
     Boolean(selectedTable.id) &&
@@ -1537,6 +1540,13 @@ function RestaurantPosContent() {
     !qpayFinalizing &&
     !ticketSaving &&
     !kitchenSubmitting &&
+    ebarimtBuyerReady &&
+    !(
+      ebarimtReady &&
+      paymentMethod !== "CREDIT" &&
+      ebarimtBuyerMode === "B2B" &&
+      companyLookupLoading
+    ) &&
     !cancellingLineId &&
     !clearSubmitting;
   const canSendKitchen =
@@ -1812,21 +1822,133 @@ function RestaurantPosContent() {
     };
   };
 
+  const issueEbarimtForReceipt = async (
+    saleReceipt: PosReceipt,
+    buyer: EbarimtBuyer,
+  ): Promise<PosReceipt> => {
+    if (
+      !selectedRegister?.ebarimtEnabled ||
+      saleReceipt.ebarimt?.status === "SUCCESS" ||
+      String(saleReceipt.paymentMethod).toUpperCase() === "CREDIT"
+    ) {
+      return saleReceipt;
+    }
+
+    const paymentMethod = String(saleReceipt.paymentMethod).toUpperCase();
+    const fallbackMethod: SalePaymentLine["method"] =
+      paymentMethod === "CASH"
+        ? "CASH"
+        : paymentMethod === "CARD"
+          ? "CARD"
+          : "QR";
+    const fallbackPayment: SalePaymentLine = {
+      method: fallbackMethod,
+      amount: saleReceipt.grandTotal,
+    };
+
+    try {
+      const payload = await issueLocalEbarimtReceipt(
+        saleReceipt,
+        saleReceipt.paymentBreakdown?.length
+          ? saleReceipt.paymentBreakdown
+          : [fallbackPayment],
+        selectedRegister,
+        buyer,
+      );
+      let finalReceipt: PosReceipt = {
+        ...saleReceipt,
+        ebarimt: mapEbarimtPayload(payload),
+      };
+      try {
+        const saved = await attachEbarimtReceipt(saleReceipt.id, payload);
+        finalReceipt = {
+          ...finalReceipt,
+          ebarimt: saved.ebarimt || finalReceipt.ebarimt,
+        };
+      } catch (error) {
+        console.warn(
+          "Restaurant POS eBarimt was issued but could not be attached to the sale",
+          error,
+        );
+      }
+      void sendLocalEbarimtData(selectedRegister).catch((error) => {
+        console.warn("Restaurant POS eBarimt sendData failed", error);
+      });
+      return finalReceipt;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Ebarimt баримт үүсгэж чадсангүй";
+      const failedPayload: AttachEbarimtPayload = {
+        status: "FAILED",
+        error: errorMessage,
+        receiptType: buyer.type,
+        customerName: buyer.type === "B2B" ? buyer.name : null,
+        customerTin: buyer.type === "B2B" ? buyer.tin : null,
+        customerRegNo: buyer.type === "B2B" ? buyer.regNo : null,
+      };
+      await attachEbarimtReceipt(saleReceipt.id, failedPayload).catch(
+        () => null,
+      );
+      return {
+        ...saleReceipt,
+        ebarimt: mapEbarimtPayload(failedPayload),
+      };
+    }
+  };
+
   const printReceipt = (
     receipt: PosReceipt,
-    context?: { orderMode?: OrderMode; tableLabel?: string },
+    context?: Partial<PaidReceiptContext>,
   ) => {
     if (!selectedRegister) return;
-    const receiptOrderMode = context?.orderMode ?? orderMode;
-    const receiptTableLabel = context?.tableLabel ?? selectedTable.label;
+    const savedContext =
+      lastReceipt?.id === receipt.id ? lastReceiptContext : null;
+    const receiptOrderMode =
+      context?.orderMode ?? savedContext?.orderMode ?? orderMode;
+    const receiptTableLabel =
+      context?.tableLabel ?? savedContext?.tableLabel ?? selectedTable.label;
+    const receiptTicketNo =
+      context?.ticketNo ?? savedContext?.ticketNo ?? receipt.receiptNo;
     printRestaurantReceipt(receipt, {
       organizationName: user.organizationName || "MGL Store Restaurant",
       registerName: selectedRegister.label || selectedRegister.name,
       orderLabel:
         receiptOrderMode === "DINE_IN"
-          ? `${orderModeCopy[receiptOrderMode]} · Ширээ ${receiptTableLabel}`
+          ? [
+              orderModeCopy[receiptOrderMode],
+              receiptTableLabel ? `Ширээ ${receiptTableLabel}` : "",
+            ]
+              .filter(Boolean)
+              .join(" · ")
           : orderModeCopy[receiptOrderMode],
+      ticketNo: formatRestaurantOrderNumber(receiptTicketNo, receipt.id),
+      qrMarkup:
+        receipt.ebarimt?.status === "SUCCESS"
+          ? ebarimtQrRef.current?.querySelector("svg")?.outerHTML || ""
+          : "",
     });
+  };
+
+  const queueReceiptPrint = (
+    receipt: PosReceipt,
+    context: PaidReceiptContext,
+  ) => {
+    let attempts = 0;
+    const printWhenQrIsReady = () => {
+      const waitingForQr =
+        receipt.ebarimt?.status === "SUCCESS" &&
+        Boolean(receipt.ebarimt.qrData) &&
+        !ebarimtQrRef.current?.querySelector("svg");
+      if (waitingForQr && attempts < 20) {
+        attempts += 1;
+        window.setTimeout(printWhenQrIsReady, 100);
+        return;
+      }
+      printReceipt(receipt, context);
+    };
+    window.setTimeout(printWhenQrIsReady, 100);
   };
 
   const reprintSalesHistoryReceipt = (
@@ -1834,11 +1956,14 @@ function RestaurantPosContent() {
   ) => {
     if (!sale) return;
     const receipt = mapSalesHistoryToReceipt(sale);
-    printRestaurantReceipt(receipt, {
-      organizationName: user.organizationName || "MGL Store Restaurant",
-      registerName: sale.registerName || "Restaurant POS",
-      orderLabel: "Борлуулалтын түүх",
-    });
+    const receiptContext: PaidReceiptContext = {
+      orderMode: sale.orderMode || "DINE_IN",
+      tableLabel: "",
+      ticketNo: sale.ticketNo || sale.receiptNo,
+    };
+    setLastReceipt(receipt);
+    setLastReceiptContext(receiptContext);
+    queueReceiptPrint(receipt, receiptContext);
     setNotice(`Баримт ${sale.receiptNo} дахин хэвлэгдлээ.`);
   };
 
@@ -1847,6 +1972,11 @@ function RestaurantPosContent() {
   ) => {
     if (!sale) return;
     setLastReceipt(mapSalesHistoryToReceipt(sale));
+    setLastReceiptContext({
+      orderMode: sale.orderMode || "DINE_IN",
+      tableLabel: "",
+      ticketNo: sale.ticketNo || sale.receiptNo,
+    });
     setReceiptPreviewOpen(true);
   };
 
@@ -1903,15 +2033,27 @@ function RestaurantPosContent() {
     ticket: RestaurantTicket,
     mode: OrderMode,
     tableLabel: string,
+    ebarimtBuyer: EbarimtBuyer,
   ) => {
-    setLastReceipt(receipt);
+    const finalReceipt = await issueEbarimtForReceipt(receipt, ebarimtBuyer);
+    const receiptContext: PaidReceiptContext = {
+      orderMode: mode,
+      tableLabel,
+      ticketNo: ticket.ticketNo,
+    };
+    setLastReceipt(finalReceipt);
+    setLastReceiptContext(receiptContext);
+    setEbarimtBuyerMode("B2C");
+    setCompanyRegNo("");
+    setCompanyLookup(null);
+    setCompanyLookupError("");
     setReceiptPreviewOpen(true);
     setCustomerDisplaySuccess({
       title: "Төлбөр амжилттай",
-      text: `Баримт ${receipt.receiptNo} хэвлэгдлээ.`,
-      receiptNo: receipt.receiptNo,
-      amount: receipt.grandTotal,
-      paymentMethod: receipt.paymentMethod,
+      text: `Баримт ${finalReceipt.receiptNo} хэвлэгдлээ.`,
+      receiptNo: finalReceipt.receiptNo,
+      amount: finalReceipt.grandTotal,
+      paymentMethod: finalReceipt.paymentMethod,
       ts: Date.now(),
     });
     const paidTicket: RestaurantTicket = {
@@ -1921,12 +2063,17 @@ function RestaurantPosContent() {
     };
     updateTableTicket(ticket.tableId || selectedTable.id, paidTicket);
     setTicketLines(mapTicketLines(paidTicket, menuItems));
+    const ebarimtFailure =
+      finalReceipt.ebarimt?.status === "FAILED"
+        ? ` Ebarimt үүссэнгүй: ${finalReceipt.ebarimt.error || "PosAPI алдаа гарлаа"}.`
+        : "";
     setNotice(
-      mode === "DINE_IN"
-        ? `Борлуулалт амжилттай: ${receipt.receiptNo}. Ширээ "Төлсөн" төлөвтэй хэвээр байна — үйлчлүүлэгч гарсны дараа ширээг чөлөөлнө үү.`
-        : `Борлуулалт амжилттай: ${receipt.receiptNo}. Захиалга гал тогоо руу автоматаар илгээгдлээ.`,
+      (mode === "DINE_IN"
+        ? `Борлуулалт амжилттай: ${finalReceipt.receiptNo}. Ширээ "Төлсөн" төлөвтэй хэвээр байна — үйлчлүүлэгч гарсны дараа ширээг чөлөөлнө үү.`
+        : `Борлуулалт амжилттай: ${finalReceipt.receiptNo}. Захиалга гал тогоо руу автоматаар илгээгдлээ.`) +
+        ebarimtFailure,
     );
-    printReceipt(receipt, { orderMode: mode, tableLabel });
+    queueReceiptPrint(finalReceipt, receiptContext);
     await Promise.all([loadMenu(), loadTables()]);
   };
 
@@ -1964,6 +2111,7 @@ function RestaurantPosContent() {
         checkout.ticket,
         checkout.orderMode,
         checkout.tableLabel,
+        checkout.ebarimtBuyer,
       );
     } catch (error) {
       const message =
@@ -2656,6 +2804,10 @@ function RestaurantPosContent() {
     setCustomerDisplaySuccess(null);
     setQpayMessage("");
     try {
+      const ebarimtBuyer: EbarimtBuyer =
+        paymentMethod === "CREDIT"
+          ? { type: "B2C" }
+          : await resolveEbarimtBuyer();
       const savedTicket = await persistTicketLines(ticketLines);
       if (!savedTicket) {
         throw new Error("Төлбөр хийх ticket олдсонгүй.");
@@ -2683,6 +2835,7 @@ function RestaurantPosContent() {
           lines: saleLines,
           orderMode,
           tableLabel: selectedTable.label,
+          ebarimtBuyer,
         });
         setQpayMessage("QPay QR уншуулж төлбөрөө төлнө үү.");
         return;
@@ -2708,6 +2861,7 @@ function RestaurantPosContent() {
           savedTicket,
           orderMode,
           selectedTable.label,
+          ebarimtBuyer,
         );
         return;
       }
@@ -2738,6 +2892,7 @@ function RestaurantPosContent() {
           savedTicket,
           orderMode,
           selectedTable.label,
+          ebarimtBuyer,
         );
         return;
       }
@@ -2758,6 +2913,7 @@ function RestaurantPosContent() {
         savedTicket,
         orderMode,
         selectedTable.label,
+        ebarimtBuyer,
       );
     } catch (error) {
       setCheckoutError(
@@ -4159,6 +4315,109 @@ function RestaurantPosContent() {
             <TotalLine label="Discount" value={formatMoney(discount)} />
             <TotalLine label="Sub total" value={formatMoney(subtotal)} />
             <TotalLine label="Total" value={formatMoney(total)} strong />
+
+            {ebarimtReady && paymentMethod !== "CREDIT" ? (
+              <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.035] p-3">
+                <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                  Ebarimt авах төрөл
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      companyLookupRequestRef.current += 1;
+                      setEbarimtBuyerMode("B2C");
+                      setCompanyLookupLoading(false);
+                      setCompanyLookupError("");
+                      setCheckoutError("");
+                    }}
+                    disabled={checkoutSubmitting || qpayPaymentActive}
+                    className={`flex h-10 items-center justify-center gap-2 rounded-lg border text-xs font-black transition disabled:opacity-50 ${
+                      ebarimtBuyerMode === "B2C"
+                        ? "border-emerald-300 bg-emerald-300 text-slate-950"
+                        : "border-white/10 bg-white/5 text-slate-300 hover:border-emerald-300/50"
+                    }`}
+                  >
+                    <UserRound className="h-4 w-4" />
+                    Хувь хүн
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEbarimtBuyerMode("B2B");
+                      setCheckoutError("");
+                    }}
+                    disabled={checkoutSubmitting || qpayPaymentActive}
+                    className={`flex h-10 items-center justify-center gap-2 rounded-lg border text-xs font-black transition disabled:opacity-50 ${
+                      ebarimtBuyerMode === "B2B"
+                        ? "border-emerald-300 bg-emerald-300 text-slate-950"
+                        : "border-white/10 bg-white/5 text-slate-300 hover:border-emerald-300/50"
+                    }`}
+                  >
+                    <Building2 className="h-4 w-4" />
+                    Байгууллага
+                  </button>
+                </div>
+
+                {ebarimtBuyerMode === "B2B" ? (
+                  <div className="mt-2">
+                    <div className="flex gap-2">
+                      <input
+                        inputMode="numeric"
+                        maxLength={7}
+                        value={companyRegNo}
+                        onChange={(event) => {
+                          const value = event.target.value
+                            .replace(/\D/g, "")
+                            .slice(0, 7);
+                          companyLookupRequestRef.current += 1;
+                          setCompanyRegNo(value);
+                          setCompanyLookup(null);
+                          setCompanyLookupLoading(false);
+                          setCompanyLookupError("");
+                          setCheckoutError("");
+                        }}
+                        disabled={checkoutSubmitting || qpayPaymentActive}
+                        placeholder="Регистрийн 7 орон"
+                        className="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-white outline-none placeholder:text-slate-600 focus:border-emerald-300 disabled:opacity-50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void lookupCompanyBuyer().catch(() => null)
+                        }
+                        disabled={
+                          companyLookupLoading ||
+                          companyRegNo.length !== 7 ||
+                          checkoutSubmitting ||
+                          qpayPaymentActive
+                        }
+                        className="flex h-10 min-w-16 items-center justify-center rounded-lg bg-white px-3 text-xs font-black text-slate-950 disabled:opacity-40"
+                      >
+                        {companyLookupLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "Шалгах"
+                        )}
+                      </button>
+                    </div>
+                    {companyLookup ? (
+                      <div className="mt-2 flex items-start gap-2 rounded-lg bg-emerald-300/10 px-3 py-2 text-[11px] font-bold leading-4 text-emerald-200">
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>
+                          {companyLookup.name || "Байгууллага"} · TIN {companyLookup.tin}
+                        </span>
+                      </div>
+                    ) : null}
+                    {companyLookupError ? (
+                      <p className="mt-2 text-[11px] font-bold leading-4 text-rose-300">
+                        {companyLookupError}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="mt-3">
               <div className="mb-2 flex items-center justify-between gap-2">
@@ -6772,6 +7031,17 @@ function RestaurantPosContent() {
             </div>
 
             <div className="mt-5 rounded-xl bg-slate-50 p-4">
+              {lastReceiptContext ? (
+                <div className="mb-2 flex justify-between gap-4 text-sm">
+                  <span className="font-semibold text-slate-500">Захиалга №</span>
+                  <span className="font-black">
+                    {formatRestaurantOrderNumber(
+                      lastReceiptContext.ticketNo,
+                      lastReceipt.id,
+                    )}
+                  </span>
+                </div>
+              ) : null}
               <div className="flex justify-between gap-4 text-sm">
                 <span className="font-semibold text-slate-500">Баримт</span>
                 <span className="font-black">{lastReceipt.receiptNo}</span>
@@ -6782,8 +7052,26 @@ function RestaurantPosContent() {
               </div>
               <div className="mt-2 flex justify-between gap-4 text-sm">
                 <span className="font-semibold text-slate-500">Төлбөр</span>
-                <span className="font-bold">Бэлэн</span>
+                <span className="font-bold">
+                  {paymentMethodLabel(lastReceipt.paymentMethod)}
+                </span>
               </div>
+              {selectedRegister?.ebarimtEnabled ? (
+                <div className="mt-2 flex justify-between gap-4 text-sm">
+                  <span className="font-semibold text-slate-500">Ebarimt</span>
+                  <span
+                    className={`text-right font-bold ${
+                      lastReceipt.ebarimt?.status === "SUCCESS"
+                        ? "text-emerald-700"
+                        : "text-rose-600"
+                    }`}
+                  >
+                    {lastReceipt.ebarimt?.status === "SUCCESS"
+                      ? "Амжилттай"
+                      : lastReceipt.ebarimt?.error || "Үүсээгүй"}
+                  </span>
+                </div>
+              ) : null}
             </div>
 
             <div className="mt-4 max-h-52 space-y-2 overflow-y-auto">
@@ -6830,6 +7118,22 @@ function RestaurantPosContent() {
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {lastReceipt?.ebarimt?.status === "SUCCESS" &&
+      lastReceipt.ebarimt.qrData ? (
+        <div
+          ref={ebarimtQrRef}
+          aria-hidden="true"
+          className="pointer-events-none fixed -left-[10000px] top-0 h-px w-px overflow-hidden"
+        >
+          <QrGenerator
+            value={lastReceipt.ebarimt.qrData}
+            size={220}
+            level="M"
+            fgColor="#000000"
+          />
         </div>
       ) : null}
     </section>

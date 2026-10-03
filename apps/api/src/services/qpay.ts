@@ -534,6 +534,50 @@ export interface QPayPaymentCheckResponse {
   }[];
 }
 
+const PAID_QPAY_STATUSES = new Set(["PAID", "SUCCESS"]);
+
+export function normalizeQPayPaymentCheckResponse(
+  raw: Record<string, unknown>,
+): QPayPaymentCheckResponse {
+  const sourceRows = Array.isArray(raw.payments)
+    ? (raw.payments as Record<string, unknown>[])
+    : Array.isArray(raw.rows)
+      ? (raw.rows as Record<string, unknown>[])
+      : [];
+  const paidRows = sourceRows.filter((payment) =>
+    PAID_QPAY_STATUSES.has(
+      String(payment.payment_status || payment.status || "")
+        .trim()
+        .toUpperCase(),
+    ),
+  );
+  const computedPaidAmount = paidRows.reduce(
+    (sum, payment) =>
+      sum + Number(payment.payment_amount ?? payment.amount ?? 0),
+    0,
+  );
+  const providerPaidAmount = Number(raw.paid_amount);
+
+  return {
+    count: paidRows.length,
+    paid_amount: Number.isFinite(providerPaidAmount)
+      ? providerPaidAmount
+      : computedPaidAmount,
+    rows: paidRows.map((payment) => ({
+      payment_id: String(payment.payment_id || payment.id || ""),
+      payment_status: String(
+        payment.payment_status || payment.status || "",
+      ),
+      payment_amount: Number(
+        payment.payment_amount ?? payment.amount ?? 0,
+      ),
+      transaction_id: String(
+        payment.transaction_id || payment.transactionId || "",
+      ),
+    })),
+  };
+}
+
 export async function cancelQPayInvoice(
   invoiceId: string,
   merchantContext?: QPayMerchantContext,
@@ -583,24 +627,7 @@ export async function checkQPayPayment(
 
   const raw = (await res.json()) as Record<string, unknown>;
 
-  // QuickQR response format: { invoice_status, payments: [...] }
-  // Standard QPay format: { count, paid_amount, rows: [...] }
-  if (isQuickQr && raw.payments) {
-    const payments = raw.payments as Record<string, unknown>[];
-    const paidPayments = payments.filter(
-      (p) => String(p.payment_status || p.status || "").toUpperCase() === "SUCCESS",
-    );
-    return {
-      count: paidPayments.length,
-      paid_amount: paidPayments.reduce((sum, p) => sum + Number(p.amount || 0), 0),
-      rows: paidPayments.map((p) => ({
-        payment_id: String(p.id || p.payment_id || ""),
-        payment_status: String(p.payment_status || p.status || ""),
-        payment_amount: Number(p.amount || 0),
-        transaction_id: String(p.transaction_id || ""),
-      })),
-    };
-  }
-
-  return raw as unknown as QPayPaymentCheckResponse;
+  // QuickQR can return `payments`, while standard QPay returns `rows`.
+  // Normalize both so PAID is accepted and failed/refunded rows are rejected.
+  return normalizeQPayPaymentCheckResponse(raw);
 }

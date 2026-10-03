@@ -293,7 +293,9 @@ export function VendorLoginAccountSelector({
 
       <p className={`mt-4 flex items-center gap-2 text-xs font-semibold leading-5 ${accent.muted}`}>
         <ShieldCheck size={14} />
-        Энэ нь байгууллагын контакт email/утас биш, vendor portal-д нэвтрэх account context болно.
+        {role === "ADMIN"
+          ? "Менежер нь байгууллагын dashboard болон бэлэн мөнгөний касс ажиллуулах эрхтэй байна."
+          : "Энэ нь байгууллагын контакт email/утас биш, vendor portal-д нэвтрэх account context болно."}
       </p>
     </div>
   );

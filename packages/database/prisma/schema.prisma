@@ -1098,12 +1098,19 @@ model Product {
   /// Updated by POS sales and inventory operations. Do not treat as source of truth
   /// when warehouse management is active for this product.
   stock                  Int                           @default(0)
+  lowStockThreshold      Decimal                       @default(5) @db.Decimal(18, 3)
   taxType                String                        @default("VAT_ABLE")
   cityTaxRate            Decimal                       @default(0) @db.Decimal(5, 2)
   classificationCode     String                        @default("6212991")
   taxProductCode         String?
   isRestaurantMenuItem   Boolean                       @default(false)
   isTakeawayAvailable    Boolean                       @default(true)
+  takeawayPackagingFee   Decimal                       @default(0) @db.Decimal(18, 2)
+  isSoldByPiece          Boolean                       @default(false)
+  pieceSmallPackSize     Int                           @default(3)
+  pieceSmallPackFee      Decimal                       @default(300) @db.Decimal(18, 2)
+  pieceLargePackSize     Int                           @default(6)
+  pieceLargePackFee      Decimal                       @default(800) @db.Decimal(18, 2)
   menuCategory           String?
   kitchenStation         String?
   preparationMinutes     Int?
