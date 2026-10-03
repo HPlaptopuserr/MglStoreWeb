@@ -36,7 +36,6 @@ import {
   Play,
   QrCode,
   Video,
-  LoaderCircle,
 } from "lucide-react";
 import {
   getServicePostCategories,
@@ -1422,14 +1421,20 @@ function StorefrontCatalog({
     [visibleCount, visibleProducts],
   );
   const hasMoreProducts = renderedProducts.length < visibleProducts.length;
+  const showMoreProducts = () => {
+    setPagination((current) => ({
+      filterKey,
+      count: Math.min(
+        (current.filterKey === filterKey ? current.count : STOREFRONT_PAGE_SIZE) +
+          STOREFRONT_PAGE_SIZE,
+        visibleProducts.length,
+      ),
+    }));
+  };
   const loadMoreRef = useInfiniteScroll({
     enabled: hasMoreProducts,
-    onLoadMore: () => {
-      setPagination({
-        filterKey,
-        count: visibleCount + STOREFRONT_PAGE_SIZE,
-      });
-    },
+    resetKey: JSON.stringify([filterKey, renderedProducts.length]),
+    onLoadMore: showMoreProducts,
     rootMargin: "500px 0px",
   });
 
@@ -1520,13 +1525,13 @@ function StorefrontCatalog({
             <p className="text-xs font-bold text-slate-400">
               {renderedProducts.length}/{visibleProducts.length} бараа
             </p>
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-              <LoaderCircle
-                className="h-4 w-4 animate-spin text-orange-500"
-                aria-hidden="true"
-              />
-              Дараагийн бараануудыг ачаалж байна…
-            </div>
+            <button
+              type="button"
+              onClick={showMoreProducts}
+              className="rounded-xl border border-orange-200 px-4 py-2 text-xs font-bold text-orange-600 transition hover:bg-orange-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+            >
+              Дараагийн бараануудыг харах
+            </button>
           </div>
         )}
       </div>
