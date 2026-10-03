@@ -310,5 +310,17 @@ export const requirePosUser = async (req: Request, res: Response) => {
     res.status(403).json({ message: "POS ашиглах эрх хүрэлцэхгүй" });
     return null;
   }
+  if (actor.role !== "ADMIN" && actor.role !== "SUPER_ADMIN") {
+    const organization = actor.organizationId
+      ? await prisma.organization.findUnique({
+          where: { id: actor.organizationId },
+          select: { businessPosEnabled: true },
+        })
+      : null;
+    if (!organization?.businessPosEnabled) {
+      res.status(403).json({ message: "App Control дээр POS · Касс идэвхгүй байна." });
+      return null;
+    }
+  }
   return actor;
 };

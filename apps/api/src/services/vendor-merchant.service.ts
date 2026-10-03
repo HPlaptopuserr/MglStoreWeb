@@ -1023,6 +1023,7 @@ export async function getVendorMerchantStatus(
       managedBySystem: isSystemQr,
       provider: isSystemQr ? "SYSTEMQR" : "QPAY",
       channel,
+      settlementMode: isSystemQr ? "PROVIDER" : isQuickQrMerchantId(selected.merchantId || "") ? "BANK_ACCOUNTS" : selected.enabled && selected.merchantId ? "PROVIDER" : "UNCONNECTED",
     };
   } catch (error) {
     console.error("vendor merchant status error", error);

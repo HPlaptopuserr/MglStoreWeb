@@ -12,6 +12,7 @@ export type SearchableProduct = {
   description?: string | null;
   sku?: string | null;
   barcode?: string | null;
+  barcodeAliases?: string[];
   classificationCode?: string | null;
   taxProductCode?: string | null;
   categoryName?: string | null;
@@ -407,7 +408,7 @@ export function createProductSearchScorer(search: string) {
       name: normalizeDiscoveryText(product.name || ""),
       description: normalizeDiscoveryText(product.description || ""),
       sku: normalizeDiscoveryText(product.sku || ""),
-      barcode: normalizeDiscoveryText(product.barcode || ""),
+      barcode: normalizeDiscoveryText([product.barcode, ...(product.barcodeAliases || [])].filter(Boolean).join(" ")),
       classificationCode: normalizeDiscoveryText(
         product.classificationCode || "",
       ),
@@ -501,6 +502,7 @@ export function buildProductDiscoveryText(product: SearchableProduct) {
       product.description,
       product.sku,
       product.barcode,
+      ...(product.barcodeAliases || []),
       product.businessCategory?.name,
       product.businessCategory?.slug,
       product.businessCategory?.parent?.name,

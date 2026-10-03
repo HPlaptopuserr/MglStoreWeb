@@ -1,5 +1,6 @@
 import express, { Router, type Router as ExpressRouter } from "express";
 import multer from "multer";
+import { createPersonalReelsRouter } from "./personal-reels.routes";
 import {
   ReelInteractionType,
   VendorContentReviewStatus,
@@ -29,7 +30,11 @@ import {
   storeReelVideo,
 } from "../../services/reel-storage.service";
 
+import { createReelSocialRouter } from "./reel-social.routes";
+
 const router: ExpressRouter = Router();
+router.use(createReelSocialRouter());
+router.use(createPersonalReelsRouter());
 
 const REEL_VIDEO_LIMIT_BYTES = Number(
   process.env.REEL_VIDEO_LIMIT_BYTES || 250 * 1024 * 1024,

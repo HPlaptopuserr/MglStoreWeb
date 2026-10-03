@@ -1,4 +1,5 @@
 import type { PosReceipt } from "@mgl/types";
+import type { SalesExportContext } from "./sales-report-workbook";
 import { buildSalesExportRows } from "./sales-export-rows";
 
 export type SalesReportView = "summary" | "details";
@@ -16,39 +17,14 @@ export function buildSalesExportSheets(
       ? [{ name: "Бараагаар нэгтгэл", rows: rows.totals }]
       : []),
     ...(view !== "summary"
+      ? [{ name: "Борлуулалтын дэлгэрэнгүй", rows: rows.details }]
+      : []),
+    ...(view === "all"
       ? [
-          { name: "Борлуулалтын дэлгэрэнгүй", rows: rows.details },
           { name: "Баримтууд", rows: rows.sales },
           { name: "Төлбөрийн задаргаа", rows: rows.payments },
         ]
       : []),
-    {
-      name: "Тайлбар",
-      rows: [
-        {
-          Тайлбар:
-            "Зарагдсан тоо хэмжээ нь барааны зарагдсан нийт хэмжээ (ш эсвэл кг). Баримтын тоо нь тухайн бараа орсон борлуулалтын баримтын тоо.",
-        },
-        {
-          Тайлбар:
-            "Цаг нь Asia/Ulaanbaatar бүсээр. Сонгосон өдөр болон ажилтны шүүлтүүр үйлчилнэ. Буцаагдсан баримтыг оруулаагүй.",
-        },
-        {
-          Тайлбар:
-            "Үнэ, SKU, баркод, өртөг, татвар нь борлуулалтын үед хадгалсан утга. Ангилал, тайлбар нь одоогийн барааны бүртгэлээс авсан. Хадгалагдаагүй мэдээлэл хоосон байна.",
-        },
-        {
-          Тайлбар:
-            view === "summary"
-              ? "Бараа бүрийг нэг мөрөөр нэгтгэсэн. Зарагдсан хэмжээ болон борлуулалтын дүн нь сонгосон шүүлтүүрт тохирсон бүх борлуулалтын нийлбэр."
-              : "Барааны мөрийн дүнг дэлгэрэнгүй sheet-ээс, баримтын нийт дүнг Баримтууд sheet-ээс, төлбөрийн дүнг Төлбөрийн задаргаа sheet-ээс нэгтгэнэ. Sheet-үүдийн дүнг хооронд нь нэмж болохгүй.",
-        },
-        {
-          Тайлбар:
-            "SKU, баркод болон ID нь эхний тэг, урт дугаарыг хадгалах текст төрөлтэй. Холимог төлбөрийн задаргаа хадгалагдаагүй бол зөвхөн баримтын нийт төлбөрийг харуулна.",
-        },
-      ],
-    },
   ];
   return sheets;
 }
@@ -57,26 +33,20 @@ export async function exportDailySales(
   receipts: PosReceipt[],
   date: string,
   view: SalesExportView = "all",
+  context: SalesExportContext = {},
 ) {
-  const sheets = buildSalesExportSheets(receipts, view);
-  const XLSX = await import("xlsx");
-  const workbook = XLSX.utils.book_new();
-  for (const { name, rows: data } of sheets) {
-    const sheet = XLSX.utils.json_to_sheet(data);
-    const headers = Object.keys(data[0] ?? {});
-    sheet["!cols"] = headers.map((header) => ({
-      wch:
-        header === "Тайлбар"
-          ? 100
-          : header.includes("ID")
-            ? 36
-            : Math.max(18, Math.min(42, header.length + 4)),
-    }));
-    if (sheet["!ref"]) sheet["!autofilter"] = { ref: sheet["!ref"] };
-    XLSX.utils.book_append_sheet(workbook, sheet, name);
-  }
-  XLSX.writeFile(
-    workbook,
-    `POS-borluulalt-${view === "summary" ? "negtgel-" : view === "details" ? "delgerengui-" : ""}${date}.xlsx`,
-  );
+  const { buildSalesReportWorkbook } = await import("./sales-report-workbook");
+  const workbook = buildSalesReportWorkbook(receipts, view, context);
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([new Uint8Array(buffer)], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `POS-borluulalt-${view === "summary" ? "negtgel-" : view === "details" ? "delgerengui-" : ""}${date}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

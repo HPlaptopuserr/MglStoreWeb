@@ -13,6 +13,7 @@ export interface InventoryItem {
     description: string | null;
     sku: string | null;
     barcode: string | null;
+    barcodeAliases?: string[];
     unit: string | null;
     price: string;
     costPrice: string | null;

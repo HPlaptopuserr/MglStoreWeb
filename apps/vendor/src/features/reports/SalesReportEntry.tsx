@@ -30,6 +30,7 @@ export function SalesReportEntry({
     setBranches([]);
     setBranchId("");
     setError("");
+    setLoading(false);
     if (!organizationId) return () => controller.abort();
     setLoading(true);
     async function load() {
@@ -103,6 +104,25 @@ export function SalesReportEntry({
           Бүртгэлтэй салбар байхгүй байна.
         </p>
       )}
+      {!organizationId && !demo && (
+        <p
+          role="status"
+          className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-500"
+        >
+          Байгууллагын мэдээлэл ачаалсны дараа салбараа сонгож тайлангаа үзнэ
+          үү.
+        </p>
+      )}
+      {organizationId &&
+        !loading &&
+        !error &&
+        branches.length > 0 &&
+        !branchId &&
+        !demo && (
+          <p className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
+            Тайлан харах салбараа сонгоно уу.
+          </p>
+        )}
       {(branchId || demo) && !loading && (
         <SalesReportPanel
           key={branchId}

@@ -1,15 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import {
-  CalendarDays,
-  Grid2X2,
-  List,
-  MapPin,
-  Pencil,
-} from "lucide-react";
+import { CalendarDays, Grid2X2, List, MapPin, Pencil } from "lucide-react";
 import { ProductThumbnail } from "./ProductThumbnail";
-import { getInventoryStockStatus, STOCK_STATUS_LABELS } from "./inventory.types";
+import {
+  getInventoryStockStatus,
+  STOCK_STATUS_LABELS,
+} from "./inventory.types";
 
 export interface WarehouseCatalogInventoryItem {
   id: string;
@@ -30,6 +27,7 @@ export interface WarehouseCatalogInventoryItem {
 interface WarehouseInventoryCatalogProps {
   items: WarehouseCatalogInventoryItem[];
   onSelect: (itemId: string) => void;
+  onEditImage?: (itemId: string) => void;
   onEdit: (itemId: string) => void;
 }
 
@@ -134,6 +132,7 @@ function EditButton({
 }
 
 function InventoryList({
+  onEditImage,
   items,
   onSelect,
   onEdit,
@@ -169,6 +168,11 @@ function InventoryList({
             >
               <div className="flex min-w-0 items-center gap-3">
                 <ProductThumbnail
+                  onEditImage={
+                    !item.product.images.length && onEditImage
+                      ? () => onEditImage(item.id)
+                      : undefined
+                  }
                   imageUrl={item.product.images[0]?.url}
                   productName={item.product.name}
                   className="h-9 w-9"
@@ -223,6 +227,7 @@ function InventoryList({
 }
 
 function InventoryGrid({
+  onEditImage,
   items,
   onSelect,
   onEdit,
@@ -246,6 +251,11 @@ function InventoryGrid({
             className="group min-w-0 cursor-pointer rounded-2xl border border-slate-200 bg-white p-2.5 transition hover:border-indigo-300 hover:bg-indigo-50/30 hover:shadow-md focus:border-indigo-300 focus:outline-none focus:ring-2 focus:ring-indigo-100"
           >
             <ProductThumbnail
+              onEditImage={
+                !item.product.images.length && onEditImage
+                  ? () => onEditImage(item.id)
+                  : undefined
+              }
               imageUrl={item.product.images[0]?.url}
               productName={item.product.name}
               className="h-32 w-full rounded-xl"
@@ -269,7 +279,9 @@ function InventoryGrid({
               </p>
               <div className="mt-2 flex items-center gap-1 text-[11px] font-semibold text-slate-500">
                 <MapPin size={12} />
-                <span className="truncate">{item.location || "Байрлалгүй"}</span>
+                <span className="truncate">
+                  {item.location || "Байрлалгүй"}
+                </span>
               </div>
               {item.expiryDate && (
                 <div className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-slate-500">

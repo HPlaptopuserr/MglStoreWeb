@@ -9,15 +9,19 @@ export function BestSellingProducts({
   loading,
   error,
   onRetry,
+  ranking = "quantity",
 }: {
   products: BestSellingProduct[];
   loading: boolean;
   error: string | null;
   onRetry: () => void;
+  ranking?: "quantity" | "revenue";
 }) {
   const maximumQuantity = Math.max(
     1,
-    ...products.map((item) => item.quantitySold),
+    ...products.map((item) =>
+      ranking === "revenue" ? item.revenue : item.quantitySold,
+    ),
   );
 
   return (
@@ -32,10 +36,14 @@ export function BestSellingProducts({
           </span>
           <div>
             <h2 className="font-black text-slate-900">
-              Хамгийн их зарагдсан бараа
+              {ranking === "revenue"
+                ? "Өндөр борлуулалттай бараа"
+                : "Хамгийн их зарагдсан бараа"}
             </h2>
             <p className="text-xs text-slate-500">
-              Борлуулсан тоо хэмжээгээр эрэмбэлсэн эхний 10 бүтээгдэхүүн
+              {ranking === "revenue"
+                ? "Сонгосон салбар, огноо, ажилтны шүүлтүүрээр · Борлуулалтын дүнгээр эхний 10 бараа"
+                : "Борлуулсан тоо хэмжээгээр эрэмбэлсэн эхний 10 бүтээгдэхүүн"}
             </p>
           </div>
         </div>
@@ -78,7 +86,7 @@ export function BestSellingProducts({
         <div className="divide-y divide-slate-100">
           {products.map((product) => (
             <div
-              key={product.productId}
+              key={`${product.productId}-${product.unit}`}
               className="grid gap-3 px-4 py-3.5 transition hover:bg-slate-50 sm:grid-cols-[minmax(0,1fr)_110px_130px] sm:items-center sm:px-5"
             >
               <div className="flex min-w-0 items-center gap-3">
@@ -104,7 +112,7 @@ export function BestSellingProducts({
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500"
                       style={{
-                        width: `${Math.max(4, (product.quantitySold / maximumQuantity) * 100)}%`,
+                        width: `${Math.max(4, ((ranking === "revenue" ? product.revenue : product.quantitySold) / maximumQuantity) * 100)}%`,
                       }}
                     />
                   </div>

@@ -1,3 +1,4 @@
+import { onlineProductStock } from "../../services/store-product-stock";
 import {
   Router,
   type Request,
@@ -830,7 +831,7 @@ async function decrementOrderStock(
         select: {
           productId: true,
           quantity: true,
-          product: { select: { supplyType: true, unit: true } },
+          product: { select: { supplyType: true, unit: true, managedByWarehouseId: true } },
         },
       },
     },
@@ -839,7 +840,7 @@ async function decrementOrderStock(
 
   for (const item of order.items) {
     if (item.product?.supplyType === "CHINA_PREORDER") continue;
-    const warehouseId = await resolveOrgWarehouse(
+    const warehouseId = item.product?.managedByWarehouseId ?? await resolveOrgWarehouse(
       tx,
       order.organizationId,
       item.productId,
@@ -931,7 +932,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
     // Validate all products exist and are active
     const productIds = lines.map((l) => l.productId);
     let products = await prisma.product.findMany({
-      where: { id: { in: productIds }, deletedAt: null, isActive: true },
+      where: { id: { in: productIds }, deletedAt: null, isActive: true, organizationId: { not: null } },
       select: {
         id: true,
         name: true,
@@ -1029,7 +1030,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       );
 
       products = await prisma.product.findMany({
-        where: { id: { in: productIds }, deletedAt: null, isActive: true },
+        where: { id: { in: productIds }, deletedAt: null, isActive: true, organizationId: { not: null } },
         select: {
           id: true,
           name: true,
@@ -1090,13 +1091,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       }
       const qty = Math.max(1, Math.floor(Number(line.qty) || 1));
       const isPreorder = product.supplyType === "CHINA_PREORDER";
-      const warehouseStock =
-        product.warehouseInventories.length > 0
-          ? product.warehouseInventories.reduce(
-              (total, inventory) => total + Math.max(0, inventory.quantity),
-              0,
-            )
-          : product.stock;
+      const warehouseStock = onlineProductStock(product);
       const requestedStock = toPosStoredStockQuantity(qty, product.unit);
       const availableStock = fromPosStoredStockQuantity(
         warehouseStock,
@@ -1133,7 +1128,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       });
     }
 
-    const orgIds = [...new Set(products.map((p) => p.organizationId))];
+    const orgIds = [...new Set(products.flatMap((p) => p.organizationId ? [p.organizationId] : []))];
     const organizationGroups = orgIds.map((organizationId) => {
       const groupProducts = products.filter(
         (product) => product.organizationId === organizationId,
@@ -1146,7 +1141,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       );
       return {
         organizationId,
-        organizationName: groupProducts[0]?.organization.name || "Дэлгүүр",
+        organizationName: groupProducts[0]?.organization?.name || "Дэлгүүр",
         items,
         subtotal: items.reduce((sum, item) => sum + item.subtotal, 0),
         isPreorderOnly: groupProducts.every(

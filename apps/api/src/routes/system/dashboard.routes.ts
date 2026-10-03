@@ -20,7 +20,13 @@ import {
 } from "../../services/organization-activity.service";
 import { requirePosUser } from "../operations/pos/_shared";
 
+import adminSalesStoresRouter from "./admin-sales-stores.routes";
+
+import posStoreStatisticsRouter from "./pos-store-statistics.routes";
+
 const router: RouterType = Router();
+router.use(posStoreStatisticsRouter);
+router.use(adminSalesStoresRouter);
 
 /* ─── GET /admin/dashboard/stats ─────────────────────── */
 router.get(
@@ -1149,7 +1155,7 @@ router.get(
             sku: meta?.sku ?? null,
             stock: meta?.stock ?? 0,
             price: meta?.price ? Number(meta.price) : 0,
-            organizationName: meta?.organization.name ?? "",
+            organizationName: meta?.organization?.name ?? "",
             imageUrl: meta?.images[0]?.url ?? null,
           };
         })
@@ -1163,7 +1169,7 @@ router.get(
             ...item,
             name: meta?.name ?? "Unknown branch",
             address: meta?.address ?? "",
-            organizationName: meta?.organization.name ?? "",
+            organizationName: meta?.organization?.name ?? "",
             avgTicket:
               item.orders > 0 ? Math.round(item.revenue / item.orders) : 0,
             sharePercent:

@@ -158,6 +158,7 @@ async function membership(user: AuthPayload) {
     where: {
       userId: user.userId,
       organizationId: user.organizationId,
+      organization: { businessSalesEnabled: true },
       isActive: true,
       deletedAt: null,
     },

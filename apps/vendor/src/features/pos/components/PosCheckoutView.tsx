@@ -642,7 +642,7 @@ export function PosCheckoutView({
                           onClick={() => onMarkQPayPaid(entry.id)}
                           className="rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-500"
                         >
-                          QPay батлах
+                          Төлөв шалгах
                         </button>
                       ) : entry.status === "pending" ? (
                         <span className="text-[10px] font-bold text-amber-400">
@@ -661,14 +661,14 @@ export function PosCheckoutView({
                           onClick={() => onRemovePayment(entry.id)}
                           className="rounded-md border border-zinc-700 px-2 py-1 text-[10px] font-bold text-zinc-400 hover:border-zinc-500"
                         >
-                          Устгах
+                          {entry.method === "QR" ? "QR цуцлах" : "Устгах"}
                         </button>
                       )}
                     </div>
                   </div>
                   {entry.invoiceId && (
-                    <p className="mt-1 text-[10px] text-zinc-500">
-                      Invoice: {entry.invoiceId}
+                    <p className="mt-1 break-all text-[10px] text-zinc-500">
+                      Төлбөрийн лавлах: {entry.invoiceId}
                     </p>
                   )}
                   {entry.transactionId && (

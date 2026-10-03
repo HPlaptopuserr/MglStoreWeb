@@ -1,4 +1,9 @@
 "use client";
+import {
+  InventoryBarcodeDetails,
+  InventoryExpiryDetails,
+} from "@/features/inventory/InventoryDetailSections";
+import { InventoryImageModal } from "@/features/inventory/InventoryImageModal";
 
 import { useEffect, useState } from "react";
 import {
@@ -9,8 +14,6 @@ import {
   Package,
   AlertTriangle,
   X,
-  Calendar,
-  Barcode,
   MapPin,
   Trash2,
   Edit3,
@@ -66,6 +69,7 @@ const toDateInputValue = (value: string | null) => {
 
 export default function InventoryPage() {
   const { selectedWarehouseId, selectedWarehouse } = useWarehouseScope();
+  const [imageItem, setImageItem] = useState<InventoryItem | null>(null);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState(false);
@@ -523,8 +527,34 @@ export default function InventoryPage() {
         </div>
       ) : (
         <div className="space-y-3">
+          {imageItem && (
+            <InventoryImageModal
+              key={`${selectedWarehouseId}:${imageItem.id}`}
+              warehouseId={selectedWarehouseId}
+              productId={imageItem.product.id}
+              productName={imageItem.product.name}
+              onClose={() => setImageItem(null)}
+              onSaved={(images) => {
+                setInventory((current) =>
+                  current.map((item) =>
+                    item.product.id === imageItem.product.id
+                      ? { ...item, product: { ...item.product, images } }
+                      : item,
+                  ),
+                );
+                setSelectedItem((current) =>
+                  current?.product.id === imageItem.product.id
+                    ? { ...current, product: { ...current.product, images } }
+                    : current,
+                );
+              }}
+            />
+          )}
           <WarehouseInventoryCatalog
             items={inventory}
+            onEditImage={(id) =>
+              setImageItem(inventory.find((item) => item.id === id) ?? null)
+            }
             onSelect={(itemId) => {
               const item = inventory.find(
                 (candidate) => candidate.id === itemId,
@@ -960,7 +990,7 @@ export default function InventoryPage() {
                 </div>
 
                 {/* Main Grid */}
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                   {/* Left column */}
                   <div className="space-y-4">
                     <div>
@@ -972,15 +1002,10 @@ export default function InventoryPage() {
                       </p>
                     </div>
 
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Barcode
-                      </p>
-                      <p className="mt-1 flex items-center gap-2 font-mono text-sm text-slate-700">
-                        <Barcode className="h-4 w-4 text-slate-400" />
-                        {selectedItem.product.barcode || "—"}
-                      </p>
-                    </div>
+                    <InventoryBarcodeDetails
+                      primary={selectedItem.product.barcode}
+                      aliases={selectedItem.product.barcodeAliases}
+                    />
 
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -1034,32 +1059,11 @@ export default function InventoryPage() {
                   </div>
                 </div>
 
-                {/* Additional Info */}
-                <div className="space-y-4 border-t border-slate-100 pt-6">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Batch Number
-                      </p>
-                      <p className="mt-1 font-mono text-sm text-slate-700">
-                        {selectedItem.batchNumber || "—"}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        Хүчинтэй болох хугацаа
-                      </p>
-                      <p className="mt-1 flex items-center gap-2 text-sm text-slate-700">
-                        <Calendar className="h-4 w-4 text-slate-400" />
-                        {selectedItem.expiryDate
-                          ? new Date(
-                              selectedItem.expiryDate,
-                            ).toLocaleDateString("mn-MN")
-                          : "—"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                <InventoryExpiryDetails
+                  expiryDate={selectedItem.expiryDate}
+                  batchNumber={selectedItem.batchNumber}
+                  note={selectedItem.note}
+                />
 
                 <StockReservationBreakdown
                   warehouseId={selectedWarehouseId}

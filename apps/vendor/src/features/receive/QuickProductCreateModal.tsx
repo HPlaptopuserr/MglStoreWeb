@@ -1,5 +1,8 @@
 "use client";
 
+import { MasterCatalogSuggestions } from "@/features/products/components/MasterCatalogSuggestions";
+import type { MasterCatalogProduct } from "@/features/products/types";
+import { normalizePosMeasureUnit } from "@mgl/types";
 import { markedUpPrice } from "./receipt-pricing";
 import { FormEvent, useEffect, useState } from "react";
 import { Loader2, PackagePlus, X } from "lucide-react";
@@ -24,6 +27,7 @@ interface QuickProductCreateModalProps {
   markupPercent?: string;
   organizationId: string;
   initialCode: string;
+  initialMaster?: MasterCatalogProduct | null;
   onClose: () => void;
   onCreated: (product: CreatedReceiptProduct) => void;
 }
@@ -62,26 +66,35 @@ export function QuickProductCreateModal({
   markupPercent = "",
   organizationId,
   initialCode,
+  initialMaster,
   onClose,
   onCreated,
 }: QuickProductCreateModalProps) {
   const [form, setForm] = useState<FormState>(() =>
     createInitialForm(initialCode),
   );
+  const [selectedMaster, setSelectedMaster] = useState<MasterCatalogProduct | null>(null);
   const [manualPrice, setManualPrice] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     if (!open) return;
-    setForm(createInitialForm(initialCode));
+    setSelectedMaster(initialMaster ?? null);
+    setForm({ ...createInitialForm(initialCode), ...(initialMaster ? {
+      name: initialMaster.canonicalName,
+      barcode: initialMaster.barcode || "",
+      sku: "",
+      unit: normalizePosMeasureUnit(initialMaster.unit),
+    } : {}) });
     setManualPrice(false);
     setError("");
-  }, [initialCode, open]);
+  }, [initialCode, initialMaster, open]);
 
   if (!open) return null;
 
   const update = (field: keyof FormState, value: string) => {
+    if (field === "barcode") setSelectedMaster(null);
     if (field === "price") setManualPrice(true);
     setForm((current) => ({
       ...current,
@@ -95,6 +108,7 @@ export function QuickProductCreateModal({
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (saving) return;
     const price = Number(form.price);
     const costPrice = form.costPrice.trim() ? Number(form.costPrice) : null;
     if (!form.name.trim()) return setError("Барааны нэрийг оруулна уу.");
@@ -115,6 +129,9 @@ export function QuickProductCreateModal({
         method: "POST",
         body: JSON.stringify({
           organizationId,
+          masterProductId: selectedMaster?.id ?? null,
+          businessCategoryId: selectedMaster?.businessCategoryId ?? null,
+          description: selectedMaster?.description ?? null,
           name: form.name.trim(),
           sku: form.sku.trim() || null,
           barcode: form.barcode.trim() || null,
@@ -128,13 +145,13 @@ export function QuickProductCreateModal({
           classificationCode: EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
           taxProductCode: null,
           marketplacePriority: 0,
-          images: [],
+          images: selectedMaster?.imageUrl ? [selectedMaster.imageUrl] : [],
         }),
       });
       if (!response.ok) throw new Error(await readError(response));
       onCreated({
         ...((await response.json()) as CreatedReceiptProduct),
-        ...(manualPrice ? { manualReceiptPrice: form.price } : {}),
+        manualReceiptPrice: form.price,
       });
     } catch (cause) {
       setError(
@@ -151,11 +168,11 @@ export function QuickProductCreateModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="quick-product-title"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+      onMouseDown={(event) => !saving && event.target === event.currentTarget && onClose()}
     >
       <form
         onSubmit={submit}
-        className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl"
+        className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-3xl bg-white shadow-2xl"
       >
         <header className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-100 bg-white px-5 py-4 sm:px-6">
           <div className="flex gap-3">
@@ -167,15 +184,16 @@ export function QuickProductCreateModal({
                 id="quick-product-title"
                 className="text-lg font-black text-slate-950"
               >
-                Шинэ бараа бүртгэх
+                Баримтад шинэ бараа нэмэх
               </h2>
               <p className="mt-0.5 text-sm text-slate-500">
-                Бүртгэсний дараа хүлээн авах жагсаалтад шууд нэмэгдэнэ.
+                Нэр, үнийг шалгаад нэмнэ. Хүлээн авах тоог баримтын мөрөнд оруулна.
               </p>
             </div>
           </div>
           <button
             type="button"
+            disabled={saving}
             onClick={onClose}
             aria-label="Хаах"
             className="rounded-xl p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
@@ -184,6 +202,12 @@ export function QuickProductCreateModal({
           </button>
         </header>
         <div className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6">
+          <div className="sm:col-span-2">
+            {selectedMaster ? <div className="flex items-center justify-between gap-3 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-800"><span>Нэгдсэн сангаас сонгосон · {selectedMaster.categoryName || "Ангилалгүй"}</span><button type="button" disabled={saving} onClick={() => setSelectedMaster(null)} className="shrink-0 font-semibold underline">Сонголт солих</button></div> : <MasterCatalogSuggestions name={form.name} barcode={form.barcode} selectedId="" disabled={saving} onSelect={(product) => {
+              setSelectedMaster(product);
+              setForm(current => ({ ...current, name: product.canonicalName, barcode: product.barcode || current.barcode, unit: normalizePosMeasureUnit(product.unit) }));
+            }} />}
+          </div>
           <label className="space-y-1.5 sm:col-span-2">
             <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
               Барааны нэр *
@@ -197,6 +221,9 @@ export function QuickProductCreateModal({
               className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
             />
           </label>
+          <details open={!form.barcode} className="rounded-xl border border-slate-200 p-3 sm:col-span-2">
+            <summary className="cursor-pointer text-sm text-slate-600">Баркод: {form.barcode || "Баркодгүй · SKU оруулах"}</summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="space-y-1.5">
             <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
               Баркод
@@ -219,9 +246,11 @@ export function QuickProductCreateModal({
               className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
             />
           </label>
+            </div>
+          </details>
           <label className="space-y-1.5">
             <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-              Борлуулах үнэ *
+              Борлуулах үнэ {form.unit === "kg" ? "₮ / 1 кг" : "₮ / ш"} *
             </span>
             <input
               required
@@ -236,7 +265,7 @@ export function QuickProductCreateModal({
           </label>
           <label className="space-y-1.5">
             <span className="text-xs font-bold uppercase tracking-wide text-slate-500">
-              Авсан үнэ
+              Авсан үнэ {form.unit === "kg" ? "₮ / 1 кг" : "₮ / ш"}
             </span>
             <input
               min="0"
@@ -258,9 +287,14 @@ export function QuickProductCreateModal({
               className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
             >
               <option value="pcs">Ширхэг</option>
-              <option value="kg">Килограмм</option>
+              <option value="kg">Задгай / жингээр (кг, г)</option>
             </select>
           </label>
+          {form.unit === "kg" && (
+            <p className="rounded-lg bg-cyan-50 p-3 text-xs leading-relaxed text-cyan-800 sm:col-span-2">
+              Энд 1 кг-ын үнийг оруулна. Баримтын мөрөнд жин болон үнийг грамм эсвэл килограммаар сонгож оруулах боломжтой.
+            </p>
+          )}
           {error && (
             <p
               role="alert"
@@ -273,6 +307,7 @@ export function QuickProductCreateModal({
         <footer className="flex justify-end gap-3 border-t border-slate-100 px-5 py-4 sm:px-6">
           <button
             type="button"
+            disabled={saving}
             onClick={onClose}
             className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50"
           >
@@ -282,8 +317,7 @@ export function QuickProductCreateModal({
             disabled={saving}
             className="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-black text-white hover:bg-cyan-700 disabled:opacity-60"
           >
-            {saving && <Loader2 className="h-4 w-4 animate-spin" />}Бүртгээд
-            жагсаалтад нэмэх
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}Баримтад нэмэх
           </button>
         </footer>
       </form>

@@ -32,7 +32,12 @@ import { PUBLIC_PRODUCT_STATE_FILTER } from "../../services/product-visibility.s
 import { randomUUID } from "node:crypto";
 import { QUALITY_SETTINGS_PREFIX, qualityOrganizationKey, isOrganizationQualityEnabled } from "../../services/quality-network-settings";
 
+import { validateBusinessAppControlPatch } from "../../services/business-app-control-validation";
+
+import appControlMembersRouter from "./app-control-members.routes";
+
 const router: ExpressRouter = Router();
+router.use(appControlMembersRouter);
 const orgImagesDir = path.resolve(__dirname, "../../../uploads/organizations");
 if (!fs.existsSync(orgImagesDir)) {
   fs.mkdirSync(orgImagesDir, { recursive: true });
@@ -128,6 +133,8 @@ const toBusinessAppControlPayload = (organization: {
   name: string;
   slug: string;
   maxMembers: number;
+  businessPosEnabled: boolean;
+  businessSalesEnabled: boolean;
   businessOrdersEnabled: boolean;
   businessInventoryEnabled: boolean;
   businessAttendanceEnabled: boolean;
@@ -145,6 +152,7 @@ const toBusinessAppControlPayload = (organization: {
   members?: Array<{
     id: string;
     role: string;
+    capabilities: string[];
     isPrimary: boolean;
     isActive: boolean;
     createdAt: Date;
@@ -165,6 +173,8 @@ const toBusinessAppControlPayload = (organization: {
   maxMembers: organization.maxMembers,
   activeMembers: organization._count?.members ?? 0,
   features: {
+    pos: organization.businessPosEnabled,
+    sales: organization.businessSalesEnabled,
     orders: organization.businessOrdersEnabled,
     inventory: organization.businessInventoryEnabled,
     attendance: organization.businessAttendanceEnabled,
@@ -184,7 +194,10 @@ const toBusinessAppControlPayload = (organization: {
     attendanceManual: organization.businessAttendanceManualEnabled,
     restrictSalesRepVendors: organization.salesRepVendorRestrictionEnabled,
   },
-  members: organization.members?.map(mapOrganizationLoginMember) ?? [],
+  members: organization.members?.map((member) => ({
+    ...mapOrganizationLoginMember(member),
+    capabilities: member.capabilities,
+  })) ?? [],
 });
 
 const orgImportUpload = multer({
@@ -523,6 +536,8 @@ router.get(
           name: true,
           slug: true,
           maxMembers: true,
+          businessPosEnabled: true,
+          businessSalesEnabled: true,
           businessOrdersEnabled: true,
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
@@ -543,6 +558,7 @@ router.get(
             select: {
               id: true,
               role: true,
+              capabilities: true,
               isPrimary: true,
               isActive: true,
               createdAt: true,
@@ -599,6 +615,8 @@ router.patch(
       const body = req.body as {
         maxMembers?: number;
         features?: {
+          pos?: boolean;
+          sales?: boolean;
           checklist?: boolean;
           orders?: boolean;
           inventory?: boolean;
@@ -621,6 +639,14 @@ router.patch(
         };
       };
 
+      const validationError = validateBusinessAppControlPatch(req.body);
+      if (validationError) return res.status(400).json({ message: validationError });
+      if (body.features?.pos === false) {
+        const openShift = await prisma.posShift.findFirst({
+          where: { organizationId: id, status: "OPEN" }, select: { id: true },
+        });
+        if (openShift) return res.status(409).json({ message: "POS унтраахаас өмнө нээлттэй кассын ээлжийг хаана уу." });
+      }
       const data: Prisma.OrganizationUpdateInput = {};
       if (body.features?.checklist !== undefined && typeof body.features.checklist !== "boolean") {
         return res.status(400).json({ message: "Checklist тохиргоо boolean утгатай байх ёстой." });
@@ -644,6 +670,8 @@ router.patch(
       }
 
       if (body.features) {
+        if (body.features.pos !== undefined) data.businessPosEnabled = body.features.pos;
+        if (body.features.sales !== undefined) data.businessSalesEnabled = body.features.sales;
         if (body.features.orders !== undefined) {
           data.businessOrdersEnabled = Boolean(body.features.orders);
         }
@@ -711,6 +739,8 @@ router.patch(
           name: true,
           slug: true,
           maxMembers: true,
+          businessPosEnabled: true,
+          businessSalesEnabled: true,
           businessOrdersEnabled: true,
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
@@ -731,6 +761,7 @@ router.patch(
             select: {
               id: true,
               role: true,
+              capabilities: true,
               isPrimary: true,
               isActive: true,
               createdAt: true,

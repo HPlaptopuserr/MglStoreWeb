@@ -9,26 +9,25 @@ test("summary export includes grouped products and excludes individual sale shee
   const sheets = buildSalesExportSheets(receipts, "summary");
   assert.deepEqual(
     sheets.map((sheet) => sheet.name),
-    ["Бараагаар нэгтгэл", "Тайлбар"],
+    ["Бараагаар нэгтгэл"],
   );
   assert.deepEqual(sheets[0].rows, buildSalesExportRows(receipts).totals);
 });
 
-test("details export starts with each sale and includes receipt and payment context", () => {
+test("details export contains only the selected sale table", () => {
   const receipts = createSalesHistoryDemo();
   const sheets = buildSalesExportSheets(receipts, "details");
   assert.deepEqual(
     sheets.map((sheet) => sheet.name),
-    ["Борлуулалтын дэлгэрэнгүй", "Баримтууд", "Төлбөрийн задаргаа", "Тайлбар"],
+    ["Борлуулалтын дэлгэрэнгүй"],
   );
   assert.deepEqual(sheets[0].rows, buildSalesExportRows(receipts).details);
-  assert.deepEqual(sheets[2].rows, buildSalesExportRows(receipts).payments);
 });
 
 test("existing all-sheet export remains supported and empty exports fail clearly", () => {
   assert.equal(
     buildSalesExportSheets(createSalesHistoryDemo(), "all").length,
-    5,
+    4,
   );
   assert.throws(
     () => buildSalesExportSheets([], "summary"),

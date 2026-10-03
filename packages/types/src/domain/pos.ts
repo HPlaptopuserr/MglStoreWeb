@@ -140,6 +140,7 @@ export interface PosProduct {
   id: string;
   sku: string;
   barcode?: string | null;
+  barcodeAliases?: string[];
   name: string;
   imageUrl?: string | null;
   price: number;

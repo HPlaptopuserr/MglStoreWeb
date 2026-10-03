@@ -8,9 +8,12 @@ import {
   type SalesReportView,
 } from "../utils/export-daily-sales";
 
+import type { SalesExportContext } from "../utils/sales-report-workbook";
+
 interface Props {
   receipts: PosReceipt[];
   period: string;
+  context?: SalesExportContext;
   disabled: boolean;
   view?: SalesReportView;
   onViewChange?: (view: SalesReportView) => void;
@@ -34,6 +37,7 @@ const views = [
 export function SalesReportActions({
   receipts,
   period,
+  context,
   disabled,
   view,
   onViewChange,
@@ -44,13 +48,16 @@ export function SalesReportActions({
     text: string;
     error: boolean;
   } | null>(null);
+  const scope = context
+    ? `${context.test ? "ТЕСТ · " : ""}${context.from ? context.from.replaceAll("-", ".") : "Эхнээс"} – ${context.to ? context.to.replaceAll("-", ".") : "Бүх өдөр"} · ${context.cashierName || "Бүх ажилтан"}`
+    : undefined;
   const selected = views.find((option) => option.value === view);
   async function download() {
     if (disabled || exporting) return;
     setExporting(true);
     setFeedback(null);
     try {
-      await exportDailySales(receipts, period, view);
+      await exportDailySales(receipts, period, view, context);
       setFeedback({
         text: `${selected?.label || "Борлуулалтын тайлан"} — Excel файл татагдлаа.`,
         error: false,
@@ -68,37 +75,46 @@ export function SalesReportActions({
     }
   }
   return (
-    <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-2 rounded-xl border border-slate-200 bg-white/95 p-2.5 shadow-sm backdrop-blur sm:p-3">
+      {scope && (
+        <p
+          className="truncate text-xs font-medium text-slate-600"
+          title={scope}
+        >
+          {scope}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         {onViewChange && (
           <div
             role="group"
             aria-label="Харуулах болон Excel татах тайлангийн төрөл"
-            className="grid w-full grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 sm:w-auto"
+            className="grid w-full grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1 lg:w-auto"
           >
             {views.map((option) => (
               <button
                 key={option.value}
                 type="button"
                 aria-pressed={view === option.value}
+                disabled={exporting}
                 onClick={() => {
                   onViewChange(option.value);
                   setFeedback(null);
                 }}
-                className={`min-h-10 rounded-lg px-3 py-2 text-sm font-semibold transition focus-visible:outline-blue-600 ${view === option.value ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                className={`min-h-11 rounded-lg px-2 py-2 text-xs sm:px-3 sm:text-sm font-semibold transition focus-visible:outline-blue-600 disabled:cursor-wait disabled:opacity-60 ${view === option.value ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
               >
                 {option.label}
               </button>
             ))}
           </div>
         )}
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+        <div className="flex w-full items-center gap-2 lg:w-auto">
           {onRefresh && (
             <button
               type="button"
               onClick={onRefresh}
-              disabled={disabled}
-              className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold transition hover:bg-slate-50 focus-visible:outline-blue-600 disabled:opacity-50"
+              disabled={disabled || exporting}
+              className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-semibold transition hover:bg-slate-50 focus-visible:outline-blue-600 disabled:opacity-50"
             >
               <RefreshCw size={16} />
               Шинэчлэх
@@ -108,6 +124,9 @@ export function SalesReportActions({
             type="button"
             onClick={download}
             aria-busy={exporting}
+            aria-label={
+              selected ? `${selected.label} · Excel татах` : "Excel татах"
+            }
             disabled={
               disabled ||
               exporting ||
@@ -116,23 +135,19 @@ export function SalesReportActions({
                   receipt.status === "COMPLETED" && receipt.lines.length > 0,
               )
             }
-            className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700 focus-visible:outline-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700 focus-visible:outline-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 lg:flex-none"
           >
             {exporting ? (
               <Loader2 size={16} className="animate-spin" />
             ) : (
               <Download size={16} />
             )}
-            {exporting
-              ? "Бэлтгэж байна…"
-              : selected
-                ? `${selected.label} · Excel татах`
-                : "Excel татах"}
+            {exporting ? "Бэлтгэж байна…" : "Excel татах"}
           </button>
         </div>
       </div>
       {selected && (
-        <p className="text-xs leading-5 text-slate-500">
+        <p className="sr-only">
           {selected.description} Сонгосон огноо, ажилтны шүүлтүүр үйлчилнэ.
         </p>
       )}

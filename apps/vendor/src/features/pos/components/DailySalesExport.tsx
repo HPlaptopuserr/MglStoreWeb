@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { PosReceipt } from "@mgl/types";
 import type { SalesReportView } from "../utils/export-daily-sales";
-import { SalesReportActions } from "./SalesReportActions";
+import { SalesHistoryActions } from "./SalesHistoryActions";
 import { salesDay } from "../utils/sales-history-filters";
 
 interface Props {
@@ -19,6 +19,7 @@ interface Props {
   view?: SalesReportView;
   onViewChange?: (view: SalesReportView) => void;
   onRefresh?: () => void;
+  showActions?: boolean;
 }
 export function DailySalesExport({
   range,
@@ -33,15 +34,12 @@ export function DailySalesExport({
   view,
   onViewChange,
   onRefresh,
+  showActions = true,
 }: Props) {
   const [referenceTime] = useState(() => Date.now());
   const invalidRange = Boolean(
     range.start && range.end && range.start > range.end,
   );
-  const period =
-    !range.start && !range.end
-      ? "all-days"
-      : `${range.start || "beginning"}_${range.end || "latest"}`;
   const fieldClass =
     "min-h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm focus-visible:outline-blue-600";
   return (
@@ -125,7 +123,7 @@ export function DailySalesExport({
             ))}
           </select>
         </label>
-        {process.env.NODE_ENV !== "production" && (
+        {process.env.NODE_ENV !== "production" && !onViewChange && (
           <label className="flex min-h-10 items-center gap-2 text-xs font-semibold text-amber-800">
             <input
               type="checkbox"
@@ -160,17 +158,21 @@ export function DailySalesExport({
           нөлөөлөхгүй.
         </p>
       )}
-      <div className="mt-4">
-        <SalesReportActions
-          key={JSON.stringify([range, cashier, demo])}
-          receipts={receipts}
-          period={`${demo ? "TEST-" : ""}${period}${cashier ? "-employee" : ""}`}
-          disabled={loading || invalidRange}
-          view={view}
-          onViewChange={onViewChange}
-          onRefresh={onRefresh}
-        />
-      </div>
+      {showActions && (
+        <div className="mt-4">
+          <SalesHistoryActions
+            range={range}
+            cashier={cashier}
+            employees={employees}
+            receipts={receipts}
+            loading={loading}
+            demo={demo}
+            view={view}
+            onViewChange={onViewChange}
+            onRefresh={onRefresh}
+          />
+        </div>
+      )}
     </div>
   );
 }

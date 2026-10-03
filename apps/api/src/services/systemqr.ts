@@ -1,3 +1,4 @@
+import { paymentProviderFetch } from "./payment-provider-fetch";
 import crypto from "crypto";
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
@@ -114,7 +115,7 @@ async function getSystemQrToken(username?: string, password?: string): Promise<s
     return cached.token;
   }
 
-  const res = await fetch(`${qrpayBaseUrl}/login`, {
+  const res = await paymentProviderFetch(`${qrpayBaseUrl}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ username: reqUsername, password: reqPassword }),
@@ -204,7 +205,7 @@ export async function registerSystemQrSubMerchant(
       username?: string;
       password?: string;
     } | null;
-  }>((token) => fetch(`${qrpayBaseUrl}/qrMerchant/registerSubMerchant`, {
+  }>((token) => paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/registerSubMerchant`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -272,7 +273,7 @@ export async function resetSystemQrSubMerchantPassword(
       username?: string;
       password?: string;
     } | null;
-  }>((token) => fetch(`${qrpayBaseUrl}/qrMerchant/resetPassword`, {
+  }>((token) => paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/resetPassword`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -313,7 +314,7 @@ export async function listSystemQrSubMerchants(
       terminalNo?: string | null;
       createdDate?: string | null;
     }> | null;
-  }>((token) => fetch(`${qrpayBaseUrl}/qrMerchant/subMerchant`, {
+  }>((token) => paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/subMerchant`, {
     headers: { Authorization: `Bearer ${token}` },
   }), username, password);
 
@@ -333,7 +334,7 @@ export async function listSystemQrSubMerchants(
 export async function getSystemQrCityList() {
   const { qrpayBaseUrl } = systemQrEnv();
   const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: any[] | null }>(
-    (token) => fetch(`${qrpayBaseUrl}/qrMerchant/city`, {
+    (token) => paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/city`, {
       headers: { Authorization: `Bearer ${token}` },
     }),
   );
@@ -354,7 +355,7 @@ export async function getSystemQrCityList() {
 export async function getSystemQrKhorooList(districtId: string) {
   const { qrpayBaseUrl } = systemQrEnv();
   const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: any[] | null }>(
-    (token) => fetch(
+    (token) => paymentProviderFetch(
       `${qrpayBaseUrl}/qrMerchant/khoroo?districtId=${encodeURIComponent(districtId)}`,
       { headers: { Authorization: `Bearer ${token}` } },
     ),
@@ -370,7 +371,7 @@ export async function getSystemQrKhorooList(districtId: string) {
 export async function getSystemQrCategoryList() {
   const { qrpayBaseUrl } = systemQrEnv();
   const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: any[] | null }>(
-    (token) => fetch(`${qrpayBaseUrl}/qrMerchant/category`, {
+    (token) => paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/category`, {
       headers: { Authorization: `Bearer ${token}` },
     }),
   );
@@ -398,7 +399,7 @@ export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams,
       : undefined;
 
   try {
-    const data = await fetchSystemQrJsonWithTokenRetry<any>((token) => fetch(`${deeplinkBaseUrl}/subMerchant/createInvoice`, {
+    const data = await fetchSystemQrJsonWithTokenRetry<any>((token) => paymentProviderFetch(`${deeplinkBaseUrl}/subMerchant/createInvoice`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -449,7 +450,7 @@ export async function checkSystemQrPayment(params: SystemQrCheckInvoiceParams, u
   const { deeplinkBaseUrl } = systemQrEnv();
 
   try {
-    const data = await fetchSystemQrJsonWithTokenRetry<any>((token) => fetch(`${deeplinkBaseUrl}/subMerchant/checkInvoice`, {
+    const data = await fetchSystemQrJsonWithTokenRetry<any>((token) => paymentProviderFetch(`${deeplinkBaseUrl}/subMerchant/checkInvoice`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -460,6 +461,10 @@ export async function checkSystemQrPayment(params: SystemQrCheckInvoiceParams, u
         invoiceNumber: params.invoiceNumber,
       }),
     }), username, password);
+
+    if (data.status !== "000") {
+      throw new Error("SystemQR төлбөрийн төлөв шалгах хүсэлт амжилтгүй боллоо");
+    }
 
     // According to docs, entity.status = null (pending), "000" (success), "00x" (failed)
     const entity = data.entity;
@@ -484,7 +489,7 @@ export async function cancelSystemQrInvoice(
   try {
     const data = await fetchSystemQrJsonWithTokenRetry<any>(
       (token) =>
-        fetch(`${deeplinkBaseUrl}/subMerchant/cancelQr`, {
+        paymentProviderFetch(`${deeplinkBaseUrl}/subMerchant/cancelQr`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

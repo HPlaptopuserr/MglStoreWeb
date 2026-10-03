@@ -58,6 +58,7 @@ export {
   vendorOrderRoutes,
   storeLoyaltyRoutes,
   storeBranchRoutes,
+  hypermarketRoutes,
 } from "./store";
 export { default as vendorMerchantRoutes } from "./vendor/vendor-merchant.routes";
 export { default as vendorUpgradeRoutes } from "./vendor/vendor-upgrade.routes";

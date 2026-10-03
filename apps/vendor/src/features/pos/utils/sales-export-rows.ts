@@ -1,4 +1,5 @@
 import type { PosReceipt } from "@mgl/types";
+import { calculateSaleFinancials } from "./sale-financials";
 import { summarizeSoldProducts } from "./sold-product-summary";
 
 const methods: Record<string, string> = {
@@ -47,6 +48,7 @@ export function buildSalesExportRows(receipts: PosReceipt[]) {
   const details = completed.flatMap((receipt) =>
     receipt.lines.map((line) => {
       const unit = line.measureUnit || "ш";
+      const financials = calculateSaleFinancials(line);
       const receiptContext = context(receipt);
       const {
         Ажилтан,
@@ -68,9 +70,19 @@ export function buildSalesExportRows(receipts: PosReceipt[]) {
         Нэгж: unit,
         "Зарагдсан тоо хэмжээ": line.qty,
         "Нэгж үнэ": line.unitPrice,
-        "Нэгж өртөг (борлуулалтын үеийн)": line.unitCost ?? "",
-        "Нийт өртөг (борлуулалтын үеийн)": line.costTotal ?? "",
+        "Нэгж өртөг (борлуулалтын үеийн)": financials.unitCost ?? ("" as const),
+        "Нийт өртөг (борлуулалтын үеийн)": financials.cost ?? ("" as const),
+        "Хөнгөлөлтийн дараах нэгж үнэ":
+          financials.sellingPrice ?? ("" as const),
+        Хөнгөлөлт: financials.discount,
         "Борлуулалтын дүн": line.lineTotal,
+        "Барааны ашиг": financials.profit ?? ("" as const),
+        "Ашгийн хувь (%)": financials.margin ?? ("" as const),
+        "Өртгийн нэмэгдэл (%)": financials.markup ?? ("" as const),
+        "Өртгийн мэдээлэл":
+          financials.cost == null ? "Мэдээлэл дутуу" : "Бүрэн",
+        НӨАТ: line.taxAmount,
+        "Хотын татвар": line.cityTaxAmount ?? ("" as const),
       };
     }),
   );
@@ -81,7 +93,15 @@ export function buildSalesExportRows(receipts: PosReceipt[]) {
     Нэгж: row.unit,
     "Зарагдсан тоо хэмжээ": row.quantity,
     "Баримтын тоо": row.receiptCount,
+    "Дундаж авсан үнэ": row.unitCost ?? ("" as const),
+    "Дундаж зарсан үнэ": row.sellingPrice ?? ("" as const),
+    "Нийт өртөг": row.cost ?? ("" as const),
+    Хөнгөлөлт: row.discount,
     "Борлуулалтын дүн": row.amount,
+    "Барааны ашиг": row.profit ?? ("" as const),
+    "Ашгийн хувь (%)": row.margin ?? ("" as const),
+    "Өртгийн нэмэгдэл (%)": row.markup ?? ("" as const),
+    "Өртөг дутуу борлуулалтын мөр": row.missingCostCount,
   }));
   const sales = completed.map((receipt) => ({
     ...context(receipt),

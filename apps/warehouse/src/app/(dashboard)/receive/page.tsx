@@ -1,48 +1,33 @@
 "use client";
+import { useWarehouseReceiptDraft } from "@/features/receive/useWarehouseReceiptDraft";
+import { classifyReceiptSearch } from "@/features/receive/receipt-product-search";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import NextImage from "next/image";
 import {
-  Search,
   Loader2,
   ChevronDown,
-  Plus,
-  Minus,
-  Trash2,
   PackageCheck,
   Check,
   X,
   Upload,
   Image as ImageIcon,
-  FileSpreadsheet,
   FilePlus2,
   History,
-  Paperclip,
 } from "lucide-react";
 import SkuGenerator from "@/components/SkuGenerator";
 import { ExcelImportModal } from "@/components/ExcelImportModal";
 import { API, wmsFetch } from "@/lib/api";
 import { WarehouseCategoryPicker } from "@/features/categories";
-import {
-  WarehouseVendorProductResults,
-  type WarehouseVendorProduct,
-} from "@/features/receive/WarehouseVendorProductResults";
+import { type WarehouseVendorProduct } from "@/features/receive/WarehouseVendorProductResults";
 import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 import { WarehouseGoodsReceiptHistory } from "@/features/receive/WarehouseGoodsReceiptHistory";
 
-type Product = WarehouseVendorProduct;
+import type { ReceiveItem } from "@/features/receive/receipt-types";
+import { WarehouseReceiptWizard } from "@/features/receive/WarehouseReceiptWizard";
+import { WarehouseReceiptProducts } from "@/features/receive/WarehouseReceiptProducts";
 
-type ReceiveItem = {
-  productId: string;
-  name: string;
-  sku: string | null;
-  quantity: number;
-  cost: number;
-  batchNumber: string;
-  expiryDate: string;
-  location: string;
-  isNew?: boolean;
-};
+type Product = WarehouseVendorProduct;
 
 // ───── New Product Form State ─────
 type NewProductForm = {
@@ -88,6 +73,8 @@ export default function ReceivePage() {
   const [productSearch, setProductSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [searchAttempt, setSearchAttempt] = useState(0);
   const [items, setItems] = useState<ReceiveItem[]>([]);
   const [supplier, setSupplier] = useState("");
   const [supplierRegisterNumber, setSupplierRegisterNumber] = useState("");
@@ -100,11 +87,60 @@ export default function ReceivePage() {
   const [savedReceiptNumber, setSavedReceiptNumber] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [activeView, setActiveView] = useState<"create" | "history">("create");
+  const [activeView, setActiveView] = useState<"create" | "history">("history");
+  const [hasStartedReceipt, setHasStartedReceipt] = useState(false);
   const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
   const [receiptFiles, setReceiptFiles] = useState<File[]>([]);
   const [pendingReceiptId, setPendingReceiptId] = useState<string | null>(null);
-  const receiptFileInputRef = useRef<HTMLInputElement>(null);
+
+  const [receiptStep, setReceiptStep] = useState<0 | 1 | 2>(0);
+  const receiptDraft = useMemo(
+    () => ({
+      items,
+      supplier,
+      supplierRegisterNumber,
+      supplierDocumentNumber,
+      documentDate,
+      note,
+      productSearch,
+      receiptFiles,
+      pendingReceiptId,
+      hasStartedReceipt,
+      step: receiptStep,
+    }),
+    [
+      items,
+      supplier,
+      supplierRegisterNumber,
+      supplierDocumentNumber,
+      documentDate,
+      note,
+      productSearch,
+      receiptFiles,
+      pendingReceiptId,
+      hasStartedReceipt,
+      receiptStep,
+    ],
+  );
+  const { status: draftStatus, restoring: restoringDraft } =
+    useWarehouseReceiptDraft(selectedWarehouseId, receiptDraft, (draft) => {
+      setItems(draft?.items ?? []);
+      setSupplier(draft?.supplier ?? "");
+      setSupplierRegisterNumber(draft?.supplierRegisterNumber ?? "");
+      setSupplierDocumentNumber(draft?.supplierDocumentNumber ?? "");
+      setDocumentDate(
+        draft?.documentDate ?? new Date().toISOString().slice(0, 10),
+      );
+      setNote(draft?.note ?? "");
+      setProductSearch(draft?.productSearch ?? "");
+      setReceiptFiles(draft?.receiptFiles ?? []);
+      setPendingReceiptId(draft?.pendingReceiptId ?? null);
+      setHasStartedReceipt(draft?.hasStartedReceipt ?? false);
+      setReceiptStep(draft?.step ?? 0);
+      setActiveView(draft ? "create" : "history");
+      setSaved(false);
+      setSubmitError("");
+    });
 
   // Organization name for SKU generator
   const [organizationName, setOrganizationName] = useState("");
@@ -123,6 +159,8 @@ export default function ReceivePage() {
   // Excel import modal
   const [showImportModal, setShowImportModal] = useState(false);
 
+  const searchWarehouseId = selectedWarehouse?.id || "";
+
   // Resolve the organization name for SKU generation from the active scope.
   useEffect(() => {
     const user = JSON.parse(localStorage.getItem("wms_user") || "{}") as {
@@ -131,37 +169,55 @@ export default function ReceivePage() {
     setOrganizationName(
       user.organizationName ||
         selectedWarehouse?.organizations?.[0]?.name ||
+        selectedWarehouse?.name ||
         "",
     );
   }, [selectedWarehouse]);
 
-  // Product search with debounce
   useEffect(() => {
-    if (!productSearch || productSearch.length < 2) {
-      setSearchResults([]);
+    const controller = new AbortController();
+    setSearchResults([]);
+    setSearchError("");
+    if (productSearch.trim().length < 2 || !searchWarehouseId) {
+      setSearching(false);
       return;
     }
+    setSearching(true);
     const timer = setTimeout(async () => {
-      setSearching(true);
       try {
         const res = await wmsFetch(
-          `${API}/products?search=${encodeURIComponent(productSearch)}&limit=10`,
+          `${API}/warehouses/${encodeURIComponent(searchWarehouseId)}/products?search=${encodeURIComponent(productSearch.trim())}&limit=10`,
+          {
+            signal: AbortSignal.any([
+              controller.signal,
+              AbortSignal.timeout(15_000),
+            ]),
+          },
         );
-        if (res.ok) {
-          const data = await res.json();
-          const products = Array.isArray(data)
-            ? data
-            : data.products || data.data || [];
-          setSearchResults(products);
+        if (!res.ok)
+          throw new Error("Бараа хайхад алдаа гарлаа. Дахин хайна уу.");
+        const data = await res.json();
+        if (!controller.signal.aborted) {
+          setSearchResults(
+            Array.isArray(data) ? data : data.products || data.data || [],
+          );
         }
-      } catch {
-        /* ignore */
+      } catch (error) {
+        if (!controller.signal.aborted)
+          setSearchError(
+            error instanceof Error
+              ? error.message
+              : "Бараа хайхад алдаа гарлаа.",
+          );
       } finally {
-        setSearching(false);
+        if (!controller.signal.aborted) setSearching(false);
       }
     }, 300);
-    return () => clearTimeout(timer);
-  }, [productSearch]);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [productSearch, searchWarehouseId, searchAttempt]);
 
   const addItem = (product: Product) => {
     if (items.find((i) => i.productId === product.id)) return;
@@ -171,6 +227,9 @@ export default function ReceivePage() {
         productId: product.id,
         name: product.name,
         sku: product.sku,
+        unit: product.unit || "pcs",
+        barcode: product.barcode,
+        barcodeAliases: product.barcodeAliases || [],
         quantity: 1,
         cost: Number(product.price) || 0,
         batchNumber: "",
@@ -183,7 +242,7 @@ export default function ReceivePage() {
   };
 
   const updateQuantity = (productId: string, qty: number) => {
-    if (qty < 1) return;
+    if (!Number.isInteger(qty) || qty < 1 || qty > 1000000) return;
     setItems(
       items.map((i) =>
         i.productId === productId ? { ...i, quantity: qty } : i,
@@ -348,6 +407,80 @@ export default function ReceivePage() {
       let receiptId = pendingReceiptId;
       let receiptNumber = "";
       if (!receiptId) {
+        const resolvedItems = [...items];
+        for (const item of resolvedItems) {
+          if (
+            item.draftProduct &&
+            (!item.name.trim() ||
+              (item.unit !== undefined && !item.unit.trim()) ||
+              !item.draftProduct.price.trim() ||
+              !Number.isFinite(Number(item.draftProduct.price)) ||
+              Number(item.draftProduct.price) < 0 ||
+              Number(item.draftProduct.price) > 1000000000)
+          ) {
+            throw new Error(
+              "Шинэ барааны нэр, нэгж болон зарах үнийг зөв бөглөнө үү.",
+            );
+          }
+        }
+        for (let index = 0; index < resolvedItems.length; index++) {
+          const item = resolvedItems[index];
+          if (!item.draftProduct) continue;
+          const response = await wmsFetch(
+            `${API}/warehouses/${encodeURIComponent(selectedWarehouseId)}/products`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                name: item.name.trim(),
+                sku: item.sku || `WH-${item.productId.slice(6)}`,
+                barcode: item.draftProduct.barcode || null,
+                masterProductId: item.draftProduct.masterProductId,
+                description: item.draftProduct.description,
+                businessCategoryId: item.draftProduct.businessCategoryId,
+                images: item.draftProduct.imageUrl
+                  ? [item.draftProduct.imageUrl]
+                  : [],
+                price: Number(item.draftProduct.price),
+                costPrice: item.cost,
+                quantity: 0,
+                unit: item.unit?.trim() || "pcs",
+              }),
+            },
+          );
+          const product = (await response.json()) as {
+            id: string;
+            sku: string;
+            message?: string;
+          };
+          if (!response.ok)
+            throw new Error(product.message || "Шинэ бараа хадгалагдсангүй.");
+          const resolved = {
+            ...item,
+            productId: product.id,
+            sku: product.sku,
+            draftProduct: undefined,
+          };
+          resolvedItems[index] = resolved;
+          setItems((current) =>
+            current.map((entry) =>
+              entry.productId === item.productId ? resolved : entry,
+            ),
+          );
+        }
+        for (const item of resolvedItems) {
+          if (!item.barcodeAliases?.length) continue;
+          const response = await wmsFetch(
+            `${API}/warehouses/${encodeURIComponent(selectedWarehouseId)}/products/${encodeURIComponent(item.productId)}/barcodes`,
+            {
+              method: "POST",
+              body: JSON.stringify({ barcodes: item.barcodeAliases }),
+            },
+          );
+          if (!response.ok) {
+            const failure = (await response.json()) as { message?: string };
+            throw new Error(failure.message || "Нэмэлт баркод хадгалагдсангүй");
+          }
+        }
         const response = await wmsFetch(`${API}/warehouse-goods-receipts`, {
           method: "POST",
           body: JSON.stringify({
@@ -358,7 +491,7 @@ export default function ReceivePage() {
             documentDate,
             note: note.trim() || null,
             confirm: false,
-            items: items.map((item) => ({
+            items: resolvedItems.map((item) => ({
               productId: item.productId,
               quantity: item.quantity,
               unitCost: item.cost,
@@ -398,12 +531,15 @@ export default function ReceivePage() {
       if (!confirmResponse.ok)
         throw new Error(result?.message || "Орлогын падаан баталгаажсангүй");
 
+      setActiveView("history");
       setSaved(true);
       setSavedReceiptNumber(result.receiptNumber || receiptNumber);
       setHistoryRefreshKey((current) => current + 1);
       setPendingReceiptId(null);
       setReceiptFiles([]);
       setItems([]);
+      setHasStartedReceipt(false);
+      setReceiptStep(0);
       setSupplier("");
       setSupplierRegisterNumber("");
       setSupplierDocumentNumber("");
@@ -419,12 +555,13 @@ export default function ReceivePage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-slate-500">
-            Агуулахд бараа нэмэх болон нөөц нэмэгдүүлэх
+            Нийлүүлэгч, баримтын мэдээлэл, бараагаа дарааллаар нь оруулаад
+            хүлээн авна.
           </p>
         </div>
         {saved && (
@@ -438,7 +575,11 @@ export default function ReceivePage() {
       <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1">
         <button
           type="button"
-          onClick={() => setActiveView("create")}
+          disabled={!selectedWarehouseId || saving || restoringDraft}
+          onClick={() => {
+            setHasStartedReceipt(true);
+            setActiveView("create");
+          }}
           className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition ${
             activeView === "create"
               ? "bg-blue-600 text-white shadow-sm"
@@ -446,7 +587,7 @@ export default function ReceivePage() {
           }`}
         >
           <FilePlus2 className="h-4 w-4" />
-          Шинэ падаан
+          Бараа хүлээн авах
         </button>
         <button
           type="button"
@@ -469,382 +610,173 @@ export default function ReceivePage() {
         />
       )}
 
-      {/* Form */}
-      <div
-        className={`grid gap-6 lg:grid-cols-3 ${
-          activeView === "history" ? "hidden" : ""
-        }`}
-      >
-        <div className="space-y-6 lg:col-span-2">
-          {/* Warehouse + Supplier */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-slate-900">
-              <div className="h-1 w-1 rounded-full bg-blue-600" />
-              Ерөнхий мэдээлэл
-            </h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Агуулах
-                </label>
-                <div className="flex h-11 items-center rounded-lg border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-800">
-                  {selectedWarehouse?.name || "Агуулах сонгогдоогүй"}
-                </div>
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Нийлүүлэгч
-                </label>
-                <input
-                  value={supplier}
-                  onChange={(e) => setSupplier(e.target.value)}
-                  placeholder="Нийлүүлэгчийн нэр"
-                  className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Нийлүүлэгчийн регистр
-                </label>
-                <input
-                  value={supplierRegisterNumber}
-                  onChange={(event) =>
-                    setSupplierRegisterNumber(event.target.value)
-                  }
-                  placeholder="Регистр (заавал биш)"
-                  className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Нийлүүлэгчийн падааны дугаар
-                </label>
-                <input
-                  value={supplierDocumentNumber}
-                  onChange={(event) =>
-                    setSupplierDocumentNumber(event.target.value)
-                  }
-                  placeholder="Жишээ: INV-2026-001"
-                  className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  Падааны огноо
-                </label>
-                <input
-                  type="date"
-                  value={documentDate}
-                  onChange={(event) => setDocumentDate(event.target.value)}
-                  className="h-11 w-full rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Product search + list */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">
-                <div className="h-1 w-1 rounded-full bg-blue-600" />
-                Бараа нэмэх
-              </h2>
-              <button
-                onClick={() => {
-                  setProductForm({ ...emptyProductForm });
+      {draftStatus && (
+        <p
+          role="status"
+          className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-800"
+        >
+          {draftStatus}
+        </p>
+      )}
+      {restoringDraft && (
+        <p role="status" className="p-4 text-sm text-slate-500">
+          Ноорог сэргээж байна…
+        </p>
+      )}
+      {hasStartedReceipt && !restoringDraft && (
+        <div hidden={activeView !== "create"}>
+          <WarehouseReceiptWizard
+            key={`${selectedWarehouseId}:${historyRefreshKey}`}
+            step={receiptStep}
+            onStepChange={setReceiptStep}
+            source={{
+              warehouseName: selectedWarehouse?.name,
+              supplier,
+              onSupplierChange: setSupplier,
+              registerNumber: supplierRegisterNumber,
+              onRegisterNumberChange: setSupplierRegisterNumber,
+              documentNumber: supplierDocumentNumber,
+              onDocumentNumberChange: setSupplierDocumentNumber,
+              documentDate,
+              onDocumentDateChange: setDocumentDate,
+              note,
+              onNoteChange: setNote,
+              files: receiptFiles,
+              onFilesChange: setReceiptFiles,
+            }}
+            warehouseId={selectedWarehouseId}
+            submitting={saving}
+            locked={Boolean(pendingReceiptId)}
+            lineCount={items.length}
+            totalQuantity={totalQuantity}
+            totalCost={totalCost}
+            error={submitError}
+            onSubmit={() => void handleSubmit()}
+            products={
+              <WarehouseReceiptProducts
+                key={selectedWarehouseId}
+                productSearch={productSearch}
+                setProductSearch={setProductSearch}
+                searchResults={searchResults}
+                searching={searching}
+                searchError={searchError}
+                onRetrySearch={() => setSearchAttempt((attempt) => attempt + 1)}
+                items={items}
+                onAddBarcode={(id, barcode) =>
+                  setItems((current) =>
+                    current.map((item) =>
+                      item.productId === id
+                        ? {
+                            ...item,
+                            barcodeAliases: [
+                              ...new Set([
+                                ...(item.barcodeAliases || []),
+                                barcode,
+                              ]),
+                            ],
+                          }
+                        : item,
+                    ),
+                  )
+                }
+                onDraftProduct={(query, master) => {
+                  const kind = classifyReceiptSearch(query);
+                  setItems((current) =>
+                    master &&
+                    current.some(
+                      (item) =>
+                        item.draftProduct?.masterProductId === master.id,
+                    )
+                      ? current
+                      : [
+                          ...current,
+                          {
+                            productId: `draft:${crypto.randomUUID()}`,
+                            name:
+                              master?.canonicalName ||
+                              (kind === "name" ? query : ""),
+                            sku:
+                              master?.suggestedSku ||
+                              (kind === "sku" ? query : null),
+                            unit: master?.unit || "pcs",
+                            quantity: 1,
+                            cost: 0,
+                            batchNumber: "",
+                            expiryDate: "",
+                            location: "",
+                            draftProduct: {
+                              barcode:
+                                master?.barcode ||
+                                (kind === "barcode" ? query : ""),
+                              price:
+                                master?.suggestedPrice != null
+                                  ? String(master.suggestedPrice)
+                                  : "",
+                              masterProductId: master?.id,
+                              description: master?.description,
+                              businessCategoryId: master?.businessCategoryId,
+                              imageUrl: master?.imageUrl,
+                            },
+                          },
+                        ],
+                  );
+                  setProductSearch("");
+                  setSearchResults([]);
+                }}
+                onDraftChange={(id, field, value) =>
+                  setItems((current) =>
+                    current.map((item) =>
+                      item.productId !== id
+                        ? item
+                        : field === "autoCode"
+                          ? {
+                              ...item,
+                              sku: value,
+                              draftProduct: item.draftProduct
+                                ? { ...item.draftProduct, barcode: value }
+                                : undefined,
+                            }
+                          : field === "barcode"
+                            ? {
+                                ...item,
+                                draftProduct: item.draftProduct
+                                  ? { ...item.draftProduct, barcode: value }
+                                  : undefined,
+                              }
+                            : field === "unit"
+                              ? { ...item, unit: value }
+                              : field === "name"
+                                ? { ...item, name: value }
+                                : {
+                                    ...item,
+                                    draftProduct: item.draftProduct
+                                      ? { ...item.draftProduct, price: value }
+                                      : undefined,
+                                  },
+                    ),
+                  )
+                }
+                selectedProductIds={selectedProductIds}
+                warehouseId={selectedWarehouseId}
+                organizationName={organizationName}
+                addItem={addItem}
+                updateQuantity={updateQuantity}
+                updateCost={updateCost}
+                updateItemMetadata={updateItemMetadata}
+                removeItem={removeItem}
+                onCreateProduct={(draft) => {
+                  setProductForm({
+                    ...emptyProductForm,
+                    ...draft,
+                  });
                   setShowNewProduct(true);
                 }}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-blue-700"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Шинэ бараа үүсгэх
-              </button>
-              <button
-                onClick={() => setShowImportModal(true)}
-                disabled={!selectedWarehouseId}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
-              >
-                <FileSpreadsheet className="h-3.5 w-3.5" />
-                Excel импорт
-              </button>
-            </div>
-
-            {/* Search */}
-            <div className="relative mb-4">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={productSearch}
-                onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="Бараа хайх (нэр, SKU, баркод)..."
-                className="h-11 w-full rounded-lg border border-slate-300 bg-slate-50 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                onImport={() => setShowImportModal(true)}
               />
-              {searching && (
-                <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-blue-500" />
-              )}
-
-              {/* Search dropdown */}
-              {searchResults.length > 0 && (
-                <WarehouseVendorProductResults
-                  products={searchResults}
-                  selectedIds={selectedProductIds}
-                  onSelect={addItem}
-                />
-              )}
-            </div>
-
-            {/* Item list */}
-            {items.length === 0 ? (
-              <div className="rounded-lg border border-dashed border-slate-200 px-4 py-10 text-center">
-                <PackageCheck className="mx-auto h-8 w-8 text-slate-300" />
-                <p className="mt-2 text-sm text-slate-400">
-                  Дээрх хайлтаар бараа нэмэх эсвэл &quot;Шинэ бараа үүсгэх&quot;
-                  товч дарна уу
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {/* Header */}
-                <div className="grid grid-cols-12 gap-2 px-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
-                  <div className="col-span-5">Бараа</div>
-                  <div className="col-span-3 text-center">Тоо ширхэг</div>
-                  <div className="col-span-3 text-right">Нэгжийн өртөг</div>
-                  <div className="col-span-1" />
-                </div>
-
-                {items.map((item) => (
-                  <div
-                    key={item.productId}
-                    className={`grid grid-cols-12 items-center gap-2 rounded-lg border px-3 py-2.5 ${
-                      item.isNew
-                        ? "border-emerald-200 bg-emerald-50/50"
-                        : "border-slate-100 bg-slate-50/50"
-                    }`}
-                  >
-                    <div className="col-span-5">
-                      <p className="text-sm font-medium text-slate-900">
-                        {item.name}
-                        {item.isNew && (
-                          <span className="ml-2 inline-flex items-center rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
-                            ШИНЭ
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        {item.sku || "—"}
-                      </p>
-                    </div>
-
-                    <div className="col-span-3 flex items-center justify-center gap-1">
-                      <button
-                        onClick={() =>
-                          updateQuantity(item.productId, item.quantity - 1)
-                        }
-                        className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-                      >
-                        <Minus className="h-3 w-3" />
-                      </button>
-                      <input
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) =>
-                          updateQuantity(
-                            item.productId,
-                            parseInt(e.target.value) || 1,
-                          )
-                        }
-                        className="h-8 w-16 rounded border border-slate-200 text-center text-sm font-semibold outline-none focus:border-blue-300 disabled:bg-slate-100"
-                      />
-                      <button
-                        onClick={() =>
-                          updateQuantity(item.productId, item.quantity + 1)
-                        }
-                        className="flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-500 hover:bg-slate-50 disabled:opacity-40"
-                      >
-                        <Plus className="h-3 w-3" />
-                      </button>
-                    </div>
-
-                    <div className="col-span-3">
-                      <input
-                        type="number"
-                        value={item.cost}
-                        onChange={(e) =>
-                          updateCost(
-                            item.productId,
-                            parseFloat(e.target.value) || 0,
-                          )
-                        }
-                        className="h-8 w-full rounded border border-slate-200 px-2 text-right text-sm outline-none focus:border-blue-300 disabled:bg-slate-100"
-                      />
-                    </div>
-
-                    <div className="col-span-1 text-right">
-                      <button
-                        onClick={() => removeItem(item.productId)}
-                        className="text-slate-300 hover:text-red-500"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="col-span-4">
-                      <input
-                        value={item.batchNumber}
-                        onChange={(event) =>
-                          updateItemMetadata(
-                            item.productId,
-                            "batchNumber",
-                            event.target.value,
-                          )
-                        }
-                        placeholder="Batch / lot дугаар"
-                        className="h-8 w-full rounded border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300"
-                      />
-                    </div>
-                    <div className="col-span-4">
-                      <input
-                        type="date"
-                        value={item.expiryDate}
-                        onChange={(event) =>
-                          updateItemMetadata(
-                            item.productId,
-                            "expiryDate",
-                            event.target.value,
-                          )
-                        }
-                        aria-label={`${item.name} дуусах хугацаа`}
-                        className="h-8 w-full rounded border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300"
-                      />
-                    </div>
-                    <div className="col-span-4">
-                      <input
-                        value={item.location}
-                        onChange={(event) =>
-                          updateItemMetadata(
-                            item.productId,
-                            "location",
-                            event.target.value,
-                          )
-                        }
-                        placeholder="Байршил"
-                        className="h-8 w-full rounded border border-slate-200 bg-white px-2 text-xs outline-none focus:border-blue-300"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Note */}
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Тэмдэглэл
-            </label>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Нэмэлт тайлбар (заавал биш)..."
-              rows={2}
-              className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-            />
-            <div className="mt-4 border-t border-slate-100 pt-4">
-              <input
-                ref={receiptFileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp,application/pdf"
-                multiple
-                className="hidden"
-                onChange={(event) => {
-                  const selected = Array.from(event.target.files || []).slice(
-                    0,
-                    5,
-                  );
-                  setReceiptFiles(selected);
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => receiptFileInputRef.current?.click()}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                <Paperclip className="h-4 w-4" />
-                Падааны зураг/PDF хавсаргах
-              </button>
-              {receiptFiles.length > 0 && (
-                <ul className="mt-2 space-y-1 text-xs text-slate-500">
-                  {receiptFiles.map((file) => (
-                    <li key={`${file.name}-${file.lastModified}`}>
-                      {file.name} · {(file.size / 1024 / 1024).toFixed(1)} MB
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <p className="mt-1 text-xs text-slate-400">
-                JPG, PNG, WebP, PDF · файл тус бүр 10 MB · хамгийн ихдээ 5
-              </p>
-            </div>
-          </div>
+            }
+          />
         </div>
-
-        {/* Summary sidebar */}
-        <div className="space-y-4">
-          <div className="sticky top-24 rounded-xl border border-slate-200 bg-white p-5">
-            <h3 className="mb-4 text-sm font-bold text-slate-900">
-              Хүлээн авалтын дүн
-            </h3>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Барааны төрөл</span>
-                <span className="font-semibold text-slate-900">
-                  {items.length}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500">Нийт тоо ширхэг</span>
-                <span className="font-semibold text-slate-900">
-                  {totalQuantity.toLocaleString()}
-                </span>
-              </div>
-              <div className="border-t border-slate-100 pt-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-slate-700">
-                    Нийт өртөг
-                  </span>
-                  <span className="text-lg font-black text-slate-900">
-                    {totalCost.toLocaleString()}₮
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <button
-              onClick={handleSubmit}
-              disabled={
-                saving ||
-                items.length === 0 ||
-                !selectedWarehouseId ||
-                !supplier.trim()
-              }
-              className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-blue-600 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-            >
-              {saving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <>
-                  <PackageCheck className="h-4 w-4" />
-                  Орлого баталгаажуулах
-                </>
-              )}
-            </button>
-            {submitError && (
-              <p role="alert" className="mt-3 text-sm text-red-600">
-                {submitError}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
+      )}
 
       {/* ═══════ New Product Modal ═══════ */}
       {showNewProduct && (

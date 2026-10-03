@@ -5,3 +5,5 @@ export * from "./organisms";
 export * from "./templates";
 export * from "./lib";
 export * from "./constants";
+
+export * from "./organisms/goods-receipt";

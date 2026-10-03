@@ -73,6 +73,7 @@ afterEach(() => {
   mock.restoreAll();
 });
 beforeEach(() => {
+  stub(prisma.organization, "findUnique", async () => ({ businessPosEnabled: true }));
   stub(prisma.user, "findUnique", async () => ({
     id: "owner",
     role: "USER",
@@ -384,4 +385,13 @@ test("once a register is free the next cashier can open a fresh shift", async ()
       .cashierId,
     "owner",
   );
+});
+
+
+test("App Control disables POS for an owner with an existing session", async () => {
+  stub(prisma.organization, "findUnique", async () => ({ businessPosEnabled: false }));
+  const response = await fetch(`${base}/register-current?registerId=register`, { headers });
+  assert.equal(response.status, 403);
+  const payload = await response.json() as { message: string };
+  assert.match(payload.message, /App Control/);
 });

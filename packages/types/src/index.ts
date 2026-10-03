@@ -30,3 +30,5 @@ export * from "./responses/product.response";
 export * from "./responses/product-image.response";
 
 export * from "./domain/cash-payment";
+
+export * from "./domain/business-apps";

@@ -23,6 +23,7 @@ import {
   MapPinned,
 } from "lucide-react";
 import { AdminSidebar, type NavItem } from "@mgl/ui";
+import { AdminMenuSearch } from "@/components/organisms/navigation/AdminMenuSearch";
 import { MobileDashboard } from "@/components/organisms/MobileDashboard";
 import { AccountSwitcher } from "@/components/organisms/AccountSwitcher";
 import { AdminAuthProvider, useAdminAuth } from "@/lib/admin-auth";
@@ -225,6 +226,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
 
         {/* Page content */}
         <div className="flex min-w-0 flex-1 flex-col">
+          <AdminMenuSearch navItems={filteredNavItems} />
           <main className="flex-1 w-full px-4 pt-2 pb-6 md:px-8 md:pt-6 md:pb-10">
             <div className="mx-auto w-full max-w-7xl">{children}</div>
           </main>

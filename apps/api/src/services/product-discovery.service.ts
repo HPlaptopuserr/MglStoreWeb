@@ -15,6 +15,7 @@ export function buildProductSearchWhere(search: string) {
     { description: { contains: phrase, mode: "insensitive" as const } },
     { sku: { contains: phrase, mode: "insensitive" as const } },
     { barcode: { contains: phrase, mode: "insensitive" as const } },
+    { barcodeAliases: { has: phrase } },
     { classificationCode: { contains: phrase, mode: "insensitive" as const } },
     { taxProductCode: { contains: phrase, mode: "insensitive" as const } },
     {

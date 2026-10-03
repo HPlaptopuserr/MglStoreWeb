@@ -1,11 +1,19 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useId, useMemo, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import type { PosReceipt } from "@mgl/types";
 import { summarizeSoldProducts } from "../pos/utils/sold-product-summary";
 import { SoldProductSalesDetails } from "./SoldProductSalesDetails";
-import { formatReportMoney, formatReportQuantity } from "./sales-report-format";
+import {
+  formatHistoricalCost,
+  formatReportPercent,
+  formatReportMoney,
+  formatReportQuantity,
+} from "./sales-report-format";
+
+import { ReportPagination } from "./pagination/ReportPagination";
+import { useReportPagination } from "./pagination/useReportPagination";
 
 export function SoldProductSummaryList({
   receipts,
@@ -13,45 +21,28 @@ export function SoldProductSummaryList({
   receipts: PosReceipt[];
 }) {
   const rows = useMemo(() => summarizeSoldProducts(receipts), [receipts]);
+  const { anchorRef, ...pagination } = useReportPagination(rows);
+  const listId = useId();
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
-  const totals = useMemo(() => {
-    const quantities = new Map<string, number>();
-    for (const row of rows)
-      quantities.set(row.unit, (quantities.get(row.unit) || 0) + row.quantity);
-    return {
-      count: new Set(rows.map((row) => row.productId)).size,
-      amount: rows.reduce((sum, row) => sum + row.amount, 0),
-      quantity: [...quantities]
-        .map(([unit, quantity]) => `${formatReportQuantity(quantity)} ${unit}`)
-        .join(" · "),
-    };
-  }, [rows]);
   if (!rows.length)
     return (
-      <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
-        Сонгосон шүүлтүүрт зарагдсан бараа байхгүй байна.
-      </p>
+      <div className="space-y-4">
+        <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm text-slate-500">
+          Сонгосон шүүлтүүрт зарагдсан бараа байхгүй байна.
+        </p>
+      </div>
     );
   return (
-    <div className="space-y-4">
-      <dl className="grid gap-3 sm:grid-cols-3">
-        {[
-          ["Зарагдсан барааны төрөл", `${totals.count}`],
-          ["Нийт зарагдсан хэмжээ", totals.quantity],
-          ["Барааны нийт борлуулалт", formatReportMoney(totals.amount)],
-        ].map(([label, value]) => (
-          <div
-            key={label}
-            className="rounded-xl border border-blue-100 bg-blue-50/40 p-4"
-          >
-            <dt className="text-xs text-slate-500">{label}</dt>
-            <dd className="mt-1 text-lg font-bold text-slate-900">{value}</dd>
-          </div>
-        ))}
-      </dl>
+    <div
+      ref={anchorRef}
+      tabIndex={-1}
+      aria-label="Бараагаар нэгтгэсэн тайлан"
+      className="scroll-mt-[var(--report-scroll-offset,5rem)] space-y-4 outline-none"
+    >
       <p className="text-xs text-slate-500">
         Их зарагдсан хэмжээгээр эрэмбэлсэн. Барааны нэр дээр дарж борлуулалт
-        бүрийг харна уу.
+        бүрийн үнэ, өртөг, ашгийг харна уу. Нэгтгэлийн үнэ нь тоо хэмжээгээр
+        жигнэсэн дундаж.
       </p>
       <div className="overflow-x-auto rounded-xl border border-slate-200">
         <table className="w-full text-left text-sm">
@@ -64,7 +55,13 @@ export function SoldProductSummaryList({
                 "Бараа",
                 "Нийт зарагдсан",
                 "Баримтын тоо",
+                "Дундаж авсан үнэ",
+                "Дундаж зарсан үнэ",
+                "Нийт өртөг",
                 "Борлуулалтын дүн",
+                "Барааны ашиг",
+                "Ашгийн хувь",
+                "Өртгийн нэмэгдэл",
               ].map((title) => (
                 <th key={title} scope="col" className="px-4 py-3 font-semibold">
                   {title}
@@ -73,9 +70,9 @@ export function SoldProductSummaryList({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((row, index) => {
+            {pagination.rows.map((row, index) => {
               const expanded = row.key === expandedKey;
-              const detailsId = `product-sales-${index}`;
+              const detailsId = `${listId}-product-sales-${pagination.start + index}`;
               return (
                 <Fragment key={row.key}>
                   <tr
@@ -118,13 +115,35 @@ export function SoldProductSummaryList({
                     <td className="px-4 py-4 tabular-nums">
                       {row.receiptCount}
                     </td>
+                    <td className="whitespace-nowrap px-4 py-4 tabular-nums">
+                      {formatHistoricalCost(row.unitCost)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4 tabular-nums">
+                      {row.sellingPrice == null
+                        ? "—"
+                        : formatReportMoney(row.sellingPrice)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4 tabular-nums">
+                      {formatHistoricalCost(row.cost)}
+                    </td>
                     <td className="whitespace-nowrap px-4 py-4 font-bold tabular-nums">
                       {formatReportMoney(row.amount)}
+                    </td>
+                    <td
+                      className={`whitespace-nowrap px-4 py-4 font-bold tabular-nums ${row.profit != null && row.profit < 0 ? "text-rose-700" : "text-emerald-700"}`}
+                    >
+                      {formatHistoricalCost(row.profit)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4 tabular-nums">
+                      {formatReportPercent(row.margin)}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4 tabular-nums">
+                      {formatReportPercent(row.markup)}
                     </td>
                   </tr>
                   {expanded && (
                     <tr>
-                      <td colSpan={4} id={detailsId} className="bg-slate-50">
+                      <td colSpan={10} id={detailsId} className="bg-slate-50">
                         <SoldProductSalesDetails
                           sales={row.sales}
                           unit={row.unit}
@@ -138,6 +157,21 @@ export function SoldProductSummaryList({
           </tbody>
         </table>
       </div>
+      <ReportPagination
+        {...pagination}
+        label="Бараагаар нэгтгэсэн тайлангийн хуудас"
+        onPageChange={(page) => {
+          setExpandedKey(null);
+          pagination.onPageChange(page);
+        }}
+        onPageSizeChange={(size) => {
+          setExpandedKey(null);
+          pagination.onPageSizeChange(size);
+        }}
+      />
+      <p className="text-xs text-slate-500">
+        Хураангуй болон Excel нь бүх шүүгдсэн барааг хамарна.
+      </p>
     </div>
   );
 }

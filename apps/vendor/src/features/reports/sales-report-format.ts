@@ -15,3 +15,10 @@ export const formatSaleDateTime = (value: string) =>
     second: "2-digit",
     hour12: false,
   }).format(new Date(value));
+
+export const formatReportPercent = (value: number | null) =>
+  value == null
+    ? "—"
+    : `${value.toLocaleString("mn-MN", { maximumFractionDigits: 2 })}%`;
+export const formatHistoricalCost = (value: number | null) =>
+  value == null ? "Мэдээлэл дутуу" : formatReportMoney(value);

@@ -194,6 +194,8 @@ type AuthOrgContext = {
   vendorId?: string | null;
   orgRole: string;
   organizationName?: string | null;
+  businessPosEnabled?: boolean;
+  businessSalesEnabled?: boolean;
   businessOrdersEnabled?: boolean;
   businessInventoryEnabled?: boolean;
   businessAttendanceEnabled?: boolean;
@@ -214,6 +216,8 @@ type AuthOrganizationSummary = {
   type: string | null;
   status: string | null;
   isVerified: boolean;
+  businessPosEnabled: boolean;
+  businessSalesEnabled: boolean;
   businessOrdersEnabled: boolean;
   businessInventoryEnabled: boolean;
   businessAttendanceEnabled: boolean;
@@ -247,6 +251,8 @@ async function listUserOrganizations(
           businessCategory: true,
           status: true,
           isVerified: true,
+          businessPosEnabled: true,
+          businessSalesEnabled: true,
           businessOrdersEnabled: true,
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
@@ -270,6 +276,8 @@ async function listUserOrganizations(
     businessCategory: membership.organization.businessCategory,
     status: membership.organization.status,
     isVerified: membership.organization.isVerified,
+    businessPosEnabled: membership.organization.businessPosEnabled,
+    businessSalesEnabled: membership.organization.businessSalesEnabled,
     businessOrdersEnabled: membership.organization.businessOrdersEnabled,
     businessInventoryEnabled: membership.organization.businessInventoryEnabled,
     businessAttendanceEnabled:
@@ -319,6 +327,8 @@ function toWebUserPayload(
     avatarUrl: user.profile?.avatarUrl || null,
     organizationId: orgInfo?.organizationId || null,
     organizationName: orgInfo?.organizationName || null,
+    businessPosEnabled: orgInfo?.businessPosEnabled ?? true,
+    businessSalesEnabled: orgInfo?.businessSalesEnabled ?? true,
     businessOrdersEnabled: orgInfo?.businessOrdersEnabled ?? true,
     businessInventoryEnabled: orgInfo?.businessInventoryEnabled ?? true,
     businessAttendanceEnabled: orgInfo?.businessAttendanceEnabled ?? true,
@@ -727,6 +737,8 @@ async function resolveVendorLoginMembership(userId: string) {
           name: true,
           type: true,
           businessCategory: true,
+          businessPosEnabled: true,
+          businessSalesEnabled: true,
           businessOrdersEnabled: true,
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
@@ -757,6 +769,8 @@ async function resolveVendorLoginMembership(userId: string) {
           name: true,
           type: true,
           businessCategory: true,
+          businessPosEnabled: true,
+          businessSalesEnabled: true,
           businessOrdersEnabled: true,
           businessInventoryEnabled: true,
           businessAttendanceEnabled: true,
@@ -784,6 +798,8 @@ async function resolveLoginOrganization(
           membership.organization?.type === "VENDOR"
             ? membership.organizationId
             : null,
+        businessPosEnabled: membership.organization?.businessPosEnabled ?? true,
+        businessSalesEnabled: membership.organization?.businessSalesEnabled ?? true,
         businessOrdersEnabled:
           membership.organization?.businessOrdersEnabled ?? true,
         businessInventoryEnabled:
@@ -823,6 +839,8 @@ async function resolveTokenOrganization(
             name: true,
             type: true,
             businessCategory: true,
+            businessPosEnabled: true,
+            businessSalesEnabled: true,
             businessOrdersEnabled: true,
             businessInventoryEnabled: true,
             businessAttendanceEnabled: true,
@@ -845,6 +863,8 @@ async function resolveTokenOrganization(
           membership.organization?.type === "VENDOR"
             ? membership.organizationId
             : null,
+        businessPosEnabled: membership.organization?.businessPosEnabled ?? true,
+        businessSalesEnabled: membership.organization?.businessSalesEnabled ?? true,
         businessOrdersEnabled:
           membership.organization?.businessOrdersEnabled ?? true,
         businessInventoryEnabled:
@@ -890,6 +910,8 @@ function toWebAuthResponse(
       organizationType: orgInfo?.organizationType || null,
       businessCategory: orgInfo?.businessCategory || null,
       vendorId: orgInfo?.vendorId || null,
+      businessPosEnabled: orgInfo?.businessPosEnabled ?? true,
+      businessSalesEnabled: orgInfo?.businessSalesEnabled ?? true,
       businessOrdersEnabled: orgInfo?.businessOrdersEnabled ?? true,
       businessInventoryEnabled: orgInfo?.businessInventoryEnabled ?? true,
       businessAttendanceEnabled: orgInfo?.businessAttendanceEnabled ?? true,
@@ -1544,6 +1566,8 @@ router.post("/login", loginAttemptLimiter, async (req, res) => {
         phone: user.profile?.phoneNumber || null,
         organizationId: orgInfo?.organizationId || null,
         organizationName: orgInfo?.organizationName || "",
+        businessPosEnabled: orgInfo?.businessPosEnabled ?? true,
+        businessSalesEnabled: orgInfo?.businessSalesEnabled ?? true,
         businessOrdersEnabled: orgInfo?.businessOrdersEnabled ?? true,
         businessInventoryEnabled: orgInfo?.businessInventoryEnabled ?? true,
         businessAttendanceEnabled: orgInfo?.businessAttendanceEnabled ?? true,

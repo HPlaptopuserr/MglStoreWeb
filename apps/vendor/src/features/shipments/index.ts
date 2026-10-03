@@ -1,2 +1,2 @@
-export { DeliveryLocationSelector } from "./DeliveryLocationSelector";
-export { StockPaymentQrSection } from "./StockPaymentQrSection";
+export { DeliveryLocationSelector } from "./components/DeliveryLocationSelector";
+export { StockPaymentQrSection } from "./components/StockPaymentQrSection";

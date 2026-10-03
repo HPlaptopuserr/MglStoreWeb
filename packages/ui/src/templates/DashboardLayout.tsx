@@ -49,10 +49,19 @@ export function DashboardLayout({
   const isVendorPosRoute =
     isVendor && (pathname === "/pos" || pathname.startsWith("/pos/"));
 
+  // Clip horizontal overflow without creating a scroll container: report
+  // controls must stick to the viewport while the document scrolls.
+  const reportOverflow =
+    isVendor && pathname === "/reports"
+      ? "overflow-x-clip"
+      : "overflow-x-hidden";
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   return (
-    <div className="flex min-h-dvh w-full overflow-x-hidden bg-slate-50 font-sans">
+    <div
+      className={`flex min-h-dvh w-full ${reportOverflow} bg-slate-50 font-sans`}
+    >
       {isAdmin && (
         <AdminSidebar
           {...sidebarProps}
@@ -90,7 +99,7 @@ export function DashboardLayout({
         )}
         <main
           data-scroll-lock-root
-          className={`min-w-0 overflow-x-hidden ${
+          className={`min-w-0 ${reportOverflow} ${
             isAdmin
               ? "px-4 pt-6 pb-10 sm:px-10 sm:pt-8"
               : isVendorPosRoute

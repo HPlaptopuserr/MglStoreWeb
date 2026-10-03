@@ -79,3 +79,14 @@ test("public catalog requires a usable name, price, and image", () => {
     false,
   );
 });
+
+test("warehouse-owned products have no public storefront", () => {
+  assert.equal(
+    hasPublicProductState({
+      isActive: true,
+      deletedAt: null,
+      organization: null,
+    }),
+    false,
+  );
+});

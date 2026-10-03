@@ -68,7 +68,7 @@ router.get("/marketing/meta/catalog.csv", async (req, res) => {
     "brand",
   ];
   const rows = products
-    .filter((product) => product.images[0]?.url)
+    .filter((product) => product.organization && product.images[0]?.url)
     .map((product) => [
       product.id,
       product.name,
@@ -80,7 +80,7 @@ router.get("/marketing/meta/catalog.csv", async (req, res) => {
       `${Number(product.price).toFixed(2)} MNT`,
       `${siteUrl}/products/${encodeURIComponent(product.id)}`,
       resolvePublicUrl(product.images[0].url, siteUrl),
-      product.organization.name,
+      product.organization?.name ?? "",
     ]);
 
   res.set({

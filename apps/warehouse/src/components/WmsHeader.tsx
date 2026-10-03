@@ -27,15 +27,17 @@ export default function WmsHeader({ userName, userInitials }: WmsHeaderProps) {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-6">
-      <div className="flex items-center gap-4">
-        <h1 className="text-lg font-bold text-slate-900">{title}</h1>
+      <div className="min-w-0 flex-1 pr-3">
+        <h1 className="truncate text-base font-bold text-slate-900 lg:text-lg">
+          {title}
+        </h1>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2 lg:gap-3">
         <WarehouseSwitcher />
 
         {/* Search */}
-        <div className="relative hidden md:block">
+        <div className="relative hidden xl:block">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"

@@ -3,7 +3,11 @@
 import { useMemo, useState } from "react";
 import type { SalesReportView } from "@/features/pos/utils/export-daily-sales";
 import { useSalesHistory } from "@/features/pos/hooks/useSalesHistory";
+import { SalesHistoryActions } from "@/features/pos/components/SalesHistoryActions";
 import { DailySalesExport } from "@/features/pos/components/DailySalesExport";
+import { summarizeSoldProducts } from "@/features/pos/utils/sold-product-summary";
+import { SalesFinancialSummary } from "./SalesFinancialSummary";
+import { SalesReportTopProducts } from "./SalesReportTopProducts";
 import { SoldProductSummaryList } from "./SoldProductSummaryList";
 import { SoldProductsList } from "@/features/pos/components/SoldProductsList";
 
@@ -27,9 +31,17 @@ export function SalesReportPanel({
     () => history.receipts.filter((receipt) => receipt.status === "COMPLETED"),
     [history.receipts],
   );
+  const summaries = useMemo(
+    () => summarizeSoldProducts(completed),
+    [completed],
+  );
   return (
-    <div className="mt-4 space-y-4" aria-busy={history.loading}>
+    <div
+      className="mt-4 space-y-4 [--report-scroll-offset:15rem] sm:[--report-scroll-offset:12rem]"
+      aria-busy={history.loading}
+    >
       <DailySalesExport
+        showActions={false}
         range={range}
         onRangeChange={onRangeChange}
         cashier={history.cashier}
@@ -43,6 +55,25 @@ export function SalesReportPanel({
         onViewChange={setView}
         onRefresh={history.refresh}
       />
+      {!history.loading && !history.error && completed.length > 0 && (
+        <SalesReportTopProducts receipts={completed} />
+      )}
+      {!history.loading && !history.error && completed.length > 0 && (
+        <SalesFinancialSummary rows={summaries} />
+      )}
+      <div className="sticky top-14 z-10 sm:top-16">
+        <SalesHistoryActions
+          range={range}
+          cashier={history.cashier}
+          employees={history.employees}
+          receipts={history.error ? [] : completed}
+          loading={history.loading}
+          demo={demo}
+          view={view}
+          onViewChange={setView}
+          onRefresh={history.refresh}
+        />
+      </div>
       {history.error ? (
         <p
           role="alert"
@@ -57,9 +88,7 @@ export function SalesReportPanel({
       ) : view === "summary" ? (
         <SoldProductSummaryList receipts={completed} />
       ) : (
-        <div className="flex max-h-[640px] flex-col overflow-hidden">
-          <SoldProductsList receipts={completed} />
-        </div>
+        <SoldProductsList receipts={completed} showSummary={false} />
       )}
     </div>
   );

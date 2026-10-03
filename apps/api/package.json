@@ -19,9 +19,12 @@
     "products:classify": "tsx src/scripts/classify-products.ts",
     "pos:sync-voided-restaurant-tickets": "tsx src/scripts/sync-voided-restaurant-tickets.ts",
     "test:pos-shift": "tsx --test src/routes/operations/pos/shift-accounting.test.ts",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "visual-search:index": "tsx src/scripts/build-visual-index.ts",
+    "visual-search:evaluate": "tsx src/scripts/evaluate-visual-search.ts"
   },
   "dependencies": {
+    "@huggingface/transformers": "3.8.1",
     "@mgl/database": "workspace:*",
     "@mgl/types": "workspace:*",
     "@supabase/supabase-js": "^2.103.0",

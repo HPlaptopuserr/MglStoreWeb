@@ -14,3 +14,20 @@ test("checklist alone enables saving without mutating another organization", () 
   assert.equal(companyB.checklist, false);
   assert.equal(hasFeatureDiff(companyB, DEFAULT_FEATURES), false);
 });
+
+test('catalog contains each persisted feature once including POS and sales', () => {
+  const keys = FEATURE_OPTIONS.map((feature) => feature.key);
+  assert.equal(new Set(keys).size, keys.length);
+  assert.deepEqual([...keys].sort(), Object.keys(DEFAULT_FEATURES).sort());
+  assert.ok(keys.includes('pos'));
+  assert.ok(keys.includes('sales'));
+});
+
+test('disabling POS or sales enables saving without mutating other modules', () => {
+  for (const key of ['pos', 'sales'] as const) {
+    const draft = { ...DEFAULT_FEATURES, [key]: false };
+    assert.equal(hasFeatureDiff(draft, DEFAULT_FEATURES), true);
+    assert.equal(DEFAULT_FEATURES[key], true);
+    assert.equal(draft.inventory, DEFAULT_FEATURES.inventory);
+  }
+});

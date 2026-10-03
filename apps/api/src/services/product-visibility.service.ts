@@ -25,7 +25,7 @@ interface PublicProductState {
   organization: {
     status: string;
     deletedAt: Date | null;
-  };
+  } | null;
 }
 
 interface PublicProductCatalogQuality {
@@ -38,7 +38,7 @@ export function hasPublicProductState(product: PublicProductState) {
   return (
     product.isActive &&
     product.deletedAt === null &&
-    product.organization.status === "ACTIVE" &&
+    product.organization?.status === "ACTIVE" &&
     product.organization.deletedAt === null
   );
 }

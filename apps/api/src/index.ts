@@ -1,4 +1,5 @@
 import "./config/env";
+import visualSearchRoutes from "./routes/catalog/visual-search.routes";
 
 import express from "express";
 import multer from "multer";
@@ -50,6 +51,7 @@ import {
   vendorOrderRoutes,
   storeLoyaltyRoutes,
   storeBranchRoutes,
+  hypermarketRoutes,
   vendorMerchantRoutes,
   vendorUpgradeRoutes,
   vendorCardTerminalRoutes,
@@ -166,6 +168,7 @@ app.use("/api", investorRoutes);
 app.use("/api", siteSettingsRoutes);
 app.use("/api", teamRoutes);
 app.use("/api", productsRoutes);
+app.use("/api", visualSearchRoutes);
 app.use("/api", reelsRoutes);
 app.use("/api", servicePostsRoutes);
 app.use("/api", postsRoutes);
@@ -180,6 +183,7 @@ app.use("/api", storeCheckoutRoutes);
 app.use("/api", vendorOrderRoutes);
 app.use("/api", storeLoyaltyRoutes);
 app.use("/api", storeBranchRoutes);
+app.use("/api", hypermarketRoutes);
 app.use("/api", vendorMerchantRoutes);
 app.use("/api", vendorUpgradeRoutes);
 app.use("/api", vendorCardTerminalRoutes);

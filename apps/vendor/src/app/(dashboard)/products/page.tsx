@@ -1082,6 +1082,7 @@ export default function ProductsPage() {
       {/* Add/Edit Form Modal */}
       {formOpen && (
         <ProductFormModal
+          organizationId={getOrgId() || ""}
           form={form}
           setForm={setForm}
           editingId={editingId}

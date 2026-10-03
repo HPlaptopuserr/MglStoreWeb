@@ -36,7 +36,6 @@ import {
   filterOrganizations,
   hasFeatureDiff,
   normalizeBusinessAppControl,
-  type AppFeatureOption,
   type BusinessAppControl,
   type BusinessAppFeatures,
   type BusinessAppMember,
@@ -44,6 +43,10 @@ import {
   type BusinessAppSettings,
   type CeoServiceControls,
 } from "./mgl-business.model";
+import { BusinessAppCatalog } from "./BusinessAppCatalog";
+import { BusinessOwnerPreview } from "./BusinessOwnerPreview";
+import { BusinessMemberCapabilities } from "./BusinessMemberCapabilities";
+
 export function MglBusinessTab() {
   const [controls, setControls] = useState<BusinessAppControl[]>([]);
   const [selectedOrgId, setSelectedOrgId] = useState("");
@@ -60,6 +63,7 @@ export function MglBusinessTab() {
   const [savingControls, setSavingControls] = useState(false);
   const [savingRoleUserId, setSavingRoleUserId] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [savingCapabilities, setSavingCapabilities] = useState(false);
   const [error, setError] = useState("");
 
   const selectedOrg = controls.find((item) => item.id === selectedOrgId);
@@ -74,8 +78,7 @@ export function MglBusinessTab() {
     selectedOrg &&
     (draftMaxMembers !== String(selectedOrg.maxMembers) ||
       hasFeatureDiff(draftFeatures, selectedOrg.features) ||
-      draftSettings.attendanceManual !==
-        selectedOrg.settings.attendanceManual ||
+      JSON.stringify(draftSettings) !== JSON.stringify(selectedOrg.settings) ||
       JSON.stringify(draftCeoService) !==
         JSON.stringify(selectedOrg.ceoService)),
   );
@@ -141,6 +144,12 @@ export function MglBusinessTab() {
   }, []);
 
   const selectOrganization = (organizationId: string) => {
+    if (organizationId === selectedOrgId) return;
+    if (
+      controlsDirty &&
+      !window.confirm("Хадгалаагүй өөрчлөлтийг орхиод байгууллага солих уу?")
+    )
+      return;
     const organization = controls.find((item) => item.id === organizationId);
     setSelectedOrgId(organizationId);
     setSaved(false);
@@ -288,15 +297,25 @@ export function MglBusinessTab() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-3 sm:p-6">
       <BusinessControlsHeader
-        refreshing={refreshing}
-        onRefresh={() => void loadControls("refresh")}
+        refreshing={refreshing || savingControls || savingCapabilities}
+        onRefresh={() => {
+          if (
+            controlsDirty &&
+            !window.confirm("Хадгалаагүй өөрчлөлтийг орхиод шинэчлэх үү?")
+          )
+            return;
+          void loadControls("refresh");
+        }}
       />
 
       {error && <BusinessControlsError message={error} />}
 
-      <section className="rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+      <fieldset
+        disabled={savingControls || refreshing || savingCapabilities}
+        className="min-w-0 rounded-3xl border border-slate-100 bg-white p-3 shadow-sm sm:p-5"
+      >
         <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
           <OrganizationPicker
             organizations={filteredOrganizations}
@@ -313,7 +332,14 @@ export function MglBusinessTab() {
                 enabledFeatureCount={enabledFeatureCount}
               />
 
-              <FeatureControlsGrid
+              <BusinessOwnerPreview
+                features={draftFeatures}
+                members={selectedOrg.members}
+                dirty={controlsDirty}
+                ceoEnabled={draftCeoService.enabled}
+              />
+
+              <BusinessAppCatalog
                 features={draftFeatures}
                 onToggle={toggleFeature}
               />
@@ -342,6 +368,31 @@ export function MglBusinessTab() {
                 />
               </div>
 
+              <BusinessMemberCapabilities
+                key={selectedOrg.id}
+                organizationId={selectedOrg.id}
+                disabled={controlsDirty}
+                onSavingChange={setSavingCapabilities}
+                onUpdated={(memberId, capabilities) =>
+                  setControls((current) =>
+                    current.map((organization) =>
+                      organization.id === selectedOrg.id
+                        ? {
+                            ...organization,
+                            members: organization.members.map((member) =>
+                              member.id === memberId
+                                ? { ...member, capabilities }
+                                : member,
+                            ),
+                          }
+                        : organization,
+                    ),
+                  )
+                }
+                members={selectedOrg.members}
+                features={selectedOrg.features}
+              />
+
               <MemberRoleControls
                 members={selectedOrg.members ?? []}
                 savingRoleUserId={savingRoleUserId}
@@ -359,7 +410,7 @@ export function MglBusinessTab() {
           saving={savingControls}
           onSave={handleSaveControls}
         />
-      </section>
+      </fieldset>
     </div>
   );
 }
@@ -550,99 +601,6 @@ function SummaryMetric({
       <p className="text-xs font-bold text-slate-400">{label}</p>
       <p className="mt-1 text-lg font-black text-slate-950">{value}</p>
     </div>
-  );
-}
-
-function FeatureControlsGrid({
-  features,
-  onToggle,
-}: {
-  features: BusinessAppFeatures;
-  onToggle: (key: keyof BusinessAppFeatures) => void;
-}) {
-  return (
-    <div>
-      <div className="mb-3 flex items-end justify-between gap-3">
-        <div>
-          <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">
-            Дотоод ажиллагаа
-          </p>
-          <h3 className="mt-1 text-lg font-black text-slate-950">
-            MGL Business app-д харагдах хэсгүүд
-          </h3>
-          <p className="mt-1 text-xs font-semibold text-slate-500">
-            Эдгээр нь ажилтны mobile app-д нөлөөлнө. Web дэлгүүрт бараа нийтлэх
-            эрхийг Vendor тохиргооноос удирдана.
-          </p>
-        </div>
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
-        {FEATURE_OPTIONS.map((feature) => (
-          <FeatureToggleCard
-            key={feature.key}
-            feature={feature}
-            enabled={features[feature.key]}
-            onToggle={() => onToggle(feature.key)}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function FeatureToggleCard({
-  feature,
-  enabled,
-  onToggle,
-}: {
-  feature: AppFeatureOption;
-  enabled: boolean;
-  onToggle: () => void;
-}) {
-  const Icon = feature.icon;
-
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      role="switch"
-      aria-checked={enabled}
-      aria-label={feature.label}
-      className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${
-        enabled
-          ? "border-emerald-200 bg-emerald-50 shadow-sm ring-2 ring-emerald-100"
-          : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"
-      }`}
-    >
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <span
-          className={`flex h-11 w-11 items-center justify-center rounded-xl ${
-            enabled ? "bg-white text-emerald-600" : "bg-slate-50 text-slate-500"
-          }`}
-        >
-          <Icon size={20} />
-        </span>
-        <span
-          className={`h-6 w-11 rounded-full p-0.5 transition ${
-            enabled ? "bg-emerald-500" : "bg-slate-200"
-          }`}
-        >
-          <span
-            className={`block h-5 w-5 rounded-full bg-white shadow-sm transition ${
-              enabled ? "translate-x-5" : "translate-x-0"
-            }`}
-          />
-        </span>
-      </div>
-      <p className="text-sm font-black text-slate-950">{feature.label}</p>
-      <p className="mt-1 text-[11px] font-black uppercase tracking-[0.12em] text-slate-400">
-        {feature.shortLabel}
-      </p>
-      <p className="mt-3 text-xs font-semibold leading-5 text-slate-500">
-        {feature.description}
-      </p>
-    </button>
   );
 }
 
@@ -896,9 +854,10 @@ function AppScopeNote() {
             Дотоод app-ийн эрх
           </p>
           <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">
-            Энэ тохиргоо тухайн байгууллагад хамааралтай ажилчдын MGL Business
-            mobile account дээр menu, bottom tab, route access хэлбэрээр
-            хэрэгжинэ. Public web каталог болон POS сувгийг өөрчлөхгүй.
+            Байгууллага, ажилтан удирдах нь Owner-ийн суурь хэсэг. Тайлан нь
+            ирц, захиалга, checklist зэрэг эх модулийн эрхээс хамаарна. Чат,
+            мэдэгдэл, feed болон сканнер нь туслах хэсгүүд; энд тусдаа ажлын
+            аппын эрхээр удирдахгүй.
           </p>
         </div>
       </div>
@@ -1059,8 +1018,8 @@ function BusinessControlsFooter({
   return (
     <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
       <p className="text-xs font-semibold leading-5 text-slate-400">
-        Хадгалсны дараа ажилчид app-аа дахин нээх эсвэл session refresh хийхэд
-        шинэ эрхүүд уншигдана.
+        Тохиргоо тухайн байгууллагад хадгалагдана. Mobile харагдац шинэ
+        тохиргоог дэмжсэн аппын хувилбар шаарддаг.
       </p>
       <button
         type="button"

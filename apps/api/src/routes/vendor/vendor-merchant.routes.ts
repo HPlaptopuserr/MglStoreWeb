@@ -1,5 +1,5 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { requireAuth } from "../../middleware/auth";
+import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import {
   connectVendorMerchant,
   disconnectVendorMerchant,
@@ -19,7 +19,39 @@ import {
 import { OrgRole, prisma } from "@mgl/database";
 import { getMinuAgentToken } from "../../services/minu-pos-agent";
 
+import { parseMerchantBankAccounts, resolveBankAccountOwner } from "../../services/merchant-bank-accounts";
+
+import { parseMinuRegistration } from "../../services/minu-registration";
+
 const router: ExpressRouter = Router();
+
+// Merchant routing and settlement are controlled by the active organization owner.
+router.use('/vendor/merchant', (req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  return requireAuth(req, res, async () => {
+    try {
+      const actor = (req as unknown as { user: AuthPayload }).user;
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        return res.status(400).json({ success: false, message: 'Тохиргооны мэдээлэл буруу байна.' });
+      }
+      const organizationId = await resolveBankAccountOwner(actor.userId, req.body.organizationId ?? actor.organizationId);
+      if (!organizationId) return res.status(403).json({ success: false, message: 'Төлбөрийн тохиргоог зөвхөн байгууллагын Owner өөрчилнө.' });
+      req.body.organizationId = organizationId;
+      // Replacing credentials must not strand invoices awaiting reconciliation.
+      if (req.path !== '/bank-accounts') {
+        const unsettled = await prisma.qPayInvoice.findFirst({
+          where: { organizationId, consumedAt: null, status: { in: ['PENDING', 'PAID'] } },
+          select: { id: true },
+        });
+        if (unsettled) return res.status(409).json({ success: false, message: 'Дуусаагүй QR төлбөр байна. Merchant холболт солихын өмнө төлбөрөө дуусгах эсвэл цуцална уу.' });
+      }
+      return next();
+    } catch (error: unknown) {
+      console.error('merchant owner access error', error);
+      return res.status(500).json({ success: false, message: 'Төлбөрийн тохиргооны эрх шалгахад алдаа гарлаа.' });
+    }
+  });
+});
 
 function minuConnectErrorMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "");
@@ -243,18 +275,19 @@ router.post("/vendor/merchant/minu/disconnect", requireAuth, async (req, res) =>
  */
 router.post("/vendor/merchant/connect", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const actor = (req as unknown as { user: AuthPayload }).user;
+    const userId = actor.userId;
     const { merchantId, merchantKey, invoiceCode, organizationId: explicitOrgId } = req.body;
     const channel = normalizeMerchantChannel(req.body?.channel);
 
-    if (!merchantId || !merchantKey) {
+    if (typeof merchantId !== "string" || !merchantId.trim() || typeof merchantKey !== "string" || !merchantKey.trim() || (invoiceCode !== undefined && typeof invoiceCode !== "string")) {
       return res.status(400).json({
         success: false,
         message: "Мерчант ID ба key шаардлагатай",
       });
     }
 
-    const organizationId = await resolveOrganizationId(userId, explicitOrgId);
+    const organizationId = await resolveBankAccountOwner(userId, explicitOrgId ?? actor.organizationId);
     if (!organizationId) {
       return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
     }
@@ -425,9 +458,13 @@ router.post("/vendor/merchant/register", requireAuth, async (req, res) => {
       provider === "systemqr" ||
       Boolean(rest.merchantName && rest.accountNumber && rest.cityId && rest.districtId);
 
+    const minuRegistration = isSystemQrRegister ? parseMinuRegistration(rest, type) : null;
+    if (isSystemQrRegister && !minuRegistration) {
+      return res.status(400).json({ success: false, message: "Minu бүртгэлийн мэдээлэл буруу байна. Үндсэн данс, эзэмшигч, байршлын мэдээллээ шалгана уу." });
+    }
     const result =
-      isSystemQrRegister
-        ? await registerVendorWithSystemQr(organizationId, rest as any, channel)
+      minuRegistration
+        ? await registerVendorWithSystemQr(organizationId, minuRegistration, channel)
         : await registerVendorWithQPay(organizationId, { type, ...rest } as any, channel);
 
     if (!result.success) {
@@ -437,7 +474,7 @@ router.post("/vendor/merchant/register", requireAuth, async (req, res) => {
     return res.json(result);
   } catch (error) {
     console.error("merchant register error", error);
-    return res.status(500).json({ success: false, message: "QPay бүртгэхэд алдаа гарлаа" });
+    return res.status(500).json({ success: false, message: "QR merchant бүртгэхэд алдаа гарлаа" });
   }
 });
 
@@ -477,31 +514,24 @@ router.get("/vendor/merchant/systemqr/categories", requireAuth, async (_req, res
  */
 router.put("/vendor/merchant/bank-accounts", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const actor = (req as unknown as { user: AuthPayload }).user;
+    const userId = actor.userId;
     const { bank_accounts, organizationId: explicitOrgId } = req.body;
     const channel = normalizeMerchantChannel(req.body?.channel);
 
-    if (!Array.isArray(bank_accounts) || bank_accounts.length === 0) {
-      return res.status(400).json({ success: false, message: "Дор хаяж нэг банкны данс шаардлагатай" });
-    }
+    const accounts = parseMerchantBankAccounts(bank_accounts);
+    if (!accounts) return res.status(400).json({ success: false, message: "Дансны мэдээлэл буруу байна. Давхардахгүй дансууд, нэг үндсэн данс сонгоно уу." });
+    const organizationId = await resolveBankAccountOwner(userId, explicitOrgId ?? actor.organizationId);
+    if (!organizationId) return res.status(403).json({ success: false, message: "Дансыг зөвхөн сонгосон байгууллагын Owner өөрчилнө." });
 
-    const invalid = bank_accounts.some(
-      (b: any) => !b.account_bank_code || !b.account_number || !b.account_name,
-    );
-    if (invalid) {
-      return res.status(400).json({ success: false, message: "Бүх данс бүрэн бөглөгдсөн байх ёстой" });
-    }
-
-    const organizationId = await resolveOrganizationId(userId, explicitOrgId);
-    if (!organizationId) {
-      return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
-    }
-
+    const merchantStatus = await getVendorMerchantStatus(organizationId, channel);
+    if (!merchantStatus.success) return res.status(409).json({ success: false, message: 'Merchant тохиргоог уншиж чадсангүй.' });
+    if (merchantStatus.settlementMode === 'PROVIDER') return res.status(409).json({ success: false, message: 'Энэ merchant-ийн хүлээн авах дансыг QR үйлчилгээний гэрээний тохиргооноос өөрчилнө. Дансны дугаар хадгалах нь гэрээний дансыг өөрчлөхгүй.' });
     await prisma.organization.update({
       where: { id: organizationId },
       data: channel === "WEB"
-        ? { webQpayBankAccounts: bank_accounts }
-        : { qpayBankAccounts: bank_accounts },
+        ? { webQpayBankAccounts: accounts.map((account) => ({ ...account })) }
+        : { qpayBankAccounts: accounts.map((account) => ({ ...account })) },
     });
 
     return res.json({ success: true, message: "Банкны данс амжилттай хадгалагдлаа" });
@@ -517,10 +547,11 @@ router.put("/vendor/merchant/bank-accounts", requireAuth, async (req, res) => {
  */
 router.get("/vendor/merchant/bank-accounts", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).userId as string;
+    const actor = (req as unknown as { user: AuthPayload }).user;
+    const userId = actor.userId;
     const explicitOrgId = req.query.organizationId as string | undefined;
     const channel = normalizeMerchantChannel(req.query.channel as string | undefined);
-    const organizationId = await resolveOrganizationId(userId, explicitOrgId);
+    const organizationId = await resolveBankAccountOwner(userId, explicitOrgId ?? actor.organizationId);
 
     if (!organizationId) {
       return res.status(404).json({ success: false, error: "Байгууллага олдсонгүй" });

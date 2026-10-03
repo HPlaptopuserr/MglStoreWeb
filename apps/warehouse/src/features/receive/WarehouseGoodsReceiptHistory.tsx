@@ -9,7 +9,7 @@ import {
   Printer,
   Search,
 } from "lucide-react";
-import Link from "next/link";
+import { WarehouseReceiptPrintModal } from "./WarehouseReceiptPrintModal";
 import { API, API_BASE, wmsFetch } from "@/lib/api";
 
 type ReceiptStatus = "DRAFT" | "CONFIRMED" | "CANCELLED";
@@ -60,6 +60,7 @@ export function WarehouseGoodsReceiptHistory({
   warehouseId: string;
   refreshKey: number;
 }) {
+  const [printReceiptId, setPrintReceiptId] = useState<string | null>(null);
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [status, setStatus] = useState<"" | ReceiptStatus>("");
   const [search, setSearch] = useState("");
@@ -303,14 +304,14 @@ export function WarehouseGoodsReceiptHistory({
                       </div>
                     ))}
                     <div className="flex flex-wrap justify-end gap-2">
-                      <Link
-                        href={`/receive/${receipt.id}/print`}
-                        target="_blank"
+                      <button
+                        type="button"
+                        onClick={() => setPrintReceiptId(receipt.id)}
                         className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
                       >
                         <Printer className="h-4 w-4" />
                         Хэвлэх
-                      </Link>
+                      </button>
                       {receipt.status === "DRAFT" && (
                         <button
                           disabled={actionId === receipt.id}
@@ -367,6 +368,12 @@ export function WarehouseGoodsReceiptHistory({
             );
           })}
         </div>
+      )}
+      {printReceiptId && (
+        <WarehouseReceiptPrintModal
+          receiptId={printReceiptId}
+          onClose={() => setPrintReceiptId(null)}
+        />
       )}
     </section>
   );

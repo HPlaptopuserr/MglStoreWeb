@@ -1,5 +1,6 @@
 import {
   calculateMarginPercent,
+  formatReportStock,
   calculateProductReportTotals,
   type ProductReportRow,
 } from "./product-report";
@@ -94,18 +95,23 @@ export function exportProductReportToPdf({
       <div class="meta"><p>Үүсгэсэн: ${escapeHtml(generatedAt)}</p><p>Шүүлтүүр: ${escapeHtml(filterDescription)}</p></div></header>
     <section class="summary">
       <div class="card"><span>Бүтээгдэхүүн</span><strong>${totals.productCount}</strong></div>
-      <div class="card"><span>Нийт үлдэгдэл</span><strong>${totals.stockQuantity.toLocaleString("mn-MN")}</strong></div>
+      <div class="card"><span>Нийт үлдэгдэл</span><strong>${formatReportStock(totals)}</strong></div>
       <div class="card"><span>Нөөцийн өртөг</span><strong>${money(totals.inventoryCost)}</strong></div>
       <div class="card"><span>Зарах үнийн дүн</span><strong>${money(totals.inventoryRetailValue)}</strong></div>
-      <div class="card"><span>Боломжит нийт ашиг</span><strong>${money(totals.projectedGrossProfit)}</strong></div>
+      <div class="card"><span>Боломжит ашиг (өртөг бүртгэлтэй)</span><strong>${money(totals.projectedGrossProfit)}</strong></div>
     </section>
-    <h2>Хамгийн их зарагдсан бараа</h2>
+    ${
+      salesPeriodDescription
+        ? `    <h2>Хамгийн их зарагдсан бараа</h2>
     <p style="margin-bottom:8px">Хугацаа: ${escapeHtml(salesPeriodDescription)}</p>
     ${bestSellerRows ? `<table><thead><tr><th style="width:6%">№</th><th>Бүтээгдэхүүн</th><th>Зарагдсан</th><th>Борлуулалт</th><th>Орлого</th></tr></thead><tbody>${bestSellerRows}</tbody></table>` : "<p>Сонгосон хугацаанд борлуулалт алга.</p>"}
+`
+        : ""
+    }
     <h2>Бүтээгдэхүүний задаргаа</h2>
     <table><thead><tr><th style="width:3%">№</th><th style="width:21%">Бүтээгдэхүүн</th><th style="width:12%">Ангилал</th><th>Авсан үнэ</th><th>Зарах үнэ</th><th>Бөөний үнэ</th><th>Үлдэгдэл</th><th>Ашгийн хувь</th><th>Төлөв</th></tr></thead>
       <tbody>${rows}</tbody></table>
-    <footer>Ашгийн тооцоо нь одоогийн үлдэгдэл болон бүртгэлтэй авсан/зарах үнэд үндэслэсэн урьдчилсан тооцоо болно.</footer>
+    <footer>Ашгийн тооцоо нь өртөг бүртгэлтэй барааны эерэг үлдэгдэл, одоогийн авсан/зарах үнэд үндэслэнэ. Өртөггүй барааг оруулаагүй. Энэ нь бодит борлуулалтын ашиг биш.</footer>
     <script>window.addEventListener("load", () => { window.print(); });<\/script>
   </body></html>`);
   reportWindow.document.close();
@@ -140,10 +146,15 @@ export async function exportProductReportToExcel({
     [],
     ["Үзүүлэлт", "Утга"],
     ["Бүтээгдэхүүний тоо", totals.productCount],
-    ["Нийт үлдэгдэл", totals.stockQuantity],
+    ["Нийт үлдэгдэл", formatReportStock(totals)],
+    ["Өртөг бүртгэлгүй бараа", totals.missingCostCount],
+    ["Сөрөг үлдэгдэлтэй бараа", totals.negativeStockCount],
     ["Нөөцийн өртөг", Math.round(totals.inventoryCost)],
     ["Зарах үнийн дүн", Math.round(totals.inventoryRetailValue)],
-    ["Боломжит нийт ашиг", Math.round(totals.projectedGrossProfit)],
+    [
+      "Боломжит ашиг (өртөг бүртгэлтэй)",
+      Math.round(totals.projectedGrossProfit),
+    ],
     [],
     ["ХАМГИЙН ИХ ЗАРАГДСАН БАРАА"],
     ["Хугацаа", salesPeriodDescription],
@@ -179,7 +190,6 @@ export async function exportProductReportToExcel({
   });
 }
 
-
 export function createProductReportSheet(
   XLSX: typeof import("xlsx"),
   products: readonly ProductReportRow[],
@@ -212,7 +222,8 @@ export function createProductReportSheet(
     wch: Math.min(
       42,
       productRows.reduce(
-        (width, row) => Math.max(width, String(row[header as keyof typeof row] ?? "").length),
+        (width, row) =>
+          Math.max(width, String(row[header as keyof typeof row] ?? "").length),
         header.length + 2,
       ),
     ),
@@ -230,15 +241,31 @@ export async function exportProductBreakdownToExcel({
   organizationName,
   products,
   filterDescription,
-}: Pick<ProductReportExportOptions, "organizationName" | "products" | "filterDescription">): Promise<void> {
+}: Pick<
+  ProductReportExportOptions,
+  "organizationName" | "products" | "filterDescription"
+>): Promise<void> {
   const XLSX = await import("xlsx");
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, createProductReportSheet(XLSX, products), "Бүтээгдэхүүн");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
-    ["Байгууллага", organizationName || "Байгууллага"],
-    ["Шүүлтүүр", filterDescription],
-    ["Нийт бараа", products.length],
-    ["Үүсгэсэн", new Date().toLocaleString("mn-MN", { timeZone: "Asia/Ulaanbaatar" })],
-  ]), "Мэдээлэл");
-  XLSX.writeFile(workbook, safeReportFileName(organizationName, "xlsx"), { compression: true });
+  XLSX.utils.book_append_sheet(
+    workbook,
+    createProductReportSheet(XLSX, products),
+    "Бүтээгдэхүүн",
+  );
+  XLSX.utils.book_append_sheet(
+    workbook,
+    XLSX.utils.aoa_to_sheet([
+      ["Байгууллага", organizationName || "Байгууллага"],
+      ["Шүүлтүүр", filterDescription],
+      ["Нийт бараа", products.length],
+      [
+        "Үүсгэсэн",
+        new Date().toLocaleString("mn-MN", { timeZone: "Asia/Ulaanbaatar" }),
+      ],
+    ]),
+    "Мэдээлэл",
+  );
+  XLSX.writeFile(workbook, safeReportFileName(organizationName, "xlsx"), {
+    compression: true,
+  });
 }

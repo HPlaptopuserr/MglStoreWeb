@@ -14,6 +14,8 @@ interface UseInfiniteScrollOptions {
   rootRef?: RefObject<Element | null>;
   rootMargin?: string;
   threshold?: number | number[];
+  /** Changes when a synchronous page is rendered or its filters change. */
+  resetKey?: string | number;
 }
 
 export function useInfiniteScroll<T extends Element = HTMLDivElement>({
@@ -23,6 +25,7 @@ export function useInfiniteScroll<T extends Element = HTMLDivElement>({
   rootRef,
   rootMargin = "600px 0px",
   threshold = 0,
+  resetKey,
 }: UseInfiniteScrollOptions): RefObject<T | null> {
   const sentinelRef = useRef<T>(null);
   const onLoadMoreRef = useRef(onLoadMore);
@@ -35,8 +38,8 @@ export function useInfiniteScroll<T extends Element = HTMLDivElement>({
   }, [onError, onLoadMore]);
 
   useEffect(() => {
-    if (!enabled) triggeredRef.current = false;
-  }, [enabled]);
+    triggeredRef.current = false;
+  }, [enabled, resetKey]);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -65,7 +68,7 @@ export function useInfiniteScroll<T extends Element = HTMLDivElement>({
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [enabled, rootMargin, rootRef, threshold]);
+  }, [enabled, resetKey, rootMargin, rootRef, threshold]);
 
   return sentinelRef as MutableRefObject<T | null>;
 }

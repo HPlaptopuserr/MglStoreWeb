@@ -1,5 +1,7 @@
 import {
   BellRing,
+  ScanBarcode,
+  MapPinned,
   BrainCircuit,
   CalendarClock,
   ChartNoAxesCombined,
@@ -13,6 +15,8 @@ import {
 } from "lucide-react";
 
 export type BusinessAppFeatures = {
+  pos: boolean;
+  sales: boolean;
   checklist: boolean;
   orders: boolean;
   inventory: boolean;
@@ -58,6 +62,7 @@ export type BusinessAppMember = {
   phone?: string | null;
   fullName?: string | null;
   canLogin?: boolean;
+  capabilities?: string[];
 };
 
 export type BusinessAppRole = "OWNER" | "ADMIN" | "STAFF" | "VIEWER";
@@ -72,10 +77,27 @@ export type AppFeatureOption = {
 
 export const FEATURE_OPTIONS: AppFeatureOption[] = [
   {
+    key: "pos",
+    label: "POS · Касс",
+    shortLabel: "Mobile POS",
+    description:
+      "Кассын ээлж, бараа уншуулах, борлуулалт хийх. Owner-д нээгдэнэ; кассчинд POS эрх олгоно. Идэвхтэй касс бүртгэлтэй байх шаардлагатай.",
+    icon: ScanBarcode,
+  },
+  {
+    key: "sales",
+    label: "Борлуулалт · Х/Т",
+    shortLabel: "Sales",
+    description:
+      "Дэлгүүр, айлчлал, захиалга, маршрут. Owner-д нээгдэнэ; ажилтанд худалдааны төлөөлөгчийн эрх олгоно.",
+    icon: MapPinned,
+  },
+  {
     key: "checklist",
     label: "Чанарын checklist",
     shortLabel: "Checklist",
-    description: "Owner/Manager өөрийн байгууллагын checklist үүсгэж, эрхтэй ажилтнууд зөвхөн өөрийн сүлжээний дэлгүүрийг шалгана. Унтраахад тайлан устахгүй.",
+    description:
+      "Owner/Manager өөрийн байгууллагын checklist үүсгэж, эрхтэй ажилтнууд зөвхөн өөрийн сүлжээний дэлгүүрийг шалгана. Унтраахад тайлан устахгүй.",
     icon: ClipboardList,
   },
   {
@@ -119,6 +141,8 @@ export const FEATURE_OPTIONS: AppFeatureOption[] = [
 ];
 
 export const DEFAULT_FEATURES: BusinessAppFeatures = {
+  pos: true,
+  sales: true,
   checklist: false,
   orders: true,
   inventory: true,
@@ -250,6 +274,8 @@ export function normalizeBusinessAppControl(
     ...organization,
     members: organization.members ?? [],
     features: {
+      pos: organization.features?.pos ?? true,
+      sales: organization.features?.sales ?? true,
       checklist: organization.features?.checklist ?? false,
       orders: organization.features?.orders ?? true,
       inventory: organization.features?.inventory ?? true,

@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useState, useRef, useCallback } from "react";
-import type { WheelEvent } from "react";
 import {
   ShoppingBasket,
   Loader2,
@@ -196,12 +195,36 @@ export default function Categories() {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
+    const handleWheel = (event: WheelEvent) => {
+      // React's delegated wheel listeners are passive. Only cancel a native
+      // event when the rail can consume it; let the page scroll at either end.
+      if (event.ctrlKey || event.defaultPrevented || !event.cancelable) return;
+      const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
+        ? event.deltaX
+        : event.deltaY;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      if (
+        delta === 0 ||
+        maxScroll <= 0 ||
+        (delta < 0 && el.scrollLeft <= 0) ||
+        (delta > 0 && el.scrollLeft >= maxScroll - 1)
+      ) return;
+
+      const multiplier = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? el.clientWidth : 1;
+      event.preventDefault();
+      event.stopPropagation();
+      el.scrollLeft += delta * multiplier;
+    };
     const frame = requestAnimationFrame(checkScroll);
+    el.addEventListener("wheel", handleWheel, { passive: false });
     el.addEventListener("scroll", checkScroll, { passive: true });
     const ro = new ResizeObserver(checkScroll);
     ro.observe(el);
     return () => {
       cancelAnimationFrame(frame);
+      el.removeEventListener("wheel", handleWheel);
       el.removeEventListener("scroll", checkScroll);
       ro.disconnect();
     };
@@ -209,18 +232,6 @@ export default function Categories() {
 
   const scroll = (dir: "left" | "right") => {
     scrollRef.current?.scrollBy({ left: dir === "left" ? -420 : 420, behavior: "smooth" });
-  };
-
-  const handleRailWheel = (event: WheelEvent<HTMLDivElement>) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const delta = Math.abs(event.deltaX) > Math.abs(event.deltaY)
-      ? event.deltaX
-      : event.deltaY;
-    if (delta === 0) return;
-    event.preventDefault();
-    el.scrollLeft += delta;
-    requestAnimationFrame(checkScroll);
   };
 
   useEffect(() => {
@@ -300,7 +311,6 @@ export default function Categories() {
             <div className="relative rounded-[28px] border border-white bg-white/55 p-3 shadow-[0_24px_70px_rgba(15,23,42,0.08)] ring-1 ring-slate-100/80 backdrop-blur">
               <div
                 ref={scrollRef}
-                onWheel={handleRailWheel}
                 className="scrollbar-hide flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain px-0.5 pb-5 pt-2"
                 style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
               >

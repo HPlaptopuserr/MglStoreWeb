@@ -418,6 +418,8 @@ model Organization {
   planActivatedAt                  DateTime?
   planExpiresAt                    DateTime?
   trialUsed                        Boolean                      @default(false)
+  businessPosEnabled               Boolean                      @default(true)
+  businessSalesEnabled             Boolean                      @default(true)
   businessOrdersEnabled            Boolean                      @default(true)
   businessInventoryEnabled         Boolean                      @default(true)
   businessAttendanceEnabled        Boolean                      @default(true)
@@ -1076,7 +1078,7 @@ model Category {
 
 model Product {
   id                     String                        @id @default(uuid())
-  organizationId         String
+  organizationId         String?
   masterProductId        String?
   managedByWarehouseId   String?
   submittedById          String?
@@ -1086,6 +1088,7 @@ model Product {
   specifications         Json?
   sku                    String?
   barcode                String?
+  barcodeAliases         String[]                      @default([])
   unit                   String?
   price                  Decimal                       @db.Decimal(18, 2)
   wholesalePrice         Decimal?                      @db.Decimal(18, 2)
@@ -1133,7 +1136,7 @@ model Product {
   reviews                ProductReview[]
   businessCategory       BusinessCategory?             @relation(fields: [businessCategoryId], references: [id])
   category               Category?                     @relation(fields: [categoryId], references: [id])
-  organization           Organization                  @relation(fields: [organizationId], references: [id])
+  organization           Organization?                 @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   masterProduct          MasterProduct?                @relation(fields: [masterProductId], references: [id], onDelete: SetNull)
   managedByWarehouse     Warehouse?                    @relation("WarehouseManagedProducts", fields: [managedByWarehouseId], references: [id], onDelete: SetNull)
   images                 ProductImage[]
@@ -1166,6 +1169,7 @@ model Product {
   @@index([marketplacePriority])
   @@index([name])
   @@index([barcode])
+  @@index([barcodeAliases], type: Gin)
   @@index([supplyType])
   @@index([organizationId, isRestaurantMenuItem, isActive])
 }
