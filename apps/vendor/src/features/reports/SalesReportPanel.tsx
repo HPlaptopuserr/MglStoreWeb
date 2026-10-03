@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import type { SalesReportView } from "@/features/pos/utils/export-daily-sales";
 import { useSalesHistory } from "@/features/pos/hooks/useSalesHistory";
 import { DailySalesExport } from "@/features/pos/components/DailySalesExport";
+import { SoldProductSummaryList } from "./SoldProductSummaryList";
 import { SoldProductsList } from "@/features/pos/components/SoldProductsList";
 
 interface Props {
@@ -19,6 +21,7 @@ export function SalesReportPanel({
   demo,
   onDemoChange,
 }: Props) {
+  const [view, setView] = useState<SalesReportView>("summary");
   const history = useSalesHistory(branchId, range, demo);
   const completed = useMemo(
     () => history.receipts.filter((receipt) => receipt.status === "COMPLETED"),
@@ -36,17 +39,10 @@ export function SalesReportPanel({
         loading={history.loading}
         demo={demo}
         onDemoChange={onDemoChange}
+        view={view}
+        onViewChange={setView}
+        onRefresh={history.refresh}
       />
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={history.refresh}
-          disabled={history.loading}
-          className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold transition hover:bg-slate-50 focus-visible:outline-blue-600 disabled:opacity-50"
-        >
-          Шинэчлэх
-        </button>
-      </div>
       {history.error ? (
         <p
           role="alert"
@@ -58,6 +54,8 @@ export function SalesReportPanel({
         <p role="status" className="p-6 text-sm text-slate-500">
           Борлуулалт ачаалж байна…
         </p>
+      ) : view === "summary" ? (
+        <SoldProductSummaryList receipts={completed} />
       ) : (
         <div className="flex max-h-[640px] flex-col overflow-hidden">
           <SoldProductsList receipts={completed} />

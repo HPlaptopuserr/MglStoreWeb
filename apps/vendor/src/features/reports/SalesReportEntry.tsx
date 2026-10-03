@@ -60,10 +60,11 @@ export function SalesReportEntry({
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-base font-bold text-slate-900">
-            Зарагдсан барааны дэлгэрэнгүй
+            Зарагдсан барааны тайлан
           </h2>
           <p className="mt-1 text-sm text-slate-600">
-            Бараа бүрээр · Зарсан ажилтан, огноо, төлбөрийн хэлбэр
+            Бараа бүрийн нийт борлуулалт · Бараан дээр дарж хэзээ, хэн, хэрхэн
+            зарсныг харна
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

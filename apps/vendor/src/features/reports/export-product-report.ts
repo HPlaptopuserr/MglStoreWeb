@@ -169,6 +169,21 @@ export async function exportProductReportToExcel({
     { wch: 18 },
   ];
 
+  const productsSheet = createProductReportSheet(XLSX, products);
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, productsSheet, "Бүтээгдэхүүн");
+  XLSX.utils.book_append_sheet(workbook, summarySheet, "Тойм");
+  XLSX.writeFile(workbook, safeReportFileName(organizationName, "xlsx"), {
+    compression: true,
+  });
+}
+
+
+export function createProductReportSheet(
+  XLSX: typeof import("xlsx"),
+  products: readonly ProductReportRow[],
+): import("xlsx").WorkSheet {
   const productRows = products.map((product, index) => {
     const costPrice =
       product.costPrice == null ? null : Number(product.costPrice);
@@ -196,11 +211,9 @@ export async function exportProductReportToExcel({
   productsSheet["!cols"] = productHeaders.map((header) => ({
     wch: Math.min(
       42,
-      Math.max(
+      productRows.reduce(
+        (width, row) => Math.max(width, String(row[header as keyof typeof row] ?? "").length),
         header.length + 2,
-        ...productRows.map(
-          (row) => String(row[header as keyof typeof row] ?? "").length,
-        ),
       ),
     ),
   }));
@@ -210,10 +223,22 @@ export async function exportProductReportToExcel({
     };
   }
 
+  return productsSheet;
+}
+
+export async function exportProductBreakdownToExcel({
+  organizationName,
+  products,
+  filterDescription,
+}: Pick<ProductReportExportOptions, "organizationName" | "products" | "filterDescription">): Promise<void> {
+  const XLSX = await import("xlsx");
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, productsSheet, "Бүтээгдэхүүн");
-  XLSX.utils.book_append_sheet(workbook, summarySheet, "Тойм");
-  XLSX.writeFile(workbook, safeReportFileName(organizationName, "xlsx"), {
-    compression: true,
-  });
+  XLSX.utils.book_append_sheet(workbook, createProductReportSheet(XLSX, products), "Бүтээгдэхүүн");
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ["Байгууллага", organizationName || "Байгууллага"],
+    ["Шүүлтүүр", filterDescription],
+    ["Нийт бараа", products.length],
+    ["Үүсгэсэн", new Date().toLocaleString("mn-MN", { timeZone: "Asia/Ulaanbaatar" })],
+  ]), "Мэдээлэл");
+  XLSX.writeFile(workbook, safeReportFileName(organizationName, "xlsx"), { compression: true });
 }
