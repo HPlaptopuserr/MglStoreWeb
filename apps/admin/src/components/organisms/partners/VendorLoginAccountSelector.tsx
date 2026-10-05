@@ -22,6 +22,8 @@ type Props = {
   description?: string;
   badge?: string;
   autoFocus?: boolean;
+  allowedRoles?: readonly VendorLoginRole[];
+  roleDescription?: string;
 };
 
 const MIN_SEARCH_LENGTH = 3;
@@ -47,11 +49,14 @@ export function VendorLoginAccountSelector({
   description = "Personal account сонгож тухайн байгууллагын page role онооно.",
   badge = "Personal account",
   autoFocus = false,
+  allowedRoles = Object.keys(vendorLoginRoleLabel) as VendorLoginRole[],
+  roleDescription,
 }: Props) {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [results, setResults] = useState<PersonalAccountOption[]>([]);
   const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
   const requestSeq = useRef(0);
   const disabledSet = useMemo(() => new Set(disabledUserIds), [disabledUserIds]);
   const trimmedSearch = search.trim();
@@ -97,13 +102,15 @@ export function VendorLoginAccountSelector({
 
     const fetchAccounts = async () => {
       setLoading(true);
+      setSearchError("");
       try {
         const params = new URLSearchParams({ page: "1", limit: "20" });
         params.set("search", query);
 
         const res = await adminFetch(`${API}/admin/users?${params.toString()}`);
         const data = await res.json().catch(() => null);
-        if (!res.ok || cancelled || seq !== requestSeq.current) return;
+        if (cancelled || seq !== requestSeq.current) return;
+        if (!res.ok) throw new Error("Хэрэглэгч хайхад алдаа гарлаа. Дахин хайна уу.");
 
         const items = Array.isArray(data)
           ? data
@@ -116,7 +123,10 @@ export function VendorLoginAccountSelector({
             .slice(0, 8),
         );
       } catch {
-        if (!cancelled && seq === requestSeq.current) setResults([]);
+        if (!cancelled && seq === requestSeq.current) {
+          setResults([]);
+          setSearchError("Хэрэглэгч хайхад алдаа гарлаа. Дахин хайна уу.");
+        }
       } finally {
         if (!cancelled && seq === requestSeq.current) setLoading(false);
       }
@@ -214,6 +224,8 @@ export function VendorLoginAccountSelector({
                       <Loader2 size={14} className="animate-spin" />
                       Хайж байна...
                     </div>
+                  ) : searchError ? (
+                    <p role="alert" className="px-3 py-3 text-xs text-red-700">{searchError}</p>
                   ) : results.length === 0 ? (
                     <div className="px-3 py-3 text-xs font-bold text-slate-400">
                       Personal account олдсонгүй
@@ -282,7 +294,7 @@ export function VendorLoginAccountSelector({
             onChange={(event) => onRoleChange(event.target.value as VendorLoginRole)}
             className={`w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-black text-slate-900 outline-none transition focus:ring-4 ${accent.focus}`}
           >
-            {(Object.keys(vendorLoginRoleLabel) as VendorLoginRole[]).map((value) => (
+            {allowedRoles.map((value) => (
               <option key={value} value={value}>
                 {vendorLoginRoleLabel[value]}
               </option>
@@ -293,9 +305,9 @@ export function VendorLoginAccountSelector({
 
       <p className={`mt-4 flex items-center gap-2 text-xs font-semibold leading-5 ${accent.muted}`}>
         <ShieldCheck size={14} />
-        {role === "ADMIN"
+        {roleDescription ?? (role === "ADMIN"
           ? "Менежер нь байгууллагын dashboard болон бэлэн мөнгөний касс ажиллуулах эрхтэй байна."
-          : "Энэ нь байгууллагын контакт email/утас биш, vendor portal-д нэвтрэх account context болно."}
+          : "Энэ нь байгууллагын контакт email/утас биш, vendor portal-д нэвтрэх account context болно.")}
       </p>
     </div>
   );
