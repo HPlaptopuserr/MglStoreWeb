@@ -171,11 +171,13 @@ async function findOrganizationTasks(args: {
     where: {
       organizationId: args.organizationId,
       deletedAt: null,
-      ...(args.scope === "assigned"
-        ? { assignees: { some: { userId: args.userId } } }
+      ...(args.scope === "assigned" || args.status
+        ? { assignees: { some: {
+            ...(args.scope === "assigned" ? { userId: args.userId } : {}),
+            ...(args.status ? { status: args.status } : {}),
+          } } }
         : {}),
       ...(args.scope === "created" ? { createdById: args.userId } : {}),
-      ...(args.status ? { assignees: { some: { status: args.status } } } : {}),
     },
     orderBy: [{ dueAt: "asc" }, { createdAt: "desc" }],
     include: taskPayloadInclude,
@@ -267,13 +269,15 @@ async function findTaskPayloadById(taskId: string) {
 router.get(
   "/org/tasks",
   requireAuth,
-  requireOrgPermission({ from: "query" }, Permission.VIEW_ORG_DASHBOARD),
   async (req, res) => {
     try {
       const user = getAuthUser(req);
       const organizationId = String(req.query.organizationId || "");
       const membership = await getCallerMembership(user.userId, organizationId);
-      const isManager = MANAGER_ROLES.has(membership?.role || "");
+      if (!membership) {
+        return res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
+      }
+      const isManager = MANAGER_ROLES.has(membership.role);
       const scope = parseScope(req.query.scope, isManager);
       const status = parseTaskStatus(req.query.status);
 
