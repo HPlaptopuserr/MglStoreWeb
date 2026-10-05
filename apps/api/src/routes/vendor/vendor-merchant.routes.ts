@@ -19,6 +19,9 @@ import {
 } from "../../services/systemqr";
 import { OrgRole, prisma } from "@mgl/database";
 import { getMinuAgentToken } from "../../services/minu-pos-agent";
+import {
+  merchantMutationRequiresSettledQr,
+} from "../../services/merchant-unsettled-invoice-policy";
 
 import { parseMerchantBankAccounts, resolveBankAccountOwner, resolveBankAccountReader } from "../../services/merchant-bank-accounts";
 
@@ -43,8 +46,9 @@ router.use('/vendor/merchant', (req, res, next) => {
       const organizationId = await resolveBankAccountOwner(actor.userId, req.body.organizationId ?? actor.organizationId);
       if (!organizationId) return res.status(403).json({ success: false, message: 'Төлбөрийн тохиргоог зөвхөн байгууллагын Owner өөрчилнө.' });
       req.body.organizationId = organizationId;
-      // Replacing credentials must not strand invoices awaiting reconciliation.
-      if (req.path !== '/bank-accounts') {
+      // Replacing Dynamic QR credentials must not strand invoices awaiting
+      // reconciliation. Minu Agent card-terminal settings are independent.
+      if (merchantMutationRequiresSettledQr(req.path)) {
         const unsettled = await prisma.qPayInvoice.findFirst({
           where: { organizationId, consumedAt: null, status: { in: ['PENDING', 'PAID'] } },
           select: { id: true },
