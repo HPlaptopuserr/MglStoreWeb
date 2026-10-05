@@ -108,7 +108,10 @@ for (const role of ["OWNER", "ADMIN"]) {
     stub(prisma.user, "findUnique", async () => ({ id: "employee" }));
     stub(prisma.organizationMember, "findUnique", async () => null);
     stub(prisma, "$transaction", async (run: (tx: object) => Promise<unknown>) => run({
-      profile: { upsert: async () => ({}) },
+      profile: { upsert: async ({ update }: { update: Record<string, unknown> }) => {
+        assert.deepEqual(update, {}, "joining must preserve the existing profile and phone");
+        return {};
+      } },
       organizationMember: { create: async ({ data }: { data: { role: string; organizationId: string; capabilities: string[] } }) => {
         assert.equal(data.role, "STAFF");
         assert.equal(data.organizationId, "store");
@@ -143,4 +146,18 @@ test("manager capability picker respects organization app settings", async () =>
   const response = await fetch(`${url}/available-capabilities?organizationId=store`, { headers });
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { capabilities: [] });
+});
+
+test("phone uniqueness conflicts return an actionable response instead of 500", async () => {
+  callerRole = "ADMIN";
+  stub(prisma.organizationMember, "count", async () => 1);
+  stub(prisma.user, "findUnique", async () => null);
+  stub(prisma, "$transaction", async () => {
+    throw Object.assign(new Error("PHONE_NUMBER_ALREADY_REGISTERED"), { code: "P2002" });
+  });
+  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify({
+    organizationId: "store", fullName: "Employee", email: "employee@example.com", role: "STAFF", phone: "99112233",
+  }) });
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).message, /хайж сонгоно/);
 });

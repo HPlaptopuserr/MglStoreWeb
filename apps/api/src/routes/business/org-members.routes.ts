@@ -2,6 +2,7 @@ import { Router, type Router as ExpressRouter } from "express";
 import { prisma, Capability, PlatformRole } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import bcrypt from "bcryptjs";
+import { isPhoneNumberConflict, normalizePhoneNumber } from "../../utils/phone-number";
 import storeEmployeeRoutes from "./store-employees.routes";
 import { Permission } from "@mgl/types";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
@@ -293,14 +294,13 @@ router.post(
 
           await tx.profile.upsert({
             where: { userId: targetUser.id },
-            update: {
-              fullName: fullName.trim(),
-              phoneNumber: phone?.trim() || null,
-            },
+            // Joining an organization must not rewrite an existing login identity.
+            // Legacy accounts may share a phone; touching it triggers uniqueness checks.
+            update: {},
             create: {
               userId: targetUser.id,
               fullName: fullName.trim(),
-              phoneNumber: phone?.trim() || null,
+              phoneNumber: normalizePhoneNumber(phone),
             },
           });
 
@@ -338,6 +338,11 @@ router.post(
       });
     } catch (error) {
       console.error("add org member error", error);
+      if (isPhoneNumberConflict(error)) {
+        return res.status(409).json({
+          message: "Утас, имэйл эсвэл хэрэглэгчийн бүртгэл давхардсан байна. Одоо байгаа хэрэглэгчийг хайж сонгоно уу.",
+        });
+      }
       return res.status(500).json({ message: "Ажилтан нэмэхэд алдаа гарлаа" });
     }
   },
