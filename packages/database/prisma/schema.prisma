@@ -2529,6 +2529,8 @@ enum ProductSupplyType {
 /// Operational capabilities assigned to organization members.
 /// Used for fine-grained permission checks beyond the structural OrgRole.
 enum Capability {
+  // Retained for existing memberships; new cashier grants use POS_CASHIER.
+  GROCERY_STORE
   POS_CASHIER
   DELIVERY_DRIVER
   STOCK_MANAGER

@@ -1,4 +1,5 @@
-import { ShieldCheck } from "lucide-react";
+import { BrainCircuit, ShieldCheck } from "lucide-react";
+import { BusinessAppToggle } from "./BusinessAppToggle";
 import {
   FEATURE_OPTIONS,
   type BusinessAppFeatures,
@@ -10,16 +11,20 @@ export function BusinessOwnerPreview({
   members,
   dirty,
   ceoEnabled,
+  onToggle,
+  onToggleCeo,
 }: {
   features: BusinessAppFeatures;
   members: BusinessAppMember[];
   dirty: boolean;
   ceoEnabled: boolean;
+  onToggle: (key: keyof BusinessAppFeatures) => void;
+  onToggleCeo: () => void;
 }) {
   const owners = members.filter(
     (member) => member.role === "OWNER" && member.memberActive !== false,
   );
-  const apps = FEATURE_OPTIONS.filter((app) => features[app.key]);
+  const hasEnabledApps = FEATURE_OPTIONS.some((app) => features[app.key]);
   return (
     <section
       aria-label="Owner-д нээгдэх аппууд"
@@ -32,7 +37,7 @@ export function BusinessOwnerPreview({
             Owner-д нээгдэх аппууд
           </h3>
           <p className="mt-2 text-sm text-slate-600">
-            Admin байгууллагад апп нээнэ → Owner ажилтнууддаа эрх олгоно.
+            Аппын toggle-ийг сонгоод “App тохиргоо хадгалах” товчийг дарна уу.
           </p>
         </div>
         <span
@@ -55,34 +60,30 @@ export function BusinessOwnerPreview({
           : "Идэвхтэй Owner бүртгэгдээгүй байна."}
       </p>
       <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-        {apps.map((app) => (
-          <div
+        {FEATURE_OPTIONS.map((app) => (
+          <BusinessAppToggle
             key={app.key}
-            className="rounded-xl border border-emerald-100 bg-white p-3"
-          >
-            <app.icon
-              size={22}
-              aria-hidden="true"
-              className="mb-2 text-emerald-700"
-            />
-            <p className="text-sm font-semibold text-slate-900">{app.label}</p>
-          </div>
+            label={app.label}
+            icon={app.icon}
+            enabled={features[app.key]}
+            onToggle={() => onToggle(app.key)}
+          />
         ))}
-        {ceoEnabled && (
-          <div className="rounded-xl border border-emerald-100 bg-white p-3 text-sm font-semibold text-slate-900">
-            CEO үйлчилгээ
-          </div>
-        )}
+        <BusinessAppToggle
+          label="CEO үйлчилгээ"
+          icon={BrainCircuit}
+          enabled={ceoEnabled}
+          onToggle={onToggleCeo}
+        />
       </div>
-      {apps.length === 0 && !ceoEnabled && (
+      {!hasEnabledApps && !ceoEnabled && (
         <p className="mt-4 rounded-xl bg-white p-4 text-sm text-slate-600">
-          Ажлын апп нээгээгүй байна. Доорх каталогоос сонгоно уу.
+          Ажлын апп нээгээгүй байна. Дээрх toggle-оор апп нээнэ үү.
         </p>
       )}
       <p className="mt-4 text-xs leading-5 text-slate-600">
-        Энэ нь байгууллагын тохиргооны урьдчилсан харагдац. Owner-д аппын эрхийг
-        давхар оноохгүй. Апп доторх эцсийн харагдац нь тухайн хувилбарын
-        дэмжлэгээс хамаарна.
+        Энэ сонголт доорх ажлын аппын каталогтой ижил тохиргоог өөрчилнө.
+        Байгууллагад нээсэн аппууд Owner-д үйлчилж, Owner ажилтнууддаа эрх олгоно.
       </p>
     </section>
   );

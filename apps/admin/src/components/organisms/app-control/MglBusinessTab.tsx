@@ -3,15 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Building2,
-  BellRing,
   BrainCircuit,
-  CalendarClock,
   Check,
-  ClipboardList,
   Clock3,
   Loader2,
-  Package,
-  ReceiptText,
   RefreshCw,
   Save,
   Search,
@@ -19,9 +14,6 @@ import {
   SlidersHorizontal,
   UserCog,
   Users,
-  ChartNoAxesCombined,
-  FileChartColumnIncreasing,
-  ShieldAlert,
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 
@@ -337,6 +329,8 @@ export function MglBusinessTab() {
                 members={selectedOrg.members}
                 dirty={controlsDirty}
                 ceoEnabled={draftCeoService.enabled}
+                onToggle={toggleFeature}
+                onToggleCeo={() => toggleCeoService("enabled")}
               />
 
               <BusinessAppCatalog
