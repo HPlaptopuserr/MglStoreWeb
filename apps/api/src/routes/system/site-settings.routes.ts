@@ -1,3 +1,5 @@
+import { readStoreMiniApps } from "../../services/store-mini-app-settings";
+import { STORE_MINI_APP_SETTINGS_KEY, STORE_MINI_APP_IDS } from "@mgl/types";
 import crypto from "crypto";
 import { QUALITY_SETTINGS_PREFIX } from "../../services/quality-network-settings";
 import fs from "fs/promises";
@@ -59,12 +61,14 @@ const projectPdfUpload = multer({
 });
 
 const router: ExpressRouter = Router();
-// Dedicated audited endpoint owns these keys; generic settings cannot overwrite them.
+// Dedicated endpoints own these keys; generic settings cannot overwrite them.
+const isDedicatedSettingKey = (key: string) =>
+  key.startsWith(QUALITY_SETTINGS_PREFIX) || key === STORE_MINI_APP_SETTINGS_KEY;
 router.use("/site-settings", (req, res, next) => {
   const key = req.path.slice(1);
   if (["PUT", "POST", "DELETE", "PATCH"].includes(req.method) &&
-      (key.startsWith(QUALITY_SETTINGS_PREFIX) || Object.keys(req.body ?? {}).some((entry) => entry.startsWith(QUALITY_SETTINGS_PREFIX)))) {
-    res.status(403).json({ message: "Checklist тохиргоог App Control → MGL Business хэсгээс өөрчилнө үү." });
+      (isDedicatedSettingKey(key) || Object.keys(req.body ?? {}).some(isDedicatedSettingKey))) {
+    res.status(403).json({ message: "Энэ тохиргоог App Control-ийн зориулалтын хэсгээс өөрчилнө үү." });
     return;
   }
   next();
@@ -1559,9 +1563,10 @@ router.use(
 // GET all site settings as key-value object (public read for web/vendor)
 router.get("/site-settings", async (req, res) => {
   try {
-    const settings = await prisma.siteSetting.findMany({ where: { NOT: { key: { startsWith: QUALITY_SETTINGS_PREFIX } } } });
+    const settings = await prisma.siteSetting.findMany({ where: { NOT: [{ key: { startsWith: QUALITY_SETTINGS_PREFIX } }, { key: STORE_MINI_APP_SETTINGS_KEY }] } });
     const obj: Record<string, string> = {};
     for (const s of settings) {
+      if (s.key === STORE_MINI_APP_SETTINGS_KEY) continue;
       if (Buffer.byteLength(s.value, "utf8") <= SETTING_VALUE_MAX_BYTES) {
         if (s.key === FRANCHISE_ITEMS_KEY) {
           obj[s.key] = JSON.stringify(
@@ -1576,6 +1581,11 @@ router.get("/site-settings", async (req, res) => {
         }
       }
     }
+    // Publish only enabled app identities, never source IDs or phone grants.
+    const miniApps = await readStoreMiniApps();
+    obj["app-catalog-mini-apps"] = JSON.stringify(
+      STORE_MINI_APP_IDS.filter(id => miniApps.settings[id].enabled),
+    );
     res.setHeader(
       "Cache-Control",
       "public, max-age=30, stale-while-revalidate=60",
@@ -1623,6 +1633,7 @@ router.get(
       const settings = await prisma.siteSetting.findMany();
       const obj: Record<string, string> = {};
       for (const s of settings) {
+        if (s.key === STORE_MINI_APP_SETTINGS_KEY) continue;
         if (Buffer.byteLength(s.value, "utf8") <= SETTING_VALUE_MAX_BYTES) {
           obj[s.key] = s.value;
         }
@@ -1930,8 +1941,8 @@ router.put(
   async (req, res) => {
     const { key } = req.params;
     const { value } = req.body as { value: string };
-    if (key.startsWith(QUALITY_SETTINGS_PREFIX)) {
-      res.status(403).json({ message: "Checklist тохиргоог App Control → MGL Business хэсгээс өөрчилнө үү." });
+    if (isDedicatedSettingKey(key)) {
+      res.status(403).json({ message: "Энэ тохиргоог App Control-ийн зориулалтын хэсгээс өөрчилнө үү." });
       return;
     }
     if (typeof value !== "string") {

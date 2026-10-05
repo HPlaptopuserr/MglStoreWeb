@@ -2,14 +2,30 @@
 
 import { useState } from "react";
 import { Smartphone, Store } from "lucide-react";
+import { StoreMiniAppCatalogs } from "@/components/organisms/app-control/StoreMiniAppCatalogs";
 import { MglStoreTab } from "@/components/organisms/app-control/MglStoreTab";
 import { MglBusinessTab } from "@/components/organisms/app-control/MglBusinessTab";
 
 type Tab = "mgl-store" | "mgl-business";
 
-const TABS: { key: Tab; label: string; icon: React.ElementType; desc: string }[] = [
-  { key: "mgl-store", label: "MGL Store", icon: Store, desc: "Store web/app тохиргоо" },
-  { key: "mgl-business", label: "MGL Business", icon: Smartphone, desc: "Business web status" },
+const TABS: {
+  key: Tab;
+  label: string;
+  icon: React.ElementType;
+  desc: string;
+}[] = [
+  {
+    key: "mgl-store",
+    label: "MGL",
+    icon: Store,
+    desc: "Store web/app тохиргоо",
+  },
+  {
+    key: "mgl-business",
+    label: "MGL Business",
+    icon: Smartphone,
+    desc: "Business web status",
+  },
 ];
 
 export default function AppControlPage() {
@@ -65,7 +81,12 @@ export default function AppControlPage() {
 
       {/* Tab content */}
       <div className="rounded-2xl border border-slate-100 bg-white shadow-sm">
-        {activeTab === "mgl-store" && <MglStoreTab />}
+        {activeTab === "mgl-store" && (
+          <>
+            <StoreMiniAppCatalogs />
+            <MglStoreTab />
+          </>
+        )}
         {activeTab === "mgl-business" && <MglBusinessTab />}
       </div>
     </div>

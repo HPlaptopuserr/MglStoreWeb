@@ -1,3 +1,4 @@
+import { assertMiniAppOrderAccess } from "../../services/store-mini-app-settings";
 import { onlineProductStock } from "../../services/store-product-stock";
 import {
   Router,
@@ -885,6 +886,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       lines?: {
         productId: string;
         qty: number;
+        miniAppId?: unknown;
         devProduct?: {
           name?: string;
           price?: number;
@@ -1063,6 +1065,11 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
       return res
         .status(400)
         .json({ message: "Зарим бараа олдсонгүй эсвэл идэвхгүй байна" });
+    }
+
+    // Enforce source permissions regardless of the client route or submitted phone.
+    if (!(await assertMiniAppOrderAccess(customer.id, products.map(product => ({ ...product, miniAppId: lines.find(line => line.productId === product.id)?.miniAppId }))))) {
+      return res.status(403).json({ code: "MINI_APP_ORDER_FORBIDDEN", message: "Энэ vendor-ийн барааг захиалах эрх таны бүртгэлд олгогдоогүй байна." });
     }
 
     const productMap = new Map(products.map((p) => [p.id, p]));

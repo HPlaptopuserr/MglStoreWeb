@@ -1,4 +1,6 @@
 import "./config/env";
+import miniAppAdminRoutes from "./routes/store/mini-app-admin.routes";
+import miniAppCatalogRoutes from "./routes/store/mini-app-catalog.routes";
 import visualSearchRoutes from "./routes/catalog/visual-search.routes";
 
 import express from "express";
@@ -185,6 +187,8 @@ app.use("/api", vendorOrderRoutes);
 app.use("/api", storeLoyaltyRoutes);
 app.use("/api", storeBranchRoutes);
 app.use("/api", hypermarketRoutes);
+app.use("/api", miniAppAdminRoutes);
+app.use("/api", miniAppCatalogRoutes);
 app.use("/api", vendorMerchantRoutes);
 app.use("/api", vendorUpgradeRoutes);
 app.use("/api", vendorCardTerminalRoutes);

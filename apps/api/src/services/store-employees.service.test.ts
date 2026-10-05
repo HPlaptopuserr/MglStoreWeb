@@ -401,3 +401,4 @@ test("reactivating an existing membership via cashier assignment respects the pl
     status(409),
   );
 });
+

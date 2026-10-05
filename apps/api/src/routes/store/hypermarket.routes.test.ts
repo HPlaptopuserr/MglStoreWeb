@@ -53,3 +53,16 @@ test('disabled public storefront does not expose operational inventory', async (
   const response = await fetch(url);
   assert.deepEqual((await response.json() as { products: unknown[] }).products, []);
 });
+
+test('Hypermarket allows missing photos but keeps inventory publication controls', async () => {
+  stub(prisma.warehouseInventory, 'findMany', async ({where}: {where: {showOnWeb: boolean; quantity: unknown; product: Record<string, unknown>}}) => {
+    assert.equal(where.showOnWeb, true);
+    assert.deepEqual(where.quantity, {gt: 0});
+    assert.equal(where.product.images, undefined);
+    assert.deepEqual(where.product.price, {gte: 100});
+    return [{productId: 'no-photo', quantity: 2, product: {id: 'no-photo', name: 'Milk', unit: 'pcs', price: 4500, images: []}}];
+  });
+  const response = await fetch(url);
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json() as {products: Array<{images: unknown[]}>}).products[0].images, []);
+});

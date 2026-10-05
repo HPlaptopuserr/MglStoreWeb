@@ -19,6 +19,14 @@ export const PUBLIC_PRODUCT_STATE_FILTER = {
   images: { some: {} },
 } as const;
 
+/** Mini app catalogs can render a placeholder for products without photos. */
+export const MINI_APP_PRODUCT_STATE_FILTER = {
+  isActive: PUBLIC_PRODUCT_STATE_FILTER.isActive,
+  deletedAt: PUBLIC_PRODUCT_STATE_FILTER.deletedAt,
+  name: PUBLIC_PRODUCT_STATE_FILTER.name,
+  price: PUBLIC_PRODUCT_STATE_FILTER.price,
+} as const;
+
 interface PublicProductState {
   isActive: boolean;
   deletedAt: Date | null;

@@ -1,7 +1,7 @@
 import { Router, type Router as ExpressRouter } from 'express';
 import { prisma, type Prisma } from '@mgl/database';
 import { fromPosStoredStockQuantity } from '@mgl/types';
-import { areWebProductsGloballyEnabled, getWebProductsEnabledOrganizationIds, PUBLIC_PRODUCT_STATE_FILTER } from '../../services/product-visibility.service';
+import { areWebProductsGloballyEnabled, getWebProductsEnabledOrganizationIds, MINI_APP_PRODUCT_STATE_FILTER } from '../../services/product-visibility.service';
 import { reservedStock, stockAvailability } from '../../services/stock-reservation.service';
 import { productImageOrderBy } from '../../lib/product-images';
 
@@ -29,7 +29,7 @@ router.get('/store/hypermarket/products', async (req, res) => {
       warehouseId: warehouse.id, quantity: { gt: 0 }, showOnWeb: true,
       AND: [{ OR: [{ expiryDate: null }, { expiryDate: { gt: new Date() } }] }],
       product: {
-        ...PUBLIC_PRODUCT_STATE_FILTER,
+        ...MINI_APP_PRODUCT_STATE_FILTER,
         managedByWarehouseId: warehouse.id,
         organizationId: { in: organizationIds },
         organization: { deletedAt: null, status: 'ACTIVE' },
