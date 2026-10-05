@@ -641,12 +641,6 @@ router.patch(
 
       const validationError = validateBusinessAppControlPatch(req.body);
       if (validationError) return res.status(400).json({ message: validationError });
-      if (body.features?.pos === false) {
-        const openShift = await prisma.posShift.findFirst({
-          where: { organizationId: id, status: "OPEN" }, select: { id: true },
-        });
-        if (openShift) return res.status(409).json({ message: "POS унтраахаас өмнө нээлттэй кассын ээлжийг хаана уу." });
-      }
       const data: Prisma.OrganizationUpdateInput = {};
       if (body.features?.checklist !== undefined && typeof body.features.checklist !== "boolean") {
         return res.status(400).json({ message: "Checklist тохиргоо boolean утгатай байх ёстой." });

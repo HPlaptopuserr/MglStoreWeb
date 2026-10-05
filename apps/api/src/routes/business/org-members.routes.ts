@@ -10,8 +10,27 @@ import {
   resolvePermissionsForOrg,
 } from "../../services/permission.service";
 
+import { availableMemberCapabilities, blockedCapabilityGrants, getOrganizationAppFeatures } from "../../services/business-member-capabilities";
+
 const router: ExpressRouter = Router();
 router.use(storeEmployeeRoutes);
+
+router.get(
+  "/org/members/available-capabilities",
+  requireAuth,
+  requireOrgPermission({ from: "query" }, Permission.MANAGE_ORG_MEMBERS),
+  async (req, res) => {
+    try {
+      const features = await getOrganizationAppFeatures(String(req.query.organizationId));
+      if (!features) return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+      res.set("Cache-Control", "no-store");
+      return res.json({ capabilities: availableMemberCapabilities(features) });
+    } catch (error: unknown) {
+      console.error("available member capabilities error", error);
+      return res.status(500).json({ message: "Ажлын эрхүүдийг ачаалж чадсангүй" });
+    }
+  },
+);
 
 const VALID_ROLES = ["OWNER", "ADMIN", "STAFF", "VIEWER"] as const;
 type OrgRole = (typeof VALID_ROLES)[number];
@@ -219,8 +238,9 @@ router.post(
       });
       if (!org)
         return res.status(404).json({ message: "Байгууллага олдсонгүй" });
-      if (capabilities.includes(Capability.DELIVERY_DRIVER) && !org.businessDeliveryEnabled) {
-        return res.status(409).json({ message: "App Control дээр хүргэлтийн модулийг эхлээд идэвхжүүлнэ үү" });
+      const features = await getOrganizationAppFeatures(organizationId);
+      if (!features || blockedCapabilityGrants(capabilities, [], features).length > 0) {
+        return res.status(409).json({ message: "Admin-аас нээгээгүй аппын эрх оноох боломжгүй. Ажлын эрхийн жагсаалтаа шинэчилнэ үү." });
       }
 
       const currentCount = await prisma.organizationMember.count({
@@ -617,17 +637,9 @@ router.patch("/org/members/:memberId", requireAuth, async (req, res) => {
           .status(400)
           .json({ message: "Тусгай эрхийн утга буруу байна" });
       }
-      if (capabilities.includes(Capability.DELIVERY_DRIVER)) {
-        const organization = await prisma.organization.findUnique({
-          where: { id: targetMember.organizationId },
-          select: { businessDeliveryEnabled: true },
-        });
-        if (!organization?.businessDeliveryEnabled) {
-          return res.status(409).json({
-            message:
-              "Admin тохиргооноос хүргэлтийн ажиллагааг эхлээд идэвхжүүлнэ үү",
-          });
-        }
+      const features = await getOrganizationAppFeatures(targetMember.organizationId);
+      if (!features || blockedCapabilityGrants(capabilities as Capability[], targetMember.capabilities, features).length > 0) {
+        return res.status(409).json({ message: "Admin-аас нээгээгүй аппын эрх оноох боломжгүй. Ажлын эрхийн жагсаалтаа шинэчилнэ үү." });
       }
     }
 

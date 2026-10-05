@@ -156,6 +156,7 @@ app.use("/api", dashboardRoutes);
 app.use("/api", jobApplicationRoutes);
 app.use("/api", jobPositionRoutes);
 app.use("/api", posRoutes);
+app.use("/api/mobile", posRoutes);
 app.use("/api", serviceRequestsRoutes);
 app.use("/api", warehousesRoutes);
 app.use("/api", warehouseGoodsReceiptsRoutes);

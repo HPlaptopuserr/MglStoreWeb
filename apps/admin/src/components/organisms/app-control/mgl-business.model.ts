@@ -81,7 +81,7 @@ export const FEATURE_OPTIONS: AppFeatureOption[] = [
     label: "POS · Касс",
     shortLabel: "Mobile POS",
     description:
-      "Кассын ээлж, бараа уншуулах, борлуулалт хийх. Owner-д нээгдэнэ; кассчинд POS эрх олгоно. Идэвхтэй касс бүртгэлтэй байх шаардлагатай.",
+      "Утасны POS · Касс ашиглах эрх. Vendor POS-ийн эрхийг Нэмэлт хэсгээс тусад нь удирдана. Идэвхтэй касс бүртгэлтэй байх шаардлагатай.",
     icon: ScanBarcode,
   },
   {

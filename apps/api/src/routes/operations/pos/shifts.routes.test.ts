@@ -42,6 +42,7 @@ before(async () => {
   const app = express();
   app.use(express.json());
   app.use("/api", router);
+  app.use("/api/mobile", router);
   server = await new Promise<Server>((resolve) => {
     const started = app.listen(0, "127.0.0.1", () => resolve(started));
   });
@@ -388,10 +389,30 @@ test("once a register is free the next cashier can open a fresh shift", async ()
 });
 
 
-test("App Control disables POS for an owner with an existing session", async () => {
+test("App Control disables mobile POS for an owner with an existing session", async () => {
   stub(prisma.organization, "findUnique", async () => ({ businessPosEnabled: false }));
-  const response = await fetch(`${base}/register-current?registerId=register`, { headers });
+  const response = await fetch(`${base.replace("/api/pos/", "/api/mobile/pos/")}/register-current?registerId=register`, { headers });
   assert.equal(response.status, 403);
   const payload = await response.json() as { message: string };
   assert.match(payload.message, /App Control/);
+});
+
+
+test("mobile App Control does not disable Vendor POS", async () => {
+  stub(prisma.organization, "findUnique", async () => ({ businessPosEnabled: false }));
+  stub(prisma.posShift, "findMany", async () => []);
+  const response = await fetch(`${base}/register-current?registerId=register`, { headers });
+  assert.equal(response.status, 200);
+});
+
+
+test("disabled mobile POS still permits closing an existing own shift", async () => {
+  stub(prisma.organization, "findUnique", async () => ({ businessPosEnabled: false }));
+  stub(prisma.posShift, "findUnique", async () => ({ ...shift, cashierId: "owner" }));
+  stub(prisma.posShift, "update", async () => ({ ...shift, cashierId: "owner", status: "CLOSED", closedAt: new Date() }));
+  stub(prisma.auditLog, "create", async () => ({ id: "audit" }));
+  const response = await fetch(`${base.replace("/api/pos/", "/api/mobile/pos/")}/close`, {
+    method: "POST", headers, body: JSON.stringify({ shiftId: shift.id, closingCash: 1000 }),
+  });
+  assert.equal(response.status, 200);
 });

@@ -311,14 +311,18 @@ export const requirePosUser = async (req: Request, res: Response) => {
     res.status(403).json({ message: "POS ашиглах эрх хүрэлцэхгүй" });
     return null;
   }
-  if (actor.role !== "ADMIN" && actor.role !== "SUPER_ADMIN") {
+  // App Control governs the mobile POS only; Vendor has its own add-on settings.
+  const isMobilePos = req.originalUrl.startsWith("/api/mobile/pos/");
+  if (isMobilePos && actor.role !== "ADMIN" && actor.role !== "SUPER_ADMIN") {
     const organization = actor.organizationId
       ? await prisma.organization.findUnique({
           where: { id: actor.organizationId },
           select: { businessPosEnabled: true },
         })
       : null;
-    if (!organization?.businessPosEnabled) {
+    // Closing an existing shift must remain possible after mobile access is disabled.
+    const closingShift = req.method === "POST" && req.path === "/pos/shifts/close";
+    if (!organization?.businessPosEnabled && !closingShift) {
       res.status(403).json({ message: "App Control дээр POS · Касс идэвхгүй байна." });
       return null;
     }
