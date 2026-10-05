@@ -1,5 +1,6 @@
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { BankAccount } from "./types";
+import { SavedBankAccountCard } from "./SavedBankAccountCard";
 import { BANK_OPTIONS } from "./constants";
 
 import type { BankAccountsLoadState } from "./useMerchantBankAccounts";
@@ -67,30 +68,16 @@ export function BankAccountsEditor({
       {!isEditing && loadState === "ready" && savedAccounts.length === 0 && (
         <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
           {managedBySystem
-            ? "Minu merchant холбогдсон. Энэ системд дансны дэлгэрэнгүй мэдээлэл хадгалагдаагүй байна. Хүлээн авах дансыг Minu гэрээний тохиргооноос шалгана уу."
+            ? "Төлбөрийн холболт идэвхтэй. Дансны дэлгэрэнгүй мэдээлэл бүртгэгдээгүй байна. Байгууллагын эзэмшигчтэй холбогдоно уу."
             : "Банкны данс бүртгэгдээгүй байна. QR төлбөр үүсгэхийн тулд данс нэмнэ үү."}
         </div>
       )}
 
       {!isEditing && loadState === "ready" && savedAccounts.length > 0 && (
         <div className="space-y-2">
-          {savedAccounts.map((account, index) => {
-            const bank = BANK_OPTIONS.find((option) => option.code === account.account_bank_code);
-            return (
-              <div key={`${account.account_bank_code}-${account.account_number}-${index}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">
-                <span className="font-medium">{bank?.name || account.account_bank_code}</span>
-                <span className="text-slate-400">·</span>
-                <span className="min-w-0 break-all font-mono">{account.account_number}</span>
-                <span className="text-slate-400">·</span>
-                <span className="min-w-0 break-words">{account.account_name}</span>
-                {account.is_default && (
-                  <span className="ml-auto shrink-0 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-                    Үндсэн
-                  </span>
-                )}
-              </div>
-            );
-          })}
+          {savedAccounts.map((account) => (
+            <SavedBankAccountCard key={`${account.account_bank_code}-${account.account_number}`} account={account} />
+          ))}
         </div>
       )}
 

@@ -32,3 +32,4 @@ export * from "./responses/product-image.response";
 export * from "./domain/cash-payment";
 
 export * from "./domain/business-apps";
+export type { MerchantDiagnostics, MerchantDiagnosticsChannel, MerchantConfigurationEvent } from "./domain/merchant-diagnostics";

@@ -28,6 +28,7 @@ after(async () => { await new Promise<void>((resolve, reject) => server.close((e
 afterEach(() => { while (restore.length) restore.pop()?.(); });
 beforeEach(() => {
   writes = 0;
+  stub(prisma.auditLog, "create", async () => ({}));
   stub(prisma.organization, "findUnique", async () => ({ name: "Company", qpayEnabled: false }));
   stub(prisma.organizationMember, 'findFirst', async ({ where }: { where: { userId: string; organizationId: string; role: string; isActive: boolean; deletedAt: null } }) => {
     assert.equal(where.role, 'OWNER'); assert.equal(where.isActive, true); assert.equal(where.deletedAt, null);
@@ -96,5 +97,17 @@ test('owner and admin read the selected channel; only owner can edit', async () 
 test('database errors return failure instead of an empty successful account list', async () => {
   stub(prisma.organizationMember, 'findFirst', async () => { throw new Error('Database unavailable'); });
   assert.equal((await readAccounts('owner', 'own-org')).status, 500);
+  assert.equal(writes, 0);
+});
+
+test('organization admin cannot connect, register or disconnect payment routing', async () => {
+  const token = jwt.sign({ userId: 'admin', role: 'USER' }, process.env.JWT_SECRET || 'dev-secret-change-me');
+  for (const action of ['connect', 'register', 'disconnect']) {
+    const response = await fetch(url.replace('bank-accounts', action), {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ organizationId: 'own-org', channel: 'POS' }),
+    });
+    assert.equal(response.status, 403);
+  }
   assert.equal(writes, 0);
 });

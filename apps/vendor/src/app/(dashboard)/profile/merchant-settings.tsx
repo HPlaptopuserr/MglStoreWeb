@@ -67,7 +67,6 @@ export function MerchantSettingsSection({
   const [registrationStep, setRegistrationStep] = useState(0);
   const [registrationComplete, setRegistrationComplete] = useState(false);
   const [message, setMessage] = useState<MerchantMessage | null>(null);
-  const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [editingBankAccounts, setEditingBankAccounts] = useState(false);
@@ -496,7 +495,7 @@ export function MerchantSettingsSection({
 
   /* ── Disconnect ───────────────────────────────────────── */
   const handleDisconnect = async () => {
-    if (!confirm("Мерчант данс салгахыг зөвшөөрч байна уу?")) return;
+    if (!confirm("Дансны холболтыг салгавал энэ сувгаар QR төлбөр хүлээн авах боломжгүй болно. Үргэлжлүүлэх үү?")) return;
     setIsSubmitting(true);
     try {
       const res = await authFetch(`${API}/vendor/merchant/disconnect`, {
@@ -787,15 +786,7 @@ export function MerchantSettingsSection({
   if (merchantStatus?.isConnected && !registrationComplete) {
     return (
       <div className="space-y-6">
-        <ConnectedMerchantStatusCard
-          status={merchantStatus}
-          copied={copied}
-          onCopyMerchantId={() => {
-            navigator.clipboard.writeText(merchantStatus.merchantId || "");
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          }}
-        />
+        <ConnectedMerchantStatusCard />
 
         {/* Bank accounts section */}
         <BankAccountsEditor
@@ -820,14 +811,14 @@ export function MerchantSettingsSection({
 
         <MerchantSettingsMessage message={message} />
 
-        <button
+        {canEditBankAccounts && bankAccountsState === "ready" && <button
           onClick={handleDisconnect}
           disabled={isSubmitting}
           className="flex items-center gap-2 px-4 py-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-700 text-sm font-semibold disabled:opacity-50"
         >
           <RotateCcw className="h-4 w-4" />
-          Мерчант данс салгах
-        </button>
+          Дансны холболт салгах
+        </button>}
       </div>
     );
   }

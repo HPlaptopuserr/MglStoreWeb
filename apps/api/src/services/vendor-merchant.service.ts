@@ -49,7 +49,7 @@ export const normalizeMerchantChannel = (
     ? "WEB"
     : "POS";
 
-const isSystemQrMarker = (value?: string | null) =>
+export const isSystemQrMarker = (value?: string | null) =>
   String(value || "")
     .trim()
     .toUpperCase() === "SYSTEMQR" ||

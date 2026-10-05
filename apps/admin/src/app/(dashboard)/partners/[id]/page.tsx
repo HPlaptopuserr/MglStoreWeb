@@ -27,6 +27,7 @@ import {
   PlanGrantHistory,
 } from "@/components/organisms/plan-grant";
 import { PartnerContentManager } from "./PartnerContentManager";
+import { MerchantDiagnosticsPanel } from "@/components/organisms/partners/merchant-diagnostics/MerchantDiagnosticsPanel";
 import { VendorLoginAccountsCard } from "@/components/organisms/partners/VendorLoginAccountsCard";
 
 export default function PartnerDetailsPage() {
@@ -326,6 +327,8 @@ export default function PartnerDetailsPage() {
           ))}
         </div>
       </div>
+
+      <MerchantDiagnosticsPanel key={partner.id} organizationId={partner.id} />
 
       <PartnerContentManager
         partner={partner}

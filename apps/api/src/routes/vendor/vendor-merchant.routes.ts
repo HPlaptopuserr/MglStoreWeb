@@ -1,3 +1,4 @@
+import { recordMerchantConfigurationChange } from "../../services/merchant-configuration-audit";
 import { Router, type Router as ExpressRouter } from "express";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import {
@@ -294,7 +295,7 @@ router.post("/vendor/merchant/connect", requireAuth, async (req, res) => {
 
     const organizationId = await resolveBankAccountOwner(userId, explicitOrgId ?? actor.organizationId);
     if (!organizationId) {
-      return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
+      return res.status(403).json({ success: false, message: "Тухайн байгууллагын Owner эрх шаардлагатай." });
     }
 
     // Connect merchant
@@ -310,6 +311,7 @@ router.post("/vendor/merchant/connect", requireAuth, async (req, res) => {
       return res.status(400).json(result);
     }
 
+    await recordMerchantConfigurationChange(userId, organizationId, channel, "CONNECTED");
     return res.json(result);
   } catch (error) {
     console.error("merchant connect error", error);
@@ -329,10 +331,10 @@ router.post("/vendor/merchant/disconnect", requireAuth, async (req, res) => {
     const userId = getRequestUserId(req);
     const explicitOrgId = req.body?.organizationId as string | undefined;
     const channel = normalizeMerchantChannel(req.body?.channel);
-    const organizationId = await resolveOrganizationId(userId, explicitOrgId);
+    const organizationId = await resolveBankAccountOwner(userId, explicitOrgId);
 
     if (!organizationId) {
-      return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
+      return res.status(403).json({ success: false, message: "Тухайн байгууллагын Owner эрх шаардлагатай." });
     }
 
     // Disconnect merchant
@@ -342,6 +344,7 @@ router.post("/vendor/merchant/disconnect", requireAuth, async (req, res) => {
       return res.status(400).json(result);
     }
 
+    await recordMerchantConfigurationChange(userId, organizationId, channel, "DISCONNECTED");
     return res.json(result);
   } catch (error) {
     console.error("merchant disconnect error", error);
@@ -383,6 +386,7 @@ router.post(
       );
       if (!result.success) return res.status(400).json(result);
 
+      await recordMerchantConfigurationChange(userId, organizationId, channel, "CREDENTIALS_RECOVERED");
       return res.json({
         success: true,
         message: result.message,
@@ -428,6 +432,7 @@ router.post(
         channel,
       );
       if (!result.success) return res.status(400).json(result);
+      await recordMerchantConfigurationChange(userId, organizationId, channel, "CREDENTIALS_UPDATED");
       return res.json(result);
     } catch (error) {
       console.error("SystemQR credential save error", error);
@@ -454,9 +459,9 @@ router.post("/vendor/merchant/register", requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: "type: 'company' эсвэл 'person' байх ёстой" });
     }
 
-    const organizationId = await resolveOrganizationId(userId, explicitOrgId);
+    const organizationId = await resolveBankAccountOwner(userId, explicitOrgId);
     if (!organizationId) {
-      return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
+      return res.status(403).json({ success: false, message: "Тухайн байгууллагын Owner эрх шаардлагатай." });
     }
 
     const isSystemQrRegister =
@@ -476,6 +481,7 @@ router.post("/vendor/merchant/register", requireAuth, async (req, res) => {
       return res.status(400).json(result);
     }
 
+    await recordMerchantConfigurationChange(userId, organizationId, channel, "REGISTERED");
     return res.json(result);
   } catch (error) {
     console.error("merchant register error", error);
@@ -539,6 +545,7 @@ router.put("/vendor/merchant/bank-accounts", requireAuth, async (req, res) => {
         : { qpayBankAccounts: accounts.map((account) => ({ ...account })) },
     });
 
+    await recordMerchantConfigurationChange(userId, organizationId, channel, "BANK_ACCOUNTS_UPDATED");
     return res.json({ success: true, message: "Банкны данс амжилттай хадгалагдлаа" });
   } catch (error) {
     console.error("bank-accounts update error", error);
@@ -618,10 +625,10 @@ router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, 
     const { registerNumber } = req.params;
     const explicitOrgId = req.query.organizationId as string | undefined;
     const channel = normalizeMerchantChannel(req.query.channel as string | undefined);
-    const organizationId = await resolveOrganizationId(userId, explicitOrgId);
+    const organizationId = await resolveBankAccountOwner(userId, explicitOrgId);
 
     if (!organizationId) {
-      return res.status(404).json({ success: false, message: "Байгууллага олдсонгүй" });
+      return res.status(403).json({ success: false, message: "Тухайн байгууллагын Owner эрх шаардлагатай." });
     }
 
     // Try QPay QuickQR merchant lookup by register number
@@ -663,7 +670,6 @@ router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, 
     }
 
     const listData = await listRes.json() as Record<string, unknown>;
-    console.log("QPay merchant list raw:", JSON.stringify(listData));
 
     const rows = (listData.rows || listData.merchants || listData.data || listData) as Record<string, unknown>[];
     if (!Array.isArray(rows)) {
@@ -685,7 +691,6 @@ router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, 
     const merchantId = String(match.merchant_id || match.id || match.username || "");
     const merchantKey = String(match.merchant_key || match.password || match.secret || "");
 
-    console.log("QPay recover match:", JSON.stringify(match));
 
     if (!merchantId) {
       return res.status(404).json({ success: false, message: "Мерчант ID олдсонгүй — QPay-тай холбоо барина уу" });
@@ -708,6 +713,7 @@ router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, 
           },
     });
 
+    await recordMerchantConfigurationChange(userId, organizationId, channel, "CREDENTIALS_RECOVERED");
     return res.json({ success: true, merchantId, message: "Мерчант мэдээлэл олдоод амжилттай холбогдлоо" });
   } catch (error) {
     console.error("merchant recover error", error);

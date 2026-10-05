@@ -34,10 +34,13 @@ import { QUALITY_SETTINGS_PREFIX, qualityOrganizationKey, isOrganizationQualityE
 
 import { validateBusinessAppControlPatch } from "../../services/business-app-control-validation";
 
+import merchantDiagnosticsRouter from "./merchant-diagnostics.routes";
+
 import appControlMembersRouter from "./app-control-members.routes";
 
 const router: ExpressRouter = Router();
 router.use(appControlMembersRouter);
+router.use(merchantDiagnosticsRouter);
 const orgImagesDir = path.resolve(__dirname, "../../../uploads/organizations");
 if (!fs.existsSync(orgImagesDir)) {
   fs.mkdirSync(orgImagesDir, { recursive: true });

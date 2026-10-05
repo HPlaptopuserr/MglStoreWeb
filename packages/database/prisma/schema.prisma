@@ -2702,6 +2702,7 @@ enum CardTerminalRequestStatus {
 }
 
 enum AuditAction {
+  MERCHANT_CONFIGURATION_CHANGED
   LOGIN
   LOGOUT
   PASSWORD_RESET_REQUEST
