@@ -2,13 +2,14 @@
 
 import { MerchantSettingsSection } from "../../../../../vendor/src/app/(dashboard)/profile/merchant-settings";
 
-/** Shared adapter: MGL Store and Vendor use one merchant settings implementation. */
+/** Organization bank settings use the same merchant connection as Vendor. */
 export function BankAccountSettingsPanel({ organizationId }: { organizationId: string }) {
   return (
     <MerchantSettingsSection
+      key={organizationId}
       organizationId={organizationId}
       mode="qpay"
-      channel="WEB"
+      channel="POS"
     />
   );
 }

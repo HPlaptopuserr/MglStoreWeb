@@ -56,14 +56,14 @@ export function BankAccountsEditor({
           {savedAccounts.map((account, index) => {
             const bank = BANK_OPTIONS.find((option) => option.code === account.account_bank_code);
             return (
-              <div key={index} className="flex items-center gap-2 text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">
+              <div key={`${account.account_bank_code}-${account.account_number}-${index}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-2">
                 <span className="font-medium">{bank?.name || account.account_bank_code}</span>
                 <span className="text-slate-400">·</span>
-                <span className="font-mono">{account.account_number}</span>
+                <span className="min-w-0 break-all font-mono">{account.account_number}</span>
                 <span className="text-slate-400">·</span>
-                <span>{account.account_name}</span>
+                <span className="min-w-0 break-words">{account.account_name}</span>
                 {account.is_default && (
-                  <span className="ml-auto text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                  <span className="ml-auto shrink-0 text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
                     Үндсэн
                   </span>
                 )}
