@@ -1,4 +1,5 @@
 "use client";
+import { nextNum, skuPrefix } from "@/lib/sku";
 import { useWarehouseReceiptDraft } from "@/features/receive/useWarehouseReceiptDraft";
 import { classifyReceiptSearch } from "@/features/receive/receipt-product-search";
 
@@ -426,13 +427,23 @@ export default function ReceivePage() {
         for (let index = 0; index < resolvedItems.length; index++) {
           const item = resolvedItems[index];
           if (!item.draftProduct) continue;
+          let productSku = item.sku?.trim();
+          if (!productSku) {
+            const prefix = skuPrefix(item.name, organizationName);
+            const lookup = await wmsFetch(
+              `${API}/warehouses/${encodeURIComponent(selectedWarehouseId)}/sku-lookup?prefix=${encodeURIComponent(prefix)}`,
+            );
+            if (!lookup.ok) throw new Error("SKU үүсгэж чадсангүй. Дахин оролдоно уу.");
+            const existingSkus: { sku: string | null }[] = await lookup.json();
+            productSku = `${prefix}-${nextNum(existingSkus)}`;
+          }
           const response = await wmsFetch(
             `${API}/warehouses/${encodeURIComponent(selectedWarehouseId)}/products`,
             {
               method: "POST",
               body: JSON.stringify({
                 name: item.name.trim(),
-                sku: item.sku || `WH-${item.productId.slice(6)}`,
+                sku: productSku,
                 barcode: item.draftProduct.barcode || null,
                 masterProductId: item.draftProduct.masterProductId,
                 description: item.draftProduct.description,
