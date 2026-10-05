@@ -1,5 +1,6 @@
 import {
   Banknote,
+  BadgePercent,
   BarChart3,
   Boxes,
   Building2,
@@ -55,6 +56,11 @@ export function getDashboardModules(
 ) {
   if (features.selfService) {
     const isCafe = features.selfServiceMode === "CAFE";
+    const role = String(user?.role || "").toUpperCase();
+    const canManageCafeCustomers =
+      user?.orgRole === "OWNER" ||
+      role === "ADMIN" ||
+      role === "SUPER_ADMIN";
     return [
       {
         title: "Өөртөө үйлчлэх касс",
@@ -99,6 +105,17 @@ export function getDashboardModules(
               desc: "Өдрийн орлого, борлуулалт, хорогдол болон үлдэгдлийг бүтээгдэхүүн тус бүрээр хянана.",
               href: "/dashboard/daily-stock",
               icon: ClipboardList,
+              enabled: true,
+            },
+          ]
+        : []),
+      ...(isCafe && canManageCafeCustomers
+        ? [
+            {
+              title: "Байнгын хэрэглэгч",
+              desc: "Байнгын хэрэглэгч бүртгэж, өөртөө үйлчлэх кассад үйлчлэх хямдралын хувийг тохируулна.",
+              href: "/dashboard/regular-customers",
+              icon: BadgePercent,
               enabled: true,
             },
           ]

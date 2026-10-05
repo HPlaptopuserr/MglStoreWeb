@@ -462,6 +462,7 @@ model Organization {
   posLoyaltyTransactions           PosLoyaltyTransaction[]
   cafeDailyStocks                  CafeDailyStock[]
   cafeDailyStockReceipts           CafeDailyStockReceipt[]
+  cafeRegularCustomers             CafeRegularCustomer[]
   restaurantMenuCategories         RestaurantMenuCategory[]
   restaurantTables                 RestaurantTable[]
   restaurantTickets                RestaurantTicket[]
@@ -3271,51 +3272,74 @@ model PosGoodsReceiptAllocation {
 
 /// Structured POS sale record.
 model PosSale {
-  id               String                 @id @default(uuid())
-  receiptNo        String                 @unique
-  organizationId   String
-  branchId         String
-  registerId       String?
-  shiftId          String
-  cashierId        String
-  status           PosSaleStatus          @default(COMPLETED)
-  paymentMethod    String
-  paymentBreakdown Json?
-  subtotal         Decimal                @db.Decimal(18, 2)
-  taxTotal         Decimal                @db.Decimal(18, 2)
-  discountTotal    Decimal                @db.Decimal(18, 2)
-  grandTotal       Decimal                @db.Decimal(18, 2)
-  note             String?
-  ebarimtStatus    String?
-  ebarimtBillId    String?
-  ebarimtReceiptId String?
-  ebarimtQrData    String?
-  ebarimtLottery   String?
-  ebarimtDate      DateTime?
-  ebarimtError     String?
-  ebarimtPayload   Json?
-  ebarimtSyncedAt  DateTime?
-  voidedAt         DateTime?
-  voidReason       String?
-  voidedById       String?
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
-  organization     Organization           @relation(fields: [organizationId], references: [id])
-  branch           Branch                 @relation(fields: [branchId], references: [id])
-  register         PosRegister?           @relation(fields: [registerId], references: [id])
-  shift            PosShift               @relation(fields: [shiftId], references: [id])
-  cashier          User                   @relation("PosSaleCashier", fields: [cashierId], references: [id])
-  lines            PosSaleLine[]
-  loyalty          PosLoyaltyTransaction?
-  creditSale       PosCreditSale?
-  restaurantTicket RestaurantTicket?
+  id                    String                 @id @default(uuid())
+  receiptNo             String                 @unique
+  organizationId        String
+  branchId              String
+  registerId            String?
+  shiftId               String
+  cashierId             String
+  cafeRegularCustomerId String?
+  status                PosSaleStatus          @default(COMPLETED)
+  paymentMethod         String
+  paymentBreakdown      Json?
+  subtotal              Decimal                @db.Decimal(18, 2)
+  taxTotal              Decimal                @db.Decimal(18, 2)
+  discountTotal         Decimal                @db.Decimal(18, 2)
+  grandTotal            Decimal                @db.Decimal(18, 2)
+  note                  String?
+  ebarimtStatus         String?
+  ebarimtBillId         String?
+  ebarimtReceiptId      String?
+  ebarimtQrData         String?
+  ebarimtLottery        String?
+  ebarimtDate           DateTime?
+  ebarimtError          String?
+  ebarimtPayload        Json?
+  ebarimtSyncedAt       DateTime?
+  voidedAt              DateTime?
+  voidReason            String?
+  voidedById            String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  organization          Organization           @relation(fields: [organizationId], references: [id])
+  branch                Branch                 @relation(fields: [branchId], references: [id])
+  register              PosRegister?           @relation(fields: [registerId], references: [id])
+  shift                 PosShift               @relation(fields: [shiftId], references: [id])
+  cashier               User                   @relation("PosSaleCashier", fields: [cashierId], references: [id])
+  cafeRegularCustomer   CafeRegularCustomer?   @relation(fields: [cafeRegularCustomerId], references: [id], onDelete: SetNull)
+  lines                 PosSaleLine[]
+  loyalty               PosLoyaltyTransaction?
+  creditSale            PosCreditSale?
+  restaurantTicket      RestaurantTicket?
 
   @@index([organizationId])
   @@index([branchId])
   @@index([shiftId])
   @@index([cashierId])
+  @@index([cafeRegularCustomerId])
   @@index([status])
   @@index([createdAt])
+}
+
+model CafeRegularCustomer {
+  id              String       @id @default(uuid())
+  organizationId  String
+  name            String
+  phone           String
+  normalizedPhone String
+  discountPercent Decimal      @default(0) @db.Decimal(5, 2)
+  isActive        Boolean      @default(true)
+  lastUsedAt      DateTime?
+  createdById     String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sales           PosSale[]
+
+  @@unique([organizationId, normalizedPhone])
+  @@index([organizationId, isActive])
+  @@index([name])
 }
 
 model PosLoyaltyTransaction {

@@ -1,5 +1,6 @@
 import {
   Banknote,
+  BadgePercent,
   BarChart3,
   Boxes,
   Building2,
@@ -33,6 +34,11 @@ export function getOrgNavItems(
 ): OrgNavItem[] {
   if (features.selfService) {
     const isCafe = features.selfServiceMode === "CAFE";
+    const role = String(user?.role || "").toUpperCase();
+    const canManageCafeCustomers =
+      user?.orgRole === "OWNER" ||
+      role === "ADMIN" ||
+      role === "SUPER_ADMIN";
     return [
       {
         label: "Өөртөө үйлчлэх касс",
@@ -60,6 +66,15 @@ export function getOrgNavItems(
               label: "Өдрийн бараа орлого",
               href: "/dashboard/daily-stock",
               icon: ClipboardList,
+            },
+          ]
+        : []),
+      ...(isCafe && canManageCafeCustomers
+        ? [
+            {
+              label: "Байнгын хэрэглэгч",
+              href: "/dashboard/regular-customers",
+              icon: BadgePercent,
             },
           ]
         : []),

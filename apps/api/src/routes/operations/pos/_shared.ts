@@ -102,6 +102,7 @@ export type CreateSaleBody = {
   };
   lines?: SaleLineInput[];
   packagingFee?: number;
+  regularCustomerPhone?: string;
   note?: string;
 };
 

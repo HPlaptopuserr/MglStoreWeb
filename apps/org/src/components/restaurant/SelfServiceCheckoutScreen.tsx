@@ -11,6 +11,7 @@ import {
 
 import {
   ArrowLeft,
+  BadgePercent,
   Banknote,
   Building2,
   Check,
@@ -33,10 +34,13 @@ import {
   Trash2,
   Utensils,
   UserRound,
+  X,
   ZoomIn,
 } from "lucide-react";
 import { QrGenerator } from "@mgl/ui";
 import {
+  calculateCafeRegularCustomerDiscount,
+  calculateCafeRegularCustomerUnitDiscount,
   calculateTakeawayPackagingFee,
   type CardAttempt,
   type PosReceipt,
@@ -58,10 +62,12 @@ import {
   getRestaurantPosProducts,
   getRestaurantPosRegisters,
   getRestaurantQPayInvoiceStatus,
+  lookupCafeRegularCustomer,
   openRestaurantPosShift,
   saveRestaurantTicket,
   submitRestaurantClientBridgeResult,
   type RestaurantPosProduct,
+  type CafeRegularCustomer,
   type RestaurantPosQPayInvoice,
   type RestaurantPosRegister,
   type RestaurantMenuCategory,
@@ -230,6 +236,23 @@ const createClientSaleId = () => {
   return `self-service-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
+const createSelfServiceSaleLines = (
+  lines: CartLine[],
+  customer?: CafeRegularCustomer | null,
+) =>
+  lines.map((line) => ({
+    productId: line.product.id,
+    qty: line.qty,
+    unitPrice: Number(line.product.price),
+    discountAmount: customer
+      ? calculateCafeRegularCustomerUnitDiscount(
+          Number(line.product.price),
+          customer.discountPercent,
+        )
+      : 0,
+    taxRate: Number(line.product.taxRate) || 0,
+  }));
+
 function SetupState({
   loading,
   error,
@@ -312,6 +335,11 @@ function SelfServiceCheckoutContent() {
     useState<EbarimtTinLookupResult | null>(null);
   const [companyLookupLoading, setCompanyLookupLoading] = useState(false);
   const [companyLookupError, setCompanyLookupError] = useState("");
+  const [regularCustomerPhone, setRegularCustomerPhone] = useState("");
+  const [regularCustomer, setRegularCustomer] =
+    useState<CafeRegularCustomer | null>(null);
+  const [regularCustomerLoading, setRegularCustomerLoading] = useState(false);
+  const [regularCustomerError, setRegularCustomerError] = useState("");
   const companyLookupRequestRef = useRef(0);
   const [ebarimtSubmitting, setEbarimtSubmitting] = useState(false);
   const [completedEbarimtBuyer, setCompletedEbarimtBuyer] =
@@ -624,7 +652,20 @@ function SelfServiceCheckoutContent() {
           })),
         )
       : 0;
-  const cartTotal = cartSubtotal + packagingFee;
+  const regularCustomerDiscount =
+    isCafe && regularCustomer
+      ? calculateCafeRegularCustomerDiscount(
+          cart.map((line) => ({
+            unitPrice: Number(line.product.price),
+            quantity: line.qty,
+          })),
+          regularCustomer.discountPercent,
+        )
+      : 0;
+  const cartTotal = Math.max(
+    0,
+    cartSubtotal - regularCustomerDiscount + packagingFee,
+  );
   const cardProvider = getEffectiveCardProvider(register);
   const cardTerminalReady = Boolean(
     register?.cardEnabled &&
@@ -695,6 +736,8 @@ function SelfServiceCheckoutContent() {
 
     setOrderMode(savedPayment.orderMode);
     setCart(savedPayment.checkout.lines);
+    setRegularCustomer(savedPayment.checkout.regularCustomer || null);
+    setRegularCustomerPhone(savedPayment.checkout.regularCustomer?.phone || "");
     setCompletedEbarimtBuyer(savedPayment.checkout.ebarimtBuyer);
     setEbarimtBuyerMode(savedPayment.checkout.ebarimtBuyer.type);
     setActionError("");
@@ -757,6 +800,50 @@ function SelfServiceCheckoutContent() {
       }
     }
   }, [companyLookup, companyRegNo, register]);
+
+  const resolveRegularCustomer = useCallback(
+    async (phone: string, syncUi = false): Promise<CafeRegularCustomer> => {
+      const normalizedPhone = phone.replace(/\D/g, "").slice(-8);
+      if (!/^\d{8}$/.test(normalizedPhone)) {
+        throw new Error("Утасны дугаар 8 оронтой байна");
+      }
+      if (!user.organizationId) {
+        throw new Error("Байгууллагын мэдээлэл олдсонгүй");
+      }
+
+      if (syncUi) {
+        setRegularCustomerLoading(true);
+        setRegularCustomerError("");
+      }
+      try {
+        const result = await lookupCafeRegularCustomer({
+          organizationId: user.organizationId,
+          phone: normalizedPhone,
+        });
+        if (!result.found) {
+          throw new Error("Байнгын хэрэглэгчийн бүртгэл олдсонгүй");
+        }
+        if (syncUi) {
+          setRegularCustomer(result.customer);
+          setRegularCustomerPhone(result.customer.phone);
+        }
+        return result.customer;
+      } catch (error) {
+        if (syncUi) {
+          setRegularCustomer(null);
+          setRegularCustomerError(
+            error instanceof Error
+              ? error.message
+              : "Байнгын хэрэглэгчийг шалгаж чадсангүй",
+          );
+        }
+        throw error;
+      } finally {
+        if (syncUi) setRegularCustomerLoading(false);
+      }
+    },
+    [user.organizationId],
+  );
 
   useEffect(() => {
     if (ebarimtBuyerMode !== "B2B" || companyRegNo.length !== 7) return;
@@ -934,6 +1021,10 @@ function SelfServiceCheckoutContent() {
       setCompanyLookup(null);
       setCompanyLookupError("");
       setCompanyLookupLoading(false);
+      setRegularCustomerPhone("");
+      setRegularCustomer(null);
+      setRegularCustomerLoading(false);
+      setRegularCustomerError("");
       setEbarimtSubmitting(false);
       setCompletedEbarimtBuyer({ type: "B2C" });
       setActionError("");
@@ -1356,14 +1447,12 @@ function SelfServiceCheckoutContent() {
           clientSaleId: checkout.clientSaleId,
           total: checkout.total,
           packagingFee: checkout.packagingFee,
+          regularCustomerPhone: checkout.regularCustomer?.phone,
           note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"}`,
-          lines: checkout.lines.map((line) => ({
-            productId: line.product.id,
-            qty: line.qty,
-            unitPrice: Number(line.product.price),
-            discountAmount: 0,
-            taxRate: Number(line.product.taxRate) || 0,
-          })),
+          lines: createSelfServiceSaleLines(
+            checkout.lines,
+            checkout.regularCustomer,
+          ),
           cardAttemptId: checkout.cardAttempt.attemptId,
           cardTransactionId: checkout.cardAttempt.transactionId,
         });
@@ -1555,6 +1644,27 @@ function SelfServiceCheckoutContent() {
     try {
       const ebarimtBuyer = await resolveEbarimtBuyer();
       setCompletedEbarimtBuyer(ebarimtBuyer);
+      const checkoutRegularCustomer =
+        isCafe && regularCustomer
+          ? await resolveRegularCustomer(regularCustomer.phone)
+          : null;
+      if (checkoutRegularCustomer) {
+        setRegularCustomer(checkoutRegularCustomer);
+        setRegularCustomerPhone(checkoutRegularCustomer.phone);
+      }
+      const checkoutDiscount = checkoutRegularCustomer
+        ? calculateCafeRegularCustomerDiscount(
+            cart.map((line) => ({
+              unitPrice: Number(line.product.price),
+              quantity: line.qty,
+            })),
+            checkoutRegularCustomer.discountPercent,
+          )
+        : 0;
+      const checkoutTotal = Math.max(
+        0,
+        cartSubtotal - checkoutDiscount + packagingFee,
+      );
 
       // Sales remain traceable in the POS data model, but kiosk users never
       // need to see or manually manage this internal session.
@@ -1595,24 +1705,19 @@ function SelfServiceCheckoutContent() {
           organizationId: user.organizationId,
           restaurantTicketId: savedTicket.id,
           clientSaleId,
-          total: cartTotal,
+          total: checkoutTotal,
           packagingFee,
+          regularCustomerPhone: checkoutRegularCustomer?.phone,
           note: `Өөртөө үйлчлэх касс · Тест борлуулалт · ${
             orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"
           }`,
-          lines: cart.map((line) => ({
-            productId: line.product.id,
-            qty: line.qty,
-            unitPrice: Number(line.product.price),
-            discountAmount: 0,
-            taxRate: Number(line.product.taxRate) || 0,
-          })),
+          lines: createSelfServiceSaleLines(cart, checkoutRegularCustomer),
         });
         setCompletedEbarimtBuyer(ebarimtBuyer);
         const finalReceipt = await issueEbarimtForReceipt(
           saleReceipt,
           ebarimtBuyer,
-          { method: "CASH", amount: cartTotal },
+          { method: "CASH", amount: checkoutTotal },
         );
         setCompletedTicketNo(savedTicket.ticketNo);
         setCompletedKitchenTicket(savedTicket);
@@ -1627,13 +1732,14 @@ function SelfServiceCheckoutContent() {
           ticket: savedTicket,
           clientSaleId,
           shiftId: activeShift.id,
-          total: cartTotal,
+          total: checkoutTotal,
           packagingFee,
           lines: cart.map((line) => ({ ...line })),
+          regularCustomer: checkoutRegularCustomer,
           ebarimtBuyer,
         };
         const cardAttempt = await authorizeCardPayment(
-          cartTotal,
+          checkoutTotal,
           (nextAttempt) => {
             const nextCheckout: PendingCardCheckout = {
               ...cardCheckoutBase,
@@ -1664,7 +1770,7 @@ function SelfServiceCheckoutContent() {
       }
 
       const invoice = await createRestaurantQPayInvoice({
-        amount: cartTotal,
+        amount: checkoutTotal,
         registerId: register.id,
         organizationId: user.organizationId,
       });
@@ -1673,9 +1779,10 @@ function SelfServiceCheckoutContent() {
         invoice,
         clientSaleId,
         shiftId: activeShift.id,
-        total: cartTotal,
+        total: checkoutTotal,
         packagingFee,
         lines: cart.map((line) => ({ ...line })),
+        regularCustomer: checkoutRegularCustomer,
         ebarimtBuyer,
       };
       persistPendingQPayCheckout(checkout);
@@ -1751,15 +1858,13 @@ function SelfServiceCheckoutContent() {
           clientSaleId: checkout.clientSaleId,
           total: checkout.total,
           packagingFee: checkout.packagingFee,
+          regularCustomerPhone: checkout.regularCustomer?.phone,
           qpayInvoiceId: paidInvoice.invoiceId,
           note: `Өөртөө үйлчлэх касс · ${orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"}`,
-          lines: checkout.lines.map((line) => ({
-            productId: line.product.id,
-            qty: line.qty,
-            unitPrice: Number(line.product.price),
-            discountAmount: 0,
-            taxRate: Number(line.product.taxRate) || 0,
-          })),
+          lines: createSelfServiceSaleLines(
+            checkout.lines,
+            checkout.regularCustomer,
+          ),
         });
         clearSelfServicePendingPayment();
 
@@ -2540,8 +2645,16 @@ function SelfServiceCheckoutContent() {
                   </div>
                 ) : null}
                 <div className="flex justify-between">
-                  <span className="font-semibold text-white/55">Хөнгөлөлт</span>
-                  <span className="font-black">0₮</span>
+                  <span className="font-semibold text-white/55">
+                    {regularCustomer
+                      ? "Байнгын хэрэглэгчийн хөнгөлөлт"
+                      : "Хөнгөлөлт"}
+                  </span>
+                  <span className="font-black">
+                    {regularCustomerDiscount > 0
+                      ? `-${formatMoney(regularCustomerDiscount)}`
+                      : "0₮"}
+                  </span>
                 </div>
               </div>
               <div className="mt-6 flex items-end justify-between border-t border-white/10 pt-6">
@@ -2552,6 +2665,104 @@ function SelfServiceCheckoutContent() {
                   {formatMoney(cartTotal)}
                 </span>
               </div>
+
+              {isCafe ? (
+                <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-3">
+                  <div className="flex items-center gap-2">
+                    <BadgePercent className="h-4 w-4 text-emerald-300" />
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-white/45">
+                      Байнгын хэрэглэгч
+                    </p>
+                  </div>
+                  {regularCustomer ? (
+                    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-emerald-300/10 px-3 py-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black text-emerald-200">
+                          {regularCustomer.name}
+                        </p>
+                        <p className="mt-0.5 text-xs font-bold text-white/50">
+                          {regularCustomer.phone} · {regularCustomer.discountPercent}% хямдрал
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRegularCustomer(null);
+                          setRegularCustomerPhone("");
+                          setRegularCustomerError("");
+                          setActionError("");
+                        }}
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 text-white/60 transition hover:bg-white/10 hover:text-white"
+                        aria-label="Байнгын хэрэглэгчийг салгах"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-3 flex gap-2">
+                        <input
+                          inputMode="numeric"
+                          maxLength={8}
+                          value={regularCustomerPhone}
+                          onChange={(event) => {
+                            setRegularCustomerPhone(
+                              event.target.value.replace(/\D/g, "").slice(0, 8),
+                            );
+                            setRegularCustomer(null);
+                            setRegularCustomerError("");
+                            setActionError("");
+                          }}
+                          onKeyDown={(event) => {
+                            if (
+                              event.key === "Enter" &&
+                              regularCustomerPhone.length === 8 &&
+                              !regularCustomerLoading
+                            ) {
+                              event.preventDefault();
+                              void resolveRegularCustomer(
+                                regularCustomerPhone,
+                                true,
+                              ).catch(() => null);
+                            }
+                          }}
+                          placeholder="Утасны 8 орон"
+                          className="h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/10 px-3 text-sm font-bold text-white outline-none placeholder:text-white/30 focus:border-emerald-300"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void resolveRegularCustomer(
+                              regularCustomerPhone,
+                              true,
+                            ).catch(() => null)
+                          }
+                          disabled={
+                            regularCustomerLoading ||
+                            regularCustomerPhone.length !== 8
+                          }
+                          className="inline-flex h-11 items-center justify-center rounded-xl bg-white px-3 text-xs font-black text-[#172219] disabled:opacity-40"
+                        >
+                          {regularCustomerLoading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            "Шалгах"
+                          )}
+                        </button>
+                      </div>
+                      {regularCustomerError ? (
+                        <p className="mt-2 text-xs font-bold leading-5 text-rose-200">
+                          {regularCustomerError}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-[11px] font-semibold leading-4 text-white/35">
+                          Бүртгэлтэй утсаа оруулж хямдралаа авна уу.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </div>
+              ) : null}
 
               {ebarimtReady ? (
                 <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-3">

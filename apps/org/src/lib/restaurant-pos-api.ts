@@ -130,6 +130,23 @@ export type CafeDailyStockResponse = {
   }>;
 };
 
+export type CafeRegularCustomer = {
+  id: string;
+  name: string;
+  phone: string;
+  normalizedPhone: string;
+  discountPercent: number;
+  isActive: boolean;
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  saleCount: number;
+};
+
+export type CafeRegularCustomerLookup =
+  | { found: false; phone: string }
+  | { found: true; customer: CafeRegularCustomer };
+
 export type RestaurantTicketLine = {
   id: string;
   productId: string;
@@ -370,6 +387,7 @@ type CreateRestaurantCashSalePayload = {
   restaurantTicketId: string;
   total: number;
   packagingFee?: number;
+  regularCustomerPhone?: string;
   note: string;
   lines: Array<{
     productId: string;
@@ -784,6 +802,65 @@ export async function voidCafeDailyStockReceipt(input: {
     { method: "DELETE" },
   );
   return readApiResponse<CafeDailyStockResponse>(response);
+}
+
+export async function getCafeRegularCustomers(input: {
+  organizationId: string;
+  search?: string;
+}) {
+  const params = new URLSearchParams({ organizationId: input.organizationId });
+  if (input.search?.trim()) params.set("search", input.search.trim());
+  const response = await authFetch(
+    `${API}/pos/cafe-regular-customers?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<{
+    customers: CafeRegularCustomer[];
+    total: number;
+  }>(response);
+}
+
+export async function lookupCafeRegularCustomer(input: {
+  organizationId: string;
+  phone: string;
+}) {
+  const response = await authFetch(`${API}/pos/cafe-regular-customers/lookup`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<CafeRegularCustomerLookup>(response);
+}
+
+export async function createCafeRegularCustomer(input: {
+  organizationId: string;
+  name: string;
+  phone: string;
+  discountPercent: number;
+}) {
+  const response = await authFetch(`${API}/pos/cafe-regular-customers`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<CafeRegularCustomer>(response);
+}
+
+export async function updateCafeRegularCustomer(
+  customerId: string,
+  input: Partial<
+    Pick<
+      CafeRegularCustomer,
+      "name" | "phone" | "discountPercent" | "isActive"
+    >
+  >,
+) {
+  const response = await authFetch(
+    `${API}/pos/cafe-regular-customers/${encodeURIComponent(customerId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+  return readApiResponse<CafeRegularCustomer>(response);
 }
 
 export async function getRestaurantMenuCategories(organizationId: string) {
@@ -1258,6 +1335,9 @@ async function createRestaurantSale(input: CreateRestaurantSalePayload) {
       loyalty: { mode: "NONE" },
       lines: input.lines,
       packagingFee: input.packagingFee || 0,
+      ...(input.regularCustomerPhone
+        ? { regularCustomerPhone: input.regularCustomerPhone }
+        : {}),
       note: input.note,
     }),
   });

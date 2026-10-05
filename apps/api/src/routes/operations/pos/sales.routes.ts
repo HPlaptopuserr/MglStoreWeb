@@ -1,4 +1,8 @@
-import { normalizeCashPayment } from "@mgl/types";
+import {
+  calculateCafeRegularCustomerUnitDiscount,
+  normalizeCafeRegularCustomerPhone,
+  normalizeCashPayment,
+} from "@mgl/types";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 import {
@@ -793,6 +797,81 @@ router.post("/pos/sales", async (req, res) => {
       return res.status(200).json(existingSale.response as object);
     }
 
+    const requestedRegularCustomerPhone = String(
+      body.regularCustomerPhone || "",
+    ).trim();
+    const regularCustomerPhone = requestedRegularCustomerPhone
+      ? normalizeCafeRegularCustomerPhone(requestedRegularCustomerPhone)
+      : null;
+    if (requestedRegularCustomerPhone && !regularCustomerPhone) {
+      return res.status(400).json({
+        message: "Байнгын хэрэглэгчийн утасны дугаар 8 оронтой байна",
+      });
+    }
+    if (regularCustomerPhone && !isSelfServiceSale) {
+      return res.status(400).json({
+        message: "Байнгын хэрэглэгчийн хямдрал зөвхөн өөртөө үйлчлэх кассад үйлчилнэ",
+      });
+    }
+
+    let regularCustomer: {
+      id: string;
+      name: string;
+      phone: string;
+      discountPercent: number;
+    } | null = null;
+    if (regularCustomerPhone) {
+      const [cafeMode, customer] = await Promise.all([
+        prisma.siteSetting.findUnique({
+          where: { key: `self-service-mode-${idempotencyOrganizationId}` },
+          select: { value: true },
+        }),
+        prisma.cafeRegularCustomer.findUnique({
+          where: {
+            organizationId_normalizedPhone: {
+              organizationId: idempotencyOrganizationId,
+              normalizedPhone: regularCustomerPhone,
+            },
+          },
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            discountPercent: true,
+            isActive: true,
+          },
+        }),
+      ]);
+      if (String(cafeMode?.value || "").trim().toUpperCase() !== "CAFE") {
+        return res.status(403).json({
+          message: "Байнгын хэрэглэгчийн хямдрал зөвхөн кофе шопын горимд үйлчилнэ",
+        });
+      }
+      if (!customer?.isActive) {
+        return res.status(409).json({
+          message: "Байнгын хэрэглэгчийн бүртгэл идэвхгүй эсвэл олдсонгүй",
+        });
+      }
+      regularCustomer = {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        discountPercent: Number(customer.discountPercent),
+      };
+    }
+
+    const effectiveLines: SaleLineInput[] = lines.map((line) => ({
+      ...line,
+      discountAmount: isSelfServiceSale
+        ? regularCustomer
+          ? calculateCafeRegularCustomerUnitDiscount(
+              Number(line.unitPrice || 0),
+              regularCustomer.discountPercent,
+            )
+          : 0
+        : Number(line.discountAmount || 0),
+    }));
+
     if (!body.branchId) {
       return res.status(400).json({ message: "branchId шаардлагатай" });
     }
@@ -974,7 +1053,7 @@ router.post("/pos/sales", async (req, res) => {
       }
     }
 
-    const preLineTotals = lines.map((line) => {
+    const preLineTotals = effectiveLines.map((line) => {
       const qty = Number(line.qty || 0);
       const unitPrice = Number(line.unitPrice || 0);
       const discount = Number(line.discountAmount || 0) * qty;
@@ -1452,7 +1531,7 @@ router.post("/pos/sales", async (req, res) => {
           : products;
         const saleLines: SaleLineInput[] = packagingProduct
           ? [
-              ...lines,
+              ...effectiveLines,
               {
                 productId: packagingProduct.id,
                 qty: 1,
@@ -1461,7 +1540,7 @@ router.post("/pos/sales", async (req, res) => {
                 taxRate: 10,
               },
             ]
-          : lines;
+          : effectiveLines;
 
         const cardLines = normalizedPayments.filter(
           (item) => item.method === PaymentMethod.CARD,
@@ -1802,6 +1881,7 @@ router.post("/pos/sales", async (req, res) => {
             registerId: registerId || undefined,
             shiftId: resolvedShiftId,
             cashierId: actor.id,
+            cafeRegularCustomerId: regularCustomer?.id || undefined,
             paymentMethod: paymentMethodSummary || "CASH",
             paymentBreakdown: persistedPaymentBreakdown,
             subtotal: subTotal,
@@ -1835,6 +1915,13 @@ router.post("/pos/sales", async (req, res) => {
           },
           select: { id: true },
         });
+
+        if (regularCustomer) {
+          await tx.cafeRegularCustomer.update({
+            where: { id: regularCustomer.id },
+            data: { lastUsedAt: new Date() },
+          });
+        }
 
         if (restaurantTicketId && restaurantTicketForSale) {
           const unsentItems = restaurantTicketForSale.items
@@ -2250,6 +2337,14 @@ router.post("/pos/sales", async (req, res) => {
           taxTotal: Number(fullSale.taxTotal),
           discountTotal: Number(fullSale.discountTotal),
           grandTotal: Number(fullSale.grandTotal),
+          regularCustomer: regularCustomer
+            ? {
+                id: regularCustomer.id,
+                name: regularCustomer.name,
+                phone: regularCustomer.phone,
+                discountPercent: regularCustomer.discountPercent,
+              }
+            : null,
           loyalty: loyaltyResponse,
         };
 
