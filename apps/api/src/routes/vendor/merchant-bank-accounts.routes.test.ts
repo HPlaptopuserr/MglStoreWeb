@@ -42,6 +42,7 @@ test('owner updates only the selected organization POS settlement accounts', asy
 });
 test('staff and owners of another organization cannot change settlement', async () => {
   assert.equal((await save('staff', 'own-org')).status, 403);
+  assert.equal((await save('admin', 'own-org')).status, 403);
   assert.equal((await save('owner', 'other-org')).status, 403);
   assert.equal(writes, 0);
 });
@@ -52,5 +53,48 @@ test('invalid bank data is rejected without mutation', async () => {
 test('provider-managed settlement cannot be silently redirected by editing saved account fields', async () => {
   stub(prisma.organization, 'findUnique', async () => ({ name: 'Company', qpayEnabled: true, qpayMerchantId: 'merchant', qpayInvoiceCode: 'SYSTEMQR', qpayMerchantKey: 'systemqr' }));
   assert.equal((await save('owner', 'own-org')).status, 409);
+  assert.equal(writes, 0);
+});
+
+function readAccounts(userId: string, organizationId: string, channel = 'POS') {
+  const token = jwt.sign({ userId, role: 'USER' }, process.env.JWT_SECRET || 'dev-secret-change-me');
+  return fetch(`${url}?${new URLSearchParams({ organizationId, channel })}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+test('owner and admin read the selected channel; only owner can edit', async () => {
+  stub(prisma.organizationMember, 'findFirst', async ({ where }: {
+    where: { userId: string; organizationId: string; role: { in: string[] }; isActive: boolean; deletedAt: null; organization: { deletedAt: null } };
+  }) => {
+    assert.deepEqual(where.role.in, ['OWNER', 'ADMIN']);
+    assert.equal(where.isActive, true);
+    assert.equal(where.deletedAt, null);
+    assert.equal(where.organization.deletedAt, null);
+    return where.organizationId === 'own-org' && ['owner', 'admin'].includes(where.userId)
+      ? { organizationId: 'own-org', role: where.userId.toUpperCase() } : null;
+  });
+  const webAccount = { ...account, account_number: '9876543210' };
+  stub(prisma.organization, 'findUnique', async ({ where }: { where: { id: string } }) => {
+    assert.equal(where.id, 'own-org');
+    return { qpayBankAccounts: [account], webQpayBankAccounts: [webAccount] };
+  });
+  for (const user of ['owner', 'admin']) {
+    for (const channel of ['POS', 'WEB']) {
+      const response = await readAccounts(user, 'own-org', channel);
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), {
+        success: true, canEdit: user === 'owner', bank_accounts: [channel === 'WEB' ? webAccount : account],
+      });
+    }
+  }
+  assert.equal((await readAccounts('staff', 'own-org')).status, 403);
+  assert.equal((await readAccounts('owner', 'other-org')).status, 403);
+  assert.equal(writes, 0);
+});
+
+test('database errors return failure instead of an empty successful account list', async () => {
+  stub(prisma.organizationMember, 'findFirst', async () => { throw new Error('Database unavailable'); });
+  assert.equal((await readAccounts('owner', 'own-org')).status, 500);
   assert.equal(writes, 0);
 });

@@ -67,3 +67,19 @@ export async function resolveBankAccountOwner(
   });
   return member?.organizationId ?? null;
 }
+
+/** Read access is separate from the owner-only settlement mutation permission. */
+export async function resolveBankAccountReader(userId: string, organizationId: unknown) {
+  if (typeof organizationId !== "string" || !organizationId.trim()) return null;
+  return prisma.organizationMember.findFirst({
+    where: {
+      userId,
+      organizationId,
+      role: { in: ["OWNER", "ADMIN"] },
+      isActive: true,
+      deletedAt: null,
+      organization: { deletedAt: null },
+    },
+    select: { organizationId: true, role: true },
+  });
+}

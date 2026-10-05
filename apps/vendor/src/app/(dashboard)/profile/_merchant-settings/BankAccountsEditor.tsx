@@ -1,8 +1,13 @@
-import { Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 import type { BankAccount } from "./types";
 import { BANK_OPTIONS } from "./constants";
 
+import type { BankAccountsLoadState } from "./useMerchantBankAccounts";
+
 type BankAccountsEditorProps = {
+  loadState: BankAccountsLoadState;
+  canEdit: boolean;
+  onRetry: () => void;
   savedAccounts: BankAccount[];
   editingAccounts: BankAccount[];
   confirmNumbers: string[];
@@ -17,6 +22,9 @@ type BankAccountsEditorProps = {
 };
 
 export function BankAccountsEditor({
+  loadState,
+  canEdit,
+  onRetry,
   savedAccounts,
   editingAccounts,
   confirmNumbers,
@@ -33,7 +41,7 @@ export function BankAccountsEditor({
     <div className="rounded-xl border border-slate-200 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="font-semibold text-slate-800 text-sm">Банкны данс</p>
-        {!isEditing && (
+        {!isEditing && canEdit && loadState === "ready" && (
           <button
             onClick={onStartEditing}
             className="text-xs text-[#5B4CFF] hover:underline font-medium"
@@ -43,15 +51,28 @@ export function BankAccountsEditor({
         )}
       </div>
 
-      {!isEditing && savedAccounts.length === 0 && (
+      {loadState === "loading" && (
+        <div role="status" className="flex items-center gap-2 py-3 text-sm text-slate-500">
+          <Loader2 aria-hidden="true" className="h-4 w-4 motion-safe:animate-spin" /> Дансны мэдээлэл ачаалж байна…
+        </div>
+      )}
+      {(loadState === "error" || loadState === "forbidden") && (
+        <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          <p>{loadState === "forbidden"
+            ? "Дансны мэдээлэл харах эрхгүй байна. Байгууллагын Owner эсвэл Admin эрхээр нэвтэрнэ үү."
+            : "Дансны мэдээллийг ачаалж чадсангүй. Энэ нь данс холбоогүй гэсэн үг биш."}</p>
+          <button type="button" onClick={onRetry} className="mt-2 rounded font-semibold underline hover:text-amber-700 focus-visible:outline focus-visible:outline-2">Дахин оролдох</button>
+        </div>
+      )}
+      {!isEditing && loadState === "ready" && savedAccounts.length === 0 && (
         <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
           {managedBySystem
-            ? "Minu merchantCode-д холбогдсон дансны мэдээлэл хадгалагдаагүй байна. Дансаа нэмээд дараа харах боломжтой."
+            ? "Minu merchant холбогдсон. Энэ системд дансны дэлгэрэнгүй мэдээлэл хадгалагдаагүй байна. Хүлээн авах дансыг Minu гэрээний тохиргооноос шалгана уу."
             : "Банкны данс бүртгэгдээгүй байна. QR төлбөр үүсгэхийн тулд данс нэмнэ үү."}
         </div>
       )}
 
-      {!isEditing && savedAccounts.length > 0 && (
+      {!isEditing && loadState === "ready" && savedAccounts.length > 0 && (
         <div className="space-y-2">
           {savedAccounts.map((account, index) => {
             const bank = BANK_OPTIONS.find((option) => option.code === account.account_bank_code);
@@ -73,7 +94,7 @@ export function BankAccountsEditor({
         </div>
       )}
 
-      {isEditing && (
+      {isEditing && canEdit && loadState === "ready" && (
         <div className="space-y-3">
           {editingAccounts.map((account, index) => {
             const confirmValue = confirmNumbers[index] ?? "";

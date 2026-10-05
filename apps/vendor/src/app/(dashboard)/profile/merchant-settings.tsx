@@ -34,6 +34,7 @@ import type {
 import { MerchantSettingsMessage, Field } from "./_merchant-settings/shared";
 import { MinuTerminalMerchantCard } from "./_merchant-settings/MinuTerminalMerchantCard";
 import { ConnectedMerchantStatusCard } from "./_merchant-settings/ConnectedMerchantStatusCard";
+import { useMerchantBankAccounts } from "./_merchant-settings/useMerchantBankAccounts";
 import { BankAccountsEditor } from "./_merchant-settings/BankAccountsEditor";
 import { SearchableSelect } from "./_merchant-settings/SearchableSelect";
 import { MerchantConnectionChooser } from "./_merchant-settings/MerchantConnectionChooser";
@@ -68,7 +69,7 @@ export function MerchantSettingsSection({
   const [message, setMessage] = useState<MerchantMessage | null>(null);
   const [copied, setCopied] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [savedBankAccounts, setSavedBankAccounts] = useState<BankAccount[]>([]);
+
   const [editingBankAccounts, setEditingBankAccounts] = useState(false);
   const [connectedBankAccounts, setConnectedBankAccounts] = useState<
     BankAccount[]
@@ -125,14 +126,12 @@ export function MerchantSettingsSection({
 
     if (mode === "terminal") {
       loadMinuStatus();
-      loadBankAccounts();
       return;
     }
 
     loadMerchantStatus();
     loadCities();
     loadSystemQrCategories();
-    loadBankAccounts();
   }, [channel, mode, organizationId]);
 
   useEffect(() => {
@@ -176,25 +175,20 @@ export function MerchantSettingsSection({
     ? `?${merchantQueryParams.toString()}`
     : "";
 
-  const loadBankAccounts = async () => {
-    try {
-      const res = await authFetch(
-        `${API}/vendor/merchant/bank-accounts${orgQuery}`,
-      );
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && Array.isArray(data.bank_accounts)) {
-          const nextAccounts = data.bank_accounts;
-          setSavedBankAccounts(nextAccounts);
-          setConnectedBankAccounts(
-            nextAccounts.length > 0
-              ? nextAccounts
-              : [{ ...DEFAULT_BANK_ACCOUNT }],
-          );
-        }
-      }
-    } catch {}
-  };
+  const {
+    accounts: savedBankAccounts,
+    setAccounts: setSavedBankAccounts,
+    state: bankAccountsState,
+    canEdit: canEditBankAccounts,
+    load: loadBankAccounts,
+  } = useMerchantBankAccounts(orgQuery);
+
+  useEffect(() => {
+    setEditingBankAccounts(false);
+    setConnectedBankAccounts(savedBankAccounts.length > 0
+      ? savedBankAccounts : [{ ...DEFAULT_BANK_ACCOUNT }]);
+    setConfirmNumbers(savedBankAccounts.map(() => ""));
+  }, [savedBankAccounts]);
 
   const loadMerchantStatus = async () => {
     setIsQpayLoading(true);
@@ -805,6 +799,9 @@ export function MerchantSettingsSection({
 
         {/* Bank accounts section */}
         <BankAccountsEditor
+          loadState={bankAccountsState}
+          canEdit={canEditBankAccounts && !merchantStatus.managedBySystem}
+          onRetry={() => { void loadBankAccounts(); }}
           savedAccounts={savedBankAccounts}
           editingAccounts={connectedBankAccounts}
           confirmNumbers={confirmNumbers}

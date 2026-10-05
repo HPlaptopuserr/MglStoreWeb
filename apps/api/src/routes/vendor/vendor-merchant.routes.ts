@@ -19,7 +19,7 @@ import {
 import { OrgRole, prisma } from "@mgl/database";
 import { getMinuAgentToken } from "../../services/minu-pos-agent";
 
-import { parseMerchantBankAccounts, resolveBankAccountOwner } from "../../services/merchant-bank-accounts";
+import { parseMerchantBankAccounts, resolveBankAccountOwner, resolveBankAccountReader } from "../../services/merchant-bank-accounts";
 
 import { parseMinuRegistration } from "../../services/minu-registration";
 
@@ -556,20 +556,23 @@ router.get("/vendor/merchant/bank-accounts", requireAuth, async (req, res) => {
     const userId = actor.userId;
     const explicitOrgId = req.query.organizationId as string | undefined;
     const channel = normalizeMerchantChannel(req.query.channel as string | undefined);
-    const organizationId = await resolveBankAccountOwner(userId, explicitOrgId ?? actor.organizationId);
+    const member = await resolveBankAccountReader(userId, explicitOrgId ?? actor.organizationId);
 
-    if (!organizationId) {
-      return res.status(404).json({ success: false, error: "Байгууллага олдсонгүй" });
+    if (!member) {
+      return res.status(403).json({ success: false, error: "Дансны мэдээлэл харах эрхгүй байна." });
     }
 
     const org = await prisma.organization.findUnique({
-      where: { id: organizationId },
+      where: { id: member.organizationId },
       select: { qpayBankAccounts: true, webQpayBankAccounts: true },
     });
 
+    if (!org) return res.status(404).json({ success: false, error: "Байгууллага олдсонгүй" });
+
     return res.json({
       success: true,
-      bank_accounts: channel === "WEB" ? org?.webQpayBankAccounts || [] : org?.qpayBankAccounts || [],
+      canEdit: member.role === "OWNER",
+      bank_accounts: channel === "WEB" ? org.webQpayBankAccounts || [] : org.qpayBankAccounts || [],
     });
   } catch (error) {
     console.error("bank-accounts get error", error);
