@@ -1,3 +1,4 @@
+import { canAssignTaskToRole } from "../../services/task-assignment-policy";
 import { Router, type Router as ExpressRouter } from "express";
 import multer from "multer";
 import path from "path";
@@ -344,13 +345,17 @@ router.post(
           isActive: true,
           deletedAt: null,
         },
-        select: { userId: true },
+        select: { userId: true, role: true },
       });
       const validAssigneeIds = assignees.map((item) => item.userId);
       if (validAssigneeIds.length !== assigneeIds.length) {
         return res
           .status(400)
           .json({ message: "Сонгосон ажилтан байгууллагад хамаарахгүй байна" });
+      }
+
+      if (assignees.some((member) => !canAssignTaskToRole(membership?.role || "", member.role))) {
+        return res.status(403).json({ message: "Менежер ажилтанд, Owner / CEO менежер болон ажилтанд даалгавар онооно." });
       }
 
       const dueAt = body.dueAt ? new Date(body.dueAt) : null;
