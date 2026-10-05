@@ -27,6 +27,7 @@ const ORG_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     Permission.MANAGE_SERVICES,
   ],
   ADMIN: [
+    Permission.MANAGE_ORG_MEMBERS,
     Permission.CREATE_PRODUCTS,
     Permission.MANAGE_PRODUCTS,
     Permission.APPROVE_PRODUCTS,

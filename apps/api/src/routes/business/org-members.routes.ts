@@ -214,8 +214,8 @@ router.post(
         .status(403)
         .json({ message: "Энэ байгууллагад хандах эрхгүй" });
     }
-    if (callerRole !== "OWNER") {
-      return res.status(403).json({ message: "Ажилтныг зөвхөн дэлгүүрийн эзэмшигч нэмнэ" });
+    if (callerRole !== "OWNER" && callerRole !== "ADMIN") {
+      return res.status(403).json({ message: "Ажилтныг зөвхөн эзэмшигч эсвэл менежер нэмнэ" });
     }
 
     // Determine target role — caller cannot assign equal or higher role

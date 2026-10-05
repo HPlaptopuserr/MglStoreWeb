@@ -10,6 +10,7 @@ import router from "./org-members.routes";
 let server: Server;
 let url: string;
 let pos = false;
+let callerRole = "OWNER";
 const restores: Array<() => void> = [];
 function stub(target: object, key: string, value: unknown) {
   const previous: unknown = Reflect.get(target, key);
@@ -40,12 +41,13 @@ afterEach(() => {
 });
 beforeEach(() => {
   pos = false;
+  callerRole = "OWNER";
   stub(
     prisma.organizationMember,
     "findFirst",
     async ({ where }: { where: { organizationId: string } }) =>
       where.organizationId === "store"
-        ? { organizationId: "store", role: "OWNER", capabilities: [] }
+        ? { organizationId: "store", role: callerRole, capabilities: [] }
         : null,
   );
   stub(prisma.organization, "findUnique", async () => ({
@@ -97,4 +99,48 @@ test("owner cannot add staff with a disabled app capability", async () => {
     }),
   });
   assert.equal(response.status, 409);
+});
+
+for (const role of ["OWNER", "ADMIN"]) {
+  test(`${role} can add an ordinary employee from a legacy request`, async () => {
+    callerRole = role;
+    stub(prisma.organizationMember, "count", async () => 1);
+    stub(prisma.user, "findUnique", async () => ({ id: "employee" }));
+    stub(prisma.organizationMember, "findUnique", async () => null);
+    stub(prisma, "$transaction", async (run: (tx: object) => Promise<unknown>) => run({
+      profile: { upsert: async () => ({}) },
+      organizationMember: { create: async ({ data }: { data: { role: string; organizationId: string; capabilities: string[] } }) => {
+        assert.equal(data.role, "STAFF");
+        assert.equal(data.organizationId, "store");
+        assert.deepEqual(data.capabilities, []);
+        return { id: "member" };
+      } },
+    }));
+    const response = await fetch(url, { method: "POST", headers, body: JSON.stringify({
+      organizationId: "store", fullName: "Employee", email: "employee@example.com", role: "STAFF",
+    }) });
+    assert.equal(response.status, 201);
+  });
+}
+for (const targetRole of ["OWNER", "ADMIN"]) {
+  test(`manager cannot assign ${targetRole}`, async () => {
+    callerRole = "ADMIN";
+    const response = await fetch(url, { method: "POST", headers, body: JSON.stringify({
+      organizationId: "store", fullName: "Employee", email: "employee@example.com", role: targetRole,
+    }) });
+    assert.equal(response.status, 403);
+  });
+}
+test("ordinary staff cannot add members", async () => {
+  callerRole = "STAFF";
+  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify({
+    organizationId: "store", fullName: "Employee", email: "employee@example.com", role: "STAFF",
+  }) });
+  assert.equal(response.status, 403);
+});
+test("manager capability picker respects organization app settings", async () => {
+  callerRole = "ADMIN";
+  const response = await fetch(`${url}/available-capabilities?organizationId=store`, { headers });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { capabilities: [] });
 });
