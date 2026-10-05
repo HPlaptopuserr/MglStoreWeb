@@ -8,9 +8,7 @@ import {
   OrganizationTaskStatus,
   prisma,
 } from "@mgl/database";
-import { Permission } from "@mgl/types";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
-import { requireOrgPermission } from "../../services/permission.service";
 
 const router: ExpressRouter = Router();
 
@@ -301,7 +299,6 @@ router.get(
 router.post(
   "/org/tasks",
   requireAuth,
-  requireOrgPermission({ from: "body" }, Permission.VIEW_ORG_DASHBOARD),
   async (req, res) => {
     try {
       const user = getAuthUser(req);
@@ -320,13 +317,17 @@ router.post(
       const isManager = MANAGER_ROLES.has(membership?.role || "");
       const assigneeIds = normalizeAssigneeIds(body.assigneeIds);
       const subTaskTitles = normalizeSubTaskTitles(body.subTasks);
+      if (!membership) {
+        return res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
+      }
+      const isSelfPlan = assigneeIds.length === 1 && assigneeIds[0] === user.userId;
 
       if (!title) {
         return res
           .status(400)
           .json({ message: "Даалгаврын гарчиг шаардлагатай" });
       }
-      if (!isManager) {
+      if (!isManager && !isSelfPlan) {
         return res
           .status(403)
           .json({ message: "Даалгавар оноох эрх хүрэлцэхгүй байна" });
@@ -336,7 +337,7 @@ router.post(
           .status(400)
           .json({ message: "Даалгавар оноох ажилтан сонгоно уу" });
       }
-      if (assigneeIds.includes(user.userId)) {
+      if (!isSelfPlan && assigneeIds.includes(user.userId)) {
         return res
           .status(400)
           .json({ message: "Өөртөө даалгавар оноох боломжгүй" });
@@ -358,7 +359,7 @@ router.post(
           .json({ message: "Сонгосон ажилтан байгууллагад хамаарахгүй байна" });
       }
 
-      if (assignees.some((member) => !canAssignTaskToRole(membership?.role || "", member.role))) {
+      if (!isSelfPlan && assignees.some((member) => !canAssignTaskToRole(membership?.role || "", member.role))) {
         return res.status(403).json({ message: "Менежер ажилтанд, Owner / CEO менежер болон ажилтанд даалгавар онооно." });
       }
 
