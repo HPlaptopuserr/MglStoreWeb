@@ -20,7 +20,7 @@ export interface DashboardLayoutProps extends Partial<SidebarProps> {
   showPreorderProducts?: boolean;
   showServicePosts?: boolean;
   showContractArchive?: boolean;
-  vendorAccessMode?: "owner" | "cashier";
+  vendorAccessMode?: "owner" | "cashier" | "stock";
   vendorBottomSlot?: ReactNode;
   notificationComponent?: ReactNode;
 }

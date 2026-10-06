@@ -1,3 +1,4 @@
+import quickRestockRoutes from "./quick-restock.routes";
 import { Router, type Router as ExpressRouter } from "express";
 import cardPaymentsRoutes from "./card-payments.routes";
 import qpayRoutes from "./qpay.routes";
@@ -9,8 +10,15 @@ import restaurantRoutes from "./restaurant.routes";
 import goodsReceiptsRoutes from "./goods-receipts.routes";
 import cafeDailyStockRoutes from "./cafe-daily-stock.routes";
 
+import stocktakesRoutes from "./stocktakes.routes";
+
+import creditCustomersRoutes from "./credit-customers.routes";
+
 const router: ExpressRouter = Router();
 
+router.use(stocktakesRoutes);
+router.use(quickRestockRoutes);
+router.use(creditCustomersRoutes);
 router.use(cardPaymentsRoutes);
 router.use(qpayRoutes);
 router.use(salesRoutes);

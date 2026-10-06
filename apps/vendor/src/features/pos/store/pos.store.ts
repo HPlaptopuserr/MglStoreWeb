@@ -52,7 +52,7 @@ export function posReducer(state: PosState, action: PosAction): PosState {
         (line) => line.productId === action.payload.productId,
       );
       if (existing) {
-        const maxQty = Math.max(0, existing.stockQty);
+        const maxQty = Math.max(0, action.payload.stockQty);
         const nextQty = Math.min(
           roundPosQuantity(
             existing.qty + action.payload.qty,
@@ -73,7 +73,7 @@ export function posReducer(state: PosState, action: PosAction): PosState {
           lastError: null,
           cart: state.cart.map((line) =>
             line.productId === action.payload.productId
-              ? { ...line, qty: nextQty }
+              ? { ...line, qty: nextQty, stockQty: maxQty }
               : line,
           ),
         };

@@ -1,5 +1,5 @@
-import { prisma, InventoryReason, WarehouseType } from "@mgl/database";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import { prisma, InventoryReason, WarehouseType, Prisma } from "@mgl/database";
+import type { PrismaClient } from "@prisma/client";
 import { fromPosStoredStockQuantity } from "@mgl/types";
 
 type Tx = Omit<
@@ -282,4 +282,64 @@ export async function syncProductStock(
     where: { id: productId },
     data: { stock: result._sum.quantity ?? 0 },
   });
+}
+
+/** Atomic batch reconciliation for physical counts. Quantities are storage units.
+ * Caller must lock products/inventories and validate the stocktake snapshot first.
+ * This intentionally adjusts on-hand stock only, not branch receipt-lot cost allocations.
+ */
+export async function reconcilePhysicalStock(
+  tx: Tx,
+  input: {
+    warehouseId: string | null;
+    referenceId: string;
+    createdById: string;
+    lines: { productId: string; change: number; note: string }[];
+  },
+) {
+  const changed = input.lines.filter((line) => line.change !== 0);
+  for (let offset = 0; offset < changed.length; offset += 400) {
+    const batch = changed.slice(offset, offset + 400);
+    const values = Prisma.join(
+      batch.map(
+        (line) => Prisma.sql`(${line.productId}, ${line.change}::integer)`,
+      ),
+    );
+    const ids = batch.map((line) => line.productId);
+    if (input.warehouseId) {
+      await tx.$executeRaw`UPDATE "WarehouseInventory" AS stock
+        SET "quantity" = stock."quantity" + changes.delta, "updatedAt" = clock_timestamp()
+        FROM (VALUES ${values}) AS changes(id, delta)
+        WHERE stock."productId" = changes.id AND stock."warehouseId" = ${input.warehouseId}`;
+      await tx.$executeRaw`UPDATE "Product" AS product
+        SET "stock" = totals.quantity, "updatedAt" = clock_timestamp()
+        FROM (SELECT "productId", SUM("quantity")::integer AS quantity FROM "WarehouseInventory"
+          WHERE "productId" IN (${Prisma.join(ids)}) GROUP BY "productId") AS totals
+        WHERE product."id" = totals."productId"`;
+    } else {
+      await tx.$executeRaw`UPDATE "Product" AS product
+        SET "stock" = product."stock" + changes.delta, "updatedAt" = clock_timestamp()
+        FROM (VALUES ${values}) AS changes(id, delta) WHERE product."id" = changes.id`;
+    }
+    await tx.inventoryLedger.createMany({
+      data: batch.map((line) => ({
+        productId: line.productId,
+        warehouseId: input.warehouseId,
+        change: line.change,
+        reason: InventoryReason.MANUAL_ADJUST,
+        note: line.note,
+        createdById: input.createdById,
+        referenceId: input.referenceId,
+        referenceType: "STOCKTAKE",
+      })),
+    });
+  }
+  if (input.warehouseId)
+    await tx.warehouseInventory.updateMany({
+      where: {
+        warehouseId: input.warehouseId,
+        productId: { in: input.lines.map((line) => line.productId) },
+      },
+      data: { lastAuditedAt: new Date() },
+    });
 }

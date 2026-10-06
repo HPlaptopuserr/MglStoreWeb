@@ -66,6 +66,9 @@ export type SalePaymentLineInput = {
   transactionId?: string;
   invoiceId?: string;
   credit?: {
+    workplace?: string;
+    department?: string;
+    jobTitle?: string;
     targetType?: "COMPANY" | "CUSTOMER";
     borrowerId?: string;
     borrowerName?: string;

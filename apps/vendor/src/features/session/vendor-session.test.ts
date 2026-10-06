@@ -222,7 +222,7 @@ test("switcher permits active members and rejects suspended organizations", () =
     }),
     true,
   );
-  assert.equal(vendorAccessMode("ADMIN", []), "member");
+  assert.equal(vendorAccessMode("ADMIN", []), "stock");
 });
 
 test("cashier switches navigate before restricted dashboard content can mount", () => {
@@ -275,4 +275,15 @@ test("cashiers can receive goods without accessing employee or store administrat
   assert.equal(canAccessVendorPath("member", "/goods-receipts"), false);
   assert.equal(canAccessVendorPath("cashier", "/employees"), false);
   assert.equal(canAccessVendorPath("cashier", "/goods-receipts-other"), false);
+});
+
+test("stock managers get stocktaking access without owner administration", () => {
+  assert.equal(vendorAccessMode("STAFF", ["STOCK_MANAGER"]), "stock");
+  assert.equal(organizationDestination("stock", "/employees"), "/stocktakes");
+  assert.equal(organizationDestination("stock", "/dashboard"), "/dashboard");
+  assert.equal(organizationDestination("stock", "/stocktakes"), "/stocktakes");
+  assert.equal(
+    organizationDestination("cashier", "/stocktakes"),
+    "/stocktakes",
+  );
 });

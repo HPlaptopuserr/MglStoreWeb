@@ -1,4 +1,6 @@
 "use client";
+import type { PosProduct } from "@/features/pos/types/pos.types";
+import { RestockProductDialog } from "@/features/pos/components/RestockProductDialog";
 import { printReceipt as printSaleReceipt } from "@/features/pos/utils/print-receipt";
 import { ReceiptPrintNotice } from "@/features/pos/components/ReceiptPrintNotice";
 import { reconcilePaymentEntry } from "@/features/pos/utils/reconcile-payment-entry";
@@ -512,6 +514,7 @@ export default function PosDemoPage() {
   const [searchInput, setSearchInput] = useState("");
   const [lastScannedCode, setLastScannedCode] = useState("");
   const [scanMessage, setScanMessage] = useState("");
+  const [restockProduct, setRestockProduct] = useState<PosProduct | null>(null);
   const [scanStatus, setScanStatus] = useState<"idle" | "success" | "not-found">("idle");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("CASH");
   const [paymentEntries, setPaymentEntries] = useState<CheckoutPaymentEntry[]>([]);
@@ -1923,7 +1926,7 @@ export default function PosDemoPage() {
 
   const processScan = async (code: string) => {
     const normalized = code.trim();
-    if (!normalized) return;
+    if (!normalized || restockProduct) return;
 
     setLastScannedCode(normalized);
 
@@ -1950,6 +1953,7 @@ export default function PosDemoPage() {
 
     const result = addRegisterProduct(found);
     if (!result.ok) {
+      if (result.reason !== "payment-active") setRestockProduct(found);
       setScanMessage(`Нөөц хүрэлцэхгүй: ${found.name}`);
       setScanStatus("not-found");
       return;
@@ -1979,7 +1983,7 @@ export default function PosDemoPage() {
         target instanceof HTMLSelectElement ||
         Boolean(target?.isContentEditable);
 
-      if (isTypingField) return;
+      if (isTypingField || document.querySelector("dialog[open]")) return;
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (event.key === "Shift") return;
 
@@ -4276,6 +4280,7 @@ export default function PosDemoPage() {
                 </button>
               </div>
 
+
               <div className="flex items-center gap-2">
               <div className="relative min-w-0 flex-1">
                 <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -4646,6 +4651,22 @@ export default function PosDemoPage() {
       </div>
       </div>
     </div>
+    {restockProduct && <RestockProductDialog
+      key={restockProduct.id}
+      product={restockProduct}
+      registerId={registerConfig?.id}
+      onClose={() => { setRestockProduct(null); requestAnimationFrame(() => scannerInputRef.current?.focus()); }}
+      onRestocked={(product) => {
+        setRestockProduct(null);
+        const result = addRegisterProduct(product);
+        reloadProducts();
+        setScanStatus(result.ok ? "success" : "not-found");
+        setScanMessage(result.ok ? `Нөөц нэмээд сагсанд орууллаа: ${product.name}` : "Нөөц шинэчлэгдлээ. Сагс болон төлбөрөө шалгана уу.");
+        setSearchInput("");
+        if (scannerInputRef.current) scannerInputRef.current.value = "";
+        requestAnimationFrame(() => scannerInputRef.current?.focus());
+      }}
+    />}
     <UnknownBarcodeDialog
       open={unknownBarcode.isOpen}
       barcode={unknownBarcode.barcode}
