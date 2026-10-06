@@ -1,3 +1,7 @@
+import {
+  createProductCodeIndex,
+  normalizeProductCode,
+} from "./product-code-index";
 import type { PosProduct } from "../types/pos.types";
 import {
   CATALOG_FRESH_MS,
@@ -29,6 +33,7 @@ export const EMPTY_CATALOG: CatalogState = {
 export class CatalogResource {
   private state: CatalogState = EMPTY_CATALOG;
   private snapshot: CatalogSnapshot | null = null;
+  private productCodeIndex = createProductCodeIndex([]);
   private listeners = new Set<() => void>();
   private initialized: Promise<void> | null = null;
   private pending: Promise<void> | null = null;
@@ -44,6 +49,8 @@ export class CatalogResource {
   ) {}
 
   getSnapshot = () => this.state;
+  findProduct = (code: string) =>
+    this.productCodeIndex.get(normalizeProductCode(code));
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => {
@@ -51,6 +58,9 @@ export class CatalogResource {
     };
   };
   private update(next: Partial<CatalogState>) {
+    if (next.products && next.products !== this.state.products) {
+      this.productCodeIndex = createProductCodeIndex(next.products);
+    }
     this.state = { ...this.state, ...next };
     this.listeners.forEach((listener) => listener());
   }

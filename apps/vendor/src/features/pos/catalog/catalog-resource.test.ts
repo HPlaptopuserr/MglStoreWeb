@@ -255,3 +255,45 @@ test("cache keys isolate API environments, accounts, organizations and branches"
   ].map(catalogKey);
   assert.equal(new Set(keys).size, keys.length);
 });
+
+test("scanner resolves all cached products and aliases without network, including during refresh", async () => {
+  const saved = snapshot();
+  saved.products = [
+    ...products,
+    {
+      ...products[0],
+      id: "aliased",
+      barcode: "0012345",
+      barcodeAliases: ["0098765"],
+    },
+  ];
+  saved.count = saved.products.length;
+  const { storage } = persistence(saved);
+  const response = deferred<CatalogResponse>();
+  let calls = 0;
+  const resource = new CatalogResource(
+    "key",
+    () => {
+      calls++;
+      return response.promise;
+    },
+    storage,
+    () => timestamp,
+  );
+  await resource.start();
+  assert.equal(resource.findProduct(" SKU5000 ")?.id, "p5000");
+  assert.equal(resource.findProduct("0012345")?.id, "aliased");
+  assert.equal(resource.findProduct("00 98765")?.id, "aliased");
+  assert.equal(calls, 0);
+  const refresh = resource.refresh(true);
+  assert.equal(resource.findProduct("0012345")?.id, "aliased");
+  response.resolve({
+    unchanged: false,
+    products: [{ ...products[0], barcode: "new-code" }],
+    etag: null,
+  });
+  await refresh;
+  assert.equal(resource.findProduct("new-code")?.id, "p0");
+  assert.equal(resource.findProduct("0012345"), undefined);
+  assert.equal(calls, 1);
+});
