@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { printThermalDocument } from "./print-thermal-document";
 
-test("async receipt printing needs no popup, prints once, and retains frame until afterprint", async () => {
+test("async receipt printing supports 58 mm and 80 mm without a popup", async () => {
   const oldWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const oldDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
   let prints = 0;
@@ -34,7 +34,17 @@ test("async receipt printing needs no popup, prints once, and retains frame unti
     assert.equal(removed, false);
     assert.match(pageStyle.textContent, /size: 58mm/);
     assert.match(documentMarkup, /width: 58mm/);
-    assert.match(documentMarkup, /padding: 3mm 5mm/);
+    assert.match(documentMarkup, /padding: 2mm 5mm/);
+    afterPrint?.();
+    assert.equal(removed, true);
+
+    removed = false;
+    assert.equal(printThermalDocument({ bodyHtml: "receipt", paperWidthMm: 80 }), true);
+    frame.onload?.();
+    await Promise.resolve();
+    assert.equal(prints, 2);
+    assert.match(pageStyle.textContent, /size: 80mm/);
+    assert.match(documentMarkup, /width: 80mm/);
     afterPrint?.();
     assert.equal(removed, true);
   } finally {

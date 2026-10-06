@@ -24,11 +24,11 @@ const receipt: PosReceipt = {
     },
   ],
 };
-test("receipt and reprint show tender and change", () => {
+test("receipt and reprint keep payment amounts without redundant cash details", () => {
   const text = formatReceipt(receipt);
-  assert.match(text, /Бэлнээр тооцсон: ₮5,500/);
-  assert.match(text, /Авсан мөнгө: ₮20,000/);
-  assert.match(text, /Хариулт: ₮14,500/);
+  assert.match(text, /Бэлэн мөнгө: ₮5,500/);
+  assert.doesNotMatch(text, /Авсан мөнгө|Хариулт|Төлбөрийн задаргаа/);
+  assert.doesNotMatch(text, /Хөнгөлөлт: -₮0/);
   assert.equal(formatReceipt(JSON.parse(JSON.stringify(receipt))), text);
 });
 test("legacy receipts do not invent tender", () => {

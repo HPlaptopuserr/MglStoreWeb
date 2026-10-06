@@ -57,7 +57,7 @@ export function printThermalDocument({
           body {
             color: #111;
             font-family: ui-monospace, "Cascadia Mono", "Courier New", monospace;
-            padding: 3mm 5mm;
+            padding: 2mm 5mm;
             overflow: hidden;
           }
           pre {

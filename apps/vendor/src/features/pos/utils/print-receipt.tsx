@@ -4,8 +4,9 @@ import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { QRCodeSVG } from "qrcode.react";
 import type { PosReceipt } from "../types/receipt.types";
-import { receiptPrintLayout, receiptPrintCss, receiptPrintFooter } from "./receipt-print-layout";
+import { receiptPrintLayout, receiptPrintCss } from "./receipt-print-layout";
 import { printThermalDocument } from "./print-thermal-document";
+import { readReceiptPaperWidth, type ReceiptPaperWidth } from "./receipt-paper";
 
 const renderEbarimtQrMarkup = (value?: string | null) => {
   const qrValue = String(value || "").trim();
@@ -30,17 +31,24 @@ const renderEbarimtQrMarkup = (value?: string | null) => {
 };
 
 /** Shared by checkout completion and receipt-history reprints. */
-export function printReceipt(receipt: PosReceipt, options: { demo?: boolean } = {}) {
+export function printReceipt(
+  receipt: PosReceipt,
+  options: { demo?: boolean; paperWidthMm?: ReceiptPaperWidth } = {},
+) {
   if (typeof window === "undefined") return;
   const qrData = receipt.ebarimt?.status === "SUCCESS" ? receipt.ebarimt.qrData : null;
   const qrMarkup = renderEbarimtQrMarkup(qrData);
-  const label = options.demo ? "ТЕСТ QR — eBarimt-д бүртгэгдэхгүй" : "eBarimt QR код";
+  const qrTitle = options.demo
+    ? '<p class="ebarimt-qr-title">ТЕСТ QR — eBarimt-д бүртгэгдэхгүй</p>'
+    : "";
+  const paperWidthMm = options.paperWidthMm ?? readReceiptPaperWidth();
   printThermalDocument({
-    bodyHtml: `${options.demo ? '<p style="text-align:center;font-weight:bold">ТЕСТ БАРИМТ — eBarimt-д бүртгэгдэхгүй</p>' : ""}${receiptPrintLayout(receipt)}${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">${label}</p>${qrMarkup}</div>` : ""}${receiptPrintFooter}`,
+    bodyHtml: `${options.demo ? '<p style="text-align:center;font-weight:bold">ТЕСТ БАРИМТ — eBarimt-д бүртгэгдэхгүй</p>' : ""}${receiptPrintLayout(receipt)}${qrMarkup ? `<div class="ebarimt-qr">${qrTitle}${qrMarkup}</div>` : ""}`,
     extraCss: `${receiptPrintCss}
-      .ebarimt-qr { margin-top: 3mm; text-align: center; }
+      .ebarimt-qr { margin-top: 1.5mm; text-align: center; }
       .ebarimt-qr svg { width: 42mm; height: 42mm; }
       .ebarimt-qr-title { margin: 0 0 2mm; font-family: sans-serif; font-size: 9pt; font-weight: 700; }
     `,
+    paperWidthMm,
   });
 }

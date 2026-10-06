@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, Printer, RotateCcw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { PosReceipt } from "../types/receipt.types";
@@ -9,6 +9,11 @@ import { voidPushEcr } from "../api/payments";
 import { returnLocalEbarimtReceipt, sendLocalEbarimtData } from "../api/ebarimt";
 import { voidSale } from "../api/void-sale";
 import { formatReceipt } from "../utils/format-receipt";
+import {
+  readReceiptPaperWidth,
+  saveReceiptPaperWidth,
+  type ReceiptPaperWidth,
+} from "../utils/receipt-paper";
 
 type Props = {
   receipt: PosReceipt | null;
@@ -22,7 +27,12 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
   const [terminalVoidResult, setTerminalVoidResult] = useState<{ succeed: boolean; message?: string } | null>(null);
   const [saleVoiding, setSaleVoiding] = useState(false);
   const [saleVoidResult, setSaleVoidResult] = useState<{ succeed: boolean; message?: string } | null>(null);
+  const [paperWidthMm, setPaperWidthMm] = useState<ReceiptPaperWidth>(58);
   const ebarimtQrRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setPaperWidthMm(readReceiptPaperWidth());
+  }, []);
 
   if (!receipt) return null;
 
@@ -52,19 +62,18 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
         <head>
           <title>Баримт ${receipt.receiptNo}</title>
           <style>
-            @page { size: 58mm auto; margin: 0; }
+            @page { size: ${paperWidthMm}mm auto; margin: 0; }
             * { box-sizing: border-box; }
-            html, body { width: 58mm; max-width: 58mm; margin: 0; padding: 0; }
-            body { padding: 3mm 5mm; overflow: hidden; color: #111; font-family: monospace; }
-            pre { width: 100%; max-width: 100%; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font-size: 11px; line-height: 1.4; }
-            .ebarimt-qr { margin-top: 10px; text-align: center; }
+            html, body { width: ${paperWidthMm}mm; max-width: ${paperWidthMm}mm; margin: 0; padding: 0; }
+            body { padding: 2mm 5mm; overflow: hidden; color: #111; font-family: monospace; }
+            pre { width: 100%; max-width: 100%; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font-size: 11px; line-height: 1.25; }
+            .ebarimt-qr { margin-top: 6px; text-align: center; }
             .ebarimt-qr svg { width: 38mm; height: 38mm; max-width: 100%; }
-            .ebarimt-qr-title { margin: 0 0 6px; font-family: sans-serif; font-size: 12px; font-weight: 700; }
           </style>
         </head>
         <body>
           <pre>${content}</pre>
-          ${qrMarkup ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR код</p>${qrMarkup}</div>` : ""}
+          ${qrMarkup ? `<div class="ebarimt-qr">${qrMarkup}</div>` : ""}
           <script>
             window.onload = function () {
               window.print();
@@ -75,6 +84,11 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
       </html>
     `);
     popup.document.close();
+  };
+
+  const handlePaperWidthChange = (width: ReceiptPaperWidth) => {
+    setPaperWidthMm(width);
+    saveReceiptPaperWidth(width);
   };
 
   const handleTerminalVoid = async () => {
@@ -172,6 +186,18 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
           )}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+            Цаас
+            <select
+              value={paperWidthMm}
+              onChange={(event) => handlePaperWidthChange(event.target.value === "80" ? 80 : 58)}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-blue-500"
+              aria-label="Баримтын цаасны өргөн"
+            >
+              <option value={58}>58 мм</option>
+              <option value={80}>80 мм</option>
+            </select>
+          </label>
           <button
             type="button"
             onClick={handlePrint}
