@@ -2,7 +2,9 @@ import {
   calculateCafeRegularCustomerUnitDiscount,
   normalizeCafeRegularCustomerPhone,
   normalizeCashPayment,
+  buildCreditBorrowerKey,
 } from "@mgl/types";
+import { parseCreditWorkDetails } from "./credit-work-details";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 import {
@@ -285,21 +287,6 @@ const updateRedeemSessionStatus = async (
       )
   `;
 };
-
-const buildCreditBorrowerKey = (
-  credit: NonNullable<SalePaymentLineInput["credit"]>,
-) =>
-  [
-    String(credit.targetType || "")
-      .trim()
-      .toUpperCase(),
-    String(credit.borrowerId || "")
-      .trim()
-      .toLowerCase(),
-    String(credit.employeeId || "")
-      .trim()
-      .toLowerCase(),
-  ].join(":");
 
 const mapCreditSaleResponse = (creditSale: {
   id: string;
@@ -1096,6 +1083,13 @@ router.post("/pos/sales", async (req, res) => {
       creditLines.reduce((sum, item) => sum + Number(item.amount || 0), 0),
     );
     const primaryCredit = creditLines[0]?.credit || null;
+    let creditWorkDetails: ReturnType<typeof parseCreditWorkDetails> = {};
+    try {
+      if (primaryCredit) creditWorkDetails = parseCreditWorkDetails(primaryCredit);
+    } catch (error) {
+      return res.status(400).json({ message: error instanceof Error ? error.message : "Ажлын мэдээлэл буруу байна" });
+    }
+
     const creditTermMonths = Math.max(
       1,
       Math.floor(Number(primaryCredit?.termMonths || 1)),
@@ -1997,6 +1991,7 @@ router.post("/pos/sales", async (req, res) => {
                   },
                 },
                 update: {
+                  ...creditWorkDetails,
                   targetType: primaryCredit.targetType || "CUSTOMER",
                   borrowerId: primaryCredit.borrowerId || borrowerKey,
                   borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
@@ -2009,6 +2004,7 @@ router.post("/pos/sales", async (req, res) => {
                   employeeName: cleanOptionalText(primaryCredit.employeeName),
                 },
                 create: {
+                  ...creditWorkDetails,
                   organizationId: effectiveOrganizationId,
                   targetType: primaryCredit.targetType || "CUSTOMER",
                   borrowerId: primaryCredit.borrowerId || borrowerKey,

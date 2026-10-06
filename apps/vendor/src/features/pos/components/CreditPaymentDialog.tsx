@@ -1,5 +1,7 @@
 "use client";
 
+import { CreditCustomerWorkFields } from "./CreditCustomerWorkFields";
+import { buildCreditBorrowerId } from "@mgl/types";
 import { useMemo, useState } from "react";
 import {
   BriefcaseBusiness,
@@ -25,29 +27,12 @@ type Props = {
 
 const MONTHLY_INTEREST_RATE = 0.012;
 
-const digitsOnly = (value: string) => value.replace(/\D/g, "");
 const cleanText = (value: string) => value.trim();
-const slugText = (value: string) =>
-  cleanText(value)
-    .toLowerCase()
-    .replace(/\s+/g, "-")
-    .replace(/[^a-z0-9а-яөүё-]/gi, "")
-    .slice(0, 60);
 
 function addMonths(date: Date, months: number) {
   const next = new Date(date);
   next.setMonth(next.getMonth() + months);
   return next;
-}
-
-function buildBorrowerId(targetType: CreditTargetType, name: string, phone: string, employeeName: string) {
-  const phoneKey = digitsOnly(phone);
-  if (targetType === "CUSTOMER") {
-    return phoneKey ? `customer-${phoneKey}` : `customer-${slugText(name)}`;
-  }
-  const companyKey = slugText(name) || "company";
-  const employeeKey = phoneKey || slugText(employeeName) || "contact";
-  return `company-${companyKey}-${employeeKey}`;
 }
 
 export function calculateCreditTotals(principal: number, termMonths: number) {
@@ -71,6 +56,7 @@ export function CreditPaymentDialog({ amount, borrowers = [], onClose, onConfirm
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
+  const [workDetails, setWorkDetails] = useState({ workplace: "", department: "", jobTitle: "" });
   const [termMonths, setTermMonths] = useState(1);
   const [note, setNote] = useState("");
 
@@ -107,6 +93,7 @@ export function CreditPaymentDialog({ amount, borrowers = [], onClose, onConfirm
     setPhone(borrower.borrowerPhone || "");
     setEmail(borrower.borrowerEmail || "");
     setAddress(borrower.borrowerAddress || "");
+    setWorkDetails({ workplace: borrower.workplace || "", department: borrower.department || "", jobTitle: borrower.jobTitle || "" });
   };
 
   const confirm = () => {
@@ -114,7 +101,7 @@ export function CreditPaymentDialog({ amount, borrowers = [], onClose, onConfirm
     const borrowerId =
       selectedBorrower?.targetType === targetType
         ? selectedBorrower.borrowerId
-        : buildBorrowerId(targetType, borrowerName, safePhone, contactName);
+        : buildCreditBorrowerId(targetType, borrowerName, safePhone, contactName);
     onConfirm({
       targetType,
       borrowerId,
@@ -122,6 +109,9 @@ export function CreditPaymentDialog({ amount, borrowers = [], onClose, onConfirm
       borrowerPhone: safePhone,
       borrowerEmail: cleanText(email) || undefined,
       borrowerAddress: cleanText(address) || undefined,
+      workplace: workDetails.workplace.trim(),
+      department: workDetails.department.trim(),
+      jobTitle: workDetails.jobTitle.trim(),
       employeeId:
         targetType === "COMPANY"
           ? selectedBorrower?.employeeId || `${borrowerId}-employee`
@@ -302,6 +292,8 @@ export function CreditPaymentDialog({ amount, borrowers = [], onClose, onConfirm
                 className="md:col-span-2"
               />
             </div>
+
+            <CreditCustomerWorkFields value={workDetails} onChange={setWorkDetails} />
 
             <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)]">
               <label className="block">

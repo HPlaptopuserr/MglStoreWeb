@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { DashboardLayout } from "@mgl/ui";
 import { NotificationDropdown } from "@/components/organisms/NotificationDropdown";
@@ -105,11 +106,25 @@ export default function VendorDashboardLayout({
       </VendorSessionFeedback>
     );
 
-  if (mode === "member")
+  if (mode === "member" || (mode === "stock" && pathname === "/dashboard"))
     return (
       <MemberWorkspace
         user={user}
-        selector={selector}
+        selector={
+          mode === "stock" ? (
+            <div className="flex flex-wrap items-center gap-3">
+              {selector}
+              <Link
+                href="/stocktakes"
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Бараа тооллого
+              </Link>
+            </div>
+          ) : (
+            selector
+          )
+        }
         error={switchError}
         onLogout={logout}
       />
@@ -129,7 +144,11 @@ export default function VendorDashboardLayout({
           userName={name}
           userEmail={user.email || ""}
           userRole={
-            mode === "cashier" ? "Кассын ажилтан" : "Дэлгүүрийн эзэмшигч"
+            mode === "cashier"
+              ? "Кассын ажилтан"
+              : mode === "stock"
+                ? "Барааны сангийн ажилтан"
+                : "Дэлгүүрийн эзэмшигч"
           }
           userInitials={name.slice(0, 2).toUpperCase()}
           organizationName={user.organizationName}

@@ -250,6 +250,9 @@ export interface SalePaymentLine {
 }
 
 export interface SaleCreditPaymentMeta {
+    workplace?: string;
+    department?: string;
+    jobTitle?: string;
   targetType: "COMPANY" | "CUSTOMER";
   borrowerId: string;
   borrowerName: string;
@@ -268,6 +271,9 @@ export interface SaleCreditPaymentMeta {
 }
 
 export interface PosCreditBorrower {
+  workplace?: string | null;
+  department?: string | null;
+  jobTitle?: string | null;
   id: string;
   targetType: "COMPANY" | "CUSTOMER";
   borrowerId: string;

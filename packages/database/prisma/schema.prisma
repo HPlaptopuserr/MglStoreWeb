@@ -8,6 +8,9 @@ datasource db {
 }
 
 model User {
+  createdStocktakes Stocktake[] @relation("StocktakeCreator")
+  approvedStocktakes Stocktake[] @relation("StocktakeApprover")
+
   id                               String                         @id @default(uuid())
   identitySubject                  String?                        @unique
   email                            String                         @unique
@@ -365,6 +368,8 @@ model BusinessCategory {
 }
 
 model Organization {
+  stocktakes Stocktake[]
+
   id                               String                       @id @default(uuid())
   name                             String
   nameNormalized                   String?
@@ -1078,6 +1083,8 @@ model Category {
 }
 
 model Product {
+  stocktakeLines StocktakeLine[]
+
   id                     String                        @id @default(uuid())
   organizationId         String?
   masterProductId        String?
@@ -1859,6 +1866,8 @@ enum WarehouseType {
 }
 
 model Warehouse {
+  stocktakes Stocktake[]
+
   id                   String                       @id @default(uuid())
   name                 String
   address              String
@@ -3401,6 +3410,9 @@ model PosLoyaltyRedemptionSession {
 }
 
 model PosCreditCustomer {
+  workplace             String?
+  department            String?
+  jobTitle              String?
   id                    String          @id @default(uuid())
   organizationId        String
   targetType            String
@@ -3718,4 +3730,58 @@ model TeamMember {
 
   @@index([isActive])
   @@index([order])
+}
+
+enum StocktakeStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  CANCELLED
+}
+
+enum StocktakeKind {
+  FULL
+  PARTIAL
+}
+
+model Stocktake {
+  id String @id @default(uuid())
+  organizationId String
+  warehouseId String?
+  title String
+  kind StocktakeKind
+  status StocktakeStatus @default(DRAFT)
+  version Int @default(0)
+  createdById String
+  approvedById String?
+  approvedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  warehouse Warehouse? @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  createdBy User @relation("StocktakeCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy User? @relation("StocktakeApprover", fields: [approvedById], references: [id], onDelete: Restrict)
+  lines StocktakeLine[]
+  @@index([organizationId, createdAt])
+}
+
+model StocktakeLine {
+  receiptRegisterId String?
+  receiptUnitCost Decimal? @db.Decimal(18, 2)
+  id String @id @default(uuid())
+  stocktakeId String
+  productId String
+  name String
+  barcode String?
+  barcodeAliases String[] @default([])
+  unit String?
+  expected Int
+  counted Int?
+  stockUpdatedAt DateTime
+  countedAt DateTime?
+  countedById String?
+  note String @default("")
+  stocktake Stocktake @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  @@unique([stocktakeId, productId])
 }
