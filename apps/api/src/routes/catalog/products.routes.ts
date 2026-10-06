@@ -1,3 +1,4 @@
+import { enrichMasterCatalog } from "../../services/catalog-enrichment/service";
 import { findMasterCatalogIds } from "../../services/master-catalog-search.service";
 import { CatalogEditError, catalogEditSelect, saveCatalogEdit } from "../../services/master-catalog-editor.service";
 import { Prisma } from "@mgl/database";
@@ -2975,6 +2976,17 @@ router.get(
     }
   },
 );
+
+router.post("/products/master-catalog/admin/enrich", requireAuth, async (req, res) => {
+  if (!canAccessMasterCatalogAdmin(req)) return res.status(403).json({ message: "Нэгдсэн барааны сан шинэчлэх эрхгүй" });
+  try {
+    return res.json(await enrichMasterCatalog(req.body));
+  } catch (error: unknown) {
+    if (error instanceof CatalogEditError) return res.status(error.status).json({ message: error.message });
+    console.error("master catalog enrichment error", error);
+    return res.status(500).json({ message: "Сан шинэчлэхэд алдаа гарлаа. Дууссан хэсгүүд хадгалагдсан; дахин тулгахад давхар нэмэгдэхгүй." });
+  }
+});
 
 router.post(
   "/products/master-catalog/admin/sync",

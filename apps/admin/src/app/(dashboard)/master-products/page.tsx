@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { CatalogEnrichmentStatus } from "./_components/CatalogEnrichmentStatus";
+import { useCatalogEnrichment } from "./_components/useCatalogEnrichment";
 import { MasterCatalogSearch } from "./_components/MasterCatalogSearch";
 import { MasterProductEditor } from "./_components/MasterProductEditor";
 import { CatalogWorkspaceHeader } from "./_components/CatalogWorkspaceHeader";
@@ -23,7 +25,6 @@ export default function MasterProductsPage() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<"excel" | "ai" | null>(null);
-  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -64,6 +65,8 @@ export default function MasterProductsPage() {
     return () => request.current?.abort();
   }, [load]);
 
+  const enrichment = useCatalogEnrichment(load);
+
   const download = async (kind: "excel" | "ai") => {
     setDownloading(kind);
     setError("");
@@ -89,34 +92,6 @@ export default function MasterProductsPage() {
       setError(cause instanceof Error ? cause.message : "Файл татаж чадсангүй");
     } finally {
       setDownloading(null);
-    }
-  };
-
-  const syncUnlinked = async () => {
-    setSyncing(true);
-    setError("");
-    try {
-      const response = await adminFetch(
-        `${API}/products/master-catalog/admin/sync`,
-        {
-          method: "POST",
-        },
-      );
-      if (!response.ok) {
-        throw new Error(
-          await getApiErrorMessage(
-            response,
-            "Нэгдсэн барааны сан шинэчлэхэд алдаа гарлаа",
-          ),
-        );
-      }
-      await load();
-    } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Бараануудыг холбож чадсангүй",
-      );
-    } finally {
-      setSyncing(false);
     }
   };
 
@@ -148,6 +123,12 @@ export default function MasterProductsPage() {
         loading={loading}
         downloading={downloading}
         onDownload={download}
+        syncing={enrichment.running}
+        onSync={() => void enrichment.start()}
+      />
+      <CatalogEnrichmentStatus
+        {...enrichment}
+        onRetry={() => void enrichment.start()}
       />
       {error && (
         <div
@@ -181,10 +162,7 @@ export default function MasterProductsPage() {
         onPage={setPage}
       />
       <CatalogManagementTools
-        unlinked={data?.unlinkedProductCount ?? 0}
-        syncing={syncing}
         downloading={downloading !== null}
-        onSync={syncUnlinked}
         onDownload={() => download("ai")}
       />
     </div>
