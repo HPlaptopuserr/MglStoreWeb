@@ -52,10 +52,13 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
         <head>
           <title>Баримт ${receipt.receiptNo}</title>
           <style>
-            body { font-family: monospace; margin: 0; padding: 12px; color: #111; }
-            pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.45; }
+            @page { size: 58mm auto; margin: 0; }
+            * { box-sizing: border-box; }
+            html, body { width: 58mm; max-width: 58mm; margin: 0; padding: 0; }
+            body { padding: 3mm 5mm; overflow: hidden; color: #111; font-family: monospace; }
+            pre { width: 100%; max-width: 100%; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font-size: 11px; line-height: 1.4; }
             .ebarimt-qr { margin-top: 10px; text-align: center; }
-            .ebarimt-qr svg { width: 160px; height: 160px; }
+            .ebarimt-qr svg { width: 38mm; height: 38mm; max-width: 100%; }
             .ebarimt-qr-title { margin: 0 0 6px; font-family: sans-serif; font-size: 12px; font-weight: 700; }
           </style>
         </head>

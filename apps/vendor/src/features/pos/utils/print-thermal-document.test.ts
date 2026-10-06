@@ -8,6 +8,7 @@ test("async receipt printing needs no popup, prints once, and retains frame unti
   let prints = 0;
   let removed = false;
   let afterPrint: (() => void) | undefined;
+  let documentMarkup = "";
   const pageStyle = { textContent: "" };
   const frame = {
     title: "", style: { cssText: "" }, onload: undefined as (() => void) | undefined,
@@ -15,7 +16,7 @@ test("async receipt printing needs no popup, prints once, and retains frame unti
     contentWindow: {
       document: { fonts: { ready: Promise.resolve() }, readyState: "complete",
         body: { getBoundingClientRect: () => ({ height: 300 }) },
-        getElementById: () => pageStyle, write() {}, close() {} },
+        getElementById: () => pageStyle, write(value: string) { documentMarkup = value; }, close() {} },
       requestAnimationFrame(callback: () => void) { callback(); },
       addEventListener(name: string, callback: () => void) { if (name === "afterprint") afterPrint = callback; },
       focus() {}, print() { prints++; },
@@ -31,7 +32,9 @@ test("async receipt printing needs no popup, prints once, and retains frame unti
     await Promise.resolve();
     assert.equal(prints, 1);
     assert.equal(removed, false);
-    assert.match(pageStyle.textContent, /size: 80mm/);
+    assert.match(pageStyle.textContent, /size: 58mm/);
+    assert.match(documentMarkup, /width: 58mm/);
+    assert.match(documentMarkup, /padding: 3mm 5mm/);
     afterPrint?.();
     assert.equal(removed, true);
   } finally {

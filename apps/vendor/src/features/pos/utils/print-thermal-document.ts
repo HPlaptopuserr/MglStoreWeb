@@ -12,7 +12,7 @@ const RECEIPT_BOTTOM_FEED_MM = 4;
 export function printThermalDocument({
   bodyHtml,
   extraCss = "",
-  paperWidthMm = 80,
+  paperWidthMm = 58,
 }: ThermalPrintDocumentOptions): boolean {
   if (typeof window === "undefined") return false;
 
@@ -57,7 +57,7 @@ export function printThermalDocument({
           body {
             color: #111;
             font-family: ui-monospace, "Cascadia Mono", "Courier New", monospace;
-            padding: 3mm;
+            padding: 3mm 5mm;
             overflow: hidden;
           }
           pre {
