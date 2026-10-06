@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   calculatePrintLayout,
   type LabelPrintSettings,
-} from "./ProductLabelPrintDialog";
+} from "../src/organisms/ProductLabelPrintDialog";
 
 const settings = (
   overrides: Partial<LabelPrintSettings>,
