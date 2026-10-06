@@ -32,18 +32,25 @@ type ProductLabelPrintDialogProps = {
 const MAX_QTY = 999;
 const MIN_LABEL_SIZE_MM = 20;
 const MAX_LABEL_SIZE_MM = 300;
+const MIN_PAPER_SIZE_MM = 20;
+const MAX_PAPER_SIZE_MM = 500;
 const PAPER_PRESETS = {
-  A4: { width: 210, height: 297 },
-  A5: { width: 148, height: 210 },
-  LETTER: { width: 215.9, height: 279.4 },
+  A4: { kind: "sheet", width: 210, height: 297 },
+  A5: { kind: "sheet", width: 148, height: 210 },
+  LETTER: { kind: "sheet", width: 215.9, height: 279.4 },
+  ROLL_58: { kind: "roll", width: 58 },
+  ROLL_80: { kind: "roll", width: 80 },
+  CUSTOM: { kind: "custom" },
 } as const;
 
 type PaperPreset = keyof typeof PAPER_PRESETS;
 type PaperOrientation = "portrait" | "landscape";
 
-type LabelPrintSettings = {
+export type LabelPrintSettings = {
   paperPreset: PaperPreset;
   orientation: PaperOrientation;
+  customPaperWidth: number;
+  customPaperHeight: number;
   labelWidth: number;
   labelHeight: number;
   margin: number;
@@ -53,6 +60,8 @@ type LabelPrintSettings = {
 const DEFAULT_PRINT_SETTINGS: LabelPrintSettings = {
   paperPreset: "A4",
   orientation: "landscape",
+  customPaperWidth: 58,
+  customPaperHeight: 40,
   labelWidth: 144.5,
   labelHeight: 67.3,
   margin: 4,
@@ -518,6 +527,49 @@ function PrintSettingsBar({
   ) => onChange({ ...settings, [key]: value });
 
   const labelPreset = getLabelPreset(settings.labelWidth, settings.labelHeight);
+  const paperPreset = PAPER_PRESETS[settings.paperPreset];
+  const hasOrientation = paperPreset.kind === "sheet";
+
+  const selectPaperPreset = (nextPreset: PaperPreset) => {
+    if (nextPreset === "ROLL_58") {
+      onChange({
+        ...settings,
+        paperPreset: nextPreset,
+        orientation: "portrait",
+        labelWidth: 50,
+        labelHeight: 30,
+        margin: 4,
+        gap: 0,
+      });
+      return;
+    }
+
+    if (nextPreset === "ROLL_80") {
+      onChange({
+        ...settings,
+        paperPreset: nextPreset,
+        orientation: "portrait",
+        labelWidth: 70,
+        labelHeight: 40,
+        margin: 5,
+        gap: 0,
+      });
+      return;
+    }
+
+    if (nextPreset === "CUSTOM") {
+      onChange({
+        ...settings,
+        paperPreset: nextPreset,
+        orientation: "portrait",
+        customPaperWidth: layout.paperWidth,
+        customPaperHeight: layout.paperHeight,
+      });
+      return;
+    }
+
+    update("paperPreset", nextPreset);
+  };
 
   return (
     <div className="flex shrink-0 flex-wrap items-end gap-3 border-b border-slate-200 bg-slate-50 px-5 py-3">
@@ -528,24 +580,46 @@ function PrintSettingsBar({
       <SettingsField label="Цаас">
         <select
           value={settings.paperPreset}
-          onChange={(event) => update("paperPreset", event.target.value as PaperPreset)}
+          onChange={(event) => selectPaperPreset(event.target.value as PaperPreset)}
           className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
         >
           <option value="A4">A4</option>
           <option value="A5">A5</option>
           <option value="LETTER">Letter</option>
+          <option value="ROLL_58">58 мм roll</option>
+          <option value="ROLL_80">80 мм roll</option>
+          <option value="CUSTOM">Тусгай хэмжээ</option>
         </select>
       </SettingsField>
       <SettingsField label="Чиглэл">
         <select
           value={settings.orientation}
           onChange={(event) => update("orientation", event.target.value as PaperOrientation)}
-          className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+          disabled={!hasOrientation}
+          className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <option value="portrait">Босоо</option>
           <option value="landscape">Хэвтээ</option>
         </select>
       </SettingsField>
+      {settings.paperPreset === "CUSTOM" ? (
+        <>
+          <SettingsNumberField
+            label="Цаасны өргөн"
+            value={settings.customPaperWidth}
+            min={MIN_PAPER_SIZE_MM}
+            max={MAX_PAPER_SIZE_MM}
+            onChange={(value) => update("customPaperWidth", value)}
+          />
+          <SettingsNumberField
+            label="Цаасны өндөр"
+            value={settings.customPaperHeight}
+            min={MIN_PAPER_SIZE_MM}
+            max={MAX_PAPER_SIZE_MM}
+            onChange={(value) => update("customPaperHeight", value)}
+          />
+        </>
+      ) : null}
       <SettingsField label="Шошгоны загвар">
         <select
           value={labelPreset}
@@ -596,7 +670,7 @@ function PrintSettingsBar({
         }`}
       >
         {layout.fitsOnPage
-          ? `${layout.columns} × ${layout.rows} · ${layout.labelsPerPage} шошго/хуудас`
+          ? `${formatMillimeters(layout.paperWidth)} × ${formatMillimeters(layout.paperHeight)} мм цаас · ${layout.columns} × ${layout.rows} · ${layout.labelsPerPage} шошго/хуудас`
           : "Шошго цаасанд багтахгүй байна"}
       </div>
     </div>
@@ -782,10 +856,29 @@ function getLabelPreset(width: number, height: number) {
   }) ?? "custom";
 }
 
-function calculatePrintLayout(settings: LabelPrintSettings) {
+function resolvePaperSize(settings: LabelPrintSettings) {
   const preset = PAPER_PRESETS[settings.paperPreset];
-  const paperWidth = settings.orientation === "landscape" ? preset.height : preset.width;
-  const paperHeight = settings.orientation === "landscape" ? preset.width : preset.height;
+  if (preset.kind === "roll") {
+    return {
+      paperWidth: preset.width,
+      paperHeight: settings.labelHeight + settings.margin * 2,
+    };
+  }
+
+  if (preset.kind === "custom") {
+    return {
+      paperWidth: settings.customPaperWidth,
+      paperHeight: settings.customPaperHeight,
+    };
+  }
+
+  return settings.orientation === "landscape"
+    ? { paperWidth: preset.height, paperHeight: preset.width }
+    : { paperWidth: preset.width, paperHeight: preset.height };
+}
+
+export function calculatePrintLayout(settings: LabelPrintSettings) {
+  const { paperWidth, paperHeight } = resolvePaperSize(settings);
   const printableWidth = Math.max(1, paperWidth - settings.margin * 2);
   const printableHeight = Math.max(1, paperHeight - settings.margin * 2);
   const columns = Math.max(
@@ -806,8 +899,15 @@ function calculatePrintLayout(settings: LabelPrintSettings) {
     rows,
     labelsPerPage: columns * rows,
     fitsOnPage:
-      settings.labelWidth <= printableWidth && settings.labelHeight <= printableHeight,
+      settings.margin * 2 < paperWidth &&
+      settings.margin * 2 < paperHeight &&
+      settings.labelWidth <= printableWidth &&
+      settings.labelHeight <= printableHeight,
   };
+}
+
+function formatMillimeters(value: number) {
+  return Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
 }
 
 function resolveProductLabelCode(product: ProductLabelProduct) {
