@@ -10,8 +10,11 @@ import goodsReceiptsRoutes from "./goods-receipts.routes";
 import cafeDailyStockRoutes from "./cafe-daily-stock.routes";
 import cafeRegularCustomerRoutes from "./cafe-regular-customers.routes";
 
+import stocktakesRoutes from "./stocktakes.routes";
+
 const router: ExpressRouter = Router();
 
+router.use(stocktakesRoutes);
 router.use(cardPaymentsRoutes);
 router.use(qpayRoutes);
 router.use(salesRoutes);

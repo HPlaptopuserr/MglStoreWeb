@@ -1,4 +1,4 @@
-export type VendorAccessMode = "owner" | "cashier" | "member";
+export type VendorAccessMode = "owner" | "cashier" | "stock" | "member";
 
 export interface VendorOrganization {
   id: string;
@@ -76,9 +76,9 @@ export function vendorAccessMode(
 ): VendorAccessMode | null {
   if (role === "OWNER") return "owner";
   if (capabilities.includes("POS_CASHIER")) return "cashier";
-  return role === "STAFF" || role === "ADMIN" || role === "VIEWER"
-    ? "member"
-    : null;
+  if (role === "ADMIN" || capabilities.includes("STOCK_MANAGER"))
+    return "stock";
+  return role === "STAFF" || role === "VIEWER" ? "member" : null;
 }
 
 export function canSwitchToOrganization(organization: VendorOrganization) {
@@ -90,9 +90,15 @@ export function canSwitchToOrganization(organization: VendorOrganization) {
 
 export function canAccessVendorPath(mode: VendorAccessMode, pathname: string) {
   if (mode === "member") return pathname === "/dashboard";
+  if (mode === "stock")
+    return (
+      pathname === "/dashboard" ||
+      pathname === "/stocktakes" ||
+      pathname.startsWith("/stocktakes/")
+    );
   return (
     mode === "owner" ||
-    ["/pos", "/inventory", "/goods-receipts"].some(
+    ["/pos", "/inventory", "/goods-receipts", "/stocktakes"].some(
       (path) => pathname === path || pathname.startsWith(`${path}/`),
     )
   );
@@ -106,5 +112,7 @@ export function organizationDestination(
     ? pathname
     : mode === "member"
       ? "/dashboard"
-      : "/pos";
+      : mode === "stock"
+        ? "/stocktakes"
+        : "/pos";
 }

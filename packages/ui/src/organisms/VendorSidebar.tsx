@@ -109,6 +109,12 @@ const VENDOR_NAV_GROUPS: Array<
             icon: Package,
           },
           {
+            id: "stocktakes",
+            label: "Бараа тооллого",
+            href: "/stocktakes",
+            icon: PackageSearch,
+          },
+          {
             id: "goods-receipts",
             label: "Бараа хүлээн авах",
             href: "/goods-receipts",
@@ -217,6 +223,12 @@ const CASHIER_NAV_GROUPS: AppSidebarGroup[] = [
         icon: PackageSearch,
       },
       {
+        id: "stocktakes",
+        label: "Бараа тооллого",
+        href: "/stocktakes",
+        icon: PackageSearch,
+      },
+      {
         id: "goods-receipts",
         label: "Бараа хүлээж авах",
         href: "/goods-receipts",
@@ -238,7 +250,7 @@ export interface VendorSidebarProps {
   showPreorderProducts?: boolean;
   showServicePosts?: boolean;
   showContractArchive?: boolean;
-  accessMode?: "owner" | "cashier";
+  accessMode?: "owner" | "cashier" | "stock";
   bottomSlot?: ReactNode;
   mobileOpen?: boolean;
   onMobileClose?: () => void;
@@ -358,36 +370,47 @@ export function VendorSidebar({
     return () => window.removeEventListener("popstate", syncProductType);
   }, [pathname]);
 
-  const groups = useMemo(
-    () => {
-      if (accessMode === "cashier") return CASHIER_NAV_GROUPS;
-
-      return VENDOR_NAV_GROUPS.map((group) => ({
+  const groups = useMemo<AppSidebarGroup[]>(() => {
+    if (accessMode === "cashier") return CASHIER_NAV_GROUPS;
+    if (accessMode === "stock")
+      return CASHIER_NAV_GROUPS.map((group) => ({
         ...group,
-        items: group.items
-          .map((item) =>
-            mapVendorItem(item, pathname, productType, setProductType, {
-              showPos,
-              showPreorderProducts,
-              showServicePosts,
-              showContractArchive,
-              showSupplyProducts,
-            }),
-          )
-          .filter((item): item is VendorNavItem => Boolean(item)),
-      })).filter((group) => group.items.length > 0);
-    },
-    [
-      pathname,
-      productType,
-      showPos,
-      showPreorderProducts,
-      showServicePosts,
-      showContractArchive,
-      showSupplyProducts,
-      accessMode,
-    ],
-  );
+        title: "Бараа тооллого",
+        items: [
+          {
+            id: "dashboard",
+            label: "Ажлын самбар",
+            href: "/dashboard",
+            icon: PackageSearch,
+          },
+          ...group.items.filter((item) => item.id === "stocktakes"),
+        ],
+      }));
+
+    return VENDOR_NAV_GROUPS.map((group) => ({
+      ...group,
+      items: group.items
+        .map((item) =>
+          mapVendorItem(item, pathname, productType, setProductType, {
+            showPos,
+            showPreorderProducts,
+            showServicePosts,
+            showContractArchive,
+            showSupplyProducts,
+          }),
+        )
+        .filter((item): item is VendorNavItem => Boolean(item)),
+    })).filter((group) => group.items.length > 0);
+  }, [
+    pathname,
+    productType,
+    showPos,
+    showPreorderProducts,
+    showServicePosts,
+    showContractArchive,
+    showSupplyProducts,
+    accessMode,
+  ]);
 
   const mobileGroups = useMemo(
     () =>

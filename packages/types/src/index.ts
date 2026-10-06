@@ -36,3 +36,5 @@ export * from "./domain/business-apps";
 
 export * from "./domain/store-mini-apps";
 export type { MerchantDiagnostics, MerchantDiagnosticsChannel, MerchantConfigurationEvent } from "./domain/merchant-diagnostics";
+
+export * from "./domain/stocktake";
