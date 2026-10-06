@@ -166,5 +166,6 @@ export function useProductCatalog(kind: CatalogKind, id: string) {
     loading: Boolean(id) && !state.hasSnapshot && !state.error,
     reload,
     refreshProducts,
+    findProduct: resource?.findProduct,
   };
 }

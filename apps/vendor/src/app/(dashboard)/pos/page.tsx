@@ -9,9 +9,13 @@ import { VendorNavigationActions } from "@/features/session/VendorNavigationActi
 import registerLayout from "@/features/pos/components/PosRegisterLayout.module.css";
 import { PosProductList } from "@/features/pos/components/PosProductList";
 import { CurrentShiftHistory } from "@/features/pos/components/CurrentShiftHistory";
+import { CashDrawerPanel } from "@/features/pos/components/CashDrawerPanel";
+import { ShiftHistoryPanel } from "@/features/pos/components/ShiftHistoryPanel";
+import { formatMoney, formatDateTime } from "@/features/pos/utils/pos-display-format";
+import { SHIFT_HISTORY_RANGE_OPTIONS, type ShiftHistoryRangeId } from "@/features/pos/constants/shift-history-ranges";
 import { CashChangeNotice } from "@/features/pos/components/CashChangeNotice";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
@@ -279,14 +283,6 @@ const terminalNeedsWaitingOverlay = (provider?: string | null) =>
 const getEffectiveCardProvider = (register?: RegisterConfig | null) =>
   register?.cardProviderType || (register?.minuAgentEnabled ? "MINU_AGENT" : null);
 const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
-const formatMoney = (value: number) => `₮${Math.round(Number(value) || 0).toLocaleString("mn-MN")}`;
-const padTimePart = (value: number) => String(value).padStart(2, "0");
-const formatDateTime = (value?: string | null) => {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return `${date.getFullYear()} оны ${date.getMonth() + 1}-р сарын ${date.getDate()} ${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}`;
-};
 
 function buildCreditRepaymentCartLines(credit: PosCreditRepaymentSelection): CartLine[] {
   const principal = credit.principalAmount || credit.lines.reduce((sum, line) => sum + line.lineTotal, 0);
@@ -432,13 +428,6 @@ function buildCreditRepaymentEbarimtReceipt({
   };
 }
 
-const SHIFT_HISTORY_RANGE_OPTIONS = [
-  { id: "7", label: "7 хоног", description: "Сүүлийн 7 хоногийн", days: 7 },
-  { id: "14", label: "14 хоног", description: "Сүүлийн 14 хоногийн", days: 14 },
-  { id: "30", label: "30 хоног", description: "Сүүлийн 30 хоногийн", days: 30 },
-  { id: "100", label: "100 хаалт", description: "Сүүлийн 100 хаалтын", days: null },
-] as const;
-type ShiftHistoryRangeId = (typeof SHIFT_HISTORY_RANGE_OPTIONS)[number]["id"];
 const CASH_DENOMINATIONS = [
   20000,
   10000,
@@ -479,8 +468,6 @@ const buildCashCount = (counts: Record<number, number>): CashDenominationCount[]
 
 const sumCashCount = (counts: CashDenominationCount[]) =>
   roundMoney(counts.reduce((sum, item) => sum + item.total, 0));
-
-const normalizeProductCode = (value: string) => value.trim().replace(/\s+/g, "").toLowerCase();
 
 const validateCardRegisterConfig = (register: RegisterConfig | null) => {
   if (!register) {
@@ -781,12 +768,7 @@ export default function PosDemoPage() {
     () => shiftHistory.find((item) => item.id === selectedShiftHistoryId) || null,
     [shiftHistory, selectedShiftHistoryId],
   );
-  const selectedShiftHistoryRange = useMemo(
-    () =>
-      SHIFT_HISTORY_RANGE_OPTIONS.find((item) => item.id === shiftHistoryRange) ??
-      SHIFT_HISTORY_RANGE_OPTIONS[0],
-    [shiftHistoryRange],
-  );
+
   const receiptForPreview = selectedReceipt || lastReceipt;
   const reloadReceiptHistory = useCallback(() => {
     setReceiptReloadToken((value) => value + 1);
@@ -1116,6 +1098,7 @@ export default function PosDemoPage() {
   }, [shift?.id]);
 
   useEffect(() => {
+    if (!showShiftHistoryPanel) return;
     if (!registerBranchId) {
       setShiftHistory([]);
       setSelectedShiftHistoryId("");
@@ -1152,9 +1135,10 @@ export default function PosDemoPage() {
       });
 
     return () => controller.abort();
-  }, [registerBranchId, shiftHistoryRange, shiftHistoryReloadToken]);
+  }, [showShiftHistoryPanel, registerBranchId, shiftHistoryRange, shiftHistoryReloadToken]);
 
   useEffect(() => {
+    if (!showShiftHistoryPanel) return;
     if (!selectedShiftHistoryId) {
       setShiftHistoryReceipts([]);
       setShiftHistoryReceiptsError("");
@@ -1178,7 +1162,7 @@ export default function PosDemoPage() {
       });
 
     return () => controller.abort();
-  }, [selectedShiftHistoryId]);
+  }, [showShiftHistoryPanel, selectedShiftHistoryId]);
 
   const refreshCashDrawerSummary = useCallback(async () => {
     if (!shift?.id) return null;
@@ -1384,7 +1368,6 @@ export default function PosDemoPage() {
       .finally(() => { if (!cancelled) setRegisterDiscoveryDoneFor(organizationId); });
     return () => { cancelled = true; };
   }, [organizationId, posEnabled, registerConfig, registerStorageKey]);
-
 
   // Load branches whenever setup panel opens
   useEffect(() => {
@@ -1677,22 +1660,7 @@ export default function PosDemoPage() {
     !creditRepaymentSubmitting &&
     loyaltyReady;
 
-  const productCodeIndex = useMemo(() => {
-    const index = new Map<string, (typeof products)[number]>();
-    for (const product of products) {
-      for (const value of [product.sku, product.barcode, product.id, ...(product.barcodeAliases ?? [])]) {
-        const code = normalizeProductCode(String(value || ""));
-        if (code && !index.has(code)) index.set(code, product);
-      }
-    }
-    return index;
-  }, [products]);
-
-  const selectedByCode = useMemo(() => {
-    if (!lastScannedCode) return null;
-    const normalized = normalizeProductCode(lastScannedCode);
-    return productCodeIndex.get(normalized) || null;
-  }, [lastScannedCode, productCodeIndex]);
+  const selectedByCode = productCatalog.findProduct?.(lastScannedCode) ?? null;
 
   const blockQPayCartMutation = () => {
     if (!qpayCreatingRef.current && !paymentEntries.some(item => item.method === "QR" && item.invoiceId)) return false;
@@ -1959,13 +1927,12 @@ export default function PosDemoPage() {
 
     setLastScannedCode(normalized);
 
-    let found = productCodeIndex.get(normalizeProductCode(normalized));
+    let found = productCatalog.findProduct?.(normalized);
     if (!found) {
       setScanMessage("Шинэ бараа бүртгэгдсэн эсэхийг шалгаж байна…");
       try {
-        const latest = await refreshProducts();
-        const targetCode = normalizeProductCode(normalized);
-        found = latest.find((product) => [product.sku, product.barcode, product.id, ...(product.barcodeAliases ?? [])].some((value) => normalizeProductCode(String(value || "")) === targetCode));
+        await refreshProducts();
+        found = productCatalog.findProduct?.(normalized);
       } catch (error: unknown) {
         setScanMessage(error instanceof Error ? error.message : "Барааны бүртгэлийг шалгаж чадсангүй.");
         setScanStatus("not-found");
@@ -1995,8 +1962,12 @@ export default function PosDemoPage() {
     setScanMessage(`Амжилттай сагсанд нэмэгдлээ: ${found.name}`);
     setScanStatus("success");
     scannerInputRef.current?.focus();
-    paymentSectionRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
   };
+
+  const processScanRef = useRef(processScan);
+  useLayoutEffect(() => {
+    processScanRef.current = processScan;
+  });
 
   useEffect(() => {
     if (!posEnabled) return;
@@ -2026,7 +1997,7 @@ export default function PosDemoPage() {
           keyBufferRef.current = "";
           lastKeyTsRef.current = 0;
           if (scannerInputRef.current) scannerInputRef.current.value = "";
-          processScan(code);
+          void processScanRef.current(code);
         }
         return;
       }
@@ -2041,7 +2012,7 @@ export default function PosDemoPage() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [posEnabled, products]);
+  }, [posEnabled]);
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2245,7 +2216,6 @@ export default function PosDemoPage() {
     if (!clientSaleIdRef.current) {
       clientSaleIdRef.current = `sale-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     }
-
 
     try {
       const receipt = await submitSale({
@@ -3158,395 +3128,6 @@ export default function PosDemoPage() {
     }, 1000);
   };
 
-  const cashDrawerPanel = (
-    <div className="rounded-xl border border-emerald-200 bg-white p-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-bold text-slate-900">Кассын шургуулга</h3>
-          <p className="text-[11px] text-slate-500">
-            Орлого, зарлага, шургуулга нээх, тооллого болон тайлан
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={refreshCashDrawerSummary}
-            disabled={!shift?.id || drawerLoading}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-          >
-            {drawerLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            Шинэчлэх
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleCreateDrawerEvent("OPEN_DRAWER")}
-            disabled={!shift?.id || drawerEventSubmitting}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-[11px] font-bold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-          >
-            <Banknote className="h-3.5 w-3.5" />
-            Шургуулга нээх
-          </button>
-          <button
-            type="button"
-            onClick={() => printCashDrawerReport()}
-            disabled={!drawerSummary}
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
-          >
-            <Printer className="h-3.5 w-3.5" />
-            Тайлан
-          </button>
-        </div>
-      </div>
-
-      {drawerError && (
-        <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
-          {drawerError}
-        </div>
-      )}
-
-      {!shift ? (
-        <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-          Эхлээд ээлж нээнэ үү.
-        </div>
-      ) : (
-        <div className="mt-3 grid gap-3 xl:grid-cols-[1fr_0.9fr]">
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
-              {[
-                ["Эхлэх мөнгө", drawerSummary?.openingCash ?? shift.openingCash],
-                ["Бэлэн борлуулалт", drawerSummary?.cashSales ?? 0],
-                ["Орлого", drawerSummary?.paidIn ?? 0],
-                ["Зарлага", drawerSummary?.paidOut ?? 0],
-                ["Тооцоолсон", drawerSummary?.expectedCash ?? 0],
-                ["Тоолсон", countedCashTotal || drawerSummary?.countedCash || 0],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="rounded-lg bg-slate-50 px-3 py-2">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                    {label}
-                  </p>
-                  <p className="mt-1 text-sm font-black text-slate-900">
-                    {formatMoney(Number(value))}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-lg border border-slate-200 p-3">
-              <div className="mb-2 flex gap-2">
-                {([
-                  ["PAID_IN", "Орлого", PlusCircle],
-                  ["PAID_OUT", "Зарлага", MinusCircle],
-                ] as const).map(([type, label, Icon]) => {
-                  const selected = drawerEventType === type;
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => setDrawerEventType(type)}
-                      className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-bold ${
-                        selected
-                          ? "bg-slate-900 text-white"
-                          : "border border-slate-200 text-slate-600 hover:bg-slate-50"
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="grid gap-2 lg:grid-cols-[160px_1fr_120px]">
-                <input
-                  type="number"
-                  min="0"
-                  value={drawerEventAmount}
-                  onChange={(event) => setDrawerEventAmount(event.target.value)}
-                  placeholder="Дүн ₮"
-                  className="h-9 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                />
-                <input
-                  value={drawerEventNote}
-                  onChange={(event) => setDrawerEventNote(event.target.value)}
-                  placeholder={drawerEventType === "PAID_IN" ? "Жишээ: нэмэлт задгай мөнгө" : "Жишээ: банканд тушаав"}
-                  className="h-9 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleCreateDrawerEvent()}
-                  disabled={drawerEventSubmitting || !shift?.id}
-                  className="h-9 rounded-lg bg-emerald-600 px-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {drawerEventSubmitting ? "..." : "Бүртгэх"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="max-h-[280px] overflow-y-auto overscroll-contain rounded-lg bg-slate-50 p-2">
-            {drawerSummary?.events.length ? (
-              <div className="space-y-1.5">
-                {drawerSummary.events.map((event) => (
-                  <div
-                    key={event.id}
-                    className="flex items-start justify-between gap-2 rounded-md bg-white px-2 py-1.5 text-xs"
-                  >
-                    <div>
-                      <p className="font-bold text-slate-800">
-                        {event.type === "PAID_IN"
-                          ? "Орлого"
-                          : event.type === "PAID_OUT"
-                            ? "Зарлага"
-                            : "Шургуулга нээсэн"}
-                      </p>
-                      <p className="text-[11px] text-slate-500">
-                        {formatDateTime(event.createdAt)}
-                        {event.note ? ` · ${event.note}` : ""}
-                      </p>
-                    </div>
-                    <p className="font-black text-slate-900">{formatMoney(event.amount)}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="px-2 py-1.5 text-xs text-slate-500">
-                Шургуулгын хөдөлгөөн бүртгэгдээгүй байна.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
-  const shiftHistoryPanel = (
-    <div className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white p-3 shadow-2xl">
-      <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3
-            id="vendor-pos-shift-history-title"
-            className="text-sm font-bold text-slate-900"
-          >
-            Өдрийн хаалтын түүх
-          </h3>
-          <p className="text-[11px] text-slate-500">
-            {selectedShiftHistoryRange.description} дүн, зөрүү болон баримтууд
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
-            {SHIFT_HISTORY_RANGE_OPTIONS.map((option) => {
-              const selected = shiftHistoryRange === option.id;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setShiftHistoryRange(option.id)}
-                  className={`h-7 rounded-md px-2.5 text-[11px] font-bold transition-colors ${
-                    selected
-                      ? "bg-white text-slate-950 shadow-sm"
-                      : "text-slate-500 hover:text-slate-900"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
-          </div>
-          <button
-            type="button"
-            onClick={reloadShiftHistory}
-            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
-          >
-            Шинэчлэх
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowShiftHistoryPanel(false)}
-            aria-label="Өдрийн хаалтын түүхийг хаах"
-            className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      {shiftHistoryError && (
-        <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
-          {shiftHistoryError}
-        </div>
-      )}
-
-      <div className="mt-3 grid min-h-0 flex-1 grid-cols-[minmax(260px,0.85fr)_minmax(360px,1.15fr)] gap-3 overflow-hidden">
-        <div className="min-h-0 space-y-2 overflow-y-auto overscroll-contain pr-1">
-          {shiftHistoryLoading && shiftHistory.length === 0 ? (
-            <div className="flex items-center gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Хаалтын түүх ачаалж байна...
-            </div>
-          ) : shiftHistory.length === 0 ? (
-            <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-              Сонгосон хугацаанд хаалт хийгдээгүй байна.
-            </div>
-          ) : (
-            shiftHistory.map((item) => {
-              const selected = item.id === selectedShiftHistoryId;
-              const difference = Number(item.cashDifference || 0);
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setSelectedShiftHistoryId(item.id)}
-                  className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-                    selected
-                      ? "border-teal-300 bg-teal-50"
-                      : "border-slate-200 bg-white hover:bg-slate-50"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="text-xs font-bold text-slate-900">
-                        Хаасан: {formatDateTime(item.closedAt)}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-slate-500">
-                        Нээсэн: {formatDateTime(item.openedAt)}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-slate-500">
-                        {item.cashierName} · {item.branchName}
-                      </p>
-                    </div>
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                        difference === 0
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      {difference === 0 ? "Зөрүүгүй" : formatMoney(difference)}
-                    </span>
-                  </div>
-                  <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
-                    <div>
-                      <p className="text-slate-400">Нийт</p>
-                      <p className="font-bold text-slate-800">{formatMoney(item.totalSales)}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-400">Бэлэн</p>
-                      <p className="font-bold text-slate-800">{formatMoney(item.cashSales)}</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-400">Баримт</p>
-                      <p className="font-bold text-slate-800">{item.salesCount}</p>
-                    </div>
-                  </div>
-                </button>
-              );
-            })
-          )}
-        </div>
-
-        <div className="min-h-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3">
-          {selectedShiftHistory ? (
-            <div className="flex h-full flex-col gap-3">
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  ["Нээсэн", formatDateTime(selectedShiftHistory.openedAt)],
-                  ["Хаасан", formatDateTime(selectedShiftHistory.closedAt)],
-                ].map(([label, value]) => (
-                  <div key={String(label)} className="rounded-lg bg-white px-3 py-2">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                      {label}
-                    </p>
-                    <p className="mt-1 text-xs font-black text-slate-900">
-                      {value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  ["Эхлэх мөнгө", selectedShiftHistory.openingCash],
-                  ["Тооцоолсон бэлэн", selectedShiftHistory.expectedCash],
-                  ["Хаасан мөнгө", selectedShiftHistory.closingCash || 0],
-                  ["Зөрүү", selectedShiftHistory.cashDifference || 0],
-                ].map(([label, value]) => (
-                  <div key={String(label)} className="rounded-lg bg-white px-3 py-2">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                      {label}
-                    </p>
-                    <p className="mt-1 text-sm font-black text-slate-900">
-                      {formatMoney(Number(value))}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-                {[
-                  ["Бэлэн", selectedShiftHistory.cashSales],
-                  ["Карт", selectedShiftHistory.cardSales],
-                  ["QR төлбөр", selectedShiftHistory.qpaySales],
-                  ["Зээл", selectedShiftHistory.creditSales],
-                  ["Холимог баримт", selectedShiftHistory.mixedSales],
-                ].map(([label, amount]) => (
-                  <div key={String(label)} className="rounded-lg bg-white px-3 py-2">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
-                    <p className="mt-1 text-sm font-black text-slate-900">{formatMoney(Number(amount))}</p>
-                  </div>
-                ))}
-              </div>
-
-              {selectedShiftHistory.note && (
-                <div className="rounded-lg bg-white px-3 py-2 text-xs text-slate-600">
-                  {selectedShiftHistory.note}
-                </div>
-              )}
-
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg bg-white p-2">
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-xs font-bold text-slate-800">Баримтууд</p>
-                  {shiftHistoryReceiptsLoading && (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-400" />
-                  )}
-                </div>
-                {shiftHistoryReceiptsError ? (
-                  <p className="rounded-md bg-rose-50 px-2 py-1.5 text-xs text-rose-700">
-                    {shiftHistoryReceiptsError}
-                  </p>
-                ) : shiftHistoryReceipts.length === 0 ? (
-                  <p className="rounded-md bg-slate-50 px-2 py-1.5 text-xs text-slate-500">
-                    Энэ хаалт дээр баримт алга байна.
-                  </p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {shiftHistoryReceipts.map((receipt) => (
-                      <div
-                        key={receipt.id}
-                        className="flex items-center justify-between gap-2 rounded-md border border-slate-100 px-2 py-1.5 text-xs"
-                      >
-                        <div>
-                          <p className="font-bold text-slate-800">#{receipt.receiptNo}</p>
-                          <p className="text-[11px] text-slate-500">
-                            {formatDateTime(receipt.createdAt)} · {receipt.paymentMethod}
-                          </p>
-                        </div>
-                        <p className="font-black text-slate-900">{formatMoney(receipt.grandTotal)}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex h-full items-center justify-center text-xs text-slate-500">
-              Хаалт сонгоно уу.
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-
   if (!posEnabled) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center bg-slate-50 px-6 text-center">
@@ -4168,7 +3749,23 @@ export default function PosDemoPage() {
         </div>
       )}
 
-      {showCashDrawerPanel && registerConfig?.isActive && cashDrawerPanel}
+      {showCashDrawerPanel && registerConfig?.isActive && <CashDrawerPanel
+        shift={shift}
+        drawerLoading={drawerLoading}
+        drawerEventSubmitting={drawerEventSubmitting}
+        drawerSummary={drawerSummary}
+        drawerError={drawerError}
+        countedCashTotal={countedCashTotal}
+        drawerEventType={drawerEventType}
+        drawerEventAmount={drawerEventAmount}
+        drawerEventNote={drawerEventNote}
+        refreshCashDrawerSummary={refreshCashDrawerSummary}
+        handleCreateDrawerEvent={handleCreateDrawerEvent}
+        printCashDrawerReport={printCashDrawerReport}
+        setDrawerEventType={setDrawerEventType}
+        setDrawerEventAmount={setDrawerEventAmount}
+        setDrawerEventNote={setDrawerEventNote}
+      />}
 
       {showShiftHistoryPanel && registerConfig?.isActive && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-hidden bg-slate-950/45 p-4 backdrop-blur-sm sm:p-6">
@@ -4178,7 +3775,21 @@ export default function PosDemoPage() {
             aria-labelledby="vendor-pos-shift-history-title"
             className="h-[calc(100dvh-2rem)] max-h-[780px] w-full max-w-[1400px] sm:h-[calc(100dvh-3rem)]"
           >
-            {shiftHistoryPanel}
+            <ShiftHistoryPanel
+              shiftHistoryRange={shiftHistoryRange}
+              setShiftHistoryRange={setShiftHistoryRange}
+              reloadShiftHistory={reloadShiftHistory}
+              setShowShiftHistoryPanel={setShowShiftHistoryPanel}
+              shiftHistoryError={shiftHistoryError}
+              shiftHistoryLoading={shiftHistoryLoading}
+              shiftHistory={shiftHistory}
+              selectedShiftHistoryId={selectedShiftHistoryId}
+              setSelectedShiftHistoryId={setSelectedShiftHistoryId}
+              selectedShiftHistory={selectedShiftHistory}
+              shiftHistoryReceiptsLoading={shiftHistoryReceiptsLoading}
+              shiftHistoryReceiptsError={shiftHistoryReceiptsError}
+              shiftHistoryReceipts={shiftHistoryReceipts}
+            />
           </div>
         </div>
       )}

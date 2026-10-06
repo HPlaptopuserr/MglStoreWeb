@@ -1,3 +1,5 @@
+import { memo } from "react";
+import { useEventCallback } from "../hooks/useEventCallback";
 import { CartScrollArea } from "./CartScrollArea";
 import styles from "./PosCartPanel.module.css";
 import { Minus, Plus, ReceiptText, Trash2 } from "lucide-react";
@@ -30,7 +32,7 @@ function money(value: number) {
   return `₮${value.toLocaleString()}`;
 }
 
-function PosCartLineRow({
+const PosCartLineRow = memo(function PosCartLineRow({
   line,
   index,
   onRemove,
@@ -150,7 +152,7 @@ function PosCartLineRow({
       </button>
     </article>
   );
-}
+});
 
 function PosCartSummary({
   lines,
@@ -206,6 +208,12 @@ export function PosCartPanel({
   onClear,
   className = "",
 }: Props) {
+  const removeLine = useEventCallback(onRemove);
+  const setQuantity = useEventCallback(onSetQty);
+  const setPrice = useEventCallback(
+    (...args: Parameters<NonNullable<Props["onSetPrice"]>>) =>
+      onSetPrice?.(...args),
+  );
   return (
     <section
       className={`${styles.panel} flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}
@@ -247,9 +255,9 @@ export function PosCartPanel({
                 key={line.productId}
                 line={line}
                 index={index}
-                onRemove={onRemove}
-                onSetQty={onSetQty}
-                onSetPrice={onSetPrice}
+                onRemove={removeLine}
+                onSetQty={setQuantity}
+                onSetPrice={onSetPrice ? setPrice : undefined}
               />
             ))}
           </CartScrollArea>
