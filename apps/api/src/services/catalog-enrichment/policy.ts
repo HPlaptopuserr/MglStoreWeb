@@ -36,7 +36,7 @@ export const barcodeAliasKey = (code: string) => `barcode:${code}`;
 
 export type EnrichmentDecision =
   | { action: "create" }
-  | { action: "existing"; masterId: string }
+  | { action: "existing"; masterId: string; unitMismatch?: boolean }
   | { action: "skip"; reason: string };
 
 /** Identity wins over spelling: admin edits are never overwritten by imports. */
@@ -82,17 +82,13 @@ export function decideEnrichment(
   if (match) {
     if (match.status !== "ACTIVE")
       return { action: "skip", reason: "Төв санд идэвхгүй бүртгэлтэй байна" };
-    if (
-      identityMatches.length &&
-      match.id !== source.masterProductId &&
-      match.sourceProductId !== source.id &&
-      cleanCatalogUnit(match.unit) !== cleanCatalogUnit(source.unit)
-    )
-      return {
-        action: "skip",
-        reason: "Ижил баркодтой барааны хэмжих нэгж зөрж байна",
-      };
-    return { action: "existing", masterId: match.id };
+    return {
+      action: "existing",
+      masterId: match.id,
+      ...(cleanCatalogUnit(match.unit) !== cleanCatalogUnit(source.unit)
+        ? { unitMismatch: true }
+        : {}),
+    };
   }
   return { action: "create" };
 }

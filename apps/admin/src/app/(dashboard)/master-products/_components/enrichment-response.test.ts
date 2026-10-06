@@ -8,6 +8,7 @@ const batch = {
   existing: 20,
   skipped: 0,
   warehouseProducts: 10,
+  unitDifferences: 0,
   issues: [],
   startedAt: "2026-10-06T00:00:00.000Z",
   nextCursor: "p-025",
@@ -43,4 +44,18 @@ test("malformed responses and stuck/backwards cursors cannot loop or show false 
     { ...batch, startedAt: "2026-10-05T00:00:00.000Z" },
   ])
     assert.throws(() => parseEnrichmentBatch(value, "p-001", batch.startedAt));
+});
+
+test("unit differences are informational and bounded by existing matches", () => {
+  assert.equal(
+    parseEnrichmentBatch({ ...batch, unitDifferences: 10 }).unitDifferences,
+    10,
+  );
+  assert.throws(() => parseEnrichmentBatch({ ...batch, unitDifferences: 21 }));
+  assert.throws(() => parseEnrichmentBatch({ ...batch, unitDifferences: -1 }));
+  assert.equal(
+    parseEnrichmentBatch({ ...batch, unitDifferences: undefined })
+      .unitDifferences,
+    0,
+  );
 });

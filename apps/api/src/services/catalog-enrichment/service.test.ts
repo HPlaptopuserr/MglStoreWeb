@@ -41,6 +41,8 @@ test("all 526 vendor/warehouse records are scanned in bounded batches and reruns
     images: [{ url: "https://example.com/product.png" }],
   }));
   sources[1].barcodeAliases = ["code-1"];
+  sources[1].unit = "kg";
+  sources[1].name = "USB cable CA-8854 C-iphone";
   const masters: EnrichmentMaster[] = [];
   // No Product write delegates exist in this fake: enrichment must be central-only.
   const tx = {
@@ -106,22 +108,31 @@ test("all 526 vendor/warehouse records are scanned in bounded batches and reruns
     },
   } as unknown as Parameters<typeof enrichCatalogBatch>[0];
   for (const expectedCreated of [262, 0]) {
+    let unitDifferences = 0;
     let cursor: string | undefined;
     let processed = 0,
       created = 0,
       warehouseProducts = 0;
     do {
       const batch = await enrichCatalogBatch(tx, { cursor, startedAt: date });
+      unitDifferences += batch.unitDifferences;
       processed += batch.processed;
       created += batch.created;
       warehouseProducts += batch.warehouseProducts;
       cursor = batch.nextCursor ?? undefined;
     } while (cursor);
+    assert.equal(unitDifferences, 1);
     assert.equal(processed, 526);
     assert.equal(created, expectedCreated);
     assert.equal(warehouseProducts, 263);
   }
   assert.equal(masters.length, 262);
+  assert.equal(masters[0].unit, "pcs");
+  assert.ok(
+    masters[0].aliases.some(
+      (alias) => alias.normalizedValue === "usb cable ca 8854 c iphone",
+    ),
+  );
   assert.equal(
     masters.some((master) => master.barcode === "code-1"),
     false,

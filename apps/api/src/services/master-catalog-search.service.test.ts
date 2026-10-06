@@ -30,3 +30,48 @@ test("shared search ranks exact barcode and retains aliases, brands and categori
   assert.deepEqual(rankMasterCatalog(rows, "zzzzzzzzzzz"), []);
   assert.deepEqual(rankMasterCatalog(rows, ""), ["milk", "cola"]);
 });
+
+test("specific cable/model searches exclude unrelated partial matches", () => {
+  const catalog = [
+    {
+      ...rows[0],
+      id: "cash",
+      canonicalName: "Жинлэгчтэй касс",
+      barcode: null,
+      brand: null,
+      categoryName: "POS, кассын төхөөрөмж",
+      aliases: [],
+    },
+    {
+      ...rows[0],
+      id: "toy",
+      canonicalName: "Die-Cast пикап машин",
+      barcode: null,
+      brand: null,
+      categoryName: "Тоглоом",
+      aliases: [],
+    },
+    {
+      ...rows[0],
+      id: "other-cable",
+      canonicalName: "USB cable CA-1234 C-iphone",
+      barcode: null,
+      aliases: [],
+    },
+    {
+      ...rows[0],
+      id: "cable",
+      canonicalName: "USB cable CA-8854 C-iphone",
+      barcode: null,
+      aliases: [],
+    },
+  ];
+  assert.deepEqual(rankMasterCatalog(catalog, "USB cable CA-8854 C-iphone"), [
+    "cable",
+  ]);
+  assert.deepEqual(rankMasterCatalog(catalog, "CA-8854"), ["cable"]);
+  assert.deepEqual(
+    rankMasterCatalog(catalog, "USB cable CA-9999 C-iphone"),
+    [],
+  );
+});

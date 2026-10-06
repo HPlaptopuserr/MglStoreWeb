@@ -10,6 +10,7 @@ export interface EnrichmentProgress {
   existing: number;
   skipped: number;
   warehouseProducts: number;
+  unitDifferences: number;
   issues: EnrichmentIssue[];
 }
 export interface EnrichmentBatch extends EnrichmentProgress {
@@ -41,7 +42,9 @@ export function parseEnrichmentBatch(
     nextCursor,
     startedAt: nextStart,
   } = value;
+  const unitDifferences = value.unitDifferences ?? 0;
   if (
+    !isCount(unitDifferences) ||
     !isCount(total) ||
     !isCount(processed) ||
     !isCount(created) ||
@@ -50,6 +53,7 @@ export function parseEnrichmentBatch(
     !isCount(warehouseProducts) ||
     created + existing + skipped !== processed ||
     warehouseProducts > processed ||
+    unitDifferences > existing ||
     processed > total ||
     typeof nextStart !== "string" ||
     !Number.isFinite(Date.parse(nextStart)) ||
@@ -89,5 +93,6 @@ export function parseEnrichmentBatch(
     startedAt: nextStart,
     nextCursor,
     issues: parsedIssues,
+    unitDifferences,
   };
 }
