@@ -112,6 +112,7 @@ export async function enrichCatalogBatch(
     existing: 0,
     skipped: 0,
     warehouseProducts: 0,
+    unitDifferences: 0,
     issues: [] as { productId: string; name: string; reason: string }[],
     startedAt: startedAt.toISOString(),
     nextCursor: rows.length > BATCH_SIZE ? batch[batch.length - 1].id : null,
@@ -164,14 +165,22 @@ export async function enrichCatalogBatch(
       // Preserve new alternate codes even when this product already exists. A
       // later vendor may know only this code; keeping it prevents chain duplicates.
       await tx.masterProductAlias.createMany({
-        data: codes.map((code) => ({
-          masterProductId: decision.masterId,
-          value: code,
-          normalizedValue: barcodeAliasKey(code),
-        })),
+        data: [
+          {
+            masterProductId: decision.masterId,
+            value: source.name.trim(),
+            normalizedValue: normalizedName,
+          },
+          ...codes.map((code) => ({
+            masterProductId: decision.masterId,
+            value: code,
+            normalizedValue: barcodeAliasKey(code),
+          })),
+        ],
         skipDuplicates: true,
       });
       result.existing++;
+      if (decision.unitMismatch) result.unitDifferences++;
     } else {
       await tx.masterProduct.create({
         data: {

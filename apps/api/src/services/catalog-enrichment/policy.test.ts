@@ -89,7 +89,7 @@ test("barcodeless records require an unambiguous name and unit match", () => {
     "create",
   );
 });
-test("invalid names, inactive masters and barcode unit conflicts require review", () => {
+test("invalid names and inactive masters require review", () => {
   assert.equal(decideEnrichment({ ...source, name: "123" }, []).action, "skip");
   assert.equal(
     decideEnrichment(source, [{ ...master, status: "ARCHIVED" }]).action,
@@ -97,7 +97,7 @@ test("invalid names, inactive masters and barcode unit conflicts require review"
   );
   assert.equal(
     decideEnrichment(source, [{ ...master, unit: "kg" }]).action,
-    "skip",
+    "existing",
   );
 });
 
@@ -112,4 +112,23 @@ test("a product name cannot masquerade as another product barcode", () => {
     ]).action,
     "create",
   );
+});
+
+test("matching barcode accepts different or missing units without conversion", () => {
+  for (const unit of ["kg", "л", null]) {
+    const target = { ...master, unit };
+    const before = structuredClone(target);
+    assert.deepEqual(decideEnrichment(source, [target]), {
+      action: "existing",
+      masterId: master.id,
+      unitMismatch: true,
+    });
+    assert.deepEqual(target, before);
+  }
+  for (const unit of ["ш", "шт", "ширхэг", "pcs"]) {
+    assert.deepEqual(decideEnrichment(source, [{ ...master, unit }]), {
+      action: "existing",
+      masterId: master.id,
+    });
+  }
 });

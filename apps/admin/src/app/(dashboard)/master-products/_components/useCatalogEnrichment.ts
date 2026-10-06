@@ -16,6 +16,7 @@ const initial: EnrichmentProgress = {
   existing: 0,
   skipped: 0,
   warehouseProducts: 0,
+  unitDifferences: 0,
   issues: [],
 };
 
@@ -81,6 +82,7 @@ export function useCatalogEnrichment(onUpdated: () => Promise<void>) {
         if (controller.signal.aborted) return;
         totals = {
           total: batch.total,
+          unitDifferences: totals.unitDifferences + batch.unitDifferences,
           processed: totals.processed + batch.processed,
           created: totals.created + batch.created,
           existing: totals.existing + batch.existing,

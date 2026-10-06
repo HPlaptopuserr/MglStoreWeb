@@ -68,6 +68,14 @@ export function CatalogEnrichmentStatus({
           </div>
         ))}
       </div>
+      {progress.unitDifferences > 0 && (
+        <p className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+          Бүртгэлтэй гэж тооцсон бараанаас{" "}
+          {progress.unitDifferences.toLocaleString()} нь хэмжих нэгжийн
+          зөрүүтэй. Баркод эсвэл өмнөх холбоосоор нь тулгасан. Төв сан болон эх
+          барааны нэгж, үнэ, үлдэгдэл өөрчлөгдөөгүй.
+        </p>
+      )}
       {running && (
         <p className="text-xs text-slate-500">
           Тулгалт дуусах хүртэл энэ хуудсыг нээлттэй байлгана уу.
