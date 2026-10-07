@@ -1,4 +1,5 @@
 "use client";
+import { StocktakeDialog } from "./StocktakeDialog";
 import { StocktakeAddProduct } from "./StocktakeAddProduct";
 import { useMemo, useState } from "react";
 import {
@@ -23,11 +24,10 @@ export function StocktakeEditor({
   edits,
   busy,
   canApprove,
-  onEdit,
+  onSaveCount,
   onAction,
   onClose,
   onReload,
-  onError,
 }: {
   session: StocktakeDetail;
   registers: { id: string; name: string }[];
@@ -39,17 +39,18 @@ export function StocktakeEditor({
   edits: Record<string, StocktakeCountEdit>;
   busy: boolean;
   canApprove: boolean;
-  onEdit: (edit: StocktakeCountEdit) => void;
+  onSaveCount: (edit: StocktakeCountEdit) => Promise<void>;
   onAction: (action: StocktakeAction) => void;
   onClose: () => void;
   onReload: () => void;
-  onError: (error: string) => void;
 }) {
   const [newProduct, setNewProduct] = useState<{
     name: string;
     barcode: string;
   } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [savedNotice, setSavedNotice] = useState("");
+  const [focusRequest, setFocusRequest] = useState(0);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [page, setPage] = useState(0);
@@ -78,6 +79,12 @@ export function StocktakeEditor({
     page,
     Math.max(0, Math.ceil(filtered.length / 50) - 1),
   );
+  const finishStep = () => {
+    setSelectedId(null);
+    setNewProduct(null);
+    setQuery("");
+    setFocusRequest((value) => value + 1);
+  };
   const editable = session.status === "DRAFT" && !busy;
   const dirty = Object.keys(edits).length;
   return (
@@ -101,10 +108,12 @@ export function StocktakeEditor({
         onAction={onAction}
       />
       <StocktakeScanner
+        focusRequest={focusRequest}
+        savedNotice={savedNotice}
         onResolve={onResolveProduct}
         lines={lines}
-        onEdit={onEdit}
-        editable={editable}
+        onSave={onSaveCount}
+        editable={session.status === "DRAFT"}
         onSelect={(line) => {
           setNewProduct(null);
           setSelectedId(line.id);
@@ -129,32 +138,39 @@ export function StocktakeEditor({
         lines
           .filter((line) => line.id === selectedId)
           .map((line) => (
-            <StocktakeCountStep
+            <StocktakeDialog
               key={line.id}
-              line={line}
+              title="Бараа тоолох"
               busy={busy}
-              onEdit={onEdit}
-              onDone={() => {
-                setSelectedId(null);
-                setQuery("");
-                document.getElementById("stocktake-scanner")?.focus();
-              }}
-            />
+              onClose={finishStep}
+            >
+              <StocktakeCountStep
+                key={line.id}
+                line={line}
+                busy={busy}
+                onSave={async (edit) => {
+                  await onSaveCount(edit);
+                  setSavedNotice(`${line.name}: хадгаллаа ✓`);
+                }}
+                onDone={finishStep}
+              />
+            </StocktakeDialog>
           ))}
       {session.status === "DRAFT" && canManageProducts && newProduct && (
-        <StocktakeAddProduct
-          registers={registers}
-          seed={newProduct}
+        <StocktakeDialog
+          title="Шинэ бараа бүртгэх"
           busy={busy}
-          dirty={Boolean(dirty)}
-          onAdd={onAddProduct}
-          onDone={() => {
-            setNewProduct(null);
-            setQuery("");
-            setFilter("all");
-            setPage(0);
-          }}
-        />
+          onClose={finishStep}
+        >
+          <StocktakeAddProduct
+            registers={registers}
+            seed={newProduct}
+            busy={busy}
+            dirty={Boolean(dirty)}
+            onAdd={onAddProduct}
+            onDone={finishStep}
+          />
+        </StocktakeDialog>
       )}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap gap-3 p-4">
@@ -204,8 +220,6 @@ export function StocktakeEditor({
                       setSelectedId(row.id);
                     }}
                     editable={editable}
-                    onEdit={onEdit}
-                    onError={onError}
                   />
                 ))}
             </tbody>

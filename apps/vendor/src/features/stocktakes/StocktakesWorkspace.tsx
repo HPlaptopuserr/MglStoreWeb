@@ -11,14 +11,7 @@ export function StocktakesWorkspace() {
         message={state.confirmation.message}
         onAnswer={state.confirmation.answer}
       />
-      <header className="rounded-2xl bg-slate-950 p-6 text-white">
-        <h1 className="text-2xl font-bold">Бараа тооллого</h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
-          Бодит тоог бүртгэж, зөрүүг хянаад баталгаажуулна. Баталгаажуулах
-          хүртэл тооллогын зөрүү үлдэгдэлд орохгүй. Шинэ бараа бүртгэхэд орлого,
-          хүлээн авалтын баримт шууд үүснэ.
-        </p>
-      </header>
+      <h1 className="sr-only">Бараа тооллого</h1>
       {state.error && (
         <div
           role="alert"
@@ -61,11 +54,10 @@ export function StocktakesWorkspace() {
           edits={state.edits}
           busy={state.busy}
           canApprove={state.overview?.canApprove ?? false}
-          onEdit={state.edit}
+          onSaveCount={state.saveCount}
           onAction={state.act}
           onClose={state.close}
           onReload={() => state.open(state.session!.id)}
-          onError={state.setError}
         />
       ) : (
         state.overview && (
