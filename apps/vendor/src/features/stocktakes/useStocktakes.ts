@@ -33,6 +33,7 @@ async function request<T>(
   }
   return response.json() as Promise<T>;
 }
+import { saveStocktakeEdits } from "./save-stocktake-edits";
 import { useConfirmation } from "./useConfirmation";
 
 type Edits = Record<string, StocktakeCountEdit>;
@@ -65,8 +66,19 @@ export function useStocktakes() {
   }, []);
   const reload = useCallback(async () => {
     const data = await request<StocktakeOverview>(base);
-    if (!Number.isInteger(data.directProductCount) || data.directProductCount < 0 || !Array.isArray(data.warehouses) || data.warehouses.some(warehouse => !Number.isInteger(warehouse.productCount) || warehouse.productCount < 0)) {
-      throw new Error("Тоолох барааны тоог авч чадсангүй. Дахин холбогдоно уу.");
+    if (
+      !Number.isInteger(data.directProductCount) ||
+      data.directProductCount < 0 ||
+      !Array.isArray(data.warehouses) ||
+      data.warehouses.some(
+        (warehouse) =>
+          !Number.isInteger(warehouse.productCount) ||
+          warehouse.productCount < 0,
+      )
+    ) {
+      throw new Error(
+        "Тоолох барааны тоог авч чадсангүй. Дахин холбогдоно уу.",
+      );
     }
     setOverview(data);
   }, [base]);
@@ -223,14 +235,43 @@ export function useStocktakes() {
       setEdits({});
       await reload();
     });
+  const saveEdits = async (
+    current: StocktakeDetail,
+  ): Promise<StocktakeDetail> => {
+    const updated = await saveStocktakeEdits(
+      current,
+      Object.values(edits),
+      (version, batch) =>
+        request<StocktakeDetail>(`${base}/${current.id}`, "PATCH", {
+          action: "save",
+          version,
+          edits: batch,
+        }),
+      (detail, batch) => {
+        setSession(detail);
+        setEdits((previous) => {
+          const remaining = { ...previous };
+          for (const row of batch) delete remaining[row.id];
+          return remaining;
+        });
+      },
+    );
+    latestDraft.current = null;
+    if (draftKey) localStorage.removeItem(draftKey);
+    return updated;
+  };
   const addProduct = async (product: StocktakeNewProduct): Promise<boolean> => {
     let saved = false;
     await run(async () => {
       if (!session) return;
-      if (dirty) throw new Error("Эхлээд тоолсон тоонуудаа хадгална уу");
-      const updated = await request<StocktakeDetail>(`${base}/${session.id}/products`, "POST", { version: session.version, product });
+      const current = await saveEdits(session);
+      const updated = await request<StocktakeDetail>(
+        `${base}/${session.id}/products`,
+        "POST",
+        { version: current.version, product },
+      );
       setSession(updated);
-      setNotice("Барааг тооллогод нэмлээ. Баталгаажуулахад хүлээн авалтын баримт үүснэ.");
+      setNotice("Барааг бүртгэж, өнөөдрийн хүлээн авалтын баримт үүсгэлээ.");
       notifyProductCatalogChanged();
       saved = true;
       await reload();
@@ -261,21 +302,7 @@ export function useStocktakes() {
         return;
       let updated = session;
       if (action === "save") {
-        const values = Object.values(edits);
-        for (let offset = 0; offset < values.length; offset += 500) {
-          const batch = values.slice(offset, offset + 500);
-          updated = await request<StocktakeDetail>(
-            `${base}/${session.id}`,
-            "PATCH",
-            { action, version: updated.version, edits: batch },
-          );
-          setSession(updated);
-          setEdits((previous) => {
-            const remaining = { ...previous };
-            for (const row of batch) delete remaining[row.id];
-            return remaining;
-          });
-        }
+        updated = await saveEdits(session);
       } else
         updated = await request<StocktakeDetail>(
           `${base}/${session.id}`,

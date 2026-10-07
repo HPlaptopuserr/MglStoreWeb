@@ -15,7 +15,8 @@ export function StocktakesWorkspace() {
         <h1 className="text-2xl font-bold">Бараа тооллого</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">
           Бодит тоог бүртгэж, зөрүүг хянаад баталгаажуулна. Баталгаажуулах
-          хүртэл үлдэгдэл өөрчлөгдөхгүй.
+          хүртэл тооллогын зөрүү үлдэгдэлд орохгүй. Шинэ бараа бүртгэхэд орлого,
+          хүлээн авалтын баримт шууд үүснэ.
         </p>
       </header>
       {state.error && (
