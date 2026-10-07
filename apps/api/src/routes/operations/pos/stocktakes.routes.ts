@@ -1,4 +1,8 @@
-import { addStocktakeProduct, parseStocktakeNewProduct } from "../../../services/stocktake-new-product.service";
+import { resolveStocktakeProduct } from "../../../services/stocktake-lookup.service";
+import {
+  addStocktakeProduct,
+  parseStocktakeNewProduct,
+} from "../../../services/stocktake-new-product.service";
 import {
   Router,
   type Request,
@@ -111,7 +115,11 @@ router.get(
         }),
       ],
     );
-    const registers = await prisma.posRegister.findMany({ where: { organizationId, isActive: true, deletedAt: null }, select: { id: true, name: true }, orderBy: { name: "asc" } });
+    const registers = await prisma.posRegister.findMany({
+      where: { organizationId, isActive: true, deletedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    });
     return res.json({
       registers,
       canManageProducts: actor.orgRole === "OWNER",
@@ -215,12 +223,53 @@ router.patch(
   }),
 );
 
-router.post(`${base}/:id/products`, route(async (req, res, actor, organizationId) => {
-  if (actor.orgRole !== "OWNER") throw new StocktakeError("Бараа бүртгэх эрхгүй байна", 403);
-  const body = inputRecord(req.body);
-  if (!Number.isInteger(body.version) || typeof body.version !== "number" || body.version < 0)
-    throw new StocktakeError("Тооллогын хувилбар буруу байна");
-  const product = parseStocktakeNewProduct(body.product);
-  return res.json(await addStocktakeProduct({ organizationId, stocktakeId: String(req.params.id), actorId: actor.id, version: body.version, product }));
-}));
+router.post(
+  `${base}/:id/products`,
+  route(async (req, res, actor, organizationId) => {
+    if (actor.orgRole !== "OWNER")
+      throw new StocktakeError("Бараа бүртгэх эрхгүй байна", 403);
+    const body = inputRecord(req.body);
+    if (
+      !Number.isInteger(body.version) ||
+      typeof body.version !== "number" ||
+      body.version < 0
+    )
+      throw new StocktakeError("Тооллогын хувилбар буруу байна");
+    const product = parseStocktakeNewProduct(body.product);
+    return res.json(
+      await addStocktakeProduct({
+        organizationId,
+        stocktakeId: String(req.params.id),
+        actorId: actor.id,
+        version: body.version,
+        product,
+      }),
+    );
+  }),
+);
+router.post(
+  `${base}/:id/lookup`,
+  route(async (req, res, _actor, organizationId) => {
+    const body = inputRecord(req.body);
+    if (
+      typeof body.version !== "number" ||
+      !Number.isInteger(body.version) ||
+      body.version < 0 ||
+      typeof body.query !== "string" ||
+      !body.query.trim() ||
+      body.query.trim().length > 200
+    )
+      throw new StocktakeError(
+        "Хайх нэр, баркод болон тооллогын хувилбарыг шалгана уу.",
+      );
+    return res.json(
+      await resolveStocktakeProduct({
+        organizationId,
+        stocktakeId: String(req.params.id),
+        version: body.version,
+        query: body.query.trim(),
+      }),
+    );
+  }),
+);
 export default router;
