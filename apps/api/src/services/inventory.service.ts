@@ -1,4 +1,5 @@
-import { prisma, InventoryReason, WarehouseType, Prisma } from "@mgl/database";
+import { resolveProductInventoryWarehouse } from "./vendor-inventory-warehouse.service";
+import { prisma, InventoryReason, Prisma } from "@mgl/database";
 import type { PrismaClient } from "@prisma/client";
 import { fromPosStoredStockQuantity } from "@mgl/types";
 
@@ -231,40 +232,8 @@ export async function adjustStock(
   return { allocatedCost };
 }
 
-/**
- * Resolve the primary warehouse for an organization.
- * Returns warehouseId if the org has exactly one assigned warehouse,
- * or the first warehouse if multiple. Returns null if none.
- */
-export async function resolveOrgWarehouse(
-  tx: Tx,
-  organizationId: string,
-  productId: string,
-): Promise<string | null> {
-  // Check if product has any warehouse inventory
-  const inventory = await tx.warehouseInventory.findFirst({
-    where: { productId },
-    select: { warehouseId: true },
-  });
-
-  if (inventory) return inventory.warehouseId;
-
-  // Vendor products belong to the organization's internal inventory warehouse,
-  // never to a centrally operated distribution warehouse.
-  const assignment = await tx.warehouseOrganization.findFirst({
-    where: {
-      organizationId,
-      warehouse: {
-        type: WarehouseType.VENDOR_INTERNAL,
-        isActive: true,
-        deletedAt: null,
-      },
-    },
-    select: { warehouseId: true },
-  });
-
-  return assignment?.warehouseId ?? null;
-}
+/** Resolve vendor inventory without reusing a central distribution warehouse. */
+export const resolveOrgWarehouse = resolveProductInventoryWarehouse;
 
 /**
  * Recalculate Product.stock = SUM(WarehouseInventory.quantity).
