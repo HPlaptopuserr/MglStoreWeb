@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   StocktakeNewProduct,
+  StocktakeLineDto,
   StocktakeCountEdit,
   StocktakeDetail,
   StocktakeKind,
@@ -260,6 +261,25 @@ export function useStocktakes() {
     if (draftKey) localStorage.removeItem(draftKey);
     return updated;
   };
+  const resolveProduct = async (
+    query: string,
+  ): Promise<StocktakeLineDto | null | undefined> => {
+    let result: StocktakeLineDto | null | undefined;
+    await run(async () => {
+      if (!session) return;
+      const current = await saveEdits(session);
+      const response = await request<{
+        session: StocktakeDetail | null;
+        line: StocktakeLineDto | null;
+      }>(`${base}/${session.id}/lookup`, "POST", {
+        query,
+        version: current.version,
+      });
+      if (response.session) setSession(response.session);
+      result = response.line;
+    });
+    return result;
+  };
   const addProduct = async (product: StocktakeNewProduct): Promise<boolean> => {
     let saved = false;
     await run(async () => {
@@ -352,6 +372,7 @@ export function useStocktakes() {
     dirty,
     create,
     addProduct,
+    resolveProduct,
     edit,
     act,
     open,

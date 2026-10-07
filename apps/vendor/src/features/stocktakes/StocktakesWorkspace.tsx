@@ -57,6 +57,7 @@ export function StocktakesWorkspace() {
           registers={state.overview?.registers ?? []}
           canManageProducts={state.overview?.canManageProducts ?? false}
           onAddProduct={state.addProduct}
+          onResolveProduct={state.resolveProduct}
           edits={state.edits}
           busy={state.busy}
           canApprove={state.overview?.canApprove ?? false}

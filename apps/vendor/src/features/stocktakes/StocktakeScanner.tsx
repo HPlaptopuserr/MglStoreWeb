@@ -18,6 +18,7 @@ export function StocktakeScanner({
   onEdit,
   onFind,
   onMissing,
+  onResolve,
   query,
   busy,
   canCreate,
@@ -28,10 +29,13 @@ export function StocktakeScanner({
   onEdit: (edit: StocktakeCountEdit) => void;
   onFind: (query: string) => void;
   onMissing: (seed: { name: string; barcode: string }) => void;
+  onResolve: (query: string) => Promise<StocktakeLineDto | null | undefined>;
   query: string;
   busy: boolean;
   canCreate: boolean;
 }) {
+  const resolving = useRef(false);
+  const [lookingUp, setLookingUp] = useState(false);
   const [incrementMode, setIncrementMode] = useState(false);
   const [scanNotice, setScanNotice] = useState("");
   const scanner = useRef<HTMLInputElement>(null);
@@ -43,9 +47,9 @@ export function StocktakeScanner({
   return (
     <form
       className="rounded-2xl border border-blue-200 bg-blue-50 p-4"
-      onSubmit={(event) => {
+      onSubmit={async (event) => {
         event.preventDefault();
-        if (!editable || !query.trim()) return;
+        if (!editable || !query.trim() || resolving.current) return;
         const exact = index.get(query.trim()) ?? [];
         const matches = exact.length
           ? exact
@@ -54,20 +58,43 @@ export function StocktakeScanner({
                 line.name.trim().toLocaleLowerCase("mn-MN") ===
                 query.trim().toLocaleLowerCase("mn-MN"),
             );
-        if (matches.length !== 1) {
-          if (missing && canCreate) onMissing(newProductSeed(query));
-          setScanNotice(
-            matches.length
-              ? "Олон бараа таарлаа. Жагсаалтаас зөв барааг сонгоно уу."
-              : missing
-                ? canCreate
-                  ? "Энэ тооллогод бараа олдсонгүй. Шинэ барааны мэдээллийг бөглөнө үү."
-                  : "Тоолох сан болон барааны бүртгэлээ шалгана уу."
-                : "Нэрээр хайсан барааны бодит тоог жагсаалтаас оруулна уу.",
-          );
+        let row = matches.length === 1 ? matches[0] : undefined;
+        if (!row && missing) {
+          resolving.current = true;
+          setLookingUp(true);
+          setScanNotice("Барааны бүртгэлээс шалгаж байна…");
+          try {
+            const resolved = await onResolve(query.trim());
+            if (resolved === undefined) {
+              setScanNotice(
+                "Шалгаж чадсангүй. Дээрх алдааны мэдээллийг шалгана уу. Шинээр бүртгэх алхмыг нээгээгүй.",
+              );
+              return;
+            }
+            if (resolved === null) {
+              if (canCreate) onMissing(newProductSeed(query));
+              setScanNotice(
+                canCreate
+                  ? "Байгууллагын бүртгэлд олдсонгүй. Шинэ барааны мэдээллийг бөглөнө үү."
+                  : "Бараа бүртгэлд олдсонгүй. Бүртгэх эрхтэй ажилтанд хандана уу.",
+              );
+              return;
+            }
+            row = resolved;
+          } catch {
+            setScanNotice(
+              "Барааны бүртгэлийг шалгаж чадсангүй. Дахин оролдоно уу.",
+            );
+            return;
+          } finally {
+            resolving.current = false;
+            setLookingUp(false);
+          }
+        }
+        if (!row) {
+          setScanNotice("Жагсаалтаас зөв барааг сонгож тоолно уу.");
           return;
         }
-        const row = matches[0]!;
         if (incrementMode && normalizePosMeasureUnit(row.unit) !== "kg") {
           const counted = (row.counted ?? 0) + 1;
           if (counted > 2147483647) {
@@ -99,21 +126,23 @@ export function StocktakeScanner({
             onFind(event.target.value);
             setScanNotice("");
           }}
-          disabled={busy}
+          disabled={busy || lookingUp}
           autoComplete="off"
           placeholder="Нэр эсвэл баркод оруулах…"
           className={fieldClass}
         />
         {editable && (
           <button
-            disabled={busy || !query.trim()}
+            disabled={busy || lookingUp || !query.trim()}
             className={`${buttonClass} shrink-0`}
           >
-            {missing && canCreate
-              ? "Бүртгэх"
-              : index.has(query.trim())
-                ? "Тоолох"
-                : "Хайх"}
+            {lookingUp
+              ? "Шалгаж байна…"
+              : missing
+                ? "Бүртгэлээс шалгах"
+                : index.has(query.trim())
+                  ? "Тоолох"
+                  : "Хайх"}
           </button>
         )}
       </div>
@@ -133,10 +162,8 @@ export function StocktakeScanner({
       </p>
       {missing && (
         <p role="status" className="mt-2 text-sm text-amber-800">
-          Энэ тооллогод тохирох бараа алга.
-          {canCreate
-            ? " «Бүртгэх» дарж шинэ бараа нэмнэ үү."
-            : " Тоолох сан болон барааны бүртгэлээ шалгана уу."}
+          Тооллогын жагсаалтад хараахан олдсонгүй. Enter дарж байгууллагын
+          барааны бүртгэлээс шалгана уу.
         </p>
       )}
       <p

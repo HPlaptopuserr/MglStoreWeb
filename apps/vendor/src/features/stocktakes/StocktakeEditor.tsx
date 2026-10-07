@@ -3,6 +3,7 @@ import { StocktakeAddProduct } from "./StocktakeAddProduct";
 import { useMemo, useState } from "react";
 import {
   type StocktakeCountEdit,
+  type StocktakeLineDto,
   type StocktakeDetail,
   type StocktakeNewProduct,
 } from "@mgl/types";
@@ -18,6 +19,7 @@ export function StocktakeEditor({
   registers,
   canManageProducts,
   onAddProduct,
+  onResolveProduct,
   edits,
   busy,
   canApprove,
@@ -30,6 +32,9 @@ export function StocktakeEditor({
   session: StocktakeDetail;
   registers: { id: string; name: string }[];
   canManageProducts: boolean;
+  onResolveProduct: (
+    query: string,
+  ) => Promise<StocktakeLineDto | null | undefined>;
   onAddProduct: (product: StocktakeNewProduct) => Promise<boolean>;
   edits: Record<string, StocktakeCountEdit>;
   busy: boolean;
@@ -96,6 +101,7 @@ export function StocktakeEditor({
         onAction={onAction}
       />
       <StocktakeScanner
+        onResolve={onResolveProduct}
         lines={lines}
         onEdit={onEdit}
         editable={editable}

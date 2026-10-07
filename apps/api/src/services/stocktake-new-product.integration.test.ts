@@ -9,7 +9,7 @@ import stocktakes from "../routes/operations/pos/stocktakes.routes";
 import receipts from "../routes/operations/pos/goods-receipts.routes";
 import restocks from "../routes/operations/pos/quick-restock.routes";
 import { prisma } from "@mgl/database";
-import type { StocktakeDetail } from "@mgl/types";
+import type { StocktakeDetail, StocktakeLineDto } from "@mgl/types";
 
 const enabled =
   process.env.STOCKTAKE_LOCAL_HTTP_TEST === "1" &&
@@ -118,6 +118,99 @@ test(
           },
           201,
         );
+        // Regression: the live catalog can contain a product missing from the count snapshot.
+        const lateBarcode = scope ? "8656020792436" : "8656020792435";
+        const late = await prisma.product.create({
+          data: {
+            name: "Ковар ананас хэрчсэн 565гр",
+            organizationId: org.id,
+            price: 6500,
+            stock: 5,
+            barcode: lateBarcode,
+            barcodeAliases: [`alias-${lateBarcode}`],
+            ...(scope
+              ? {
+                  warehouseInventories: {
+                    create: { warehouseId: scope, quantity: 5 },
+                  },
+                }
+              : {}),
+          },
+        });
+        const preserved = session.lines[0]!;
+        session = await request(`/${session.id}`, "PATCH", {
+          action: "save",
+          version: session.version,
+          edits: [{ id: preserved.id, counted: 0, note: "Keep my count" }],
+        });
+        async function lookup(query: string, status = 200) {
+          const response = await fetch(`${base}/${session.id}/lookup`, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ query, version: session.version }),
+          });
+          const body = (await response.json()) as {
+            session: StocktakeDetail | null;
+            line: StocktakeLineDto | null;
+            message?: string;
+          };
+          assert.equal(response.status, status, JSON.stringify(body));
+          return body;
+        }
+        const found = await lookup(lateBarcode);
+        assert.equal(found.line?.productId, late.id);
+        assert.equal(found.line?.expected, 5);
+        assert.equal(found.line?.counted, null);
+        assert.ok(found.session);
+        session = found.session;
+        assert.equal(
+          session.lines.find((row) => row.id === preserved.id)?.note,
+          "Keep my count",
+        );
+        assert.equal(
+          session.lines.find((row) => row.id === preserved.id)?.counted,
+          0,
+        );
+        const alias = await lookup(`alias-${lateBarcode}`);
+        assert.ok(alias.session);
+        session = alias.session;
+        assert.equal(
+          session.lines.filter((row) => row.productId === late.id).length,
+          1,
+        );
+        const missing = await lookup(randomUUID());
+        assert.equal(missing.line, null);
+        assert.equal(missing.session, null);
+        assert.equal(
+          await prisma.posGoodsReceipt.count({
+            where: { documentNo: session.id },
+          }),
+          0,
+        );
+        assert.equal(
+          (await prisma.product.findUniqueOrThrow({ where: { id: late.id } }))
+            .stock,
+          5,
+        );
+        if (scope) {
+          const outside = await prisma.product.create({
+            data: {
+              name: "Different scope",
+              organizationId: org.id,
+              price: 1,
+              stock: 5,
+              barcode: randomUUID(),
+            },
+          });
+          const mismatch = await lookup(outside.barcode!, 409);
+          assert.match(mismatch.message ?? "", /Агуулахад холбоогүй/);
+          assert.equal(
+            await prisma.stocktakeLine.count({
+              where: { stocktakeId: session.id, productId: outside.id },
+            }),
+            0,
+          );
+        }
         const product = {
           id: randomUUID(),
           name: "New",
