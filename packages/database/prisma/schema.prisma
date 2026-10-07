@@ -3232,6 +3232,11 @@ model PosGoodsReceipt {
   register           PosRegister           @relation(fields: [registerId], references: [id])
   receivedBy         User                  @relation("PosGoodsReceiptReceivedBy", fields: [receivedById], references: [id])
   items              PosGoodsReceiptItem[]
+  version            Int                   @default(1)
+  mergedIntoId       String?
+  mergedInto         PosGoodsReceipt?      @relation("ReceiptMerge", fields: [mergedIntoId], references: [id])
+  mergedReceipts     PosGoodsReceipt[]     @relation("ReceiptMerge")
+  revisions          PosGoodsReceiptRevision[]
 
   @@index([organizationId, receivedAt])
   @@index([branchId, receivedAt])
@@ -3784,4 +3789,19 @@ model StocktakeLine {
   stocktake Stocktake @relation(fields: [stocktakeId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
   @@unique([stocktakeId, productId])
+}
+
+/// Immutable history of receipt corrections and one-off consolidation.
+model PosGoodsReceiptRevision {
+  id         String @id @default(uuid())
+  receiptId  String
+  actorId    String
+  actorName  String
+  kind       String
+  reason     String
+  changes    Json
+  createdAt  DateTime @default(now())
+  receipt    PosGoodsReceipt @relation(fields: [receiptId], references: [id])
+
+  @@index([receiptId, createdAt])
 }

@@ -1,3 +1,9 @@
+import { correctReceipt } from "../../../services/receipt-correction.service";
+import {
+  canCorrectReceipt,
+  parseReceiptCorrection,
+  ReceiptCorrectionError,
+} from "../../../services/receipt-correction.policy";
 import crypto from "node:crypto";
 import { Router, type Router as ExpressRouter } from "express";
 import { InventoryReason, prisma } from "@mgl/database";
@@ -7,7 +13,10 @@ import {
 } from "../../../services/inventory.service";
 import { canAccessPosOrganization, requirePosUser } from "./_shared";
 import { parsePosGoodsReceiptInput } from "./goods-receipt";
-import { fromPosStoredStockQuantity, normalizePosMeasureUnit } from "@mgl/types";
+import {
+  fromPosStoredStockQuantity,
+  normalizePosMeasureUnit,
+} from "@mgl/types";
 
 class ReceiptInputError extends Error {}
 
@@ -34,11 +43,24 @@ router.get("/pos/goods-receipts", async (req, res) => {
     }
 
     const receipts = await prisma.posGoodsReceipt.findMany({
-      where: { registerId },
+      where: { registerId, mergedIntoId: null },
       orderBy: { receivedAt: "desc" },
       take: 50,
       select: {
         id: true,
+        version: true,
+        revisions: {
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            actorName: true,
+            kind: true,
+            reason: true,
+            changes: true,
+            createdAt: true,
+          },
+        },
+        mergedReceipts: { select: { receiptNo: true } },
         receiptNo: true,
         supplierName: true,
         supplierRegisterNo: true,
@@ -56,11 +78,18 @@ router.get("/pos/goods-receipts", async (req, res) => {
             id: true,
             quantity: true,
             remainingQuantity: true,
+            productId: true,
             unitCost: true,
             batchNumber: true,
             expiryDate: true,
             product: {
-              select: { name: true, sku: true, barcode: true, unit: true },
+              select: {
+                name: true,
+                sku: true,
+                barcode: true,
+                unit: true,
+                price: true,
+              },
             },
           },
         },
@@ -82,6 +111,7 @@ router.get("/pos/goods-receipts", async (req, res) => {
           return {
             id: item.id,
             productName: item.product.name,
+            salePrice: Number(item.product.price),
             sku: item.product.sku,
             barcode: item.product.barcode,
             unit: item.product.unit,
@@ -95,6 +125,20 @@ router.get("/pos/goods-receipts", async (req, res) => {
         });
         return {
           id: receipt.id,
+          version: receipt.version,
+          distinctProductCount: new Set(
+            receipt.items
+              .filter((item) => item.quantity > 0)
+              .map((item) => item.productId),
+          ).size,
+          canEdit: canCorrectReceipt(actor, register.organizationId),
+          revisions: receipt.revisions,
+          sourceReceipts: receipt.mergedReceipts.length
+            ? [
+                receipt.receiptNo,
+                ...receipt.mergedReceipts.map((row) => row.receiptNo),
+              ]
+            : [],
           receiptNo: receipt.receiptNo,
           supplierName: receipt.supplierName,
           supplierRegisterNo: receipt.supplierRegisterNo,
@@ -187,43 +231,91 @@ router.post("/pos/goods-receipts", async (req, res) => {
           if (!item.masterProductId) continue;
           let id = resolved.get(item.masterProductId);
           if (!id) {
-            const master = await tx.masterProduct.findFirst({ where: { id: item.masterProductId, status: "ACTIVE" } });
-            if (!master) throw new ReceiptInputError("Нэгдсэн сангийн бараа олдсонгүй. Дахин сонгоно уу.");
-            const existing = await tx.product.findFirst({ where: {
-              organizationId: register.organizationId, deletedAt: null,
-              OR: [{ masterProductId: master.id }, ...(master.barcode ? [{ barcode: master.barcode }] : [])],
-            } });
-            if (existing && (!existing.isActive || existing.supplyType !== "IN_STOCK")) throw new ReceiptInputError("Бараа идэвхгүй эсвэл захиалгын төрөлтэй байна.");
-            if (existing && normalizePosMeasureUnit(existing.unit) !== normalizePosMeasureUnit(master.unit)) throw new ReceiptInputError("Хэмжих нэгж зөрж байна. Дэлгүүрийн бүртгэлтэй барааг сонгоно уу.");
-            const category = master.categoryName ? await tx.businessCategory.findFirst({ where: { name: master.categoryName }, select: { id: true } }) : null;
-            const product = existing ?? await tx.product.create({ data: {
-              organizationId: register.organizationId, masterProductId: master.id,
-              name: master.canonicalName, barcode: master.barcode,
-              sku: master.barcode ? null : `CAT-${crypto.randomUUID()}`,
-              unit: normalizePosMeasureUnit(master.unit), price: item.salePrice!, costPrice: item.unitCost,
-              description: master.description, businessCategoryId: category?.id,
-              ...(master.imageUrl ? { images: { create: [{ url: master.imageUrl }] } } : {}),
-            } });
-            id = product.id; resolved.set(master.id, id);
+            const master = await tx.masterProduct.findFirst({
+              where: { id: item.masterProductId, status: "ACTIVE" },
+            });
+            if (!master)
+              throw new ReceiptInputError(
+                "Нэгдсэн сангийн бараа олдсонгүй. Дахин сонгоно уу.",
+              );
+            const existing = await tx.product.findFirst({
+              where: {
+                organizationId: register.organizationId,
+                deletedAt: null,
+                OR: [
+                  { masterProductId: master.id },
+                  ...(master.barcode ? [{ barcode: master.barcode }] : []),
+                ],
+              },
+            });
+            if (
+              existing &&
+              (!existing.isActive || existing.supplyType !== "IN_STOCK")
+            )
+              throw new ReceiptInputError(
+                "Бараа идэвхгүй эсвэл захиалгын төрөлтэй байна.",
+              );
+            if (
+              existing &&
+              normalizePosMeasureUnit(existing.unit) !==
+                normalizePosMeasureUnit(master.unit)
+            )
+              throw new ReceiptInputError(
+                "Хэмжих нэгж зөрж байна. Дэлгүүрийн бүртгэлтэй барааг сонгоно уу.",
+              );
+            const category = master.categoryName
+              ? await tx.businessCategory.findFirst({
+                  where: { name: master.categoryName },
+                  select: { id: true },
+                })
+              : null;
+            const product =
+              existing ??
+              (await tx.product.create({
+                data: {
+                  organizationId: register.organizationId,
+                  masterProductId: master.id,
+                  name: master.canonicalName,
+                  barcode: master.barcode,
+                  sku: master.barcode ? null : `CAT-${crypto.randomUUID()}`,
+                  unit: normalizePosMeasureUnit(master.unit),
+                  price: item.salePrice!,
+                  costPrice: item.unitCost,
+                  description: master.description,
+                  businessCategoryId: category?.id,
+                  ...(master.imageUrl
+                    ? { images: { create: [{ url: master.imageUrl }] } }
+                    : {}),
+                },
+              }));
+            id = product.id;
+            resolved.set(master.id, id);
           }
           item.productId = id;
         }
-    const productIds = Array.from(
-      new Set(input.items.map((item) => item.productId)),
-    );
-    const products = await tx.product.findMany({
-      where: {
-        id: { in: productIds },
-        organizationId: register.organizationId,
-        isActive: true,
-        deletedAt: null,
-      },
-      select: { id: true, name: true, sku: true, barcode: true, unit: true },
-    });
-    if (products.length !== productIds.length) {
-      throw new ReceiptInputError("Зарим бараа энэ кассын байгууллагад бүртгэлгүй эсвэл идэвхгүй байна");
-    }
-
+        const productIds = Array.from(
+          new Set(input.items.map((item) => item.productId)),
+        );
+        const products = await tx.product.findMany({
+          where: {
+            id: { in: productIds },
+            organizationId: register.organizationId,
+            isActive: true,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            name: true,
+            sku: true,
+            barcode: true,
+            unit: true,
+          },
+        });
+        if (products.length !== productIds.length) {
+          throw new ReceiptInputError(
+            "Зарим бараа энэ кассын байгууллагад бүртгэлгүй эсвэл идэвхгүй байна",
+          );
+        }
 
         await tx.posGoodsReceipt.create({
           data: {
@@ -289,7 +381,9 @@ router.post("/pos/goods-receipts", async (req, res) => {
     const stockByProduct = new Map(
       updatedProducts.stocks.map((product) => [product.id, product.stock]),
     );
-    const productById = new Map(updatedProducts.products.map(product => [product.id, product]));
+    const productById = new Map(
+      updatedProducts.products.map((product) => [product.id, product]),
+    );
     const totalQuantity = input.items.reduce(
       (total, item) => total + item.quantity,
       0,
@@ -333,7 +427,8 @@ router.post("/pos/goods-receipts", async (req, res) => {
       }),
     });
   } catch (error) {
-    if (error instanceof ReceiptInputError) return res.status(400).json({ message: error.message });
+    if (error instanceof ReceiptInputError)
+      return res.status(400).json({ message: error.message });
     console.error("POS goods receipt error", error);
     return res
       .status(500)
@@ -341,4 +436,23 @@ router.post("/pos/goods-receipts", async (req, res) => {
   }
 });
 
+router.patch("/pos/goods-receipts/:id", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+    const result = await correctReceipt(
+      String(req.params.id),
+      actor,
+      parseReceiptCorrection(req.body),
+    );
+    return res.json(result);
+  } catch (error) {
+    if (error instanceof ReceiptCorrectionError)
+      return res.status(error.status).json({ message: error.message });
+    console.error("Receipt correction failed", error);
+    return res.status(500).json({
+      message: "Засвар хадгалагдсангүй. Баримтыг дахин нээж шалгана уу.",
+    });
+  }
+});
 export default router;

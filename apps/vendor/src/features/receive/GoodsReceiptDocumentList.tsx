@@ -60,6 +60,11 @@ export function GoodsReceiptDocumentList({
           );
         }
         setDocuments(body);
+        setSelectedDocument((previous) =>
+          previous
+            ? (body.find((row) => row.id === previous.id) ?? null)
+            : null,
+        );
       })
       .catch((cause: unknown) => {
         if (cause instanceof DOMException && cause.name === "AbortError")
@@ -143,7 +148,8 @@ export function GoodsReceiptDocumentList({
                     </p>
                   </div>
                   <p className="text-sm font-bold text-slate-700">
-                    {document.items.length} бараа · {document.totalQuantity}
+                    {document.distinctProductCount ?? document.items.length} нэр
+                    төрөл · {document.items.length} мөр
                   </p>
                   <p className="text-sm font-black text-cyan-700">
                     {money(document.totalCost)}
@@ -159,6 +165,7 @@ export function GoodsReceiptDocumentList({
         <GoodsReceiptDocumentModal
           document={selectedDocument}
           onClose={() => setSelectedDocument(null)}
+          onSaved={() => setReloadKey((value) => value + 1)}
         />
       )}
     </section>
