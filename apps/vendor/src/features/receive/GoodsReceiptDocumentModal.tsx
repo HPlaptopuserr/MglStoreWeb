@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
+import { ReceiptCorrectionForm } from "./ReceiptCorrectionForm";
+import { ReceiptHistory, type ReceiptRevision } from "./ReceiptHistory";
+import { useEffect, useState } from "react";
 import { Printer, X } from "lucide-react";
 
 export type GoodsReceiptDocumentItem = {
   id: string;
   productName: string;
+  unit: string | null;
+  salePrice: number;
   sku: string | null;
   barcode: string | null;
   quantity: number;
@@ -19,6 +23,11 @@ export type GoodsReceiptDocumentItem = {
 export type GoodsReceiptDocument = {
   id: string;
   receiptNo: string;
+  version: number;
+  distinctProductCount?: number;
+  canEdit: boolean;
+  revisions: ReceiptRevision[];
+  sourceReceipts: string[];
   supplierName: string;
   supplierRegisterNo?: string | null;
   documentNo: string | null;
@@ -50,21 +59,25 @@ function printDocument(elementId: string, title: string) {
 export function GoodsReceiptDocumentModal({
   document,
   onClose,
+  onSaved,
 }: {
   document: GoodsReceiptDocument;
   onClose: () => void;
+  onSaved: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     const previous = window.document.body.style.overflow;
     window.document.body.style.overflow = "hidden";
     const onKeyDown = (event: KeyboardEvent) =>
-      event.key === "Escape" && onClose();
+      event.key === "Escape" && !busy && onClose();
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.document.body.style.overflow = previous;
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [onClose]);
+  }, [onClose, busy]);
 
   return (
     <div
@@ -73,13 +86,22 @@ export function GoodsReceiptDocumentModal({
       aria-labelledby="receipt-document-title"
       className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/60 p-3 backdrop-blur-sm sm:p-8"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (event.target === event.currentTarget && !busy) onClose();
       }}
     >
       <div className="w-full max-w-5xl overflow-hidden rounded-2xl bg-slate-100 shadow-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <h2 className="text-lg font-bold text-slate-800">Орлогын баримт</h2>
           <div className="flex gap-2">
+            {document.canEdit && !editing && (
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="rounded-lg border border-blue-300 bg-white px-4 text-sm font-semibold text-blue-700 hover:bg-blue-50"
+              >
+                Засах
+              </button>
+            )}
             <button
               type="button"
               onClick={() =>
@@ -95,6 +117,7 @@ export function GoodsReceiptDocumentModal({
             <button
               type="button"
               onClick={onClose}
+              disabled={busy}
               aria-label="Хаах"
               className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
             >
@@ -102,6 +125,17 @@ export function GoodsReceiptDocumentModal({
             </button>
           </div>
         </div>
+        {editing && (
+          <ReceiptCorrectionForm
+            document={document}
+            onBusy={setBusy}
+            onCancel={() => setEditing(false)}
+            onSaved={() => {
+              setEditing(false);
+              onSaved();
+            }}
+          />
+        )}
         <article
           id="pos-goods-receipt-document"
           className="m-4 rounded-lg border border-slate-200 bg-white p-5 text-slate-900 sm:m-6 sm:p-8"
@@ -228,6 +262,10 @@ export function GoodsReceiptDocumentModal({
             </div>
           </footer>
         </article>
+        <ReceiptHistory
+          revisions={document.revisions ?? []}
+          sourceReceipts={document.sourceReceipts ?? []}
+        />
       </div>
     </div>
   );
