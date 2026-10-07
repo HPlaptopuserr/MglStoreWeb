@@ -7,10 +7,11 @@ export async function resolveProductInventoryWarehouse(
   organizationId: string | null,
   productId: string,
   createdById?: string | null,
+  initializeUnassignedStock = false,
 ): Promise<string | null> {
   const product = await tx.product.findUniqueOrThrow({
     where: { id: productId },
-    select: { organizationId: true, managedByWarehouseId: true },
+    select: { organizationId: true, managedByWarehouseId: true, stock: true },
   });
   // Explicitly managed distribution products keep their admin warehouse.
   if (product.managedByWarehouseId) return product.managedByWarehouseId;
@@ -67,7 +68,17 @@ export async function resolveProductInventoryWarehouse(
     orderBy: [{ assignedAt: "asc" }, { warehouseId: "asc" }],
     select: { warehouseId: true },
   });
-  if (assignment) return assignment.warehouseId;
+  const initialize = async (warehouseId: string) => {
+    // POS may encounter older products whose stock was kept directly on Product.
+    // Preserve that baseline before adjustStock applies the new movement.
+    if (initializeUnassignedStock && product.stock !== 0) {
+      await tx.warehouseInventory.create({
+        data: { warehouseId, productId, quantity: product.stock },
+      });
+    }
+    return warehouseId;
+  };
+  if (assignment) return initialize(assignment.warehouseId);
   const organization = await tx.organization.findFirstOrThrow({
     where: { id: organizationId, deletedAt: null },
     select: { name: true, address: true },
@@ -84,5 +95,5 @@ export async function resolveProductInventoryWarehouse(
     },
     select: { id: true },
   });
-  return warehouse.id;
+  return initialize(warehouse.id);
 }

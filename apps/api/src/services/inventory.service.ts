@@ -233,7 +233,9 @@ export async function adjustStock(
 }
 
 /** Resolve vendor inventory without reusing a central distribution warehouse. */
-export const resolveOrgWarehouse = resolveProductInventoryWarehouse;
+export async function resolveOrgWarehouse(tx: Tx, organizationId: string, productId: string) {
+  return resolveProductInventoryWarehouse(tx, organizationId, productId, null, true);
+}
 
 /**
  * Recalculate Product.stock = SUM(WarehouseInventory.quantity).
