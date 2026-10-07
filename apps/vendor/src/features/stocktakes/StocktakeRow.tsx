@@ -12,11 +12,13 @@ export const StocktakeRow = memo(function StocktakeRow({
   editable,
   onEdit,
   onError,
+  onSelect,
 }: {
   line: StocktakeLineDto;
   editable: boolean;
   onEdit: (edit: StocktakeCountEdit) => void;
   onError: (error: string) => void;
+  onSelect?: (line: StocktakeLineDto) => void;
 }) {
   const formatted =
     line.counted === null
@@ -31,8 +33,24 @@ export const StocktakeRow = memo(function StocktakeRow({
   return (
     <tr className="border-t border-slate-100 align-top transition hover:bg-slate-50">
       <td className="p-3">
-        <p className="font-semibold">{line.name}</p>
-        {line.receiptRegisterId && <span className="mt-1 inline-block rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">Тооллогоор нэмсэн</span>}
+        <p className="font-semibold">
+          {editable && onSelect ? (
+            <button
+              type="button"
+              onClick={() => onSelect(line)}
+              className="text-left text-blue-700 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
+            >
+              {line.name}
+            </button>
+          ) : (
+            line.name
+          )}
+        </p>
+        {line.receiptRegisterId && (
+          <span className="mt-1 inline-block rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">
+            Тооллогоор нэмсэн
+          </span>
+        )}
         <p className="mt-1 text-xs text-slate-500">
           {line.barcode || "Баркодгүй"} · {line.unit || "ш"}
         </p>

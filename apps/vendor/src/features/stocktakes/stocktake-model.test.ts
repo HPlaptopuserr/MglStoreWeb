@@ -1,6 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { barcodeIndex, parseCount, storedQuantity } from "./stocktake-model";
+import {
+  barcodeIndex,
+  parseCount,
+  storedQuantity,
+  matchesStocktakeQuery,
+  newProductSeed,
+} from "./stocktake-model";
 import type { StocktakeLineDto } from "@mgl/types";
 test("physical counts preserve grams, reject fractional pieces and display signed variance", () => {
   assert.equal(parseCount("1.125", "кг"), 1125);
@@ -38,4 +44,26 @@ test("scanner indexes aliases without silently selecting ambiguous products", ()
   assert.equal(index.get("00123")?.length, 1);
   assert.equal(index.get("alias")?.length, 2);
   assert.equal(index.get("123"), undefined);
+});
+
+test("unified search matches names, barcodes and aliases with the same rules", () => {
+  const row: StocktakeLineDto = {
+    id: "1",
+    productId: "p",
+    name: "Сүү",
+    barcode: "00123",
+    barcodeAliases: ["00999"],
+    unit: "pcs",
+    expected: 0,
+    counted: null,
+    note: "",
+    countedAt: null,
+    countedById: null,
+  };
+  assert.equal(matchesStocktakeQuery(row, " СҮҮ "), true);
+  assert.equal(matchesStocktakeQuery(row, "00123"), true);
+  assert.equal(matchesStocktakeQuery(row, "00999"), true);
+  assert.equal(matchesStocktakeQuery(row, "талх"), false);
+  assert.deepEqual(newProductSeed(" 00123 "), { name: "", barcode: "00123" });
+  assert.deepEqual(newProductSeed(" Сүү "), { name: "Сүү", barcode: "" });
 });

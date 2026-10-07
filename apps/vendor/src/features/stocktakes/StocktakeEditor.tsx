@@ -1,14 +1,23 @@
 "use client";
 import { StocktakeAddProduct } from "./StocktakeAddProduct";
 import { useMemo, useState } from "react";
-import { type StocktakeCountEdit, type StocktakeDetail, type StocktakeNewProduct } from "@mgl/types";
+import {
+  type StocktakeCountEdit,
+  type StocktakeDetail,
+  type StocktakeNewProduct,
+} from "@mgl/types";
+import { StocktakeCountStep } from "./StocktakeCountStep";
 import { StocktakeScanner } from "./StocktakeScanner";
 import { StocktakeSummary, type StocktakeAction } from "./StocktakeSummary";
 import { fieldClass, secondaryClass } from "./StocktakeOverview";
+import { matchesStocktakeQuery } from "./stocktake-model";
 import { StocktakeRow } from "./StocktakeRow";
 
 export function StocktakeEditor({
-  session, registers, canManageProducts, onAddProduct,
+  session,
+  registers,
+  canManageProducts,
+  onAddProduct,
   edits,
   busy,
   canApprove,
@@ -31,7 +40,11 @@ export function StocktakeEditor({
   onReload: () => void;
   onError: (error: string) => void;
 }) {
-  const [missingBarcode, setMissingBarcode] = useState("");
+  const [newProduct, setNewProduct] = useState<{
+    name: string;
+    barcode: string;
+  } | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [page, setPage] = useState(0);
@@ -47,13 +60,9 @@ export function StocktakeEditor({
     (line) => line.counted !== null && line.counted !== line.expected,
   ).length;
   const filtered = useMemo(() => {
-    const value = query.trim().toLocaleLowerCase("mn-MN");
     return lines.filter(
       (line) =>
-        (!value ||
-          [line.name, line.barcode, ...line.barcodeAliases].some((text) =>
-            text?.toLocaleLowerCase("mn-MN").includes(value),
-          )) &&
+        matchesStocktakeQuery(line, query) &&
         (filter === "all" ||
           (filter === "uncounted"
             ? line.counted === null
@@ -86,38 +95,66 @@ export function StocktakeEditor({
         canApprove={canApprove}
         onAction={onAction}
       />
-      {session.status === "DRAFT" && (
-        <StocktakeScanner
-          lines={session.lines}
-          edits={edits}
-          editable={editable}
-          onEdit={onEdit}
-          onError={onError}
-          onMissing={setMissingBarcode}
-          onFind={(value) => {
-            setQuery(value);
-            setPage(0);
+      <StocktakeScanner
+        lines={lines}
+        onEdit={onEdit}
+        editable={editable}
+        onSelect={(line) => {
+          setNewProduct(null);
+          setSelectedId(line.id);
+        }}
+        query={query}
+        busy={busy}
+        canCreate={session.status === "DRAFT" && canManageProducts}
+        onMissing={(seed) => {
+          setSelectedId(null);
+          setNewProduct(seed);
+        }}
+        onFind={(value) => {
+          setSelectedId(null);
+          setNewProduct(null);
+          setQuery(value);
+          setPage(0);
+          setFilter("all");
+        }}
+      />
+      {selectedId &&
+        session.status === "DRAFT" &&
+        lines
+          .filter((line) => line.id === selectedId)
+          .map((line) => (
+            <StocktakeCountStep
+              key={line.id}
+              line={line}
+              busy={busy}
+              onEdit={onEdit}
+              onDone={() => {
+                setSelectedId(null);
+                setQuery("");
+                document.getElementById("stocktake-scanner")?.focus();
+              }}
+            />
+          ))}
+      {session.status === "DRAFT" && canManageProducts && newProduct && (
+        <StocktakeAddProduct
+          registers={registers}
+          seed={newProduct}
+          busy={busy}
+          dirty={Boolean(dirty)}
+          onAdd={onAddProduct}
+          onDone={() => {
+            setNewProduct(null);
+            setQuery("");
             setFilter("all");
+            setPage(0);
           }}
         />
       )}
-      {session.status === "DRAFT" && canManageProducts && (
-        <StocktakeAddProduct registers={registers} barcode={missingBarcode} busy={busy} dirty={Boolean(dirty)} onAdd={onAddProduct} onDone={() => setMissingBarcode("")} />
-      )}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-wrap gap-3 p-4">
-          <label className="min-w-48 flex-1">
-            <span className="sr-only">Бараа хайх</span>
-            <input
-              value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
-                setPage(0);
-              }}
-              placeholder="Нэр эсвэл баркодоор хайх"
-              className={fieldClass}
-            />
-          </label>
+          <span className="flex-1 self-center text-sm text-slate-500">
+            {filtered.length} бараа
+          </span>
           <select
             aria-label="Мөр шүүх"
             value={filter}
@@ -156,6 +193,10 @@ export function StocktakeEditor({
                   <StocktakeRow
                     key={line.id}
                     line={line}
+                    onSelect={(row) => {
+                      setNewProduct(null);
+                      setSelectedId(row.id);
+                    }}
                     editable={editable}
                     onEdit={onEdit}
                     onError={onError}

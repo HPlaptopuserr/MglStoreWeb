@@ -63,12 +63,20 @@ export function StocktakeSummary({
         илгээнэ. Тоолох хугацаанд борлуулалт, орлогыг түр зогсоохыг зөвлөж
         байна.
       </p>
-      {session.lines.some(line => line.receiptRegisterId && line.counted !== null && line.counted > line.expected) && (
+      {session.lines.some((line) => line.receiptRegisterId) && (
         <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
-          Тооллогоор нэмсэн {session.lines.filter(line => line.receiptRegisterId && line.counted !== null && line.counted > line.expected).length} төрлийн бараа.
-          {session.status === "APPROVED" ? (
-            <> Хүлээн авалтын баримт үүссэн. <Link href="/goods-receipts" className="font-semibold underline hover:text-emerald-950">Баримтын жагсаалт харах →</Link></>
-          ) : session.status === "CANCELLED" ? " Тооллого цуцлагдсан тул орлого, баримт үүсээгүй." : " Баталгаажуулахад сонгосон кассын хүлээн авалтын баримтад бүртгэнэ."}
+          Тооллогоор нэмсэн{" "}
+          {session.lines.filter((line) => line.receiptRegisterId).length}{" "}
+          төрлийн бараа.
+          <Link
+            href="/goods-receipts"
+            className="ml-2 font-semibold underline hover:text-emerald-950"
+          >
+            Хүлээн авалтын баримт харах →
+          </Link>
+          <span className="mt-1 block">
+            Тооллого цуцлах нь бүртгэсэн орлогын баримтыг буцаахгүй.
+          </span>
         </p>
       )}
       <div className="mt-4 flex flex-wrap gap-2">

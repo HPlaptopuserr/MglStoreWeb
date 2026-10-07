@@ -36,3 +36,26 @@ export function barcodeIndex(lines: StocktakeLineDto[]) {
       index.set(code, [...(index.get(code) ?? []), line]);
   return index;
 }
+
+export function matchesStocktakeQuery(
+  line: StocktakeLineDto,
+  query: string,
+): boolean {
+  const value = query.trim().toLocaleLowerCase("mn-MN");
+  return (
+    !value ||
+    [line.name, line.barcode, ...line.barcodeAliases].some((text) =>
+      text?.toLocaleLowerCase("mn-MN").includes(value),
+    )
+  );
+}
+
+export function newProductSeed(query: string): {
+  name: string;
+  barcode: string;
+} {
+  const value = query.trim();
+  return /^[0-9]+$/.test(value)
+    ? { name: "", barcode: value }
+    : { name: value, barcode: "" };
+}
