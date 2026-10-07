@@ -95,11 +95,11 @@ function PosCartLineRow({
       </div>
 
       <div className="mt-2 flex items-center justify-between gap-2">
-        <div className="flex h-8 items-center justify-center overflow-hidden rounded-lg border border-[#3d484f] bg-[#051424]">
+        <div className="flex h-8 w-[140px] items-center justify-center overflow-hidden rounded-lg border border-[#3d484f] bg-[#051424]">
           <button
             type="button"
             onClick={() => onSetQty(line.productId, line.qty - quantityStep)}
-            className="flex h-full w-8 items-center justify-center text-[#bcc8d1] transition hover:bg-[#1c2b3c]"
+            className="flex h-full w-8 shrink-0 items-center justify-center text-[#bcc8d1] transition hover:bg-[#1c2b3c]"
             aria-label="Тоо бууруулах"
           >
             <Minus size={14} />
@@ -116,13 +116,14 @@ function PosCartLineRow({
                 onSetQty(line.productId, parsed);
               }
             }}
-            className="h-full w-10 border-x border-[#3d484f] bg-[#0d1c2d] text-center text-sm font-black text-[#d4e4fa] outline-none"
+            className="h-full min-w-0 flex-1 border-x border-[#3d484f] bg-[#0d1c2d] px-1 text-center text-sm font-black tabular-nums text-[#d4e4fa] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            aria-label="Тоо хэмжээ"
           />
           <button
             type="button"
             onClick={() => onSetQty(line.productId, line.qty + quantityStep)}
             disabled={line.qty >= line.stockQty}
-            className="flex h-full w-8 items-center justify-center text-[#bcc8d1] transition hover:bg-[#1c2b3c] disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex h-full w-8 shrink-0 items-center justify-center text-[#bcc8d1] transition hover:bg-[#1c2b3c] disabled:cursor-not-allowed disabled:opacity-40"
             aria-label="Тоо нэмэх"
           >
             <Plus size={14} />

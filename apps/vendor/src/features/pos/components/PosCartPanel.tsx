@@ -101,7 +101,7 @@ const PosCartLineRow = memo(function PosCartLineRow({
         <button
           type="button"
           onClick={() => onSetQty(line.productId, line.qty - quantityStep)}
-          className="flex h-full w-7 items-center justify-center text-slate-700 transition hover:bg-white"
+          className="flex h-full w-7 shrink-0 items-center justify-center text-slate-700 transition hover:bg-white"
           aria-label="Тоо бууруулах"
         >
           <Minus size={14} />
@@ -118,13 +118,14 @@ const PosCartLineRow = memo(function PosCartLineRow({
               onSetQty(line.productId, parsed);
             }
           }}
-          className="h-full w-9 border-x border-slate-200 bg-white text-center text-sm font-black text-slate-950 outline-none"
+          className="h-full min-w-0 flex-1 border-x border-slate-200 bg-white px-1 text-center text-sm font-black tabular-nums text-slate-950 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          aria-label="Тоо хэмжээ"
         />
         <button
           type="button"
           onClick={() => onSetQty(line.productId, line.qty + quantityStep)}
           disabled={line.qty >= line.stockQty}
-          className="flex h-full w-7 items-center justify-center text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-full w-7 shrink-0 items-center justify-center text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="Тоо нэмэх"
         >
           <Plus size={14} />
