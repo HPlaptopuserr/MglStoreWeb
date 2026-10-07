@@ -1,3 +1,4 @@
+import { resolveProductInventoryWarehouse } from "../../services/vendor-inventory-warehouse.service";
 import { enrichMasterCatalog } from "../../services/catalog-enrichment/service";
 import { findMasterCatalogIds } from "../../services/master-catalog-search.service";
 import { CatalogEditError, catalogEditSelect, saveCatalogEdit } from "../../services/master-catalog-editor.service";
@@ -7,7 +8,7 @@ import multer from "multer";
 import * as XLSX from "xlsx";
 import crypto from "crypto";
 import JSZip from "jszip";
-import { InventoryReason, WarehouseType, prisma } from "@mgl/database";
+import { InventoryReason, prisma } from "@mgl/database";
 import type { PrismaClient } from "@prisma/client";
 import {
   EBARIMT_GROCERY_FALLBACK_CLASSIFICATION_CODE,
@@ -722,68 +723,6 @@ async function getImportBusinessCategoryChoices() {
   return buildBusinessCategoryChoices(categories);
 }
 
-async function resolveProductInventoryWarehouseId(
-  tx: Tx,
-  organizationId: string | null,
-  productId: string,
-  createdById?: string | null,
-) {
-  const existingInventory = await tx.warehouseInventory.findFirst({
-    where: { productId },
-    orderBy: { updatedAt: "desc" },
-    select: { warehouseId: true },
-  });
-  if (existingInventory) return existingInventory.warehouseId;
-
-  const product = await tx.product.findUnique({
-    where: { id: productId },
-    select: { managedByWarehouseId: true },
-  });
-  if (product?.managedByWarehouseId) return product.managedByWarehouseId;
-  if (!organizationId) return null;
-
-  const assignment = await tx.warehouseOrganization.findFirst({
-    where: {
-      organizationId,
-      warehouse: {
-        deletedAt: null,
-        isActive: true,
-        type: WarehouseType.VENDOR_INTERNAL,
-      },
-    },
-    orderBy: { assignedAt: "asc" },
-    select: { warehouseId: true },
-  });
-
-  if (assignment) return assignment.warehouseId;
-
-  const organization = await tx.organization.findFirst({
-    where: { id: organizationId, deletedAt: null },
-    select: { name: true, address: true },
-  });
-  if (!organization) return null;
-
-  const warehouse = await tx.warehouse.create({
-    data: {
-      name: `${organization.name} - Үндсэн агуулах`,
-      address: organization.address || "Vendor барааны үндсэн агуулах",
-      capacity: 0,
-      createdById: createdById ?? null,
-      isActive: true,
-      type: WarehouseType.VENDOR_INTERNAL,
-      organizations: {
-        create: {
-          organizationId,
-          assignedById: createdById ?? null,
-        },
-      },
-    },
-    select: { id: true },
-  });
-
-  return warehouse.id;
-}
-
 async function syncProductStock(tx: Tx, productId: string) {
   const result = await tx.warehouseInventory.aggregate({
     where: { productId },
@@ -828,7 +767,7 @@ async function upsertVendorProductInventory(
 ) {
   if (!input.stockProvided && !input.expiryDateProvided) return;
 
-  const warehouseId = await resolveProductInventoryWarehouseId(
+  const warehouseId = await resolveProductInventoryWarehouse(
     tx,
     input.organizationId,
     input.productId,
