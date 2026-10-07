@@ -49,11 +49,11 @@ export function StocktakeAddProduct({
         <button
           type="button"
           disabled={busy}
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
+          aria-expanded={seed ? undefined : open}
+          onClick={() => (seed ? onDone() : setOpen(!open))}
           className={secondaryClass}
         >
-          {open ? "Хураах" : "+ Шинэ бараа бүртгэх"}
+          {seed ? "Буцах" : open ? "Хураах" : "+ Шинэ бараа бүртгэх"}
         </button>
       </div>
       <div hidden={!open}>

@@ -34,6 +34,7 @@ async function request<T>(
   }
   return response.json() as Promise<T>;
 }
+import { confirmStocktakeSave } from "./confirm-stocktake-save";
 import { saveStocktakeEdits } from "./save-stocktake-edits";
 import { useConfirmation } from "./useConfirmation";
 
@@ -238,16 +239,23 @@ export function useStocktakes() {
     });
   const saveEdits = async (
     current: StocktakeDetail,
+    values = Object.values(edits),
   ): Promise<StocktakeDetail> => {
     const updated = await saveStocktakeEdits(
       current,
-      Object.values(edits),
+      values,
       (version, batch) =>
-        request<StocktakeDetail>(`${base}/${current.id}`, "PATCH", {
-          action: "save",
+        confirmStocktakeSave(
           version,
-          edits: batch,
-        }),
+          batch,
+          () =>
+            request<StocktakeDetail>(`${base}/${current.id}`, "PATCH", {
+              action: "save",
+              version,
+              edits: batch,
+            }),
+          () => request<StocktakeDetail>(`${base}/${current.id}`),
+        ),
       (detail, batch) => {
         setSession(detail);
         setEdits((previous) => {
@@ -260,6 +268,22 @@ export function useStocktakes() {
     latestDraft.current = null;
     if (draftKey) localStorage.removeItem(draftKey);
     return updated;
+  };
+  const saveCount = async (edit: StocktakeCountEdit): Promise<void> => {
+    if (pending.current || !session || session.status !== "DRAFT")
+      throw new Error("Өөр үйлдэл дуусахыг хүлээгээд дахин оролдоно уу.");
+    pending.current = true;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    const values = Object.values({ ...edits, [edit.id]: edit });
+    setEdits((previous) => ({ ...previous, [edit.id]: edit }));
+    try {
+      await saveEdits(session, values);
+    } finally {
+      pending.current = false;
+      setBusy(false);
+    }
   };
   const resolveProduct = async (
     query: string,
@@ -373,6 +397,7 @@ export function useStocktakes() {
     create,
     addProduct,
     resolveProduct,
+    saveCount,
     edit,
     act,
     open,

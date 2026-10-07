@@ -1,31 +1,17 @@
 "use client";
-import { memo, useEffect, useState } from "react";
-import {
-  normalizePosMeasureUnit,
-  type StocktakeCountEdit,
-  type StocktakeLineDto,
-} from "@mgl/types";
-import { parseCount, storedQuantity } from "./stocktake-model";
-import { fieldClass } from "./StocktakeOverview";
+import { memo } from "react";
+import { type StocktakeLineDto } from "@mgl/types";
+import { storedQuantity } from "./stocktake-model";
+import { secondaryClass } from "./StocktakeOverview";
 export const StocktakeRow = memo(function StocktakeRow({
   line,
   editable,
-  onEdit,
-  onError,
   onSelect,
 }: {
   line: StocktakeLineDto;
   editable: boolean;
-  onEdit: (edit: StocktakeCountEdit) => void;
-  onError: (error: string) => void;
   onSelect?: (line: StocktakeLineDto) => void;
 }) {
-  const formatted =
-    line.counted === null
-      ? ""
-      : String(storedQuantity(line.counted, line.unit));
-  const [value, setValue] = useState(formatted);
-  useEffect(() => setValue(formatted), [formatted]);
   const difference =
     line.counted === null
       ? null
@@ -58,40 +44,22 @@ export const StocktakeRow = memo(function StocktakeRow({
       <td className="p-3 text-right tabular-nums">
         {storedQuantity(line.expected, line.unit).toLocaleString("mn-MN")}
       </td>
-      <td className="p-3">
-        <input
-          aria-label={`${line.name} бодит тоо`}
-          type="number"
-          min="0"
-          step={normalizePosMeasureUnit(line.unit) === "kg" ? "0.001" : "1"}
-          disabled={!editable}
-          value={value}
-          placeholder="Тоолоогүй"
-          onChange={(event) => {
-            const next = event.target.value;
-            setValue(next);
-            try {
-              const counted = parseCount(next, line.unit);
-              if (counted !== line.counted)
-                onEdit({ id: line.id, counted, note: line.note });
-            } catch {
-              /* Keep partial input while typing; report invalid quantities on blur. */
-            }
-          }}
-          onBlur={() => {
-            try {
-              const counted = parseCount(value, line.unit);
-              if (counted !== line.counted)
-                onEdit({ id: line.id, counted, note: line.note });
-            } catch (error) {
-              onError(
-                error instanceof Error ? error.message : "Тоо буруу байна",
-              );
-              setValue(formatted);
-            }
-          }}
-          className={`${fieldClass} min-w-28 text-right tabular-nums disabled:bg-slate-50`}
-        />
+      <td className="p-3 text-right tabular-nums">
+        <span>
+          {line.counted === null
+            ? "Тоолоогүй"
+            : storedQuantity(line.counted, line.unit).toLocaleString("mn-MN")}
+        </span>
+        {editable && onSelect && (
+          <button
+            type="button"
+            className={`${secondaryClass} ml-3`}
+            onClick={() => onSelect(line)}
+            aria-label={`${line.name} тоог засах`}
+          >
+            {line.counted === null ? "Тоолох" : "Засах"}
+          </button>
+        )}
       </td>
       <td
         className={`p-3 text-right font-semibold tabular-nums ${difference ? "text-amber-700" : "text-slate-500"}`}
@@ -100,22 +68,8 @@ export const StocktakeRow = memo(function StocktakeRow({
           ? "—"
           : `${difference > 0 ? "+" : ""}${difference.toLocaleString("mn-MN")}`}
       </td>
-      <td className="p-3">
-        <input
-          aria-label={`${line.name} зөрүүний шалтгаан`}
-          value={line.note}
-          disabled={!editable}
-          maxLength={500}
-          placeholder={difference ? "Шалтгаан заавал бичнэ" : "Тайлбар"}
-          onChange={(event) =>
-            onEdit({
-              id: line.id,
-              counted: line.counted,
-              note: event.target.value,
-            })
-          }
-          className={`${fieldClass} min-w-48 disabled:bg-slate-50`}
-        />
+      <td className="max-w-xs whitespace-pre-wrap p-3 text-slate-600">
+        {line.note || (difference ? "Шалтгаан бөглөөгүй" : "—")}
       </td>
     </tr>
   );

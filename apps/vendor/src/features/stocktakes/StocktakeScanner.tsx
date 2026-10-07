@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   normalizePosMeasureUnit,
   type StocktakeCountEdit,
@@ -15,7 +15,9 @@ export function StocktakeScanner({
   lines,
   editable,
   onSelect,
-  onEdit,
+  onSave,
+  focusRequest,
+  savedNotice,
   onFind,
   onMissing,
   onResolve,
@@ -26,7 +28,9 @@ export function StocktakeScanner({
   lines: StocktakeLineDto[];
   editable: boolean;
   onSelect: (line: StocktakeLineDto) => void;
-  onEdit: (edit: StocktakeCountEdit) => void;
+  onSave: (edit: StocktakeCountEdit) => Promise<void>;
+  focusRequest: number;
+  savedNotice: string;
   onFind: (query: string) => void;
   onMissing: (seed: { name: string; barcode: string }) => void;
   onResolve: (query: string) => Promise<StocktakeLineDto | null | undefined>;
@@ -39,6 +43,19 @@ export function StocktakeScanner({
   const [incrementMode, setIncrementMode] = useState(false);
   const [scanNotice, setScanNotice] = useState("");
   const scanner = useRef<HTMLInputElement>(null);
+  const restoredFocus = useRef(0);
+  const restoreAfterScan = useRef(false);
+  useEffect(() => {
+    if (
+      !busy &&
+      !lookingUp &&
+      (focusRequest !== restoredFocus.current || restoreAfterScan.current)
+    ) {
+      restoredFocus.current = focusRequest;
+      restoreAfterScan.current = false;
+      scanner.current?.focus({ preventScroll: true });
+    }
+  }, [focusRequest, busy, lookingUp]);
   const index = useMemo(() => barcodeIndex(lines), [lines]);
   const matchesQuery = lines.some((line) => matchesStocktakeQuery(line, query));
   const missing =
@@ -49,65 +66,62 @@ export function StocktakeScanner({
       className="rounded-2xl border border-blue-200 bg-blue-50 p-4"
       onSubmit={async (event) => {
         event.preventDefault();
-        if (!editable || !query.trim() || resolving.current) return;
-        const exact = index.get(query.trim()) ?? [];
-        const matches = exact.length
-          ? exact
-          : lines.filter(
-              (line) =>
-                line.name.trim().toLocaleLowerCase("mn-MN") ===
-                query.trim().toLocaleLowerCase("mn-MN"),
-            );
-        let row = matches.length === 1 ? matches[0] : undefined;
-        if (!row && missing) {
-          resolving.current = true;
-          setLookingUp(true);
-          setScanNotice("Барааны бүртгэлээс шалгаж байна…");
-          try {
-            const resolved = await onResolve(query.trim());
-            if (resolved === undefined) {
-              setScanNotice(
-                "Шалгаж чадсангүй. Дээрх алдааны мэдээллийг шалгана уу. Шинээр бүртгэх алхмыг нээгээгүй.",
+        if (!editable || busy || !query.trim() || resolving.current) return;
+        resolving.current = true;
+        setLookingUp(true);
+        setScanNotice("");
+        try {
+          const exact = index.get(query.trim()) ?? [];
+          const matches = exact.length
+            ? exact
+            : lines.filter(
+                (line) =>
+                  line.name.trim().toLocaleLowerCase("mn-MN") ===
+                  query.trim().toLocaleLowerCase("mn-MN"),
               );
-              return;
-            }
+          let row = matches.length === 1 ? matches[0] : undefined;
+          if (!row && missing) {
+            const resolved = await onResolve(query.trim());
+            if (resolved === undefined)
+              throw new Error(
+                "Бүртгэлийг шалгаж чадсангүй. Дээрх алдааны мэдээллийг шалгана уу.",
+              );
             if (resolved === null) {
               if (canCreate) onMissing(newProductSeed(query));
-              setScanNotice(
-                canCreate
-                  ? "Байгууллагын бүртгэлд олдсонгүй. Шинэ барааны мэдээллийг бөглөнө үү."
-                  : "Бараа бүртгэлд олдсонгүй. Бүртгэх эрхтэй ажилтанд хандана уу.",
-              );
+              else setScanNotice("Бараа бүртгэх эрхтэй ажилтанд хандана уу.");
               return;
             }
             row = resolved;
-          } catch {
-            setScanNotice(
-              "Барааны бүртгэлийг шалгаж чадсангүй. Дахин оролдоно уу.",
-            );
-            return;
-          } finally {
-            resolving.current = false;
-            setLookingUp(false);
           }
-        }
-        if (!row) {
-          setScanNotice("Жагсаалтаас зөв барааг сонгож тоолно уу.");
-          return;
-        }
-        if (incrementMode && normalizePosMeasureUnit(row.unit) !== "kg") {
-          const counted = (row.counted ?? 0) + 1;
-          if (counted > 2147483647) {
-            setScanNotice("Тоо хэмжээ хязгаараас хэтэрсэн байна.");
+          if (!row) {
+            setScanNotice("Жагсаалтаас зөв барааг сонгож тоолно уу.");
             return;
           }
-          onEdit({ id: row.id, counted, note: row.note });
-          onFind("");
-          setScanNotice(`${row.name}: ${counted} ш`);
-          scanner.current?.focus();
-        } else {
-          onSelect(row);
-          setScanNotice("");
+          if (incrementMode && normalizePosMeasureUnit(row.unit) !== "kg") {
+            const counted = (row.counted ?? 0) + 1;
+            if (counted > 2147483647)
+              throw new Error("Тоо хэмжээ хязгаараас хэтэрсэн байна.");
+            // Open the count step if saving fails: keep the absolute intended count,
+            // rather than incrementing it again on retry.
+            try {
+              await onSave({ id: row.id, counted, note: row.note });
+            } catch (error) {
+              onSelect({ ...row, counted });
+              throw error;
+            }
+            restoreAfterScan.current = true;
+            onFind("");
+            setScanNotice(`${row.name}: ${counted} ш хадгаллаа ✓`);
+          } else onSelect(row);
+        } catch (error) {
+          setScanNotice(
+            error instanceof Error
+              ? error.message
+              : "Хадгалж чадсангүй. Дахин оролдоно уу.",
+          );
+        } finally {
+          resolving.current = false;
+          setLookingUp(false);
         }
       }}
     >
@@ -150,6 +164,7 @@ export function StocktakeScanner({
         <label className="mt-3 flex items-center gap-2 text-sm text-blue-950">
           <input
             type="checkbox"
+            disabled={busy || lookingUp}
             checked={incrementMode}
             onChange={(event) => setIncrementMode(event.target.checked)}
           />
@@ -171,7 +186,7 @@ export function StocktakeScanner({
         aria-live="polite"
         className="mt-2 min-h-5 text-sm text-blue-800"
       >
-        {scanNotice}
+        {scanNotice || (!query && savedNotice)}
       </p>
     </form>
   );
