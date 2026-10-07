@@ -27,7 +27,6 @@ async function normalize(db, { apply = false, backupPath, sourceIds } = {}) {
       if (source.organizations.length !== 1 || Object.values(source._count).some(Boolean))
         throw new Error(`Not an exclusive vendor warehouse: ${source.id}`);
       const org = source.organizations[0].organization;
-      if (source.name !== `${org.name}${suffix}`) throw new Error(`Generated name mismatch: ${source.id}`);
       const ids = source.inventories.map(r => r.productId);
       const foreign = await tx.product.count({ where: { id: { in: ids }, OR: [
         { organizationId: null }, { organizationId: { not: org.id } }, { managedByWarehouseId: { not: null } },
@@ -39,6 +38,7 @@ async function normalize(db, { apply = false, backupPath, sourceIds } = {}) {
       }, include: { organizations: true } });
       if (targets.length > 1) throw new Error(`Multiple internal targets: ${org.id}`);
       const target = targets[0];
+      if (source.name !== `${org.name}${suffix}` && target?.name !== source.name) throw new Error(`Generated name mismatch: ${source.id}`);
       if (target && (target.organizations.length !== 1 || target.organizations[0].organizationId !== org.id))
         throw new Error(`Shared target: ${target.id}`);
       if (target && await tx.warehouseInventory.count({ where: { warehouseId: target.id, productId: { in: ids } } }))
@@ -63,13 +63,18 @@ async function normalize(db, { apply = false, backupPath, sourceIds } = {}) {
     writeFileSync(backupPath, JSON.stringify({ report, plans, counts, products }), { flag: 'wx', mode: 0o600 });
     for (const { source, target } of plans) {
       if (!target) {
+        if (source.inventories.length) await tx.inventoryLedger.createMany({ data: source.inventories.map(r => ({
+          productId: r.productId, warehouseId: source.id, change: 0, reason: 'TRANSFER_IN',
+          referenceType: 'WAREHOUSE_SCOPE_REPAIR', referenceId: r.id,
+          note: `Vendor warehouse type corrected CENTRAL -> VENDOR_INTERNAL; quantity unchanged ${r.quantity}`,
+        })) });
         await tx.warehouse.update({ where: { id: source.id }, data: { type: 'VENDOR_INTERNAL' } });
         continue;
       }
       // SQL preserves inventory snapshot timestamps and row IDs used by stocktakes.
       const moved = await tx.$executeRaw`UPDATE "WarehouseInventory" SET "warehouseId" = ${target.id} WHERE "warehouseId" = ${source.id}`;
       if (moved !== source.inventories.length) throw new Error('Inventory changed');
-      const ledger = source.inventories.filter(r => r.quantity !== 0).flatMap(r => [
+      const ledger = source.inventories.flatMap(r => [
         { productId: r.productId, warehouseId: source.id, change: -r.quantity, reason: 'TRANSFER_OUT', referenceType: 'WAREHOUSE_SCOPE_REPAIR', referenceId: r.id, note: `Vendor warehouse registration merge ${source.id} -> ${target.id}` },
         { productId: r.productId, warehouseId: target.id, change: r.quantity, reason: 'TRANSFER_IN', referenceType: 'WAREHOUSE_SCOPE_REPAIR', referenceId: r.id, note: `Vendor warehouse registration merge ${source.id} -> ${target.id}` },
       ]);
