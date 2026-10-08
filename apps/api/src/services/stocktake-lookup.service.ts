@@ -17,7 +17,11 @@ export async function resolveStocktakeProduct(input: {
         where: { id: input.stocktakeId, organizationId: input.organizationId },
       });
       if (!session) throw new StocktakeError("Тооллого олдсонгүй", 404);
-      await assertStocktakeScope(tx, input.organizationId, session.warehouseId);
+      const catalogWarehouseId = await assertStocktakeScope(
+        tx,
+        input.organizationId,
+        session.warehouseId,
+      );
       if (session.status !== "DRAFT" || session.version !== input.version)
         throw new StocktakeError(
           "Тооллого өөрчлөгдсөн байна. Дахин ачаална уу.",
@@ -73,7 +77,11 @@ export async function resolveStocktakeProduct(input: {
       );
       if (
         session.warehouseId
-          ? !inventory
+          ? !inventory &&
+            !(
+              catalogWarehouseId === session.warehouseId &&
+              product.warehouseInventories.length === 0
+            )
           : product.warehouseInventories.length > 0
       ) {
         const location =

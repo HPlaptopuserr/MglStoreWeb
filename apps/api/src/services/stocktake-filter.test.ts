@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   missingStocktakeLines,
+  stocktakeInventoryScopeFilter,
   stocktakeProductFilter,
 } from "./stocktake.service";
 
@@ -24,4 +25,19 @@ test("full conversion adds only missing products and preserves existing lines", 
 
   assert.deepEqual(missingStocktakeLines(current, existing), [current[1]]);
   assert.equal(existing[0].counted, 7);
+});
+
+test("a catalog warehouse includes organization products without inventory rows", () => {
+  assert.deepEqual(stocktakeInventoryScopeFilter("warehouse-1", true), {
+    OR: [
+      { warehouseInventories: { some: { warehouseId: "warehouse-1" } } },
+      { warehouseInventories: { none: {} } },
+    ],
+  });
+  assert.deepEqual(stocktakeInventoryScopeFilter("warehouse-1"), {
+    warehouseInventories: { some: { warehouseId: "warehouse-1" } },
+  });
+  assert.deepEqual(stocktakeInventoryScopeFilter(null), {
+    warehouseInventories: { none: {} },
+  });
 });

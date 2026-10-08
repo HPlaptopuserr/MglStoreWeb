@@ -30,17 +30,38 @@ export function stocktakeProductFilter(
   };
 }
 
+export function stocktakeInventoryScopeFilter(
+  warehouseId: string | null,
+  includeUnassigned = false,
+): Prisma.ProductWhereInput {
+  if (!warehouseId) return { warehouseInventories: { none: {} } };
+  if (!includeUnassigned)
+    return { warehouseInventories: { some: { warehouseId } } };
+  return {
+    OR: [
+      { warehouseInventories: { some: { warehouseId } } },
+      { warehouseInventories: { none: {} } },
+    ],
+  };
+}
+
 async function snapshot(
   tx: Tx,
   organizationId: string,
   warehouseId: string | null,
 ) {
+  const catalogWarehouse = warehouseId
+    ? await tx.organization.findUnique({
+        where: { id: organizationId },
+        select: { catalogWarehouse: { select: { id: true } } },
+      })
+    : null;
+  const includeUnassigned =
+    catalogWarehouse?.catalogWarehouse?.id === warehouseId;
   const products = await tx.product.findMany({
     where: {
       ...stocktakeProductFilter(organizationId),
-      ...(warehouseId
-        ? { warehouseInventories: { some: { warehouseId } } }
-        : { warehouseInventories: { none: {} } }),
+      ...stocktakeInventoryScopeFilter(warehouseId, includeUnassigned),
     },
     select: {
       id: true,
@@ -63,12 +84,9 @@ async function snapshot(
     barcode: product.barcode,
     barcodeAliases: product.barcodeAliases,
     unit: product.unit,
-    expected: warehouseId
-      ? product.warehouseInventories[0]!.quantity
-      : product.stock,
-    stockUpdatedAt: warehouseId
-      ? product.warehouseInventories[0]!.updatedAt
-      : product.updatedAt,
+    expected: product.warehouseInventories[0]?.quantity ?? product.stock,
+    stockUpdatedAt:
+      product.warehouseInventories[0]?.updatedAt ?? product.updatedAt,
   }));
 }
 

@@ -97,3 +97,28 @@ test("stocktake search uses the current catalog name, SKU and barcode", () => {
   assert.equal(stocktakeLineName(row), "Монгол сүү 1 литр");
   assert.equal(stocktakeLineBarcode(row), "865000000001");
 });
+
+test("stocktake search matches every word in a mixed Latin and Mongolian name", () => {
+  const row: StocktakeLineDto = {
+    id: "mgl-cup-line",
+    productId: "mgl-cup",
+    name: "Mgl аяга",
+    barcode: null,
+    barcodeAliases: [],
+    unit: "pcs",
+    expected: 1,
+    counted: null,
+    note: "",
+    countedAt: null,
+    countedById: null,
+    product: {
+      name: "Mgl аяга",
+      sku: null,
+      barcode: null,
+      barcodeAliases: [],
+    },
+  };
+
+  assert.equal(matchesStocktakeQuery(row, "Mgl аяга"), true);
+  assert.equal(matchesStocktakeQuery(row, "mgl АЯГА"), true);
+});

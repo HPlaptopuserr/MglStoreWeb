@@ -77,7 +77,13 @@ function route(
 router.get(
   base,
   route(async (_req, res, actor, organizationId, canApprove) => {
-    const [active, history, warehouses, directProductCount] = await Promise.all(
+    const [
+      active,
+      history,
+      warehouses,
+      unassignedProductCount,
+      organization,
+    ] = await Promise.all(
       [
         prisma.stocktake.findMany({
           where: { organizationId, status: { in: ["DRAFT", "REVIEW"] } },
@@ -111,8 +117,13 @@ router.get(
             warehouseInventories: { none: {} },
           },
         }),
+        prisma.organization.findUnique({
+          where: { id: organizationId },
+          select: { catalogWarehouse: { select: { id: true } } },
+        }),
       ],
     );
+    const catalogWarehouseId = organization?.catalogWarehouse?.id ?? null;
     const registers = await prisma.posRegister.findMany({
       where: { organizationId, isActive: true, deletedAt: null },
       select: { id: true, name: true },
@@ -121,12 +132,14 @@ router.get(
     return res.json({
       registers,
       canManageProducts: actor.orgRole === "OWNER",
-      directProductCount,
+      directProductCount: catalogWarehouseId ? 0 : unassignedProductCount,
       sessions: [...active, ...history],
       warehouses: warehouses.map((warehouse) => ({
         id: warehouse.id,
         name: warehouse.name,
-        productCount: warehouse._count.inventories,
+        productCount:
+          warehouse._count.inventories +
+          (warehouse.id === catalogWarehouseId ? unassignedProductCount : 0),
       })),
       canApprove,
     });
