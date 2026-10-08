@@ -20,6 +20,39 @@ export async function resolveProductInventoryWarehouse(
     throw new Error("Бараа энэ байгууллагад харьяалагдахгүй байна");
   }
   await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id" = ${organizationId} FOR UPDATE`;
+  // An explicit shared catalog routes both portals to the same physical stock.
+  // Distribution assignments alone must never enable this behavior.
+  const catalogWarehouse = await tx.warehouse.findUnique({
+    where: { catalogOrganizationId: organizationId },
+    select: { id: true, isActive: true, deletedAt: true },
+  });
+  if (catalogWarehouse) {
+    if (!catalogWarehouse.isActive || catalogWarehouse.deletedAt) {
+      throw new Error("Холбогдсон агуулах идэвхгүй байна");
+    }
+    const otherInventory = await tx.warehouseInventory.findFirst({
+      where: { productId, warehouseId: { not: catalogWarehouse.id } },
+      select: { id: true },
+    });
+    if (otherInventory)
+      throw new Error("Барааны агуулахын холбоосыг эхлээд тулгана уу");
+    await tx.product.update({
+      where: { id: productId },
+      data: { managedByWarehouseId: catalogWarehouse.id },
+    });
+    await tx.warehouseInventory.upsert({
+      where: {
+        warehouseId_productId: { warehouseId: catalogWarehouse.id, productId },
+      },
+      create: {
+        warehouseId: catalogWarehouse.id,
+        productId,
+        quantity: initializeUnassignedStock ? product.stock : 0,
+      },
+      update: {},
+    });
+    return catalogWarehouse.id;
+  }
   // Existing explicit distribution inventory remains valid. Legacy vendor
   // registrations are normalized by the guarded maintenance command.
   const inventories = await tx.warehouseInventory.findMany({

@@ -44,7 +44,7 @@ import {
   addMasterProductAlias,
   resolveMasterProduct,
 } from "../../services/master-product.service";
-import { warehouseProductOwnerScope, warehouseProductReadScope } from "../../services/warehouse-product-scope";
+import { warehouseCatalogOwner, warehouseProductOwnerScope, warehouseProductReadScope } from "../../services/warehouse-product-scope";
 import { getWarehouseAdminSummary } from "../../services/warehouse-admin-summary.service";
 import {
   notifyAssignedOrderDelivery,
@@ -3153,7 +3153,7 @@ router.get("/warehouses/:id/products", requireAuth, async (req, res) => {
     }
     const warehouse = await prisma.warehouse.findUnique({
       where: { id: warehouseId, deletedAt: null },
-      select: { organizations: { select: { organizationId: true } } },
+      select: { catalogOrganizationId: true, organizations: { select: { organizationId: true } } },
     });
     if (!warehouse) return res.status(404).json({ message: "Агуулах олдсонгүй" });
     const search = String(req.query.search ?? "").trim();
@@ -3162,7 +3162,7 @@ router.get("/warehouses/:id/products", requireAuth, async (req, res) => {
       where: {
         deletedAt: null,
         AND: [
-          warehouseProductReadScope(warehouseId, warehouse.organizations.map((link) => link.organizationId)),
+          warehouseProductReadScope(warehouseId, warehouse.organizations.map((link) => link.organizationId), warehouse.catalogOrganizationId),
           ...(search ? [{ OR: [
             { AND: search.split(/\s+/).filter(Boolean).map((word) => ({ name: { contains: word, mode: "insensitive" as const } })) },
             { sku: { contains: search, mode: "insensitive" as const } },
@@ -3205,7 +3205,7 @@ router.get("/warehouses/:id/sku-lookup", requireAuth, async (req, res) => {
     if (!warehouse)
       return res.status(404).json({ message: "Агуулах олдсонгүй" });
 
-    const scope = warehouseProductReadScope(warehouseId, warehouse.organizations.map((link) => link.organizationId));
+    const scope = warehouseProductReadScope(warehouseId, warehouse.organizations.map((link) => link.organizationId), warehouse.catalogOrganizationId);
 
     const products = await prisma.product.findMany({
       where: {
@@ -3271,7 +3271,7 @@ router.post(
         return res.status(404).json({ message: "Агуулах олдсонгүй" });
       }
 
-      const organizationId = warehouse.organizations[0]?.organizationId ?? null;
+      const organizationId = warehouseCatalogOwner(warehouse);
       const ownerScope = warehouseProductOwnerScope(warehouseId, organizationId);
 
       // Resolve businessCategoryId from organization
@@ -3668,10 +3668,10 @@ router.post("/warehouses/:id/products/:productId/barcodes", requireAuth, async (
   try {
     const result = await prisma.$transaction(async (tx) => {
       const warehouse = await tx.warehouse.findUnique({ where: { id: warehouseId, deletedAt: null },
-        select: { organizations: { select: { organizationId: true }, take: 1 } } });
+        select: { catalogOrganizationId: true, organizations: { select: { organizationId: true }, take: 1 } } });
       if (!warehouse) throw new Error("Агуулах олдсонгүй");
-      const owner = warehouseProductOwnerScope(warehouseId, warehouse.organizations[0]?.organizationId ?? null);
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${warehouse.organizations[0]?.organizationId || warehouseId}))`;
+      const owner = warehouseProductOwnerScope(warehouseId, warehouseCatalogOwner(warehouse));
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${warehouseCatalogOwner(warehouse) || warehouseId}))`;
       const product = await tx.product.findFirst({ where: { id: req.params.productId, ...owner, deletedAt: null } });
       if (!product) throw new Error("Энэ агуулахын бараа олдсонгүй");
       const conflict = await tx.product.findFirst({ where: { ...owner, deletedAt: null, id: { not: product.id },
@@ -3729,7 +3729,7 @@ router.post("/warehouses/:id/products", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "Агуулах олдсонгүй" });
     }
 
-    const organizationId = warehouse.organizations[0]?.organizationId ?? null;
+    const organizationId = warehouseCatalogOwner(warehouse);
     const ownerScope = warehouseProductOwnerScope(warehouseId, organizationId);
 
     const priceNum = parseFloat(String(price));

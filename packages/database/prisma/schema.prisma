@@ -368,6 +368,7 @@ model BusinessCategory {
 }
 
 model Organization {
+  catalogWarehouse Warehouse? @relation("WarehouseCatalogOwner")
   stocktakes Stocktake[]
 
   id                               String                       @id @default(uuid())
@@ -1866,6 +1867,8 @@ enum WarehouseType {
 }
 
 model Warehouse {
+  catalogOrganizationId String? @unique
+  catalogOrganization Organization? @relation("WarehouseCatalogOwner", fields: [catalogOrganizationId], references: [id], onDelete: Restrict)
   stocktakes Stocktake[]
 
   id                   String                       @id @default(uuid())
@@ -2712,6 +2715,7 @@ enum CardTerminalRequestStatus {
 }
 
 enum AuditAction {
+  WAREHOUSE_CATALOG_LINKED
   MERCHANT_CONFIGURATION_CHANGED
   LOGIN
   LOGOUT

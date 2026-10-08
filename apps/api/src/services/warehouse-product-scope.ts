@@ -13,7 +13,9 @@ export function warehouseProductOwnerScope(
 export function warehouseProductReadScope(
   warehouseId: string,
   organizationIds: readonly string[],
+  catalogOrganizationId?: string | null,
 ): Prisma.ProductWhereInput {
+  if (catalogOrganizationId) return { organizationId: catalogOrganizationId };
   return {
     OR: [
       { managedByWarehouseId: warehouseId },
@@ -23,4 +25,16 @@ export function warehouseProductReadScope(
         : []),
     ],
   };
+}
+
+/** Only an explicitly linked catalog overrides the existing warehouse behavior. */
+export function warehouseCatalogOwner(warehouse: {
+  catalogOrganizationId: string | null;
+  organizations: readonly { organizationId: string }[];
+}): string | null {
+  return (
+    warehouse.catalogOrganizationId ??
+    warehouse.organizations[0]?.organizationId ??
+    null
+  );
 }
