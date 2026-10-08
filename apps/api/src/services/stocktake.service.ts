@@ -14,12 +14,9 @@ import {
   StocktakeError,
   stockChanged,
 } from "./stocktake.policy";
+import { stocktakeDetailInclude } from "./stocktake-query";
 
 type Tx = Prisma.TransactionClient;
-const include = {
-  warehouse: { select: { name: true } },
-  lines: { orderBy: { name: "asc" as const } },
-};
 
 export function stocktakeProductFilter(
   organizationId: string,
@@ -89,7 +86,7 @@ export function createStocktake(input: {
       await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id" = ${input.organizationId} FOR UPDATE`;
       const existing = await tx.stocktake.findUnique({
         where: { id: input.id },
-        include,
+        include: stocktakeDetailInclude,
       });
       if (existing) {
         if (
@@ -132,7 +129,7 @@ export function createStocktake(input: {
         });
       return tx.stocktake.findUniqueOrThrow({
         where: { id: input.id },
-        include,
+        include: stocktakeDetailInclude,
       });
     },
     { isolationLevel: "Serializable", timeout: 30000 },
@@ -159,7 +156,7 @@ export function mutateStocktake(input: {
       await tx.$queryRaw`SELECT "id" FROM "Stocktake" WHERE "id" = ${input.id} AND "organizationId" = ${input.organizationId} FOR UPDATE`;
       const session = await tx.stocktake.findFirst({
         where: { id: input.id, organizationId: input.organizationId },
-        include,
+        include: stocktakeDetailInclude,
       });
       if (!session) throw new StocktakeError("Тооллого олдсонгүй", 404);
       // Retried approvals must never create a second ledger adjustment.
@@ -310,7 +307,7 @@ export function mutateStocktake(input: {
             ? { approvedById: input.actorId, approvedAt: new Date() }
             : {}),
         },
-        include,
+        include: stocktakeDetailInclude,
       });
     },
     { isolationLevel: "Serializable", timeout: 30000 },

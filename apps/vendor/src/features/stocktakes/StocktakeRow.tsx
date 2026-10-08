@@ -1,7 +1,11 @@
 "use client";
 import { memo } from "react";
 import { type StocktakeLineDto } from "@mgl/types";
-import { storedQuantity } from "./stocktake-model";
+import {
+  stocktakeLineBarcode,
+  stocktakeLineName,
+  storedQuantity,
+} from "./stocktake-model";
 import { secondaryClass } from "./StocktakeOverview";
 export const StocktakeRow = memo(function StocktakeRow({
   line,
@@ -16,6 +20,8 @@ export const StocktakeRow = memo(function StocktakeRow({
     line.counted === null
       ? null
       : storedQuantity(line.counted - line.expected, line.unit);
+  const name = stocktakeLineName(line);
+  const barcode = stocktakeLineBarcode(line);
   return (
     <tr className="border-t border-slate-100 align-top transition hover:bg-slate-50">
       <td className="p-3">
@@ -26,10 +32,10 @@ export const StocktakeRow = memo(function StocktakeRow({
               onClick={() => onSelect(line)}
               className="text-left text-blue-700 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
             >
-              {line.name}
+              {name}
             </button>
           ) : (
-            line.name
+            name
           )}
         </p>
         {line.receiptRegisterId && (
@@ -38,7 +44,7 @@ export const StocktakeRow = memo(function StocktakeRow({
           </span>
         )}
         <p className="mt-1 text-xs text-slate-500">
-          {line.barcode || "Баркодгүй"} · {line.unit || "ш"}
+          {barcode || "Баркодгүй"} · {line.unit || "ш"}
         </p>
       </td>
       <td className="p-3 text-right tabular-nums">
@@ -55,7 +61,7 @@ export const StocktakeRow = memo(function StocktakeRow({
             type="button"
             className={`${secondaryClass} ml-3`}
             onClick={() => onSelect(line)}
-            aria-label={`${line.name} тоог засах`}
+            aria-label={`${name} тоог засах`}
           >
             {line.counted === null ? "Тоолох" : "Засах"}
           </button>

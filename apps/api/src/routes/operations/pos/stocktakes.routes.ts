@@ -24,6 +24,7 @@ import {
   mutateStocktake,
   type StocktakeAction,
 } from "../../../services/stocktake.service";
+import { stocktakeDetailInclude } from "../../../services/stocktake-query";
 
 const router: ExpressRouter = Router();
 const base = "/pos/stocktakes/:organizationId";
@@ -135,10 +136,7 @@ router.get(
   route(async (req, res, _actor, organizationId) => {
     const session = await prisma.stocktake.findFirst({
       where: { id: String(req.params.id), organizationId },
-      include: {
-        warehouse: { select: { name: true } },
-        lines: { orderBy: { name: "asc" } },
-      },
+      include: stocktakeDetailInclude,
     });
     if (!session) throw new StocktakeError("Тооллого олдсонгүй", 404);
     return res.json(session);

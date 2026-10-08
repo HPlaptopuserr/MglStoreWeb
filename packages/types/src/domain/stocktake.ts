@@ -14,6 +14,13 @@ export interface StocktakeLineDto {
   note: string;
   countedAt: string | null;
   countedById: string | null;
+  /** Current catalog metadata used for search; top-level fields are the stocktake snapshot. */
+  product?: {
+    name: string;
+    sku: string | null;
+    barcode: string | null;
+    barcodeAliases: string[];
+  };
 }
 export interface StocktakeSummary {
   id: string;

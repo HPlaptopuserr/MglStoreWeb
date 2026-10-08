@@ -1,6 +1,7 @@
 import { prisma } from "@mgl/database";
 import { assertStocktakeScope } from "./stocktake-scope";
 import { StocktakeError } from "./stocktake.policy";
+import { stocktakeDetailInclude } from "./stocktake-query";
 
 /** Resolve against the live organization catalog before offering registration. */
 export async function resolveStocktakeProduct(input: {
@@ -114,10 +115,7 @@ export async function resolveStocktakeProduct(input: {
       const updated = await tx.stocktake.update({
         where: { id: session.id },
         data: { version: { increment: 1 } },
-        include: {
-          warehouse: { select: { name: true } },
-          lines: { orderBy: { name: "asc" } },
-        },
+        include: stocktakeDetailInclude,
       });
       return { session: updated, line };
     },

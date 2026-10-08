@@ -12,7 +12,10 @@ import { StocktakeCountStep } from "./StocktakeCountStep";
 import { StocktakeScanner } from "./StocktakeScanner";
 import { StocktakeSummary, type StocktakeAction } from "./StocktakeSummary";
 import { fieldClass, secondaryClass } from "./StocktakeOverview";
-import { matchesStocktakeQuery } from "./stocktake-model";
+import {
+  matchesStocktakeQuery,
+  stocktakeLineName,
+} from "./stocktake-model";
 import { StocktakeRow } from "./StocktakeRow";
 
 export function StocktakeEditor({
@@ -150,7 +153,7 @@ export function StocktakeEditor({
                 busy={busy}
                 onSave={async (edit) => {
                   await onSaveCount(edit);
-                  setSavedNotice(`${line.name}: хадгаллаа ✓`);
+                  setSavedNotice(`${stocktakeLineName(line)}: хадгаллаа ✓`);
                 }}
                 onDone={finishStep}
               />

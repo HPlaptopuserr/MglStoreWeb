@@ -5,7 +5,12 @@ import {
   type StocktakeCountEdit,
   type StocktakeLineDto,
 } from "@mgl/types";
-import { parseCount, storedQuantity } from "./stocktake-model";
+import {
+  parseCount,
+  stocktakeLineBarcode,
+  stocktakeLineName,
+  storedQuantity,
+} from "./stocktake-model";
 import { buttonClass, fieldClass, secondaryClass } from "./StocktakeOverview";
 
 export function StocktakeCountStep({
@@ -68,9 +73,11 @@ export function StocktakeCountStep({
       <p className="text-xs font-semibold text-blue-600">
         Бараа олдлоо · Тоолох
       </p>
-      <h3 className="mt-1 text-lg font-semibold">{line.name}</h3>
+      <h3 className="mt-1 text-lg font-semibold">
+        {stocktakeLineName(line)}
+      </h3>
       <p className="mt-1 text-sm text-slate-500">
-        {line.barcode || "Баркодгүй"} · Системийн тоо:{" "}
+        {stocktakeLineBarcode(line) || "Баркодгүй"} · Системийн тоо:{" "}
         {storedQuantity(line.expected, line.unit)} {unit}
       </p>
       <p className="mt-2 text-xs text-slate-500">

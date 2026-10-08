@@ -3,6 +3,7 @@ import { type StocktakeNewProduct } from "@mgl/types";
 import { inputRecord, StocktakeError } from "./stocktake.policy";
 import { adjustStock } from "./inventory.service";
 import { assertStocktakeScope } from "./stocktake-scope";
+import { stocktakeDetailInclude } from "./stocktake-query";
 
 export function parseStocktakeNewProduct(value: unknown): StocktakeNewProduct {
   const body = inputRecord(value);
@@ -75,10 +76,6 @@ export async function addStocktakeProduct(input: {
         input.organizationId,
         session.warehouseId,
       );
-      const include = {
-        warehouse: { select: { name: true } },
-        lines: { orderBy: { name: "asc" as const } },
-      };
       const prior = await tx.stocktakeLine.findUnique({
         where: {
           stocktakeId_productId: {
@@ -90,7 +87,7 @@ export async function addStocktakeProduct(input: {
       if (prior)
         return tx.stocktake.findUniqueOrThrow({
           where: { id: session.id },
-          include,
+          include: stocktakeDetailInclude,
         });
       if (session.status !== "DRAFT" || session.version !== input.version)
         throw new StocktakeError(
@@ -208,7 +205,7 @@ export async function addStocktakeProduct(input: {
       return tx.stocktake.update({
         where: { id: session.id },
         data: { version: { increment: 1 } },
-        include,
+        include: stocktakeDetailInclude,
       });
     },
     { isolationLevel: "Serializable", timeout: 30000 },

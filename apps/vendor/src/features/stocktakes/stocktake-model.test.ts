@@ -6,6 +6,8 @@ import {
   storedQuantity,
   matchesStocktakeQuery,
   newProductSeed,
+  stocktakeLineBarcode,
+  stocktakeLineName,
 } from "./stocktake-model";
 import type { StocktakeLineDto } from "@mgl/types";
 test("physical counts preserve grams, reject fractional pieces and display signed variance", () => {
@@ -66,4 +68,32 @@ test("unified search matches names, barcodes and aliases with the same rules", (
   assert.equal(matchesStocktakeQuery(row, "талх"), false);
   assert.deepEqual(newProductSeed(" 00123 "), { name: "", barcode: "00123" });
   assert.deepEqual(newProductSeed(" Сүү "), { name: "Сүү", barcode: "" });
+});
+
+test("stocktake search uses the current catalog name, SKU and barcode", () => {
+  const row: StocktakeLineDto = {
+    id: "1",
+    productId: "p",
+    name: "CHB-MGL-001",
+    barcode: "old-barcode",
+    barcodeAliases: [],
+    unit: "pcs",
+    expected: 0,
+    counted: null,
+    note: "",
+    countedAt: null,
+    countedById: null,
+    product: {
+      name: "Монгол сүү 1 литр",
+      sku: "SKU-MGL-001",
+      barcode: "865000000001",
+      barcodeAliases: ["865000000099"],
+    },
+  };
+
+  assert.equal(matchesStocktakeQuery(row, "suu"), true);
+  assert.equal(matchesStocktakeQuery(row, "SKU-MGL"), true);
+  assert.equal(matchesStocktakeQuery(row, "865000000099"), true);
+  assert.equal(stocktakeLineName(row), "Монгол сүү 1 литр");
+  assert.equal(stocktakeLineBarcode(row), "865000000001");
 });
