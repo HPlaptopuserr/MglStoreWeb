@@ -21,6 +21,7 @@ import { OrgRole, prisma } from "@mgl/database";
 import { getMinuAgentToken } from "../../services/minu-pos-agent";
 import {
   merchantMutationRequiresSettledQr,
+  merchantQrInvoiceBlocksCredentialChange,
 } from "../../services/merchant-unsettled-invoice-policy";
 
 import { parseMerchantBankAccounts, resolveBankAccountOwner, resolveBankAccountReader } from "../../services/merchant-bank-accounts";
@@ -49,11 +50,33 @@ router.use('/vendor/merchant', (req, res, next) => {
       // Replacing Dynamic QR credentials must not strand invoices awaiting
       // reconciliation. Minu Agent card-terminal settings are independent.
       if (merchantMutationRequiresSettledQr(req.path)) {
-        const unsettled = await prisma.qPayInvoice.findFirst({
-          where: { organizationId, consumedAt: null, status: { in: ['PENDING', 'PAID'] } },
-          select: { id: true },
+        const now = new Date();
+        await prisma.qPayInvoice.updateMany({
+          where: {
+            organizationId,
+            consumedAt: null,
+            status: 'PENDING',
+            expiresAt: { lte: now },
+          },
+          data: { status: 'EXPIRED' },
         });
-        if (unsettled) return res.status(409).json({ success: false, message: 'Дуусаагүй QR төлбөр байна. Merchant холболт солихын өмнө төлбөрөө дуусгах эсвэл цуцална уу.' });
+        const unsettled = await prisma.qPayInvoice.findFirst({
+          where: {
+            organizationId,
+            consumedAt: null,
+            OR: [
+              { status: 'PAID' },
+              { status: 'PENDING', expiresAt: { gt: now } },
+            ],
+          },
+          select: { id: true, status: true, consumedAt: true, expiresAt: true },
+        });
+        if (
+          unsettled &&
+          merchantQrInvoiceBlocksCredentialChange(unsettled, now)
+        ) {
+          return res.status(409).json({ success: false, message: 'Дуусаагүй QR төлбөр байна. Merchant холболт солихын өмнө төлбөрөө дуусгах эсвэл цуцална уу.' });
+        }
       }
       return next();
     } catch (error: unknown) {
