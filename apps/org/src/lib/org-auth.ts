@@ -11,6 +11,12 @@ type OrgAuthResponse = {
   user: OrgUser;
 };
 
+type VerifyOrgUserOptions = {
+  requiredUserId?: string;
+  allowedOrgRoles?: readonly string[];
+  accessDeniedMessage?: string;
+};
+
 function buildLoginPayload(identifier: string, password: string): LoginPayload {
   const value = identifier.trim();
   const isPhone = PHONE_PATTERN.test(value) && !value.includes("@");
@@ -57,12 +63,30 @@ export async function verifyOrgUserCredentials(
   identifier: string,
   password: string,
   organizationId: string,
+  options: VerifyOrgUserOptions = {},
 ) {
   const data = await authenticateOrgUser(identifier, password);
 
   if (data.user.organizationId !== organizationId) {
     throw new Error(
-      "Энэ хэрэглэгч одоогийн байгууллагын тайлан харах эрхгүй байна.",
+      "Энэ хэрэглэгч одоогийн байгууллагын хамгаалалттай хэсэгт хандах эрхгүй байна.",
+    );
+  }
+
+  if (options.requiredUserId && data.user.id !== options.requiredUserId) {
+    throw new Error(
+      "Одоо нэвтэрсэн хэрэглэгч өөрийн нэвтрэх мэдээллээр эрхээ баталгаажуулна уу.",
+    );
+  }
+
+  const allowedRoles = options.allowedOrgRoles?.map((role) =>
+    role.toUpperCase(),
+  );
+  const orgRole = String(data.user.orgRole || "").toUpperCase();
+  if (allowedRoles?.length && !allowedRoles.includes(orgRole)) {
+    throw new Error(
+      options.accessDeniedMessage ||
+        "Зөвхөн байгууллагын эзэмшигч эсвэл админ энэ хэсэгт нэвтрэх эрхтэй.",
     );
   }
 

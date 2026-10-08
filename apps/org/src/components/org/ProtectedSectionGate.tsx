@@ -4,17 +4,33 @@ import { FormEvent, useState } from "react";
 import { Eye, EyeOff, Loader2, LockKeyhole, LogIn } from "lucide-react";
 import { verifyOrgUserCredentials } from "@/lib/org-auth";
 
-type ReportAccessGateProps = {
+const PRIVILEGED_ORG_ROLES = ["OWNER", "ADMIN"] as const;
+
+type ProtectedSectionGateProps = {
   organizationId: string;
   organizationName?: string | null;
+  userId: string;
+  eyebrow: string;
+  title?: string;
+  description: string;
+  submitLabel: string;
+  footer: string;
+  accessDeniedMessage?: string;
   onUnlock: () => void;
 };
 
-export default function ReportAccessGate({
+export default function ProtectedSectionGate({
   organizationId,
   organizationName,
+  userId,
+  eyebrow,
+  title = "Дахин нэвтэрнэ үү",
+  description,
+  submitLabel,
+  footer,
+  accessDeniedMessage,
   onUnlock,
-}: ReportAccessGateProps) {
+}: ProtectedSectionGateProps) {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -32,7 +48,11 @@ export default function ReportAccessGate({
 
     setLoading(true);
     try {
-      await verifyOrgUserCredentials(identifier, password, organizationId);
+      await verifyOrgUserCredentials(identifier, password, organizationId, {
+        requiredUserId: userId,
+        allowedOrgRoles: PRIVILEGED_ORG_ROLES,
+        accessDeniedMessage,
+      });
       onUnlock();
     } catch (cause) {
       setError(
@@ -53,12 +73,11 @@ export default function ReportAccessGate({
             <LockKeyhole className="h-7 w-7" />
           </span>
           <p className="mt-4 text-xs font-black uppercase tracking-[0.18em] text-emerald-300">
-            Хамгаалалттай тайлан
+            {eyebrow}
           </p>
-          <h1 className="mt-2 text-2xl font-black">Дахин нэвтэрнэ үү</h1>
+          <h1 className="mt-2 text-2xl font-black">{title}</h1>
           <p className="mt-2 text-sm font-semibold leading-6 text-slate-400">
-            {organizationName || "Байгууллага"}-ийн тайланг харахын тулд
-            ажилтны нэвтрэх эрхийг баталгаажуулна.
+            {organizationName || "Байгууллага"}-ийн {description}
           </p>
         </div>
 
@@ -124,11 +143,11 @@ export default function ReportAccessGate({
             ) : (
               <LogIn className="h-4 w-4" />
             )}
-            {loading ? "Эрх шалгаж байна..." : "Тайлан руу нэвтрэх"}
+            {loading ? "Эрх шалгаж байна..." : submitLabel}
           </button>
 
           <p className="text-center text-xs font-semibold leading-5 text-slate-400">
-            Тайлангийн хуудас бүрэн хаагдсаны дараа дахин нэвтрэх шаардлагатай.
+            {footer}
           </p>
         </form>
       </section>

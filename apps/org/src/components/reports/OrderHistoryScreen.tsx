@@ -20,7 +20,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useOrg } from "@/components/org/OrgContext";
-import ReportAccessGate from "@/components/reports/ReportAccessGate";
+import ProtectedSectionGate from "@/components/org/ProtectedSectionGate";
 import { money } from "@/lib/org-format";
 import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
 import {
@@ -550,9 +550,15 @@ export default function OrderHistoryScreen() {
 
   if (!reportUnlocked) {
     return (
-      <ReportAccessGate
+      <ProtectedSectionGate
         organizationId={user.organizationId || ""}
         organizationName={user.organizationName}
+        userId={user.id}
+        eyebrow="Хамгаалалттай тайлан"
+        description="тайланг харахын тулд эзэмшигч эсвэл админ өөрийн нэвтрэх эрхийг баталгаажуулна."
+        submitLabel="Тайлан руу нэвтрэх"
+        footer="Тайлангийн хуудас бүрэн хаагдсаны дараа дахин нэвтрэх шаардлагатай."
+        accessDeniedMessage="Зөвхөн байгууллагын эзэмшигч эсвэл админ тайлан харах эрхтэй."
         onUnlock={() => setReportUnlocked(true)}
       />
     );

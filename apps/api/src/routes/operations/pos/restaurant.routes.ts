@@ -367,6 +367,7 @@ async function requireBranchAccess(actor: AuthUser, branchId: string) {
 async function requireRestaurantOrganizationAccess(
   actor: AuthUser,
   organizationId: string,
+  requireManagement = false,
 ) {
   const organization = await prisma.organization.findFirst({
     where: { id: organizationId, deletedAt: null, status: "ACTIVE" },
@@ -389,6 +390,33 @@ async function requireRestaurantOrganizationAccess(
       },
     } as const;
   }
+
+  if (
+    requireManagement &&
+    actor.role !== "ADMIN" &&
+    actor.role !== "SUPER_ADMIN"
+  ) {
+    const managerMembership = await prisma.organizationMember.findFirst({
+      where: {
+        userId: actor.id,
+        organizationId,
+        isActive: true,
+        deletedAt: null,
+        role: { in: ["OWNER", "ADMIN"] },
+      },
+      select: { id: true },
+    });
+    if (!managerMembership) {
+      return {
+        error: {
+          status: 403,
+          message:
+            "Зөвхөн байгууллагын эзэмшигч эсвэл админ рестораны ангилал өөрчлөх эрхтэй",
+        },
+      } as const;
+    }
+  }
+
   return { organization } as const;
 }
 
@@ -983,6 +1011,7 @@ router.post("/restaurant/pos/menu-categories", async (req, res) => {
     const access = await requireRestaurantOrganizationAccess(
       actor,
       organizationId,
+      true,
     );
     if ("error" in access && access.error) {
       return res
@@ -1041,6 +1070,7 @@ router.patch("/restaurant/pos/menu-categories/:id", async (req, res) => {
     const access = await requireRestaurantOrganizationAccess(
       actor,
       current.organizationId,
+      true,
     );
     if ("error" in access && access.error) {
       return res
@@ -1095,6 +1125,7 @@ router.delete("/restaurant/pos/menu-categories/:id", async (req, res) => {
     const access = await requireRestaurantOrganizationAccess(
       actor,
       current.organizationId,
+      true,
     );
     if ("error" in access && access.error) {
       return res

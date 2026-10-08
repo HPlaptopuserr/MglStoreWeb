@@ -10,6 +10,7 @@ import {
   Clock3,
   ImageIcon,
   Loader2,
+  LockKeyhole,
   Pencil,
   Plus,
   Search,
@@ -20,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { useOrg } from "@/components/org/OrgContext";
+import ProtectedSectionGate from "@/components/org/ProtectedSectionGate";
 import { API, authFetch } from "@/lib/api";
 import {
   createRestaurantMenuCategory,
@@ -147,6 +149,34 @@ const formatMoney = (value: number) =>
   `${new Intl.NumberFormat("mn-MN").format(Number(value) || 0)}₮`;
 
 export function RestaurantProductsScreen() {
+  const { user } = useOrg();
+  const [productsUnlocked, setProductsUnlocked] = useState(false);
+
+  if (!productsUnlocked) {
+    return (
+      <ProtectedSectionGate
+        organizationId={user.organizationId || ""}
+        organizationName={user.organizationName}
+        userId={user.id}
+        eyebrow="Хамгаалалттай бүтээгдэхүүн"
+        title="Удирдах эрхээ баталгаажуулна уу"
+        description="бүтээгдэхүүн, үнэ болон менюг өөрчлөхийн тулд эзэмшигч эсвэл админ өөрийн нэвтрэх эрхийг баталгаажуулна."
+        submitLabel="Бүтээгдэхүүн рүү нэвтрэх"
+        footer="Хуудас бүрэн хаагдсаны дараа бүтээгдэхүүний хэсэг дахин түгжигдэнэ."
+        accessDeniedMessage="Зөвхөн байгууллагын эзэмшигч эсвэл админ бүтээгдэхүүн, үнэ өөрчлөх эрхтэй."
+        onUnlock={() => setProductsUnlocked(true)}
+      />
+    );
+  }
+
+  return (
+    <RestaurantProductsContent
+      onLock={() => setProductsUnlocked(false)}
+    />
+  );
+}
+
+function RestaurantProductsContent({ onLock }: { onLock: () => void }) {
   const { user, features } = useOrg();
   const isCafe = features.selfServiceMode === "CAFE";
   const defaultForm = useMemo(() => createEmptyForm(isCafe), [isCafe]);
@@ -613,6 +643,14 @@ export function RestaurantProductsScreen() {
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={onLock}
+            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-5 text-sm font-black text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+          >
+            <LockKeyhole className="h-4 w-4" />
+            Түгжих
+          </button>
           <button
             type="button"
             onClick={() => setCategoryManagerOpen(true)}
