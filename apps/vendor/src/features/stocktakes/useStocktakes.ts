@@ -327,19 +327,28 @@ export function useStocktakes() {
       setEdits((previous) => ({ ...previous, [value.id]: value }));
   }, []);
   const act = (
-    action: "save" | "submit" | "reopen" | "refresh" | "approve" | "cancel",
+    action:
+      | "save"
+      | "submit"
+      | "reopen"
+      | "refresh"
+      | "convert_full"
+      | "approve"
+      | "cancel",
   ) =>
     run(async () => {
       if (!session) return;
       if (action !== "save" && dirty)
         throw new Error("Эхлээд өөрчлөлтөө хадгална уу");
       if (
-        ["approve", "cancel", "refresh"].includes(action) &&
+        ["approve", "cancel", "refresh", "convert_full"].includes(action) &&
         !(await confirmation.ask(
           action === "approve"
             ? "Хянасан зөрүүгээр бодит үлдэгдлийг шинэчилж баталгаажуулах уу? Энэ үйлдлийг буцаахгүй."
             : action === "refresh"
               ? "Үлдэгдэл нь өөрчлөгдсөн барааны тоог цэвэрлэж дахин тоолох уу? Өөрчлөгдөөгүй мөрүүд хэвээр үлдэнэ."
+              : action === "convert_full"
+                ? "Тоолсон дүнг хэвээр хадгалж, энэ тооллогыг Бүтэн болгох уу? Үүний дараа бүх барааг заавал тоолно."
               : "Тооллогыг цуцлах уу? Үлдэгдэл өөрчлөгдөхгүй.",
         ))
       )
@@ -359,6 +368,8 @@ export function useStocktakes() {
       setNotice(
         action === "approve"
           ? "Тооллого баталгаажиж, үлдэгдэл болон хөдөлгөөний түүх шинэчлэгдлээ."
+          : action === "convert_full"
+            ? "Тооллогыг Бүтэн болголоо. Одоо бүх барааг тоолно уу."
           : "Амжилттай хадгаллаа.",
       );
       if (action === "approve") notifyProductCatalogChanged();

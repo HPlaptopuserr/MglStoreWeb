@@ -184,6 +184,7 @@ router.patch(
       "submit",
       "reopen",
       "refresh",
+      "convert_full",
       "approve",
       "cancel",
     ];

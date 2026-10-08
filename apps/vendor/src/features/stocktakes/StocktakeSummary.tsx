@@ -8,6 +8,7 @@ export type StocktakeAction =
   | "submit"
   | "reopen"
   | "refresh"
+  | "convert_full"
   | "approve"
   | "cancel";
 export function StocktakeSummary({
@@ -105,6 +106,15 @@ export function StocktakeSummary({
             >
               Өөрчлөгдсөн барааг дахин тоолох
             </button>
+            {session.kind === "PARTIAL" && (
+              <button
+                className={secondaryClass}
+                disabled={busy || Boolean(dirty)}
+                onClick={() => onAction("convert_full")}
+              >
+                Бүтэн тооллого болгох
+              </button>
+            )}
           </>
         )}
         {session.status === "REVIEW" && canApprove && (

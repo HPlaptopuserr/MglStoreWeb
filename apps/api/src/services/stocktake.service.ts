@@ -177,6 +177,7 @@ export type StocktakeAction =
   | "submit"
   | "reopen"
   | "refresh"
+  | "convert_full"
   | "approve"
   | "cancel";
 export function mutateStocktake(input: {
@@ -198,7 +199,8 @@ export function mutateStocktake(input: {
       // Retried approvals must never create a second ledger adjustment.
       if (
         (input.action === "approve" && session.status === "APPROVED") ||
-        (input.action === "cancel" && session.status === "CANCELLED")
+        (input.action === "cancel" && session.status === "CANCELLED") ||
+        (input.action === "convert_full" && session.kind === "FULL")
       )
         return session;
       if (session.version !== input.version)
@@ -281,6 +283,12 @@ export function mutateStocktake(input: {
               stocktakeId: session.id,
             })),
           });
+      } else if (input.action === "convert_full") {
+        if (status !== "DRAFT")
+          throw new StocktakeError(
+            "Хяналтад байгаа тооллогыг эхлээд засварт буцаана уу",
+            409,
+          );
       } else if (input.action === "approve") {
         if (status !== "REVIEW")
           throw new StocktakeError("Эхлээд хяналтад илгээнэ үү", 409);
@@ -338,6 +346,7 @@ export function mutateStocktake(input: {
         where: { id: session.id },
         data: {
           status,
+          ...(input.action === "convert_full" ? { kind: "FULL" as const } : {}),
           version: { increment: 1 },
           ...(status === "APPROVED"
             ? { approvedById: input.actorId, approvedAt: new Date() }
