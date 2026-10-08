@@ -21,15 +21,14 @@ type MerchantQrInvoiceState = {
 
 /**
  * A merchant credential change only needs to wait for a QR that can still be
- * paid, or for a paid QR that has not yet been attached to a completed sale.
- * Old PENDING rows are expired checkout state and must not lock merchant
- * settings forever.
+ * paid with the current credentials. PAID invoices are already verified and
+ * can still be attached to a sale using their locally stored payment state.
+ * Old PENDING rows are expired checkout state and must not lock settings.
  */
 export function merchantQrInvoiceBlocksCredentialChange(
   invoice: MerchantQrInvoiceState,
   now: Date = new Date(),
 ): boolean {
   if (invoice.consumedAt) return false;
-  if (invoice.status === "PAID") return true;
   return invoice.status === "PENDING" && invoice.expiresAt > now;
 }

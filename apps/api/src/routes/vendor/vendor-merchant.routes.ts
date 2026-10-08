@@ -64,10 +64,8 @@ router.use('/vendor/merchant', (req, res, next) => {
           where: {
             organizationId,
             consumedAt: null,
-            OR: [
-              { status: 'PAID' },
-              { status: 'PENDING', expiresAt: { gt: now } },
-            ],
+            status: 'PENDING',
+            expiresAt: { gt: now },
           },
           select: { id: true, status: true, consumedAt: true, expiresAt: true },
         });

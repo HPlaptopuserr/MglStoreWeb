@@ -36,7 +36,7 @@ test("does not let an expired PENDING QR lock merchant settings forever", () => 
   );
 });
 
-test("still blocks active or paid-but-unconsumed QR invoices", () => {
+test("blocks only active unpaid QR invoices", () => {
   const now = new Date("2026-10-08T10:00:00.000Z");
 
   assert.equal(
@@ -59,7 +59,7 @@ test("still blocks active or paid-but-unconsumed QR invoices", () => {
       },
       now,
     ),
-    true,
+    false,
   );
 });
 
