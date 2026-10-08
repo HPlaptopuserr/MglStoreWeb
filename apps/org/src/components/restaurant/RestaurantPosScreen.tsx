@@ -249,12 +249,12 @@ const tableStatusCopy: Record<TableStatus, string> = {
 };
 
 const tableStatusStyles: Record<TableStatus, string> = {
-  FREE: "border-[#3d484f] bg-[#122131] text-[#d4e4fa]",
-  OPEN: "border-[#00c2ff]/70 bg-[#00c2ff]/15 text-[#92d9ff]",
-  KITCHEN: "border-amber-300/70 bg-amber-300/10 text-amber-200",
-  READY: "border-emerald-300/70 bg-emerald-300/10 text-emerald-200",
-  PAID: "border-emerald-300/70 bg-emerald-300/10 text-emerald-200",
-  RESERVED: "border-rose-300/70 bg-rose-300/10 text-rose-200",
+  FREE: "border-slate-200 bg-white text-slate-700",
+  OPEN: "border-sky-300 bg-sky-50 text-sky-700",
+  KITCHEN: "border-amber-300 bg-amber-50 text-amber-700",
+  READY: "border-emerald-300 bg-emerald-50 text-emerald-700",
+  PAID: "border-emerald-300 bg-emerald-50 text-emerald-700",
+  RESERVED: "border-rose-300 bg-rose-50 text-rose-700",
 };
 
 const orderModeCopy: Record<OrderMode, string> = {
@@ -3628,15 +3628,15 @@ function RestaurantPosContent() {
   };
 
   return (
-    <section className="relative h-full overflow-hidden bg-[#051424] text-[#d4e4fa] shadow-2xl shadow-slate-950/20">
-      <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_430px] bg-[#051424] max-xl:grid-cols-1 max-xl:overflow-y-auto">
+    <section className="relative h-full overflow-hidden bg-[#f3f7fa] text-slate-900 shadow-2xl shadow-slate-300/40">
+      <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_430px] bg-[#f3f7fa] max-xl:grid-cols-1 max-xl:overflow-y-auto">
         <main className="flex min-h-0 flex-col px-7 py-5 max-xl:min-h-[760px] max-md:px-4">
-          <header className="shrink-0 rounded-xl border border-[#273647] bg-[#010f1f] p-3 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
+          <header className="shrink-0 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
             <div className="flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 <Link
                   href="/dashboard"
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-[#3d484f] bg-[#122131] text-[#bcc8d1] transition hover:border-[#75d1ff]/60 hover:text-white"
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
                   aria-label="Буцах"
                   title="Буцах"
                 >
@@ -3645,14 +3645,14 @@ function RestaurantPosContent() {
                 <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#00c2ff] text-[#003548]">
                   <UtensilsCrossed className="h-6 w-6" />
                 </span>
-                <div className="min-w-0 border-l border-[#273647] pl-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#92d9ff]">
+                <div className="min-w-0 border-l border-slate-200 pl-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-sky-600">
                     Restaurant POS
                   </p>
-                  <h2 className="truncate text-4xl font-black leading-none tracking-tight text-[#d4e4fa] max-2xl:text-3xl">
+                  <h2 className="truncate text-4xl font-black leading-none tracking-tight text-slate-950 max-2xl:text-3xl">
                     Ресторан касс
                   </h2>
-                  <p className="mt-1 truncate text-xs font-semibold text-[#bcc8d1]">
+                  <p className="mt-1 truncate text-xs font-semibold text-slate-500">
                     {selectedRegister?.branch.name || "Салбар сонгоогүй"} ·{" "}
                     {shiftMatchesRegister ? "Ээлж нээлттэй" : "Ээлж хаалттай"} ·
                     Ширээ {selectedTable.label}
@@ -3664,8 +3664,8 @@ function RestaurantPosContent() {
                 <span
                   className={`inline-flex h-9 items-center rounded-full px-3 text-xs font-black ${
                     shiftMatchesRegister
-                      ? "bg-[#00c2ff]/15 text-[#92d9ff]"
-                      : "bg-amber-300/10 text-amber-200"
+                      ? "bg-sky-100 text-sky-700"
+                      : "bg-amber-100 text-amber-700"
                   }`}
                 >
                   {shiftMatchesRegister ? "Ээлж нээлттэй" : "Ээлж хаалттай"}
@@ -3678,7 +3678,7 @@ function RestaurantPosContent() {
                     registers.length === 0 ||
                     Boolean(shift?.registerId)
                   }
-                  className="h-10 min-w-48 rounded-lg border border-[#3d484f] bg-[#122131] px-3 text-sm font-bold text-[#d4e4fa] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-10 min-w-48 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-700 outline-none focus:border-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="POS касс сонгох"
                 >
                   {registers.length === 0 ? (
@@ -3698,7 +3698,7 @@ function RestaurantPosContent() {
                       setDrawerError("");
                       setShowCloseShift(true);
                     }}
-                    className="h-10 shrink-0 rounded-lg border border-rose-300/50 px-4 text-sm font-black text-rose-200 transition hover:bg-rose-300 hover:text-slate-950"
+                    className="h-10 shrink-0 rounded-lg border border-rose-300 bg-rose-50 px-4 text-sm font-black text-rose-700 transition hover:bg-rose-100"
                   >
                     Ээлж хаах
                   </button>
@@ -3715,12 +3715,12 @@ function RestaurantPosContent() {
               </div>
             </div>
 
-            <div className="mt-3 flex w-full flex-wrap items-center gap-2 border-t border-[#273647] pt-3">
+            <div className="mt-3 flex w-full flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
               <button
                 type="button"
                 onClick={() => void handleOpenQrModal()}
                 disabled={!selectedRegister || diningTables.length === 0}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c] disabled:cursor-not-allowed disabled:text-slate-600"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-4 text-sm font-black text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:text-slate-400"
               >
                 <QrCode className="h-4 w-4" />
                 QR хэвлэх
@@ -3728,14 +3728,14 @@ function RestaurantPosContent() {
               <button
                 type="button"
                 onClick={openCustomerDisplay}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c]"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-4 text-sm font-black text-slate-700 transition hover:bg-slate-200"
               >
                 <Monitor className="h-4 w-4" />
                 Хэрэглэгчийн дэлгэц
               </button>
               <Link
                 href="/dashboard/kitchen-display"
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c]"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-4 text-sm font-black text-slate-700 transition hover:bg-slate-200"
               >
                 <ChefHat className="h-4 w-4" />
                 Гал тогоо
@@ -3747,7 +3747,7 @@ function RestaurantPosContent() {
                   setShowShiftHistory(true);
                   setShiftHistoryError("");
                 }}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c]"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-4 text-sm font-black text-slate-700 transition hover:bg-slate-200"
               >
                 <History className="h-4 w-4" />
                 Хаалтын түүх
@@ -3759,18 +3759,18 @@ function RestaurantPosContent() {
                   setSalesHistoryOpen(true);
                   setSalesHistoryError("");
                 }}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c]"
+                className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-4 text-sm font-black text-slate-700 transition hover:bg-slate-200"
               >
                 <ReceiptText className="h-4 w-4" />
                 Борлуулалтын түүх
               </button>
 
               <label className="relative min-w-56 flex-1">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#75d1ff]" />
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-sky-500" />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  className="h-11 w-full rounded-lg border border-[#3d484f] bg-[#051424] pl-11 pr-4 text-sm font-semibold text-[#d4e4fa] outline-none transition placeholder:text-[#86929a] focus:border-[#00c2ff]/70"
+                  className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:bg-white"
                   placeholder="Хоол, ундаа хайх..."
                 />
               </label>
@@ -3780,19 +3780,19 @@ function RestaurantPosContent() {
           <ProductImageNotice className="mt-3" />
 
           {setupLoading ? (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-slate-300">
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600">
               <Loader2 className="h-4 w-4 animate-spin" />
               POS кассын тохиргоо ачаалж байна...
             </div>
           ) : null}
 
           {setupError ? (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-rose-300/30 bg-rose-300/10 px-4 py-3 text-sm font-bold text-rose-200">
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
               <span>{setupError}</span>
               <button
                 type="button"
                 onClick={() => void loadPosSetup()}
-                className="inline-flex shrink-0 items-center gap-1.5 text-xs font-black text-white"
+                className="inline-flex shrink-0 items-center gap-1.5 text-xs font-black text-rose-700"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Дахин шалгах
@@ -3801,39 +3801,39 @@ function RestaurantPosContent() {
           ) : null}
 
           {!setupLoading && registers.length === 0 ? (
-            <div className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-100">
+            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
               Энэ байгууллагад батлагдсан POS register алга. Admin хэсгээс
               салбар, POS register үүсгэж идэвхжүүлсний дараа касс ажиллана.
             </div>
           ) : null}
 
           {notice ? (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm font-bold text-emerald-100">
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700">
               <CheckCircle2 className="h-4 w-4 shrink-0" />
               {notice}
             </div>
           ) : null}
 
-          <section className="mt-2 shrink-0 rounded-lg border border-[#273647] bg-[#0d1c2d] px-2 py-2">
+          <section className="mt-2 shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-2 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#122131] text-[#92d9ff]">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
                   <LayoutGrid className="h-4 w-4" />
                 </span>
                 <div>
-                  <p className="text-xs font-black text-[#d4e4fa]">Ширээ</p>
-                  <p className="text-[10px] font-semibold text-[#86929a]">Compact map</p>
+                  <p className="text-xs font-black text-slate-800">Ширээ</p>
+                  <p className="text-[10px] font-semibold text-slate-400">Compact map</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold text-[#86929a]">
+                <span className="text-[11px] font-bold text-slate-500">
                   {activeTables} идэвхтэй · {diningTables.length} ширээ
                 </span>
                 <button
                   type="button"
                   onClick={openCreateTableModal}
                   disabled={!selectedRegister}
-                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-[#00c2ff]/40 bg-[#00c2ff]/10 px-2.5 text-[11px] font-black text-[#92d9ff] transition hover:bg-[#00c2ff] hover:text-[#003548] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-600"
+                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-2.5 text-[11px] font-black text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
                 >
                   <Plus className="h-3 w-3" />
                   Нэмэх
@@ -3841,7 +3841,7 @@ function RestaurantPosContent() {
               </div>
             </div>
             {tablesError ? (
-              <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-200">
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
                 <span>{tablesError}</span>
                 <button type="button" onClick={() => void loadTables()}>
                   Дахин ачаалах
@@ -3850,7 +3850,7 @@ function RestaurantPosContent() {
             ) : null}
             <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-0.5">
               {tablesLoading ? (
-                <div className="flex h-11 min-w-full items-center justify-center gap-2 text-xs font-bold text-[#86929a]">
+                <div className="flex h-11 min-w-full items-center justify-center gap-2 text-xs font-bold text-slate-500">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Ширээ ачаалж байна...
                 </div>
@@ -3916,8 +3916,8 @@ function RestaurantPosContent() {
                   onClick={() => setActiveCategory(category.id)}
                   className={`relative h-9 shrink-0 text-sm font-bold transition ${
                     activeCategory === category.id
-                      ? "text-[#92d9ff]"
-                      : "text-[#bcc8d1] hover:text-white"
+                      ? "text-sky-700"
+                      : "text-slate-500 hover:text-slate-900"
                   }`}
                 >
                   {category.label}
@@ -3930,7 +3930,7 @@ function RestaurantPosContent() {
 
             <button
               type="button"
-              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-white/5 bg-[#1d1d2b] px-4 text-sm font-bold text-slate-100 transition hover:bg-[#292b3b]"
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
             >
               <ChevronDown className="h-4 w-4" />
               Ширээ {selectedTable.label} · {orderModeCopy[orderMode]}
@@ -3939,7 +3939,7 @@ function RestaurantPosContent() {
 
           <div className="mt-4 flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center justify-between gap-4">
-              <h3 className="text-xl font-bold tracking-normal text-white">
+              <h3 className="text-xl font-bold tracking-normal text-slate-900">
                 Меню сонгох
               </h3>
               <div className="flex items-center gap-3">
@@ -3950,7 +3950,7 @@ function RestaurantPosContent() {
                   type="button"
                   onClick={() => void loadMenu()}
                   disabled={menuLoading}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-sm font-black text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label="Меню шинэчлэх"
                 >
                   <RefreshCw
@@ -3962,7 +3962,7 @@ function RestaurantPosContent() {
                   type="button"
                   onClick={openProductManager}
                   disabled={!selectedRegister}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#00c2ff]/50 bg-[#00c2ff]/10 px-3 text-sm font-black text-[#92d9ff] transition hover:bg-[#00c2ff] hover:text-[#003548] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-600"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 text-sm font-black text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
                 >
                   <Plus className="h-4 w-4" />
                   Хоол нэмэх
@@ -3976,19 +3976,19 @@ function RestaurantPosContent() {
               </div>
             ) : menuError ? (
               <div className="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
-                <p className="text-sm font-bold text-rose-300">{menuError}</p>
+                <p className="text-sm font-bold text-rose-600">{menuError}</p>
                 <button
                   type="button"
                   onClick={() => void loadMenu()}
-                  className="mt-3 h-9 rounded-lg border border-white/10 px-4 text-sm font-bold text-slate-200 hover:bg-white/5"
+                  className="mt-3 h-9 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
                 >
                   Дахин ачаалах
                 </button>
               </div>
             ) : filteredMenu.length === 0 ? (
-              <div className="flex min-h-0 flex-1 flex-col items-center justify-center border border-dashed border-white/10 text-center">
-                <ChefHat className="h-9 w-9 text-slate-600" />
-                <p className="mt-3 text-sm font-bold text-slate-300">
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/60 text-center">
+                <ChefHat className="h-9 w-9 text-slate-400" />
+                <p className="mt-3 text-sm font-bold text-slate-600">
                   {query || activeCategory !== "all"
                     ? "Тохирох хоол олдсонгүй"
                     : "Менюд хоол бүртгэгдээгүй байна"}
@@ -4022,7 +4022,7 @@ function RestaurantPosContent() {
                       clearSubmitting ||
                       qpayPaymentActive
                     }
-                    className="group relative flex h-full flex-col items-center rounded-lg border border-[#273647] bg-[#122131] p-3 text-center shadow-xl shadow-black/10 transition hover:-translate-y-1 hover:border-[#75d1ff]/70 hover:bg-[#1c2b3c] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+                    className="group relative flex h-full flex-col items-center rounded-lg border border-slate-200 bg-white p-3 text-center shadow-md shadow-slate-200/60 transition hover:-translate-y-1 hover:border-sky-300 hover:bg-sky-50/40 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
                   >
                     <DishVisual
                       tone={item.tone}
@@ -4031,19 +4031,19 @@ function RestaurantPosContent() {
                       className="mb-2"
                     />
                     <div className="flex min-h-0 w-full flex-1 flex-col items-center">
-                      <p className="line-clamp-2 min-h-10 w-full px-1 text-sm font-black leading-5 text-slate-100">
+                      <p className="line-clamp-2 min-h-10 w-full px-1 text-sm font-black leading-5 text-slate-800">
                         {item.name}
                       </p>
-                      <p className="mt-auto pt-2 text-base font-black tabular-nums text-[#92d9ff]">
+                      <p className="mt-auto pt-2 text-base font-black tabular-nums text-sky-700">
                         {formatMoney(item.price)}
                       </p>
-                      <p className="mt-1 text-[10px] font-semibold text-[#86929a]">
+                      <p className="mt-1 text-[10px] font-semibold text-slate-400">
                         {item.available > 0
                           ? `${item.available} порц боломжтой`
                           : "Дууссан"}
                       </p>
                     </div>
-                    <span className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg border border-[#3d484f] bg-[#051424]/80 text-[#92d9ff] opacity-0 transition group-hover:opacity-100">
+                    <span className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg border border-sky-200 bg-white/90 text-sky-600 opacity-0 transition group-hover:opacity-100">
                       <Plus className="h-3.5 w-3.5" />
                     </span>
                   </button>
@@ -4053,14 +4053,14 @@ function RestaurantPosContent() {
           </div>
         </main>
 
-        <aside className="flex min-h-0 flex-col overflow-hidden border-l border-[#273647] bg-[#0d1c2d] px-5 py-4 max-xl:min-h-[720px] max-sm:px-3 max-sm:py-3">
+        <aside className="flex min-h-0 flex-col overflow-hidden border-l border-slate-200 bg-[#fffdf8] px-5 py-4 shadow-[-12px_0_32px_rgba(15,23,42,0.06)] max-xl:min-h-[720px] max-sm:px-3 max-sm:py-3">
           <div className="shrink-0">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-semibold text-slate-500">
                   {selectedTicketPaid ? "Төлсөн захиалга" : "Идэвхтэй захиалга"}
                 </p>
-                <h3 className="truncate text-xl font-bold text-white">
+                <h3 className="truncate text-xl font-bold text-slate-900">
                   Ширээ {selectedTable.label}
                 </h3>
                 <p className="mt-1 text-xs font-bold text-slate-500">
@@ -4070,8 +4070,8 @@ function RestaurantPosContent() {
               <span
                 className={`shrink-0 rounded-lg px-3 py-1 text-xs font-black ${
                   shiftMatchesRegister
-                    ? "bg-[#00c2ff]/15 text-[#92d9ff]"
-                    : "bg-amber-300/10 text-amber-200"
+                    ? "bg-sky-100 text-sky-700"
+                    : "bg-amber-100 text-amber-700"
                 }`}
               >
                 {shiftMatchesRegister ? "Ээлж нээлттэй" : "Ээлж хаалттай"}
@@ -4092,7 +4092,7 @@ function RestaurantPosContent() {
                   className={`h-10 rounded-lg border text-sm font-bold transition ${
                     orderMode === mode
                       ? "border-[#00c2ff] bg-[#00c2ff] text-[#003548]"
-                      : "border-[#273647] bg-[#122131] text-[#bcc8d1] hover:bg-[#1c2b3c]"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                   }`}
                 >
                   {orderModeCopy[mode]}
@@ -4112,7 +4112,7 @@ function RestaurantPosContent() {
                       ? "Төлөгдсөн ticket-ийг гал тогоо руу илгээх боломжгүй"
                       : "Гал тогоо руу илгээх шинэ хоол байхгүй"
                 }
-                className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-[#00c2ff]/40 bg-[#00c2ff]/10 text-sm font-black text-[#92d9ff] transition hover:border-[#00c2ff] hover:bg-[#00c2ff] hover:text-[#003548] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
+                className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-sky-300 bg-sky-50 text-sm font-black text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
               >
                 {kitchenSubmitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -4125,15 +4125,15 @@ function RestaurantPosContent() {
                 <Send className="h-4 w-4" />
               </button>
             ) : (
-              <div className="mt-4 rounded-lg border border-sky-300/30 bg-sky-300/10 px-3 py-2.5 text-xs font-bold leading-5 text-sky-100">
+              <div className="mt-4 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-xs font-bold leading-5 text-sky-700">
                 Төлбөр амжилттай бүртгэгдсэний дараа захиалга гал тогоо руу
                 автоматаар илгээгдэнэ.
               </div>
             )}
 
-            <div className="mt-4 flex items-center justify-between gap-3 border-b border-white/10 pb-3 text-sm font-bold text-slate-200">
+            <div className="mt-4 flex items-center justify-between gap-3 border-b border-slate-200 pb-3 text-sm font-bold text-slate-800">
               <span>Сагсны бараа</span>
-              <span className="shrink-0 rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-black text-slate-400">
+              <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-500">
                 {ticketLines.length} мөр
               </span>
             </div>
@@ -4142,7 +4142,7 @@ function RestaurantPosContent() {
           <div className="min-h-[210px] flex-[1_1_260px] space-y-3 overflow-y-auto py-3 pr-1">
             {ticketLines.length === 0 ? (
               <div className="flex h-full min-h-40 flex-col items-center justify-center text-center">
-                <UtensilsCrossed className="h-8 w-8 text-slate-700" />
+                <UtensilsCrossed className="h-8 w-8 text-slate-300" />
                 <p className="mt-3 text-sm font-bold text-slate-500">
                   Менюгээс хоол сонгоно уу
                 </p>
@@ -4153,14 +4153,14 @@ function RestaurantPosContent() {
                     </p>
                     <div className="mt-2 flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-black text-white">
+                        <p className="truncate text-sm font-black text-slate-900">
                           {lastReceipt.receiptNo}
                         </p>
                         <p className="mt-1 text-xs font-semibold text-emerald-100/80">
                           Төлөгдсөн ticket active захиалгаас гарсан.
                         </p>
                       </div>
-                      <span className="shrink-0 text-sm font-black tabular-nums text-white">
+                      <span className="shrink-0 text-sm font-black tabular-nums text-slate-900">
                         {formatMoney(lastReceipt.grandTotal)}
                       </span>
                     </div>
@@ -4192,7 +4192,7 @@ function RestaurantPosContent() {
                 return (
                   <article
                     key={line.id}
-                    className="rounded-xl border border-white/10 bg-white/[0.035] p-3 shadow-sm shadow-black/10"
+                    className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70"
                   >
                     <div className="flex min-w-0 items-start gap-3">
                       <div className="pt-0.5">
@@ -4206,7 +4206,7 @@ function RestaurantPosContent() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="line-clamp-2 text-sm font-bold leading-5 text-slate-100">
+                            <p className="line-clamp-2 text-sm font-bold leading-5 text-slate-800">
                               {line.name}
                             </p>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
@@ -4218,13 +4218,13 @@ function RestaurantPosContent() {
                               ) : null}
                             </div>
                           </div>
-                          <p className="shrink-0 text-right text-sm font-black tabular-nums text-white">
+                          <p className="shrink-0 text-right text-sm font-black tabular-nums text-slate-900">
                             {formatMoney(line.price * line.qty)}
                           </p>
                         </div>
 
                         <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <div className="flex h-10 w-[108px] shrink-0 items-center justify-center gap-1 overflow-hidden rounded-lg bg-[#2d3142]">
+                          <div className="flex h-10 w-[108px] shrink-0 items-center justify-center gap-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
                             <button
                               type="button"
                               onClick={() => void changeQty(line.id, -1)}
@@ -4235,13 +4235,13 @@ function RestaurantPosContent() {
                                 qpayPaymentActive ||
                                 line.qty <= line.sentQty
                               }
-                              className="flex h-full w-8 items-center justify-center text-slate-400 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                              className="flex h-full w-8 items-center justify-center text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
                               aria-label={`${line.name} хасах`}
                               title="Хасах"
                             >
                               <Minus className="h-3.5 w-3.5" />
                             </button>
-                            <span className="w-7 text-center text-sm font-bold tabular-nums text-white">
+                            <span className="w-7 text-center text-sm font-bold tabular-nums text-slate-900">
                               {line.qty}
                             </span>
                             <button
@@ -4253,7 +4253,7 @@ function RestaurantPosContent() {
                                 selectedTicketPaid ||
                                 qpayPaymentActive
                               }
-                              className="flex h-full w-8 items-center justify-center text-slate-400 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                              className="flex h-full w-8 items-center justify-center text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
                               aria-label={`${line.name} нэмэх`}
                               title="Нэмэх"
                             >
@@ -4273,7 +4273,7 @@ function RestaurantPosContent() {
                               Boolean(cancellingLineId)
                             }
                             placeholder="Тэмдэглэл..."
-                            className="h-10 min-w-[150px] flex-1 rounded-lg border border-white/5 bg-[#2d3142] px-3 text-xs font-semibold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400/70"
+                            className="h-10 min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400 focus:bg-white"
                           />
                           <button
                             type="button"
@@ -4287,7 +4287,7 @@ function RestaurantPosContent() {
                             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-45 ${
                               line.sentQty > 0
                                 ? "border-amber-300/50 text-amber-200 hover:bg-amber-300 hover:text-slate-950"
-                                : "border-sky-400/70 text-sky-400 hover:bg-sky-400 hover:text-white"
+                                : "border-sky-300 text-sky-600 hover:bg-sky-100"
                             }`}
                             aria-label={`${line.name} устгах`}
                             title={
@@ -4311,13 +4311,13 @@ function RestaurantPosContent() {
             )}
           </div>
 
-          <div className="min-h-0 max-h-[46dvh] shrink overflow-y-auto overscroll-contain border-t border-[#273647] pt-4 pr-1 max-xl:max-h-[42dvh]">
+          <div className="min-h-0 max-h-[46dvh] shrink overflow-y-auto overscroll-contain border-t border-slate-200 pt-4 pr-1 max-xl:max-h-[42dvh]">
             <TotalLine label="Discount" value={formatMoney(discount)} />
             <TotalLine label="Sub total" value={formatMoney(subtotal)} />
             <TotalLine label="Total" value={formatMoney(total)} strong />
 
             {ebarimtReady && paymentMethod !== "CREDIT" ? (
-              <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.035] p-3">
+              <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                 <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">
                   Ebarimt авах төрөл
                 </p>
@@ -4335,7 +4335,7 @@ function RestaurantPosContent() {
                     className={`flex h-10 items-center justify-center gap-2 rounded-lg border text-xs font-black transition disabled:opacity-50 ${
                       ebarimtBuyerMode === "B2C"
                         ? "border-emerald-300 bg-emerald-300 text-slate-950"
-                        : "border-white/10 bg-white/5 text-slate-300 hover:border-emerald-300/50"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50"
                     }`}
                   >
                     <UserRound className="h-4 w-4" />
@@ -4351,7 +4351,7 @@ function RestaurantPosContent() {
                     className={`flex h-10 items-center justify-center gap-2 rounded-lg border text-xs font-black transition disabled:opacity-50 ${
                       ebarimtBuyerMode === "B2B"
                         ? "border-emerald-300 bg-emerald-300 text-slate-950"
-                        : "border-white/10 bg-white/5 text-slate-300 hover:border-emerald-300/50"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50"
                     }`}
                   >
                     <Building2 className="h-4 w-4" />
@@ -4379,7 +4379,7 @@ function RestaurantPosContent() {
                         }}
                         disabled={checkoutSubmitting || qpayPaymentActive}
                         placeholder="Регистрийн 7 орон"
-                        className="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-white outline-none placeholder:text-slate-600 focus:border-emerald-300 disabled:opacity-50"
+                        className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white disabled:opacity-50"
                       />
                       <button
                         type="button"
@@ -4392,7 +4392,7 @@ function RestaurantPosContent() {
                           checkoutSubmitting ||
                           qpayPaymentActive
                         }
-                        className="flex h-10 min-w-16 items-center justify-center rounded-lg bg-white px-3 text-xs font-black text-slate-950 disabled:opacity-40"
+                        className="flex h-10 min-w-16 items-center justify-center rounded-lg bg-slate-900 px-3 text-xs font-black text-white disabled:opacity-40"
                       >
                         {companyLookupLoading ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -4402,7 +4402,7 @@ function RestaurantPosContent() {
                       </button>
                     </div>
                     {companyLookup ? (
-                      <div className="mt-2 flex items-start gap-2 rounded-lg bg-emerald-300/10 px-3 py-2 text-[11px] font-bold leading-4 text-emerald-200">
+                      <div className="mt-2 flex items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] font-bold leading-4 text-emerald-700">
                         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                         <span>
                           {companyLookup.name || "Байгууллага"} · TIN {companyLookup.tin}
@@ -4410,7 +4410,7 @@ function RestaurantPosContent() {
                       </div>
                     ) : null}
                     {companyLookupError ? (
-                      <p className="mt-2 text-[11px] font-bold leading-4 text-rose-300">
+                      <p className="mt-2 text-[11px] font-bold leading-4 text-rose-600">
                         {companyLookupError}
                       </p>
                     ) : null}
@@ -4421,14 +4421,14 @@ function RestaurantPosContent() {
 
             <div className="mt-3">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-xs font-bold text-[#86929a]">
+                <p className="text-xs font-bold text-slate-500">
                   Төлбөрийн хэлбэр
                 </p>
                 <button
                   type="button"
                   onClick={openCreditList}
                   disabled={!user.organizationId}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300/35 bg-amber-300/10 px-2.5 text-[11px] font-black text-amber-100 transition hover:bg-amber-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-600"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 text-[11px] font-black text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
                 >
                   <HandCoins className="h-3.5 w-3.5" />
                   Зээлийн жагсаалт
@@ -4473,8 +4473,8 @@ function RestaurantPosContent() {
                         isActive
                           ? "border-[#92d9ff] bg-[#92d9ff] text-[#003548] shadow-lg shadow-[#00c2ff]/20"
                           : option.enabled
-                            ? "border-[#273647] bg-[#122131] text-[#bcc8d1] hover:border-[#75d1ff]/60 hover:text-white"
-                            : "cursor-not-allowed border-white/5 bg-white/[0.01] text-slate-600"
+                            ? "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50"
+                            : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400"
                       }`}
                     >
                       <Icon className="h-4 w-4" />
@@ -4486,13 +4486,13 @@ function RestaurantPosContent() {
             </div>
 
             {paymentMethod === "CARD" ? (
-              <div className="mt-3 rounded-xl border border-sky-300/25 bg-sky-300/10 p-2.5">
+              <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-2.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-black text-sky-100">
+                    <p className="text-xs font-black text-sky-800">
                       Картын terminal
                     </p>
-                    <p className="mt-1 text-[11px] font-semibold leading-4 text-sky-100/70">
+                    <p className="mt-1 text-[11px] font-semibold leading-4 text-sky-700">
                       {cardTerminalReady
                         ? cardPaymentModeLabel
                         : `${cardPaymentModeLabel} Terminal холбовол төлбөр terminal руу илгээгдэнэ.`}
@@ -4510,7 +4510,7 @@ function RestaurantPosContent() {
                 </div>
 
                 {cardMessage ? (
-                  <p className="mt-2 rounded-lg border border-sky-200/20 bg-sky-200/10 px-3 py-2 text-xs font-bold leading-5 text-sky-50">
+                  <p className="mt-2 rounded-lg border border-sky-200 bg-white px-3 py-2 text-xs font-bold leading-5 text-sky-800">
                     {cardMessage}
                   </p>
                 ) : null}
@@ -4523,7 +4523,7 @@ function RestaurantPosContent() {
                         setShowCardTerminalSetup((current) => !current);
                         setCardSetupError("");
                       }}
-                      className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-sky-300/30 px-3 text-[11px] font-black text-sky-100 transition hover:bg-sky-300 hover:text-slate-950"
+                      className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-sky-300 bg-white px-3 text-[11px] font-black text-sky-700 transition hover:bg-sky-100"
                     >
                       <CreditCard className="h-3.5 w-3.5" />
                       {showCardTerminalSetup
@@ -4546,7 +4546,7 @@ function RestaurantPosContent() {
                             className={`h-9 rounded-lg border text-xs font-black transition ${
                               cardSetupProvider === provider
                                 ? "border-sky-300 bg-sky-300 text-slate-950"
-                                : "border-white/10 text-slate-300 hover:border-sky-300/60 hover:text-white"
+                                : "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700"
                             }`}
                           >
                             {provider === "ANDROID_PGW"
@@ -4559,7 +4559,7 @@ function RestaurantPosContent() {
 
                     {cardSetupProvider === "ANDROID_PGW" ? (
                       <label className="block">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-sky-100/70">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
                           Bridge URL
                         </span>
                         <input
@@ -4568,7 +4568,7 @@ function RestaurantPosContent() {
                             setCardSetupBridgeUrl(event.target.value)
                           }
                           placeholder={DEFAULT_ANDROID_PGW_BRIDGE_URL}
-                          className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
+                          className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
                         />
                       </label>
                     ) : (
@@ -4579,7 +4579,7 @@ function RestaurantPosContent() {
                             setCardSetupTerminalId(event.target.value)
                           }
                           placeholder="Minu terminalId"
-                          className="h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
                         />
                         <div className="grid grid-cols-2 gap-2">
                           <input
@@ -4591,7 +4591,7 @@ function RestaurantPosContent() {
                               selectedRegister?.minuAgentUsername ||
                               "Minu username"
                             }
-                            className="h-9 rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
+                            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
                           />
                           <input
                             value={cardSetupMinuBranchId}
@@ -4602,7 +4602,7 @@ function RestaurantPosContent() {
                               selectedRegister?.minuAgentBranchId ||
                               "Minu branchId"
                             }
-                            className="h-9 rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
+                            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
                           />
                         </div>
                         <input
@@ -4616,7 +4616,7 @@ function RestaurantPosContent() {
                               ? "Password хадгалагдсан бол хоосон үлдээж болно"
                               : "Minu password"
                           }
-                          className="h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
+                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
                         />
                       </div>
                     )}
@@ -4648,13 +4648,13 @@ function RestaurantPosContent() {
             ) : null}
 
             {paymentMethod === "CREDIT" ? (
-              <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/10 p-2.5">
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-black text-amber-200">
+                    <p className="text-xs font-black text-amber-800">
                       Бүртгэлтэй зээлдэгч
                     </p>
-                    <p className="mt-1 text-[11px] font-semibold leading-4 text-amber-100/70">
+                    <p className="mt-1 text-[11px] font-semibold leading-4 text-amber-700">
                       Vendor POS дээр бүртгэгдсэн зээлдэгчээс сонгоно.
                     </p>
                   </div>
@@ -4662,7 +4662,7 @@ function RestaurantPosContent() {
                     type="button"
                     onClick={() => void loadCreditBorrowers()}
                     disabled={creditBorrowersLoading}
-                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-amber-200/30 px-2 text-[11px] font-black text-amber-100 transition hover:bg-amber-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2 text-[11px] font-black text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <RefreshCw
                       className={`h-3.5 w-3.5 ${
@@ -4673,13 +4673,13 @@ function RestaurantPosContent() {
                   </button>
                 </div>
 
-                <label className="mt-3 flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-[#11131d] px-3">
+                <label className="mt-3 flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3">
                   <Search className="h-3.5 w-3.5 text-slate-500" />
                   <input
                     value={creditSearch}
                     onChange={(event) => setCreditSearch(event.target.value)}
                     placeholder="Нэр, утас, ажилтан хайх..."
-                    className="h-full min-w-0 flex-1 bg-transparent text-xs font-semibold text-slate-100 outline-none placeholder:text-slate-600"
+                    className="h-full min-w-0 flex-1 bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400"
                   />
                 </label>
 
@@ -4696,7 +4696,7 @@ function RestaurantPosContent() {
                       Зээлдэгчид ачаалж байна...
                     </div>
                   ) : filteredCreditBorrowers.length === 0 ? (
-                    <p className="rounded-lg border border-dashed border-white/10 px-3 py-3 text-xs font-bold leading-5 text-slate-500">
+                    <p className="rounded-lg border border-dashed border-slate-300 bg-white/60 px-3 py-3 text-xs font-bold leading-5 text-slate-500">
                       Бүртгэлтэй зээлдэгч олдсонгүй.
                     </p>
                   ) : (
@@ -4713,7 +4713,7 @@ function RestaurantPosContent() {
                           className={`w-full rounded-lg border px-3 py-2 text-left transition ${
                             isSelected
                               ? "border-amber-300 bg-amber-300 text-slate-950"
-                              : "border-white/10 bg-white/[0.03] text-slate-100 hover:border-amber-300/60"
+                              : "border-slate-200 bg-white text-slate-700 hover:border-amber-300"
                           }`}
                         >
                           <span className="flex items-center justify-between gap-2">
@@ -4741,30 +4741,30 @@ function RestaurantPosContent() {
 
                 <div className="mt-3 grid grid-cols-[90px_minmax(0,1fr)] gap-2">
                   <label className="block">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-100/70">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">
                       Хугацаа
                     </span>
                     <input
                       value={creditTermMonths}
                       onChange={(event) => setCreditTermMonths(event.target.value)}
                       inputMode="numeric"
-                      className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none focus:border-amber-300/70"
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
                     />
                   </label>
                   <label className="block">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-100/70">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">
                       Тэмдэглэл
                     </span>
                     <input
                       value={creditNote}
                       onChange={(event) => setCreditNote(event.target.value)}
                       placeholder="Заавал биш"
-                      className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-semibold text-slate-100 outline-none placeholder:text-slate-600 focus:border-amber-300/70"
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-400 focus:border-amber-400"
                     />
                   </label>
                 </div>
 
-                <p className="mt-2 text-[11px] font-bold leading-4 text-amber-100/75">
+                <p className="mt-2 text-[11px] font-bold leading-4 text-amber-800">
                   Төлөх дүн {formatMoney(total)} · {safeCreditTermMonths} сар ·
                   дуусах өдөр {creditDueDateLabel}
                 </p>
@@ -4772,14 +4772,14 @@ function RestaurantPosContent() {
             ) : null}
 
             {checkoutError ? (
-              <p className="mt-3 rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-200">
+              <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
                 {checkoutError}
               </p>
             ) : null}
 
             {selectedTicketPaid ? (
-              <div className="mt-3 rounded-xl border border-emerald-300/30 bg-emerald-300/10 p-3">
-                <p className="text-xs font-bold leading-5 text-emerald-100">
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-xs font-bold leading-5 text-emerald-800">
                   {orderMode === "DINE_IN"
                     ? "Төлбөр авсан ч үйлчлүүлэгч ширээн дээр сууж байгаа гэж үзнэ. Гарсны дараа ширээг чөлөөлнө."
                     : "Төлбөр бүртгэгдэж, захиалга гал тогоо руу илгээгдсэн. Захиалгыг хүлээлгэн өгсний дараа энэ байрыг чөлөөлнө."}
@@ -4801,8 +4801,8 @@ function RestaurantPosContent() {
             ) : (
               <div className="mt-3">
                 {selectedTicketActive ? (
-                  <div className="mb-3 rounded-xl border border-amber-300/30 bg-amber-300/10 p-3">
-                    <p className="text-xs font-bold leading-5 text-amber-100">
+                  <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-xs font-bold leading-5 text-amber-800">
                       Энэ ширээн дээр төлбөр аваагүй ticket байна. Хэрвээ
                       захиалгыг цуцлаад ширээг суллах бол доорх товчийг дарна.
                       Гал тогоонд идэвхтэй ticket байвал хамт цуцлагдаж
@@ -4820,7 +4820,7 @@ function RestaurantPosContent() {
                         checkoutSubmitting ||
                         qpayPaymentActive
                       }
-                      className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-300/10 text-sm font-black text-amber-100 transition hover:bg-amber-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white text-sm font-black text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {clearSubmitting ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -4833,7 +4833,7 @@ function RestaurantPosContent() {
                 ) : null}
 
                 {orderMode === "DINE_IN" && hasUnsentItems ? (
-                  <p className="mb-2 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-bold leading-5 text-amber-100">
+                  <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-800">
                     Төлбөр амжилттай болсны дараа илгээгдээгүй хоолнууд гал
                     тогоо руу автоматаар явна.
                   </p>
@@ -7194,7 +7194,7 @@ function TotalLine({
     <div className="mb-4 flex items-center justify-between gap-3 text-sm">
       <span
         className={
-          strong ? "font-bold text-[#d4e4fa]" : "font-semibold text-[#86929a]"
+          strong ? "font-bold text-slate-800" : "font-semibold text-slate-500"
         }
       >
         {label}
@@ -7202,8 +7202,8 @@ function TotalLine({
       <span
         className={
           strong
-            ? "text-base font-black tabular-nums text-[#92d9ff]"
-            : "font-bold tabular-nums text-[#d4e4fa]"
+            ? "text-base font-black tabular-nums text-sky-700"
+            : "font-bold tabular-nums text-slate-800"
         }
       >
         {value}
