@@ -24,6 +24,7 @@ export function stocktakeProductFilter(
   return {
     organizationId,
     deletedAt: null,
+    isActive: true,
     isRestaurantMenuItem: false,
     supplyType: "IN_STOCK",
   };

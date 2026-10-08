@@ -27,6 +27,7 @@ export async function resolveStocktakeProduct(input: {
         where: {
           organizationId: input.organizationId,
           deletedAt: null,
+          isActive: true,
           OR: [
             { barcode: input.query },
             { barcodeAliases: { has: input.query } },
@@ -45,6 +46,7 @@ export async function resolveStocktakeProduct(input: {
             where: {
               organizationId: input.organizationId,
               deletedAt: null,
+              isActive: true,
               name: { equals: input.query, mode: "insensitive" },
             },
             include: {
