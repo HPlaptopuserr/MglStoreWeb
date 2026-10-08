@@ -9,6 +9,7 @@ This is an explicit, one-time opt-in for the HyperMarket vendor organization and
 - Existing warehouse operator logins, setup tokens, distribution recipients, and portal routes are unchanged. Vendor catalog permissions do not grant warehouse portal access.
 - The linked vendor's existing organization product permissions apply to shared products. Recipient organizations gain no shared-catalog editing permission.
 - New vendor products route to the linked warehouse; warehouse product creation, import, barcode attachment and catalog search use the linked organization. Shared vendor imports update metadata and physical stock atomically per row.
+- Future vendor stocktakes list only the shared warehouse for this owner; new products discovered while counting are created in the same shared catalog. Other vendors retain their existing count scopes.
 - Product IDs, stock totals, prior inventory ledger entries and order references are preserved. Existing exclusively owned internal inventory can move to the shared warehouse with transfer ledger entries. Other organizations' ordinary products are not moved.
 
 ## Deployment and one-time activation

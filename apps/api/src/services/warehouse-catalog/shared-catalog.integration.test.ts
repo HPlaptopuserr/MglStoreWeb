@@ -1,3 +1,8 @@
+import {
+  assertStocktakeScope,
+  stocktakeWarehouseFilter,
+} from "../stocktake-scope";
+import { createStocktake } from "../stocktake.service";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
@@ -193,8 +198,10 @@ test(
         organizationId: owner.id,
         apply: true,
       });
-      const auditBefore = await prisma.auditLog.findUniqueOrThrow({ where: { id: `warehouse-catalog-link:${warehouse.id}` } });
-    const ledgers = await prisma.inventoryLedger.count({
+      const auditBefore = await prisma.auditLog.findUniqueOrThrow({
+        where: { id: `warehouse-catalog-link:${warehouse.id}` },
+      });
+      const ledgers = await prisma.inventoryLedger.count({
         where: { referenceId: warehouse.id },
       });
       await linkWarehouseCatalog({
@@ -423,6 +430,45 @@ test(
         ).quantity,
         2,
       );
+      assert.deepEqual(
+        (
+          await prisma.warehouse.findMany({
+            where: stocktakeWarehouseFilter(owner.id),
+            select: { id: true },
+          })
+        ).map((w) => w.id),
+        [warehouse.id],
+      );
+      await assert.rejects(
+        prisma.$transaction((tx) =>
+          assertStocktakeScope(tx, owner.id, legacyWarehouse.id),
+        ),
+        /Нэгдсэн/,
+      );
+      await assert.rejects(
+        prisma.$transaction((tx) => assertStocktakeScope(tx, owner.id, null)),
+        /Нэгдсэн/,
+      );
+      await assert.rejects(
+        prisma.$transaction((tx) =>
+          assertStocktakeScope(tx, recipient.id, warehouse.id),
+        ),
+        /эрхгүй/,
+      );
+      const sharedCount = await createStocktake({
+        id: randomUUID(),
+        organizationId: owner.id,
+        warehouseId: warehouse.id,
+        title: "Shared inventory count",
+        kind: "FULL",
+        actorId: vendor.id,
+      });
+      assert.ok(
+        sharedCount.lines.some(
+          (line) => line.productId === added.id && line.expected === 2,
+        ),
+      );
+      await prisma.stocktake.delete({ where: { id: sharedCount.id } });
       const unrelatedWarehouse = await prisma.$transaction((tx) =>
         resolveProductInventoryWarehouse(tx, recipient.id, recipientProduct.id),
       );

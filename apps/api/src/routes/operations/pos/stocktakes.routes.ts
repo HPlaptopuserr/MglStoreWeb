@@ -1,3 +1,4 @@
+import { stocktakeWarehouseFilter } from "../../../services/stocktake-scope";
 import { resolveStocktakeProduct } from "../../../services/stocktake-lookup.service";
 import {
   addStocktakeProduct,
@@ -88,12 +89,7 @@ router.get(
           include: { warehouse: { select: { name: true } } },
         }),
         prisma.warehouse.findMany({
-          where: {
-            type: "VENDOR_INTERNAL",
-            isActive: true,
-            deletedAt: null,
-            organizations: { some: { organizationId } },
-          },
+          where: stocktakeWarehouseFilter(organizationId),
           select: {
             id: true,
             name: true,
