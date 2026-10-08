@@ -2621,13 +2621,13 @@ function SelfServiceCheckoutContent() {
               </div>
             </section>
 
-            <aside className="h-fit rounded-[28px] bg-[#11231d] p-6 text-white shadow-xl shadow-emerald-950/10">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-white/40">
+            <aside className="h-fit rounded-[28px] border border-[#e7e1d3] bg-[#fffdf8] p-6 text-[#10221c] shadow-xl shadow-slate-200/70">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
                 Төлбөрийн мэдээлэл
               </p>
               <div className="mt-6 space-y-3 text-sm">
                 <div className="flex justify-between">
-                  <span className="font-semibold text-white/55">
+                  <span className="font-semibold text-slate-500">
                     Барааны дүн
                   </span>
                   <span className="font-black">
@@ -2636,7 +2636,7 @@ function SelfServiceCheckoutContent() {
                 </div>
                 {packagingFee > 0 ? (
                   <div className="flex justify-between">
-                    <span className="font-semibold text-white/55">
+                    <span className="font-semibold text-slate-500">
                       Савны үнэ
                     </span>
                     <span className="font-black">
@@ -2645,7 +2645,7 @@ function SelfServiceCheckoutContent() {
                   </div>
                 ) : null}
                 <div className="flex justify-between">
-                  <span className="font-semibold text-white/55">
+                  <span className="font-semibold text-slate-500">
                     {regularCustomer
                       ? "Байнгын хэрэглэгчийн хөнгөлөлт"
                       : "Хөнгөлөлт"}
@@ -2657,8 +2657,8 @@ function SelfServiceCheckoutContent() {
                   </span>
                 </div>
               </div>
-              <div className="mt-6 flex items-end justify-between border-t border-white/10 pt-6">
-                <span className="text-sm font-bold text-white/60">
+              <div className="mt-6 flex items-end justify-between border-t border-slate-200 pt-6">
+                <span className="text-sm font-bold text-slate-500">
                   Нийт төлөх
                 </span>
                 <span className="text-3xl font-black tracking-tight">
@@ -2667,20 +2667,20 @@ function SelfServiceCheckoutContent() {
               </div>
 
               {isCafe ? (
-                <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-3">
+                <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-3">
                   <div className="flex items-center gap-2">
-                    <BadgePercent className="h-4 w-4 text-emerald-300" />
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-white/45">
+                    <BadgePercent className="h-4 w-4 text-emerald-600" />
+                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
                       Байнгын хэрэглэгч
                     </p>
                   </div>
                   {regularCustomer ? (
-                    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-emerald-300/10 px-3 py-3">
+                    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-emerald-50 px-3 py-3">
                       <div className="min-w-0">
-                        <p className="truncate text-sm font-black text-emerald-200">
+                        <p className="truncate text-sm font-black text-emerald-800">
                           {regularCustomer.name}
                         </p>
-                        <p className="mt-0.5 text-xs font-bold text-white/50">
+                        <p className="mt-0.5 text-xs font-bold text-slate-500">
                           {regularCustomer.phone} · {regularCustomer.discountPercent}% хямдрал
                         </p>
                       </div>
@@ -2692,7 +2692,7 @@ function SelfServiceCheckoutContent() {
                           setRegularCustomerError("");
                           setActionError("");
                         }}
-                        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 text-white/60 transition hover:bg-white/10 hover:text-white"
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
                         aria-label="Байнгын хэрэглэгчийг салгах"
                       >
                         <X className="h-4 w-4" />
@@ -2727,7 +2727,7 @@ function SelfServiceCheckoutContent() {
                             }
                           }}
                           placeholder="Утасны 8 орон"
-                          className="h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/10 px-3 text-sm font-bold text-white outline-none placeholder:text-white/30 focus:border-emerald-300"
+                          className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-emerald-500"
                         />
                         <button
                           type="button"
@@ -2741,7 +2741,7 @@ function SelfServiceCheckoutContent() {
                             regularCustomerLoading ||
                             regularCustomerPhone.length !== 8
                           }
-                          className="inline-flex h-11 items-center justify-center rounded-xl bg-white px-3 text-xs font-black text-[#172219] disabled:opacity-40"
+                          className="inline-flex h-11 items-center justify-center rounded-xl bg-[#11231d] px-3 text-xs font-black text-white disabled:opacity-40"
                         >
                           {regularCustomerLoading ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -2751,11 +2751,11 @@ function SelfServiceCheckoutContent() {
                         </button>
                       </div>
                       {regularCustomerError ? (
-                        <p className="mt-2 text-xs font-bold leading-5 text-rose-200">
+                        <p className="mt-2 text-xs font-bold leading-5 text-rose-600">
                           {regularCustomerError}
                         </p>
                       ) : (
-                        <p className="mt-2 text-[11px] font-semibold leading-4 text-white/35">
+                        <p className="mt-2 text-[11px] font-semibold leading-4 text-slate-400">
                           Бүртгэлтэй утсаа оруулж хямдралаа авна уу.
                         </p>
                       )}
@@ -2765,8 +2765,8 @@ function SelfServiceCheckoutContent() {
               ) : null}
 
               {ebarimtReady ? (
-                <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-3">
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-white/40">
+                <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-3">
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
                     Ebarimt авах төрөл
                   </p>
                   <div className="mt-3 grid grid-cols-2 gap-2">
@@ -2779,8 +2779,8 @@ function SelfServiceCheckoutContent() {
                       }}
                       className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-black transition ${
                         ebarimtBuyerMode === "B2C"
-                          ? "border-emerald-300 bg-emerald-300 text-[#172219]"
-                          : "border-white/10 bg-white/5 text-white/65"
+                          ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                          : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
                       }`}
                     >
                       <UserRound className="h-4 w-4" />
@@ -2794,8 +2794,8 @@ function SelfServiceCheckoutContent() {
                       }}
                       className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-black transition ${
                         ebarimtBuyerMode === "B2B"
-                          ? "border-emerald-300 bg-emerald-300 text-[#172219]"
-                          : "border-white/10 bg-white/5 text-white/65"
+                          ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                          : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
                       }`}
                     >
                       <Building2 className="h-4 w-4" />
@@ -2822,7 +2822,7 @@ function SelfServiceCheckoutContent() {
                             setActionError("");
                           }}
                           placeholder="Регистрийн 7 орон"
-                          className="h-11 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/10 px-3 text-sm font-bold text-white outline-none placeholder:text-white/30 focus:border-emerald-300"
+                          className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-emerald-500"
                         />
                         <button
                           type="button"
@@ -2832,7 +2832,7 @@ function SelfServiceCheckoutContent() {
                           disabled={
                             companyLookupLoading || companyRegNo.length !== 7
                           }
-                          className="inline-flex h-11 items-center justify-center rounded-xl bg-white px-3 text-xs font-black text-[#172219] disabled:opacity-40"
+                          className="inline-flex h-11 items-center justify-center rounded-xl bg-[#11231d] px-3 text-xs font-black text-white disabled:opacity-40"
                         >
                           {companyLookupLoading ? (
                             <Loader2 className="h-4 w-4 animate-spin" />
@@ -2842,7 +2842,7 @@ function SelfServiceCheckoutContent() {
                         </button>
                       </div>
                       {companyLookup ? (
-                        <div className="mt-2 flex items-start gap-2 rounded-xl bg-emerald-300/10 px-3 py-2 text-xs font-bold leading-5 text-emerald-200">
+                        <div className="mt-2 flex items-start gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold leading-5 text-emerald-700">
                           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
                           <span>
                             {companyLookup.name || "Байгууллага"} · TIN{" "}
@@ -2851,7 +2851,7 @@ function SelfServiceCheckoutContent() {
                         </div>
                       ) : null}
                       {companyLookupError ? (
-                        <p className="mt-2 text-xs font-bold leading-5 text-rose-200">
+                        <p className="mt-2 text-xs font-bold leading-5 text-rose-600">
                           {companyLookupError}
                         </p>
                       ) : null}
@@ -2859,12 +2859,12 @@ function SelfServiceCheckoutContent() {
                   ) : null}
                 </div>
               ) : register.ebarimtEnabled ? (
-                <p className="mt-4 rounded-xl bg-amber-300/10 px-3 py-2 text-xs font-bold leading-5 text-amber-200">
+                <p className="mt-4 rounded-xl bg-amber-100 px-3 py-2 text-xs font-bold leading-5 text-amber-800">
                   Ebarimt үйлчилгээний орчны тохиргоо идэвхгүй байна.
                 </p>
               ) : null}
 
-              <p className="mt-6 text-xs font-black uppercase tracking-[0.16em] text-white/40">
+              <p className="mt-6 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
                 Төлбөрийн хэлбэр
               </p>
               <div
@@ -2881,7 +2881,7 @@ function SelfServiceCheckoutContent() {
                   className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border text-sm font-black transition ${
                     paymentMethod === "QPAY"
                       ? "border-[#f4c34f] bg-[#f4c34f] text-[#172219]"
-                      : "border-white/10 bg-white/5 text-white/65 hover:bg-white/10"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                   }`}
                 >
                   <QrCode className="h-6 w-6" />
@@ -2898,7 +2898,7 @@ function SelfServiceCheckoutContent() {
                   className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-40 ${
                     paymentMethod === "CARD"
                       ? "border-[#f4c34f] bg-[#f4c34f] text-[#172219]"
-                      : "border-white/10 bg-white/5 text-white/65 hover:bg-white/10"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                   }`}
                 >
                   <CreditCard className="h-6 w-6" />
@@ -2914,7 +2914,7 @@ function SelfServiceCheckoutContent() {
                     className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border px-1 text-center text-xs font-black transition ${
                       paymentMethod === "CASH"
                         ? "border-[#f4c34f] bg-[#f4c34f] text-[#172219]"
-                        : "border-white/10 bg-white/5 text-white/65 hover:bg-white/10"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                   >
                     <Banknote className="h-6 w-6" />
@@ -2923,13 +2923,13 @@ function SelfServiceCheckoutContent() {
                 ) : null}
               </div>
               {!cardTerminalReady ? (
-                <p className="mt-2 text-[11px] font-semibold leading-4 text-amber-200/65">
+                <p className="mt-2 text-[11px] font-semibold leading-4 text-amber-700">
                   Карт ашиглахын тулд POS терминалаа тохируулна уу.
                 </p>
               ) : null}
 
               {actionError ? (
-                <div className="mt-5 rounded-2xl bg-rose-400/10 px-4 py-3 text-sm font-bold leading-5 text-rose-200">
+                <div className="mt-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold leading-5 text-rose-700">
                   {actionError}
                 </div>
               ) : null}
@@ -2960,7 +2960,7 @@ function SelfServiceCheckoutContent() {
                     ? "Тест борлуулалт үүсгэх"
                     : "QPay-аар төлөх"}
               </button>
-              <div className="mt-4 flex items-center justify-center gap-2 text-[11px] font-bold text-white/35">
+              <div className="mt-4 flex items-center justify-center gap-2 text-[11px] font-bold text-slate-400">
                 <Check className="h-3.5 w-3.5" />
                 Төлөгдсөний дараа захиалга шууд илгээгдэнэ
               </div>

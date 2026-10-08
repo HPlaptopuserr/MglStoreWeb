@@ -10,6 +10,7 @@ import {
   ChevronUp,
   Download,
   Loader2,
+  LockKeyhole,
   ReceiptText,
   RefreshCw,
   RotateCcw,
@@ -19,6 +20,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useOrg } from "@/components/org/OrgContext";
+import ReportAccessGate from "@/components/reports/ReportAccessGate";
 import { money } from "@/lib/org-format";
 import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
 import {
@@ -35,6 +37,7 @@ import {
 } from "@/lib/restaurant-pos-api";
 
 type RangePreset = "TODAY" | "WEEK" | "MONTH" | "PREVIOUS_MONTH";
+type RangeMode = RangePreset | "CUSTOM";
 
 const RANGE_OPTIONS: Array<{ id: RangePreset; label: string }> = [
   { id: "TODAY", label: "Өнөөдөр" },
@@ -93,6 +96,12 @@ function getDateRange(preset: RangePreset) {
     from: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0),
     to: endOfDay(now),
   };
+}
+
+function getSelectedDayRange(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const selected = new Date(year, month - 1, day);
+  return { from: startOfDay(selected), to: endOfDay(selected) };
 }
 
 const formatDate = (value: string) =>
@@ -206,7 +215,11 @@ function downloadSalesCsv(
 
 export default function OrderHistoryScreen() {
   const { user } = useOrg();
-  const [rangePreset, setRangePreset] = useState<RangePreset>("WEEK");
+  const [reportUnlocked, setReportUnlocked] = useState(false);
+  const [rangeMode, setRangeMode] = useState<RangeMode>("TODAY");
+  const [selectedDate, setSelectedDate] = useState(() =>
+    formatFileDate(new Date()),
+  );
   const [sales, setSales] = useState<RestaurantSalesHistoryItem[]>([]);
   const [registers, setRegisters] = useState<RestaurantPosRegister[]>([]);
   const [loading, setLoading] = useState(true);
@@ -219,10 +232,22 @@ export default function OrderHistoryScreen() {
   const [voidingSaleId, setVoidingSaleId] = useState("");
   const [returningSaleId, setReturningSaleId] = useState("");
 
-  const range = useMemo(() => getDateRange(rangePreset), [rangePreset]);
+  const range = useMemo(
+    () =>
+      rangeMode === "CUSTOM"
+        ? getSelectedDayRange(selectedDate)
+        : getDateRange(rangeMode),
+    [rangeMode, selectedDate],
+  );
 
   const loadSales = useCallback(
     async (signal?: AbortSignal) => {
+      if (!reportUnlocked) {
+        setSales([]);
+        setLoading(false);
+        return;
+      }
+
       if (!user.organizationId) {
         setSales([]);
         setLoading(false);
@@ -274,7 +299,7 @@ export default function OrderHistoryScreen() {
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [range.from, range.to, user.organizationId],
+    [range.from, range.to, reportUnlocked, user.organizationId],
   );
 
   useEffect(() => {
@@ -284,6 +309,11 @@ export default function OrderHistoryScreen() {
   }, [loadSales]);
 
   useEffect(() => {
+    if (!reportUnlocked) {
+      setRegisters([]);
+      return;
+    }
+
     let active = true;
     void getRestaurantPosRegisters()
       .then((items) => {
@@ -295,7 +325,7 @@ export default function OrderHistoryScreen() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reportUnlocked]);
 
   const returnSaleEbarimt = useCallback(
     async (sale: RestaurantSalesHistoryItem) => {
@@ -518,6 +548,16 @@ export default function OrderHistoryScreen() {
     page * PAGE_SIZE,
   );
 
+  if (!reportUnlocked) {
+    return (
+      <ReportAccessGate
+        organizationId={user.organizationId || ""}
+        organizationName={user.organizationName}
+        onUnlock={() => setReportUnlocked(true)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-5">
       <header className="rounded-3xl bg-slate-950 px-5 py-6 text-white shadow-sm sm:px-7">
@@ -530,7 +570,9 @@ export default function OrderHistoryScreen() {
               Захиалгын түүх
             </h1>
             <p className="mt-2 text-sm font-semibold text-slate-400">
-              {formatRangeDate(range.from)} — {formatRangeDate(range.to)}
+              {rangeMode === "TODAY" || rangeMode === "CUSTOM"
+                ? formatRangeDate(range.from)
+                : `${formatRangeDate(range.from)} — ${formatRangeDate(range.to)}`}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -538,9 +580,9 @@ export default function OrderHistoryScreen() {
               <button
                 key={option.id}
                 type="button"
-                onClick={() => setRangePreset(option.id)}
+                onClick={() => setRangeMode(option.id)}
                 className={`h-10 rounded-xl px-4 text-xs font-black transition ${
-                  rangePreset === option.id
+                  rangeMode === option.id
                     ? "bg-emerald-300 text-slate-950"
                     : "border border-white/15 bg-white/5 text-slate-200 hover:bg-white/10"
                 }`}
@@ -548,6 +590,42 @@ export default function OrderHistoryScreen() {
                 {option.label}
               </button>
             ))}
+            <label
+              className={`flex h-10 items-center gap-2 rounded-xl border px-3 transition ${
+                rangeMode === "CUSTOM"
+                  ? "border-emerald-300 bg-emerald-300 text-slate-950"
+                  : "border-white/15 bg-white/5 text-slate-200 hover:bg-white/10"
+              }`}
+            >
+              <CalendarDays className="h-4 w-4 shrink-0" />
+              <span className="sr-only">Тайлан харах огноо</span>
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(event) => {
+                  if (!event.target.value) return;
+                  setSelectedDate(event.target.value);
+                  setRangeMode("CUSTOM");
+                }}
+                className={`w-[126px] bg-transparent text-xs font-black outline-none ${
+                  rangeMode === "CUSTOM"
+                    ? "[color-scheme:light]"
+                    : "[color-scheme:dark]"
+                }`}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => {
+                setReportUnlocked(false);
+                setSales([]);
+                setRegisters([]);
+              }}
+              className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 text-xs font-black text-slate-200 transition hover:border-rose-300/50 hover:bg-rose-400/10 hover:text-rose-200"
+            >
+              <LockKeyhole className="h-4 w-4" />
+              Тайлан түгжих
+            </button>
           </div>
         </div>
       </header>

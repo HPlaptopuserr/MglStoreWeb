@@ -6,6 +6,11 @@ type LoginPayload =
   | { email: string; password: string }
   | { phone: string; password: string };
 
+type OrgAuthResponse = {
+  accessToken: string;
+  user: OrgUser;
+};
+
 function buildLoginPayload(identifier: string, password: string): LoginPayload {
   const value = identifier.trim();
   const isPhone = PHONE_PATTERN.test(value) && !value.includes("@");
@@ -14,13 +19,18 @@ function buildLoginPayload(identifier: string, password: string): LoginPayload {
     : { email: value.toLowerCase(), password };
 }
 
-export async function loginOrgUser(identifier: string, password: string) {
+async function authenticateOrgUser(
+  identifier: string,
+  password: string,
+): Promise<OrgAuthResponse> {
   const response = await fetch(`${API_BASE}/auth/vendor/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(buildLoginPayload(identifier, password)),
   });
-  const data = await response.json().catch(() => ({}));
+  const data = (await response.json().catch(() => ({}))) as Partial<
+    OrgAuthResponse & { message: string }
+  >;
 
   if (!response.ok) {
     throw new Error(data.message || "Нэвтрэх үед алдаа гарлаа.");
@@ -30,5 +40,31 @@ export async function loginOrgUser(identifier: string, password: string) {
     throw new Error("Энэ хэрэглэгч байгууллагын эрхтэй холбогдоогүй байна.");
   }
 
-  saveOrgSession(data.accessToken, data.user as OrgUser);
+  if (!data.accessToken) {
+    throw new Error("Нэвтрэх эрхийн мэдээлэл дутуу байна.");
+  }
+
+  return { accessToken: data.accessToken, user: data.user };
+}
+
+export async function loginOrgUser(identifier: string, password: string) {
+  const data = await authenticateOrgUser(identifier, password);
+
+  saveOrgSession(data.accessToken, data.user);
+}
+
+export async function verifyOrgUserCredentials(
+  identifier: string,
+  password: string,
+  organizationId: string,
+) {
+  const data = await authenticateOrgUser(identifier, password);
+
+  if (data.user.organizationId !== organizationId) {
+    throw new Error(
+      "Энэ хэрэглэгч одоогийн байгууллагын тайлан харах эрхгүй байна.",
+    );
+  }
+
+  return data.user;
 }
