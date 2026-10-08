@@ -72,6 +72,38 @@ async function snapshot(
   }));
 }
 
+export function missingStocktakeLines<T extends { productId: string }>(
+  current: T[],
+  existing: { productId: string }[],
+) {
+  const existingProductIds = new Set(existing.map((line) => line.productId));
+  return current.filter((line) => !existingProductIds.has(line.productId));
+}
+
+async function addMissingStocktakeLines(
+  tx: Tx,
+  session: {
+    id: string;
+    organizationId: string;
+    warehouseId: string | null;
+    lines: { productId: string }[];
+  },
+) {
+  const missing = missingStocktakeLines(
+    await snapshot(tx, session.organizationId, session.warehouseId),
+    session.lines,
+  );
+
+  for (let offset = 0; offset < missing.length; offset += 500)
+    await tx.stocktakeLine.createMany({
+      data: missing
+        .slice(offset, offset + 500)
+        .map((line) => ({ ...line, stocktakeId: session.id })),
+    });
+
+  return missing.length;
+}
+
 export function createStocktake(input: {
   id: string;
   organizationId: string;
@@ -162,7 +194,11 @@ export function loadStocktake(input: {
         },
       },
     });
-    if (!removed.count) return session;
+    const added =
+      session.kind === "FULL"
+        ? await addMissingStocktakeLines(tx, session)
+        : 0;
+    if (!removed.count && !added) return session;
 
     return tx.stocktake.update({
       where: { id: session.id },
@@ -289,6 +325,7 @@ export function mutateStocktake(input: {
             "Хяналтад байгаа тооллогыг эхлээд засварт буцаана уу",
             409,
           );
+        await addMissingStocktakeLines(tx, session);
       } else if (input.action === "approve") {
         if (status !== "REVIEW")
           throw new StocktakeError("Эхлээд хяналтад илгээнэ үү", 409);
