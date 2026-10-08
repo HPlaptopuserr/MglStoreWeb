@@ -5,6 +5,7 @@ import {
   buildCreditBorrowerKey,
 } from "@mgl/types";
 import { parseCreditWorkDetails } from "./credit-work-details";
+import { resolvePosDiscountProfileType } from "./discount-profile";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 import {
@@ -792,12 +793,7 @@ router.post("/pos/sales", async (req, res) => {
       : null;
     if (requestedRegularCustomerPhone && !regularCustomerPhone) {
       return res.status(400).json({
-        message: "Байнгын хэрэглэгчийн утасны дугаар 8 оронтой байна",
-      });
-    }
-    if (regularCustomerPhone && !isSelfServiceSale) {
-      return res.status(400).json({
-        message: "Байнгын хэрэглэгчийн хямдрал зөвхөн өөртөө үйлчлэх кассад үйлчилнэ",
+        message: "Хөнгөлөлтийн бүртгэлийн утасны дугаар 8 оронтой байна",
       });
     }
 
@@ -808,35 +804,52 @@ router.post("/pos/sales", async (req, res) => {
       discountPercent: number;
     } | null = null;
     if (regularCustomerPhone) {
-      const [cafeMode, customer] = await Promise.all([
-        prisma.siteSetting.findUnique({
-          where: { key: `self-service-mode-${idempotencyOrganizationId}` },
-          select: { value: true },
-        }),
-        prisma.cafeRegularCustomer.findUnique({
-          where: {
-            organizationId_normalizedPhone: {
-              organizationId: idempotencyOrganizationId,
-              normalizedPhone: regularCustomerPhone,
-            },
+      const discountSettings = await prisma.siteSetting.findMany({
+        where: {
+          key: {
+            in: [
+              `self-service-enabled-${idempotencyOrganizationId}`,
+              `self-service-mode-${idempotencyOrganizationId}`,
+            ],
           },
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            discountPercent: true,
-            isActive: true,
-          },
-        }),
-      ]);
-      if (String(cafeMode?.value || "").trim().toUpperCase() !== "CAFE") {
+        },
+        select: { key: true, value: true },
+      });
+      const discountSettingValues = new Map(
+        discountSettings.map((setting) => [setting.key, setting.value]),
+      );
+      const profileType = resolvePosDiscountProfileType(
+        discountSettingValues.get(
+          `self-service-enabled-${idempotencyOrganizationId}`,
+        ),
+        discountSettingValues.get(
+          `self-service-mode-${idempotencyOrganizationId}`,
+        ),
+      );
+      if (!profileType) {
         return res.status(403).json({
-          message: "Байнгын хэрэглэгчийн хямдрал зөвхөн кофе шопын горимд үйлчилнэ",
+          message: "Өөртөө үйлчлэх кассын хөнгөлөлтийн горим идэвхгүй байна",
         });
       }
+      const customer = await prisma.cafeRegularCustomer.findUnique({
+        where: {
+          organizationId_normalizedPhone_profileType: {
+            organizationId: idempotencyOrganizationId,
+            normalizedPhone: regularCustomerPhone,
+            profileType,
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          discountPercent: true,
+          isActive: true,
+        },
+      });
       if (!customer?.isActive) {
         return res.status(409).json({
-          message: "Байнгын хэрэглэгчийн бүртгэл идэвхгүй эсвэл олдсонгүй",
+          message: "Хөнгөлөлтийн бүртгэл идэвхгүй эсвэл олдсонгүй",
         });
       }
       regularCustomer = {
@@ -849,13 +862,13 @@ router.post("/pos/sales", async (req, res) => {
 
     const effectiveLines: SaleLineInput[] = lines.map((line) => ({
       ...line,
-      discountAmount: isSelfServiceSale
-        ? regularCustomer
-          ? calculateCafeRegularCustomerUnitDiscount(
-              Number(line.unitPrice || 0),
-              regularCustomer.discountPercent,
-            )
-          : 0
+      discountAmount: regularCustomer
+        ? calculateCafeRegularCustomerUnitDiscount(
+            Number(line.unitPrice || 0),
+            regularCustomer.discountPercent,
+          )
+        : isSelfServiceSale
+          ? 0
         : Number(line.discountAmount || 0),
     }));
 

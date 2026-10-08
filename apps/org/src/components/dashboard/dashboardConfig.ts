@@ -57,8 +57,9 @@ export function getDashboardModules(
   if (features.selfService) {
     const isCafe = features.selfServiceMode === "CAFE";
     const role = String(user?.role || "").toUpperCase();
-    const canManageCafeCustomers =
+    const canManageDiscountProfiles =
       user?.orgRole === "OWNER" ||
+      user?.orgRole === "ADMIN" ||
       role === "ADMIN" ||
       role === "SUPER_ADMIN";
     return [
@@ -109,12 +110,16 @@ export function getDashboardModules(
             },
           ]
         : []),
-      ...(isCafe && canManageCafeCustomers
+      ...(canManageDiscountProfiles
         ? [
             {
-              title: "Байнгын хэрэглэгч",
-              desc: "Байнгын хэрэглэгч бүртгэж, өөртөө үйлчлэх кассад үйлчлэх хямдралын хувийг тохируулна.",
-              href: "/dashboard/regular-customers",
+              title: isCafe ? "Байнгын хэрэглэгч" : "Ажилтны хөнгөлөлт",
+              desc: isCafe
+                ? "Байнгын хэрэглэгч бүртгэж, өөртөө үйлчлэх кассад үйлчлэх хямдралын хувийг тохируулна."
+                : "Ажилтны утас болон хөнгөлөлтийн хувийг бүртгэж, хоёр кассад үйлчлүүлнэ.",
+              href: isCafe
+                ? "/dashboard/regular-customers"
+                : "/dashboard/employee-discounts",
               icon: BadgePercent,
               enabled: true,
             },

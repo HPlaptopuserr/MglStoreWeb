@@ -19,6 +19,7 @@ import {
 import { QrGenerator } from "@mgl/ui";
 import {
   ArrowLeft,
+  BadgePercent,
   Banknote,
   Building2,
   ChefHat,
@@ -76,6 +77,7 @@ import {
   getRestaurantPosRegisters,
   getRestaurantSalesHistory,
   getRestaurantShiftHistory,
+  lookupCafeRegularCustomer,
   ensureRestaurantTableQrToken,
   openRestaurantPosShift,
   payRestaurantCreditSale,
@@ -85,6 +87,7 @@ import {
   submitRestaurantClientBridgeResult,
   voidRestaurantSale,
   type RestaurantDiningTable,
+  type CafeRegularCustomer,
   type RestaurantCreditSale,
   type RestaurantMenuCategory,
   type RestaurantPosQPayInvoice,
@@ -99,6 +102,7 @@ import {
   type RestaurantCustomerDisplayPayload,
   type RestaurantCustomerDisplaySuccess,
 } from "./customer-display";
+import { calculateCafeRegularCustomerDiscount } from "@mgl/types";
 import type {
   CardAttempt,
   CashDenominationCount,
@@ -176,6 +180,7 @@ type PendingQPayCheckout = {
   orderMode: OrderMode;
   tableLabel: string;
   ebarimtBuyer: EbarimtBuyer;
+  discountProfile: CafeRegularCustomer | null;
 };
 
 type PaidReceiptContext = {
@@ -648,6 +653,11 @@ function RestaurantPosContent() {
     useState<EbarimtTinLookupResult | null>(null);
   const [companyLookupLoading, setCompanyLookupLoading] = useState(false);
   const [companyLookupError, setCompanyLookupError] = useState("");
+  const [employeePhone, setEmployeePhone] = useState("");
+  const [employeeDiscount, setEmployeeDiscount] =
+    useState<CafeRegularCustomer | null>(null);
+  const [employeeDiscountLoading, setEmployeeDiscountLoading] = useState(false);
+  const [employeeDiscountError, setEmployeeDiscountError] = useState("");
   const [diningTables, setDiningTables] = useState<DiningTable[]>([]);
   const [selectedTableId, setSelectedTableId] = useState("");
   const [tablesLoading, setTablesLoading] = useState(false);
@@ -806,6 +816,56 @@ function RestaurantPosContent() {
       }
     }
   }, [companyLookup, companyRegNo, selectedRegister]);
+
+  const resolveEmployeeDiscount = useCallback(
+    async (phone: string, syncUi = false): Promise<CafeRegularCustomer> => {
+      const normalizedPhone = phone.replace(/\D/g, "").slice(-8);
+      if (!/^\d{8}$/.test(normalizedPhone)) {
+        throw new Error("Ажилтны утасны дугаар 8 оронтой байна");
+      }
+      if (!user.organizationId) {
+        throw new Error("Байгууллагын мэдээлэл олдсонгүй");
+      }
+
+      if (syncUi) {
+        setEmployeeDiscountLoading(true);
+        setEmployeeDiscountError("");
+      }
+      try {
+        const result = await lookupCafeRegularCustomer({
+          organizationId: user.organizationId,
+          phone: normalizedPhone,
+        });
+        if (!result.found || result.customer.profileType !== "EMPLOYEE") {
+          throw new Error("Ажилтны хөнгөлөлтийн бүртгэл олдсонгүй");
+        }
+        if (syncUi) {
+          setEmployeeDiscount(result.customer);
+          setEmployeePhone(result.customer.phone);
+        }
+        return result.customer;
+      } catch (error) {
+        if (syncUi) {
+          setEmployeeDiscount(null);
+          setEmployeeDiscountError(
+            error instanceof Error
+              ? error.message
+              : "Ажилтны хөнгөлөлтийг шалгаж чадсангүй",
+          );
+        }
+        throw error;
+      } finally {
+        if (syncUi) setEmployeeDiscountLoading(false);
+      }
+    },
+    [user.organizationId],
+  );
+
+  useEffect(() => {
+    setEmployeePhone("");
+    setEmployeeDiscount(null);
+    setEmployeeDiscountError("");
+  }, [selectedTableId]);
 
   useEffect(() => {
     if (!ebarimtReady || ebarimtBuyerMode !== "B2B") return;
@@ -1425,7 +1485,15 @@ function RestaurantPosContent() {
     (sum, line) => sum + line.price * line.qty,
     0,
   );
-  const discount = 0;
+  const discount = employeeDiscount
+    ? calculateCafeRegularCustomerDiscount(
+        ticketLines.map((line) => ({
+          unitPrice: line.price,
+          quantity: line.qty,
+        })),
+        employeeDiscount.discountPercent,
+      )
+    : 0;
   const total = subtotal - discount;
   const selectedPayment =
     paymentOptions.find((option) => option.value === paymentMethod) ??
@@ -2069,6 +2137,9 @@ function RestaurantPosContent() {
     setCompanyRegNo("");
     setCompanyLookup(null);
     setCompanyLookupError("");
+    setEmployeePhone("");
+    setEmployeeDiscount(null);
+    setEmployeeDiscountError("");
     setReceiptPreviewOpen(true);
     setCustomerDisplaySuccess({
       title: "Төлбөр амжилттай",
@@ -2123,6 +2194,7 @@ function RestaurantPosContent() {
         clientSaleId: createClientSaleId(),
         total: checkout.amount,
         qpayInvoiceId: paidInvoice.invoiceId,
+        regularCustomerPhone: checkout.discountProfile?.phone,
         note: checkout.note,
         lines: checkout.lines,
       });
@@ -2830,6 +2902,23 @@ function RestaurantPosContent() {
         paymentMethod === "CREDIT"
           ? { type: "B2C" }
           : await resolveEbarimtBuyer();
+      const checkoutEmployeeDiscount = employeeDiscount
+        ? await resolveEmployeeDiscount(employeeDiscount.phone)
+        : null;
+      if (checkoutEmployeeDiscount) {
+        setEmployeeDiscount(checkoutEmployeeDiscount);
+        setEmployeePhone(checkoutEmployeeDiscount.phone);
+      }
+      const checkoutDiscount = checkoutEmployeeDiscount
+        ? calculateCafeRegularCustomerDiscount(
+            ticketLines.map((line) => ({
+              unitPrice: line.price,
+              quantity: line.qty,
+            })),
+            checkoutEmployeeDiscount.discountPercent,
+          )
+        : 0;
+      const checkoutTotal = Math.max(0, subtotal - checkoutDiscount);
       const savedTicket = await persistTicketLines(ticketLines);
       if (!savedTicket) {
         throw new Error("Төлбөр хийх ticket олдсонгүй.");
@@ -2844,7 +2933,7 @@ function RestaurantPosContent() {
 
       if (paymentMethod === "QPAY") {
         const invoice = await createRestaurantQPayInvoice({
-          amount: total,
+          amount: checkoutTotal,
           registerId: selectedRegister.id,
           organizationId: user.organizationId,
         });
@@ -2852,19 +2941,20 @@ function RestaurantPosContent() {
         setQpayCheckout({
           invoice,
           ticket: savedTicket,
-          amount: total,
+          amount: checkoutTotal,
           note: saleNote,
           lines: saleLines,
           orderMode,
           tableLabel: selectedTable.label,
           ebarimtBuyer,
+          discountProfile: checkoutEmployeeDiscount,
         });
         setQpayMessage("QPay QR уншуулж төлбөрөө төлнө үү.");
         return;
       }
 
       if (paymentMethod === "CARD") {
-        const cardAttempt = await authorizeCardPayment(total);
+        const cardAttempt = await authorizeCardPayment(checkoutTotal);
         const receipt = await createRestaurantCardSale({
           shiftId: shift.id,
           branchId: selectedRegister.branchId,
@@ -2872,7 +2962,8 @@ function RestaurantPosContent() {
           organizationId: user.organizationId,
           restaurantTicketId: savedTicket.id,
           clientSaleId: createClientSaleId(),
-          total,
+          total: checkoutTotal,
+          regularCustomerPhone: checkoutEmployeeDiscount?.phone,
           note: saleNote,
           lines: saleLines,
           cardAttemptId: cardAttempt.attemptId,
@@ -2900,10 +2991,14 @@ function RestaurantPosContent() {
           organizationId: user.organizationId,
           restaurantTicketId: savedTicket.id,
           clientSaleId: createClientSaleId(),
-          total,
+          total: checkoutTotal,
+          regularCustomerPhone: checkoutEmployeeDiscount?.phone,
           note: saleNote,
           lines: saleLines,
-          credit: buildCreditPaymentMeta(selectedCreditBorrower, total),
+          credit: buildCreditPaymentMeta(
+            selectedCreditBorrower,
+            checkoutTotal,
+          ),
         });
         setSelectedCreditBorrowerId("");
         setCreditNote("");
@@ -2926,7 +3021,8 @@ function RestaurantPosContent() {
         organizationId: user.organizationId,
         restaurantTicketId: savedTicket.id,
         clientSaleId: createClientSaleId(),
-        total,
+        total: checkoutTotal,
+        regularCustomerPhone: checkoutEmployeeDiscount?.phone,
         note: saleNote,
         lines: saleLines,
       });
@@ -4334,9 +4430,108 @@ function RestaurantPosContent() {
           </div>
 
           <div className="min-h-0 max-h-[46dvh] shrink overflow-y-auto overscroll-contain border-t border-slate-200 pt-4 pr-1 max-xl:max-h-[42dvh]">
-            <TotalLine label="Discount" value={formatMoney(discount)} />
+            <TotalLine
+              label={
+                employeeDiscount
+                  ? `Ажилтны хөнгөлөлт (${employeeDiscount.discountPercent}%)`
+                  : "Хөнгөлөлт"
+              }
+              value={discount > 0 ? `-${formatMoney(discount)}` : formatMoney(0)}
+            />
             <TotalLine label="Sub total" value={formatMoney(subtotal)} />
             <TotalLine label="Total" value={formatMoney(total)} strong />
+
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex items-center gap-2">
+                <BadgePercent className="h-4 w-4 text-emerald-600" />
+                <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">
+                  Ажилтны хөнгөлөлт
+                </p>
+              </div>
+              {employeeDiscount ? (
+                <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-emerald-50 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-black text-emerald-800">
+                      {employeeDiscount.name}
+                    </p>
+                    <p className="mt-0.5 text-[11px] font-bold text-slate-500">
+                      {employeeDiscount.phone} · {employeeDiscount.discountPercent}%
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmployeeDiscount(null);
+                      setEmployeePhone("");
+                      setEmployeeDiscountError("");
+                      setCheckoutError("");
+                    }}
+                    disabled={checkoutSubmitting || qpayPaymentActive}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-emerald-200 text-emerald-700 transition hover:bg-white disabled:opacity-50"
+                    aria-label="Ажилтны хөнгөлөлтийг салгах"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 flex gap-2">
+                  <input
+                    inputMode="numeric"
+                    maxLength={8}
+                    value={employeePhone}
+                    onChange={(event) => {
+                      setEmployeePhone(
+                        event.target.value.replace(/\D/g, "").slice(0, 8),
+                      );
+                      setEmployeeDiscount(null);
+                      setEmployeeDiscountError("");
+                      setCheckoutError("");
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === "Enter" &&
+                        employeePhone.length === 8 &&
+                        !employeeDiscountLoading
+                      ) {
+                        event.preventDefault();
+                        void resolveEmployeeDiscount(employeePhone, true).catch(
+                          () => null,
+                        );
+                      }
+                    }}
+                    disabled={checkoutSubmitting || qpayPaymentActive}
+                    placeholder="Ажилтны утасны 8 орон"
+                    className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-emerald-400 focus:bg-white disabled:opacity-50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void resolveEmployeeDiscount(employeePhone, true).catch(
+                        () => null,
+                      )
+                    }
+                    disabled={
+                      employeePhone.length !== 8 ||
+                      employeeDiscountLoading ||
+                      checkoutSubmitting ||
+                      qpayPaymentActive
+                    }
+                    className="flex h-10 min-w-16 items-center justify-center rounded-lg bg-slate-900 px-3 text-xs font-black text-white disabled:opacity-40"
+                  >
+                    {employeeDiscountLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Шалгах"
+                    )}
+                  </button>
+                </div>
+              )}
+              {employeeDiscountError ? (
+                <p className="mt-2 text-[11px] font-bold leading-4 text-rose-600">
+                  {employeeDiscountError}
+                </p>
+              ) : null}
+            </div>
 
             {ebarimtReady && paymentMethod !== "CREDIT" ? (
               <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">

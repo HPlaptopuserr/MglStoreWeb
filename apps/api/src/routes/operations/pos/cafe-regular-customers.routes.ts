@@ -9,15 +9,20 @@ import {
   requirePosUser,
   type AuthUser,
 } from "./_shared";
+import {
+  resolvePosDiscountProfileType,
+  type PosDiscountProfileType,
+} from "./discount-profile";
 
 const router: ExpressRouter = Router();
 
 const cleanName = (value: unknown) => String(value ?? "").trim();
 
-const isCafeCustomerManager = (actor: AuthUser) =>
+const isDiscountProfileManager = (actor: AuthUser) =>
   actor.role === "ADMIN" ||
   actor.role === "SUPER_ADMIN" ||
-  actor.orgRole === "OWNER";
+  actor.orgRole === "OWNER" ||
+  actor.orgRole === "ADMIN";
 
 const resolveOrganizationId = (actor: AuthUser, value: unknown) => {
   const requested = String(value ?? "").trim();
@@ -27,15 +32,24 @@ const resolveOrganizationId = (actor: AuthUser, value: unknown) => {
     : null;
 };
 
-async function isCafeOrganization(organizationId: string) {
-  const setting = await prisma.siteSetting.findUnique({
-    where: { key: `self-service-mode-${organizationId}` },
-    select: { value: true },
+async function resolveDiscountProfileType(
+  organizationId: string,
+): Promise<PosDiscountProfileType | null> {
+  const settings = await prisma.siteSetting.findMany({
+    where: {
+      key: {
+        in: [
+          `self-service-enabled-${organizationId}`,
+          `self-service-mode-${organizationId}`,
+        ],
+      },
+    },
+    select: { key: true, value: true },
   });
-  return (
-    String(setting?.value ?? "")
-      .trim()
-      .toUpperCase() === "CAFE"
+  const values = new Map(settings.map((setting) => [setting.key, setting.value]));
+  return resolvePosDiscountProfileType(
+    values.get(`self-service-enabled-${organizationId}`),
+    values.get(`self-service-mode-${organizationId}`),
   );
 }
 
@@ -71,10 +85,11 @@ router.post("/pos/cafe-regular-customers/lookup", async (req, res) => {
     if (!organizationId) {
       return res.status(403).json({ message: "Байгууллагын эрх хүрэлцэхгүй" });
     }
-    if (!(await isCafeOrganization(organizationId))) {
+    const profileType = await resolveDiscountProfileType(organizationId);
+    if (!profileType) {
       return res
         .status(403)
-        .json({ message: "Кофе шопын горим идэвхгүй байна" });
+        .json({ message: "Өөртөө үйлчлэх кассын горим идэвхгүй байна" });
     }
 
     const phone = normalizeCafeRegularCustomerPhone(req.body?.phone);
@@ -84,9 +99,10 @@ router.post("/pos/cafe-regular-customers/lookup", async (req, res) => {
 
     const customer = await prisma.cafeRegularCustomer.findUnique({
       where: {
-        organizationId_normalizedPhone: {
+        organizationId_normalizedPhone_profileType: {
           organizationId,
           normalizedPhone: phone,
+          profileType,
         },
       },
       select: {
@@ -94,6 +110,7 @@ router.post("/pos/cafe-regular-customers/lookup", async (req, res) => {
         name: true,
         phone: true,
         normalizedPhone: true,
+        profileType: true,
         discountPercent: true,
         isActive: true,
         lastUsedAt: true,
@@ -111,7 +128,7 @@ router.post("/pos/cafe-regular-customers/lookup", async (req, res) => {
     console.error("POST /pos/cafe-regular-customers/lookup error", error);
     return res
       .status(500)
-      .json({ message: "Байнгын хэрэглэгчийг шалгаж чадсангүй" });
+      .json({ message: "Хөнгөлөлтийн бүртгэлийг шалгаж чадсангүй" });
   }
 });
 
@@ -119,8 +136,10 @@ router.get("/pos/cafe-regular-customers", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
     if (!actor) return;
-    if (!isCafeCustomerManager(actor)) {
-      return res.status(403).json({ message: "Зөвхөн эзэмшигч удирдана" });
+    if (!isDiscountProfileManager(actor)) {
+      return res
+        .status(403)
+        .json({ message: "Зөвхөн эзэмшигч эсвэл админ удирдана" });
     }
 
     const organizationId = resolveOrganizationId(
@@ -130,10 +149,11 @@ router.get("/pos/cafe-regular-customers", async (req, res) => {
     if (!organizationId) {
       return res.status(403).json({ message: "Байгууллагын эрх хүрэлцэхгүй" });
     }
-    if (!(await isCafeOrganization(organizationId))) {
+    const profileType = await resolveDiscountProfileType(organizationId);
+    if (!profileType) {
       return res
         .status(403)
-        .json({ message: "Кофе шопын горим идэвхгүй байна" });
+        .json({ message: "Өөртөө үйлчлэх кассын горим идэвхгүй байна" });
     }
 
     const search = String(req.query.search ?? "")
@@ -143,6 +163,7 @@ router.get("/pos/cafe-regular-customers", async (req, res) => {
     const customers = await prisma.cafeRegularCustomer.findMany({
       where: {
         organizationId,
+        profileType,
         ...(search
           ? {
               OR: [
@@ -167,7 +188,7 @@ router.get("/pos/cafe-regular-customers", async (req, res) => {
     console.error("GET /pos/cafe-regular-customers error", error);
     return res
       .status(500)
-      .json({ message: "Байнгын хэрэглэгчдийн жагсаалт авахад алдаа гарлаа" });
+      .json({ message: "Хөнгөлөлтийн бүртгэлүүдийг авахад алдаа гарлаа" });
   }
 });
 
@@ -175,8 +196,10 @@ router.post("/pos/cafe-regular-customers", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
     if (!actor) return;
-    if (!isCafeCustomerManager(actor)) {
-      return res.status(403).json({ message: "Зөвхөн эзэмшигч бүртгэнэ" });
+    if (!isDiscountProfileManager(actor)) {
+      return res
+        .status(403)
+        .json({ message: "Зөвхөн эзэмшигч эсвэл админ бүртгэнэ" });
     }
 
     const organizationId = resolveOrganizationId(
@@ -186,10 +209,11 @@ router.post("/pos/cafe-regular-customers", async (req, res) => {
     if (!organizationId) {
       return res.status(403).json({ message: "Байгууллагын эрх хүрэлцэхгүй" });
     }
-    if (!(await isCafeOrganization(organizationId))) {
+    const profileType = await resolveDiscountProfileType(organizationId);
+    if (!profileType) {
       return res
         .status(403)
-        .json({ message: "Кофе шопын горим идэвхгүй байна" });
+        .json({ message: "Өөртөө үйлчлэх кассын горим идэвхгүй байна" });
     }
 
     const name = cleanName(req.body?.name);
@@ -200,7 +224,7 @@ router.post("/pos/cafe-regular-customers", async (req, res) => {
     if (name.length < 2 || name.length > 80) {
       return res
         .status(400)
-        .json({ message: "Хэрэглэгчийн нэр 2-80 тэмдэгт байна" });
+        .json({ message: "Нэр 2-80 тэмдэгт байна" });
     }
     if (!phone) {
       return res.status(400).json({ message: "Утасны дугаар 8 оронтой байна" });
@@ -212,6 +236,7 @@ router.post("/pos/cafe-regular-customers", async (req, res) => {
     const customer = await prisma.cafeRegularCustomer.create({
       data: {
         organizationId,
+        profileType,
         name,
         phone,
         normalizedPhone: phone,
@@ -230,7 +255,7 @@ router.post("/pos/cafe-regular-customers", async (req, res) => {
     console.error("POST /pos/cafe-regular-customers error", error);
     return res
       .status(500)
-      .json({ message: "Байнгын хэрэглэгч бүртгэж чадсангүй" });
+      .json({ message: "Хөнгөлөлтийн бүртгэл хадгалж чадсангүй" });
   }
 });
 
@@ -238,8 +263,10 @@ router.patch("/pos/cafe-regular-customers/:id", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
     if (!actor) return;
-    if (!isCafeCustomerManager(actor)) {
-      return res.status(403).json({ message: "Зөвхөн эзэмшигч засна" });
+    if (!isDiscountProfileManager(actor)) {
+      return res
+        .status(403)
+        .json({ message: "Зөвхөн эзэмшигч эсвэл админ засна" });
     }
 
     const existing = await prisma.cafeRegularCustomer.findUnique({
@@ -249,12 +276,15 @@ router.patch("/pos/cafe-regular-customers/:id", async (req, res) => {
       !existing ||
       !canAccessPosOrganization(actor, existing.organizationId)
     ) {
-      return res.status(404).json({ message: "Байнгын хэрэглэгч олдсонгүй" });
+      return res.status(404).json({ message: "Хөнгөлөлтийн бүртгэл олдсонгүй" });
     }
-    if (!(await isCafeOrganization(existing.organizationId))) {
+    const profileType = await resolveDiscountProfileType(
+      existing.organizationId,
+    );
+    if (!profileType || existing.profileType !== profileType) {
       return res
         .status(403)
-        .json({ message: "Кофе шопын горим идэвхгүй байна" });
+        .json({ message: "Энэ хөнгөлөлтийн бүртгэлийг засах эрхгүй байна" });
     }
 
     const data: {
@@ -269,7 +299,7 @@ router.patch("/pos/cafe-regular-customers/:id", async (req, res) => {
       if (name.length < 2 || name.length > 80) {
         return res
           .status(400)
-          .json({ message: "Хэрэглэгчийн нэр 2-80 тэмдэгт байна" });
+          .json({ message: "Нэр 2-80 тэмдэгт байна" });
       }
       data.name = name;
     }
@@ -316,7 +346,7 @@ router.patch("/pos/cafe-regular-customers/:id", async (req, res) => {
     console.error("PATCH /pos/cafe-regular-customers/:id error", error);
     return res
       .status(500)
-      .json({ message: "Байнгын хэрэглэгчийг засаж чадсангүй" });
+      .json({ message: "Хөнгөлөлтийн бүртгэлийг засаж чадсангүй" });
   }
 });
 

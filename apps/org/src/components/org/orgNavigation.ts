@@ -35,8 +35,9 @@ export function getOrgNavItems(
   if (features.selfService) {
     const isCafe = features.selfServiceMode === "CAFE";
     const role = String(user?.role || "").toUpperCase();
-    const canManageCafeCustomers =
+    const canManageDiscountProfiles =
       user?.orgRole === "OWNER" ||
+      user?.orgRole === "ADMIN" ||
       role === "ADMIN" ||
       role === "SUPER_ADMIN";
     return [
@@ -69,11 +70,13 @@ export function getOrgNavItems(
             },
           ]
         : []),
-      ...(isCafe && canManageCafeCustomers
+      ...(canManageDiscountProfiles
         ? [
             {
-              label: "Байнгын хэрэглэгч",
-              href: "/dashboard/regular-customers",
+              label: isCafe ? "Байнгын хэрэглэгч" : "Ажилтны хөнгөлөлт",
+              href: isCafe
+                ? "/dashboard/regular-customers"
+                : "/dashboard/employee-discounts",
               icon: BadgePercent,
             },
           ]

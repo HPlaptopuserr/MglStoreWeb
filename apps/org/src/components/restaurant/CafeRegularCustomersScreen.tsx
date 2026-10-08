@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import { useOrg } from "@/components/org/OrgContext";
+import ProtectedSectionGate from "@/components/org/ProtectedSectionGate";
 import {
   createCafeRegularCustomer,
   getCafeRegularCustomers,
@@ -48,9 +49,58 @@ const formatDate = (value: string | null) =>
 export function CafeRegularCustomersScreen() {
   const { user, features } = useOrg();
   const isCafe = features.selfServiceMode === "CAFE";
+  const isRestaurant = features.selfServiceMode === "RESTAURANT";
   const role = String(user.role || "").toUpperCase();
   const canManage =
-    user.orgRole === "OWNER" || role === "ADMIN" || role === "SUPER_ADMIN";
+    user.orgRole === "OWNER" ||
+    user.orgRole === "ADMIN" ||
+    role === "ADMIN" ||
+    role === "SUPER_ADMIN";
+  const [unlocked, setUnlocked] = useState(false);
+
+  if ((!isCafe && !isRestaurant) || !canManage) {
+    return (
+      <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
+        <UserRoundCheck className="mx-auto h-12 w-12 text-slate-300" />
+        <h1 className="mt-4 text-xl font-black text-slate-900">
+          {isCafe ? "Байнгын хэрэглэгч" : "Ажилтны хөнгөлөлт"}
+        </h1>
+        <p className="mt-2 text-sm font-semibold text-slate-500">
+          Энэ хэсгийг байгууллагын эзэмшигч эсвэл админ ашиглана.
+        </p>
+      </div>
+    );
+  }
+
+  if (!unlocked) {
+    return (
+      <ProtectedSectionGate
+        organizationId={user.organizationId || ""}
+        organizationName={user.organizationName}
+        userId={user.id}
+        eyebrow="Хамгаалалттай хөнгөлөлт"
+        title="Удирдах эрхээ баталгаажуулна уу"
+        description={`${isCafe ? "байнгын хэрэглэгчийн" : "ажилтны"} утас болон хөнгөлөлтийн хувийг удирдахын тулд эзэмшигч эсвэл админ өөрийн эрхийг баталгаажуулна.`}
+        submitLabel="Хөнгөлөлтийн бүртгэл рүү нэвтрэх"
+        footer="Хуудсыг хаах эсвэл дахин ачаалахад энэ хэсэг дахин түгжигдэнэ."
+        accessDeniedMessage="Зөвхөн байгууллагын эзэмшигч эсвэл админ хөнгөлөлтийн бүртгэл удирдах эрхтэй."
+        onUnlock={() => setUnlocked(true)}
+      />
+    );
+  }
+
+  return <DiscountProfilesContent />;
+}
+
+function DiscountProfilesContent() {
+  const { user, features } = useOrg();
+  const isCafe = features.selfServiceMode === "CAFE";
+  const profileLabel = isCafe ? "Байнгын хэрэглэгч" : "Ажилтан";
+  const profilesLabel = isCafe ? "хэрэглэгч" : "ажилтан";
+  const profileGenitive = isCafe ? "Байнгын хэрэглэгчийн" : "Ажилтны";
+  const profileObject = isCafe
+    ? "Байнгын хэрэглэгчийг"
+    : "Ажилтны бүртгэлийг";
   const [customers, setCustomers] = useState<CafeRegularCustomer[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -63,7 +113,7 @@ export function CafeRegularCustomersScreen() {
   const [draft, setDraft] = useState<CustomerDraft>(EMPTY_DRAFT);
 
   const loadCustomers = useCallback(async () => {
-    if (!isCafe || !canManage || !user.organizationId) {
+    if (!user.organizationId) {
       setLoading(false);
       return;
     }
@@ -78,12 +128,12 @@ export function CafeRegularCustomersScreen() {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Байнгын хэрэглэгчдийн мэдээллийг авч чадсангүй",
+          : `${profileGenitive} мэдээллийг авч чадсангүй`,
       );
     } finally {
       setLoading(false);
     }
-  }, [canManage, isCafe, user.organizationId]);
+  }, [profileGenitive, user.organizationId]);
 
   useEffect(() => {
     void loadCustomers();
@@ -139,7 +189,7 @@ export function CafeRegularCustomersScreen() {
     const phone = draft.phone.replace(/\D/g, "");
     const discountPercent = Number(draft.discountPercent);
     if (name.length < 2) {
-      setError("Хэрэглэгчийн нэрийг оруулна уу");
+      setError(`${profileGenitive} нэрийг оруулна уу`);
       return;
     }
     if (!/^\d{8}$/.test(phone)) {
@@ -179,15 +229,15 @@ export function CafeRegularCustomersScreen() {
       });
       setNotice(
         editing
-          ? "Байнгын хэрэглэгчийн мэдээлэл шинэчлэгдлээ"
-          : "Байнгын хэрэглэгч амжилттай бүртгэгдлээ",
+          ? `${profileGenitive} мэдээлэл шинэчлэгдлээ`
+          : `${profileLabel} амжилттай бүртгэгдлээ`,
       );
       closeForm();
     } catch (cause) {
       setError(
         cause instanceof Error
           ? cause.message
-          : "Байнгын хэрэглэгчийг хадгалж чадсангүй",
+          : `${profileObject} хадгалж чадсангүй`,
       );
     } finally {
       setSaving(false);
@@ -220,20 +270,6 @@ export function CafeRegularCustomersScreen() {
     }
   };
 
-  if (!isCafe || !canManage) {
-    return (
-      <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-        <UserRoundCheck className="mx-auto h-12 w-12 text-slate-300" />
-        <h1 className="mt-4 text-xl font-black text-slate-900">
-          Байнгын хэрэглэгч
-        </h1>
-        <p className="mt-2 text-sm font-semibold text-slate-500">
-          Энэ хэсгийг кофе шопын эзэмшигч ашиглана.
-        </p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <section className="overflow-hidden rounded-3xl bg-[#11231d] p-6 text-white shadow-xl shadow-emerald-950/10 sm:p-8">
@@ -242,15 +278,16 @@ export function CafeRegularCustomersScreen() {
             <div className="flex items-center gap-2 text-emerald-300">
               <BadgePercent className="h-5 w-5" />
               <span className="text-xs font-black uppercase tracking-[0.18em]">
-                Coffee shop loyalty
+                {isCafe ? "Coffee shop loyalty" : "Restaurant staff benefit"}
               </span>
             </div>
             <h1 className="mt-3 text-2xl font-black sm:text-3xl">
-              Байнгын хэрэглэгч
+              {isCafe ? "Байнгын хэрэглэгч" : "Ажилтны хөнгөлөлт"}
             </h1>
             <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-white/55">
-              Хэрэглэгчийг утсаар бүртгэж, өөртөө үйлчлэх кассад үйлчлэх
-              хямдралын хувийг тохируулна.
+              {isCafe
+                ? "Хэрэглэгчийг утсаар бүртгэж, өөртөө үйлчлэх кассад үйлчлэх хямдралын хувийг тохируулна."
+                : "Ажилтныг утсаар бүртгэж, бэлэн мөнгөний болон өөртөө үйлчлэх кассад эдлэх хөнгөлөлтийн хувийг тохируулна."}
             </p>
           </div>
           <button
@@ -259,7 +296,7 @@ export function CafeRegularCustomersScreen() {
             className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl bg-[#f4c34f] px-5 text-sm font-black text-[#172219] transition hover:bg-[#ffd66b]"
           >
             <Plus className="h-5 w-5" />
-            Хэрэглэгч бүртгэх
+            {profileLabel} бүртгэх
           </button>
         </div>
       </section>
@@ -270,7 +307,9 @@ export function CafeRegularCustomersScreen() {
           <p className="mt-3 text-3xl font-black text-slate-900">
             {customers.length}
           </p>
-          <p className="text-sm font-bold text-slate-500">Нийт хэрэглэгч</p>
+          <p className="text-sm font-bold text-slate-500">
+            Нийт {profilesLabel}
+          </p>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <CheckCircle2 className="h-5 w-5 text-emerald-500" />
@@ -330,8 +369,8 @@ export function CafeRegularCustomersScreen() {
             <UserRoundCheck className="mx-auto h-12 w-12 text-slate-200" />
             <p className="mt-4 text-base font-black text-slate-700">
               {query
-                ? "Хайлтад тохирох хэрэглэгч алга"
-                : "Хэрэглэгч бүртгээгүй байна"}
+                ? `Хайлтад тохирох ${profilesLabel} алга`
+                : `${profileLabel} бүртгээгүй байна`}
             </p>
           </div>
         ) : (
@@ -398,7 +437,9 @@ export function CafeRegularCustomersScreen() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-black text-slate-900">
-                  {editing ? "Хэрэглэгч засах" : "Байнгын хэрэглэгч бүртгэх"}
+                  {editing
+                    ? `${profileLabel} засах`
+                    : `${profileLabel} бүртгэх`}
                 </h2>
                 <p className="mt-1 text-sm font-semibold text-slate-500">
                   Хямдрал бүтээгдэхүүний үнэд үйлчилнэ. Савны үнэ хасагдахгүй.

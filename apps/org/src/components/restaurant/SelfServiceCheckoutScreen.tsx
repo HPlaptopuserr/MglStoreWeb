@@ -318,6 +318,13 @@ export function SelfServiceCheckoutScreen() {
 function SelfServiceCheckoutContent() {
   const { user, features } = useOrg();
   const isCafe = features.selfServiceMode === "CAFE";
+  const discountProfileLabel = isCafe ? "Байнгын хэрэглэгч" : "Ажилтан";
+  const discountProfileGenitive = isCafe
+    ? "Байнгын хэрэглэгчийн"
+    : "Ажилтны";
+  const discountProfileObject = isCafe
+    ? "Байнгын хэрэглэгчийг"
+    : "Ажилтны бүртгэлийг";
   const [screen, setScreen] = useState<Screen>("welcome");
   const [orderMode, setOrderMode] = useState<OrderMode | null>(null);
   const [register, setRegister] = useState<RestaurantPosRegister | null>(null);
@@ -653,7 +660,7 @@ function SelfServiceCheckoutContent() {
         )
       : 0;
   const regularCustomerDiscount =
-    isCafe && regularCustomer
+    regularCustomer
       ? calculateCafeRegularCustomerDiscount(
           cart.map((line) => ({
             unitPrice: Number(line.product.price),
@@ -821,7 +828,7 @@ function SelfServiceCheckoutContent() {
           phone: normalizedPhone,
         });
         if (!result.found) {
-          throw new Error("Байнгын хэрэглэгчийн бүртгэл олдсонгүй");
+          throw new Error(`${discountProfileGenitive} бүртгэл олдсонгүй`);
         }
         if (syncUi) {
           setRegularCustomer(result.customer);
@@ -834,7 +841,7 @@ function SelfServiceCheckoutContent() {
           setRegularCustomerError(
             error instanceof Error
               ? error.message
-              : "Байнгын хэрэглэгчийг шалгаж чадсангүй",
+              : `${discountProfileObject} шалгаж чадсангүй`,
           );
         }
         throw error;
@@ -842,7 +849,7 @@ function SelfServiceCheckoutContent() {
         if (syncUi) setRegularCustomerLoading(false);
       }
     },
-    [user.organizationId],
+    [discountProfileGenitive, discountProfileObject, user.organizationId],
   );
 
   useEffect(() => {
@@ -1645,7 +1652,7 @@ function SelfServiceCheckoutContent() {
       const ebarimtBuyer = await resolveEbarimtBuyer();
       setCompletedEbarimtBuyer(ebarimtBuyer);
       const checkoutRegularCustomer =
-        isCafe && regularCustomer
+        regularCustomer
           ? await resolveRegularCustomer(regularCustomer.phone)
           : null;
       if (checkoutRegularCustomer) {
@@ -2647,7 +2654,7 @@ function SelfServiceCheckoutContent() {
                 <div className="flex justify-between">
                   <span className="font-semibold text-slate-500">
                     {regularCustomer
-                      ? "Байнгын хэрэглэгчийн хөнгөлөлт"
+                      ? `${discountProfileGenitive} хөнгөлөлт`
                       : "Хөнгөлөлт"}
                   </span>
                   <span className="font-black">
@@ -2666,12 +2673,13 @@ function SelfServiceCheckoutContent() {
                 </span>
               </div>
 
-              {isCafe ? (
+              {features.selfServiceMode === "CAFE" ||
+              features.selfServiceMode === "RESTAURANT" ? (
                 <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-3">
                   <div className="flex items-center gap-2">
                     <BadgePercent className="h-4 w-4 text-emerald-600" />
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                      Байнгын хэрэглэгч
+                      {discountProfileLabel}
                     </p>
                   </div>
                   {regularCustomer ? (
@@ -2693,7 +2701,7 @@ function SelfServiceCheckoutContent() {
                           setActionError("");
                         }}
                         className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-                        aria-label="Байнгын хэрэглэгчийг салгах"
+                        aria-label={`${discountProfileObject} салгах`}
                       >
                         <X className="h-4 w-4" />
                       </button>

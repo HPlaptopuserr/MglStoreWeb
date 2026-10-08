@@ -3341,23 +3341,29 @@ model PosSale {
 }
 
 model CafeRegularCustomer {
-  id              String       @id @default(uuid())
+  id              String                 @id @default(uuid())
   organizationId  String
+  profileType     PosDiscountProfileType @default(REGULAR_CUSTOMER)
   name            String
   phone           String
   normalizedPhone String
-  discountPercent Decimal      @default(0) @db.Decimal(5, 2)
-  isActive        Boolean      @default(true)
+  discountPercent Decimal                @default(0) @db.Decimal(5, 2)
+  isActive        Boolean                @default(true)
   lastUsedAt      DateTime?
   createdById     String?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   sales           PosSale[]
 
-  @@unique([organizationId, normalizedPhone])
-  @@index([organizationId, isActive])
+  @@unique([organizationId, normalizedPhone, profileType])
+  @@index([organizationId, profileType, isActive])
   @@index([name])
+}
+
+enum PosDiscountProfileType {
+  REGULAR_CUSTOMER
+  EMPLOYEE
 }
 
 model PosLoyaltyTransaction {

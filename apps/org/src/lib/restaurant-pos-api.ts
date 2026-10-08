@@ -132,6 +132,7 @@ export type CafeDailyStockResponse = {
 
 export type CafeRegularCustomer = {
   id: string;
+  profileType: "REGULAR_CUSTOMER" | "EMPLOYEE";
   name: string;
   phone: string;
   normalizedPhone: string;
