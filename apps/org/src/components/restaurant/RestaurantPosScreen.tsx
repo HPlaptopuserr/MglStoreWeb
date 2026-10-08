@@ -46,6 +46,7 @@ import {
   X,
 } from "lucide-react";
 import { useOrg } from "@/components/org/OrgContext";
+import ProtectedSectionGate from "@/components/org/ProtectedSectionGate";
 import {
   bootstrapRestaurantDiningTables,
   cancelRestaurantTicketItem,
@@ -579,6 +580,27 @@ function printRestaurantReceipt(
 }
 
 export function RestaurantPosScreen() {
+  const { user } = useOrg();
+  const [cashRegisterUnlocked, setCashRegisterUnlocked] = useState(false);
+
+  if (!cashRegisterUnlocked) {
+    return (
+      <ProtectedSectionGate
+        organizationId={user.organizationId || ""}
+        organizationName={user.organizationName}
+        userId={user.id}
+        allowedOrgRoles={["OWNER", "ADMIN", "STAFF"]}
+        eyebrow="Хамгаалалттай касс"
+        title="Кассын эрхээ баталгаажуулна уу"
+        description="бэлэн мөнгөний касс руу нэвтрэхийн тулд одоо нэвтэрсэн ажилтан өөрийн эрхийг дахин баталгаажуулна."
+        submitLabel="Бэлэн мөнгөний касс руу нэвтрэх"
+        footer="Кассын хуудсыг хаах эсвэл дахин ачаалахад нэвтрэх эрх дахин шаардана."
+        accessDeniedMessage="Зөвхөн байгууллагын эзэмшигч, админ эсвэл ажилтан бэлэн мөнгөний касс ашиглах эрхтэй."
+        onUnlock={() => setCashRegisterUnlocked(true)}
+      />
+    );
+  }
+
   return (
     <ProductImageFeedbackProvider>
       <RestaurantPosContent />

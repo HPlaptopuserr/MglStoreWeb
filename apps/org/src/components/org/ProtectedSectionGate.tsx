@@ -10,6 +10,7 @@ type ProtectedSectionGateProps = {
   organizationId: string;
   organizationName?: string | null;
   userId: string;
+  allowedOrgRoles?: readonly string[];
   eyebrow: string;
   title?: string;
   description: string;
@@ -23,6 +24,7 @@ export default function ProtectedSectionGate({
   organizationId,
   organizationName,
   userId,
+  allowedOrgRoles = PRIVILEGED_ORG_ROLES,
   eyebrow,
   title = "Дахин нэвтэрнэ үү",
   description,
@@ -50,7 +52,7 @@ export default function ProtectedSectionGate({
     try {
       await verifyOrgUserCredentials(identifier, password, organizationId, {
         requiredUserId: userId,
-        allowedOrgRoles: PRIVILEGED_ORG_ROLES,
+        allowedOrgRoles,
         accessDeniedMessage,
       });
       onUnlock();
