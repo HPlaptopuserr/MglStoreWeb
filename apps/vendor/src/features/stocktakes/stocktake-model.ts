@@ -1,6 +1,7 @@
 import {
   normalizePosMeasureUnit,
   scoreProductForSearch,
+  tokenizeDiscoveryText,
   type StocktakeLineDto,
 } from "@mgl/types";
 export const stocktakeStatusLabels = {
@@ -51,21 +52,20 @@ export function matchesStocktakeQuery(
   query: string,
 ): boolean {
   if (!query.trim()) return true;
-  return (
-    scoreProductForSearch(
-      {
-        id: line.productId,
-        name: [line.product?.name, line.name].filter(Boolean).join(" "),
-        sku: line.product?.sku,
-        barcode: line.product?.barcode ?? line.barcode,
-        barcodeAliases: [
-          ...line.barcodeAliases,
-          ...(line.product?.barcodeAliases ?? []),
-        ],
-      },
-      query,
-    ) > 0
-  );
+  const product = {
+    id: line.productId,
+    name: [line.product?.name, line.name].filter(Boolean).join(" "),
+    sku: line.product?.sku,
+    barcode: line.product?.barcode ?? line.barcode,
+    barcodeAliases: [
+      ...line.barcodeAliases,
+      ...(line.product?.barcodeAliases ?? []),
+    ],
+  };
+  const terms = tokenizeDiscoveryText(query);
+  return terms.length
+    ? terms.every((term) => scoreProductForSearch(product, term) > 0)
+    : scoreProductForSearch(product, query) > 0;
 }
 
 export const stocktakeLineName = (line: StocktakeLineDto) =>
