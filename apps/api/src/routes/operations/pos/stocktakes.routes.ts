@@ -21,10 +21,11 @@ import {
 import {
   stocktakeProductFilter,
   createStocktake,
+  loadStocktake,
   mutateStocktake,
   type StocktakeAction,
 } from "../../../services/stocktake.service";
-import { stocktakeDetailInclude } from "../../../services/stocktake-query";
+import { presentStocktakeDetail } from "../../../services/stocktake-query";
 
 const router: ExpressRouter = Router();
 const base = "/pos/stocktakes/:organizationId";
@@ -134,12 +135,12 @@ router.get(
 router.get(
   `${base}/:id`,
   route(async (req, res, _actor, organizationId) => {
-    const session = await prisma.stocktake.findFirst({
-      where: { id: String(req.params.id), organizationId },
-      include: stocktakeDetailInclude,
+    const session = await loadStocktake({
+      id: String(req.params.id),
+      organizationId,
     });
     if (!session) throw new StocktakeError("Тооллого олдсонгүй", 404);
-    return res.json(session);
+    return res.json(presentStocktakeDetail(session));
   }),
 );
 router.post(
@@ -163,16 +164,15 @@ router.post(
       throw new StocktakeError("Тооллогын төрөл буруу байна");
     if (body.warehouseId !== null && typeof body.warehouseId !== "string")
       throw new StocktakeError("Тоолох сангаа сонгоно уу");
-    return res.status(201).json(
-      await createStocktake({
-        id: body.id,
-        title: body.title.trim(),
-        kind: body.kind,
-        warehouseId: body.warehouseId,
-        organizationId,
-        actorId: actor.id,
-      }),
-    );
+    const session = await createStocktake({
+      id: body.id,
+      title: body.title.trim(),
+      kind: body.kind,
+      warehouseId: body.warehouseId,
+      organizationId,
+      actorId: actor.id,
+    });
+    return res.status(201).json(presentStocktakeDetail(session));
   }),
 );
 router.patch(
@@ -204,16 +204,15 @@ router.patch(
       body.version < 0
     )
       throw new StocktakeError("Тооллогын хувилбар буруу байна");
-    return res.json(
-      await mutateStocktake({
-        id: String(req.params.id),
-        organizationId,
-        actorId: actor.id,
-        version: body.version,
-        action,
-        edits: action === "save" ? parseCountEdits(body.edits) : undefined,
-      }),
-    );
+    const session = await mutateStocktake({
+      id: String(req.params.id),
+      organizationId,
+      actorId: actor.id,
+      version: body.version,
+      action,
+      edits: action === "save" ? parseCountEdits(body.edits) : undefined,
+    });
+    return res.json(presentStocktakeDetail(session));
   }),
 );
 
@@ -230,15 +229,14 @@ router.post(
     )
       throw new StocktakeError("Тооллогын хувилбар буруу байна");
     const product = parseStocktakeNewProduct(body.product);
-    return res.json(
-      await addStocktakeProduct({
-        organizationId,
-        stocktakeId: String(req.params.id),
-        actorId: actor.id,
-        version: body.version,
-        product,
-      }),
-    );
+    const session = await addStocktakeProduct({
+      organizationId,
+      stocktakeId: String(req.params.id),
+      actorId: actor.id,
+      version: body.version,
+      product,
+    });
+    return res.json(presentStocktakeDetail(session));
   }),
 );
 router.post(
@@ -256,14 +254,18 @@ router.post(
       throw new StocktakeError(
         "Хайх нэр, баркод болон тооллогын хувилбарыг шалгана уу.",
       );
-    return res.json(
-      await resolveStocktakeProduct({
-        organizationId,
-        stocktakeId: String(req.params.id),
-        version: body.version,
-        query: body.query.trim(),
-      }),
-    );
+    const result = await resolveStocktakeProduct({
+      organizationId,
+      stocktakeId: String(req.params.id),
+      version: body.version,
+      query: body.query.trim(),
+    });
+    return res.json({
+      ...result,
+      session: result.session
+        ? presentStocktakeDetail(result.session)
+        : null,
+    });
   }),
 );
 export default router;

@@ -137,6 +137,41 @@ export function createStocktake(input: {
   );
 }
 
+/**
+ * Remove products that became ineligible after a draft stocktake was opened.
+ * This keeps existing drafts aligned with the active POS catalog without
+ * resetting counts for otherwise unchanged products.
+ */
+export function loadStocktake(input: {
+  id: string;
+  organizationId: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Stocktake" WHERE "id" = ${input.id} AND "organizationId" = ${input.organizationId} FOR UPDATE`;
+    const session = await tx.stocktake.findFirst({
+      where: { id: input.id, organizationId: input.organizationId },
+      include: stocktakeDetailInclude,
+    });
+    if (!session || session.status !== "DRAFT") return session;
+
+    const removed = await tx.stocktakeLine.deleteMany({
+      where: {
+        stocktakeId: session.id,
+        NOT: {
+          product: { is: stocktakeProductFilter(input.organizationId) },
+        },
+      },
+    });
+    if (!removed.count) return session;
+
+    return tx.stocktake.update({
+      where: { id: session.id },
+      data: { version: { increment: 1 } },
+      include: stocktakeDetailInclude,
+    });
+  });
+}
+
 export type StocktakeAction =
   | "save"
   | "submit"
