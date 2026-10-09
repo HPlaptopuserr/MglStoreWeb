@@ -1,3 +1,4 @@
+import { productMutationErrorResponse } from "../../lib/product-mutation-errors";
 import { resolveProductInventoryWarehouse } from "../../services/vendor-inventory-warehouse.service";
 import { enrichMasterCatalog } from "../../services/catalog-enrichment/service";
 import { findMasterCatalogIds } from "../../services/master-catalog-search.service";
@@ -4596,9 +4597,8 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     return res.json(product);
   } catch (error) {
     console.error("update product error", error);
-    return res
-      .status(500)
-      .json({ message: "Бараа засахад алдаа гарлаа", error: String(error) });
+    const failure = productMutationErrorResponse(error);
+    return res.status(failure.status).json({ message: failure.message });
   }
 });
 

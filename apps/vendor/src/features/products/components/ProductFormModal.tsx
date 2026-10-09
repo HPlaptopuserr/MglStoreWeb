@@ -17,7 +17,7 @@ import { BusinessCategory, FormState, Product } from "../types";
 import { CategorySelector } from "./CategorySelector";
 import { ImageUploadGrid } from "./ImageUploadGrid";
 import { ProductDataAssistantPanel } from "./ProductDataAssistantPanel";
-import { VendorSkuGenerator } from "./VendorSkuGenerator";
+import { ProductSkuField } from "./ProductSkuField";
 import { MasterCatalogSuggestions } from "./MasterCatalogSuggestions";
 import { PreorderCurrencyPriceInput } from "./PreorderCurrencyPriceInput";
 import {
@@ -872,7 +872,8 @@ export function ProductFormModal({
 
 
                   <div className="space-y-2">
-                    <VendorSkuGenerator
+                    <ProductSkuField
+                      editing={editingId !== null}
                       productName={form.name}
                       products={products}
                       value={form.sku || ""}

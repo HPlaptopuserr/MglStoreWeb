@@ -1,5 +1,7 @@
 import { Prisma, WarehouseType } from "@mgl/database";
 
+export class ProductInventoryConflictError extends Error {}
+
 /** Call inside the stock mutation transaction. The organization lock serializes
  * first-use creation across product imports, POS receipts and catalog edits. */
 export async function resolveProductInventoryWarehouse(
@@ -17,7 +19,7 @@ export async function resolveProductInventoryWarehouse(
   if (product.managedByWarehouseId) return product.managedByWarehouseId;
   if (!organizationId) return null;
   if (product.organizationId !== organizationId) {
-    throw new Error("Бараа энэ байгууллагад харьяалагдахгүй байна");
+    throw new ProductInventoryConflictError("Бараа энэ байгууллагад харьяалагдахгүй байна");
   }
   await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id" = ${organizationId} FOR UPDATE`;
   // An explicit shared catalog routes both portals to the same physical stock.
@@ -28,14 +30,14 @@ export async function resolveProductInventoryWarehouse(
   });
   if (catalogWarehouse) {
     if (!catalogWarehouse.isActive || catalogWarehouse.deletedAt) {
-      throw new Error("Холбогдсон агуулах идэвхгүй байна");
+      throw new ProductInventoryConflictError("Холбогдсон агуулах идэвхгүй байна");
     }
     const otherInventory = await tx.warehouseInventory.findFirst({
       where: { productId, warehouseId: { not: catalogWarehouse.id } },
       select: { id: true },
     });
     if (otherInventory)
-      throw new Error("Барааны агуулахын холбоосыг эхлээд тулгана уу");
+      throw new ProductInventoryConflictError("Барааны агуулахын холбоосыг эхлээд тулгана уу");
     await tx.product.update({
       where: { id: productId },
       data: { managedByWarehouseId: catalogWarehouse.id },
@@ -79,12 +81,12 @@ export async function resolveProductInventoryWarehouse(
         ),
     )
   ) {
-    throw new Error(
+    throw new ProductInventoryConflictError(
       "Барааны агуулахын холбоосыг засах шаардлагатай. Админд хандана уу.",
     );
   }
   if (inventories.length > 1) {
-    throw new Error(
+    throw new ProductInventoryConflictError(
       "Бараа олон агуулахад байна. Агуулахыг тодорхой сонгоно уу.",
     );
   }
