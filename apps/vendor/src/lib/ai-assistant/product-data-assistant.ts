@@ -1,3 +1,5 @@
+import { matchingProductCodes } from "../products/product-code-match";
+
 export type AssistantSeverity = "good" | "info" | "warning" | "critical";
 
 export type AssistantCategory = {
@@ -53,6 +55,7 @@ export type CategorySuggestion = {
 };
 
 export type DuplicateSuggestion = {
+  matchType: "code" | "name";
   id: string;
   name: string;
   score: number;
@@ -849,8 +852,8 @@ function suggestDuplicates({
   editingId?: string | null;
 }): DuplicateSuggestion[] {
   const name = normalizeText(draft.name);
-  const sku = normalizeText(draft.sku || "");
-  const barcode = normalizeText(draft.barcode || "");
+  const sku = draft.sku?.trim() || "";
+  const barcode = draft.barcode?.trim() || "";
   if (!name && !sku && !barcode) return [];
 
   return products
@@ -864,22 +867,27 @@ function suggestDuplicates({
         (name.includes(productName) || productName.includes(name))
           ? 0.82
           : 0;
-      const skuExact = sku && normalizeText(product.sku || "") === sku;
-      const barcodeExact =
-        barcode && normalizeText(product.barcode || "") === barcode;
+      const matchingCodes = matchingProductCodes(draft, product);
+      const skuExact = matchingCodes.includes("sku");
+      const barcodeExact = matchingCodes.includes("barcode");
       const score =
         skuExact || barcodeExact
           ? 100
           : Math.round(Math.max(nameScore, substringScore) * 100);
-      const reason = skuExact
+      const reason = skuExact && barcodeExact
+        ? "SKU болон баркод яг давхцаж байна."
+        : skuExact
         ? "SKU яг давхцаж байна."
         : barcodeExact
           ? "Barcode яг давхцаж байна."
-          : "Барааны нэр ойролцоо байна.";
-      return { id: product.id, name: product.name, score, reason };
+          : "Барааны нэр ойролцоо байна. SKU болон баркод давхцаагүй.";
+      return {
+        id: product.id, name: product.name, score, reason,
+        matchType: matchingCodes.length ? "code" as const : "name" as const,
+      };
     })
     .filter((item) => item.score >= 62)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => Number(b.matchType === "code") - Number(a.matchType === "code") || b.score - a.score)
     .slice(0, 3);
 }
 
@@ -946,7 +954,7 @@ function computeScore({
     else if (issue.severity === "warning") score -= 14;
     else if (issue.severity === "info") score -= 6;
   }
-  if (duplicateSuggestions.some((item) => item.score >= 90)) score -= 22;
+  if (duplicateSuggestions.some((item) => item.matchType === "code")) score -= 22;
   if (issues.some((issue) => issue.id === "generic-name")) score -= 4;
   if (!draft.businessCategoryId && hasCategorySuggestion) score += 6;
   return Math.max(0, Math.min(100, score));
@@ -957,7 +965,7 @@ function summarizeScore(
   issues: AssistantIssue[],
   duplicateSuggestions: DuplicateSuggestion[],
 ) {
-  if (duplicateSuggestions.some((item) => item.score >= 90)) {
+  if (duplicateSuggestions.some((item) => item.matchType === "code")) {
     return "Давхардал байж магадгүй. Хадгалахаас өмнө шалгаарай.";
   }
   if (score >= 86)
@@ -984,9 +992,9 @@ function createActionPlan({
   duplicateSuggestions: DuplicateSuggestion[];
 }) {
   const actions: string[] = [];
-  if (duplicateSuggestions.some((item) => item.score >= 90)) {
+  if (duplicateSuggestions.some((item) => item.matchType === "code")) {
     actions.push(
-      "Давхардсан SKU/barcode эсвэл ижил нэртэй барааг эхэлж шалгах.",
+      "Давхцсан кодтой барааг шалгаж, өөр бараа бол SKU эсвэл баркодоо нягтлах.",
     );
   }
   if (!draft.businessCategoryId && categorySuggestions[0]) {

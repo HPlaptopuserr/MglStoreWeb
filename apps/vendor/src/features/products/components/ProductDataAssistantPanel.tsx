@@ -198,7 +198,7 @@ export function ProductDataAssistantPanel({
         <div className="mt-4">
           <div className="mb-2 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-500">
             <CopyCheck size={14} />
-            Давхардал шалгалт
+            Кодын давхцал ба төстэй нэр
           </div>
           <div className="space-y-2">
             {result.duplicateSuggestions.map((duplicate) => {
