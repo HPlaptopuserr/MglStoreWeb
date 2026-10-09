@@ -1,7 +1,8 @@
 "use client";
+import { StocktakeExportButton } from "./StocktakeExportButton";
 import Link from "next/link";
 import { useState } from "react";
-import type { StocktakeKind, StocktakeOverview as Overview } from "@mgl/types";
+import type { StocktakeDetail, StocktakeKind, StocktakeOverview as Overview } from "@mgl/types";
 import { stocktakeStatusLabels } from "./stocktake-model";
 export const buttonClass =
   "rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-50";
@@ -14,7 +15,9 @@ export function StocktakeOverview({
   busy,
   onCreate,
   onOpen,
+  loadForExport,
 }: {
+  loadForExport: (id: string) => Promise<StocktakeDetail>;
   data: Overview;
   busy: boolean;
   onCreate: (
@@ -147,11 +150,14 @@ export function StocktakeOverview({
         ) : (
           <ul className="divide-y divide-slate-100">
             {data.sessions.map((session) => (
-              <li key={session.id}>
+              <li
+                key={session.id}
+                className="flex flex-wrap items-center gap-3 py-2"
+              >
                 <button
                   disabled={busy}
                   onClick={() => onOpen(session.id)}
-                  className="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl px-2 py-4 text-left transition hover:bg-slate-50 focus-visible:outline-blue-500"
+                  className="flex min-w-0 flex-1 basis-full flex-wrap sm:basis-0 items-center justify-between gap-3 rounded-xl px-2 py-4 text-left transition hover:bg-slate-50 focus-visible:outline-blue-500"
                 >
                   <span>
                     <span className="block font-semibold">{session.title}</span>
@@ -167,6 +173,11 @@ export function StocktakeOverview({
                     {stocktakeStatusLabels[session.status]}
                   </span>
                 </button>
+                <StocktakeExportButton
+                  session={session}
+                  load={loadForExport}
+                  disabled={busy}
+                />
               </li>
             ))}
           </ul>

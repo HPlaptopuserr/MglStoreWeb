@@ -47,6 +47,7 @@ export function StocktakesWorkspace() {
         <StocktakeEditor
           key={state.session.id}
           session={state.session}
+          loadForExport={state.loadForExport}
           registers={state.overview?.registers ?? []}
           canManageProducts={state.overview?.canManageProducts ?? false}
           onAddProduct={state.addProduct}
@@ -63,6 +64,7 @@ export function StocktakesWorkspace() {
         state.overview && (
           <StocktakeOverview
             data={state.overview}
+            loadForExport={state.loadForExport}
             busy={state.busy}
             onCreate={state.create}
             onOpen={state.open}

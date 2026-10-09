@@ -1,4 +1,5 @@
 "use client";
+import { StocktakeExportButton } from "./StocktakeExportButton";
 import { StocktakeDialog } from "./StocktakeDialog";
 import { StocktakeAddProduct } from "./StocktakeAddProduct";
 import { useMemo, useState } from "react";
@@ -20,6 +21,7 @@ import { StocktakeRow } from "./StocktakeRow";
 
 export function StocktakeEditor({
   session,
+  loadForExport,
   registers,
   canManageProducts,
   onAddProduct,
@@ -33,6 +35,7 @@ export function StocktakeEditor({
   onReload,
 }: {
   session: StocktakeDetail;
+  loadForExport: (id: string) => Promise<StocktakeDetail>;
   registers: { id: string; name: string }[];
   canManageProducts: boolean;
   onResolveProduct: (
@@ -100,6 +103,11 @@ export function StocktakeEditor({
           Серверээс дахин ачаалах
         </button>
       </div>
+      <StocktakeExportButton
+        session={session}
+        load={loadForExport}
+        disabled={busy}
+      />
       <StocktakeSummary
         session={session}
         total={lines.length}

@@ -397,6 +397,7 @@ export function useStocktakes() {
       }
     });
   return {
+    loadForExport: (id: string) => request<StocktakeDetail>(`${base}/${id}`),
     confirmation,
     overview,
     session,
