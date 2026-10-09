@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Smartphone, Store } from "lucide-react";
-import { StoreMiniAppCatalogs } from "@/components/organisms/app-control/StoreMiniAppCatalogs";
+import { StoreMiniAppVisibility } from "@/components/organisms/app-control/StoreMiniAppVisibility";
 import { MglStoreTab } from "@/components/organisms/app-control/MglStoreTab";
 import { MglBusinessTab } from "@/components/organisms/app-control/MglBusinessTab";
 
@@ -83,7 +83,7 @@ export default function AppControlPage() {
       <div className="rounded-2xl border border-slate-100 bg-white shadow-sm">
         {activeTab === "mgl-store" && (
           <>
-            <StoreMiniAppCatalogs />
+            <StoreMiniAppVisibility />
             <MglStoreTab />
           </>
         )}
