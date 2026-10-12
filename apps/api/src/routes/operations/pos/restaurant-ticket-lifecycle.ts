@@ -10,3 +10,10 @@ export function resolvePaidRestaurantTicketStatus(
 ): PaidRestaurantTicketStatus {
   return tableId ? "PAID" : "CLOSED";
 }
+
+export function buildPaidRestaurantTicketsCloseScope(shiftId: string) {
+  return {
+    shiftId,
+    status: "PAID" as const,
+  };
+}

@@ -59,6 +59,9 @@ import {
   buildCurrentShiftScope,
   buildOpenShiftConflictScopes,
 } from "./shift-organization-scope";
+import {
+  buildPaidRestaurantTicketsCloseScope,
+} from "./restaurant-ticket-lifecycle";
 
 import { canClosePosShift, requiresShiftCloseReason } from "./shift-access";
 
@@ -574,31 +577,43 @@ router.post("/pos/shifts/close", async (req, res) => {
           throw toApiError(409, "Ээлж аль хэдийн хаагдсан");
         }
 
-        // Older self-service sales were left in PAID even though they have no
-        // table that staff could clear. Repair those legacy tickets before the
-        // blocking-ticket check so an otherwise completed shift can close.
+        // Closing a shift also releases every fully paid restaurant ticket.
+        // This includes table tickets that were paid but never manually cleared.
         await tx.restaurantTicket.updateMany({
-          where: {
-            shiftId: shift.id,
-            tableId: null,
-            posSaleId: { not: null },
-            status: "PAID",
-          },
+          where: buildPaidRestaurantTicketsCloseScope(shift.id),
           data: {
             status: "CLOSED",
           },
         });
 
-        const openRestaurantTickets = await tx.restaurantTicket.count({
+        const blockingRestaurantTickets = await tx.restaurantTicket.findMany({
           where: {
             shiftId: shift.id,
-            status: { in: ["OPEN", "KITCHEN", "READY", "SERVED", "PAID"] },
+            status: { in: ["OPEN", "KITCHEN", "READY", "SERVED"] },
           },
+          select: {
+            ticketNo: true,
+            status: true,
+            table: { select: { label: true } },
+          },
+          orderBy: { openedAt: "asc" },
         });
-        if (openRestaurantTickets > 0) {
+        if (blockingRestaurantTickets.length > 0) {
+          const examples = blockingRestaurantTickets
+            .slice(0, 3)
+            .map(
+              (ticket) =>
+                `${ticket.ticketNo} (${ticket.status}${
+                  ticket.table?.label ? ` · Ширээ ${ticket.table.label}` : ""
+                })`,
+            )
+            .join(", ");
+          const remaining = blockingRestaurantTickets.length - 3;
           throw toApiError(
             409,
-            `Энэ ээлж дээр ${openRestaurantTickets} нээлттэй эсвэл чөлөөлөөгүй рестораны ticket байна`,
+            `Энэ ээлж дээр төлбөр дуусаагүй ${blockingRestaurantTickets.length} рестораны ticket байна: ${examples}${
+              remaining > 0 ? ` болон өөр ${remaining}` : ""
+            }. Рестораны кассаас төлбөрийг дуусгах эсвэл ticket-ийг цуцална уу.`,
           );
         }
 
