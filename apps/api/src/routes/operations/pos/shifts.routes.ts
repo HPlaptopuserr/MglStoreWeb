@@ -574,6 +574,21 @@ router.post("/pos/shifts/close", async (req, res) => {
           throw toApiError(409, "Ээлж аль хэдийн хаагдсан");
         }
 
+        // Older self-service sales were left in PAID even though they have no
+        // table that staff could clear. Repair those legacy tickets before the
+        // blocking-ticket check so an otherwise completed shift can close.
+        await tx.restaurantTicket.updateMany({
+          where: {
+            shiftId: shift.id,
+            tableId: null,
+            posSaleId: { not: null },
+            status: "PAID",
+          },
+          data: {
+            status: "CLOSED",
+          },
+        });
+
         const openRestaurantTickets = await tx.restaurantTicket.count({
           where: {
             shiftId: shift.id,

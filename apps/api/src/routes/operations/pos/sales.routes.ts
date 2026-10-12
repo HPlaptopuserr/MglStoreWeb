@@ -67,6 +67,9 @@ import {
   resolvePosCreditDueDate,
 } from "./credit-interest";
 import { resolvePosSaleLineCost } from "./pos-sale-cost";
+import {
+  resolvePaidRestaurantTicketStatus,
+} from "./restaurant-ticket-lifecycle";
 import { calculateTakeawayPackagingFee } from "./takeaway-packaging";
 import {
   EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
@@ -1984,7 +1987,9 @@ router.post("/pos/sales", async (req, res) => {
             where: { id: restaurantTicketId },
             data: {
               posSaleId: posSale.id,
-              status: "PAID",
+              status: resolvePaidRestaurantTicketStatus(
+                restaurantTicketForSale.tableId,
+              ),
               sentAt:
                 restaurantTicketForSale.sentAt ||
                 (unsentItems.length > 0 ? new Date() : undefined),
