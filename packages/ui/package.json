@@ -8,6 +8,18 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./mgl-app-boot-loader": {
+      "types": "./src/molecules/MglAppBootLoader.tsx",
+      "default": "./src/molecules/MglAppBootLoader.tsx"
+    },
+    "./mgl-loading-screen": {
+      "types": "./src/molecules/MglLoadingScreen.tsx",
+      "default": "./src/molecules/MglLoadingScreen.tsx"
+    },
+    "./mgl-system-error-screen": {
+      "types": "./src/molecules/MglSystemErrorScreen.tsx",
+      "default": "./src/molecules/MglSystemErrorScreen.tsx"
     }
   },
   "scripts": {

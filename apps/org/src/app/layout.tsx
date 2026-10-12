@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { MglAppBootLoader } from "@mgl/ui";
+import { MglAppBootLoader } from "@mgl/ui/mgl-app-boot-loader";
 import "./globals.css";
 
 const legacyBrowserStyles = `
