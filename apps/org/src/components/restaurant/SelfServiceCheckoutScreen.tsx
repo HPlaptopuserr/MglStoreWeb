@@ -57,6 +57,7 @@ import {
   createRestaurantCashSale,
   createRestaurantQPayInvoice,
   createRestaurantQPaySale,
+  getAllRestaurantPosRegisters,
   getRestaurantMenuCategories,
   getRestaurantCardAttemptStatus,
   getRestaurantPosProducts,
@@ -397,6 +398,12 @@ function SelfServiceCheckoutContent() {
       const registers = await getRestaurantPosRegisters("SELF_SERVICE");
 
       if (registers.length === 0) {
+        const activeRegisters = await getAllRestaurantPosRegisters();
+        if (activeRegisters.length > 0) {
+          throw new Error(
+            'Идэвхтэй POS register байна, гэхдээ төрөл нь "Өөртөө үйлчлэх касс" биш байна. Admin → POS касс хэсгээс кассын төрлийг "Өөртөө үйлчлэх касс" болгож тохируулна уу.',
+          );
+        }
         throw new Error("Энэ байгууллагад идэвхтэй POS register алга байна.");
       }
       const savedRegisterId = window.localStorage.getItem(REGISTER_STORAGE_KEY);

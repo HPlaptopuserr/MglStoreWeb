@@ -23,7 +23,7 @@ export function getRestaurantMenuClassificationCode(mode: unknown) {
 
 export type RestaurantPosRegister = {
   id: string;
-  mode: "RESTAURANT" | "SELF_SERVICE";
+  mode: "RETAIL" | "RESTAURANT" | "SELF_SERVICE";
   name: string;
   label: string | null;
   branchId: string;
@@ -481,6 +481,13 @@ export async function getRestaurantPosRegisters(
   mode: "RESTAURANT" | "SELF_SERVICE" = "RESTAURANT",
 ) {
   const response = await authFetch(`${API}/pos/registers/mine?mode=${mode}`, {
+    cache: "no-store",
+  });
+  return readApiResponse<RestaurantPosRegister[]>(response);
+}
+
+export async function getAllRestaurantPosRegisters() {
+  const response = await authFetch(`${API}/pos/registers/mine`, {
     cache: "no-store",
   });
   return readApiResponse<RestaurantPosRegister[]>(response);
