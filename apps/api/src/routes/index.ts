@@ -6,6 +6,7 @@ export {
   investorRoutes,
   orgJoinRoutes,
   orgMemberRoutes,
+  orgAccessPinRoutes,
   orgTaskRoutes,
   orgGamesRoutes,
   partnerRequestRoutes,

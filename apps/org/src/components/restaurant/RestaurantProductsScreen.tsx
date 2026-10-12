@@ -158,9 +158,10 @@ export function RestaurantProductsScreen() {
         organizationId={user.organizationId || ""}
         organizationName={user.organizationName}
         userId={user.id}
+        scope="PRODUCTS"
         eyebrow="Хамгаалалттай бүтээгдэхүүн"
-        title="Удирдах эрхээ баталгаажуулна уу"
-        description="бүтээгдэхүүн, үнэ болон менюг өөрчлөхийн тулд эзэмшигч эсвэл админ өөрийн нэвтрэх эрхийг баталгаажуулна."
+        title="4 оронтой PIN оруулна уу"
+        description="бүтээгдэхүүн, үнэ болон менюг өөрчлөх хамгаалалтын PIN кодыг оруулна."
         submitLabel="Бүтээгдэхүүн рүү нэвтрэх"
         footer="Хуудас бүрэн хаагдсаны дараа бүтээгдэхүүний хэсэг дахин түгжигдэнэ."
         accessDeniedMessage="Зөвхөн байгууллагын эзэмшигч эсвэл админ бүтээгдэхүүн, үнэ өөрчлөх эрхтэй."

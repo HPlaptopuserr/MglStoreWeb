@@ -78,9 +78,10 @@ export function CafeRegularCustomersScreen() {
         organizationId={user.organizationId || ""}
         organizationName={user.organizationName}
         userId={user.id}
+        scope="CUSTOMERS"
         eyebrow="Хамгаалалттай хөнгөлөлт"
-        title="Удирдах эрхээ баталгаажуулна уу"
-        description={`${isCafe ? "байнгын хэрэглэгчийн" : "ажилтны"} утас болон хөнгөлөлтийн хувийг удирдахын тулд эзэмшигч эсвэл админ өөрийн эрхийг баталгаажуулна.`}
+        title="4 оронтой PIN оруулна уу"
+        description={`${isCafe ? "байнгын хэрэглэгчийн" : "ажилтны"} утас болон хөнгөлөлтийн хувийг удирдах хамгаалалтын PIN кодыг оруулна.`}
         submitLabel="Хөнгөлөлтийн бүртгэл рүү нэвтрэх"
         footer="Хуудсыг хаах эсвэл дахин ачаалахад энэ хэсэг дахин түгжигдэнэ."
         accessDeniedMessage="Зөвхөн байгууллагын эзэмшигч эсвэл админ хөнгөлөлтийн бүртгэл удирдах эрхтэй."

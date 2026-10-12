@@ -641,10 +641,11 @@ export function RestaurantPosScreen() {
         organizationId={user.organizationId || ""}
         organizationName={user.organizationName}
         userId={user.id}
+        scope="RESTAURANT_POS"
         allowedOrgRoles={["OWNER", "ADMIN", "STAFF"]}
         eyebrow="Хамгаалалттай касс"
-        title="Кассын эрхээ баталгаажуулна уу"
-        description="бэлэн мөнгөний касс руу нэвтрэхийн тулд одоо нэвтэрсэн ажилтан өөрийн эрхийг дахин баталгаажуулна."
+        title="4 оронтой PIN оруулна уу"
+        description="бэлэн мөнгөний касс руу нэвтрэх хамгаалалтын PIN кодыг оруулна."
         submitLabel="Бэлэн мөнгөний касс руу нэвтрэх"
         footer="Кассын хуудсыг хаах эсвэл дахин ачаалахад нэвтрэх эрх дахин шаардана."
         accessDeniedMessage="Зөвхөн байгууллагын эзэмшигч, админ эсвэл ажилтан бэлэн мөнгөний касс ашиглах эрхтэй."

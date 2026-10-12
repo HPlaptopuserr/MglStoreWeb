@@ -18,6 +18,7 @@ import {
   investorRoutes,
   orgJoinRoutes,
   orgMemberRoutes,
+  orgAccessPinRoutes,
   orgTaskRoutes,
   orgGamesRoutes,
   partnerRequestRoutes,
@@ -150,6 +151,7 @@ app.use("/api", businessDashboardRoutes);
 app.use("/api", partnerRoutes);
 app.use("/api", orgJoinRoutes);
 app.use("/api", orgMemberRoutes);
+app.use("/api", orgAccessPinRoutes);
 app.use("/api", orgTaskRoutes);
 app.use("/api", orgGamesRoutes);
 app.use("/api", personalOrganizationRoutes);

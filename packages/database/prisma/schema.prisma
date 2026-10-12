@@ -433,6 +433,8 @@ model Organization {
   salesRepVendorRestrictionEnabled Boolean                      @default(false)
   businessTasksEnabled             Boolean                      @default(true)
   businessDeliveryEnabled          Boolean                      @default(false)
+  accessPinHash                    String?
+  accessPinUpdatedAt               DateTime?
   ceoServiceEnabled                Boolean                      @default(false)
   ceoAdviceNotificationsEnabled    Boolean                      @default(true)
   ceoCalendarRemindersEnabled      Boolean                      @default(true)

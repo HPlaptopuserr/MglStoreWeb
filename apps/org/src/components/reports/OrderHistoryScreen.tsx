@@ -554,8 +554,10 @@ export default function OrderHistoryScreen() {
         organizationId={user.organizationId || ""}
         organizationName={user.organizationName}
         userId={user.id}
+        scope="REPORTS"
         eyebrow="Хамгаалалттай тайлан"
-        description="тайланг харахын тулд эзэмшигч эсвэл админ өөрийн нэвтрэх эрхийг баталгаажуулна."
+        title="4 оронтой PIN оруулна уу"
+        description="тайланг харах хамгаалалтын PIN кодыг оруулна."
         submitLabel="Тайлан руу нэвтрэх"
         footer="Тайлангийн хуудас бүрэн хаагдсаны дараа дахин нэвтрэх шаардлагатай."
         accessDeniedMessage="Зөвхөн байгууллагын эзэмшигч эсвэл админ тайлан харах эрхтэй."
