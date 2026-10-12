@@ -1,3 +1,5 @@
+import { assertWarehouseImportIdentity, assertWarehouseProductsOwned } from "../../services/warehouse-product-ownership";
+import { inventoryConflictResponse } from "../../lib/inventory-conflict-errors";
 import { parseBarcodeAliases, mergeBarcodeAliases } from "../../services/product-barcode-aliases";
 import { Router, type Router as ExpressRouter } from "express";
 import crypto from "crypto";
@@ -2042,6 +2044,7 @@ router.post(
       }
 
       const inventory = await prisma.$transaction(async (tx) => {
+        await assertWarehouseProductsOwned(tx, id, [productId]);
         // Get old quantity for ledger diff
         const existing = await tx.warehouseInventory.findUnique({
           where: { warehouseId_productId: { warehouseId: id, productId } },
@@ -2118,6 +2121,8 @@ router.post(
 
       res.status(201).json(inventory);
     } catch (error) {
+      const conflict = inventoryConflictResponse(error);
+      if (conflict) return res.status(conflict.status).json({ message: conflict.message });
       console.error("add warehouse inventory error", error);
       res.status(500).json({
         message: "Агуулахийн бүртгэл нэмэхэд алдаа гарлаа",
@@ -2299,6 +2304,7 @@ router.post(
           select: { id: true },
         });
         if (!warehouse) throw new Error("WAREHOUSE_NOT_FOUND");
+        await assertWarehouseProductsOwned(tx, warehouseId, items.map(item => item.productId));
 
         const dispatchNumber = createManualDispatchNumber();
         const created = await tx.warehouseManualDispatch.create({
@@ -2371,6 +2377,8 @@ router.post(
         return res.status(404).json({ message: "Агуулах олдсонгүй" });
       }
       console.error("create warehouse manual dispatch error", error);
+      const conflict = inventoryConflictResponse(error);
+      if (conflict) return res.status(conflict.status).json({ message: conflict.message });
       return res.status(500).json({
         message: "Бараа гаргалт бүртгэхэд алдаа гарлаа",
       });
@@ -2514,6 +2522,7 @@ router.patch(
         return res.status(404).json({ message: "Агуулахын бараа олдсонгүй" });
       }
       const inventory = await prisma.$transaction(async (tx) => {
+        await assertWarehouseProductsOwned(tx, warehouseId, [productId]);
         // Get old quantity for ledger
         const oldInv =
           quantity !== undefined
@@ -2600,8 +2609,10 @@ router.patch(
       });
 
       res.json(inventory);
-    } catch (error: any) {
-      if (error?.code === "P2002") {
+    } catch (error) {
+      const conflict = inventoryConflictResponse(error);
+      if (conflict) return res.status(conflict.status).json({ message: conflict.message });
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
         return res.status(409).json({
           message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна",
         });
@@ -2634,6 +2645,7 @@ router.delete(
       }
 
       await prisma.$transaction(async (tx) => {
+        await assertWarehouseProductsOwned(tx, warehouseId, [productId]);
         const activeReservations = await tx.warehouseStockRequestItem.findMany({
           where: {
             productId,
@@ -2710,6 +2722,8 @@ router.delete(
           requestNumbers: requestNumbers.split(", ").filter(Boolean),
         });
       }
+      const conflict = inventoryConflictResponse(error);
+      if (conflict) return res.status(conflict.status).json({ message: conflict.message });
       console.error("delete warehouse inventory error", error);
       res.status(500).json({
         message: "Агуулахийн бүртгэл устгахад алдаа гарлаа",
@@ -3470,6 +3484,11 @@ router.post(
 
           // Create or update product + warehouse inventory in a transaction
           const result = await prisma.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationId || warehouseId}))`;
+            await assertWarehouseImportIdentity(tx, warehouseId, {
+              sku: normalizedSku,
+              name: productData.name,
+            });
             let product;
             let wasUpdate = false;
 
@@ -3489,6 +3508,7 @@ router.post(
                 select: { id: true, masterProductId: true },
               });
               wasUpdate = !!existing;
+              if (existing) await assertWarehouseProductsOwned(tx, warehouseId, [existing.id]);
 
               const masterProduct = await resolveMasterProduct(tx, {
                 masterProductId: existing?.masterProductId,
@@ -3563,47 +3583,36 @@ router.post(
               });
             }
 
-            // Create or update warehouse inventory
-            if (stockNum > 0) {
-              const existingInv = await tx.warehouseInventory.findUnique({
-                where: {
-                  warehouseId_productId: { warehouseId, productId: product.id },
-                },
-              });
+            // Imported stock replaces this warehouse's quantity, including zero.
+            await assertWarehouseProductsOwned(tx, warehouseId, [product.id]);
+            const existingInv = await tx.warehouseInventory.findUnique({
+              where: {
+                warehouseId_productId: { warehouseId, productId: product.id },
+              },
+            });
+            await tx.warehouseInventory.upsert({
+              where: {
+                warehouseId_productId: { warehouseId, productId: product.id },
+              },
+              update: { quantity: stockNum, lastRestockedAt: new Date() },
+              create: {
+                warehouseId,
+                productId: product.id,
+                quantity: stockNum,
+                minQuantity: 0,
+                lastRestockedAt: new Date(),
+              },
+            });
 
-              if (existingInv) {
-                await tx.warehouseInventory.update({
-                  where: {
-                    warehouseId_productId: {
-                      warehouseId,
-                      productId: product.id,
-                    },
-                  },
-                  data: {
-                    quantity: stockNum,
-                    lastRestockedAt: new Date(),
-                  },
-                });
-              } else {
-                await tx.warehouseInventory.create({
-                  data: {
-                    warehouseId,
-                    productId: product.id,
-                    quantity: stockNum,
-                    minQuantity: 0,
-                    lastRestockedAt: new Date(),
-                  },
-                });
-              }
-
-              // Ledger entry
+            const change = stockNum - (existingInv?.quantity ?? 0);
+            if (change !== 0) {
               await tx.inventoryLedger.create({
                 data: {
                   productId: product.id,
                   warehouseId,
-                  change: stockNum,
+                  change,
                   reason: wasUpdate ? "RESTOCK" : "INITIAL_STOCK",
-                  note: "Excel импортоор нэмсэн",
+                  note: "Excel импортоор үлдэгдэл шинэчилсэн",
                 },
               });
             }

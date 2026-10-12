@@ -2,6 +2,7 @@ import { resolveProductInventoryWarehouse } from "./vendor-inventory-warehouse.s
 import { prisma, InventoryReason, Prisma } from "@mgl/database";
 import type { PrismaClient } from "@prisma/client";
 import { fromPosStoredStockQuantity } from "@mgl/types";
+import { assertProductInventoryOwnership, assertUnassignedProductInventory, assertWarehouseProductsOwned } from "./warehouse-product-ownership";
 
 type Tx = Omit<
   PrismaClient,
@@ -166,6 +167,7 @@ export async function adjustStock(
   } = input;
 
   if (warehouseId) {
+    await assertWarehouseProductsOwned(tx, warehouseId, [productId]);
     // Update warehouse inventory (upsert to handle missing records)
     await tx.warehouseInventory.upsert({
       where: {
@@ -192,6 +194,7 @@ export async function adjustStock(
       data: { stock: result._sum.quantity ?? 0 },
     });
   } else {
+    await assertUnassignedProductInventory(tx, [productId]);
     // No warehouse — direct Product.stock update
     await tx.product.update({
       where: { id: productId },
@@ -245,6 +248,7 @@ export async function syncProductStock(
   txOrPrisma: Tx,
   productId: string,
 ): Promise<void> {
+  await assertProductInventoryOwnership(txOrPrisma, [productId]);
   const result = await txOrPrisma.warehouseInventory.aggregate({
     where: { productId },
     _sum: { quantity: true },
@@ -269,6 +273,12 @@ export async function reconcilePhysicalStock(
   },
 ) {
   const changed = input.lines.filter((line) => line.change !== 0);
+  const productIds = changed.map(line => line.productId);
+  if (input.warehouseId) {
+    await assertWarehouseProductsOwned(tx, input.warehouseId, productIds);
+  } else {
+    await assertUnassignedProductInventory(tx, productIds);
+  }
   for (let offset = 0; offset < changed.length; offset += 400) {
     const batch = changed.slice(offset, offset + 400);
     const values = Prisma.join(

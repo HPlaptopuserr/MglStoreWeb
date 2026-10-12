@@ -1,14 +1,13 @@
 import { Prisma } from "@mgl/database";
-import { ProductInventoryConflictError } from "../services/vendor-inventory-warehouse.service";
+import { inventoryConflictResponse } from "./inventory-conflict-errors";
 
 /** Only known, safe messages are returned to the vendor. Log the cause separately. */
 export function productMutationErrorResponse(error: unknown): {
   status: number;
   message: string;
 } {
-  if (error instanceof ProductInventoryConflictError) {
-    return { status: 409, message: error.message };
-  }
+  const conflict = inventoryConflictResponse(error);
+  if (conflict) return conflict;
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     switch (error.code) {
       case "P2002":

@@ -1,6 +1,6 @@
 import { assertStocktakeScope } from "./stocktake-scope";
 export { assertStocktakeScope } from "./stocktake-scope";
-import { createStocktakeReceipts } from "./stocktake-new-product.service";
+import { createStocktakeReceipts, lockStocktakeInventory } from "./stocktake-new-product.service";
 import { Prisma, prisma } from "@mgl/database";
 import type {
   StocktakeCountEdit,
@@ -375,6 +375,9 @@ export function mutateStocktake(input: {
         const counted = session.lines
           .filter((line) => line.counted !== null)
           .sort((a, b) => a.productId.localeCompare(b.productId));
+        await lockStocktakeInventory(tx, session.organizationId, counted
+          .filter(line => line.counted! > line.expected)
+          .flatMap(line => line.receiptRegisterId ? [line.receiptRegisterId] : []));
         const ids = counted.map((line) => line.productId);
         // Product locks also serialize warehouse aggregate updates against other scopes.
         await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`;

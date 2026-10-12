@@ -74,7 +74,12 @@ import {
   getOutstandingStockPayments,
   serializeOutstandingPayment,
 } from "../../services/outstanding-stock-payment.service";
-import { transferStockToVendor } from "../../services/stock-transfer.service";
+import {
+  StockTransferConflictError,
+  transferStockToVendor,
+} from "../../services/stock-transfer.service";
+import { assertWarehouseProductsOwned, WarehouseProductOwnershipError } from "../../services/warehouse-product-ownership";
+import { lockOrganizationInventory, ProductInventoryConflictError } from "../../services/vendor-inventory-warehouse.service";
 import {
   canAdminAdvanceStockRequest,
   effectiveWarehouseDispatchStatus,
@@ -83,8 +88,27 @@ import {
 import { recommendationService } from "../../services/recommendations/recommendation.service";
 import { canViewStockOrderOwnership } from "../../services/stock-order-visibility.policy";
 import { isLowStock } from "../../lib/low-stock";
+import {
+  assertActiveStockRequest,
+  lockStockDispatchLifecycle,
+  lockStockRequestLifecycle,
+  StockLifecycleConflictError,
+} from "../../services/stock-lifecycle-lock.service";
 
 const router: ExpressRouter = Router();
+
+function respondStockConflict(error: unknown, res: Response): boolean {
+  if (
+    error instanceof StockLifecycleConflictError ||
+    error instanceof StockTransferConflictError ||
+    error instanceof ProductInventoryConflictError ||
+    error instanceof WarehouseProductOwnershipError
+  ) {
+    res.status(409).json({ message: error.message });
+    return true;
+  }
+  return false;
+}
 const padaanUploadsDir = path.resolve(
   __dirname,
   "../../../uploads/stock-request-padaan",
@@ -1051,28 +1075,21 @@ router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
       });
     }
 
-    // Approval may release reserved units, but must not silently reserve more.
-    if (
-      items &&
-      items.some((item: { productId: string; approvedQuantity: number }) => {
-        const original = request.items.find(
-          (row) => row.productId === item.productId,
-        );
-        return (
-          !original ||
-          !Number.isSafeInteger(item.approvedQuantity) ||
-          item.approvedQuantity < 0 ||
-          item.approvedQuantity > original.quantity
-        );
-      })
-    )
-      return res.status(400).json({
-        message:
-          "Батлах тоо 0-ээс захиалсан тооны хооронд бүхэл тоо байх ёстой",
-      });
     // Update request and items with approved quantities
     const updated = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
+        const request = await lockStockRequestLifecycle(tx, id);
+        if (request.status !== StockRequestStatus.PENDING) {
+          throw new StockLifecycleConflictError("Зөвхөн хүлээгдэж буй хүсэлтийг зөвшөөрөх боломжтой");
+        }
+        // Approval may release reserved units, but cannot silently reserve more.
+        if (items && items.some((item: { productId: string; approvedQuantity: number }) => {
+          const original = request.items.find((row) => row.productId === item.productId);
+          return !original || !Number.isSafeInteger(item.approvedQuantity) ||
+            item.approvedQuantity < 0 || item.approvedQuantity > original.quantity;
+        })) {
+          throw new StockLifecycleConflictError("Барааны жагсаалт эсвэл батлах тоо өөрчлөгдсөн байна");
+        }
         // Update item approved quantities if provided
         if (items && items.length > 0) {
           for (const item of items) {
@@ -1089,14 +1106,6 @@ router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
             });
           }
         } else {
-          // Approve all with requested quantities
-          await tx.warehouseStockRequestItem.updateMany({
-            where: { requestId: id },
-            data: {
-              approvedQuantity: undefined, // Will be set individually
-            },
-          });
-
           // Set approved = requested for each item
           for (const item of request.items) {
             await tx.warehouseStockRequestItem.update({
@@ -1151,6 +1160,7 @@ router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
+    if (respondStockConflict(error, res)) return;
     console.error("approve stock request error", error);
     res.status(500).json({
       message: "Хүсэлт зөвшөөрөхөд алдаа гарлаа",
@@ -1193,6 +1203,10 @@ router.patch("/stock-requests/:id/reject", requireAuth, async (req, res) => {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      const request = await lockStockRequestLifecycle(tx, id);
+      if (request.status !== StockRequestStatus.PENDING || Number(request.payment?.paidAmount || 0) > 0) {
+        throw new StockLifecycleConflictError("Төлбөргүй, хүлээгдэж буй хүсэлтийг татгалзах боломжтой");
+      }
       const rejectedRequest = await tx.warehouseStockRequest.update({
         where: { id },
         data: {
@@ -1220,6 +1234,7 @@ router.patch("/stock-requests/:id/reject", requireAuth, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
+    if (respondStockConflict(error, res)) return;
     console.error("reject stock request error", error);
     res.status(500).json({
       message: "Хүсэлт татгалзахад алдаа гарлаа",
@@ -1254,15 +1269,23 @@ router.patch("/stock-requests/:id/process", requireAuth, async (req, res) => {
       });
     }
 
-    const updated = await prisma.warehouseStockRequest.update({
-      where: { id },
-      data: {
-        status: StockRequestStatus.PROCESSING,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      const request = await lockStockRequestLifecycle(tx, id);
+      if (!canAdminAdvanceStockRequest(request.dispatch)) {
+        throw new StockLifecycleConflictError(warehouseDispatchRequiredMessage);
+      }
+      if (request.status !== StockRequestStatus.APPROVED) {
+        throw new StockLifecycleConflictError("Зөвхөн зөвшөөрөгдсөн хүсэлтийг боловсруулж эхлэх боломжтой");
+      }
+      return tx.warehouseStockRequest.update({
+        where: { id },
+        data: { status: StockRequestStatus.PROCESSING },
+      });
     });
 
     res.json(updated);
   } catch (error) {
+    if (respondStockConflict(error, res)) return;
     console.error("process stock request error", error);
     res.status(500).json({
       message: "Хүсэлт боловсруулахад алдаа гарлаа",
@@ -1303,6 +1326,17 @@ router.patch("/stock-requests/:id/complete", requireAuth, async (req, res) => {
     // Update warehouse inventory (reduce stock) and sync Product.stock
     const updated = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
+        const request = await lockStockRequestLifecycle(tx, id);
+        if (!canAdminAdvanceStockRequest(request.dispatch)) {
+          throw new StockLifecycleConflictError(warehouseDispatchRequiredMessage);
+        }
+        if (request.status !== StockRequestStatus.PROCESSING && request.status !== StockRequestStatus.APPROVED) {
+          throw new StockLifecycleConflictError("Зөвхөн боловсруулж буй хүсэлтийг нэг удаа дуусгах боломжтой");
+        }
+        // Transfers and returns acquire the store before any source products.
+        await lockOrganizationInventory(tx, request.organizationId);
+        await assertWarehouseProductsOwned(tx, request.warehouseId,
+          request.items.filter(item => approvedStockRequestQuantity(item) > 0).map(item => item.productId));
         // Reduce inventory for each item via inventory service
         for (const item of request.items) {
           const quantity = item.approvedQuantity ?? item.quantity;
@@ -1357,6 +1391,7 @@ router.patch("/stock-requests/:id/complete", requireAuth, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
+    if (respondStockConflict(error, res)) return;
     console.error("complete stock request error", error);
     res.status(500).json({
       message: "Хүсэлт дуусгахад алдаа гарлаа",
@@ -1392,6 +1427,10 @@ router.patch("/stock-requests/:id/cancel", requireAuth, async (req, res) => {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      const request = await lockStockRequestLifecycle(tx, id);
+      if (request.status !== StockRequestStatus.PENDING || Number(request.payment?.paidAmount || 0) > 0) {
+        throw new StockLifecycleConflictError("Төлбөргүй, хүлээгдэж буй хүсэлтийг цуцлах боломжтой");
+      }
       const cancelledRequest = await tx.warehouseStockRequest.update({
         where: { id },
         data: { status: StockRequestStatus.CANCELLED },
@@ -1409,6 +1448,7 @@ router.patch("/stock-requests/:id/cancel", requireAuth, async (req, res) => {
 
     res.json(updated);
   } catch (error) {
+    if (respondStockConflict(error, res)) return;
     console.error("cancel stock request error", error);
     res.status(500).json({
       message: "Хүсэлт цуцлахад алдаа гарлаа",
@@ -3323,115 +3363,138 @@ router.patch(
         normalizedItems.push({ productId, quantity });
       }
 
-      const availableProducts = await prisma.warehouseInventory.findMany({
-        where: {
-          warehouseId: dispatch.warehouseId,
-          productId: { in: normalizedItems.map((item) => item.productId) },
-          product: { isActive: true, deletedAt: null },
-        },
-        select: {
-          productId: true,
-          quantity: true,
-          product: { select: { id: true, name: true, sku: true, price: true } },
-        },
-      });
-      if (availableProducts.length !== normalizedItems.length) {
-        return res
-          .status(400)
-          .json({ message: "Сонгосон бараа агуулахад олдсонгүй" });
-      }
-      const availableByProductId = new Map(
-        availableProducts.map((inventory) => [inventory.productId, inventory]),
-      );
-      const unavailableItem = normalizedItems.find(
-        (item) =>
-          Number(availableByProductId.get(item.productId)?.quantity || 0) <
-          item.quantity,
-      );
-      if (unavailableItem) {
-        const inventory = availableByProductId.get(unavailableItem.productId);
-        return res.status(409).json({
-          message: `${inventory?.product.name || "Бараа"}-ны үлдэгдэл хүрэлцэхгүй (${inventory?.quantity || 0} ш)`,
-        });
-      }
-
-      const oldTotal = dispatch.request.items.reduce(
-        (sum, item) =>
-          sum +
-          Number(item.approvedQuantity ?? item.quantity) *
-            Number(item.product.price),
-        0,
-      );
-      const newTotal = normalizedItems.reduce(
-        (sum, item) =>
-          sum +
-          item.quantity *
-            Number(
-              availableByProductId.get(item.productId)?.product.price || 0,
-            ),
-        0,
-      );
-      const currentByProductId = new Map(
-        dispatch.request.items.map((item) => [item.productId, item]),
-      );
-      const nextByProductId = new Map(
-        normalizedItems.map((item) => [item.productId, item]),
-      );
-      const changedItems = [
-        ...dispatch.request.items.flatMap((current) => {
-          const next = nextByProductId.get(current.productId);
-          if (!next) {
-            return [
-              {
-                changeType: "REMOVED",
-                itemId: current.id,
-                productId: current.productId,
-                productName: current.product.name,
-                sku: current.product.sku,
-                oldQuantity: Number(
-                  current.approvedQuantity ?? current.quantity,
-                ),
-                newQuantity: 0,
+      const result = await prisma.$transaction(async (tx) => {
+        await lockStockDispatchLifecycle(tx, id);
+        const dispatch = await tx.stockDispatch.findUniqueOrThrow({
+          where: { id },
+          include: {
+            request: {
+              include: {
+                items: {
+                  include: {
+                    product: { select: { id: true, name: true, sku: true, price: true } },
+                  },
+                },
+                payment: { include: { entries: true } },
               },
-            ];
-          }
-          const oldQuantity = Number(
-            current.approvedQuantity ?? current.quantity,
-          );
-          return oldQuantity === next.quantity
-            ? []
-            : [
+            },
+          },
+        });
+        assertActiveStockRequest(dispatch.request.status);
+        if (dispatch.status !== "PENDING") {
+          throw new StockLifecycleConflictError("Зөвхөн хүлээгдэж буй илгээмжийн барааг засна");
+        }
+        const payment = dispatch.request.payment;
+        if (payment && (
+          Number(payment.paidAmount) > 0 || payment.status !== PaymentStatus.PENDING ||
+          payment.transactionId || payment.paymentMethod || payment.entries.length
+        )) {
+          throw new StockLifecycleConflictError("Төлбөрийн үйлдэл эхэлсэн тул барааны жагсаалтыг засах боломжгүй");
+        }
+        const availableProducts = await tx.warehouseInventory.findMany({
+          where: {
+            warehouseId: dispatch.warehouseId,
+            productId: { in: normalizedItems.map((item) => item.productId) },
+            product: { isActive: true, deletedAt: null },
+          },
+          select: {
+            productId: true,
+            quantity: true,
+            product: { select: { id: true, name: true, sku: true, price: true } },
+          },
+        });
+        if (availableProducts.length !== normalizedItems.length) {
+          throw new StockLifecycleConflictError("Сонгосон бараа агуулахад олдсонгүй. Барааны жагсаалтыг шинэчилнэ үү");
+        }
+        const availableByProductId = new Map(
+          availableProducts.map((inventory) => [inventory.productId, inventory]),
+        );
+        const unavailableItem = normalizedItems.find(
+          (item) =>
+            Number(availableByProductId.get(item.productId)?.quantity || 0) <
+            item.quantity,
+        );
+        if (unavailableItem) {
+          const inventory = availableByProductId.get(unavailableItem.productId);
+          throw new StockLifecycleConflictError(`${inventory?.product.name || "Бараа"}-ны үлдэгдэл хүрэлцэхгүй (${inventory?.quantity || 0} ш)`);
+        }
+
+        const oldTotal = dispatch.request.items.reduce(
+          (sum, item) =>
+            sum +
+            Number(item.approvedQuantity ?? item.quantity) *
+              Number(item.product.price),
+          0,
+        );
+        const newTotal = normalizedItems.reduce(
+          (sum, item) =>
+            sum +
+            item.quantity *
+              Number(
+                availableByProductId.get(item.productId)?.product.price || 0,
+              ),
+          0,
+        );
+        const currentByProductId = new Map(
+          dispatch.request.items.map((item) => [item.productId, item]),
+        );
+        const nextByProductId = new Map(
+          normalizedItems.map((item) => [item.productId, item]),
+        );
+        const changedItems = [
+          ...dispatch.request.items.flatMap((current) => {
+            const next = nextByProductId.get(current.productId);
+            if (!next) {
+              return [
                 {
-                  changeType: "UPDATED",
+                  changeType: "REMOVED",
                   itemId: current.id,
                   productId: current.productId,
                   productName: current.product.name,
                   sku: current.product.sku,
-                  oldQuantity,
-                  newQuantity: next.quantity,
+                  oldQuantity: Number(
+                    current.approvedQuantity ?? current.quantity,
+                  ),
+                  newQuantity: 0,
                 },
               ];
-        }),
-        ...normalizedItems.flatMap((next) => {
-          if (currentByProductId.has(next.productId)) return [];
-          const product = availableByProductId.get(next.productId)?.product;
-          return [
-            {
-              changeType: "ADDED",
-              itemId: null,
-              productId: next.productId,
-              productName: product?.name || "Бараа",
-              sku: product?.sku || null,
-              oldQuantity: 0,
-              newQuantity: next.quantity,
-            },
-          ];
-        }),
-      ];
-      if (changedItems.length === 0)
-        return res.json({ dispatch, unchanged: true });
+            }
+            const oldQuantity = Number(
+              current.approvedQuantity ?? current.quantity,
+            );
+            return oldQuantity === next.quantity
+              ? []
+              : [
+                  {
+                    changeType: "UPDATED",
+                    itemId: current.id,
+                    productId: current.productId,
+                    productName: current.product.name,
+                    sku: current.product.sku,
+                    oldQuantity,
+                    newQuantity: next.quantity,
+                  },
+                ];
+          }),
+          ...normalizedItems.flatMap((next) => {
+            if (currentByProductId.has(next.productId)) return [];
+            const product = availableByProductId.get(next.productId)?.product;
+            return [
+              {
+                changeType: "ADDED",
+                itemId: null,
+                productId: next.productId,
+                productName: product?.name || "Бараа",
+                sku: product?.sku || null,
+                oldQuantity: 0,
+                newQuantity: next.quantity,
+              },
+            ];
+          }),
+        ];
+        if (changedItems.length === 0)
+          return { dispatch, unchanged: true };
 
-      await prisma.$transaction(async (tx) => {
         await tx.warehouseStockRequestItem.deleteMany({
           where: {
             requestId: dispatch.requestId,
@@ -3483,10 +3546,12 @@ router.patch(
             },
           },
         });
+        return { success: true, changedCount: changedItems.length };
       });
 
-      return res.json({ success: true, changedCount: changedItems.length });
+      return res.json(result);
     } catch (error) {
+      if (respondStockConflict(error, res)) return;
       if (error instanceof Error && error.message === "INVALID_ITEM_QUANTITY") {
         return res
           .status(400)
@@ -3574,6 +3639,13 @@ router.patch(
 
       const updated = await prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
+          const dispatch = await lockStockDispatchLifecycle(tx, id);
+          assertActiveStockRequest(dispatch.request.status);
+          if (dispatch.status !== "PENDING") {
+            throw new StockLifecycleConflictError("Зөвхөн хүлээгдэж буй илгээмжийг нэг удаа баталгаажуулах боломжтой");
+          }
+          await assertWarehouseProductsOwned(tx, dispatch.warehouseId,
+            dispatch.request.items.filter(item => approvedStockRequestQuantity(item) > 0).map(item => item.productId));
           // Deduct inventory for each item
           for (const item of dispatch.request.items) {
             const quantity = approvedStockRequestQuantity(item);
@@ -3637,6 +3709,7 @@ router.patch(
 
       res.json(updated);
     } catch (error) {
+      if (respondStockConflict(error, res)) return;
       console.error("confirm dispatch error", error);
       res.status(500).json({
         message: "Илгээмж баталгаажуулахад алдаа гарлаа",
@@ -3729,6 +3802,11 @@ router.patch(
       }
 
       const result = await prisma.$transaction(async (tx) => {
+        const dispatch = await lockStockDispatchLifecycle(tx, id);
+        assertActiveStockRequest(dispatch.request.status);
+        if (dispatch.status !== "CONFIRMED") {
+          throw new StockLifecycleConflictError("Зөвхөн баталгаажсан илгээмжийг нэг удаа илгээх боломжтой");
+        }
         const delivery = await tx.delivery.findUnique({
           where: { stockDispatchId: id },
           select: { id: true },
@@ -3787,6 +3865,7 @@ router.patch(
 
       res.json(result.dispatch);
     } catch (error) {
+      if (respondStockConflict(error, res)) return;
       console.error("dispatch error", error);
       res.status(500).json({
         message:
@@ -3831,10 +3910,12 @@ router.patch(
 
       const updated = await prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
-          const request = await tx.warehouseStockRequest.findUnique({
-            where: { id: dispatch.requestId },
-            include: { items: true },
-          });
+          const dispatch = await lockStockDispatchLifecycle(tx, id);
+          assertActiveStockRequest(dispatch.request.status);
+          if (dispatch.status !== "DISPATCHED") {
+            throw new StockLifecycleConflictError("Зөвхөн илгээгдсэн илгээмжийг нэг удаа хүргэгдсэн гэж тэмдэглэнэ");
+          }
+          const request = dispatch.request;
           if (request) {
             await transferStockToVendor(
               tx,
@@ -3880,6 +3961,7 @@ router.patch(
 
       res.json(updated);
     } catch (error) {
+      if (respondStockConflict(error, res)) return;
       console.error("deliver dispatch error", error);
       res.status(500).json({
         message: "Хүргэлт тэмдэглэхэд алдаа гарлаа",
@@ -3924,8 +4006,15 @@ router.patch(
 
       const updated = await prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
+          const dispatch = await lockStockDispatchLifecycle(tx, id);
+          assertActiveStockRequest(dispatch.request.status);
+          if (dispatch.status !== "PENDING" && dispatch.status !== "CONFIRMED") {
+            throw new StockLifecycleConflictError("Зөвхөн хүлээгдэж буй эсвэл баталгаажсан илгээмжийг нэг удаа цуцлах боломжтой");
+          }
           // If was CONFIRMED, reverse the inventory deduction
           if (dispatch.status === "CONFIRMED") {
+            await assertWarehouseProductsOwned(tx, dispatch.warehouseId,
+              dispatch.request.items.filter(item => approvedStockRequestQuantity(item) > 0).map(item => item.productId));
             for (const item of dispatch.request.items) {
               const quantity = approvedStockRequestQuantity(item);
               if (quantity === 0) continue;
@@ -3980,6 +4069,7 @@ router.patch(
 
       res.json(updated);
     } catch (error) {
+      if (respondStockConflict(error, res)) return;
       console.error("cancel dispatch error", error);
       res.status(500).json({
         message: "Илгээмж цуцлахад алдаа гарлаа",

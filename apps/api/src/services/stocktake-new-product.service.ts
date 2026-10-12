@@ -4,6 +4,21 @@ import { inputRecord, StocktakeError } from "./stocktake.policy";
 import { adjustStock } from "./inventory.service";
 import { assertStocktakeScope } from "./stocktake-scope";
 import { stocktakeDetailInclude } from "./stocktake-query";
+import { lockOrganizationInventory } from "./vendor-inventory-warehouse.service";
+
+/** Match POS receipt/sale order before products or receipt foreign keys are touched. */
+export async function lockStocktakeInventory(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  registerIds: readonly string[],
+): Promise<void> {
+  const ids = [...new Set(registerIds)].sort();
+  if (ids.length) {
+    await tx.$queryRaw`SELECT "id" FROM "PosRegister" WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`;
+  }
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationId}))`;
+  await lockOrganizationInventory(tx, organizationId);
+}
 
 export function parseStocktakeNewProduct(value: unknown): StocktakeNewProduct {
   const body = inputRecord(value);
@@ -94,6 +109,7 @@ export async function addStocktakeProduct(input: {
           "Тооллого өөрчлөгдсөн байна. Дахин ачаална уу",
           409,
         );
+      await lockStocktakeInventory(tx, input.organizationId, [input.product.registerId]);
       const register = await tx.posRegister.findFirst({
         where: {
           id: input.product.registerId,
@@ -104,7 +120,6 @@ export async function addStocktakeProduct(input: {
       });
       if (!register)
         throw new StocktakeError("Байгууллагын идэвхтэй касс сонгоно уу");
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.organizationId}))`;
       const data = input.product;
       if (
         data.barcode &&

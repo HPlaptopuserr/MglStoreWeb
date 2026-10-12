@@ -5,6 +5,8 @@ import {
   buildCreditBorrowerKey,
 } from "@mgl/types";
 import { parseCreditWorkDetails } from "./credit-work-details";
+import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
+import { assertProductInventoryOwnership } from "../../../services/warehouse-product-ownership";
 import { resolvePosDiscountProfileType } from "./discount-profile";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
@@ -1242,6 +1244,9 @@ router.post("/pos/sales", async (req, res) => {
             throw toApiError(403, "Өөр байгууллагын sale хийх боломжгүй");
           }
         }
+
+        await lockOrganizationInventory(tx, effectiveOrganizationId);
+        await assertProductInventoryOwnership(tx, productIds);
 
         const resolvedShiftId = String(body.shiftId || "").trim();
         if (!resolvedShiftId) {

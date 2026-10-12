@@ -21,6 +21,7 @@ import {
   resolveOrgWarehouse,
 } from "../../../services/inventory.service";
 import { hasOrgMembership } from "../../../services/permission.service";
+import { WarehouseProductOwnershipError } from "../../../services/warehouse-product-ownership";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
@@ -1774,6 +1775,20 @@ router.post("/pos/sales/:id/void", async (req, res) => {
 
     await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
+        // Serialize retries/concurrent void requests before validating status or
+        // restoring inventory and receipt lots. Use the fresh, locked sale.
+        await tx.$queryRaw`SELECT id FROM "PosSale" WHERE id=${saleId} FOR UPDATE`;
+        const sale = await tx.posSale.findUnique({
+          where: { id: saleId },
+          include: {
+            lines: true,
+            restaurantTicket: { select: { id: true, note: true } },
+          },
+        });
+        if (!sale) throw toApiError(404, "Борлуулалт олдсонгүй");
+        if (sale.status !== PosSaleStatus.COMPLETED || sale.voidedAt) {
+          throw toApiError(409, "Зөвхөн дууссан борлуулалтыг нэг удаа цуцлах боломжтой");
+        }
         const voidedAt = new Date();
 
         await tx.posSale.update({
@@ -1863,6 +1878,9 @@ router.post("/pos/sales/:id/void", async (req, res) => {
     res.status(200).json({ ok: true, message: "Буцаалт амжилттай хийгдлээ" });
   } catch (error) {
     console.error("void sale error", error);
+    if (error instanceof WarehouseProductOwnershipError) {
+      return res.status(409).json({ message: error.message });
+    }
     const maybeApiError = error as Partial<ApiError>;
     if (maybeApiError?.status && maybeApiError?.message) {
       return res

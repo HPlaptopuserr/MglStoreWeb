@@ -1,5 +1,6 @@
 import { productMutationErrorResponse } from "../../lib/product-mutation-errors";
-import { resolveProductInventoryWarehouse } from "../../services/vendor-inventory-warehouse.service";
+import { lockOrganizationInventory, resolveProductInventoryWarehouse } from "../../services/vendor-inventory-warehouse.service";
+import { assertProductInventoryOwnership, WarehouseProductOwnershipError } from "../../services/warehouse-product-ownership";
 import { enrichMasterCatalog } from "../../services/catalog-enrichment/service";
 import { findMasterCatalogIds } from "../../services/master-catalog-search.service";
 import { CatalogEditError, catalogEditSelect, saveCatalogEdit } from "../../services/master-catalog-editor.service";
@@ -421,6 +422,31 @@ type Tx = Omit<
   PrismaClient,
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >;
+
+interface ProductMutationIdentity {
+  id: string;
+  organizationId: string | null;
+  managedByWarehouseId: string | null;
+}
+
+/** Lock and revalidate ownership after the request's permission check. */
+async function assertProductInventoryMutation(
+  tx: Tx,
+  expected: ProductMutationIdentity,
+  allowArchived = false,
+) {
+  await lockOrganizationInventory(tx, expected.organizationId);
+  await assertProductInventoryOwnership(tx, [expected.id]);
+  const current = await tx.product.findUniqueOrThrow({
+    where: { id: expected.id },
+    select: { organizationId: true, managedByWarehouseId: true, deletedAt: true },
+  });
+  if (current.organizationId !== expected.organizationId ||
+    current.managedByWarehouseId !== expected.managedByWarehouseId ||
+    (!allowArchived && current.deletedAt !== null)) {
+    throw new WarehouseProductOwnershipError();
+  }
+}
 
 const normalizeSupplyType = (value: unknown) =>
   String(value || "")
@@ -2368,10 +2394,6 @@ router.post(
         errorRows: [],
         products: [],
       };
-      const sharedCatalog = await prisma.warehouse.findUnique({
-        where: { catalogOrganizationId: organizationId },
-        select: { id: true },
-      });
       const actorId = (req as any).user?.userId ?? null;
       const reviewData = await getReviewStatusForVendorMutation();
 
@@ -2718,12 +2740,23 @@ router.post(
             ...reviewData,
           };
 
-          // Keep the existing import path for other organizations; shared catalogs
-          // commit product metadata and physical stock together for each row.
+          // Metadata and physical stock must roll back together on any conflict.
           const saveRow = async (tx: Tx) => {
+            await lockOrganizationInventory(tx, organizationId);
             let product;
             let wasUpdate = false;
             if (normalizedSku) {
+              const matches = await tx.product.findMany({
+                where: { organizationId, sku: normalizedSku },
+                select: { id: true, organizationId: true, managedByWarehouseId: true },
+              });
+              for (const match of matches) {
+                await assertProductInventoryMutation(tx, match, true);
+                if (match.managedByWarehouseId && !(await tx.warehouse.findFirst({
+                  where: { id: match.managedByWarehouseId, catalogOrganizationId: organizationId },
+                  select: { id: true },
+                }))) throw new WarehouseProductOwnershipError();
+              }
               // Free up SKU from any soft-deleted product first
               await tx.product.updateMany({
                 where: {
@@ -2838,9 +2871,7 @@ router.post(
 
             return { product, wasUpdate };
           };
-          const { product, wasUpdate } = sharedCatalog
-            ? await prisma.$transaction(saveRow)
-            : await saveRow(prisma);
+          const { product, wasUpdate } = await prisma.$transaction(saveRow);
 
           results.products.push({
             id: product.id,
@@ -3837,6 +3868,7 @@ router.post(
       const reviewData = await getReviewStatusForVendorMutation();
 
       const product = await prisma.$transaction(async (tx) => {
+        await lockOrganizationInventory(tx, organizationId);
         const masterProduct = await resolveMasterProduct(tx, {
           masterProductId: masterProductId ? String(masterProductId) : null,
           name: String(name),
@@ -4054,6 +4086,7 @@ router.post(
           SELECT 1 AS locked
           FROM pg_advisory_xact_lock(hashtext(${`preorder-capacity:${id}`}))
         `;
+        await assertProductInventoryMutation(tx, existing);
         await tx.product.update({
           where: { id },
           data: { preorderCycleStartedAt },
@@ -4069,9 +4102,8 @@ router.post(
       });
     } catch (error) {
       console.error("restart preorder cycle error", error);
-      return res
-        .status(500)
-        .json({ message: "Захиалгыг дахин эхлүүлэхэд алдаа гарлаа" });
+      const failure = productMutationErrorResponse(error);
+      return res.status(failure.status).json({ message: failure.message });
     }
   },
 );
@@ -4526,6 +4558,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       submittedById: actorId,
     });
     const product = await prisma.$transaction(async (tx) => {
+      await assertProductInventoryMutation(tx, existing);
       if (Array.isArray(images)) {
         const imageUrls = images.slice(0, 5);
         await tx.productImage.deleteMany({ where: { productId: id } });
@@ -4629,27 +4662,28 @@ router.patch("/products/:id/images", requireAuth, async (req, res) => {
           "Зураг буруу байна. 5 хүртэлх upload хийгдсэн зураг ашиглана уу.",
       });
     }
-    await prisma.productImage.deleteMany({ where: { productId: id } });
-
-    const product = await prisma.product.update({
-      where: { id },
-      data: {
-        images: { create: toOrderedProductImages(imageUrls) },
-      },
-      include: {
-        images: {
-          select: { id: true, url: true },
-          orderBy: productImageOrderBy(),
+    const product = await prisma.$transaction(async (tx) => {
+      await assertProductInventoryMutation(tx, existing);
+      await tx.productImage.deleteMany({ where: { productId: id } });
+      return tx.product.update({
+        where: { id },
+        data: {
+          images: { create: toOrderedProductImages(imageUrls) },
         },
-      },
+        include: {
+          images: {
+            select: { id: true, url: true },
+            orderBy: productImageOrderBy(),
+          },
+        },
+      });
     });
 
     return res.json(product);
   } catch (error) {
     console.error("update product images error", error);
-    return res
-      .status(500)
-      .json({ message: "Зураг шинэчлэхэд алдаа гарлаа", error: String(error) });
+    const failure = productMutationErrorResponse(error);
+    return res.status(failure.status).json({ message: failure.message });
   }
 });
 
@@ -4708,16 +4742,18 @@ router.delete("/products/:id", requireAuth, async (req, res) => {
     const perm = await assertProductMutationPermission(req, res, existing);
     if (!perm) return;
 
-    await prisma.product.update({
-      where: { id },
-      data: { deletedAt: new Date(), isActive: false, sku: null },
+    await prisma.$transaction(async (tx) => {
+      await assertProductInventoryMutation(tx, existing);
+      await tx.product.update({
+        where: { id },
+        data: { deletedAt: new Date(), isActive: false, sku: null },
+      });
     });
 
     return res.json({ message: "Бараа устгагдлаа" });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Бараа устгахад алдаа гарлаа", error: String(error) });
+    const failure = productMutationErrorResponse(error);
+    return res.status(failure.status).json({ message: failure.message });
   }
 });
 

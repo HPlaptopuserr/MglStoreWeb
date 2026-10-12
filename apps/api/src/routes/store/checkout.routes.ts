@@ -28,6 +28,8 @@ import {
   adjustStock,
   resolveOrgWarehouse,
 } from "../../services/inventory.service";
+import { lockOrganizationInventory } from "../../services/vendor-inventory-warehouse.service";
+import { assertProductInventoryOwnership } from "../../services/warehouse-product-ownership";
 import {
   getVendorMerchantConfig,
   getVendorSystemQrConfig,
@@ -838,6 +840,11 @@ async function decrementOrderStock(
     },
   });
   if (!order) return;
+
+  await lockOrganizationInventory(tx, order.organizationId);
+  await assertProductInventoryOwnership(tx, order.items
+    .filter(item => item.product?.supplyType !== "CHINA_PREORDER")
+    .map(item => item.productId));
 
   for (const item of order.items) {
     if (item.product?.supplyType === "CHINA_PREORDER") continue;

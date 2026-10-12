@@ -7,12 +7,12 @@ export function warehouseProductOwnerScope(
 ): Prisma.ProductWhereInput {
   return organizationId
     ? { organizationId }
-    : { organizationId: null, managedByWarehouseId: warehouseId };
+    : { managedByWarehouseId: warehouseId };
 }
 
 export function warehouseProductReadScope(
   warehouseId: string,
-  organizationIds: readonly string[],
+  _organizationIds: readonly string[],
   catalogOrganizationId?: string | null,
 ): Prisma.ProductWhereInput {
   if (catalogOrganizationId) return { organizationId: catalogOrganizationId };
@@ -20,21 +20,14 @@ export function warehouseProductReadScope(
     OR: [
       { managedByWarehouseId: warehouseId },
       { warehouseInventories: { some: { warehouseId } } },
-      ...(organizationIds.length
-        ? [{ organizationId: { in: [...organizationIds] } }]
-        : []),
     ],
   };
 }
 
-/** Only an explicitly linked catalog overrides the existing warehouse behavior. */
+/** Distribution customers are not catalog owners. Sharing requires an explicit link. */
 export function warehouseCatalogOwner(warehouse: {
   catalogOrganizationId: string | null;
   organizations: readonly { organizationId: string }[];
 }): string | null {
-  return (
-    warehouse.catalogOrganizationId ??
-    warehouse.organizations[0]?.organizationId ??
-    null
-  );
+  return warehouse.catalogOrganizationId ?? null;
 }

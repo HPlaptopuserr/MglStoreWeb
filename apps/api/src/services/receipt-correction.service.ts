@@ -1,6 +1,7 @@
 import { prisma, Prisma, InventoryReason } from "@mgl/database";
 import { fromPosStoredStockQuantity } from "@mgl/types";
 import { adjustStock, resolveOrgWarehouse } from "./inventory.service";
+import { lockOrganizationInventory } from "./vendor-inventory-warehouse.service";
 import { reservedStock } from "./stock-reservation.service";
 import {
   canCorrectReceipt,
@@ -29,14 +30,16 @@ export async function correctReceipt(
     async (tx) => {
       const head = await tx.posGoodsReceipt.findUnique({
         where: { id },
-        select: { organizationId: true },
+        select: { organizationId: true, registerId: true },
       });
       if (!head || !canCorrectReceipt(actor, head.organizationId))
         throw new ReceiptCorrectionError(
           "Зөвхөн өөрийн дэлгүүрийн эзэмшигч засварлана",
           403,
         );
+      await tx.$queryRaw`SELECT "id" FROM "PosRegister" WHERE "id" = ${head.registerId} FOR UPDATE`;
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${head.organizationId}))`;
+      await lockOrganizationInventory(tx, head.organizationId);
       await tx.$queryRaw`SELECT "id" FROM "PosGoodsReceipt" WHERE "id"=${id} FOR UPDATE`;
       const receipt = await tx.posGoodsReceipt.findUniqueOrThrow({
         where: { id },

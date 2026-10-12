@@ -51,7 +51,7 @@ test("linking rejects aliases, SKU, and master identity collisions without mergi
     [],
   );
 });
-test("shared catalogs ignore recipient ordering; other warehouses keep their existing scope", () => {
+test("catalog ownership requires an explicit link, never a delivery assignment", () => {
   const organizations = [{ organizationId: "recipient" }];
   assert.equal(
     warehouseCatalogOwner({ catalogOrganizationId: "owner", organizations }),
@@ -59,7 +59,7 @@ test("shared catalogs ignore recipient ordering; other warehouses keep their exi
   );
   assert.equal(
     warehouseCatalogOwner({ catalogOrganizationId: null, organizations }),
-    "recipient",
+    null,
   );
   assert.equal(
     warehouseCatalogOwner({ catalogOrganizationId: null, organizations: [] }),

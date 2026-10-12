@@ -1,4 +1,6 @@
 import { correctReceipt } from "../../../services/receipt-correction.service";
+import { inventoryConflictResponse } from "../../../lib/inventory-conflict-errors";
+import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
 import {
   canCorrectReceipt,
   parseReceiptCorrection,
@@ -228,8 +230,11 @@ router.post("/pos/goods-receipts", async (req, res) => {
 
     const updatedProducts = await prisma.$transaction(
       async (tx) => {
+        // Match sale lock order: receipt insertion also needs the register FK.
+        await tx.$queryRaw`SELECT "id" FROM "PosRegister" WHERE "id" = ${register.id} FOR UPDATE`;
         // Serialize new catalog adoption for this organization across concurrent receipts.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${register.organizationId}))`;
+        await lockOrganizationInventory(tx, register.organizationId);
         const resolved = new Map<string, string>();
         for (const item of input.items) {
           if (!item.masterProductId) continue;
@@ -433,6 +438,8 @@ router.post("/pos/goods-receipts", async (req, res) => {
   } catch (error) {
     if (error instanceof ReceiptInputError)
       return res.status(400).json({ message: error.message });
+    const conflict = inventoryConflictResponse(error);
+    if (conflict) return res.status(conflict.status).json({ message: conflict.message });
     console.error("POS goods receipt error", error);
     return res
       .status(500)
@@ -453,6 +460,8 @@ router.patch("/pos/goods-receipts/:id", async (req, res) => {
   } catch (error) {
     if (error instanceof ReceiptCorrectionError)
       return res.status(error.status).json({ message: error.message });
+    const conflict = inventoryConflictResponse(error);
+    if (conflict) return res.status(conflict.status).json({ message: conflict.message });
     console.error("Receipt correction failed", error);
     return res.status(500).json({
       message: "Засвар хадгалагдсангүй. Баримтыг дахин нээж шалгана уу.",

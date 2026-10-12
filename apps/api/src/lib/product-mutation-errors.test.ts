@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { Prisma } from "@mgl/database";
 import { ProductInventoryConflictError } from "../services/vendor-inventory-warehouse.service";
+import { WarehouseProductOwnershipError } from "../services/warehouse-product-ownership";
 import { productMutationErrorResponse } from "./product-mutation-errors";
 
 test("warehouse conflicts expose an actionable message instead of a generic 500", () => {
@@ -20,6 +21,12 @@ test("database conflicts return safe client errors without leaking database deta
     assert.equal(response.status, status);
     assert.ok(!response.message.includes("private database detail"));
   }
+});
+
+test("cross-owner stock mutations are recoverable conflicts", () => {
+  const response = productMutationErrorResponse(new WarehouseProductOwnershipError());
+  assert.equal(response.status, 409);
+  assert.ok(response.message.includes("агуулах"));
 });
 
 test("unknown failures remain server errors and do not expose exception messages", () => {
