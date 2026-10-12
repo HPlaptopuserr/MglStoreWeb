@@ -1288,7 +1288,15 @@ function RestaurantPosContent() {
         getRestaurantPosProducts(selectedRegister.branchId, {
           restaurantMenuOnly: false,
         }),
-        getRestaurantMenuCategories(selectedRegister.organizationId),
+        getRestaurantMenuCategories(selectedRegister.organizationId).catch(
+          (error) => {
+            console.warn(
+              "Restaurant menu categories could not be loaded; showing products without category filters.",
+              error,
+            );
+            return [] as RestaurantMenuCategory[];
+          },
+        ),
       ]);
       const configuredCategoryCodes = new Set(
         nextCategories.map((category) => category.code),
