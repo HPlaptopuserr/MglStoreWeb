@@ -1538,6 +1538,19 @@ model Discount {
   @@index([validUntil])
 }
 
+/// Durable before-images and evidence for reversible inventory incident repairs.
+/// Keep this mapped table in the schema so schema synchronization preserves it.
+model InventoryIsolationBackup {
+  runId     String   @db.Text
+  tableName String   @db.Text
+  recordId  String   @db.Text
+  payload   Json     @db.JsonB
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@id([runId, tableName, recordId], map: "_InventoryIsolationBackup_pkey")
+  @@map("_InventoryIsolationBackup")
+}
+
 model InventoryLedger {
   id            String          @id @default(uuid())
   productId     String
