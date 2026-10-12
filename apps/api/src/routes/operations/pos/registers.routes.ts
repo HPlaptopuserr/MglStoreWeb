@@ -22,6 +22,9 @@ import {
   getCashDrawerEventTotals,
   loadShiftAccountingSales,
 } from "./shift-accounting-data";
+import {
+  canAutoCancelTicketForRegisterModeChange,
+} from "./register-mode-change";
 
 const router: ExpressRouter = Router();
 const BRIDGE_CARD_PROVIDERS = new Set(["ANDROID_PGW", "QPOSLANE", "GANTIGO", "IDPAY"]);
@@ -1324,7 +1327,11 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
       shouldUpdateMinuAgentConfig = hasMinuCredentialInput || org?.minuAgentEnabled !== true;
     }
 
-    const { updated, autoClosedShiftIds } = await prisma.$transaction(
+    const {
+      updated,
+      autoClosedShiftIds,
+      autoCancelledDraftTicketIds,
+    } = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
         // Shift opening locks this same register row. Taking the lock here makes
         // closing the old-mode shift and changing the register mode atomic.
@@ -1342,6 +1349,7 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
         if (!currentRegister) throw toApiError(404, "POS олдсонгүй");
 
         const autoClosedShiftIds: string[] = [];
+        const autoCancelledDraftTicketIds: string[] = [];
         if (
           normalizedInputMode &&
           normalizedInputMode !== currentRegister.mode
@@ -1367,6 +1375,41 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
 
           if (openShifts.length > 0) {
             const shiftIds = openShifts.map((shift) => shift.id);
+            const openDraftTickets = await tx.restaurantTicket.findMany({
+              where: {
+                shiftId: { in: shiftIds },
+                status: "OPEN",
+                posSaleId: null,
+              },
+              select: {
+                id: true,
+                status: true,
+                posSaleId: true,
+                kitchenTickets: { select: { status: true } },
+              },
+            });
+            autoCancelledDraftTicketIds.push(
+              ...openDraftTickets
+                .filter((ticket) =>
+                  canAutoCancelTicketForRegisterModeChange({
+                    status: ticket.status,
+                    posSaleId: ticket.posSaleId,
+                    kitchenTicketStatuses: ticket.kitchenTickets.map(
+                      (kitchenTicket) => kitchenTicket.status,
+                    ),
+                  }),
+                )
+                .map((ticket) => ticket.id),
+            );
+            if (autoCancelledDraftTicketIds.length > 0) {
+              await tx.restaurantTicket.updateMany({
+                where: { id: { in: autoCancelledDraftTicketIds } },
+                data: {
+                  status: "CANCELLED",
+                  closedAt: new Date(),
+                },
+              });
+            }
 
             // Paid restaurant tickets can be released automatically. Unpaid or
             // in-progress tickets still require an explicit resolution so an
@@ -1484,7 +1527,11 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
           include: { branch: { select: { id: true, name: true } } },
         });
 
-        return { updated, autoClosedShiftIds };
+        return {
+          updated,
+          autoClosedShiftIds,
+          autoCancelledDraftTicketIds,
+        };
       },
     );
 
@@ -1512,6 +1559,7 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
           registerId: id,
           actionType: "update",
           autoClosedShiftIds,
+          autoCancelledDraftTicketIds,
         },
       },
     });
