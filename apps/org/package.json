@@ -37,6 +37,6 @@
     "typescript": "^5"
   },
   "browserslist": [
-    "Chrome >= 81"
+    "Chrome >= 79"
   ]
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { loginOrgUser } from "@/lib/org-auth";
@@ -12,6 +12,11 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [clientReady, setClientReady] = useState(false);
+
+  useEffect(() => {
+    setClientReady(true);
+  }, []);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -40,6 +45,13 @@ export default function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit} className="mt-7 space-y-4">
+      {!clientReady && (
+        <div className="org-login-client-warning rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-900">
+          Энэ төхөөрөмжийн browser хуучирсан тул нэвтрэх хэсэг ажиллахгүй байна.
+          Chrome-оо шинэчлээд хуудсыг дахин нээнэ үү.
+        </div>
+      )}
+
       {error && (
         <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-700">
           {error}
@@ -51,6 +63,7 @@ export default function LoginForm() {
           Login email эсвэл утас
         </span>
         <input
+          autoComplete="username"
           value={identifier}
           onChange={(event) => setIdentifier(event.target.value)}
           disabled={loading}
@@ -65,6 +78,7 @@ export default function LoginForm() {
         </span>
         <div className="relative mt-1.5">
           <input
+            autoComplete="current-password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             disabled={loading}
@@ -90,6 +104,17 @@ export default function LoginForm() {
         {loading ? "Нэвтэрч байна..." : "Нэвтрэх"}
         <ArrowRight className="h-4 w-4" />
       </button>
+
+      <style>{`
+        .org-login-client-warning {
+          opacity: 0;
+          animation: org-login-warning-reveal 0s 6s forwards;
+        }
+
+        @keyframes org-login-warning-reveal {
+          to { opacity: 1; }
+        }
+      `}</style>
     </form>
   );
 }
