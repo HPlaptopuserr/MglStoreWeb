@@ -88,7 +88,7 @@ export type SalePaymentLineInput = {
 };
 
 export type CreateSaleBody = {
-  source?: "SELF_SERVICE";
+  source?: "RESTAURANT" | "SELF_SERVICE";
   shiftId?: string;
   branchId?: string;
   registerId?: string;

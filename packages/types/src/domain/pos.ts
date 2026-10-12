@@ -103,8 +103,11 @@ export interface SettlementResult {
 
 // ─── Register config ──────────────────────────────────────────────────────────
 
+export type PosRegisterMode = "RETAIL" | "RESTAURANT" | "SELF_SERVICE";
+
 export interface RegisterConfig {
   id: string;
+  mode: PosRegisterMode;
   name: string;
   label: string | null;
   cardEnabled: boolean;
@@ -360,6 +363,7 @@ export interface CashDrawerSummary {
 
 export interface PosShift {
   id: string;
+  mode: PosRegisterMode;
   organizationId?: string;
   cashierId: string;
   cashierName: string;

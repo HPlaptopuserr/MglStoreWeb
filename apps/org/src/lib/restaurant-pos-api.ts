@@ -23,6 +23,7 @@ export function getRestaurantMenuClassificationCode(mode: unknown) {
 
 export type RestaurantPosRegister = {
   id: string;
+  mode: "RESTAURANT" | "SELF_SERVICE";
   name: string;
   label: string | null;
   branchId: string;
@@ -476,8 +477,10 @@ async function readApiResponse<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-export async function getRestaurantPosRegisters() {
-  const response = await authFetch(`${API}/pos/registers/mine`, {
+export async function getRestaurantPosRegisters(
+  mode: "RESTAURANT" | "SELF_SERVICE" = "RESTAURANT",
+) {
+  const response = await authFetch(`${API}/pos/registers/mine?mode=${mode}`, {
     cache: "no-store",
   });
   return readApiResponse<RestaurantPosRegister[]>(response);
@@ -650,7 +653,7 @@ export async function chargeRestaurantClientBridge(input: {
 }
 
 export async function getCurrentRestaurantPosShift() {
-  const response = await authFetch(`${API}/pos/shifts/current`, {
+  const response = await authFetch(`${API}/pos/shifts/current?mode=RESTAURANT`, {
     cache: "no-store",
   });
   return readApiResponse<PosShift | null>(response);
@@ -660,7 +663,7 @@ export async function openRestaurantPosShift(input: {
   branchId: string;
   registerId?: string;
   openingCash: number;
-  source?: "SELF_SERVICE";
+  source?: "RESTAURANT" | "SELF_SERVICE";
 }) {
   const response = await authFetch(`${API}/pos/shifts/open`, {
     method: "POST",
@@ -707,6 +710,7 @@ export async function getRestaurantShiftHistory(
   signal?: AbortSignal,
 ) {
   const params = new URLSearchParams();
+  params.set("mode", "RESTAURANT");
   if (input.branchId) params.set("branchId", input.branchId);
   if (input.status) params.set("status", input.status);
   if (input.from) params.set("from", input.from);

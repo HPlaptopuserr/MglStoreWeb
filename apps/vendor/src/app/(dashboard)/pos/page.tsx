@@ -1346,7 +1346,7 @@ export default function PosDemoPage() {
     if (!token) return;
 
     let cancelled = false;
-    fetch(`${API}/pos/registers/mine`, {
+    fetch(`${API}/pos/registers/mine?mode=RETAIL`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => (r.ok ? r.json() : []))

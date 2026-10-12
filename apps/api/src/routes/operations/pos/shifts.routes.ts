@@ -62,6 +62,12 @@ import {
 import {
   buildPaidRestaurantTicketsCloseScope,
 } from "./restaurant-ticket-lifecycle";
+import {
+  buildShiftModeScope,
+  getRequestedShiftMode,
+  normalizePosRegisterMode,
+  usesRestaurantTicketLifecycle,
+} from "./pos-register-mode";
 
 import { canClosePosShift, requiresShiftCloseReason } from "./shift-access";
 
@@ -97,6 +103,7 @@ type ShiftWithRelations = Prisma.PosShiftGetPayload<{
 
 const toShiftResponse = (shift: ShiftWithRelations) => ({
   id: shift.id,
+  mode: shift.mode,
   organizationId: shift.organizationId,
   cashierId: shift.cashierId,
   cashierName: shift.cashier?.profile?.fullName || shift.cashier?.email || "Кассчин",
@@ -317,14 +324,18 @@ router.post("/pos/shifts/open", async (req, res) => {
 
     const branchId = String(req.body.branchId || "").trim();
     const registerId = String(req.body.registerId || "").trim() || null;
-    const isSelfService =
-      String(req.body.source || "")
-        .trim()
-        .toUpperCase() === "SELF_SERVICE";
+    const requestedMode = getRequestedShiftMode(req.body.source);
+    const isSelfService = requestedMode === "SELF_SERVICE";
     const openingCash = Number(req.body.openingCash);
 
     if (!branchId) {
       return res.status(400).json({ message: "branchId шаардлагатай" });
+    }
+    if (requestedMode === "RESTAURANT" && !registerId) {
+      return res.status(400).json({ message: "Рестораны POS register шаардлагатай" });
+    }
+    if (isSelfService && registerId) {
+      return res.status(400).json({ message: "Self-service дотоод ээлж register-гүй байна" });
     }
     if (!Number.isFinite(openingCash) || openingCash < 0) {
       return res
@@ -345,6 +356,7 @@ router.post("/pos/shifts/open", async (req, res) => {
         where: { id: registerId },
         select: {
           id: true,
+          mode: true,
           branchId: true,
           organizationId: true,
           isActive: true,
@@ -369,6 +381,11 @@ router.post("/pos/shifts/open", async (req, res) => {
         return res
           .status(403)
           .json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
+      }
+      if (register.mode !== requestedMode) {
+        return res.status(409).json({
+          message: `Энэ нь ${register.mode} төрлийн касс байна. ${requestedMode} урсгалд ашиглах боломжгүй.`,
+        });
       }
     }
 
@@ -410,6 +427,7 @@ router.post("/pos/shifts/open", async (req, res) => {
               organizationId: branch.organizationId,
               branchId,
               registerId: null,
+              mode: "SELF_SERVICE",
               status: ShiftStatus.OPEN,
               note: SELF_SERVICE_SHIFT_NOTE,
             },
@@ -428,6 +446,7 @@ router.post("/pos/shifts/open", async (req, res) => {
               organizationId: branch.organizationId,
               branchId,
               registerId: null,
+              mode: "SELF_SERVICE",
               cashierId: actor.id,
               openingCash: 0,
               note: SELF_SERVICE_SHIFT_NOTE,
@@ -451,6 +470,7 @@ router.post("/pos/shifts/open", async (req, res) => {
                   actor.id,
                   branch.organizationId,
                   registerId,
+                  requestedMode === "RESTAURANT" ? "RESTAURANT" : "RETAIL",
                 ),
               },
               {
@@ -472,6 +492,7 @@ router.post("/pos/shifts/open", async (req, res) => {
             organizationId: branch.organizationId,
             branchId,
             registerId,
+            mode: requestedMode,
             cashierId: actor.id,
             openingCash,
             status: ShiftStatus.OPEN,
@@ -479,7 +500,7 @@ router.post("/pos/shifts/open", async (req, res) => {
           include: {
             cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
             branch: { select: { id: true, name: true } },
-            register: { select: { id: true, name: true } },
+            register: { select: { id: true, name: true, mode: true } },
           },
         });
         return { existingOpen: null, shift, reused: false };
@@ -569,7 +590,7 @@ router.post("/pos/shifts/close", async (req, res) => {
           include: {
             cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
             branch: { select: { id: true, name: true } },
-            register: { select: { id: true, name: true } },
+            register: { select: { id: true, name: true, mode: true } },
           },
         });
         if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
@@ -577,44 +598,49 @@ router.post("/pos/shifts/close", async (req, res) => {
           throw toApiError(409, "Ээлж аль хэдийн хаагдсан");
         }
 
-        // Closing a shift also releases every fully paid restaurant ticket.
-        // This includes table tickets that were paid but never manually cleared.
-        await tx.restaurantTicket.updateMany({
-          where: buildPaidRestaurantTicketsCloseScope(shift.id),
-          data: {
-            status: "CLOSED",
-          },
-        });
+        if (
+          usesRestaurantTicketLifecycle({
+            shiftMode: shift.mode,
+          })
+        ) {
+          // Restaurant channels release paid tickets and block only on unpaid ones.
+          await tx.restaurantTicket.updateMany({
+            where: buildPaidRestaurantTicketsCloseScope(shift.id),
+            data: {
+              status: "CLOSED",
+            },
+          });
 
-        const blockingRestaurantTickets = await tx.restaurantTicket.findMany({
-          where: {
-            shiftId: shift.id,
-            status: { in: ["OPEN", "KITCHEN", "READY", "SERVED"] },
-          },
-          select: {
-            ticketNo: true,
-            status: true,
-            table: { select: { label: true } },
-          },
-          orderBy: { openedAt: "asc" },
-        });
-        if (blockingRestaurantTickets.length > 0) {
-          const examples = blockingRestaurantTickets
-            .slice(0, 3)
-            .map(
-              (ticket) =>
-                `${ticket.ticketNo} (${ticket.status}${
-                  ticket.table?.label ? ` · Ширээ ${ticket.table.label}` : ""
-                })`,
-            )
-            .join(", ");
-          const remaining = blockingRestaurantTickets.length - 3;
-          throw toApiError(
-            409,
-            `Энэ ээлж дээр төлбөр дуусаагүй ${blockingRestaurantTickets.length} рестораны ticket байна: ${examples}${
-              remaining > 0 ? ` болон өөр ${remaining}` : ""
-            }. Рестораны кассаас төлбөрийг дуусгах эсвэл ticket-ийг цуцална уу.`,
-          );
+          const blockingRestaurantTickets = await tx.restaurantTicket.findMany({
+            where: {
+              shiftId: shift.id,
+              status: { in: ["OPEN", "KITCHEN", "READY", "SERVED"] },
+            },
+            select: {
+              ticketNo: true,
+              status: true,
+              table: { select: { label: true } },
+            },
+            orderBy: { openedAt: "asc" },
+          });
+          if (blockingRestaurantTickets.length > 0) {
+            const examples = blockingRestaurantTickets
+              .slice(0, 3)
+              .map(
+                (ticket) =>
+                  `${ticket.ticketNo} (${ticket.status}${
+                    ticket.table?.label ? ` · Ширээ ${ticket.table.label}` : ""
+                  })`,
+              )
+              .join(", ");
+            const remaining = blockingRestaurantTickets.length - 3;
+            throw toApiError(
+              409,
+              `Энэ ээлж дээр төлбөр дуусаагүй ${blockingRestaurantTickets.length} рестораны ticket байна: ${examples}${
+                remaining > 0 ? ` болон өөр ${remaining}` : ""
+              }. Рестораны кассаас төлбөрийг дуусгах эсвэл ticket-ийг цуцална уу.`,
+            );
+          }
         }
 
         const [salesByShift, drawerTotals] = await Promise.all([
@@ -693,7 +719,7 @@ router.get("/pos/shifts/register-current", async (req, res) => {
     if (!registerId) return res.status(400).json({ message: "Кассаа сонгоно уу." });
     const register = await prisma.posRegister.findUnique({
       where: { id: registerId },
-      select: { organizationId: true },
+      select: { organizationId: true, mode: true },
     });
     if (!register || !canAccessPosOrganization(actor, register.organizationId)) {
       return res.status(403).json({ message: "Энэ кассын ээлжийг харах эрхгүй." });
@@ -701,6 +727,7 @@ router.get("/pos/shifts/register-current", async (req, res) => {
     const shifts = await prisma.posShift.findMany({
       where: {
         organizationId: register.organizationId,
+        mode: register.mode,
         status: ShiftStatus.OPEN,
         AND: [
           { OR: [{ cashierId: actor.id }, { registerId }] },
@@ -742,13 +769,24 @@ router.get("/pos/shifts/current", async (req, res) => {
     const actor = await requirePosUser(req, res);
     if (!actor) return;
 
+    const requestedMode = req.query.mode;
+    const mode =
+      requestedMode === undefined
+        ? "RETAIL"
+        : normalizePosRegisterMode(requestedMode);
+    if (!mode) {
+      return res.status(400).json({ message: "POS register-ийн төрөл буруу байна" });
+    }
+
     const shift = await prisma.posShift.findFirst({
       where: {
         ...buildCurrentShiftScope(actor),
         status: ShiftStatus.OPEN,
-        OR: [
-          { note: null },
-          { note: { not: SELF_SERVICE_SHIFT_NOTE } },
+        AND: [
+          buildShiftModeScope(mode),
+          ...(mode === "SELF_SERVICE"
+            ? []
+            : [{ OR: [{ note: null }, { note: { not: SELF_SERVICE_SHIFT_NOTE } }] }]),
         ],
       },
       include: {
@@ -901,6 +939,10 @@ router.get("/pos/shifts/history", async (req, res) => {
     if (!actor) return;
 
     const branchId = String(req.query.branchId || "").trim();
+    const mode = normalizePosRegisterMode(req.query.mode ?? "RETAIL");
+    if (!mode) {
+      return res.status(400).json({ message: "POS register-ийн төрөл буруу байна" });
+    }
     const statusRaw = String(req.query.status || "CLOSED")
       .trim()
       .toUpperCase();
@@ -924,9 +966,11 @@ router.get("/pos/shifts/history", async (req, res) => {
     }
 
     const where: any = {
-      OR: [
-        { note: null },
-        { note: { not: SELF_SERVICE_SHIFT_NOTE } },
+      AND: [
+        buildShiftModeScope(mode),
+        ...(mode === "SELF_SERVICE"
+          ? []
+          : [{ OR: [{ note: null }, { note: { not: SELF_SERVICE_SHIFT_NOTE } }] }]),
       ],
     };
     if (status) where.status = status as ShiftStatus;

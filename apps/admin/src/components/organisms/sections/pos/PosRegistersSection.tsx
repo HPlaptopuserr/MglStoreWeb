@@ -21,9 +21,11 @@ import { OrgSearchDropdown } from "@/components/molecules/OrgSearchDropdown";
 /* ─── types ──────────────────────────────────────────────────────────── */
 type Org = { id: string; name: string; slug: string };
 type Branch = { id: string; name: string; address: string };
+type PosRegisterMode = "RETAIL" | "RESTAURANT" | "SELF_SERVICE";
 
 type PosRegister = {
   id: string;
+  mode: PosRegisterMode;
   name: string;
   label: string | null;
   branchId: string;
@@ -47,6 +49,7 @@ type PosRegister = {
 };
 
 type FormState = {
+  mode: PosRegisterMode;
   name: string;
   label: string;
   branchId: string;
@@ -65,6 +68,7 @@ type FormState = {
 };
 
 const EMPTY_FORM: FormState = {
+  mode: "RETAIL",
   name: "",
   label: "",
   branchId: "",
@@ -93,6 +97,11 @@ const isTerminalIdOptionalProvider = (provider: string) =>
   provider === "ANDROID_PGW";
 const getPosVisibilityKey = (organizationId: string) =>
   `pos-enabled-${organizationId}`;
+const REGISTER_MODE_LABELS: Record<PosRegisterMode, string> = {
+  RETAIL: "Дэлгүүр",
+  RESTAURANT: "Ресторан",
+  SELF_SERVICE: "Өөртөө үйлчлэх",
+};
 
 /* ─── component ──────────────────────────────────────────────────────── */
 type PosRegistersSectionProps = {
@@ -208,6 +217,7 @@ export function PosRegistersSection({
 
   const openEdit = (r: PosRegister) => {
     setForm({
+      mode: r.mode,
       name: r.name,
       label: r.label ?? "",
       branchId: r.branchId,
@@ -464,6 +474,7 @@ export function PosRegistersSection({
       const body = {
         organizationId: activeOrgId,
         branchId: form.branchId,
+        mode: form.mode,
         name: form.name.trim(),
         label: form.label.trim() || null,
         cardEnabled: form.cardEnabled,
@@ -673,6 +684,9 @@ export function PosRegistersSection({
                           <span className="rounded-lg bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600">
                             {r.branch.name}
                           </span>
+                          <span className="rounded-lg bg-violet-50 px-2 py-0.5 text-xs font-semibold text-violet-700">
+                            {REGISTER_MODE_LABELS[r.mode]}
+                          </span>
                           {r.activationStatus === "PENDING" && (
                             <span className="rounded-lg bg-amber-50 border border-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-700">
                               Хүлээлтэд
@@ -818,6 +832,29 @@ export function PosRegistersSection({
                   />
                 </Field>
               </div>
+
+              <Field label="Кассын төрөл *">
+                <div className="relative">
+                  <select
+                    value={form.mode}
+                    onChange={(e) =>
+                      set("mode", e.target.value as PosRegisterMode)
+                    }
+                    className={SELECT}
+                  >
+                    <option value="RETAIL">Дэлгүүрийн касс</option>
+                    <option value="RESTAURANT">Рестораны касс</option>
+                    <option value="SELF_SERVICE">Өөртөө үйлчлэх касс</option>
+                  </select>
+                  <ChevronDown
+                    size={13}
+                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                  />
+                </div>
+                <p className="mt-1 text-[11px] text-slate-400">
+                  Нэг кассыг зөвхөн сонгосон борлуулалтын урсгал ашиглана.
+                </p>
+              </Field>
 
               {/* branch */}
               <Field label="Салбар *">

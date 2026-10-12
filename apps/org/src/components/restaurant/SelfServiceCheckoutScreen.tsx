@@ -394,7 +394,7 @@ function SelfServiceCheckoutContent() {
     setSetupLoading(true);
     setSetupError("");
     try {
-      const registers = await getRestaurantPosRegisters();
+      const registers = await getRestaurantPosRegisters("SELF_SERVICE");
 
       if (registers.length === 0) {
         throw new Error("Энэ байгууллагад идэвхтэй POS register алга байна.");

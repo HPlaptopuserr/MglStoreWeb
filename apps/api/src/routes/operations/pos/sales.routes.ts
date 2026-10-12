@@ -70,6 +70,7 @@ import { resolvePosSaleLineCost } from "./pos-sale-cost";
 import {
   resolvePaidRestaurantTicketStatus,
 } from "./restaurant-ticket-lifecycle";
+import { getRequiredSaleRegisterMode } from "./pos-register-mode";
 import { calculateTakeawayPackagingFee } from "./takeaway-packaging";
 import {
   EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
@@ -726,12 +727,21 @@ router.post("/pos/sales", async (req, res) => {
     const organizationId = String(body.organizationId || "").trim() || null;
     const restaurantTicketId =
       String(body.restaurantTicketId || "").trim() || null;
+    const requiredRegisterMode = getRequiredSaleRegisterMode({
+      isSelfService: isSelfServiceSale,
+      restaurantTicketId,
+    });
     const clientSaleId = String(body.clientSaleId || "").trim();
     const packagingFee = roundMoney(Number(body.packagingFee || 0));
 
     if (isSelfServiceSale && !restaurantTicketId) {
       return res.status(400).json({
         message: "Self-service борлуулалтад рестораны захиалга шаардлагатай",
+      });
+    }
+    if (restaurantTicketId && !registerId) {
+      return res.status(400).json({
+        message: "Рестораны борлуулалтад зориулалтын POS register шаардлагатай",
       });
     }
 
@@ -1154,6 +1164,7 @@ router.post("/pos/sales", async (req, res) => {
           id: string;
           branchId: string;
           organizationId: string;
+          mode: "RETAIL" | "RESTAURANT" | "SELF_SERVICE";
           activationStatus: PosActivationStatus;
           isActive: boolean;
         } | null = null;
@@ -1173,6 +1184,7 @@ router.post("/pos/sales", async (req, res) => {
               id: true,
               branchId: true,
               organizationId: true,
+              mode: true,
               activationStatus: true,
               isActive: true,
             },
@@ -1191,6 +1203,12 @@ router.post("/pos/sales", async (req, res) => {
             throw toApiError(
               400,
               "Sale branchId нь register branch-тай зөрүүтэй байна",
+            );
+          }
+          if (register.mode !== requiredRegisterMode) {
+            throw toApiError(
+              409,
+              `Энэ нь ${register.mode} төрлийн касс байна. ${requiredRegisterMode} борлуулалт бүртгэх боломжгүй.`,
             );
           }
           if (organizationId && register.organizationId !== organizationId) {
@@ -1245,6 +1263,7 @@ router.post("/pos/sales", async (req, res) => {
           where: { id: resolvedShiftId },
           select: {
             id: true,
+            mode: true,
             status: true,
             organizationId: true,
             branchId: true,
@@ -1276,6 +1295,12 @@ router.post("/pos/sales", async (req, res) => {
           throw toApiError(
             409,
             "Self-service дотоод ээлжийг энгийн кассанд ашиглах боломжгүй",
+          );
+        }
+        if (activeShift.mode !== requiredRegisterMode) {
+          throw toApiError(
+            409,
+            `Энэ ээлж ${activeShift.mode} төрөлтэй байна. ${requiredRegisterMode} борлуулалт бүртгэх боломжгүй.`,
           );
         }
         if (

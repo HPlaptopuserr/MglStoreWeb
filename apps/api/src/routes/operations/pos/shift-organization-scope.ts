@@ -16,9 +16,14 @@ export function buildOpenShiftConflictScopes(
   cashierId: string,
   organizationId: string,
   registerId: string | null,
+  mode: "RETAIL" | "RESTAURANT",
 ) {
   return [
-    { cashierId, organizationId },
+    {
+      cashierId,
+      organizationId,
+      mode,
+    },
     ...(registerId ? [{ registerId }] : []),
   ];
 }

@@ -631,6 +631,8 @@ async function finalizePaidRestaurantQrInvoice(
       id: payload.shiftId,
       organizationId: payload.organizationId,
       branchId: payload.branchId,
+      mode: "RESTAURANT",
+      register: { is: { mode: "RESTAURANT" } },
     },
     select: { id: true, cashierId: true },
   });
@@ -922,7 +924,9 @@ router.get("/restaurant/menu/:token", async (req, res) => {
         where: {
           organizationId: table.organizationId,
           branchId: table.branchId,
+          mode: "RESTAURANT",
           status: ShiftStatus.OPEN,
+          register: { is: { mode: "RESTAURANT" } },
         },
         select: { id: true },
         orderBy: { openedAt: "desc" },
@@ -1198,7 +1202,9 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
       where: {
         organizationId: table.organizationId,
         branchId: table.branchId,
+        mode: "RESTAURANT",
         status: ShiftStatus.OPEN,
+        register: { is: { mode: "RESTAURANT" } },
       },
       select: {
         id: true,
@@ -1649,7 +1655,9 @@ router.post("/restaurant/menu/:token/orders", async (req, res) => {
           where: {
             organizationId: table.organizationId,
             branchId: table.branchId,
+            mode: "RESTAURANT",
             status: ShiftStatus.OPEN,
+            register: { is: { mode: "RESTAURANT" } },
           },
           select: { id: true, cashierId: true },
           orderBy: { openedAt: "desc" },
@@ -2467,12 +2475,14 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
           where: { id: shiftId },
           select: {
             id: true,
+            mode: true,
             status: true,
             organizationId: true,
             branchId: true,
             cashierId: true,
             registerId: true,
             note: true,
+            register: { select: { mode: true } },
           },
         });
         if (!activeShift) {
@@ -2584,7 +2594,8 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
         }
         if (
           isSelfService &&
-          (activeShift.note !== SELF_SERVICE_SHIFT_NOTE ||
+          (activeShift.mode !== "SELF_SERVICE" ||
+            activeShift.note !== SELF_SERVICE_SHIFT_NOTE ||
             activeShift.registerId !== null)
         ) {
           throw Object.assign(
@@ -2595,6 +2606,16 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
         if (!isSelfService && activeShift.note === SELF_SERVICE_SHIFT_NOTE) {
           throw Object.assign(
             new Error("Self-service дотоод ээлжийг энгийн кассанд ашиглах боломжгүй"),
+            { status: 409 },
+          );
+        }
+        if (
+          !isSelfService &&
+          (activeShift.mode !== "RESTAURANT" ||
+            activeShift.register?.mode !== "RESTAURANT")
+        ) {
+          throw Object.assign(
+            new Error("Рестораны ticket зөвхөн RESTAURANT төрлийн кассын ээлж дээр үүснэ"),
             { status: 409 },
           );
         }

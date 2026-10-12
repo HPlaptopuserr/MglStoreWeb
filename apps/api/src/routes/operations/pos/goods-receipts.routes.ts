@@ -31,7 +31,7 @@ router.get("/pos/goods-receipts", async (req, res) => {
       return res.status(400).json({ message: "POS касс сонгоно уу" });
 
     const register = await prisma.posRegister.findFirst({
-      where: { id: registerId, deletedAt: null },
+      where: { id: registerId, mode: "RETAIL", deletedAt: null },
       select: { organizationId: true },
     });
     if (!register)
@@ -181,6 +181,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
       where: { id: input.registerId },
       select: {
         id: true,
+        mode: true,
         name: true,
         organizationId: true,
         branchId: true,
@@ -191,6 +192,9 @@ router.post("/pos/goods-receipts", async (req, res) => {
     });
     if (!register || register.deletedAt) {
       return res.status(404).json({ message: "POS касс олдсонгүй" });
+    }
+    if (register.mode !== "RETAIL") {
+      return res.status(409).json({ message: "Бараа хүлээн авалтыг зөвхөн дэлгүүрийн кассаар бүртгэнэ" });
     }
     if (!register.isActive) {
       return res.status(409).json({ message: "POS касс идэвхгүй байна" });

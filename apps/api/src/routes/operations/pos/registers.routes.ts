@@ -16,6 +16,7 @@ import {
   type CreateSaleBody, type PushEcrPurchaseResponse, toApiError, parseAuthClaims, runtimeEnv,
 } from "./_shared";
 import { validateEnabledEbarimtConfig } from "./ebarimt-config.validation";
+import { normalizePosRegisterMode } from "./pos-register-mode";
 
 const router: ExpressRouter = Router();
 const BRIDGE_CARD_PROVIDERS = new Set(["ANDROID_PGW", "QPOSLANE", "GANTIGO", "IDPAY"]);
@@ -195,12 +196,19 @@ router.get("/pos/register-config", async (req, res) => {
   if (!registerId) {
     return res.status(400).json({ message: "registerId шаардлагатай" });
   }
+  const requestedMode = req.query.mode;
+  const mode =
+    requestedMode === undefined ? null : normalizePosRegisterMode(requestedMode);
+  if (requestedMode !== undefined && !mode) {
+    return res.status(400).json({ message: "POS register-ийн төрөл буруу байна" });
+  }
 
   try {
     const register = await prisma.posRegister.findUnique({
       where: { id: registerId },
       select: {
         id: true,
+        mode: true,
         name: true,
         label: true,
         cardEnabled: true,
@@ -232,6 +240,11 @@ router.get("/pos/register-config", async (req, res) => {
 
     if (!register) {
       return res.status(404).json({ message: "POS олдсонгүй" });
+    }
+    if (mode && register.mode !== mode) {
+      return res.status(409).json({
+        message: `Энэ нь ${register.mode} төрлийн касс байна. ${mode} урсгалд ашиглах боломжгүй.`,
+      });
     }
     if (!canAccessPosOrganization(actor, register.organizationId)) {
       return res.status(403).json({ message: "Өөр байгууллагын POS config харах боломжгүй" });
@@ -384,6 +397,11 @@ router.post("/pos/registers/self-claim", async (req, res) => {
     });
 
     if (existing) {
+      if (existing.mode !== "RETAIL") {
+        return res.status(409).json({
+          message: "Энэ нэртэй restaurant/self-service касс байна. Өөр нэр сонгоно уу.",
+        });
+      }
       return res.status(200).json({ ...existing, reused: true });
     }
 
@@ -397,6 +415,7 @@ router.post("/pos/registers/self-claim", async (req, res) => {
       data: {
         organizationId,
         branchId,
+        mode: "RETAIL",
         name,
         isActive: false,
         activationStatus: PosActivationStatus.PENDING,
@@ -447,6 +466,13 @@ router.get("/pos/registers/mine", async (req, res) => {
     return res.status(400).json({ message: "Байгууллагатай холбоогүй хэрэглэгч" });
   }
 
+  const requestedMode = req.query.mode;
+  const mode =
+    requestedMode === undefined ? null : normalizePosRegisterMode(requestedMode);
+  if (requestedMode !== undefined && !mode) {
+    return res.status(400).json({ message: "POS register-ийн төрөл буруу байна" });
+  }
+
   try {
     const registers = await prisma.posRegister.findMany({
       where: {
@@ -454,10 +480,12 @@ router.get("/pos/registers/mine", async (req, res) => {
         isActive: true,
         activationStatus: PosActivationStatus.APPROVED,
         deletedAt: null,
+        ...(mode ? { mode } : {}),
       },
       orderBy: { createdAt: "asc" },
       select: {
         id: true,
+        mode: true,
         name: true,
         label: true,
         branchId: true,
@@ -852,6 +880,7 @@ router.post("/admin/pos-registers", async (req, res) => {
   const {
     organizationId,
     branchId,
+    mode,
     name,
     label,
     cardEnabled,
@@ -872,6 +901,7 @@ router.post("/admin/pos-registers", async (req, res) => {
   } = req.body as {
     organizationId?: string;
     branchId?: string;
+    mode?: string;
     name?: string;
     label?: string;
     cardEnabled?: boolean;
@@ -892,6 +922,8 @@ router.post("/admin/pos-registers", async (req, res) => {
   };
 
   const normalizedName = normalizeRegisterName(name);
+  const normalizedMode =
+    mode === undefined ? "RETAIL" : normalizePosRegisterMode(mode);
   const normalizedCardProviderType = normalizeNullableString(cardProviderType);
   const normalizedCardTerminalId = normalizeCardTerminalId(normalizedCardProviderType, cardTerminalId);
   const normalizedTerminalBridgeUrl = normalizeNullableString(terminalBridgeUrl);
@@ -904,6 +936,9 @@ router.post("/admin/pos-registers", async (req, res) => {
 
   if (!organizationId || !branchId || !normalizedName) {
     return res.status(400).json({ message: "organizationId, branchId, name шаардлагатай" });
+  }
+  if (!normalizedMode) {
+    return res.status(400).json({ message: "POS register-ийн төрөл буруу байна" });
   }
 
   // Validate terminalBridgeUrl if provided
@@ -1014,6 +1049,7 @@ router.post("/admin/pos-registers", async (req, res) => {
       data: {
         organizationId,
         branchId,
+        mode: normalizedMode,
         name: normalizedName,
         label: label ? String(label).trim() : null,
         cardEnabled: Boolean(cardEnabled),
@@ -1084,6 +1120,7 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
   if (!id) return res.status(400).json({ message: "id шаардлагатай" });
 
   const {
+    mode,
     name,
     label,
     cardEnabled,
@@ -1103,6 +1140,7 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
     minuAgentBranchId,
     isActive,
   } = req.body as {
+    mode?: string;
     name?: string;
     label?: string;
     cardEnabled?: boolean;
@@ -1125,6 +1163,11 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
 
   const normalizedInputTerminalBridgeUrl =
     terminalBridgeUrl !== undefined ? normalizeNullableString(terminalBridgeUrl) : undefined;
+  const normalizedInputMode =
+    mode !== undefined ? normalizePosRegisterMode(mode) : undefined;
+  if (mode !== undefined && !normalizedInputMode) {
+    return res.status(400).json({ message: "POS register-ийн төрөл буруу байна" });
+  }
   const normalizedInputEbarimtPosApiUrl =
     ebarimtPosApiUrl !== undefined ? normalizeUrlString(ebarimtPosApiUrl) : undefined;
   const normalizedInputEbarimtMerchantTin =
@@ -1169,6 +1212,18 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
   try {
     const existing = await prisma.posRegister.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ message: "POS олдсонгүй" });
+
+    if (normalizedInputMode && normalizedInputMode !== existing.mode) {
+      const openShift = await prisma.posShift.findFirst({
+        where: { registerId: id, status: ShiftStatus.OPEN },
+        select: { id: true },
+      });
+      if (openShift) {
+        return res.status(409).json({
+          message: "Нээлттэй ээлжтэй кассын төрлийг солих боломжгүй. Эхлээд ээлжийг хаана уу.",
+        });
+      }
+    }
 
     const nextCardEnabled = cardEnabled !== undefined ? Boolean(cardEnabled) : existing.cardEnabled;
     const normalizedInputCardProviderType =
@@ -1279,6 +1334,7 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
     const updated = await prisma.posRegister.update({
       where: { id },
       data: {
+        ...(normalizedInputMode ? { mode: normalizedInputMode } : {}),
         ...(name !== undefined && { name: String(name).trim() }),
         ...(label !== undefined && { label: label ? String(label).trim() : null }),
         cardEnabled: nextCardEnabled,

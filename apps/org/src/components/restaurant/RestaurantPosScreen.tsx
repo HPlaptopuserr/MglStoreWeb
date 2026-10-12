@@ -2640,6 +2640,7 @@ function RestaurantPosContent() {
         branchId: selectedRegister.branchId,
         registerId: selectedRegister.id,
         openingCash: amount,
+        source: "RESTAURANT",
       });
       setShift(opened);
       setShowOpenShift(false);

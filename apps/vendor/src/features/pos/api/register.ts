@@ -15,12 +15,12 @@ export function getPosRegisterIdKey(organizationId: string) {
 
 export function fetchRegisterConfig(registerId: string): Promise<RegisterConfig> {
   return posRequest<RegisterConfig>(
-    `/pos/register-config?registerId=${encodeURIComponent(registerId)}`,
+    `/pos/register-config?registerId=${encodeURIComponent(registerId)}&mode=RETAIL`,
   );
 }
 
 export function fetchOrgRegisters(): Promise<RegisterConfig[]> {
-  return posRequest<RegisterConfig[]>("/pos/registers/mine");
+  return posRequest<RegisterConfig[]>("/pos/registers/mine?mode=RETAIL");
 }
 
 export async function fetchBranches(organizationId: string): Promise<Branch[]> {

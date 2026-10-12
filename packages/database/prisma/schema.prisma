@@ -1002,6 +1002,7 @@ model PosRegister {
   id                  String               @id @default(uuid())
   organizationId      String
   branchId            String
+  mode                PosRegisterMode      @default(RETAIL)
   name                String
   label               String?
   cardEnabled         Boolean              @default(false)
@@ -1038,6 +1039,7 @@ model PosRegister {
   @@unique([cardProviderType, cardTerminalId])
   @@unique([qpayMerchantId, qpayTerminalId])
   @@index([organizationId])
+  @@index([organizationId, mode])
   @@index([branchId])
   @@index([isActive])
   @@index([activationStatus])
@@ -2764,6 +2766,12 @@ enum PosActivationStatus {
   REJECTED
 }
 
+enum PosRegisterMode {
+  RETAIL
+  RESTAURANT
+  SELF_SERVICE
+}
+
 enum PosPaymentStatus {
   PENDING
   APPROVED
@@ -3166,6 +3174,7 @@ model PosShift {
   organizationId    String
   branchId          String
   registerId        String?
+  mode              PosRegisterMode    @default(RETAIL)
   cashierId         String
   status            ShiftStatus        @default(OPEN)
   openingCash       Decimal            @db.Decimal(18, 2)
@@ -3188,6 +3197,7 @@ model PosShift {
   restaurantTickets RestaurantTicket[]
 
   @@index([organizationId])
+  @@index([organizationId, mode])
   @@index([branchId])
   @@index([cashierId])
   @@index([status])
