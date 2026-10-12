@@ -8,7 +8,6 @@ import {
   PosQPayStatus,
   PosActivationStatus,
   ShiftStatus,
-  PosSaleStatus,
   CashDrawerEventType,
 } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
@@ -50,11 +49,11 @@ import {
   type PushEcrPurchaseResponse,
   toApiError,
 } from "./_shared";
+import { calculateExpectedCash, summarizeShiftSales } from "./shift-accounting";
 import {
-  calculateExpectedCash,
-  summarizeShiftSales,
-  type ShiftSaleAccountingInput,
-} from "./shift-accounting";
+  getCashDrawerEventTotals,
+  loadShiftAccountingSales,
+} from "./shift-accounting-data";
 import {
   buildCurrentShiftScope,
   buildOpenShiftConflictScopes,
@@ -163,109 +162,6 @@ const mapCashDrawerEvent = (event: any) => ({
   note: event.note ?? null,
   createdAt: event.createdAt.toISOString(),
 });
-
-type ShiftAccountingClient = Pick<
-  Prisma.TransactionClient,
-  "posSale" | "cardPaymentAttempt" | "qPayInvoice" | "posCashDrawerEvent"
->;
-
-async function loadShiftAccountingSales(
-  client: ShiftAccountingClient,
-  shiftIds: string[],
-) {
-  const result = new Map<string, ShiftSaleAccountingInput[]>();
-  if (shiftIds.length === 0) return result;
-
-  const sales = await client.posSale.findMany({
-    where: {
-      shiftId: { in: shiftIds },
-      status: PosSaleStatus.COMPLETED,
-    },
-    select: {
-      id: true,
-      shiftId: true,
-      receiptNo: true,
-      grandTotal: true,
-      paymentMethod: true,
-      paymentBreakdown: true,
-      loyalty: { select: { redeemedPoints: true } },
-      creditSale: { select: { principalAmount: true } },
-    },
-  });
-
-  const receiptNumbers = sales.map((sale) => sale.receiptNo);
-  const [cardAttempts, qpayInvoices] = receiptNumbers.length
-    ? await Promise.all([
-        client.cardPaymentAttempt.findMany({
-          where: { saleReference: { in: receiptNumbers } },
-          select: { saleReference: true, amount: true },
-        }),
-        client.qPayInvoice.findMany({
-          where: { saleReference: { in: receiptNumbers } },
-          select: { saleReference: true, amount: true },
-        }),
-      ])
-    : [[], []];
-
-  const cardByReceipt = new Map<string, number[]>();
-  for (const attempt of cardAttempts) {
-    const key = attempt.saleReference || "";
-    cardByReceipt.set(key, [
-      ...(cardByReceipt.get(key) || []),
-      Number(attempt.amount),
-    ]);
-  }
-  const qpayByReceipt = new Map<string, number[]>();
-  for (const invoice of qpayInvoices) {
-    const key = invoice.saleReference || "";
-    qpayByReceipt.set(key, [
-      ...(qpayByReceipt.get(key) || []),
-      Number(invoice.amount),
-    ]);
-  }
-
-  for (const sale of sales) {
-    const accountingSale: ShiftSaleAccountingInput = {
-      grandTotal: Number(sale.grandTotal),
-      paymentMethod: sale.paymentMethod,
-      paymentBreakdown: sale.paymentBreakdown,
-      redeemedPoints: sale.loyalty?.redeemedPoints || 0,
-      cardPayments: cardByReceipt.get(sale.receiptNo) || [],
-      qpayPayments: qpayByReceipt.get(sale.receiptNo) || [],
-      creditAmount: Number(sale.creditSale?.principalAmount || 0),
-    };
-    result.set(sale.shiftId, [
-      ...(result.get(sale.shiftId) || []),
-      accountingSale,
-    ]);
-  }
-
-  return result;
-}
-
-async function getCashDrawerEventTotals(
-  client: Pick<Prisma.TransactionClient, "posCashDrawerEvent">,
-  shiftId: string,
-) {
-  const events = await client.posCashDrawerEvent.findMany({
-    where: { shiftId },
-    select: { type: true, amount: true },
-  });
-  return events.reduce<{ paidIn: number; paidOut: number }>(
-    (
-      summary: { paidIn: number; paidOut: number },
-      event: { type: CashDrawerEventType; amount: unknown },
-    ) => {
-      const amount = Number(event.amount);
-      if (!Number.isFinite(amount)) return summary;
-      if (event.type === CashDrawerEventType.PAID_IN) summary.paidIn += amount;
-      if (event.type === CashDrawerEventType.PAID_OUT)
-        summary.paidOut += amount;
-      return summary;
-    },
-    { paidIn: 0, paidOut: 0 },
-  );
-}
 
 async function buildCashDrawerSummary(shift: any) {
   const [salesByShift, events] = await Promise.all([
@@ -419,6 +315,40 @@ router.post("/pos/shifts/open", async (req, res) => {
           WHERE "id" = ${registerId}
           FOR UPDATE
         `;
+          const lockedRegister = await tx.posRegister.findUnique({
+            where: { id: registerId },
+            select: {
+              mode: true,
+              branchId: true,
+              organizationId: true,
+              isActive: true,
+              activationStatus: true,
+            },
+          });
+          if (!lockedRegister) {
+            throw toApiError(404, "POS register олдсонгүй");
+          }
+          if (
+            lockedRegister.branchId !== branchId ||
+            lockedRegister.organizationId !== branch.organizationId
+          ) {
+            throw toApiError(400, "POS register салбартай зөрүүтэй байна");
+          }
+          if (
+            !lockedRegister.isActive ||
+            lockedRegister.activationStatus !== PosActivationStatus.APPROVED
+          ) {
+            throw toApiError(
+              403,
+              "POS register идэвхгүй эсвэл батлагдаагүй байна",
+            );
+          }
+          if (lockedRegister.mode !== requestedMode) {
+            throw toApiError(
+              409,
+              `Энэ нь ${lockedRegister.mode} төрлийн касс байна. ${requestedMode} урсгалд ашиглах боломжгүй.`,
+            );
+          }
         }
 
         if (isSelfService) {
@@ -518,8 +448,12 @@ router.post("/pos/shifts/open", async (req, res) => {
     if (!result.shift) throw new Error("Shift was not created");
     res.status(result.reused ? 200 : 201).json(toShiftResponse(result.shift));
   } catch (error) {
+    const known = error as ApiError;
+    if (known?.status && known?.message) {
+      return res.status(known.status).json({ message: known.message });
+    }
     console.error("open shift error", error);
-    res.status(500).json({ message: "Ээлж нээхэд алдаа гарлаа" });
+    return res.status(500).json({ message: "Ээлж нээхэд алдаа гарлаа" });
   }
 });
 
