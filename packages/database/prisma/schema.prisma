@@ -466,6 +466,7 @@ model Organization {
   posCreditCustomers               PosCreditCustomer[]
   posCreditSales                   PosCreditSale[]
   posLoyaltyTransactions           PosLoyaltyTransaction[]
+  restaurantDiscountSchedule       RestaurantDiscountSchedule?
   cafeDailyStocks                  CafeDailyStock[]
   cafeDailyStockReceipts           CafeDailyStockReceipt[]
   cafeRegularCustomers             CafeRegularCustomer[]
@@ -2996,6 +2997,21 @@ model RestaurantMenuCategory {
 
   @@unique([organizationId, code])
   @@index([organizationId, sortOrder])
+}
+
+model RestaurantDiscountSchedule {
+  id             String       @id @default(uuid())
+  organizationId String       @unique
+  isEnabled      Boolean      @default(false)
+  percent        Int          @default(20)
+  startMinute    Int          @default(540)
+  endMinute      Int          @default(1020)
+  timeZone       String       @default("Asia/Ulaanbaatar")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, isEnabled])
 }
 
 /// Coffee-shop daily preparation/intake sheet. Sales are calculated from

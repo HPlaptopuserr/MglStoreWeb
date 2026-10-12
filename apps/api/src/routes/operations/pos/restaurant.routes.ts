@@ -32,6 +32,11 @@ import {
   listRestaurantMenuCategories,
   normalizeRestaurantMenuCategoryName,
 } from "./restaurant-menu-categories";
+import {
+  mapRestaurantDiscountSchedule,
+  parseRestaurantDiscountTime,
+  RESTAURANT_DISCOUNT_TIME_ZONE,
+} from "./restaurant-discount";
 
 const router: ExpressRouter = Router();
 
@@ -418,6 +423,39 @@ async function requireRestaurantOrganizationAccess(
   }
 
   return { organization } as const;
+}
+
+async function requireRestaurantDiscountOwner(
+  actor: AuthUser,
+  organizationId: string,
+) {
+  const access = await requireRestaurantOrganizationAccess(
+    actor,
+    organizationId,
+  );
+  if ("error" in access && access.error) return access;
+  if (actor.role === "ADMIN" || actor.role === "SUPER_ADMIN") return access;
+
+  const ownerMembership = await prisma.organizationMember.findFirst({
+    where: {
+      userId: actor.id,
+      organizationId,
+      isActive: true,
+      deletedAt: null,
+      role: "OWNER",
+    },
+    select: { id: true },
+  });
+  if (!ownerMembership) {
+    return {
+      error: {
+        status: 403,
+        message: "Цагийн хямдралыг зөвхөн owner тохируулна",
+      },
+    } as const;
+  }
+
+  return access;
 }
 
 const ticketInclude = {
@@ -969,6 +1007,100 @@ router.get("/restaurant/menu/:token", async (req, res) => {
   } catch (error) {
     console.error("get public restaurant menu error", error);
     return res.status(500).json({ message: "QR menu ачаалахад алдаа гарлаа" });
+  }
+});
+
+router.get("/restaurant/pos/discount-schedule", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const organizationId = String(req.query.organizationId || "").trim();
+    if (!organizationId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+    const access = await requireRestaurantOrganizationAccess(
+      actor,
+      organizationId,
+    );
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+
+    const schedule = await prisma.restaurantDiscountSchedule.findUnique({
+      where: { organizationId },
+    });
+    return res.json(mapRestaurantDiscountSchedule(organizationId, schedule));
+  } catch (error) {
+    console.error("get restaurant discount schedule error", error);
+    return res
+      .status(500)
+      .json({ message: "Цагийн хямдралын тохиргоо авахад алдаа гарлаа" });
+  }
+});
+
+router.put("/restaurant/pos/discount-schedule", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const organizationId = String(req.body?.organizationId || "").trim();
+    const isEnabled = req.body?.isEnabled === true;
+    const percent = Number(req.body?.percent);
+    const startMinute = parseRestaurantDiscountTime(req.body?.startTime);
+    const endMinute = parseRestaurantDiscountTime(req.body?.endTime);
+    if (!organizationId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+    if (!Number.isInteger(percent) || percent < 1 || percent > 99) {
+      return res
+        .status(400)
+        .json({ message: "Хямдралын хувь 1-99 хооронд байна" });
+    }
+    if (startMinute === null || endMinute === null) {
+      return res
+        .status(400)
+        .json({ message: "Эхлэх, дуусах цаг HH:mm форматтай байна" });
+    }
+    if (startMinute === endMinute) {
+      return res
+        .status(400)
+        .json({ message: "Эхлэх, дуусах цаг ялгаатай байна" });
+    }
+
+    const access = await requireRestaurantDiscountOwner(actor, organizationId);
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+
+    const schedule = await prisma.restaurantDiscountSchedule.upsert({
+      where: { organizationId },
+      create: {
+        organizationId,
+        isEnabled,
+        percent,
+        startMinute,
+        endMinute,
+        timeZone: RESTAURANT_DISCOUNT_TIME_ZONE,
+      },
+      update: {
+        isEnabled,
+        percent,
+        startMinute,
+        endMinute,
+        timeZone: RESTAURANT_DISCOUNT_TIME_ZONE,
+      },
+    });
+    return res.json(mapRestaurantDiscountSchedule(organizationId, schedule));
+  } catch (error) {
+    console.error("update restaurant discount schedule error", error);
+    return res
+      .status(500)
+      .json({ message: "Цагийн хямдрал хадгалахад алдаа гарлаа" });
   }
 });
 
@@ -2605,7 +2737,9 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
         }
         if (!isSelfService && activeShift.note === SELF_SERVICE_SHIFT_NOTE) {
           throw Object.assign(
-            new Error("Self-service дотоод ээлжийг энгийн кассанд ашиглах боломжгүй"),
+            new Error(
+              "Self-service дотоод ээлжийг энгийн кассанд ашиглах боломжгүй",
+            ),
             { status: 409 },
           );
         }
@@ -2615,7 +2749,9 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
             activeShift.register?.mode !== "RESTAURANT")
         ) {
           throw Object.assign(
-            new Error("Рестораны ticket зөвхөн RESTAURANT төрлийн кассын ээлж дээр үүснэ"),
+            new Error(
+              "Рестораны ticket зөвхөн RESTAURANT төрлийн кассын ээлж дээр үүснэ",
+            ),
             { status: 409 },
           );
         }

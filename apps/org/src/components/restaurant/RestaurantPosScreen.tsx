@@ -71,6 +71,7 @@ import {
   getRestaurantCreditSales,
   getRestaurantQPayInvoiceStatus,
   getRestaurantDiningTables,
+  getRestaurantDiscountSchedule,
   getRestaurantMenuCategories,
   getRestaurantMenuClassificationCode,
   getRestaurantPosProducts,
@@ -85,10 +86,12 @@ import {
   saveRestaurantTicket,
   sendRestaurantTicketToKitchen,
   submitRestaurantClientBridgeResult,
+  updateRestaurantDiscountSchedule,
   voidRestaurantSale,
   type RestaurantDiningTable,
   type CafeRegularCustomer,
   type RestaurantCreditSale,
+  type RestaurantDiscountSchedule,
   type RestaurantMenuCategory,
   type RestaurantPosQPayInvoice,
   type RestaurantPosProduct,
@@ -102,7 +105,7 @@ import {
   type RestaurantCustomerDisplayPayload,
   type RestaurantCustomerDisplaySuccess,
 } from "./customer-display";
-import { calculateCafeRegularCustomerDiscount } from "@mgl/types";
+import { calculateCafeRegularCustomerUnitDiscount } from "@mgl/types";
 import type {
   CardAttempt,
   CashDenominationCount,
@@ -145,6 +148,7 @@ type MenuItem = {
   price: number;
   available: number;
   taxRate: number;
+  discountEligible: boolean;
   tone: DishTone;
   imageUrl?: string;
 };
@@ -159,6 +163,7 @@ type TicketLine = {
   note: string;
   available: number;
   taxRate: number;
+  discountEligible: boolean;
   tone: DishTone;
   imageUrl?: string;
 };
@@ -307,18 +312,11 @@ const paymentOptions = [
 }>;
 
 const moneyFormatter = new Intl.NumberFormat("mn-MN");
-const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
+const roundMoney = (value: number) =>
+  Math.round((Number(value) || 0) * 100) / 100;
 const formatMoney = (value: number) => `${moneyFormatter.format(value)}₮`;
 const CASH_DENOMINATIONS = [
-  20000,
-  10000,
-  5000,
-  1000,
-  500,
-  100,
-  50,
-  20,
-  10,
+  20000, 10000, 5000, 1000, 500, 100, 50, 20, 10,
 ] as const;
 
 const buildCashCount = (
@@ -339,7 +337,12 @@ const SHIFT_HISTORY_RANGE_OPTIONS = [
   { id: "7", label: "7 хоног", description: "Сүүлийн 7 хоног", days: 7 },
   { id: "14", label: "14 хоног", description: "Сүүлийн 14 хоног", days: 14 },
   { id: "30", label: "30 хоног", description: "Сүүлийн 30 хоног", days: 30 },
-  { id: "100", label: "100 хаалт", description: "Сүүлийн 100 хаалт", days: null },
+  {
+    id: "100",
+    label: "100 хаалт",
+    description: "Сүүлийн 100 хаалт",
+    days: null,
+  },
 ] as const;
 type ShiftHistoryRangeId = (typeof SHIFT_HISTORY_RANGE_OPTIONS)[number]["id"];
 
@@ -362,7 +365,12 @@ const SALES_HISTORY_RANGE_OPTIONS = [
   { id: "7", label: "7 хоног", description: "Сүүлийн 7 хоног", days: 7 },
   { id: "14", label: "14 хоног", description: "Сүүлийн 14 хоног", days: 14 },
   { id: "30", label: "30 хоног", description: "Сүүлийн 30 хоног", days: 30 },
-  { id: "100", label: "100 баримт", description: "Сүүлийн 100 баримт", days: null },
+  {
+    id: "100",
+    label: "100 баримт",
+    description: "Сүүлийн 100 баримт",
+    days: null,
+  },
 ] as const;
 type SalesHistoryRangeId = (typeof SALES_HISTORY_RANGE_OPTIONS)[number]["id"];
 
@@ -390,7 +398,8 @@ const LONG_RUNNING_CARD_PROVIDERS = new Set([
 const terminalNeedsWaitingOverlay = (provider?: string | null) =>
   Boolean(provider && LONG_RUNNING_CARD_PROVIDERS.has(provider));
 const getEffectiveCardProvider = (register?: RestaurantPosRegister | null) =>
-  register?.cardProviderType || (register?.minuAgentEnabled ? "MINU_AGENT" : null);
+  register?.cardProviderType ||
+  (register?.minuAgentEnabled ? "MINU_AGENT" : null);
 const cardTerminalSourceLabel = (source?: string | null) => {
   if (source === "ORG_REGISTER") return "Байгууллагын existing POS terminal";
   if (source === "CARD_TERMINAL_REQUEST") return "Батлагдсан terminal хүсэлт";
@@ -454,6 +463,42 @@ const createClientSaleId = () =>
     ? `restaurant-${crypto.randomUUID()}`
     : `restaurant-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
+const getMinuteInTimeZone = (date: Date, timeZone: string) => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(
+    parts.find((part) => part.type === "minute")?.value || 0,
+  );
+  return hour * 60 + minute;
+};
+
+const timeToMinute = (value: string) => {
+  const [hour, minute] = value.split(":").map(Number);
+  return hour * 60 + minute;
+};
+
+const isDiscountScheduleActive = (
+  schedule: RestaurantDiscountSchedule | null,
+  at: Date,
+) => {
+  if (!schedule?.isEnabled || schedule.percent <= 0) return false;
+  const startMinute = timeToMinute(schedule.startTime);
+  const endMinute = timeToMinute(schedule.endTime);
+  const currentMinute = getMinuteInTimeZone(at, schedule.timeZone);
+  if (startMinute === endMinute) return false;
+  return startMinute < endMinute
+    ? currentMinute >= startMinute && currentMinute < endMinute
+    : currentMinute >= startMinute || currentMinute < endMinute;
+};
+
+const calculateScheduledUnitDiscount = (price: number, percent: number) =>
+  roundMoney(price * (Math.min(99, Math.max(0, percent)) / 100));
+
 const mapDiningTable = (table: RestaurantDiningTable): DiningTable => ({
   id: table.id,
   label: table.label,
@@ -492,6 +537,8 @@ const mapTicketLines = (
       note: item.note,
       available: Math.max(item.qty, menuItem?.available ?? item.qty),
       taxRate: menuItem?.taxRate ?? 0,
+      discountEligible:
+        menuItem?.discountEligible ?? item.kitchenStation !== "BAR",
       tone: menuItem?.tone ?? "sky",
       imageUrl: menuItem?.imageUrl,
     };
@@ -615,8 +662,9 @@ export function RestaurantPosScreen() {
 
 function RestaurantPosContent() {
   const { user, features } = useOrg();
-  const defaultMenuClassificationCode =
-    getRestaurantMenuClassificationCode(features.selfServiceMode);
+  const defaultMenuClassificationCode = getRestaurantMenuClassificationCode(
+    features.selfServiceMode,
+  );
   const [registers, setRegisters] = useState<RestaurantPosRegister[]>([]);
   const [selectedRegisterId, setSelectedRegisterId] = useState("");
   const [shift, setShift] = useState<PosShift | null>(null);
@@ -628,8 +676,9 @@ function RestaurantPosContent() {
   const [openingCash, setOpeningCash] = useState("0");
   const [closingCash, setClosingCash] = useState("");
   const [cashCounts, setCashCounts] = useState<Record<number, number>>({});
-  const [drawerSummary, setDrawerSummary] =
-    useState<CashDrawerSummary | null>(null);
+  const [drawerSummary, setDrawerSummary] = useState<CashDrawerSummary | null>(
+    null,
+  );
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [drawerError, setDrawerError] = useState("");
   const [shiftNote, setShiftNote] = useState("");
@@ -668,6 +717,16 @@ function RestaurantPosContent() {
   >([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState("");
+  const [discountSchedule, setDiscountSchedule] =
+    useState<RestaurantDiscountSchedule | null>(null);
+  const [discountClock, setDiscountClock] = useState(() => Date.now());
+  const [discountModalOpen, setDiscountModalOpen] = useState(false);
+  const [discountEnabled, setDiscountEnabled] = useState(false);
+  const [discountPercent, setDiscountPercent] = useState("20");
+  const [discountStartTime, setDiscountStartTime] = useState("09:00");
+  const [discountEndTime, setDiscountEndTime] = useState("17:00");
+  const [discountSaving, setDiscountSaving] = useState(false);
+  const [discountError, setDiscountError] = useState("");
   const [productManagerOpen, setProductManagerOpen] = useState(false);
   const [productManagerMode, setProductManagerMode] =
     useState<ProductManagerMode>("new");
@@ -678,8 +737,7 @@ function RestaurantPosContent() {
   const [catalogError, setCatalogError] = useState("");
   const [productManagerSaving, setProductManagerSaving] = useState(false);
   const [productSearch, setProductSearch] = useState("");
-  const [menuProductCategory, setMenuProductCategory] =
-    useState<string>("HOT");
+  const [menuProductCategory, setMenuProductCategory] = useState<string>("HOT");
   const [menuProductStation, setMenuProductStation] =
     useState<RestaurantKitchenStation>("HOT_KITCHEN");
   const [menuProductPreparationMinutes, setMenuProductPreparationMinutes] =
@@ -721,8 +779,7 @@ function RestaurantPosContent() {
   const [creditBorrowersLoading, setCreditBorrowersLoading] = useState(false);
   const [creditBorrowersError, setCreditBorrowersError] = useState("");
   const [creditSearch, setCreditSearch] = useState("");
-  const [selectedCreditBorrowerId, setSelectedCreditBorrowerId] =
-    useState("");
+  const [selectedCreditBorrowerId, setSelectedCreditBorrowerId] = useState("");
   const [creditTermMonths, setCreditTermMonths] = useState("1");
   const [creditNote, setCreditNote] = useState("");
   const [creditListOpen, setCreditListOpen] = useState(false);
@@ -745,9 +802,9 @@ function RestaurantPosContent() {
     useState<PaidReceiptContext | null>(null);
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
   const [salesHistoryOpen, setSalesHistoryOpen] = useState(false);
-  const [salesHistory, setSalesHistory] = useState<RestaurantSalesHistoryItem[]>(
-    [],
-  );
+  const [salesHistory, setSalesHistory] = useState<
+    RestaurantSalesHistoryItem[]
+  >([]);
   const [salesHistoryTotal, setSalesHistoryTotal] = useState(0);
   const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
   const [salesHistoryError, setSalesHistoryError] = useState("");
@@ -781,41 +838,47 @@ function RestaurantPosContent() {
       registers.find((register) => register.id === selectedRegisterId) ?? null,
     [registers, selectedRegisterId],
   );
+  const canManageDiscount =
+    user.orgRole === "OWNER" ||
+    user.role === "ADMIN" ||
+    user.role === "SUPER_ADMIN";
   const ebarimtReady = Boolean(selectedRegister?.ebarimtEnabled);
-  const lookupCompanyBuyer = useCallback(async (): Promise<
-    EbarimtTinLookupResult
-  > => {
-    const normalizedRegNo = companyRegNo.replace(/\D/g, "");
-    if (!/^\d{7}$/.test(normalizedRegNo)) {
-      throw new Error("Байгууллагын регистр 7 оронтой байна");
-    }
-    if (companyLookup?.regNo === normalizedRegNo) return companyLookup;
+  const lookupCompanyBuyer =
+    useCallback(async (): Promise<EbarimtTinLookupResult> => {
+      const normalizedRegNo = companyRegNo.replace(/\D/g, "");
+      if (!/^\d{7}$/.test(normalizedRegNo)) {
+        throw new Error("Байгууллагын регистр 7 оронтой байна");
+      }
+      if (companyLookup?.regNo === normalizedRegNo) return companyLookup;
 
-    const requestId = ++companyLookupRequestRef.current;
-    setCompanyLookupLoading(true);
-    setCompanyLookupError("");
-    try {
-      const result = await lookupEbarimtTin(normalizedRegNo, selectedRegister);
-      if (requestId === companyLookupRequestRef.current) {
-        setCompanyLookup(result);
+      const requestId = ++companyLookupRequestRef.current;
+      setCompanyLookupLoading(true);
+      setCompanyLookupError("");
+      try {
+        const result = await lookupEbarimtTin(
+          normalizedRegNo,
+          selectedRegister,
+        );
+        if (requestId === companyLookupRequestRef.current) {
+          setCompanyLookup(result);
+        }
+        return result;
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Байгууллагын мэдээлэл шалгаж чадсангүй";
+        if (requestId === companyLookupRequestRef.current) {
+          setCompanyLookup(null);
+          setCompanyLookupError(message);
+        }
+        throw new Error(message);
+      } finally {
+        if (requestId === companyLookupRequestRef.current) {
+          setCompanyLookupLoading(false);
+        }
       }
-      return result;
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Байгууллагын мэдээлэл шалгаж чадсангүй";
-      if (requestId === companyLookupRequestRef.current) {
-        setCompanyLookup(null);
-        setCompanyLookupError(message);
-      }
-      throw new Error(message);
-    } finally {
-      if (requestId === companyLookupRequestRef.current) {
-        setCompanyLookupLoading(false);
-      }
-    }
-  }, [companyLookup, companyRegNo, selectedRegister]);
+    }, [companyLookup, companyRegNo, selectedRegister]);
 
   const resolveEmployeeDiscount = useCallback(
     async (phone: string, syncUi = false): Promise<CafeRegularCustomer> => {
@@ -949,8 +1012,9 @@ function RestaurantPosContent() {
   );
   const selectedShiftHistoryRange = useMemo(
     () =>
-      SHIFT_HISTORY_RANGE_OPTIONS.find((item) => item.id === shiftHistoryRange) ??
-      SHIFT_HISTORY_RANGE_OPTIONS[0],
+      SHIFT_HISTORY_RANGE_OPTIONS.find(
+        (item) => item.id === shiftHistoryRange,
+      ) ?? SHIFT_HISTORY_RANGE_OPTIONS[0],
     [shiftHistoryRange],
   );
   const selectedSalesHistory = useMemo(
@@ -1005,8 +1069,9 @@ function RestaurantPosContent() {
   );
   const selectedSalesHistoryRange = useMemo(
     () =>
-      SALES_HISTORY_RANGE_OPTIONS.find((item) => item.id === salesHistoryRange) ??
-      SALES_HISTORY_RANGE_OPTIONS[0],
+      SALES_HISTORY_RANGE_OPTIONS.find(
+        (item) => item.id === salesHistoryRange,
+      ) ?? SALES_HISTORY_RANGE_OPTIONS[0],
     [salesHistoryRange],
   );
 
@@ -1037,7 +1102,7 @@ function RestaurantPosContent() {
         setSelectedSaleHistoryId((current) =>
           sales.some((item) => item.id === current)
             ? current
-            : sales[0]?.id ?? "",
+            : (sales[0]?.id ?? ""),
         );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -1074,7 +1139,7 @@ function RestaurantPosContent() {
         setSelectedShiftHistoryId((current) =>
           shifts.some((item) => item.id === current)
             ? current
-            : shifts[0]?.id ?? "",
+            : (shifts[0]?.id ?? ""),
         );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -1243,6 +1308,10 @@ function RestaurantPosContent() {
             price: Number(product.price) || 0,
             available: Number(product.stockQty) || 0,
             taxRate: Number(product.taxRate) || 0,
+            discountEligible:
+              product.isRestaurantMenuItem &&
+              product.menuCategory !== "DRINK" &&
+              product.kitchenStation !== "BAR",
             tone: categoryTone(menuCategory),
             imageUrl: product.imageUrl || undefined,
           };
@@ -1261,6 +1330,43 @@ function RestaurantPosContent() {
   useEffect(() => {
     void loadMenu();
   }, [loadMenu]);
+
+  const loadDiscountSchedule = useCallback(async () => {
+    if (!selectedRegister?.organizationId) {
+      setDiscountSchedule(null);
+      return;
+    }
+
+    try {
+      const schedule = await getRestaurantDiscountSchedule(
+        selectedRegister.organizationId,
+      );
+      setDiscountSchedule(schedule);
+      setDiscountEnabled(schedule.isEnabled);
+      setDiscountPercent(String(schedule.percent));
+      setDiscountStartTime(schedule.startTime);
+      setDiscountEndTime(schedule.endTime);
+      setDiscountClock(Date.now());
+    } catch (error) {
+      setDiscountError(
+        error instanceof Error
+          ? error.message
+          : "Цагийн хямдралын тохиргоо авахад алдаа гарлаа",
+      );
+    }
+  }, [selectedRegister?.organizationId]);
+
+  useEffect(() => {
+    void loadDiscountSchedule();
+  }, [loadDiscountSchedule]);
+
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setDiscountClock(Date.now()),
+      30_000,
+    );
+    return () => window.clearInterval(timer);
+  }, []);
 
   const loadCatalogProducts = useCallback(async () => {
     if (!selectedRegister?.branchId) {
@@ -1297,9 +1403,12 @@ function RestaurantPosContent() {
     setCreditBorrowersLoading(true);
     setCreditBorrowersError("");
     try {
-      const customers = await getRestaurantCreditCustomers(user.organizationId, {
-        limit: 100,
-      });
+      const customers = await getRestaurantCreditCustomers(
+        user.organizationId,
+        {
+          limit: 100,
+        },
+      );
       setCreditBorrowers(customers);
       setSelectedCreditBorrowerId((current) =>
         customers.some((customer) => customer.id === current) ? current : "",
@@ -1481,20 +1590,39 @@ function RestaurantPosContent() {
   const availableCatalogProducts = filteredCatalogProducts.filter(
     (product) => !product.isRestaurantMenuItem,
   );
+  const discountIsActive = isDiscountScheduleActive(
+    discountSchedule,
+    new Date(discountClock),
+  );
+  const activeDiscountPercent = discountIsActive
+    ? discountSchedule?.percent || 0
+    : 0;
+  const getLineUnitDiscount = useCallback(
+    (line: TicketLine | MenuItem) => {
+      const employeeUnitDiscount = employeeDiscount
+        ? calculateCafeRegularCustomerUnitDiscount(
+            line.price,
+            employeeDiscount.discountPercent,
+          )
+        : 0;
+      const scheduledUnitDiscount = line.discountEligible
+        ? calculateScheduledUnitDiscount(line.price, activeDiscountPercent)
+        : 0;
+      return Math.max(employeeUnitDiscount, scheduledUnitDiscount);
+    },
+    [activeDiscountPercent, employeeDiscount],
+  );
   const subtotal = ticketLines.reduce(
     (sum, line) => sum + line.price * line.qty,
     0,
   );
-  const discount = employeeDiscount
-    ? calculateCafeRegularCustomerDiscount(
-        ticketLines.map((line) => ({
-          unitPrice: line.price,
-          quantity: line.qty,
-        })),
-        employeeDiscount.discountPercent,
-      )
-    : 0;
-  const total = subtotal - discount;
+  const discount = roundMoney(
+    ticketLines.reduce(
+      (sum, line) => sum + getLineUnitDiscount(line) * line.qty,
+      0,
+    ),
+  );
+  const total = roundMoney(Math.max(0, subtotal - discount));
   const selectedPayment =
     paymentOptions.find((option) => option.value === paymentMethod) ??
     paymentOptions[0];
@@ -1511,11 +1639,14 @@ function RestaurantPosContent() {
       borrower.borrowerId,
     ]
       .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(normalizedCreditSearch));
+      .some((value) =>
+        String(value).toLowerCase().includes(normalizedCreditSearch),
+      );
   });
   const selectedCreditBorrower =
-    creditBorrowers.find((borrower) => borrower.id === selectedCreditBorrowerId) ??
-    null;
+    creditBorrowers.find(
+      (borrower) => borrower.id === selectedCreditBorrowerId,
+    ) ?? null;
   const safeCreditTermMonths = readCreditTermMonths(creditTermMonths);
   const creditDueDate = addCreditMonths(new Date(), safeCreditTermMonths);
   const creditDueDateLabel = new Intl.DateTimeFormat("mn-MN", {
@@ -1554,13 +1685,17 @@ function RestaurantPosContent() {
         existing.totalDue += Number(credit.totalDue || 0);
         existing.totalLines += credit.lines.length;
         existing.overdue = existing.overdue || credit.status === "OVERDUE";
-        if (new Date(credit.createdAt).getTime() < new Date(existing.createdAt).getTime()) {
+        if (
+          new Date(credit.createdAt).getTime() <
+          new Date(existing.createdAt).getTime()
+        ) {
           existing.createdAt = credit.createdAt;
         }
         if (
           credit.dueDate &&
           (!existing.dueDate ||
-            new Date(credit.dueDate).getTime() < new Date(existing.dueDate).getTime())
+            new Date(credit.dueDate).getTime() <
+              new Date(existing.dueDate).getTime())
         ) {
           existing.dueDate = credit.dueDate;
         }
@@ -1595,10 +1730,10 @@ function RestaurantPosContent() {
   const effectiveCardProvider = getEffectiveCardProvider(selectedRegister);
   const cardTerminalReady = Boolean(
     selectedRegister?.cardEnabled &&
-      effectiveCardProvider &&
-      (effectiveCardProvider === "ANDROID_PGW"
-        ? selectedRegister.terminalBridgeUrl
-        : selectedRegister.cardTerminalId),
+    effectiveCardProvider &&
+    (effectiveCardProvider === "ANDROID_PGW"
+      ? selectedRegister.terminalBridgeUrl
+      : selectedRegister.cardTerminalId),
   );
   const cardTerminalLabel = effectiveCardProvider
     ? effectiveCardProvider === "ANDROID_PGW"
@@ -1704,12 +1839,12 @@ function RestaurantPosContent() {
     const displayLines = creditQPayRepayment
       ? creditQPayRepayment.credits.flatMap((credit) =>
           credit.lines.map((line) => ({
-          id: `${credit.id}:${line.id}`,
-          name: line.productName,
-          qty: line.qty,
-          sentQty: line.qty,
-          unitPrice: line.unitPrice,
-          lineTotal: line.lineTotal,
+            id: `${credit.id}:${line.id}`,
+            name: line.productName,
+            qty: line.qty,
+            sentQty: line.qty,
+            unitPrice: line.unitPrice,
+            lineTotal: line.lineTotal,
           })),
         )
       : ticketLines.map((line) => ({
@@ -1717,8 +1852,8 @@ function RestaurantPosContent() {
           name: line.name,
           qty: line.qty,
           sentQty: line.sentQty,
-          unitPrice: line.price,
-          lineTotal: line.price * line.qty,
+          unitPrice: line.price - getLineUnitDiscount(line),
+          lineTotal: (line.price - getLineUnitDiscount(line)) * line.qty,
           note: line.note.trim() || undefined,
           imageUrl: line.imageUrl,
         }));
@@ -1767,6 +1902,7 @@ function RestaurantPosContent() {
     creditQPayMessage,
     creditQPayRepayment,
     discount,
+    getLineUnitDiscount,
     notice,
     orderMode,
     paymentMethod,
@@ -1859,14 +1995,29 @@ function RestaurantPosContent() {
     }
   };
 
-  const buildSaleLines = (lines: TicketLine[]): SaleLinePayload[] =>
-    lines.map((line) => ({
-      productId: line.id,
-      qty: line.qty,
-      unitPrice: line.price,
-      discountAmount: 0,
-      taxRate: line.taxRate,
-    }));
+  const buildSaleLines = (
+    lines: TicketLine[],
+    discountCustomer = employeeDiscount,
+    scheduledPercent = activeDiscountPercent,
+  ): SaleLinePayload[] =>
+    lines.map((line) => {
+      const employeeUnitDiscount = discountCustomer
+        ? calculateCafeRegularCustomerUnitDiscount(
+            line.price,
+            discountCustomer.discountPercent,
+          )
+        : 0;
+      const scheduledUnitDiscount = line.discountEligible
+        ? calculateScheduledUnitDiscount(line.price, scheduledPercent)
+        : 0;
+      return {
+        productId: line.id,
+        qty: line.qty,
+        unitPrice: line.price,
+        discountAmount: Math.max(employeeUnitDiscount, scheduledUnitDiscount),
+        taxRate: line.taxRate,
+      };
+    });
 
   const buildSaleNote = (
     lines: TicketLine[],
@@ -2753,11 +2904,15 @@ function RestaurantPosContent() {
       updateRegisterInState(updated);
       setCardSetupMinuPassword("");
       setShowCardTerminalSetup(false);
-      setNotice(`${updated.cardProviderType || cardSetupProvider} terminal холбогдлоо.`);
+      setNotice(
+        `${updated.cardProviderType || cardSetupProvider} terminal холбогдлоо.`,
+      );
       setCardMessage("Картын terminal бэлэн боллоо.");
     } catch (error) {
       setCardSetupError(
-        error instanceof Error ? error.message : "Terminal холбох үед алдаа гарлаа",
+        error instanceof Error
+          ? error.message
+          : "Terminal холбох үед алдаа гарлаа",
       );
     } finally {
       setCardSetupSubmitting(false);
@@ -2780,7 +2935,8 @@ function RestaurantPosContent() {
     }
     cardPaymentRunRef.current = run;
 
-    const isCancelled = () => run.cancelled || cardPaymentRunRef.current !== run;
+    const isCancelled = () =>
+      run.cancelled || cardPaymentRunRef.current !== run;
     const terminalId = selectedRegister.cardTerminalId || "terminal-1";
     const useClientBridge =
       cardTerminalReady &&
@@ -2804,7 +2960,9 @@ function RestaurantPosContent() {
       const attempt = await createRestaurantCardAttempt({
         amount,
         terminalId,
-        bridgeUrl: shouldSendBridgeUrl ? selectedRegister.terminalBridgeUrl : null,
+        bridgeUrl: shouldSendBridgeUrl
+          ? selectedRegister.terminalBridgeUrl
+          : null,
         registerId: selectedRegister.id,
         organizationId: user.organizationId,
         clientBridge: useClientBridge,
@@ -2849,7 +3007,9 @@ function RestaurantPosContent() {
             break;
           }
           await new Promise((resolve) => window.setTimeout(resolve, 800));
-          approvedAttempt = await getRestaurantCardAttemptStatus(attempt.attemptId);
+          approvedAttempt = await getRestaurantCardAttemptStatus(
+            attempt.attemptId,
+          );
         }
       }
 
@@ -2882,7 +3042,9 @@ function RestaurantPosContent() {
       return;
     }
     if (paymentMethod === "CREDIT" && !selectedCreditBorrower) {
-      setCheckoutError("Зээлээр бүртгэхийн тулд бүртгэлтэй зээлдэгч сонгоно уу.");
+      setCheckoutError(
+        "Зээлээр бүртгэхийн тулд бүртгэлтэй зээлдэгч сонгоно уу.",
+      );
       return;
     }
     if (qpayPending) {
@@ -2910,22 +3072,32 @@ function RestaurantPosContent() {
         setEmployeeDiscount(checkoutEmployeeDiscount);
         setEmployeePhone(checkoutEmployeeDiscount.phone);
       }
-      const checkoutDiscount = checkoutEmployeeDiscount
-        ? calculateCafeRegularCustomerDiscount(
-            ticketLines.map((line) => ({
-              unitPrice: line.price,
-              quantity: line.qty,
-            })),
-            checkoutEmployeeDiscount.discountPercent,
-          )
+      const checkoutScheduledPercent = isDiscountScheduleActive(
+        discountSchedule,
+        new Date(),
+      )
+        ? discountSchedule?.percent || 0
         : 0;
-      const checkoutTotal = Math.max(0, subtotal - checkoutDiscount);
+      const checkoutSaleLines = buildSaleLines(
+        ticketLines,
+        checkoutEmployeeDiscount,
+        checkoutScheduledPercent,
+      );
+      const checkoutDiscount = roundMoney(
+        checkoutSaleLines.reduce(
+          (sum, line) => sum + line.discountAmount * line.qty,
+          0,
+        ),
+      );
+      const checkoutTotal = roundMoney(
+        Math.max(0, subtotal - checkoutDiscount),
+      );
       const savedTicket = await persistTicketLines(ticketLines);
       if (!savedTicket) {
         throw new Error("Төлбөр хийх ticket олдсонгүй.");
       }
 
-      const saleLines = buildSaleLines(ticketLines);
+      const saleLines = checkoutSaleLines;
       const saleNote = buildSaleNote(
         ticketLines,
         orderMode,
@@ -2996,10 +3168,7 @@ function RestaurantPosContent() {
           regularCustomerPhone: checkoutEmployeeDiscount?.phone,
           note: saleNote,
           lines: saleLines,
-          credit: buildCreditPaymentMeta(
-            selectedCreditBorrower,
-            checkoutTotal,
-          ),
+          credit: buildCreditPaymentMeta(selectedCreditBorrower, checkoutTotal),
         });
         setSelectedCreditBorrowerId("");
         setCreditNote("");
@@ -3338,9 +3507,7 @@ function RestaurantPosContent() {
         amount: dueAmount,
         note: `Restaurant bulk credit QPay repayment ${group.borrowerName}`,
       });
-      setCreditQPayMessage(
-        "QPay QR уншуулж нийт зээлийн төлбөрөө төлнө үү.",
-      );
+      setCreditQPayMessage("QPay QR уншуулж нийт зээлийн төлбөрөө төлнө үү.");
     } catch (error) {
       setCreditSalesError(
         error instanceof Error
@@ -3609,6 +3776,7 @@ function RestaurantPosContent() {
             note: "",
             available: item.available,
             taxRate: item.taxRate,
+            discountEligible: item.discountEligible,
             tone: item.tone,
             imageUrl: item.imageUrl,
           },
@@ -3737,6 +3905,62 @@ function RestaurantPosContent() {
     }
   };
 
+  const openDiscountModal = () => {
+    if (discountSchedule) {
+      setDiscountEnabled(discountSchedule.isEnabled);
+      setDiscountPercent(String(discountSchedule.percent));
+      setDiscountStartTime(discountSchedule.startTime);
+      setDiscountEndTime(discountSchedule.endTime);
+    }
+    setDiscountError("");
+    setDiscountModalOpen(true);
+  };
+
+  const handleSaveDiscountSchedule = async (
+    event: FormEvent<HTMLFormElement>,
+  ) => {
+    event.preventDefault();
+    if (!selectedRegister?.organizationId || !canManageDiscount) return;
+
+    const percent = Math.floor(Number(discountPercent));
+    if (!Number.isFinite(percent) || percent < 1 || percent > 99) {
+      setDiscountError("Хямдралын хувь 1-99 хооронд байна.");
+      return;
+    }
+    if (discountStartTime === discountEndTime) {
+      setDiscountError("Эхлэх, дуусах цаг ижил байж болохгүй.");
+      return;
+    }
+
+    setDiscountSaving(true);
+    setDiscountError("");
+    try {
+      const schedule = await updateRestaurantDiscountSchedule({
+        organizationId: selectedRegister.organizationId,
+        isEnabled: discountEnabled,
+        percent,
+        startTime: discountStartTime,
+        endTime: discountEndTime,
+      });
+      setDiscountSchedule(schedule);
+      setDiscountClock(Date.now());
+      setDiscountModalOpen(false);
+      setNotice(
+        schedule.isEnabled
+          ? `Өдөр бүр ${schedule.startTime}-${schedule.endTime} цагт хоолнууд ${schedule.percent}% хямдарна. Уух зүйлс хямдрахгүй.`
+          : "Цагийн хямдрал унтраалаа.",
+      );
+    } catch (error) {
+      setDiscountError(
+        error instanceof Error
+          ? error.message
+          : "Цагийн хямдрал хадгалахад алдаа гарлаа",
+      );
+    } finally {
+      setDiscountSaving(false);
+    }
+  };
+
   const openCustomerDisplay = () => {
     if (typeof window === "undefined") return;
     window.open(
@@ -3835,6 +4059,17 @@ function RestaurantPosContent() {
             </div>
 
             <div className="mt-3 flex w-full flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
+              {canManageDiscount ? (
+                <button
+                  type="button"
+                  onClick={openDiscountModal}
+                  disabled={!selectedRegister}
+                  className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <BadgePercent className="h-4 w-4" />
+                  Цагийн хямдрал
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => void handleOpenQrModal()}
@@ -3896,6 +4131,23 @@ function RestaurantPosContent() {
             </div>
           </header>
 
+          {discountSchedule?.isEnabled ? (
+            <div
+              className={`mt-3 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-bold ${
+                discountIsActive
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-sky-200 bg-sky-50 text-sky-800"
+              }`}
+            >
+              <BadgePercent className="h-4 w-4 shrink-0" />
+              <span>
+                {discountIsActive ? "Идэвхтэй" : "Хуваарь"}: өдөр бүр{" "}
+                {discountSchedule.startTime}-{discountSchedule.endTime} · хоол{" "}
+                {discountSchedule.percent}% · уух зүйлс орохгүй
+              </span>
+            </div>
+          ) : null}
+
           <ProductImageNotice className="mt-3" />
 
           {setupLoading ? (
@@ -3941,7 +4193,9 @@ function RestaurantPosContent() {
                 </span>
                 <div>
                   <p className="text-xs font-black text-slate-800">Ширээ</p>
-                  <p className="text-[10px] font-semibold text-slate-400">Compact map</p>
+                  <p className="text-[10px] font-semibold text-slate-400">
+                    Compact map
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -3983,9 +4237,7 @@ function RestaurantPosContent() {
                         : table.status
                       : table.status;
                   const displayTotal =
-                    isSelected && ticketLines.length > 0
-                      ? subtotal
-                      : table.total;
+                    isSelected && ticketLines.length > 0 ? total : table.total;
                   return (
                     <button
                       key={table.id}
@@ -4153,9 +4405,16 @@ function RestaurantPosContent() {
                       <p className="line-clamp-2 min-h-10 w-full px-1 text-sm font-black leading-5 text-slate-800">
                         {item.name}
                       </p>
-                      <p className="mt-auto pt-2 text-base font-black tabular-nums text-sky-700">
-                        {formatMoney(item.price)}
-                      </p>
+                      <div className="mt-auto flex items-baseline gap-2 pt-2">
+                        {getLineUnitDiscount(item) > 0 ? (
+                          <span className="text-xs font-bold tabular-nums text-slate-400 line-through">
+                            {formatMoney(item.price)}
+                          </span>
+                        ) : null}
+                        <span className="text-base font-black tabular-nums text-sky-700">
+                          {formatMoney(item.price - getLineUnitDiscount(item))}
+                        </span>
+                      </div>
                       <p className="mt-1 text-[10px] font-semibold text-slate-400">
                         {item.available > 0
                           ? `${item.available} порц боломжтой`
@@ -4307,6 +4566,8 @@ function RestaurantPosContent() {
             ) : (
               ticketLines.map((line) => {
                 const cancellingLine = cancellingLineId === line.id;
+                const lineUnitDiscount = getLineUnitDiscount(line);
+                const effectiveUnitPrice = line.price - lineUnitDiscount;
 
                 return (
                   <article
@@ -4329,7 +4590,24 @@ function RestaurantPosContent() {
                               {line.name}
                             </p>
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
-                              <span>{formatMoney(line.price)}</span>
+                              {lineUnitDiscount > 0 ? (
+                                <>
+                                  <span className="line-through">
+                                    {formatMoney(line.price)}
+                                  </span>
+                                  <span className="font-black text-emerald-700">
+                                    {formatMoney(effectiveUnitPrice)}
+                                  </span>
+                                  {line.discountEligible &&
+                                  activeDiscountPercent > 0 ? (
+                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                                      -{activeDiscountPercent}%
+                                    </span>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <span>{formatMoney(line.price)}</span>
+                              )}
                               {line.sentQty > 0 ? (
                                 <span className="rounded-full bg-amber-300/10 px-2 py-0.5 text-[10px] font-black text-amber-300">
                                   Гал тогоонд {line.sentQty}ш
@@ -4338,7 +4616,7 @@ function RestaurantPosContent() {
                             </div>
                           </div>
                           <p className="shrink-0 text-right text-sm font-black tabular-nums text-slate-900">
-                            {formatMoney(line.price * line.qty)}
+                            {formatMoney(effectiveUnitPrice * line.qty)}
                           </p>
                         </div>
 
@@ -4433,11 +4711,17 @@ function RestaurantPosContent() {
           <div className="min-h-0 max-h-[46dvh] shrink overflow-y-auto overscroll-contain border-t border-slate-200 pt-4 pr-1 max-xl:max-h-[42dvh]">
             <TotalLine
               label={
-                employeeDiscount
-                  ? `Ажилтны хөнгөлөлт (${employeeDiscount.discountPercent}%)`
-                  : "Хөнгөлөлт"
+                discountIsActive && employeeDiscount
+                  ? `Хямдрал (цагийн ${activeDiscountPercent}% / ажилтан ${employeeDiscount.discountPercent}%)`
+                  : discountIsActive
+                    ? `Цагийн хямдрал (${activeDiscountPercent}%)`
+                    : employeeDiscount
+                      ? `Ажилтны хөнгөлөлт (${employeeDiscount.discountPercent}%)`
+                      : "Хямдрал"
               }
-              value={discount > 0 ? `-${formatMoney(discount)}` : formatMoney(0)}
+              value={
+                discount > 0 ? `-${formatMoney(discount)}` : formatMoney(0)
+              }
             />
             <TotalLine label="Sub total" value={formatMoney(subtotal)} />
             <TotalLine label="Total" value={formatMoney(total)} strong />
@@ -4456,7 +4740,8 @@ function RestaurantPosContent() {
                       {employeeDiscount.name}
                     </p>
                     <p className="mt-0.5 text-[11px] font-bold text-slate-500">
-                      {employeeDiscount.phone} · {employeeDiscount.discountPercent}%
+                      {employeeDiscount.phone} ·{" "}
+                      {employeeDiscount.discountPercent}%
                     </p>
                   </div>
                   <button
@@ -4623,7 +4908,8 @@ function RestaurantPosContent() {
                       <div className="mt-2 flex items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] font-bold leading-4 text-emerald-700">
                         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                         <span>
-                          {companyLookup.name || "Байгууллага"} · TIN {companyLookup.tin}
+                          {companyLookup.name || "Байгууллага"} · TIN{" "}
+                          {companyLookup.tin}
                         </span>
                       </div>
                     ) : null}
@@ -4752,112 +5038,112 @@ function RestaurantPosContent() {
                     {showCardTerminalSetup ? (
                       <div className="mt-3 space-y-3">
                         <div className="grid grid-cols-2 gap-2">
-                      {(["ANDROID_PGW", "MINU_AGENT"] as const).map(
-                        (provider) => (
-                          <button
-                            key={provider}
-                            type="button"
-                            onClick={() => {
-                              setCardSetupProvider(provider);
-                              setCardSetupError("");
-                            }}
-                            className={`h-9 rounded-lg border text-xs font-black transition ${
-                              cardSetupProvider === provider
-                                ? "border-sky-300 bg-sky-300 text-slate-950"
-                                : "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700"
-                            }`}
-                          >
-                            {provider === "ANDROID_PGW"
-                              ? "Android PGW"
-                              : "Minu Agent"}
-                          </button>
-                        ),
-                      )}
-                    </div>
-
-                    {cardSetupProvider === "ANDROID_PGW" ? (
-                      <label className="block">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
-                          Bridge URL
-                        </span>
-                        <input
-                          value={cardSetupBridgeUrl}
-                          onChange={(event) =>
-                            setCardSetupBridgeUrl(event.target.value)
-                          }
-                          placeholder={DEFAULT_ANDROID_PGW_BRIDGE_URL}
-                          className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
-                        />
-                      </label>
-                    ) : (
-                      <div className="space-y-2">
-                        <input
-                          value={cardSetupTerminalId}
-                          onChange={(event) =>
-                            setCardSetupTerminalId(event.target.value)
-                          }
-                          placeholder="Minu terminalId"
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
-                        />
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            value={cardSetupMinuUsername}
-                            onChange={(event) =>
-                              setCardSetupMinuUsername(event.target.value)
-                            }
-                            placeholder={
-                              selectedRegister?.minuAgentUsername ||
-                              "Minu username"
-                            }
-                            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
-                          />
-                          <input
-                            value={cardSetupMinuBranchId}
-                            onChange={(event) =>
-                              setCardSetupMinuBranchId(event.target.value)
-                            }
-                            placeholder={
-                              selectedRegister?.minuAgentBranchId ||
-                              "Minu branchId"
-                            }
-                            className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
-                          />
+                          {(["ANDROID_PGW", "MINU_AGENT"] as const).map(
+                            (provider) => (
+                              <button
+                                key={provider}
+                                type="button"
+                                onClick={() => {
+                                  setCardSetupProvider(provider);
+                                  setCardSetupError("");
+                                }}
+                                className={`h-9 rounded-lg border text-xs font-black transition ${
+                                  cardSetupProvider === provider
+                                    ? "border-sky-300 bg-sky-300 text-slate-950"
+                                    : "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700"
+                                }`}
+                              >
+                                {provider === "ANDROID_PGW"
+                                  ? "Android PGW"
+                                  : "Minu Agent"}
+                              </button>
+                            ),
+                          )}
                         </div>
-                        <input
-                          value={cardSetupMinuPassword}
-                          onChange={(event) =>
-                            setCardSetupMinuPassword(event.target.value)
-                          }
-                          type="password"
-                          placeholder={
-                            selectedRegister?.minuAgentPasswordSet
-                              ? "Password хадгалагдсан бол хоосон үлдээж болно"
-                              : "Minu password"
-                          }
-                          className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
-                        />
-                      </div>
-                    )}
 
-                    {cardSetupError ? (
-                      <p className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-100">
-                        {cardSetupError}
-                      </p>
-                    ) : null}
+                        {cardSetupProvider === "ANDROID_PGW" ? (
+                          <label className="block">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
+                              Bridge URL
+                            </span>
+                            <input
+                              value={cardSetupBridgeUrl}
+                              onChange={(event) =>
+                                setCardSetupBridgeUrl(event.target.value)
+                              }
+                              placeholder={DEFAULT_ANDROID_PGW_BRIDGE_URL}
+                              className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
+                            />
+                          </label>
+                        ) : (
+                          <div className="space-y-2">
+                            <input
+                              value={cardSetupTerminalId}
+                              onChange={(event) =>
+                                setCardSetupTerminalId(event.target.value)
+                              }
+                              placeholder="Minu terminalId"
+                              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                value={cardSetupMinuUsername}
+                                onChange={(event) =>
+                                  setCardSetupMinuUsername(event.target.value)
+                                }
+                                placeholder={
+                                  selectedRegister?.minuAgentUsername ||
+                                  "Minu username"
+                                }
+                                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
+                              />
+                              <input
+                                value={cardSetupMinuBranchId}
+                                onChange={(event) =>
+                                  setCardSetupMinuBranchId(event.target.value)
+                                }
+                                placeholder={
+                                  selectedRegister?.minuAgentBranchId ||
+                                  "Minu branchId"
+                                }
+                                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
+                              />
+                            </div>
+                            <input
+                              value={cardSetupMinuPassword}
+                              onChange={(event) =>
+                                setCardSetupMinuPassword(event.target.value)
+                              }
+                              type="password"
+                              placeholder={
+                                selectedRegister?.minuAgentPasswordSet
+                                  ? "Password хадгалагдсан бол хоосон үлдээж болно"
+                                  : "Minu password"
+                              }
+                              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-sky-400"
+                            />
+                          </div>
+                        )}
 
-                    <button
-                      type="button"
-                      onClick={() => void handleConnectCardTerminal()}
-                      disabled={cardSetupSubmitting || !selectedRegister}
-                      className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-sky-300 text-xs font-black text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-                    >
-                      {cardSetupSubmitting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <CreditCard className="h-4 w-4" />
-                      )}
-                      Terminal холбох
-                    </button>
+                        {cardSetupError ? (
+                          <p className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-100">
+                            {cardSetupError}
+                          </p>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          onClick={() => void handleConnectCardTerminal()}
+                          disabled={cardSetupSubmitting || !selectedRegister}
+                          className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-sky-300 text-xs font-black text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                        >
+                          {cardSetupSubmitting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CreditCard className="h-4 w-4" />
+                          )}
+                          Terminal холбох
+                        </button>
                       </div>
                     ) : null}
                   </div>
@@ -4919,7 +5205,8 @@ function RestaurantPosContent() {
                     </p>
                   ) : (
                     filteredCreditBorrowers.map((borrower) => {
-                      const isSelected = borrower.id === selectedCreditBorrowerId;
+                      const isSelected =
+                        borrower.id === selectedCreditBorrowerId;
                       return (
                         <button
                           key={borrower.id}
@@ -4964,7 +5251,9 @@ function RestaurantPosContent() {
                     </span>
                     <input
                       value={creditTermMonths}
-                      onChange={(event) => setCreditTermMonths(event.target.value)}
+                      onChange={(event) =>
+                        setCreditTermMonths(event.target.value)
+                      }
                       inputMode="numeric"
                       className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
                     />
@@ -5089,7 +5378,8 @@ function RestaurantPosContent() {
                   Зээлийн жагсаалт
                 </h3>
                 <p className="mt-2 text-sm font-semibold text-slate-400">
-                  {selectedRegister?.branch.name || "Салбар сонгогдоогүй"} дээрх төлөгдөөгүй зээлүүд.
+                  {selectedRegister?.branch.name || "Салбар сонгогдоогүй"} дээрх
+                  төлөгдөөгүй зээлүүд.
                 </p>
               </div>
               <button
@@ -5108,13 +5398,17 @@ function RestaurantPosContent() {
                   <Search className="h-4 w-4 text-slate-500" />
                   <input
                     value={creditSalesSearch}
-                    onChange={(event) => setCreditSalesSearch(event.target.value)}
+                    onChange={(event) =>
+                      setCreditSalesSearch(event.target.value)
+                    }
                     placeholder="Зээлдэгч, утас, баримт, хоолоор хайх..."
                     className="h-full min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-600"
                   />
                 </label>
                 <div className="flex h-11 items-center justify-center rounded-xl border border-amber-300/25 bg-amber-300/10 px-4 text-sm font-black text-amber-100">
-                  {filteredCreditSaleGroups.length} хүн · {filteredCreditSales.length} зээл · {formatMoney(filteredCreditSalesTotalDue)}
+                  {filteredCreditSaleGroups.length} хүн ·{" "}
+                  {filteredCreditSales.length} зээл ·{" "}
+                  {formatMoney(filteredCreditSalesTotalDue)}
                 </div>
                 <button
                   type="button"
@@ -5185,11 +5479,16 @@ function RestaurantPosContent() {
                               {group.overdue ? "Хугацаа хэтэрсэн" : "Нээлттэй"}
                             </span>
                             <span className="shrink-0 rounded-full bg-sky-300/10 px-2 py-0.5 text-[10px] font-black text-sky-100">
-                              {group.credits.length} зээл · {group.totalLines} мөр
+                              {group.credits.length} зээл · {group.totalLines}{" "}
+                              мөр
                             </span>
                           </div>
                           <p className="mt-1 truncate text-xs font-semibold text-slate-500">
-                            {[group.borrowerPhone, group.employeeName, group.borrowerId]
+                            {[
+                              group.borrowerPhone,
+                              group.employeeName,
+                              group.borrowerId,
+                            ]
                               .filter(Boolean)
                               .join(" · ")}
                           </p>
@@ -5207,7 +5506,8 @@ function RestaurantPosContent() {
                       {group.credits.length > 1 ? (
                         <div className="mt-3 grid gap-2 rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
                           <p className="text-xs font-bold text-amber-100">
-                            Энэ зээлдэгчийн {group.credits.length} зээлийг нийтээр нь төлөх
+                            Энэ зээлдэгчийн {group.credits.length} зээлийг
+                            нийтээр нь төлөх
                           </p>
                           <button
                             type="button"
@@ -5242,7 +5542,9 @@ function RestaurantPosContent() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => void handleStartCreditGroupQPay(group)}
+                            onClick={() =>
+                              void handleStartCreditGroupQPay(group)
+                            }
                             disabled={
                               creditRepaymentId !== "" ||
                               Boolean(creditQPayRepayment) ||
@@ -5279,8 +5581,12 @@ function RestaurantPosContent() {
                                     {credit.receiptNo}
                                   </p>
                                   <p className="mt-1 text-[11px] font-bold text-slate-500">
-                                    Үүссэн: {formatReceiptDate(credit.createdAt)} · Дуусах:{" "}
-                                    {credit.dueDate ? formatReceiptDate(credit.dueDate) : "-"}
+                                    Үүссэн:{" "}
+                                    {formatReceiptDate(credit.createdAt)} ·
+                                    Дуусах:{" "}
+                                    {credit.dueDate
+                                      ? formatReceiptDate(credit.dueDate)
+                                      : "-"}
                                   </p>
                                 </div>
                                 <div className="shrink-0 text-right">
@@ -5304,7 +5610,8 @@ function RestaurantPosContent() {
                                         {line.productName}
                                       </span>
                                       <span className="shrink-0 font-black tabular-nums text-white">
-                                        {line.qty}ш · {formatMoney(line.lineTotal)}
+                                        {line.qty}ш ·{" "}
+                                        {formatMoney(line.lineTotal)}
                                       </span>
                                     </div>
                                   ))
@@ -5323,7 +5630,9 @@ function RestaurantPosContent() {
                               <div className="mt-3 grid grid-cols-3 gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => void handlePayCreditCash(credit)}
+                                  onClick={() =>
+                                    void handlePayCreditCash(credit)
+                                  }
                                   disabled={
                                     payingThisCredit ||
                                     creditRepaymentId !== "" ||
@@ -5348,7 +5657,9 @@ function RestaurantPosContent() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => void handlePayCreditCard(credit)}
+                                  onClick={() =>
+                                    void handlePayCreditCard(credit)
+                                  }
                                   disabled={
                                     payingThisCredit ||
                                     creditRepaymentId !== "" ||
@@ -5374,7 +5685,9 @@ function RestaurantPosContent() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => void handleStartCreditQPay(credit)}
+                                  onClick={() =>
+                                    void handleStartCreditQPay(credit)
+                                  }
                                   disabled={
                                     payingThisCredit ||
                                     creditRepaymentId !== "" ||
@@ -5632,9 +5945,7 @@ function RestaurantPosContent() {
                   <select
                     value={menuProductCategory}
                     onChange={(event) =>
-                      setMenuProductCategory(
-                        event.target.value,
-                      )
+                      setMenuProductCategory(event.target.value)
                     }
                     disabled={productManagerSaving}
                     className="mt-2 h-11 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-sm font-bold text-slate-100 outline-none focus:border-sky-400/70"
@@ -5872,6 +6183,143 @@ function RestaurantPosContent() {
               )}
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {discountModalOpen && canManageDiscount ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+          <form
+            onSubmit={handleSaveDiscountSchedule}
+            className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#242735] shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-300">
+                  Owner тохиргоо
+                </p>
+                <h3 className="mt-1 text-2xl font-black text-white">
+                  Цагийн хямдрал
+                </h3>
+                <p className="mt-1 text-sm font-semibold text-slate-400">
+                  Сонгосон цагт хоолнууд автоматаар хямдарна. Уух зүйлс үндсэн
+                  үнээрээ үлдэнэ.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDiscountModalOpen(false)}
+                disabled={discountSaving}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:bg-white/5 hover:text-white disabled:opacity-50"
+                aria-label="Хаах"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-5 px-6 py-5">
+              <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-white/10 bg-[#11131d] p-4">
+                <span>
+                  <span className="block text-sm font-black text-white">
+                    Автоматаар хэрэглэх
+                  </span>
+                  <span className="mt-1 block text-xs font-semibold text-slate-500">
+                    Унтраавал одоогийн хуваарь хадгалагдана.
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={discountEnabled}
+                  onChange={(event) => setDiscountEnabled(event.target.checked)}
+                  disabled={discountSaving}
+                  className="h-5 w-5 accent-emerald-400"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-bold text-slate-300">
+                  Хямдралын хувь
+                </span>
+                <div className="relative mt-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    step="1"
+                    value={discountPercent}
+                    onChange={(event) => setDiscountPercent(event.target.value)}
+                    disabled={discountSaving}
+                    className="h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 pr-12 text-lg font-black tabular-nums text-white outline-none focus:border-emerald-300 disabled:opacity-60"
+                  />
+                  <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 font-black text-emerald-300">
+                    %
+                  </span>
+                </div>
+              </label>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-300">
+                    Эхлэх цаг
+                  </span>
+                  <input
+                    type="time"
+                    value={discountStartTime}
+                    onChange={(event) =>
+                      setDiscountStartTime(event.target.value)
+                    }
+                    disabled={discountSaving}
+                    className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-base font-black tabular-nums text-white outline-none focus:border-emerald-300 disabled:opacity-60"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-sm font-bold text-slate-300">
+                    Дуусах цаг
+                  </span>
+                  <input
+                    type="time"
+                    value={discountEndTime}
+                    onChange={(event) => setDiscountEndTime(event.target.value)}
+                    disabled={discountSaving}
+                    className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-base font-black tabular-nums text-white outline-none focus:border-emerald-300 disabled:opacity-60"
+                  />
+                </label>
+              </div>
+
+              <p className="rounded-lg border border-sky-300/20 bg-sky-300/10 px-3 py-2 text-xs font-semibold leading-5 text-sky-100">
+                Улаанбаатарын цагаар өдөр бүр давтагдана. Дуусах цаг нь эхлэх
+                цагаас эрт байвал шөнө дамнасан хуваарь гэж тооцно.
+              </p>
+
+              {discountError ? (
+                <p className="rounded-lg border border-rose-300/20 bg-rose-300/10 px-3 py-2 text-sm font-bold text-rose-200">
+                  {discountError}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 border-t border-white/10 px-6 py-5">
+              <button
+                type="button"
+                onClick={() => setDiscountModalOpen(false)}
+                disabled={discountSaving}
+                className="h-12 rounded-lg border border-white/10 text-sm font-black text-slate-200 hover:bg-white/5 disabled:opacity-50"
+              >
+                Болих
+              </button>
+              <button
+                type="submit"
+                disabled={discountSaving}
+                className="flex h-12 items-center justify-center gap-2 rounded-lg bg-emerald-300 text-sm font-black text-slate-950 hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              >
+                {discountSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <BadgePercent className="h-4 w-4" />
+                )}
+                Хадгалах
+              </button>
+            </div>
+          </form>
         </div>
       ) : null}
 
@@ -6464,9 +6912,7 @@ function RestaurantPosContent() {
               <div className="grid min-h-0 gap-4 lg:grid-cols-[1fr_1.2fr]">
                 <section className="min-h-0 rounded-2xl border border-white/10 bg-[#1b1d2b]">
                   <div className="border-b border-white/10 px-4 py-3">
-                    <p className="text-sm font-black text-white">
-                      Хаалтууд
-                    </p>
+                    <p className="text-sm font-black text-white">Хаалтууд</p>
                   </div>
                   <div className="max-h-[52vh] overflow-y-auto p-2">
                     {shiftHistoryLoading ? (
@@ -6495,10 +6941,13 @@ function RestaurantPosContent() {
                               <div className="flex items-start justify-between gap-3">
                                 <div>
                                   <p className="font-black text-white">
-                                    {formatReceiptDate(item.closedAt || item.openedAt)}
+                                    {formatReceiptDate(
+                                      item.closedAt || item.openedAt,
+                                    )}
                                   </p>
                                   <p className="mt-1 text-xs font-semibold text-slate-500">
-                                    {item.registerName || "POS касс"} · {item.cashierName || "Кассчин"}
+                                    {item.registerName || "POS касс"} ·{" "}
+                                    {item.cashierName || "Кассчин"}
                                   </p>
                                 </div>
                                 <span
@@ -6539,7 +6988,8 @@ function RestaurantPosContent() {
                             )}
                           </h4>
                           <p className="mt-1 text-sm font-semibold text-slate-500">
-                            Нээсэн: {formatReceiptDate(selectedShiftHistory.openedAt)}
+                            Нээсэн:{" "}
+                            {formatReceiptDate(selectedShiftHistory.openedAt)}
                           </p>
                         </div>
                         <span className="rounded-full bg-slate-950/40 px-3 py-1 text-xs font-black text-slate-300">
@@ -6551,8 +7001,14 @@ function RestaurantPosContent() {
                       <div className="grid gap-2 sm:grid-cols-2">
                         {[
                           ["Эхлэх мөнгө", selectedShiftHistory.openingCash],
-                          ["Тооцоолсон бэлэн", selectedShiftHistory.expectedCash],
-                          ["Тоолсон бэлэн", selectedShiftHistory.closingCash || 0],
+                          [
+                            "Тооцоолсон бэлэн",
+                            selectedShiftHistory.expectedCash,
+                          ],
+                          [
+                            "Тоолсон бэлэн",
+                            selectedShiftHistory.closingCash || 0,
+                          ],
                           ["Зөрүү", selectedShiftHistory.cashDifference || 0],
                           ["Орлого", selectedShiftHistory.paidIn],
                           ["Зарлага", selectedShiftHistory.paidOut],
@@ -6587,7 +7043,10 @@ function RestaurantPosContent() {
                         </p>
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           {[
-                            ["Нийт борлуулалт", selectedShiftHistory.totalSales],
+                            [
+                              "Нийт борлуулалт",
+                              selectedShiftHistory.totalSales,
+                            ],
                             ["Бэлэн", selectedShiftHistory.cashSales],
                             ["Карт", selectedShiftHistory.cardSales],
                             ["QPay", selectedShiftHistory.qpaySales],
@@ -6623,7 +7082,8 @@ function RestaurantPosContent() {
                                   className="flex items-center justify-between rounded-lg bg-slate-950/30 px-3 py-2 text-xs"
                                 >
                                   <span className="font-bold text-slate-400">
-                                    {formatMoney(item.denomination)} × {item.count}
+                                    {formatMoney(item.denomination)} ×{" "}
+                                    {item.count}
                                   </span>
                                   <span className="font-black text-white">
                                     {formatMoney(item.total)}
@@ -6750,9 +7210,7 @@ function RestaurantPosContent() {
               <div className="grid min-h-0 gap-4 lg:grid-cols-[1fr_1.2fr]">
                 <section className="min-h-0 rounded-2xl border border-white/10 bg-[#1b1d2b]">
                   <div className="border-b border-white/10 px-4 py-3">
-                    <p className="text-sm font-black text-white">
-                      Баримтууд
-                    </p>
+                    <p className="text-sm font-black text-white">Баримтууд</p>
                   </div>
                   <div className="max-h-[52vh] overflow-y-auto p-2">
                     {salesHistoryLoading ? (
@@ -6801,7 +7259,8 @@ function RestaurantPosContent() {
                               </div>
                               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
                                 <span className="text-slate-400">
-                                  {sale.registerName || "POS касс"} · {sale.cashierName}
+                                  {sale.registerName || "POS касс"} ·{" "}
+                                  {sale.cashierName}
                                 </span>
                                 <span className="text-white">
                                   {formatMoney(sale.grandTotal)}
@@ -6837,7 +7296,10 @@ function RestaurantPosContent() {
                               : "bg-slate-950/40 text-slate-300"
                           }`}
                         >
-                          {paymentMethodLabel(selectedSalesHistory.paymentMethod)} ·{" "}
+                          {paymentMethodLabel(
+                            selectedSalesHistory.paymentMethod,
+                          )}{" "}
+                          ·{" "}
                           {selectedSalesHistory.status === "VOIDED"
                             ? "Цуцлагдсан"
                             : selectedSalesHistory.status}
@@ -6846,17 +7308,31 @@ function RestaurantPosContent() {
 
                       {selectedSalesHistory.status === "VOIDED" ? (
                         <div className="rounded-xl border border-rose-300/40 bg-rose-300/10 px-4 py-3 text-sm font-bold text-rose-100">
-                          Энэ баримт {selectedSalesHistory.voidedAt ? formatReceiptDate(selectedSalesHistory.voidedAt) : ""} цуцлагдсан.
-                          {selectedSalesHistory.voidReason ? ` Шалтгаан: ${selectedSalesHistory.voidReason}` : ""}
+                          Энэ баримт{" "}
+                          {selectedSalesHistory.voidedAt
+                            ? formatReceiptDate(selectedSalesHistory.voidedAt)
+                            : ""}{" "}
+                          цуцлагдсан.
+                          {selectedSalesHistory.voidReason
+                            ? ` Шалтгаан: ${selectedSalesHistory.voidReason}`
+                            : ""}
                         </div>
                       ) : null}
 
                       <div className="grid gap-2 sm:grid-cols-2">
                         {[
                           ["Салбар", selectedSalesHistory.branchName],
-                          ["Касс", selectedSalesHistory.registerName || "POS касс"],
+                          [
+                            "Касс",
+                            selectedSalesHistory.registerName || "POS касс",
+                          ],
                           ["Кассчин", selectedSalesHistory.cashierName],
-                          ["Төлбөр", paymentMethodLabel(selectedSalesHistory.paymentMethod)],
+                          [
+                            "Төлбөр",
+                            paymentMethodLabel(
+                              selectedSalesHistory.paymentMethod,
+                            ),
+                          ],
                         ].map(([label, value]) => (
                           <div
                             key={String(label)}
@@ -6887,8 +7363,8 @@ function RestaurantPosContent() {
                                   {line.productName}
                                 </p>
                                 <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                                  {line.productSku || line.productId} · {line.qty} ×{" "}
-                                  {formatMoney(line.unitPrice)}
+                                  {line.productSku || line.productId} ·{" "}
+                                  {line.qty} × {formatMoney(line.unitPrice)}
                                 </p>
                               </div>
                               <span className="shrink-0 text-sm font-black text-white">
@@ -6913,7 +7389,9 @@ function RestaurantPosContent() {
                             >
                               <span
                                 className={`font-bold ${
-                                  label === "Нийт" ? "text-white" : "text-slate-400"
+                                  label === "Нийт"
+                                    ? "text-white"
+                                    : "text-slate-400"
                                 }`}
                               >
                                 {label}
@@ -6954,9 +7432,16 @@ function RestaurantPosContent() {
                           Дахин хэвлэх
                         </button>
                         <TestReceiptPrintButton
-                          receipt={mapSalesHistoryToReceipt(selectedSalesHistory)}
-                          organizationName={user.organizationName || "MGL Store Restaurant"}
-                          registerName={selectedSalesHistory.registerName || "Restaurant POS"}
+                          receipt={mapSalesHistoryToReceipt(
+                            selectedSalesHistory,
+                          )}
+                          organizationName={
+                            user.organizationName || "MGL Store Restaurant"
+                          }
+                          registerName={
+                            selectedSalesHistory.registerName ||
+                            "Restaurant POS"
+                          }
                         />
                         {selectedSalesHistory.status !== "VOIDED" ? (
                           <button
@@ -7003,8 +7488,14 @@ function RestaurantPosContent() {
                   Ээлж хаах
                 </h3>
                 <p className="mt-2 text-sm font-semibold text-slate-400">
-                  {selectedRegister?.branch.name || shift.branchName || "Салбар"} ·{" "}
-                  {selectedRegister?.label || selectedRegister?.name || shift.registerName || "POS касс"}
+                  {selectedRegister?.branch.name ||
+                    shift.branchName ||
+                    "Салбар"}{" "}
+                  ·{" "}
+                  {selectedRegister?.label ||
+                    selectedRegister?.name ||
+                    shift.registerName ||
+                    "POS касс"}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -7035,7 +7526,8 @@ function RestaurantPosContent() {
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
               {openTicketCount > 0 ? (
                 <div className="rounded-xl border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-100">
-                  {openTicketCount} чөлөөлөөгүй ширээний ticket байна. Ээлж хаахаас өмнө төлбөрийг дуусгаад ширээг чөлөөлнө үү.
+                  {openTicketCount} чөлөөлөөгүй ширээний ticket байна. Ээлж
+                  хаахаас өмнө төлбөрийг дуусгаад ширээг чөлөөлнө үү.
                 </div>
               ) : null}
 
@@ -7047,7 +7539,10 @@ function RestaurantPosContent() {
 
               <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
                 {[
-                  ["Эхлэх мөнгө", drawerSummary?.openingCash ?? shift.openingCash],
+                  [
+                    "Эхлэх мөнгө",
+                    drawerSummary?.openingCash ?? shift.openingCash,
+                  ],
                   ["Бэлэн борлуулалт", drawerSummary?.cashSales ?? 0],
                   ["Орлого", drawerSummary?.paidIn ?? 0],
                   ["Зарлага", drawerSummary?.paidOut ?? 0],
@@ -7086,7 +7581,8 @@ function RestaurantPosContent() {
                         Задгай мөнгө тоолох
                       </p>
                       <p className="mt-1 text-xs font-semibold text-slate-500">
-                        Дэвсгэрт бүрийн ширхэгийг оруулахад тоолсон дүн автоматаар бодогдоно.
+                        Дэвсгэрт бүрийн ширхэгийг оруулахад тоолсон дүн
+                        автоматаар бодогдоно.
                       </p>
                     </div>
                     <div className="text-right">
@@ -7148,7 +7644,9 @@ function RestaurantPosContent() {
                       type="number"
                       min="0"
                       step="100"
-                      value={hasCountedCash ? String(countedCashTotal) : closingCash}
+                      value={
+                        hasCountedCash ? String(countedCashTotal) : closingCash
+                      }
                       onChange={(event) => setClosingCash(event.target.value)}
                       disabled={hasCountedCash}
                       className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#242735] px-4 text-lg font-black tabular-nums text-white outline-none focus:border-rose-300 disabled:cursor-not-allowed disabled:opacity-70"
@@ -7160,7 +7658,9 @@ function RestaurantPosContent() {
 
                   <div className="mt-4 rounded-xl border border-white/10 bg-slate-950/20 p-3">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="font-bold text-slate-400">Тооцоолсон</span>
+                      <span className="font-bold text-slate-400">
+                        Тооцоолсон
+                      </span>
                       <span className="font-black text-white">
                         {formatMoney(expectedCashPreview)}
                       </span>
@@ -7205,12 +7705,15 @@ function RestaurantPosContent() {
 
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-white/10 px-6 py-4">
               <p className="text-xs font-semibold text-slate-500">
-                Хаах үед тооцоог дахин шинэчилж, баталгаажуулсны дараа ээлж хаагдана.
+                Хаах үед тооцоог дахин шинэчилж, баталгаажуулсны дараа ээлж
+                хаагдана.
               </p>
               <button
                 type="button"
                 onClick={() => void handleCloseShift()}
-                disabled={shiftSubmitting || drawerLoading || openTicketCount > 0}
+                disabled={
+                  shiftSubmitting || drawerLoading || openTicketCount > 0
+                }
                 className="flex h-12 min-w-40 items-center justify-center gap-2 rounded-lg bg-rose-300 px-5 font-black text-slate-950 hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {shiftSubmitting || drawerLoading ? (
@@ -7251,7 +7754,9 @@ function RestaurantPosContent() {
             <div className="mt-5 rounded-xl bg-slate-50 p-4">
               {lastReceiptContext ? (
                 <div className="mb-2 flex justify-between gap-4 text-sm">
-                  <span className="font-semibold text-slate-500">Захиалга №</span>
+                  <span className="font-semibold text-slate-500">
+                    Захиалга №
+                  </span>
                   <span className="font-black">
                     {formatRestaurantOrderNumber(
                       lastReceiptContext.ticketNo,

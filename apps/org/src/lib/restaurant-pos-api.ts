@@ -213,6 +213,16 @@ export type RestaurantMenuCategory = {
   productCount: number;
 };
 
+export type RestaurantDiscountSchedule = {
+  organizationId: string;
+  isEnabled: boolean;
+  percent: number;
+  startTime: string;
+  endTime: string;
+  timeZone: string;
+  isActive: boolean;
+};
+
 export type RestaurantPublicMenuProduct = {
   id: string;
   name: string;
@@ -660,9 +670,12 @@ export async function chargeRestaurantClientBridge(input: {
 }
 
 export async function getCurrentRestaurantPosShift() {
-  const response = await authFetch(`${API}/pos/shifts/current?mode=RESTAURANT`, {
-    cache: "no-store",
-  });
+  const response = await authFetch(
+    `${API}/pos/shifts/current?mode=RESTAURANT`,
+    {
+      cache: "no-store",
+    },
+  );
   return readApiResponse<PosShift | null>(response);
 }
 
@@ -806,9 +819,7 @@ export async function createCafeDailyStockReceipt(input: {
   return readApiResponse<CafeDailyStockResponse>(response);
 }
 
-export async function voidCafeDailyStockReceipt(input: {
-  receiptId: string;
-}) {
+export async function voidCafeDailyStockReceipt(input: { receiptId: string }) {
   const response = await authFetch(
     `${API}/restaurant/pos/cafe-daily-stock/receipts/${encodeURIComponent(input.receiptId)}`,
     { method: "DELETE" },
@@ -859,10 +870,7 @@ export async function createCafeRegularCustomer(input: {
 export async function updateCafeRegularCustomer(
   customerId: string,
   input: Partial<
-    Pick<
-      CafeRegularCustomer,
-      "name" | "phone" | "discountPercent" | "isActive"
-    >
+    Pick<CafeRegularCustomer, "name" | "phone" | "discountPercent" | "isActive">
   >,
 ) {
   const response = await authFetch(
@@ -882,6 +890,29 @@ export async function getRestaurantMenuCategories(organizationId: string) {
     { cache: "no-store" },
   );
   return readApiResponse<RestaurantMenuCategory[]>(response);
+}
+
+export async function getRestaurantDiscountSchedule(organizationId: string) {
+  const params = new URLSearchParams({ organizationId });
+  const response = await authFetch(
+    `${API}/restaurant/pos/discount-schedule?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantDiscountSchedule>(response);
+}
+
+export async function updateRestaurantDiscountSchedule(input: {
+  organizationId: string;
+  isEnabled: boolean;
+  percent: number;
+  startTime: string;
+  endTime: string;
+}) {
+  const response = await authFetch(`${API}/restaurant/pos/discount-schedule`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<RestaurantDiscountSchedule>(response);
 }
 
 export async function createRestaurantMenuCategory(input: {

@@ -69,11 +69,14 @@ import {
   resolvePosCreditDueDate,
 } from "./credit-interest";
 import { resolvePosSaleLineCost } from "./pos-sale-cost";
-import {
-  resolvePaidRestaurantTicketStatus,
-} from "./restaurant-ticket-lifecycle";
+import { resolvePaidRestaurantTicketStatus } from "./restaurant-ticket-lifecycle";
 import { getRequiredSaleRegisterMode } from "./pos-register-mode";
 import { calculateTakeawayPackagingFee } from "./takeaway-packaging";
+import {
+  calculateRestaurantDiscountAmount,
+  isRestaurantDiscountActive,
+  isRestaurantDiscountEligibleProduct,
+} from "./restaurant-discount";
 import {
   EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
   SELF_SERVICE_TAKEAWAY_PACKAGING_SKU,
@@ -438,9 +441,7 @@ const readEbarimtMetadata = (payload: Prisma.JsonValue | null) => {
       ? (source.response as Record<string, Prisma.JsonValue>)
       : null;
   const responseDate =
-    response && typeof response.date === "string"
-      ? response.date.trim()
-      : null;
+    response && typeof response.date === "string" ? response.date.trim() : null;
 
   return {
     receiptType:
@@ -875,7 +876,7 @@ router.post("/pos/sales", async (req, res) => {
       };
     }
 
-    const effectiveLines: SaleLineInput[] = lines.map((line) => ({
+    let effectiveLines: SaleLineInput[] = lines.map((line) => ({
       ...line,
       discountAmount: regularCustomer
         ? calculateCafeRegularCustomerUnitDiscount(
@@ -884,7 +885,7 @@ router.post("/pos/sales", async (req, res) => {
           )
         : isSelfServiceSale
           ? 0
-        : Number(line.discountAmount || 0),
+          : Number(line.discountAmount || 0),
     }));
 
     if (!body.branchId) {
@@ -895,6 +896,73 @@ router.post("/pos/sales", async (req, res) => {
       return res
         .status(400)
         .json({ message: "Зарах барааны мөрүүд хоосон байна" });
+    }
+
+    if (restaurantTicketId && !isSelfServiceSale) {
+      const pricingTime = new Date();
+      const [pricingTicket, discountSchedule] = await Promise.all([
+        prisma.restaurantTicket.findFirst({
+          where: {
+            id: restaurantTicketId,
+            organizationId: idempotencyOrganizationId,
+          },
+          select: {
+            items: {
+              select: {
+                productId: true,
+                unitPrice: true,
+                product: {
+                  select: {
+                    isRestaurantMenuItem: true,
+                    menuCategory: true,
+                    kitchenStation: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+        prisma.restaurantDiscountSchedule.findUnique({
+          where: { organizationId: idempotencyOrganizationId },
+        }),
+      ]);
+      if (!pricingTicket) {
+        return res
+          .status(404)
+          .json({ message: "Рестораны захиалга олдсонгүй" });
+      }
+
+      const activePercent = isRestaurantDiscountActive(
+        discountSchedule,
+        pricingTime,
+      )
+        ? discountSchedule!.percent
+        : 0;
+      const ticketItemsByProductId = new Map(
+        pricingTicket.items.map((item) => [item.productId, item]),
+      );
+      effectiveLines = lines.map((line) => {
+        const ticketItem = ticketItemsByProductId.get(line.productId);
+        if (!ticketItem) return line;
+
+        const unitPrice = Number(ticketItem.unitPrice);
+        const customerDiscount = regularCustomer
+          ? calculateCafeRegularCustomerUnitDiscount(
+              unitPrice,
+              regularCustomer.discountPercent,
+            )
+          : 0;
+        const scheduledDiscount =
+          activePercent > 0 &&
+          isRestaurantDiscountEligibleProduct(ticketItem.product)
+            ? calculateRestaurantDiscountAmount(unitPrice, activePercent)
+            : 0;
+        return {
+          ...line,
+          unitPrice,
+          discountAmount: Math.max(customerDiscount, scheduledDiscount),
+        };
+      });
     }
 
     const normalizePayment = (item: SalePaymentLineInput) => {
@@ -921,7 +989,10 @@ router.post("/pos/sales", async (req, res) => {
         : [];
     } catch (error: unknown) {
       return res.status(400).json({
-        message: error instanceof Error ? error.message : "Бэлэн төлбөрийн мэдээлэл буруу",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Бэлэн төлбөрийн мэдээлэл буруу",
       });
     }
     const persistedPaymentBreakdown = normalizedPayments.map((item) => ({
@@ -1113,9 +1184,17 @@ router.post("/pos/sales", async (req, res) => {
     const primaryCredit = creditLines[0]?.credit || null;
     let creditWorkDetails: ReturnType<typeof parseCreditWorkDetails> = {};
     try {
-      if (primaryCredit) creditWorkDetails = parseCreditWorkDetails(primaryCredit);
+      if (primaryCredit)
+        creditWorkDetails = parseCreditWorkDetails(primaryCredit);
     } catch (error) {
-      return res.status(400).json({ message: error instanceof Error ? error.message : "Ажлын мэдээлэл буруу байна" });
+      return res
+        .status(400)
+        .json({
+          message:
+            error instanceof Error
+              ? error.message
+              : "Ажлын мэдээлэл буруу байна",
+        });
     }
 
     const creditTermMonths = Math.max(
@@ -1294,9 +1373,15 @@ router.post("/pos/sales", async (req, res) => {
           (activeShift.note !== SELF_SERVICE_SHIFT_NOTE ||
             activeShift.registerId !== null)
         ) {
-          throw toApiError(409, "Self-service борлуулалтын дотоод ээлж буруу байна");
+          throw toApiError(
+            409,
+            "Self-service борлуулалтын дотоод ээлж буруу байна",
+          );
         }
-        if (!isSelfServiceSale && activeShift.note === SELF_SERVICE_SHIFT_NOTE) {
+        if (
+          !isSelfServiceSale &&
+          activeShift.note === SELF_SERVICE_SHIFT_NOTE
+        ) {
           throw toApiError(
             409,
             "Self-service дотоод ээлжийг энгийн кассанд ашиглах боломжгүй",
@@ -1505,8 +1590,7 @@ router.post("/pos/sales", async (req, res) => {
                 },
                 update: {
                   name: "Савны үнэ",
-                  description:
-                    "Авч явах захиалгын автомат савлагааны төлбөр",
+                  description: "Авч явах захиалгын автомат савлагааны төлбөр",
                   unit: "pcs",
                   price: packagingFee,
                   taxType: "VAT_ABLE",
@@ -1525,8 +1609,7 @@ router.post("/pos/sales", async (req, res) => {
                 create: {
                   organizationId: effectiveOrganizationId,
                   name: "Савны үнэ",
-                  description:
-                    "Авч явах захиалгын автомат савлагааны төлбөр",
+                  description: "Авч явах захиалгын автомат савлагааны төлбөр",
                   sku: SELF_SERVICE_TAKEAWAY_PACKAGING_SKU,
                   unit: "pcs",
                   price: packagingFee,
@@ -1732,10 +1815,7 @@ router.post("/pos/sales", async (req, res) => {
           if (!product) {
             throw toApiError(404, "Бараа олдсонгүй");
           }
-          if (
-            isSelfServiceSale &&
-            restaurantTicketForSale?.tableId !== null
-          ) {
+          if (isSelfServiceSale && restaurantTicketForSale?.tableId !== null) {
             throw toApiError(
               409,
               "Self-service борлуулалт ширээний захиалга дээр үүсэх боломжгүй",
@@ -1793,7 +1873,10 @@ router.post("/pos/sales", async (req, res) => {
             },
           });
           if (claimed.count !== 1) {
-            throw toApiError(409, "QR төлбөр өөр борлуулалтад ашиглагдсан байна");
+            throw toApiError(
+              409,
+              "QR төлбөр өөр борлуулалтад ашиглагдсан байна",
+            );
           }
         }
 
