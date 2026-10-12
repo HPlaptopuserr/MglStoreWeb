@@ -1,5 +1,7 @@
 import {
   calculateMarginPercent,
+  calculateProductInventoryValue,
+  INVENTORY_VALUATION_DESCRIPTION,
   formatReportStock,
   calculateProductReportTotals,
   type ProductReportRow,
@@ -42,8 +44,7 @@ export function exportProductReportToPdf({
   const generatedAt = new Date().toLocaleString("mn-MN");
   const rows = products
     .map((product, index) => {
-      const costPrice =
-        product.costPrice == null ? null : Number(product.costPrice);
+      const costPrice = calculateProductInventoryValue(product).averageCost;
       const margin = calculateMarginPercent(product);
       return `<tr>
         <td>${index + 1}</td>
@@ -109,9 +110,9 @@ export function exportProductReportToPdf({
         : ""
     }
     <h2>Бүтээгдэхүүний задаргаа</h2>
-    <table><thead><tr><th style="width:3%">№</th><th style="width:21%">Бүтээгдэхүүн</th><th style="width:12%">Ангилал</th><th>Авсан үнэ</th><th>Зарах үнэ</th><th>Бөөний үнэ</th><th>Үлдэгдэл</th><th>Ашгийн хувь</th><th>Төлөв</th></tr></thead>
+    <table><thead><tr><th style="width:3%">№</th><th style="width:21%">Бүтээгдэхүүн</th><th style="width:12%">Ангилал</th><th>Дундаж өртөг</th><th>Зарах үнэ</th><th>Бөөний үнэ</th><th>Үлдэгдэл</th><th>Ашгийн хувь</th><th>Төлөв</th></tr></thead>
       <tbody>${rows}</tbody></table>
-    <footer>Ашгийн тооцоо нь өртөг бүртгэлтэй барааны эерэг үлдэгдэл, одоогийн авсан/зарах үнэд үндэслэнэ. Өртөггүй барааг оруулаагүй. Энэ нь бодит борлуулалтын ашиг биш.</footer>
+    <footer>${escapeHtml(INVENTORY_VALUATION_DESCRIPTION)} Өртөг дутуу бараа: ${totals.missingCostCount}. Үлдэгдлийн зөрүүтэй бараа: ${totals.inconsistentLotCount}.</footer>
     <script>window.addEventListener("load", () => { window.print(); });<\/script>
   </body></html>`);
   reportWindow.document.close();
@@ -149,6 +150,8 @@ export async function exportProductReportToExcel({
     ["Нийт үлдэгдэл", formatReportStock(totals)],
     ["Өртөг бүртгэлгүй бараа", totals.missingCostCount],
     ["Сөрөг үлдэгдэлтэй бараа", totals.negativeStockCount],
+    ["Үлдэгдлийн зөрүүтэй бараа", totals.inconsistentLotCount],
+    ["Тооцооллын арга", INVENTORY_VALUATION_DESCRIPTION],
     ["Нөөцийн өртөг", Math.round(totals.inventoryCost)],
     ["Зарах үнийн дүн", Math.round(totals.inventoryRetailValue)],
     [
@@ -195,8 +198,8 @@ export function createProductReportSheet(
   products: readonly ProductReportRow[],
 ): import("xlsx").WorkSheet {
   const productRows = products.map((product, index) => {
-    const costPrice =
-      product.costPrice == null ? null : Number(product.costPrice);
+    const valuation = calculateProductInventoryValue(product);
+    const costPrice = valuation.averageCost;
     const retailPrice = Number(product.price) || 0;
     const wholesalePrice =
       product.wholesalePrice == null ? null : Number(product.wholesalePrice);
@@ -207,7 +210,10 @@ export function createProductReportSheet(
       Бүтээгдэхүүн: product.name,
       "SKU / Баркод": product.sku || product.barcode || "Кодгүй",
       Ангилал: product.businessCategory?.name || "Ангилалгүй",
-      "Авсан үнэ": costPrice,
+      "Дундаж өртөг": costPrice,
+      "Нөөцийн өртөг (мэдэгдэж буй)": valuation.inventoryCost,
+      "Өртөг дутуу үлдэгдэл": valuation.missingCostQuantity,
+      "Үлдэгдлийн зөрүү": valuation.inconsistentLots ? "Тийм" : "Үгүй",
       "Зарах үнэ": retailPrice,
       "Бөөний үнэ": wholesalePrice,
       Үлдэгдэл: stock,
@@ -258,6 +264,7 @@ export async function exportProductBreakdownToExcel({
       ["Байгууллага", organizationName || "Байгууллага"],
       ["Шүүлтүүр", filterDescription],
       ["Нийт бараа", products.length],
+      ["Тооцооллын арга", INVENTORY_VALUATION_DESCRIPTION],
       [
         "Үүсгэсэн",
         new Date().toLocaleString("mn-MN", { timeZone: "Asia/Ulaanbaatar" }),

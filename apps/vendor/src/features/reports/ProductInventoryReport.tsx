@@ -5,7 +5,10 @@ import { ProductReportFilters } from "./ProductReportFilters";
 import { InventoryReportActions } from "./InventoryReportActions";
 import { ProductReportSummary } from "./ProductReportSummary";
 import { createReportDemo } from "./report-demo";
-import { calculateProductReportTotals } from "./product-report";
+import {
+  calculateProductReportTotals,
+  INVENTORY_VALUATION_DESCRIPTION,
+} from "./product-report";
 import {
   describeProductReportFilters,
   emptyProductReportFilters,
@@ -116,9 +119,7 @@ export function ProductInventoryReport({
         />
       ) : null}
       <p className="rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-500">
-        Боломжит ашиг нь бодит борлуулалтын ашиг биш. Өртөг бүртгэлтэй барааны
-        одоогийн үлдэгдлийг зарах үнээр борлуулбал гарах тооцоо. Өртөггүй болон
-        сөрөг үлдэгдэлтэй барааг ашгийн тооцоонд оруулахгүй.
+        {INVENTORY_VALUATION_DESCRIPTION}
       </p>
     </div>
   );

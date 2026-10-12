@@ -2,7 +2,10 @@
 import { FileText, Loader2 } from "lucide-react";
 import type { ProductReportRow } from "./product-report";
 import { ProductBreakdownExport } from "./ProductBreakdownExport";
-import { calculateMarginPercent } from "./product-report";
+import {
+  calculateMarginPercent,
+  calculateProductInventoryValue,
+} from "./product-report";
 
 import { ReportPagination } from "./pagination/ReportPagination";
 import { useReportPagination } from "./pagination/useReportPagination";
@@ -77,7 +80,7 @@ export function ProductReportTable({
                     Ангилал
                   </th>
                   <th scope="col" className="px-4 py-3 text-right">
-                    Авсан үнэ
+                    Дундаж өртөг
                   </th>
                   <th scope="col" className="px-4 py-3 text-right">
                     Зарах үнэ
@@ -95,6 +98,7 @@ export function ProductReportTable({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {pageProducts.map((product, index) => {
+                  const valuation = calculateProductInventoryValue(product);
                   const margin = calculateMarginPercent(product);
                   return (
                     <tr
@@ -116,9 +120,17 @@ export function ProductReportTable({
                         {product.businessCategory?.name || "Ангилалгүй"}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-700">
-                        {product.costPrice == null
+                        {valuation.averageCost == null
                           ? "—"
-                          : money(product.costPrice)}
+                          : money(valuation.averageCost)}
+                        {(valuation.inconsistentLots ||
+                          valuation.missingCostQuantity > 0) && (
+                          <span className="mt-1 block text-xs text-amber-700">
+                            {valuation.inconsistentLots
+                              ? "Үлдэгдлийн зөрүүтэй"
+                              : "Өртөг дутуу"}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-slate-900">
                         {money(product.price)}
