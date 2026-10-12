@@ -22,6 +22,7 @@ import {
   stocktakeProductFilter,
   createStocktake,
   loadStocktake,
+  inspectStocktake,
   mutateStocktake,
   type StocktakeAction,
 } from "../../../services/stocktake.service";
@@ -56,7 +57,16 @@ function route(
       );
     } catch (error) {
       if (error instanceof StocktakeError)
-        return res.status(error.status).json({ message: error.message });
+        return res.status(error.status).json({
+          message: error.message,
+          ...(error.changedLineIds !== undefined
+            ? {
+                code: "STOCKTAKE_STOCK_CHANGED",
+                changedLineIds: error.changedLineIds,
+                addedProductCount: error.addedProductCount,
+              }
+            : {}),
+        });
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         (["P2034", "P2002"].includes(error.code) ||
@@ -77,14 +87,8 @@ function route(
 router.get(
   base,
   route(async (_req, res, actor, organizationId, canApprove) => {
-    const [
-      active,
-      history,
-      warehouses,
-      unassignedProductCount,
-      organization,
-    ] = await Promise.all(
-      [
+    const [active, history, warehouses, unassignedProductCount, organization] =
+      await Promise.all([
         prisma.stocktake.findMany({
           where: { organizationId, status: { in: ["DRAFT", "REVIEW"] } },
           orderBy: { createdAt: "desc" },
@@ -121,8 +125,7 @@ router.get(
           where: { id: organizationId },
           select: { catalogWarehouse: { select: { id: true } } },
         }),
-      ],
-    );
+      ]);
     const catalogWarehouseId = organization?.catalogWarehouse?.id ?? null;
     const registers = await prisma.posRegister.findMany({
       where: { organizationId, isActive: true, deletedAt: null },
@@ -153,7 +156,11 @@ router.get(
       organizationId,
     });
     if (!session) throw new StocktakeError("Тооллого олдсонгүй", 404);
-    return res.json(presentStocktakeDetail(session));
+    return res.json(
+      presentStocktakeDetail(
+        await inspectStocktake(organizationId, session.id),
+      ),
+    );
   }),
 );
 router.post(
@@ -276,9 +283,7 @@ router.post(
     });
     return res.json({
       ...result,
-      session: result.session
-        ? presentStocktakeDetail(result.session)
-        : null,
+      session: result.session ? presentStocktakeDetail(result.session) : null,
     });
   }),
 );

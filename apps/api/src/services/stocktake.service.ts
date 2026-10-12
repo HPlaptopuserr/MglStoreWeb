@@ -122,6 +122,35 @@ async function addMissingStocktakeLines(
   return missing.length;
 }
 
+/** Read the session and current stock in one consistent snapshot for review. */
+export function inspectStocktake(organizationId: string, id: string) {
+  return prisma.$transaction(
+    async (tx) => {
+      const session = await tx.stocktake.findFirst({
+        where: { id, organizationId },
+        include: stocktakeDetailInclude,
+      });
+      if (!session) throw new StocktakeError("Тооллого олдсонгүй", 404);
+      if (session.status === "APPROVED" || session.status === "CANCELLED")
+        return { ...session, changedLineIds: [], addedProductCount: 0 };
+      await assertStocktakeScope(tx, organizationId, session.warehouseId);
+      const current = await snapshot(tx, organizationId, session.warehouseId);
+      const byId = new Map(current.map((line) => [line.productId, line]));
+      const previousIds = new Set(session.lines.map((line) => line.productId));
+      return {
+        ...session,
+        changedLineIds: session.lines
+          .filter((line) => stockChanged(line, byId.get(line.productId)))
+          .map((line) => line.id),
+        addedProductCount: current.filter(
+          (line) => !previousIds.has(line.productId),
+        ).length,
+      };
+    },
+    { isolationLevel: "RepeatableRead", timeout: 30000 },
+  );
+}
+
 export function createStocktake(input: {
   id: string;
   organizationId: string;
@@ -192,10 +221,7 @@ export function createStocktake(input: {
  * This keeps existing drafts aligned with the active POS catalog without
  * resetting counts for otherwise unchanged products.
  */
-export function loadStocktake(input: {
-  id: string;
-  organizationId: string;
-}) {
+export function loadStocktake(input: { id: string; organizationId: string }) {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "Stocktake" WHERE "id" = ${input.id} AND "organizationId" = ${input.organizationId} FOR UPDATE`;
     const session = await tx.stocktake.findFirst({
@@ -213,9 +239,7 @@ export function loadStocktake(input: {
       },
     });
     const added =
-      session.kind === "FULL"
-        ? await addMissingStocktakeLines(tx, session)
-        : 0;
+      session.kind === "FULL" ? await addMissingStocktakeLines(tx, session) : 0;
     if (!removed.count && !added) return session;
 
     return tx.stocktake.update({
@@ -362,6 +386,9 @@ export function mutateStocktake(input: {
           session.warehouseId,
         );
         const byId = new Map(current.map((line) => [line.productId, line]));
+        const previousIds = new Set(
+          session.lines.map((line) => line.productId),
+        );
         const changed = counted.filter((line) =>
           stockChanged(line, byId.get(line.productId)),
         );
@@ -372,6 +399,8 @@ export function mutateStocktake(input: {
           throw new StocktakeError(
             `Үлдэгдэл эсвэл барааны бүртгэл өөрчлөгдсөн (${changed.length} мөр). Засварт буцааж «Өөрчлөгдсөн барааг дахин тоолох» үйлдлийг хийнэ үү.`,
             409,
+            changed.map((line) => line.id),
+            current.filter((line) => !previousIds.has(line.productId)).length,
           );
         const reserved = session.warehouseId
           ? await reservedStock(session.warehouseId, ids, tx)

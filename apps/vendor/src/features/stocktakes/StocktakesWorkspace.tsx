@@ -21,9 +21,11 @@ export function StocktakesWorkspace() {
           <button
             className={`${secondaryClass} ml-3`}
             disabled={state.busy}
-            onClick={state.reload}
+            onClick={() =>
+              state.session ? state.open(state.session.id) : state.reload()
+            }
           >
-            Дахин холбогдох
+            {state.session ? "Шалгалтыг шинэчлэх" : "Дахин холбогдох"}
           </button>
         </div>
       )}
@@ -48,6 +50,10 @@ export function StocktakesWorkspace() {
           key={state.session.id}
           session={state.session}
           loadForExport={state.loadForExport}
+          changedLineIds={state.changedLineIds}
+          addedProductCount={state.addedProductCount}
+          onPrepareReview={state.prepareReview}
+          onFinishReview={state.finishReview}
           registers={state.overview?.registers ?? []}
           canManageProducts={state.overview?.canManageProducts ?? false}
           onAddProduct={state.addProduct}
@@ -56,6 +62,7 @@ export function StocktakesWorkspace() {
           busy={state.busy}
           canApprove={state.overview?.canApprove ?? false}
           onSaveCount={state.saveCount}
+          onEdit={state.edit}
           onAction={state.act}
           onClose={state.close}
           onReload={() => state.open(state.session!.id)}

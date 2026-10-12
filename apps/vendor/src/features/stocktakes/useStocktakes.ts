@@ -12,6 +12,12 @@ import { API, authFetch } from "@/lib/api";
 import { notifyProductCatalogChanged } from "@/lib/product-catalog-events";
 import { parseVendorSessionUser } from "@/features/session/vendor-session.model";
 
+import {
+  completeStocktake,
+  stocktakeCompletionIssue,
+} from "./stocktake-review";
+import { StocktakeRequestError } from "./stocktake-request-error";
+
 async function request<T>(
   url: string,
   method = "GET",
@@ -23,14 +29,7 @@ async function request<T>(
   });
   if (!response.ok) {
     const error: unknown = await response.json().catch(() => null);
-    throw new Error(
-      error &&
-        typeof error === "object" &&
-        "message" in error &&
-        typeof error.message === "string"
-        ? error.message
-        : "Сервертэй холбогдож чадсангүй",
-    );
+    throw new StocktakeRequestError(error);
   }
   return response.json() as Promise<T>;
 }
@@ -44,6 +43,11 @@ export function useStocktakes() {
   const [organizationId, setOrganizationId] = useState("");
   const [overview, setOverview] = useState<StocktakeOverview | null>(null);
   const [session, setSession] = useState<StocktakeDetail | null>(null);
+  const [conflict, setConflict] = useState<{
+    sessionId: string;
+    lineIds: string[];
+    addedProductCount?: number;
+  } | null>(null);
   const [edits, setEdits] = useState<Edits>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -145,6 +149,17 @@ export function useStocktakes() {
     try {
       await work();
     } catch (error) {
+      if (
+        error instanceof StocktakeRequestError &&
+        error.changedLineIds &&
+        session
+      ) {
+        setConflict({
+          sessionId: session.id,
+          lineIds: error.changedLineIds,
+          addedProductCount: error.addedProductCount,
+        });
+      }
       setError(
         error instanceof Error ? error.message : "Үйлдэл амжилтгүй боллоо",
       );
@@ -162,7 +177,12 @@ export function useStocktakes() {
         ))
       )
         return;
-      const detail = await request<StocktakeDetail>(`${base}/${id}`);
+      const detail = await request<
+        StocktakeDetail & {
+          changedLineIds?: string[];
+          addedProductCount?: number;
+        }
+      >(`${base}/${id}`);
       let restored: Edits = {};
       const raw = localStorage.getItem(
         `stocktake-draft:${organizationId}:${id}`,
@@ -216,6 +236,11 @@ export function useStocktakes() {
         }
       }
       setSession(detail);
+      setConflict({
+        sessionId: detail.id,
+        lineIds: detail.changedLineIds ?? [],
+        addedProductCount: detail.addedProductCount ?? 0,
+      });
       setEdits(restored);
     });
   const create = (
@@ -349,7 +374,7 @@ export function useStocktakes() {
               ? "Үлдэгдэл нь өөрчлөгдсөн барааны тоог цэвэрлэж дахин тоолох уу? Өөрчлөгдөөгүй мөрүүд хэвээр үлдэнэ."
               : action === "convert_full"
                 ? "Тоолсон дүнг хэвээр хадгалж, дутуу барааг нэмж энэ тооллогыг Бүтэн болгох уу? Үүний дараа бүх барааг заавал тоолно."
-              : "Тооллогыг цуцлах уу? Үлдэгдэл өөрчлөгдөхгүй.",
+                : "Тооллогыг цуцлах уу? Үлдэгдэл өөрчлөгдөхгүй.",
         ))
       )
         return;
@@ -365,14 +390,75 @@ export function useStocktakes() {
       latestDraft.current = null;
       if (draftKey) localStorage.removeItem(draftKey);
       setSession(updated);
+      if (["refresh", "approve", "cancel"].includes(action)) setConflict(null);
       setNotice(
         action === "approve"
           ? "Тооллого баталгаажиж, үлдэгдэл болон хөдөлгөөний түүх шинэчлэгдлээ."
           : action === "convert_full"
             ? "Тооллогыг Бүтэн болголоо. Одоо бүх барааг тоолно уу."
-          : "Амжилттай хадгаллаа.",
+            : "Амжилттай хадгаллаа.",
       );
       if (action === "approve") notifyProductCatalogChanged();
+      await reload();
+    });
+  const changeSession = async (
+    current: StocktakeDetail,
+    action: "reopen" | "refresh" | "submit" | "approve",
+  ) => {
+    const updated = await request<StocktakeDetail>(
+      `${base}/${current.id}`,
+      "PATCH",
+      {
+        action,
+        version: current.version,
+      },
+    );
+    setSession(updated);
+    return updated;
+  };
+  const prepareReview = () =>
+    run(async () => {
+      if (!session) return;
+      if (
+        !(await confirmation.ask(
+          "Шинэ мэдээлэл авч, өөрчлөгдсөн барааны хуучин тоог цэвэрлэж дахин тоолох уу? Бусад барааны тоо хадгалагдана.",
+        ))
+      )
+        return;
+      let current = await saveEdits(session);
+      if (current.status === "REVIEW")
+        current = await changeSession(current, "reopen");
+      await changeSession(current, "refresh");
+      setConflict(null);
+      setNotice(
+        "Шинэ мэдээлэл авлаа. «Тоолоогүй» хэсгийн барааг дахин тоолж хадгална уу.",
+      );
+      await reload();
+    });
+  const finishReview = () =>
+    run(async () => {
+      if (!session || !overview?.canApprove) return;
+      const preview = {
+        ...session,
+        lines: session.lines.map((line) =>
+          edits[line.id] ? { ...line, ...edits[line.id] } : line,
+        ),
+      };
+      const issue = stocktakeCompletionIssue(preview);
+      if (issue) throw new Error(issue);
+      if (
+        !(await confirmation.ask(
+          "Бодит тоо болон зөрүүний шалтгааныг шалгаж дууссан уу? Хадгалаад тооллогыг баталгаажуулж, үлдэгдлийг шинэчилнэ. Энэ үйлдлийг буцаахгүй.",
+        ))
+      )
+        return;
+      const current = await saveEdits(session);
+      await completeStocktake(current, changeSession, setSession);
+      setConflict(null);
+      setNotice(
+        "Тооллого дууслаа. Шалгасан бодит тоогоор үлдэгдэл болон хөдөлгөөний түүх шинэчлэгдлээ.",
+      );
+      notifyProductCatalogChanged();
       await reload();
     });
   const close = () =>
@@ -399,6 +485,14 @@ export function useStocktakes() {
   return {
     loadForExport: (id: string) => request<StocktakeDetail>(`${base}/${id}`),
     confirmation,
+    prepareReview,
+    finishReview,
+    addedProductCount:
+      conflict?.sessionId === session?.id
+        ? (conflict?.addedProductCount ?? 0)
+        : 0,
+    changedLineIds:
+      conflict?.sessionId === session?.id ? conflict?.lineIds : undefined,
     overview,
     session,
     edits,

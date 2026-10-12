@@ -1,27 +1,36 @@
 "use client";
 import { StocktakeExportButton } from "./StocktakeExportButton";
+import { StocktakeReviewPanel } from "./StocktakeReviewPanel";
+import {
+  matchesReviewFilter,
+  stocktakeCompletionIssue,
+  type StocktakeReviewFilter,
+} from "./stocktake-review";
 import { StocktakeDialog } from "./StocktakeDialog";
 import { StocktakeAddProduct } from "./StocktakeAddProduct";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   type StocktakeCountEdit,
   type StocktakeLineDto,
   type StocktakeDetail,
   type StocktakeNewProduct,
 } from "@mgl/types";
-import { StocktakeCountStep } from "./StocktakeCountStep";
 import { StocktakeScanner } from "./StocktakeScanner";
 import { StocktakeSummary, type StocktakeAction } from "./StocktakeSummary";
-import { fieldClass, secondaryClass } from "./StocktakeOverview";
+import { secondaryClass } from "./StocktakeOverview";
 import {
   matchesStocktakeQuery,
-  stocktakeLineName,
+  prioritizeStocktakeLines,
 } from "./stocktake-model";
-import { StocktakeRow } from "./StocktakeRow";
+import { StocktakeLineTable } from "./StocktakeLineTable";
 
 export function StocktakeEditor({
   session,
   loadForExport,
+  changedLineIds,
+  addedProductCount,
+  onPrepareReview,
+  onFinishReview,
   registers,
   canManageProducts,
   onAddProduct,
@@ -30,12 +39,17 @@ export function StocktakeEditor({
   busy,
   canApprove,
   onSaveCount,
+  onEdit,
   onAction,
   onClose,
   onReload,
 }: {
   session: StocktakeDetail;
   loadForExport: (id: string) => Promise<StocktakeDetail>;
+  changedLineIds?: string[];
+  addedProductCount: number;
+  onPrepareReview: () => void;
+  onFinishReview: () => void;
   registers: { id: string; name: string }[];
   canManageProducts: boolean;
   onResolveProduct: (
@@ -46,6 +60,7 @@ export function StocktakeEditor({
   busy: boolean;
   canApprove: boolean;
   onSaveCount: (edit: StocktakeCountEdit) => Promise<void>;
+  onEdit: (edit: StocktakeCountEdit) => void;
   onAction: (action: StocktakeAction) => void;
   onClose: () => void;
   onReload: () => void;
@@ -55,11 +70,18 @@ export function StocktakeEditor({
     barcode: string;
   } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [savedNotice, setSavedNotice] = useState("");
+
   const [focusRequest, setFocusRequest] = useState(0);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [page, setPage] = useState(0);
+  const changedIds = useMemo(() => new Set(changedLineIds), [changedLineIds]);
+  useEffect(() => {
+    if (!changedLineIds?.length) return;
+    setQuery("");
+    setFilter("all");
+    setPage(0);
+  }, [changedLineIds]);
   const lines = useMemo(
     () =>
       session.lines.map((line) =>
@@ -72,15 +94,12 @@ export function StocktakeEditor({
     (line) => line.counted !== null && line.counted !== line.expected,
   ).length;
   const filtered = useMemo(() => {
-    return lines.filter(
+    return prioritizeStocktakeLines(lines, changedIds).filter(
       (line) =>
         matchesStocktakeQuery(line, query) &&
-        (filter === "all" ||
-          (filter === "uncounted"
-            ? line.counted === null
-            : line.counted !== null && line.counted !== line.expected)),
+        matchesReviewFilter(line, filter, changedIds),
     );
-  }, [lines, query, filter]);
+  }, [lines, query, filter, changedIds]);
   const currentPage = Math.min(
     page,
     Math.max(0, Math.ceil(filtered.length / 50) - 1),
@@ -93,6 +112,11 @@ export function StocktakeEditor({
   };
   const editable = session.status === "DRAFT" && !busy;
   const dirty = Object.keys(edits).length;
+  const selectReviewFilter = (value: StocktakeReviewFilter) => {
+    setQuery("");
+    setPage(0);
+    setFilter(value);
+  };
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -120,13 +144,19 @@ export function StocktakeEditor({
       />
       <StocktakeScanner
         focusRequest={focusRequest}
-        savedNotice={savedNotice}
+        savedNotice=""
         onResolve={onResolveProduct}
         lines={lines}
         onSave={onSaveCount}
         editable={session.status === "DRAFT"}
         onSelect={(line) => {
           setNewProduct(null);
+          setQuery("");
+          setFilter("all");
+          const index = prioritizeStocktakeLines(lines, changedIds).findIndex(
+            (row) => row.id === line.id,
+          );
+          setPage(Math.max(0, Math.floor(index / 50)));
           setSelectedId(line.id);
         }}
         query={query}
@@ -144,29 +174,6 @@ export function StocktakeEditor({
           setFilter("all");
         }}
       />
-      {selectedId &&
-        session.status === "DRAFT" &&
-        lines
-          .filter((line) => line.id === selectedId)
-          .map((line) => (
-            <StocktakeDialog
-              key={line.id}
-              title="Бараа тоолох"
-              busy={busy}
-              onClose={finishStep}
-            >
-              <StocktakeCountStep
-                key={line.id}
-                line={line}
-                busy={busy}
-                onSave={async (edit) => {
-                  await onSaveCount(edit);
-                  setSavedNotice(`${stocktakeLineName(line)}: хадгаллаа ✓`);
-                }}
-                onDone={finishStep}
-              />
-            </StocktakeDialog>
-          ))}
       {session.status === "DRAFT" && canManageProducts && newProduct && (
         <StocktakeDialog
           title="Шинэ бараа бүртгэх"
@@ -183,87 +190,38 @@ export function StocktakeEditor({
           />
         </StocktakeDialog>
       )}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-wrap gap-3 p-4">
-          <span className="flex-1 self-center text-sm text-slate-500">
-            {filtered.length} бараа
-          </span>
-          <select
-            aria-label="Мөр шүүх"
-            value={filter}
-            onChange={(event) => {
-              setFilter(event.target.value);
-              setPage(0);
-            }}
-            className={`${fieldClass} sm:max-w-52`}
-          >
-            <option value="all">Бүх бараа</option>
-            <option value="uncounted">Тоолоогүй</option>
-            <option value="difference">Зөрүүтэй</option>
-          </select>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs text-slate-500">
-              <tr>
-                {[
-                  "Бараа",
-                  "Системийн тоо",
-                  "Бодит тоо",
-                  "Зөрүү",
-                  "Шалтгаан / тайлбар",
-                ].map((label) => (
-                  <th key={label} scope="col" className="p-3">
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered
-                .slice(currentPage * 50, currentPage * 50 + 50)
-                .map((line) => (
-                  <StocktakeRow
-                    key={line.id}
-                    line={line}
-                    onSelect={(row) => {
-                      setNewProduct(null);
-                      setSelectedId(row.id);
-                    }}
-                    editable={editable}
-                  />
-                ))}
-            </tbody>
-          </table>
-        </div>
-        {!filtered.length && (
-          <p className="p-8 text-center text-slate-500">
-            Тохирох бараа алга байна.
-          </p>
-        )}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4 text-sm text-slate-500">
-          <span>
-            {filtered.length} бараа · Хуудас {currentPage + 1} /{" "}
-            {Math.max(1, Math.ceil(filtered.length / 50))}
-          </span>
-          <div className="flex gap-2">
-            <button
-              className={secondaryClass}
-              disabled={currentPage === 0}
-              onClick={() => setPage(currentPage - 1)}
-            >
-              Өмнөх
-            </button>
-            <button
-              className={secondaryClass}
-              disabled={(currentPage + 1) * 50 >= filtered.length}
-              onClick={() => setPage(currentPage + 1)}
-            >
-              Дараах
-            </button>
-          </div>
-        </div>
-      </div>
+      <StocktakeReviewPanel
+        differences={differences}
+        changed={changedIds.size}
+        added={addedProductCount}
+        uncounted={lines.length - counted}
+        filter={filter}
+        status={session.status}
+        busy={busy}
+        canApprove={canApprove}
+        completionIssue={stocktakeCompletionIssue({ ...session, lines })}
+        onFilter={selectReviewFilter}
+        onPrepare={() => {
+          selectReviewFilter("uncounted");
+          onPrepareReview();
+        }}
+        onReopen={() => onAction("reopen")}
+        onFinish={onFinishReview}
+      />
+      <StocktakeLineTable
+        filtered={filtered}
+        filter={filter}
+        changedIds={changedIds}
+        currentPage={currentPage}
+        editable={editable}
+        selectedId={selectedId}
+        onEdit={onEdit}
+        onFilter={(value) => {
+          setFilter(value);
+          setPage(0);
+        }}
+        onPage={setPage}
+      />
     </section>
   );
 }

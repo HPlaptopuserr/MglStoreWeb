@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   barcodeIndex,
+  prioritizeStocktakeLines,
   parseCount,
   storedQuantity,
   matchesStocktakeQuery,
@@ -139,4 +140,22 @@ test("stocktake search matches every word in a mixed Latin and Mongolian name", 
     ),
     false,
   );
+});
+
+test("changed rows move ahead of pagination while preserving order and source data", () => {
+  const rows = Array.from({ length: 1175 }, (_, index) => ({
+    id: String(index),
+  }));
+  const ids = new Set(["1000", "60", "1174"]);
+  const sorted = prioritizeStocktakeLines(rows, ids);
+  assert.deepEqual(
+    sorted.slice(0, 3).map((row) => row.id),
+    ["60", "1000", "1174"],
+  );
+  assert.equal(sorted[3]?.id, "0");
+  assert.equal(sorted.length, rows.length);
+  assert.equal(new Set(sorted).size, rows.length);
+  assert.equal(rows[0]?.id, "0");
+  assert.deepEqual(prioritizeStocktakeLines(rows, new Set(["missing"])), rows);
+  assert.equal(prioritizeStocktakeLines(rows, new Set()), rows);
 });

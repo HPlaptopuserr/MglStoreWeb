@@ -1,70 +1,67 @@
 "use client";
 import { memo } from "react";
-import { type StocktakeLineDto } from "@mgl/types";
+import { type StocktakeCountEdit, type StocktakeLineDto } from "@mgl/types";
 import {
-  stocktakeLineBarcode,
   stocktakeLineName,
+  stocktakeLineBarcode,
   storedQuantity,
 } from "./stocktake-model";
-import { secondaryClass } from "./StocktakeOverview";
+import { StocktakeQuantityInput } from "./StocktakeQuantityInput";
 export const StocktakeRow = memo(function StocktakeRow({
   line,
   editable,
-  onSelect,
+  requiresRecount = false,
+  onEdit,
+  focused = false,
 }: {
   line: StocktakeLineDto;
   editable: boolean;
-  onSelect?: (line: StocktakeLineDto) => void;
+  requiresRecount?: boolean;
+  onEdit: (edit: StocktakeCountEdit) => void;
+  focused?: boolean;
 }) {
   const difference =
     line.counted === null
       ? null
       : storedQuantity(line.counted - line.expected, line.unit);
-  const name = stocktakeLineName(line);
-  const barcode = stocktakeLineBarcode(line);
   return (
-    <tr className="border-t border-slate-100 align-top transition hover:bg-slate-50">
+    <tr
+      className={`border-t border-slate-100 align-top transition ${requiresRecount ? "bg-amber-50 hover:bg-amber-100" : "hover:bg-slate-50"}`}
+    >
       <td className="p-3">
-        <p className="font-semibold">
-          {editable && onSelect ? (
-            <button
-              type="button"
-              onClick={() => onSelect(line)}
-              className="text-left text-blue-700 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600"
-            >
-              {name}
-            </button>
-          ) : (
-            name
-          )}
-        </p>
+        <p className="font-semibold">{stocktakeLineName(line)}</p>
+        {requiresRecount && (
+          <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900">
+            Дахин тоолох шаардлагатай
+          </span>
+        )}
         {line.receiptRegisterId && (
           <span className="mt-1 inline-block rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-800">
             Тооллогоор нэмсэн
           </span>
         )}
         <p className="mt-1 text-xs text-slate-500">
-          {barcode || "Баркодгүй"} · {line.unit || "ш"}
+          {stocktakeLineBarcode(line) || "Баркодгүй"} · {line.unit || "ш"}
         </p>
       </td>
       <td className="p-3 text-right tabular-nums">
         {storedQuantity(line.expected, line.unit).toLocaleString("mn-MN")}
       </td>
       <td className="p-3 text-right tabular-nums">
-        <span>
-          {line.counted === null
-            ? "Тоолоогүй"
-            : storedQuantity(line.counted, line.unit).toLocaleString("mn-MN")}
-        </span>
-        {editable && onSelect && (
-          <button
-            type="button"
-            className={`${secondaryClass} ml-3`}
-            onClick={() => onSelect(line)}
-            aria-label={`${name} тоог засах`}
-          >
-            {line.counted === null ? "Тоолох" : "Засах"}
-          </button>
+        {editable ? (
+          <StocktakeQuantityInput
+            line={line}
+            focused={focused}
+            onChange={(counted) =>
+              onEdit({ id: line.id, counted, note: line.note })
+            }
+          />
+        ) : (
+          <span>
+            {line.counted === null
+              ? "Тоолоогүй"
+              : storedQuantity(line.counted, line.unit).toLocaleString("mn-MN")}
+          </span>
         )}
       </td>
       <td
@@ -75,7 +72,24 @@ export const StocktakeRow = memo(function StocktakeRow({
           : `${difference > 0 ? "+" : ""}${difference.toLocaleString("mn-MN")}`}
       </td>
       <td className="max-w-xs whitespace-pre-wrap p-3 text-slate-600">
-        {line.note || (difference ? "Шалтгаан бөглөөгүй" : "—")}
+        {editable ? (
+          <input
+            aria-label={`${stocktakeLineName(line)} шалтгаан`}
+            value={line.note}
+            maxLength={500}
+            onChange={(event) =>
+              onEdit({
+                id: line.id,
+                counted: line.counted,
+                note: event.target.value,
+              })
+            }
+            placeholder="Шалтгаан / тайлбар"
+            className="w-full min-w-36 rounded-md border border-transparent bg-transparent px-2 py-1 hover:border-slate-300 focus:border-blue-500 focus:outline-none"
+          />
+        ) : (
+          line.note || (difference ? "Шалтгаан бөглөөгүй" : "—")
+        )}
       </td>
     </tr>
   );

@@ -73,6 +73,19 @@ export const stocktakeLineName = (line: StocktakeLineDto) =>
 
 export const stocktakeLineBarcode = (line: StocktakeLineDto) =>
   line.product?.barcode?.trim() || line.barcode;
+/** Stable partition: conflicts must be prioritized before pagination. */
+export function prioritizeStocktakeLines<T extends { id: string }>(
+  lines: T[],
+  changedIds: ReadonlySet<string>,
+): T[] {
+  if (!changedIds.size) return lines;
+  const changed: T[] = [];
+  const unchanged: T[] = [];
+  for (const line of lines) {
+    (changedIds.has(line.id) ? changed : unchanged).push(line);
+  }
+  return [...changed, ...unchanged];
+}
 
 export function newProductSeed(query: string): {
   name: string;
