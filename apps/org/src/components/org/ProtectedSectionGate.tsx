@@ -53,6 +53,7 @@ export default function ProtectedSectionGate({
   onUnlock,
 }: ProtectedSectionGateProps) {
   const pinInputRef = useRef<HTMLInputElement>(null);
+  const pinVerificationInFlight = useRef(false);
   const [pinState, setPinState] = useState<PinState>("loading");
   const [pin, setPin] = useState("");
   const [identifier, setIdentifier] = useState("");
@@ -85,18 +86,19 @@ export default function ProtectedSectionGate({
     if (pinState === "configured") pinInputRef.current?.focus();
   }, [pinState]);
 
-  const handlePinSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const verifyPin = async (nextPin: string) => {
+    if (pinVerificationInFlight.current) return;
     setError("");
 
-    if (!/^\d{4}$/.test(pin)) {
+    if (!/^\d{4}$/.test(nextPin)) {
       setError("4 оронтой PIN кодоо оруулна уу.");
       return;
     }
 
+    pinVerificationInFlight.current = true;
     setLoading(true);
     try {
-      await verifyAccessPin(organizationId, scope, pin);
+      await verifyAccessPin(organizationId, scope, nextPin);
       onUnlock();
     } catch (cause) {
       setPin("");
@@ -105,8 +107,21 @@ export default function ProtectedSectionGate({
       );
       window.setTimeout(() => pinInputRef.current?.focus(), 0);
     } finally {
+      pinVerificationInFlight.current = false;
       setLoading(false);
     }
+  };
+
+  const handlePinChange = (value: string) => {
+    const nextPin = onlyDigits(value);
+    setPin(nextPin);
+    setError("");
+    if (nextPin.length === 4) void verifyPin(nextPin);
+  };
+
+  const handlePinSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (pin.length === 4) void verifyPin(pin);
   };
 
   const handlePasswordSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -195,7 +210,7 @@ export default function ProtectedSectionGate({
                 pattern="[0-9]{4}"
                 maxLength={4}
                 value={pin}
-                onChange={(event) => setPin(onlyDigits(event.target.value))}
+                onChange={(event) => handlePinChange(event.target.value)}
                 disabled={loading}
                 aria-label="4 оронтой PIN код"
                 placeholder="••••"
@@ -203,18 +218,16 @@ export default function ProtectedSectionGate({
               />
             </label>
 
-            <button
-              type="submit"
-              disabled={loading || pin.length !== 4}
-              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 text-sm font-black text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
+            <div className="flex min-h-6 items-center justify-center gap-2 text-center text-xs font-bold text-slate-500">
               {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  PIN шалгаж байна...
+                </>
               ) : (
-                <LogIn className="h-4 w-4" />
+                "4 оронг бүрэн оруулахад автоматаар нэвтэрнэ."
               )}
-              {loading ? "PIN шалгаж байна..." : submitLabel}
-            </button>
+            </div>
 
             <p className="text-center text-xs font-semibold leading-5 text-slate-400">
               {footer}
