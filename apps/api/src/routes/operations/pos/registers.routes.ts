@@ -16,7 +16,10 @@ import {
   type CreateSaleBody, type PushEcrPurchaseResponse, toApiError, parseAuthClaims, runtimeEnv,
 } from "./_shared";
 import { validateEnabledEbarimtConfig } from "./ebarimt-config.validation";
-import { normalizePosRegisterMode } from "./pos-register-mode";
+import {
+  canUsePosRegisterForMode,
+  normalizePosRegisterMode,
+} from "./pos-register-mode";
 import { calculateExpectedCash, summarizeShiftSales } from "./shift-accounting";
 import {
   getCashDrawerEventTotals,
@@ -249,7 +252,7 @@ router.get("/pos/register-config", async (req, res) => {
     if (!register) {
       return res.status(404).json({ message: "POS олдсонгүй" });
     }
-    if (mode && register.mode !== mode) {
+    if (mode && !canUsePosRegisterForMode(register.mode, mode)) {
       return res.status(409).json({
         message: `Энэ нь ${register.mode} төрлийн касс байна. ${mode} урсгалд ашиглах боломжгүй.`,
       });

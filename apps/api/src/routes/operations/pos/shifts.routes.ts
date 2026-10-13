@@ -63,6 +63,7 @@ import {
 } from "./restaurant-ticket-lifecycle";
 import {
   buildShiftModeScope,
+  canUsePosRegisterForMode,
   getRequestedShiftMode,
   normalizePosRegisterMode,
   usesRestaurantTicketLifecycle,
@@ -278,7 +279,7 @@ router.post("/pos/shifts/open", async (req, res) => {
           .status(403)
           .json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
       }
-      if (register.mode !== requestedMode) {
+      if (!canUsePosRegisterForMode(register.mode, requestedMode)) {
         return res.status(409).json({
           message: `Энэ нь ${register.mode} төрлийн касс байна. ${requestedMode} урсгалд ашиглах боломжгүй.`,
         });
@@ -343,7 +344,7 @@ router.post("/pos/shifts/open", async (req, res) => {
               "POS register идэвхгүй эсвэл батлагдаагүй байна",
             );
           }
-          if (lockedRegister.mode !== requestedMode) {
+          if (!canUsePosRegisterForMode(lockedRegister.mode, requestedMode)) {
             throw toApiError(
               409,
               `Энэ нь ${lockedRegister.mode} төрлийн касс байна. ${requestedMode} урсгалд ашиглах боломжгүй.`,

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildShiftModeScope,
+  canUsePosRegisterForMode,
   getRequestedShiftMode,
   getRequiredSaleRegisterMode,
   normalizePosRegisterMode,
@@ -43,4 +44,17 @@ test("retail shifts cannot inherit restaurant ticket lifecycle", () => {
     usesRestaurantTicketLifecycle({ shiftMode: "RESTAURANT" }),
     true,
   );
+});
+
+test("restaurant and self-service flows can share one restaurant register", () => {
+  assert.equal(
+    canUsePosRegisterForMode("RESTAURANT", "SELF_SERVICE"),
+    true,
+  );
+  assert.equal(
+    canUsePosRegisterForMode("SELF_SERVICE", "RESTAURANT"),
+    true,
+  );
+  assert.equal(canUsePosRegisterForMode("RETAIL", "RESTAURANT"), false);
+  assert.equal(canUsePosRegisterForMode("RESTAURANT", "RETAIL"), false);
 });

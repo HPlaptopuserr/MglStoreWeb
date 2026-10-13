@@ -35,6 +35,18 @@ export function getRequiredSaleRegisterMode(input: {
   return "RETAIL";
 }
 
+export function canUsePosRegisterForMode(
+  registerMode: PosRegisterModeValue,
+  requestedMode: PosRegisterModeValue,
+) {
+  if (registerMode === requestedMode) return true;
+
+  // A restaurant may use one physical register configuration for both the
+  // staffed cashier and self-service kiosk. Their shifts remain isolated by
+  // requestedMode; only the shared terminal/payment configuration is reused.
+  return registerMode !== "RETAIL" && requestedMode !== "RETAIL";
+}
+
 export function buildShiftModeScope(mode: PosRegisterModeValue) {
   return { mode };
 }

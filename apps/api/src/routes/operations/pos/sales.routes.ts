@@ -70,7 +70,10 @@ import {
 } from "./credit-interest";
 import { resolvePosSaleLineCost } from "./pos-sale-cost";
 import { resolvePaidRestaurantTicketStatus } from "./restaurant-ticket-lifecycle";
-import { getRequiredSaleRegisterMode } from "./pos-register-mode";
+import {
+  canUsePosRegisterForMode,
+  getRequiredSaleRegisterMode,
+} from "./pos-register-mode";
 import { calculateTakeawayPackagingFee } from "./takeaway-packaging";
 import {
   calculateRestaurantDiscountAmount,
@@ -1286,7 +1289,9 @@ router.post("/pos/sales", async (req, res) => {
               "Sale branchId нь register branch-тай зөрүүтэй байна",
             );
           }
-          if (register.mode !== requiredRegisterMode) {
+          if (
+            !canUsePosRegisterForMode(register.mode, requiredRegisterMode)
+          ) {
             throw toApiError(
               409,
               `Энэ нь ${register.mode} төрлийн касс байна. ${requiredRegisterMode} борлуулалт бүртгэх боломжгүй.`,

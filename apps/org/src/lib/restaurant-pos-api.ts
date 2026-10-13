@@ -498,7 +498,17 @@ export async function getRestaurantPosRegisters(
   const response = await authFetch(`${API}/pos/registers/mine?mode=${mode}`, {
     cache: "no-store",
   });
-  return readApiResponse<RestaurantPosRegister[]>(response);
+  const preferredRegisters =
+    await readApiResponse<RestaurantPosRegister[]>(response);
+  if (preferredRegisters.length > 0) return preferredRegisters;
+
+  const compatibleMode =
+    mode === "RESTAURANT" ? "SELF_SERVICE" : "RESTAURANT";
+  const compatibleResponse = await authFetch(
+    `${API}/pos/registers/mine?mode=${compatibleMode}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantPosRegister[]>(compatibleResponse);
 }
 
 export async function getAllRestaurantPosRegisters() {
