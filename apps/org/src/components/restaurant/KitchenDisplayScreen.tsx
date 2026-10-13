@@ -22,12 +22,12 @@ import {
 } from "lucide-react";
 import { useOrg } from "@/components/org/OrgContext";
 import {
+  getRestaurantKitchenBranches,
   getRestaurantKitchenTickets,
-  getRestaurantPosRegisters,
   updateRestaurantKitchenTicketStatus,
   type KitchenTicketStatus,
+  type RestaurantKitchenBranch,
   type RestaurantKitchenTicket,
-  type RestaurantPosRegister,
 } from "@/lib/restaurant-pos-api";
 import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
 
@@ -269,7 +269,7 @@ const createDemoTickets = (
 export function KitchenDisplayScreen() {
   const { user, features } = useOrg();
   const isCafe = features.selfServiceMode === "CAFE";
-  const [registers, setRegisters] = useState<RestaurantPosRegister[]>([]);
+  const [branches, setBranches] = useState<RestaurantKitchenBranch[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [tickets, setTickets] = useState<RestaurantKitchenTicket[]>([]);
   const [stationFilter, setStationFilter] = useState<StationFilter>("ALL");
@@ -285,23 +285,6 @@ export function KitchenDisplayScreen() {
     branchId: string;
     ids: Set<string>;
   } | null>(null);
-
-  const branches = useMemo(() => {
-    const unique = new Map<
-      string,
-      { id: string; name: string; registerName: string }
-    >();
-    for (const register of registers) {
-      if (!unique.has(register.branchId)) {
-        unique.set(register.branchId, {
-          id: register.branchId,
-          name: register.branch.name,
-          registerName: register.label || register.name,
-        });
-      }
-    }
-    return [...unique.values()];
-  }, [registers]);
 
   const selectedBranch =
     branches.find((branch) => branch.id === selectedBranchId) ?? null;
@@ -361,16 +344,15 @@ export function KitchenDisplayScreen() {
     setLoading(true);
     setError("");
     try {
-      const nextRegisters = await getRestaurantPosRegisters();
-      setRegisters(nextRegisters);
+      const nextBranches = await getRestaurantKitchenBranches();
+      setBranches(nextBranches);
       const savedBranchId =
         typeof window !== "undefined"
           ? window.localStorage.getItem(BRANCH_STORAGE_KEY)
           : null;
       const nextBranchId =
-        nextRegisters.find((register) => register.branchId === savedBranchId)
-          ?.branchId ??
-        nextRegisters[0]?.branchId ??
+        nextBranches.find((branch) => branch.id === savedBranchId)?.id ??
+        nextBranches[0]?.id ??
         "";
       setSelectedBranchId(nextBranchId);
     } catch (loadError) {
@@ -859,8 +841,8 @@ export function KitchenDisplayScreen() {
       <main className="min-h-0 flex-1 overflow-auto p-3 sm:p-4 lg:p-5">
         {!selectedBranchId && !demoMode ? (
           <EmptyState
-            title="POS касс олдсонгүй"
-            description="Энэ байгууллагад идэвхтэй POS register тохируулсны дараа гал тогооны дэлгэц ашиглана."
+            title="Салбар олдсонгүй"
+            description="Энэ байгууллагад салбар бүртгэсний дараа гал тогооны дэлгэц ашиглана."
             actionLabel="Демо захиалга харах"
             onAction={showDemoTickets}
           />

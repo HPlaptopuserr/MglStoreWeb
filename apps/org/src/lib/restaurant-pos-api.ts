@@ -355,6 +355,11 @@ export type KitchenTicketStatus =
   | "SERVED"
   | "CANCELLED";
 
+export type RestaurantKitchenBranch = {
+  id: string;
+  name: string;
+};
+
 export type RestaurantKitchenTicket = {
   id: string;
   kitchenTicketNo: string;
@@ -1268,6 +1273,13 @@ export async function cancelRestaurantTicketItem(input: {
     },
   );
   return readApiResponse<RestaurantTicket | null>(response);
+}
+
+export async function getRestaurantKitchenBranches() {
+  const response = await authFetch(`${API}/restaurant/pos/kitchen-branches`, {
+    cache: "no-store",
+  });
+  return readApiResponse<RestaurantKitchenBranch[]>(response);
 }
 
 export async function getRestaurantKitchenTickets(branchId: string) {

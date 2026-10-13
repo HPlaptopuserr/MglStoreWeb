@@ -1212,12 +1212,29 @@ function RestaurantPosContent() {
     setSetupLoading(true);
     setSetupError("");
     try {
-      const [nextRegisters, currentShift] = await Promise.all([
+      const [registerResult, shiftResult] = await Promise.allSettled([
         getRestaurantPosRegisters(),
         getCurrentRestaurantPosShift(),
       ]);
+      if (registerResult.status === "rejected") {
+        throw registerResult.reason;
+      }
+
+      const nextRegisters = registerResult.value;
+      const currentShift =
+        shiftResult.status === "fulfilled" ? shiftResult.value : null;
       setRegisters(nextRegisters);
-      setShift(currentShift);
+      if (shiftResult.status === "fulfilled") {
+        setShift(currentShift);
+      }
+
+      if (shiftResult.status === "rejected") {
+        setSetupError(
+          shiftResult.reason instanceof Error
+            ? shiftResult.reason.message
+            : "Нээлттэй ээлжийн мэдээлэл авахад алдаа гарлаа",
+        );
+      }
 
       const savedRegisterId =
         typeof window !== "undefined"
@@ -1236,7 +1253,11 @@ function RestaurantPosContent() {
       if (nextRegister && typeof window !== "undefined") {
         window.localStorage.setItem(REGISTER_STORAGE_KEY, nextRegister.id);
       }
-      if (nextRegister && !currentShift) {
+      if (
+        nextRegister &&
+        shiftResult.status === "fulfilled" &&
+        !currentShift
+      ) {
         setShowOpenShift(true);
       }
     } catch (error) {
@@ -1253,6 +1274,25 @@ function RestaurantPosContent() {
   useEffect(() => {
     void loadPosSetup();
   }, [loadPosSetup]);
+
+  useEffect(() => {
+    if (setupLoading || registers.length > 0) return;
+
+    const refreshSetup = () => {
+      if (document.visibilityState === "visible") {
+        void loadPosSetup();
+      }
+    };
+    const refreshTimer = window.setInterval(refreshSetup, 15_000);
+
+    window.addEventListener("focus", refreshSetup);
+    window.addEventListener("online", refreshSetup);
+    return () => {
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshSetup);
+      window.removeEventListener("online", refreshSetup);
+    };
+  }, [loadPosSetup, registers.length, setupLoading]);
 
   useEffect(() => {
     if (!showCloseShift || !shift?.id) return;
@@ -4181,9 +4221,19 @@ function RestaurantPosContent() {
           ) : null}
 
           {!setupLoading && registers.length === 0 ? (
-            <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
-              Энэ байгууллагад батлагдсан POS register алга. Admin хэсгээс
-              салбар, POS register үүсгэж идэвхжүүлсний дараа касс ажиллана.
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+              <span>
+                Энэ байгууллагад батлагдсан POS register алга. Admin хэсгээс
+                салбар, POS register үүсгэж идэвхжүүлсний дараа касс ажиллана.
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadPosSetup()}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-800 transition hover:bg-amber-100"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Дахин шалгах
+              </button>
             </div>
           ) : null}
 
@@ -4526,7 +4576,7 @@ function RestaurantPosContent() {
             </div>
           </div>
 
-          <div className="min-h-[210px] flex-[1_1_260px] space-y-3 overflow-y-auto py-3 pr-1">
+          <div className="min-h-[120px] flex-[1_1_260px] space-y-3 overflow-y-auto py-3 pr-1">
             {ticketLines.length === 0 ? (
               <div className="flex h-full min-h-40 flex-col items-center justify-center text-center">
                 <UtensilsCrossed className="h-8 w-8 text-slate-300" />
@@ -4717,7 +4767,7 @@ function RestaurantPosContent() {
             )}
           </div>
 
-          <div className="min-h-0 max-h-[46dvh] shrink overflow-y-auto overscroll-contain border-t border-slate-200 pt-4 pr-1 max-xl:max-h-[42dvh]">
+          <div className="min-h-0 max-h-[50dvh] shrink overflow-y-auto overscroll-contain border-t border-slate-200 pt-4 pr-1 max-xl:max-h-[42dvh]">
             <TotalLine
               label={
                 discountIsActive && employeeDiscount
@@ -5315,7 +5365,7 @@ function RestaurantPosContent() {
                 </button>
               </div>
             ) : (
-              <div className="mt-3">
+              <div className="sticky bottom-0 z-10 -mx-1 mt-3 border-t border-slate-200 bg-[#fffdf8] px-1 pt-3 pb-1 shadow-[0_-12px_20px_rgba(255,253,248,0.96)]">
                 {selectedTicketActive ? (
                   <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
                     <p className="text-xs font-bold leading-5 text-amber-800">

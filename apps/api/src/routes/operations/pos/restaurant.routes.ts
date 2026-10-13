@@ -2034,6 +2034,39 @@ router.post("/restaurant/menu/:token/orders", async (req, res) => {
   }
 });
 
+router.get("/restaurant/pos/kitchen-branches", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const organizationId = actor.organizationId;
+    if (!organizationId) {
+      return res
+        .status(400)
+        .json({ message: "Байгууллагатай холбоогүй хэрэглэгч байна" });
+    }
+
+    const branches = await prisma.branch.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+      },
+      orderBy: [{ createdAt: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    return res.json(branches);
+  } catch (error) {
+    console.error("get restaurant kitchen branches error", error);
+    return res
+      .status(500)
+      .json({ message: "Гал тогооны салбарын жагсаалт авахад алдаа гарлаа" });
+  }
+});
+
 router.get("/restaurant/pos/kitchen-tickets", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
