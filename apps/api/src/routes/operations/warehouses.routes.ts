@@ -3171,12 +3171,19 @@ router.get("/warehouses/:id/products", requireAuth, async (req, res) => {
     });
     if (!warehouse) return res.status(404).json({ message: "Агуулах олдсонгүй" });
     const search = String(req.query.search ?? "").trim();
+    const exactBarcode = typeof req.query.barcode === "string" ? req.query.barcode.trim() : "";
+    const masterProductId = typeof req.query.masterProductId === "string" ? req.query.masterProductId.trim() : "";
     const limit = Math.min(50, Math.max(1, Math.floor(Number(req.query.limit) || 10)));
     const products = await prisma.product.findMany({
       where: {
         deletedAt: null,
         AND: [
           warehouseProductReadScope(warehouseId, warehouse.organizations.map((link) => link.organizationId), warehouse.catalogOrganizationId),
+          ...(exactBarcode ? [{ OR: [
+            { barcode: exactBarcode },
+            { barcodeAliases: { has: exactBarcode } },
+          ] }] : []),
+          ...(masterProductId ? [{ masterProductId }] : []),
           ...(search ? [{ OR: [
             { AND: search.split(/\s+/).filter(Boolean).map((word) => ({ name: { contains: word, mode: "insensitive" as const } })) },
             { sku: { contains: search, mode: "insensitive" as const } },
