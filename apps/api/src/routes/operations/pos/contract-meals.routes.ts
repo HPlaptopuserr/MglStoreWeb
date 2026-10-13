@@ -27,7 +27,6 @@ import {
 
 const router: ExpressRouter = Router();
 const ULAANBAATAR_OFFSET_MS = 8 * 60 * 60 * 1000;
-const CONTRACT_QR_PREFIX = "MGLMEAL:";
 const EDITABLE_TICKET_STATUSES: RestaurantTicketStatus[] = [
   RestaurantTicketStatus.OPEN,
   RestaurantTicketStatus.KITCHEN,
@@ -46,6 +45,9 @@ const normalizeText = (value: unknown, maxLength: number) =>
     .replace(/\s+/g, " ")
     .slice(0, maxLength);
 
+export const isValidRestaurantMealContractPin = (value: unknown) =>
+  /^\d{4}$/.test(String(value ?? "").trim());
+
 const parseDateOnly = (value: unknown) => {
   const text = String(value ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return null;
@@ -57,19 +59,6 @@ const dateOnlyKey = (value: Date) => value.toISOString().slice(0, 10);
 
 export const ulaanbaatarDateKey = (value = new Date()) =>
   new Date(value.getTime() + ULAANBAATAR_OFFSET_MS).toISOString().slice(0, 10);
-
-export const getUlaanbaatarMealUsageRanges = (value = new Date()) => {
-  const shifted = new Date(value.getTime() + ULAANBAATAR_OFFSET_MS);
-  const year = shifted.getUTCFullYear();
-  const month = shifted.getUTCMonth();
-  const day = shifted.getUTCDate();
-  return {
-    dayStart: new Date(Date.UTC(year, month, day) - ULAANBAATAR_OFFSET_MS),
-    dayEnd: new Date(Date.UTC(year, month, day + 1) - ULAANBAATAR_OFFSET_MS),
-    monthStart: new Date(Date.UTC(year, month, 1) - ULAANBAATAR_OFFSET_MS),
-    monthEnd: new Date(Date.UTC(year, month + 1, 1) - ULAANBAATAR_OFFSET_MS),
-  };
-};
 
 export const isRestaurantMealContractActive = (
   contract: {
@@ -87,71 +76,15 @@ export const isRestaurantMealContractActive = (
   );
 };
 
-export const normalizeRestaurantMealAccessToken = (value: unknown) => {
-  const raw = String(value ?? "").trim();
-  if (!raw) return "";
-  if (raw.toUpperCase().startsWith(CONTRACT_QR_PREFIX)) {
-    return raw.slice(CONTRACT_QR_PREFIX.length).trim();
-  }
-  try {
-    const url = new URL(raw);
-    return String(
-      url.searchParams.get("mealToken") || url.searchParams.get("token") || raw,
-    ).trim();
-  } catch {
-    return raw;
-  }
-};
-
-const parseOptionalLimit = (value: unknown, fieldLabel: string) => {
-  if (value === null || value === undefined || value === "") return null;
-  const amount = roundMoney(Number(value));
-  if (!Number.isFinite(amount) || amount <= 0) {
-    throw knownError(400, `${fieldLabel} 0-оос их тоо байна`);
-  }
-  return amount;
-};
-
-const mapMember = (member: {
-  id: string;
-  contractId: string;
-  employeeCode: string;
-  fullName: string;
-  department: string | null;
-  accessToken: string;
-  dailyLimit: Prisma.Decimal | null;
-  monthlyLimit: Prisma.Decimal | null;
-  isActive: boolean;
-  lastUsedAt: Date | null;
-  createdAt: Date;
-  updatedAt: Date;
-}) => ({
-  id: member.id,
-  contractId: member.contractId,
-  employeeCode: member.employeeCode,
-  fullName: member.fullName,
-  department: member.department,
-  accessToken: member.accessToken,
-  qrPayload: `${CONTRACT_QR_PREFIX}${member.accessToken}`,
-  dailyLimit: member.dailyLimit == null ? null : Number(member.dailyLimit),
-  monthlyLimit:
-    member.monthlyLimit == null ? null : Number(member.monthlyLimit),
-  isActive: member.isActive,
-  lastUsedAt: member.lastUsedAt?.toISOString() ?? null,
-  createdAt: member.createdAt.toISOString(),
-  updatedAt: member.updatedAt.toISOString(),
-});
-
 const contractInclude = {
-  members: { orderBy: [{ isActive: "desc" }, { fullName: "asc" }] },
   _count: { select: { charges: true } },
 } satisfies Prisma.RestaurantMealContractInclude;
 
-type ContractWithMembers = Prisma.RestaurantMealContractGetPayload<{
+type ContractWithCount = Prisma.RestaurantMealContractGetPayload<{
   include: typeof contractInclude;
 }>;
 
-const mapContract = (contract: ContractWithMembers) => ({
+const mapContract = (contract: ContractWithCount) => ({
   id: contract.id,
   organizationId: contract.organizationId,
   customerOrganization: contract.customerOrganization,
@@ -160,9 +93,9 @@ const mapContract = (contract: ContractWithMembers) => ({
   endDate: dateOnlyKey(contract.endDate),
   status: contract.status,
   activeNow: isRestaurantMealContractActive(contract),
+  pinConfigured: Boolean(contract.pinHash),
   note: contract.note,
   chargeCount: contract._count.charges,
-  members: contract.members.map(mapMember),
   createdAt: contract.createdAt.toISOString(),
   updatedAt: contract.updatedAt.toISOString(),
 });
@@ -197,24 +130,30 @@ async function getAccessibleContract(
   return contract;
 }
 
-async function authenticateMember(input: {
+async function authenticateContract(input: {
   actor: AuthUser;
   branchId: string;
-  accessToken: string;
+  contractId: string;
   pin: string;
 }) {
-  if (!input.branchId || !input.accessToken || !/^\d{4,8}$/.test(input.pin)) {
-    throw knownError(400, "QR код, 4-8 оронтой PIN болон салбар шаардлагатай");
+  if (
+    !input.branchId ||
+    !input.contractId ||
+    !isValidRestaurantMealContractPin(input.pin)
+  ) {
+    throw knownError(
+      400,
+      "Гэрээт байгууллага, 4 оронтой PIN болон салбар шаардлагатай",
+    );
   }
 
-  const [branch, member] = await Promise.all([
+  const [branch, contract] = await Promise.all([
     prisma.branch.findFirst({
       where: { id: input.branchId, deletedAt: null },
       select: { id: true, organizationId: true },
     }),
-    prisma.restaurantMealContractMember.findUnique({
-      where: { accessToken: input.accessToken },
-      include: { contract: true },
+    prisma.restaurantMealContract.findUnique({
+      where: { id: input.contractId },
     }),
   ]);
   if (
@@ -224,80 +163,19 @@ async function authenticateMember(input: {
     throw knownError(403, "Энэ салбарт хандах эрхгүй");
   }
   if (
-    !member ||
-    !member.isActive ||
-    member.contract.organizationId !== branch.organizationId ||
-    !isRestaurantMealContractActive(member.contract)
+    !contract ||
+    contract.organizationId !== branch.organizationId ||
+    !isRestaurantMealContractActive(contract)
   ) {
-    throw knownError(403, "Гэрээ эсвэл ажилтны эрх идэвхгүй байна");
+    throw knownError(403, "Гэрээт байгууллагын эрх идэвхгүй байна");
   }
-  if (!(await bcrypt.compare(input.pin, member.pinHash))) {
+  if (!contract.pinHash) {
+    throw knownError(409, "Энэ байгууллагын 4 оронтой PIN тохируулаагүй байна");
+  }
+  if (!(await bcrypt.compare(input.pin, contract.pinHash))) {
     throw knownError(403, "PIN код буруу байна");
   }
-  return { branch, member };
-}
-
-async function getMemberUsage(
-  client: Prisma.TransactionClient | typeof prisma,
-  memberId: string,
-  now = new Date(),
-) {
-  const ranges = getUlaanbaatarMealUsageRanges(now);
-  const [daily, monthly] = await Promise.all([
-    client.restaurantMealCharge.aggregate({
-      where: {
-        memberId,
-        status: RestaurantMealChargeStatus.ACTIVE,
-        orderedAt: { gte: ranges.dayStart, lt: ranges.dayEnd },
-      },
-      _sum: { amount: true },
-    }),
-    client.restaurantMealCharge.aggregate({
-      where: {
-        memberId,
-        status: RestaurantMealChargeStatus.ACTIVE,
-        orderedAt: { gte: ranges.monthStart, lt: ranges.monthEnd },
-      },
-      _sum: { amount: true },
-    }),
-  ]);
-  return {
-    daily: Number(daily._sum.amount || 0),
-    monthly: Number(monthly._sum.amount || 0),
-  };
-}
-
-export function validateRestaurantMealLimits(input: {
-  dailyUsage: number;
-  monthlyUsage: number;
-  amount: number;
-  dailyLimit: number | null;
-  monthlyLimit: number | null;
-}) {
-  if (
-    input.dailyLimit !== null &&
-    roundMoney(input.dailyUsage + input.amount) > input.dailyLimit
-  ) {
-    throw knownError(
-      409,
-      `Өдрийн лимит хүрэлцэхгүй. Үлдэгдэл ${Math.max(
-        0,
-        input.dailyLimit - input.dailyUsage,
-      )}₮`,
-    );
-  }
-  if (
-    input.monthlyLimit !== null &&
-    roundMoney(input.monthlyUsage + input.amount) > input.monthlyLimit
-  ) {
-    throw knownError(
-      409,
-      `Сарын лимит хүрэлцэхгүй. Үлдэгдэл ${Math.max(
-        0,
-        input.monthlyLimit - input.monthlyUsage,
-      )}₮`,
-    );
-  }
+  return { branch, contract };
 }
 
 const generateKitchenTicketNumber = () => {
@@ -308,6 +186,54 @@ const generateKitchenTicketNumber = () => {
     .toUpperCase()}`;
   return `KT-${date}-${suffix}`;
 };
+
+router.get("/restaurant/contract-meals/options", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+    const branchId = String(req.query.branchId || "").trim();
+    const branch = await prisma.branch.findFirst({
+      where: { id: branchId, deletedAt: null },
+      select: { id: true, organizationId: true },
+    });
+    if (!branch || !canAccessPosOrganization(actor, branch.organizationId)) {
+      return res.status(403).json({ message: "Энэ салбарт хандах эрхгүй" });
+    }
+    const today = parseDateOnly(ulaanbaatarDateKey());
+    if (!today) {
+      return res.status(500).json({ message: "Огноо тооцоолж чадсангүй" });
+    }
+    const contracts = await prisma.restaurantMealContract.findMany({
+      where: {
+        organizationId: branch.organizationId,
+        status: RestaurantMealContractStatus.ACTIVE,
+        startDate: { lte: today },
+        endDate: { gte: today },
+        pinHash: { not: null },
+      },
+      orderBy: { customerOrganization: "asc" },
+      select: {
+        id: true,
+        customerOrganization: true,
+        customerRegisterNo: true,
+        endDate: true,
+      },
+    });
+    return res.json(
+      contracts.map((contract) => ({
+        id: contract.id,
+        customerOrganization: contract.customerOrganization,
+        customerRegisterNo: contract.customerRegisterNo,
+        endDate: dateOnlyKey(contract.endDate),
+      })),
+    );
+  } catch (error) {
+    console.error("list restaurant meal contract options error", error);
+    return res
+      .status(500)
+      .json({ message: "Гэрээт байгууллагын сонголт авахад алдаа гарлаа" });
+  }
+});
 
 router.get("/restaurant/contract-meals/contracts", async (req, res) => {
   try {
@@ -350,10 +276,16 @@ router.post("/restaurant/contract-meals/contracts", async (req, res) => {
       normalizeText(req.body?.customerRegisterNo, 20) || null;
     const startDate = parseDateOnly(req.body?.startDate);
     const endDate = parseDateOnly(req.body?.endDate);
-    if (!customerOrganization || !startDate || !endDate) {
+    const pin = String(req.body?.pin || "").trim();
+    if (
+      !customerOrganization ||
+      !startDate ||
+      !endDate ||
+      !isValidRestaurantMealContractPin(pin)
+    ) {
       return res.status(400).json({
         message:
-          "Байгууллагын нэр, гэрээний эхлэх болон дуусах огноо шаардлагатай",
+          "Байгууллагын нэр, гэрээний огноо болон 4 оронтой PIN шаардлагатай",
       });
     }
     if (endDate < startDate) {
@@ -369,6 +301,7 @@ router.post("/restaurant/contract-meals/contracts", async (req, res) => {
         customerRegisterNo,
         startDate,
         endDate,
+        pinHash: await bcrypt.hash(pin, 10),
         note: normalizeText(req.body?.note, 500) || null,
         createdById: actor.id,
       },
@@ -422,6 +355,11 @@ router.patch("/restaurant/contract-meals/contracts/:id", async (req, res) => {
     if (!customerOrganization) {
       return res.status(400).json({ message: "Байгууллагын нэр шаардлагатай" });
     }
+    const pin =
+      req.body?.pin === undefined ? null : String(req.body.pin).trim();
+    if (pin !== null && !isValidRestaurantMealContractPin(pin)) {
+      return res.status(400).json({ message: "PIN яг 4 оронтой тоо байна" });
+    }
     const updated = await prisma.restaurantMealContract.update({
       where: { id: current.id },
       data: {
@@ -437,6 +375,7 @@ router.patch("/restaurant/contract-meals/contracts/:id", async (req, res) => {
           req.body?.note === undefined
             ? current.note
             : normalizeText(req.body.note, 500) || null,
+        ...(pin ? { pinHash: await bcrypt.hash(pin, 10) } : {}),
       },
       include: contractInclude,
     });
@@ -452,191 +391,39 @@ router.patch("/restaurant/contract-meals/contracts/:id", async (req, res) => {
   }
 });
 
-router.post(
-  "/restaurant/contract-meals/contracts/:id/members",
-  async (req, res) => {
-    try {
-      const actor = await requirePosUser(req, res);
-      if (!actor) return;
-      const contractId = String(req.params.id || "").trim();
-      await getAccessibleContract(actor, contractId);
-      const employeeCode = normalizeText(
-        req.body?.employeeCode,
-        64,
-      ).toUpperCase();
-      const fullName = normalizeText(req.body?.fullName, 160);
-      const department = normalizeText(req.body?.department, 120) || null;
-      const pin = String(req.body?.pin || "").trim();
-      if (!employeeCode || !fullName || !/^\d{4,8}$/.test(pin)) {
-        return res.status(400).json({
-          message: "Ажилтны код, нэр болон 4-8 оронтой PIN шаардлагатай",
-        });
-      }
-      const member = await prisma.restaurantMealContractMember.create({
-        data: {
-          contractId,
-          employeeCode,
-          fullName,
-          department,
-          accessToken: crypto.randomBytes(24).toString("base64url"),
-          pinHash: await bcrypt.hash(pin, 10),
-          dailyLimit: parseOptionalLimit(req.body?.dailyLimit, "Өдрийн лимит"),
-          monthlyLimit: parseOptionalLimit(
-            req.body?.monthlyLimit,
-            "Сарын лимит",
-          ),
-        },
-      });
-      return res.status(201).json(mapMember(member));
-    } catch (error) {
-      const known = error as KnownError;
-      if (known.status)
-        return res.status(known.status).json({ message: known.message });
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === "P2002"
-      ) {
-        return res
-          .status(409)
-          .json({ message: "Энэ ажилтны код аль хэдийн бүртгэлтэй байна" });
-      }
-      console.error("create restaurant meal member error", error);
-      return res
-        .status(500)
-        .json({ message: "Гэрээт ажилтан нэмэхэд алдаа гарлаа" });
-    }
-  },
-);
-
-router.patch("/restaurant/contract-meals/members/:id", async (req, res) => {
-  try {
-    const actor = await requirePosUser(req, res);
-    if (!actor) return;
-    const memberId = String(req.params.id || "").trim();
-    const current = await prisma.restaurantMealContractMember.findUnique({
-      where: { id: memberId },
-      include: { contract: true },
-    });
-    if (!current)
-      return res.status(404).json({ message: "Гэрээт ажилтан олдсонгүй" });
-    if (!canAccessPosOrganization(actor, current.contract.organizationId)) {
-      return res
-        .status(403)
-        .json({ message: "Энэ ажилтны мэдээллийг засах эрхгүй" });
-    }
-    const employeeCode =
-      req.body?.employeeCode === undefined
-        ? current.employeeCode
-        : normalizeText(req.body.employeeCode, 64).toUpperCase();
-    const fullName =
-      req.body?.fullName === undefined
-        ? current.fullName
-        : normalizeText(req.body.fullName, 160);
-    if (!employeeCode || !fullName) {
-      return res
-        .status(400)
-        .json({ message: "Ажилтны код болон нэр шаардлагатай" });
-    }
-    const pin =
-      req.body?.pin === undefined ? null : String(req.body.pin).trim();
-    if (pin !== null && !/^\d{4,8}$/.test(pin)) {
-      return res.status(400).json({ message: "PIN 4-8 оронтой тоо байна" });
-    }
-    const updated = await prisma.restaurantMealContractMember.update({
-      where: { id: current.id },
-      data: {
-        employeeCode,
-        fullName,
-        department:
-          req.body?.department === undefined
-            ? current.department
-            : normalizeText(req.body.department, 120) || null,
-        isActive:
-          req.body?.isActive === undefined
-            ? current.isActive
-            : Boolean(req.body.isActive),
-        dailyLimit:
-          req.body?.dailyLimit === undefined
-            ? current.dailyLimit
-            : parseOptionalLimit(req.body.dailyLimit, "Өдрийн лимит"),
-        monthlyLimit:
-          req.body?.monthlyLimit === undefined
-            ? current.monthlyLimit
-            : parseOptionalLimit(req.body.monthlyLimit, "Сарын лимит"),
-        ...(pin ? { pinHash: await bcrypt.hash(pin, 10) } : {}),
-        ...(req.body?.resetQr === true
-          ? { accessToken: crypto.randomBytes(24).toString("base64url") }
-          : {}),
-      },
-    });
-    return res.json(mapMember(updated));
-  } catch (error) {
-    const known = error as KnownError;
-    if (known.status)
-      return res.status(known.status).json({ message: known.message });
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === "P2002"
-    ) {
-      return res
-        .status(409)
-        .json({ message: "Энэ ажилтны код аль хэдийн бүртгэлтэй байна" });
-    }
-    console.error("update restaurant meal member error", error);
-    return res
-      .status(500)
-      .json({ message: "Гэрээт ажилтан шинэчлэхэд алдаа гарлаа" });
-  }
-});
-
 router.post("/restaurant/contract-meals/verify", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
     if (!actor) return;
-    const accessToken = normalizeRestaurantMealAccessToken(
-      req.body?.accessToken,
-    );
+    const contractId = String(req.body?.contractId || "").trim();
     const pin = String(req.body?.pin || "").trim();
     const branchId = String(req.body?.branchId || "").trim();
-    const { member } = await authenticateMember({
+    const { contract } = await authenticateContract({
       actor,
       branchId,
-      accessToken,
+      contractId,
       pin,
     });
-    const usage = await getMemberUsage(prisma, member.id);
     return res.json({
-      member: {
-        id: member.id,
-        employeeCode: member.employeeCode,
-        fullName: member.fullName,
-        department: member.department,
-        dailyLimit:
-          member.dailyLimit == null ? null : Number(member.dailyLimit),
-        monthlyLimit:
-          member.monthlyLimit == null ? null : Number(member.monthlyLimit),
-      },
       contract: {
-        id: member.contract.id,
-        customerOrganization: member.contract.customerOrganization,
-        endDate: dateOnlyKey(member.contract.endDate),
+        id: contract.id,
+        customerOrganization: contract.customerOrganization,
+        endDate: dateOnlyKey(contract.endDate),
       },
-      usage,
     });
   } catch (error) {
     const known = error as KnownError;
     if (known.status)
       return res.status(known.status).json({ message: known.message });
-    console.error("verify restaurant meal member error", error);
+    console.error("verify restaurant meal contract error", error);
     return res
       .status(500)
-      .json({ message: "Ажилтны эрх шалгахад алдаа гарлаа" });
+      .json({ message: "Гэрээт байгууллагын PIN шалгахад алдаа гарлаа" });
   }
 });
 
 const checkoutInclude = {
   contract: { select: { customerOrganization: true } },
-  member: { select: { fullName: true, employeeCode: true } },
   restaurantTicket: { select: { ticketNo: true } },
 } satisfies Prisma.RestaurantMealChargeInclude;
 
@@ -652,8 +439,6 @@ const mapCheckoutCharge = (charge: CheckoutCharge) => ({
   packagingFee: Number(charge.packagingFee),
   orderedAt: charge.orderedAt.toISOString(),
   companyName: charge.companyNameSnapshot,
-  employeeCode: charge.employeeCodeSnapshot,
-  employeeName: charge.employeeNameSnapshot,
 });
 
 router.post("/restaurant/contract-meals/checkout", async (req, res) => {
@@ -665,9 +450,7 @@ router.post("/restaurant/contract-meals/checkout", async (req, res) => {
     const ticketId = String(req.body?.ticketId || "").trim();
     const clientRequestId =
       normalizeText(req.body?.clientRequestId, 120) || null;
-    const accessToken = normalizeRestaurantMealAccessToken(
-      req.body?.accessToken,
-    );
+    const contractId = String(req.body?.contractId || "").trim();
     const pin = String(req.body?.pin || "").trim();
     if (!branchId || !shiftId || !ticketId) {
       return res
@@ -675,10 +458,10 @@ router.post("/restaurant/contract-meals/checkout", async (req, res) => {
         .json({ message: "branchId, shiftId болон ticketId шаардлагатай" });
     }
 
-    const authenticated = await authenticateMember({
+    const authenticated = await authenticateContract({
       actor,
       branchId,
-      accessToken,
+      contractId,
       pin,
     });
 
@@ -690,7 +473,7 @@ router.post("/restaurant/contract-meals/checkout", async (req, res) => {
       if (existing) {
         if (
           existing.organizationId !== authenticated.branch.organizationId ||
-          existing.memberId !== authenticated.member.id
+          existing.contractId !== authenticated.contract.id
         ) {
           return res.status(409).json({
             message: "clientRequestId өөр захиалгад ашиглагдсан байна",
@@ -703,8 +486,8 @@ router.post("/restaurant/contract-meals/checkout", async (req, res) => {
     const charge = await prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`
-          SELECT "id" FROM "RestaurantMealContractMember"
-          WHERE "id" = ${authenticated.member.id} FOR UPDATE
+          SELECT "id" FROM "RestaurantMealContract"
+          WHERE "id" = ${authenticated.contract.id} FOR UPDATE
         `;
         await tx.$queryRaw`
           SELECT "id" FROM "RestaurantTicket"
@@ -718,20 +501,19 @@ router.post("/restaurant/contract-meals/checkout", async (req, res) => {
         if (existing) {
           if (
             existing.organizationId !== authenticated.branch.organizationId ||
-            existing.memberId !== authenticated.member.id
+            existing.contractId !== authenticated.contract.id
           ) {
             throw knownError(
               409,
-              "Энэ ticket өөр гэрээт ажилтанд бүртгэгдсэн байна",
+              "Энэ ticket өөр гэрээт байгууллагад бүртгэгдсэн байна",
             );
           }
           return existing;
         }
 
-        const [member, shift, ticket] = await Promise.all([
-          tx.restaurantMealContractMember.findUnique({
-            where: { id: authenticated.member.id },
-            include: { contract: true },
+        const [contract, shift, ticket] = await Promise.all([
+          tx.restaurantMealContract.findUnique({
+            where: { id: authenticated.contract.id },
           }),
           tx.posShift.findUnique({
             where: { id: shiftId },
@@ -762,15 +544,17 @@ router.post("/restaurant/contract-meals/checkout", async (req, res) => {
           }),
         ]);
 
-        if (
-          !member ||
-          !member.isActive ||
-          !isRestaurantMealContractActive(member.contract)
-        ) {
+        if (!contract || !isRestaurantMealContractActive(contract)) {
           throw knownError(
             403,
-            "Гэрээ эсвэл ажилтны эрх идэвхгүй болсон байна",
+            "Гэрээт байгууллагын эрх идэвхгүй болсон байна",
           );
+        }
+        if (
+          !contract.pinHash ||
+          !(await bcrypt.compare(pin, contract.pinHash))
+        ) {
+          throw knownError(403, "Байгууллагын PIN өөрчлөгдсөн байна");
         }
         if (
           !shift ||
@@ -817,19 +601,6 @@ router.post("/restaurant/contract-meals/checkout", async (req, res) => {
         );
         if (amount <= 0) throw knownError(400, "Захиалгын дүн буруу байна");
 
-        const usage = await getMemberUsage(tx, member.id);
-        const dailyLimit =
-          member.dailyLimit == null ? null : Number(member.dailyLimit);
-        const monthlyLimit =
-          member.monthlyLimit == null ? null : Number(member.monthlyLimit);
-        validateRestaurantMealLimits({
-          dailyUsage: usage.daily,
-          monthlyUsage: usage.monthly,
-          amount,
-          dailyLimit,
-          monthlyLimit,
-        });
-
         const unsentItems = ticket.items
           .map((item) => ({ item, qty: item.qty - item.sentQty }))
           .filter(({ qty }) => qty > 0);
@@ -857,7 +628,7 @@ router.post("/restaurant/contract-meals/checkout", async (req, res) => {
             branchId,
             change: -qty,
             reason: InventoryReason.ORDER,
-            note: `Гэрээт хоол · ${member.contract.customerOrganization}`,
+            note: `Гэрээт хоол · ${contract.customerOrganization}`,
             createdById: actor.id,
             referenceId: chargeId,
             referenceType: "POS_SALE",
@@ -909,16 +680,16 @@ router.post("/restaurant/contract-meals/checkout", async (req, res) => {
           data: {
             id: chargeId,
             organizationId: authenticated.branch.organizationId,
-            contractId: member.contractId,
-            memberId: member.id,
+            contractId: contract.id,
+            memberId: null,
             branchId,
             shiftId,
             cashierId: actor.id,
             restaurantTicketId: ticket.id,
             clientRequestId,
-            companyNameSnapshot: member.contract.customerOrganization,
-            employeeCodeSnapshot: member.employeeCode,
-            employeeNameSnapshot: member.fullName,
+            companyNameSnapshot: contract.customerOrganization,
+            employeeCodeSnapshot: null,
+            employeeNameSnapshot: null,
             amount,
             packagingFee,
             note: normalizeText(req.body?.note, 500) || null,
@@ -926,20 +697,14 @@ router.post("/restaurant/contract-meals/checkout", async (req, res) => {
           include: checkoutInclude,
         });
         const now = new Date();
-        await Promise.all([
-          tx.restaurantMealContractMember.update({
-            where: { id: member.id },
-            data: { lastUsedAt: now },
-          }),
-          tx.restaurantTicket.update({
-            where: { id: ticket.id },
-            data: {
-              status: RestaurantTicketStatus.CLOSED,
-              sentAt: ticket.sentAt || now,
-              closedAt: now,
-            },
-          }),
-        ]);
+        await tx.restaurantTicket.update({
+          where: { id: ticket.id },
+          data: {
+            status: RestaurantTicketStatus.CLOSED,
+            sentAt: ticket.sentAt || now,
+            closedAt: now,
+          },
+        });
         return created;
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
@@ -1040,19 +805,6 @@ router.get("/restaurant/contract-meals/report", async (req, res) => {
         total: number;
       }
     >();
-    const employeeTotals = new Map<
-      string,
-      {
-        contractId: string;
-        memberId: string;
-        companyName: string;
-        employeeCode: string;
-        employeeName: string;
-        orderCount: number;
-        total: number;
-      }
-    >();
-
     for (const charge of charges) {
       const amount = Number(charge.amount);
       const company = companyTotals.get(charge.contractId);
@@ -1064,22 +816,6 @@ router.get("/restaurant/contract-meals/report", async (req, res) => {
           contractId: charge.contractId,
           companyName: charge.companyNameSnapshot,
           registerNo: charge.contract.customerRegisterNo,
-          orderCount: 1,
-          total: amount,
-        });
-      }
-      const employeeKey = `${charge.contractId}:${charge.memberId}`;
-      const employee = employeeTotals.get(employeeKey);
-      if (employee) {
-        employee.orderCount += 1;
-        employee.total = roundMoney(employee.total + amount);
-      } else {
-        employeeTotals.set(employeeKey, {
-          contractId: charge.contractId,
-          memberId: charge.memberId,
-          companyName: charge.companyNameSnapshot,
-          employeeCode: charge.employeeCodeSnapshot,
-          employeeName: charge.employeeNameSnapshot,
           orderCount: 1,
           total: amount,
         });
@@ -1096,17 +832,11 @@ router.get("/restaurant/contract-meals/report", async (req, res) => {
       companies: [...companyTotals.values()].sort((a, b) =>
         a.companyName.localeCompare(b.companyName, "mn"),
       ),
-      employees: [...employeeTotals.values()].sort((a, b) =>
-        a.employeeName.localeCompare(b.employeeName, "mn"),
-      ),
       charges: charges.map((charge) => ({
         id: charge.id,
         contractId: charge.contractId,
-        memberId: charge.memberId,
         companyName: charge.companyNameSnapshot,
         registerNo: charge.contract.customerRegisterNo,
-        employeeCode: charge.employeeCodeSnapshot,
-        employeeName: charge.employeeNameSnapshot,
         branchId: charge.branch.id,
         branchName: charge.branch.name,
         ticketNo: charge.restaurantTicket.ticketNo,

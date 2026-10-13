@@ -2,24 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { RestaurantMealContractStatus } from "@mgl/database";
 import {
-  getUlaanbaatarMealUsageRanges,
+  isValidRestaurantMealContractPin,
   isRestaurantMealContractActive,
-  normalizeRestaurantMealAccessToken,
   ulaanbaatarDateKey,
-  validateRestaurantMealLimits,
 } from "./contract-meals.routes";
 
-test("contract meal QR accepts the printed prefix and URL token", () => {
-  assert.equal(
-    normalizeRestaurantMealAccessToken("MGLMEAL:employee-token"),
-    "employee-token",
-  );
-  assert.equal(
-    normalizeRestaurantMealAccessToken(
-      "https://example.test/kiosk?mealToken=url-token",
-    ),
-    "url-token",
-  );
+test("contract meal PIN must contain exactly four digits", () => {
+  assert.equal(isValidRestaurantMealContractPin("1234"), true);
+  assert.equal(isValidRestaurantMealContractPin(" 1234 "), true);
+  assert.equal(isValidRestaurantMealContractPin("123"), false);
+  assert.equal(isValidRestaurantMealContractPin("12345"), false);
+  assert.equal(isValidRestaurantMealContractPin("12a4"), false);
 });
 
 test("contract date eligibility is inclusive in Ulaanbaatar", () => {
@@ -46,40 +39,5 @@ test("contract date eligibility is inclusive in Ulaanbaatar", () => {
       now,
     ),
     false,
-  );
-});
-
-test("meal usage ranges follow the Ulaanbaatar calendar", () => {
-  const ranges = getUlaanbaatarMealUsageRanges(
-    new Date("2026-10-13T16:30:00.000Z"),
-  );
-  assert.equal(ranges.dayStart.toISOString(), "2026-10-13T16:00:00.000Z");
-  assert.equal(ranges.dayEnd.toISOString(), "2026-10-14T16:00:00.000Z");
-  assert.equal(ranges.monthStart.toISOString(), "2026-09-30T16:00:00.000Z");
-  assert.equal(ranges.monthEnd.toISOString(), "2026-10-31T16:00:00.000Z");
-});
-
-test("meal limits allow an exact balance and reject an overage", () => {
-  assert.doesNotThrow(() =>
-    validateRestaurantMealLimits({
-      dailyUsage: 12_000,
-      monthlyUsage: 82_000,
-      amount: 8_000,
-      dailyLimit: 20_000,
-      monthlyLimit: 90_000,
-    }),
-  );
-  assert.throws(
-    () =>
-      validateRestaurantMealLimits({
-        dailyUsage: 12_000,
-        monthlyUsage: 82_000,
-        amount: 8_001,
-        dailyLimit: 20_000,
-        monthlyLimit: 90_000,
-      }),
-    (error: unknown) =>
-      error instanceof Error &&
-      (error as Error & { status?: number }).status === 409,
   );
 });

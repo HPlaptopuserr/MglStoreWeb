@@ -3227,6 +3227,7 @@ model RestaurantMealContract {
   endDate              DateTime                       @db.Date
   status               RestaurantMealContractStatus   @default(ACTIVE)
   note                 String?
+  pinHash              String?
   createdById          String
   createdAt            DateTime                       @default(now())
   updatedAt            DateTime                       @updatedAt
@@ -3267,15 +3268,15 @@ model RestaurantMealCharge {
   id                   String                       @id @default(uuid())
   organizationId       String
   contractId           String
-  memberId             String
+  memberId             String?
   branchId             String
   shiftId              String
   cashierId            String
   restaurantTicketId   String                       @unique
   clientRequestId      String?                      @unique
   companyNameSnapshot  String
-  employeeCodeSnapshot String
-  employeeNameSnapshot String
+  employeeCodeSnapshot String?
+  employeeNameSnapshot String?
   amount               Decimal                      @db.Decimal(18, 2)
   packagingFee         Decimal                      @default(0) @db.Decimal(18, 2)
   status               RestaurantMealChargeStatus   @default(ACTIVE)
@@ -3287,7 +3288,7 @@ model RestaurantMealCharge {
   updatedAt            DateTime                     @updatedAt
   organization         Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   contract             RestaurantMealContract       @relation(fields: [contractId], references: [id])
-  member               RestaurantMealContractMember @relation(fields: [memberId], references: [id])
+  member               RestaurantMealContractMember? @relation(fields: [memberId], references: [id])
   branch               Branch                       @relation(fields: [branchId], references: [id])
   shift                PosShift                     @relation(fields: [shiftId], references: [id])
   cashier              User                         @relation("RestaurantMealChargeCashier", fields: [cashierId], references: [id])

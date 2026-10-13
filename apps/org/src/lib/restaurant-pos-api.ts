@@ -193,22 +193,6 @@ export type RestaurantTicket = {
   }>;
 };
 
-export type RestaurantMealContractMember = {
-  id: string;
-  contractId: string;
-  employeeCode: string;
-  fullName: string;
-  department: string | null;
-  accessToken: string;
-  qrPayload: string;
-  dailyLimit: number | null;
-  monthlyLimit: number | null;
-  isActive: boolean;
-  lastUsedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
 export type RestaurantMealContract = {
   id: string;
   organizationId: string;
@@ -218,30 +202,25 @@ export type RestaurantMealContract = {
   endDate: string;
   status: "ACTIVE" | "INACTIVE";
   activeNow: boolean;
+  pinConfigured: boolean;
   note: string | null;
   chargeCount: number;
-  members: RestaurantMealContractMember[];
   createdAt: string;
   updatedAt: string;
 };
 
+export type RestaurantMealContractOption = {
+  id: string;
+  customerOrganization: string;
+  customerRegisterNo: string | null;
+  endDate: string;
+};
+
 export type RestaurantMealVerification = {
-  member: {
-    id: string;
-    employeeCode: string;
-    fullName: string;
-    department: string | null;
-    dailyLimit: number | null;
-    monthlyLimit: number | null;
-  };
   contract: {
     id: string;
     customerOrganization: string;
     endDate: string;
-  };
-  usage: {
-    daily: number;
-    monthly: number;
   };
 };
 
@@ -253,8 +232,6 @@ export type RestaurantMealCheckoutResult = {
   packagingFee: number;
   orderedAt: string;
   companyName: string;
-  employeeCode: string;
-  employeeName: string;
 };
 
 export type RestaurantMealReport = {
@@ -269,23 +246,11 @@ export type RestaurantMealReport = {
     orderCount: number;
     total: number;
   }>;
-  employees: Array<{
-    contractId: string;
-    memberId: string;
-    companyName: string;
-    employeeCode: string;
-    employeeName: string;
-    orderCount: number;
-    total: number;
-  }>;
   charges: Array<{
     id: string;
     contractId: string;
-    memberId: string;
     companyName: string;
     registerNo: string | null;
-    employeeCode: string;
-    employeeName: string;
     branchId: string;
     branchName: string;
     ticketNo: string;
@@ -614,8 +579,7 @@ export async function getRestaurantPosRegisters(
     await readApiResponse<RestaurantPosRegister[]>(response);
   if (preferredRegisters.length > 0) return preferredRegisters;
 
-  const compatibleMode =
-    mode === "RESTAURANT" ? "SELF_SERVICE" : "RESTAURANT";
+  const compatibleMode = mode === "RESTAURANT" ? "SELF_SERVICE" : "RESTAURANT";
   const compatibleResponse = await authFetch(
     `${API}/pos/registers/mine?mode=${compatibleMode}`,
     { cache: "no-store" },
@@ -1084,12 +1048,22 @@ export async function getRestaurantMealContracts(organizationId: string) {
   return readApiResponse<RestaurantMealContract[]>(response);
 }
 
+export async function getRestaurantMealContractOptions(branchId: string) {
+  const params = new URLSearchParams({ branchId });
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/options?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantMealContractOption[]>(response);
+}
+
 export async function createRestaurantMealContract(input: {
   organizationId: string;
   customerOrganization: string;
   customerRegisterNo?: string;
   startDate: string;
   endDate: string;
+  pin: string;
   note?: string;
 }) {
   const response = await authFetch(
@@ -1109,6 +1083,7 @@ export async function updateRestaurantMealContract(input: {
   startDate?: string;
   endDate?: string;
   status?: "ACTIVE" | "INACTIVE";
+  pin?: string;
   note?: string | null;
 }) {
   const { id, ...body } = input;
@@ -1122,51 +1097,9 @@ export async function updateRestaurantMealContract(input: {
   return readApiResponse<RestaurantMealContract>(response);
 }
 
-export async function createRestaurantMealContractMember(input: {
-  contractId: string;
-  employeeCode: string;
-  fullName: string;
-  department?: string;
-  pin: string;
-  dailyLimit?: number | null;
-  monthlyLimit?: number | null;
-}) {
-  const { contractId, ...body } = input;
-  const response = await authFetch(
-    `${API}/restaurant/contract-meals/contracts/${encodeURIComponent(contractId)}/members`,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-  );
-  return readApiResponse<RestaurantMealContractMember>(response);
-}
-
-export async function updateRestaurantMealContractMember(input: {
-  id: string;
-  employeeCode?: string;
-  fullName?: string;
-  department?: string | null;
-  pin?: string;
-  dailyLimit?: number | null;
-  monthlyLimit?: number | null;
-  isActive?: boolean;
-  resetQr?: boolean;
-}) {
-  const { id, ...body } = input;
-  const response = await authFetch(
-    `${API}/restaurant/contract-meals/members/${encodeURIComponent(id)}`,
-    {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    },
-  );
-  return readApiResponse<RestaurantMealContractMember>(response);
-}
-
-export async function verifyRestaurantMealMember(input: {
+export async function verifyRestaurantMealContract(input: {
   branchId: string;
-  accessToken: string;
+  contractId: string;
   pin: string;
 }) {
   const response = await authFetch(`${API}/restaurant/contract-meals/verify`, {
@@ -1181,7 +1114,7 @@ export async function checkoutRestaurantContractMeal(input: {
   shiftId: string;
   ticketId: string;
   clientRequestId: string;
-  accessToken: string;
+  contractId: string;
   pin: string;
   note?: string;
 }) {
