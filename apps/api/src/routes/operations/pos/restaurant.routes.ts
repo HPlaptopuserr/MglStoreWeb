@@ -37,6 +37,7 @@ import {
   parseRestaurantDiscountTime,
   RESTAURANT_DISCOUNT_TIME_ZONE,
 } from "./restaurant-discount";
+import { canUsePosRegisterForMode } from "./pos-register-mode";
 
 const router: ExpressRouter = Router();
 
@@ -2779,7 +2780,11 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
         if (
           !isSelfService &&
           (activeShift.mode !== "RESTAURANT" ||
-            activeShift.register?.mode !== "RESTAURANT")
+            !activeShift.register ||
+            !canUsePosRegisterForMode(
+              activeShift.register.mode,
+              "RESTAURANT",
+            ))
         ) {
           throw Object.assign(
             new Error(
