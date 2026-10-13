@@ -1,4 +1,9 @@
 "use client";
+import {
+  findReceiptProduct,
+  resolveReceiptItem,
+  type ReceiptProductIdentity,
+} from "@/features/receive/resolve-receipt-product";
 import { nextNum, skuPrefix } from "@/lib/sku";
 import { useWarehouseReceiptDraft } from "@/features/receive/useWarehouseReceiptDraft";
 import { classifyReceiptSearch } from "@/features/receive/receipt-product-search";
@@ -426,51 +431,75 @@ export default function ReceivePage() {
         }
         for (let index = 0; index < resolvedItems.length; index++) {
           const item = resolvedItems[index];
-          if (!item.draftProduct) continue;
-          let productSku = item.sku?.trim();
-          if (!productSku) {
-            const prefix = skuPrefix(item.name, organizationName);
-            const lookup = await wmsFetch(
-              `${API}/warehouses/${encodeURIComponent(selectedWarehouseId)}/sku-lookup?prefix=${encodeURIComponent(prefix)}`,
+          const draftProduct = item.draftProduct;
+          if (!draftProduct) continue;
+          const endpoint = `${API}/warehouses/${encodeURIComponent(selectedWarehouseId)}/products`;
+          const createProduct = async (): Promise<ReceiptProductIdentity> => {
+            let productSku = item.sku?.trim();
+            if (!productSku) {
+              const prefix = skuPrefix(item.name, organizationName);
+              const lookup = await wmsFetch(
+                `${API}/warehouses/${encodeURIComponent(selectedWarehouseId)}/sku-lookup?prefix=${encodeURIComponent(prefix)}`,
+              );
+              if (!lookup.ok)
+                throw new Error("SKU үүсгэж чадсангүй. Дахин оролдоно уу.");
+              const existingSkus: { sku: string | null }[] =
+                await lookup.json();
+              productSku = `${prefix}-${nextNum(existingSkus)}`;
+            }
+            const response = await wmsFetch(
+              `${API}/warehouses/${encodeURIComponent(selectedWarehouseId)}/products`,
+              {
+                method: "POST",
+                body: JSON.stringify({
+                  name: item.name.trim(),
+                  sku: productSku,
+                  barcode: draftProduct.barcode || null,
+                  masterProductId: draftProduct.masterProductId,
+                  description: draftProduct.description,
+                  businessCategoryId: draftProduct.businessCategoryId,
+                  images: draftProduct.imageUrl
+                    ? [draftProduct.imageUrl]
+                    : [],
+                  price: Number(draftProduct.price),
+                  costPrice: item.cost,
+                  quantity: 0,
+                  unit: item.unit?.trim() || "pcs",
+                }),
+              },
             );
-            if (!lookup.ok) throw new Error("SKU үүсгэж чадсангүй. Дахин оролдоно уу.");
-            const existingSkus: { sku: string | null }[] = await lookup.json();
-            productSku = `${prefix}-${nextNum(existingSkus)}`;
+            const created =
+              (await response.json()) as ReceiptProductIdentity & {
+                message?: string;
+              };
+            if (!response.ok) {
+              // A concurrent registration or a lost response may have created it.
+              const existing =
+                response.status === 409
+                  ? await findReceiptProduct(endpoint, item, wmsFetch)
+                  : null;
+              if (!existing)
+                throw new Error(
+                  `“${item.name}”: ${created.message || "Шинэ бараа хадгалагдсангүй."}`,
+                );
+              return existing;
+            }
+            return created;
+          };
+          const product =
+            (await findReceiptProduct(endpoint, item, wmsFetch)) ??
+            (await createProduct());
+          if (
+            resolvedItems.some(
+              (entry, otherIndex) =>
+                otherIndex !== index && entry.productId === product.id,
+            )
+          ) {
+            throw new Error(
+              `“${product.name}” бараа баримтад аль хэдийн байна. Давхардсан шинэ мөрийг хасаад тухайн барааны тоог засна уу.`,
+            );
           }
-          const response = await wmsFetch(
-            `${API}/warehouses/${encodeURIComponent(selectedWarehouseId)}/products`,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                name: item.name.trim(),
-                sku: productSku,
-                barcode: item.draftProduct.barcode || null,
-                masterProductId: item.draftProduct.masterProductId,
-                description: item.draftProduct.description,
-                businessCategoryId: item.draftProduct.businessCategoryId,
-                images: item.draftProduct.imageUrl
-                  ? [item.draftProduct.imageUrl]
-                  : [],
-                price: Number(item.draftProduct.price),
-                costPrice: item.cost,
-                quantity: 0,
-                unit: item.unit?.trim() || "pcs",
-              }),
-            },
-          );
-          const product = (await response.json()) as {
-            id: string;
-            sku: string;
-            message?: string;
-          };
-          if (!response.ok)
-            throw new Error(product.message || "Шинэ бараа хадгалагдсангүй.");
-          const resolved = {
-            ...item,
-            productId: product.id,
-            sku: product.sku,
-            draftProduct: undefined,
-          };
+          const resolved = resolveReceiptItem(item, product);
           resolvedItems[index] = resolved;
           setItems((current) =>
             current.map((entry) =>
