@@ -114,6 +114,7 @@ import {
   loadQPayCheckoutRecovery,
   saveQPayCheckoutRecovery,
 } from "@/features/pos/utils/qpay-checkout-recovery";
+import { canClearCheckoutAfterCancelFailure } from "@/features/pos/utils/qpay-cancel-policy";
 import { printThermalDocument } from "@/features/pos/utils/print-thermal-document";
 import { API, authFetch } from "@/lib/api";
 import { RegisterShiftConflict } from "@/features/pos/components/RegisterShiftConflict";
@@ -2751,6 +2752,9 @@ export default function PosDemoPage() {
         await cancelQPayInvoice(invoiceId);
       }
     } catch (error) {
+      const recheckedStatuses: string[] = [];
+      let recheckFailed = false;
+
       for (const invoiceId of pendingQpayIds) {
         try {
           const invoice = await getQPayInvoiceStatus(invoiceId);
@@ -2771,18 +2775,25 @@ export default function PosDemoPage() {
             showSuccessOverlay("QR төлбөр хүлээн авлаа");
             return;
           }
+
+          recheckedStatuses.push(invoice.status);
         } catch {
-          // Keep the checkout when provider confirmation is unavailable.
+          recheckFailed = true;
         }
       }
 
-      setScanStatus("not-found");
-      setScanMessage(
-        error instanceof Error
-          ? `${error.message} Төлбөрийн мэдээлэл болон сагсыг аюулгүй байдлын үүднээс хэвээр үлдээлээ.`
-          : "QR төлөвийг баталгаажуулж чадсангүй. Төлбөрийн мэдээлэл болон сагсыг хэвээр үлдээлээ.",
-      );
-      return;
+      if (
+        recheckFailed ||
+        !canClearCheckoutAfterCancelFailure(recheckedStatuses)
+      ) {
+        setScanStatus("not-found");
+        setScanMessage(
+          error instanceof Error
+            ? `${error.message} Төлбөрийн мэдээлэл болон сагсыг аюулгүй байдлын үүднээс хэвээр үлдээлээ.`
+            : "QR төлөвийг баталгаажуулж чадсангүй. Төлбөрийн мэдээлэл болон сагсыг хэвээр үлдээлээ.",
+        );
+        return;
+      }
     }
 
     clearProgressTicker();
