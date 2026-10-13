@@ -13,6 +13,7 @@ import {
 import { useStoreEmployees } from "./useStoreEmployees";
 import { summarizeEmployees, type StoreEmployee } from "./store-employee.model";
 import { AssignEmployeeDialog } from "./components/AssignEmployeeDialog";
+import { EmployeeRemoveDialog } from "./components/EmployeeRemoveDialog";
 import { EmployeeStatusDialog } from "./components/EmployeeStatusDialog";
 import { EmployeeAlert, EmployeeButton } from "./components/EmployeePrimitives";
 import { EmployeeDirectory } from "./components/EmployeeDirectory";
@@ -20,11 +21,11 @@ import { EmployeeOverview } from "./components/EmployeeOverview";
 
 type ActiveDialog =
   | { type: "assign" }
-  | { type: "status"; employee: StoreEmployee }
+  | { type: "status" | "remove"; employee: StoreEmployee }
   | null;
 
 export function StoreEmployees({ organizationId }: { organizationId: string }) {
-  const { employees, loading, error, reload, saveEmployee } =
+  const { employees, loading, error, reload, saveEmployee, removeEmployee } =
     useStoreEmployees(organizationId);
   const summary = useMemo(() => summarizeEmployees(employees), [employees]);
   const [dialog, setDialog] = useState<ActiveDialog>(null);
@@ -119,6 +120,7 @@ export function StoreEmployees({ organizationId }: { organizationId: string }) {
           employees={employees}
           summary={summary}
           loading={loading}
+          onRemove={(employee) => setDialog({ type: "remove", employee })}
           onStatusChange={(employee) => setDialog({ type: "status", employee })}
           onAdd={() => setDialog({ type: "assign" })}
         />
@@ -146,6 +148,19 @@ export function StoreEmployees({ organizationId }: { organizationId: string }) {
           organizationId={organizationId}
           onClose={() => setDialog(null)}
           onSuccess={saved}
+        />
+      )}
+      {dialog?.type === "remove" && (
+        <EmployeeRemoveDialog
+          employee={dialog.employee}
+          onClose={() => setDialog(null)}
+          onSuccess={(employee) => {
+            removeEmployee(employee.id);
+            setNotice(
+              `${employee.fullName || employee.email} — ажилтнаас хаслаа.`,
+            );
+            setDialog(null);
+          }}
         />
       )}
       {dialog?.type === "status" && (

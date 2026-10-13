@@ -22,6 +22,7 @@ export function EmployeeDirectory({
   summary,
   loading,
   onStatusChange,
+  onRemove,
   onAdd,
 }: {
   employees: StoreEmployee[];
@@ -29,6 +30,7 @@ export function EmployeeDirectory({
   loading: boolean;
   onStatusChange: (employee: StoreEmployee) => void;
   onAdd: () => void;
+  onRemove: (employee: StoreEmployee) => void;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<EmployeeFilter>("ALL");
@@ -143,6 +145,7 @@ export function EmployeeDirectory({
                 key={employee.id}
                 employee={employee}
                 onStatusChange={onStatusChange}
+                onRemove={onRemove}
               />
             ))}
           </ul>

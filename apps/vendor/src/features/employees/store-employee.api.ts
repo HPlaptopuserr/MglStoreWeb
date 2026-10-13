@@ -60,6 +60,22 @@ export const employeeApi = {
         assignment: "POS_CASHIER",
       }),
     }),
+  remove: (memberId: string) =>
+    employeeRequest(
+      `/${encodeURIComponent(memberId)}`,
+      (value) => {
+        if (
+          !value ||
+          typeof value !== "object" ||
+          !("success" in value) ||
+          value.success !== true
+        )
+          throw new Error(
+            "Ажилтныг хассан эсэхийг баталгаажуулж чадсангүй. Жагсаалтаа шинэчилнэ үү.",
+          );
+      },
+      { method: "DELETE" },
+    ),
   setStatus: (organizationId: string, memberId: string, isActive: boolean) =>
     employeeRequest(
       `/${encodeURIComponent(memberId)}/status`,

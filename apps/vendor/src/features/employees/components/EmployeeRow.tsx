@@ -10,8 +10,10 @@ import { EmployeeAvatar } from "./EmployeePrimitives";
 export function EmployeeRow({
   employee,
   onStatusChange,
+  onRemove,
 }: {
   employee: StoreEmployee;
+  onRemove: (employee: StoreEmployee) => void;
   onStatusChange: (employee: StoreEmployee) => void;
 }) {
   const isOwner = employee.role === "OWNER";
@@ -73,19 +75,29 @@ export function EmployeeRow({
             Үндсэн эрх
           </span>
         ) : (
-          <button
-            type="button"
-            aria-label={`${employee.fullName || employee.email}: ${employee.isActive ? "эрх түр хаах" : "эрх сэргээх"}`}
-            onClick={() => onStatusChange(employee)}
-            className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100"
-          >
-            {employee.isActive ? (
-              <Pause className="size-3.5" aria-hidden="true" />
-            ) : (
-              <Play className="size-3.5" aria-hidden="true" />
-            )}
-            {employee.isActive ? "Түр хаах" : "Сэргээх"}
-          </button>
+          <>
+            <button
+              type="button"
+              aria-label={`${employee.fullName || employee.email}: ${employee.isActive ? "эрх түр хаах" : "эрх сэргээх"}`}
+              onClick={() => onStatusChange(employee)}
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-100"
+            >
+              {employee.isActive ? (
+                <Pause className="size-3.5" aria-hidden="true" />
+              ) : (
+                <Play className="size-3.5" aria-hidden="true" />
+              )}
+              {employee.isActive ? "Түр хаах" : "Сэргээх"}
+            </button>
+            <button
+              type="button"
+              aria-label={`${employee.fullName || employee.email}: ажилтнаас хасах`}
+              onClick={() => onRemove(employee)}
+              className="inline-flex min-h-10 items-center rounded-lg px-3 text-xs font-medium text-rose-600 transition hover:bg-rose-50 focus-visible:outline-2 focus-visible:outline-rose-500"
+            >
+              Хасах
+            </button>
+          </>
         )}
       </div>
     </li>
