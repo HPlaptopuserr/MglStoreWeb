@@ -8,6 +8,7 @@ import {
   Clapperboard,
   ClipboardList,
   Coffee,
+  Handshake,
   Megaphone,
   MonitorSmartphone,
   Package,
@@ -90,6 +91,17 @@ export function getDashboardModules(
         icon: isCafe ? Coffee : ChefHat,
         enabled: true,
       },
+      ...(!isCafe
+        ? [
+            {
+              title: "Гэрээт байгууллагын хоол",
+              desc: "Гэрээт байгууллага, ажилтны QR эрх болон сарын хоолны тооцоог удирдана.",
+              href: "/dashboard/contract-meals",
+              icon: Handshake,
+              enabled: true,
+            },
+          ]
+        : []),
       {
         title: "Бүтээгдэхүүн",
         desc: isCafe

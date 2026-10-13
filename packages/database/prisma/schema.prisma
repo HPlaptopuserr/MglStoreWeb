@@ -89,6 +89,8 @@ model User {
   posLoyaltyTransactions           PosLoyaltyTransaction[]        @relation("PosLoyaltyCustomer")
   openedRestaurantTickets          RestaurantTicket[]             @relation("RestaurantTicketOpenedBy")
   sentKitchenTickets               KitchenTicket[]                @relation("KitchenTicketSentBy")
+  createdRestaurantMealContracts   RestaurantMealContract[]       @relation("RestaurantMealContractCreatedBy")
+  restaurantMealCharges            RestaurantMealCharge[]         @relation("RestaurantMealChargeCashier")
   contracts                        Contract[]
   productInteractions              ProductInteraction[]
   productInterestScores            ProductInterestScore[]
@@ -476,6 +478,8 @@ model Organization {
   restaurantTables                 RestaurantTable[]
   restaurantTickets                RestaurantTicket[]
   kitchenTickets                   KitchenTicket[]
+  restaurantMealContracts          RestaurantMealContract[]
+  restaurantMealCharges            RestaurantMealCharge[]
   contracts                        Contract[]
   productInteractions              ProductInteraction[]
   productInterestScores            ProductInterestScore[]
@@ -994,6 +998,7 @@ model Branch {
   restaurantTables       RestaurantTable[]
   restaurantTickets      RestaurantTicket[]
   kitchenTickets         KitchenTicket[]
+  restaurantMealCharges  RestaurantMealCharge[]
   orderAssignments       Order[]                 @relation("OrderAssignedBranch")
   orderDispatchAttempts  OrderDispatchAttempt[]
 
@@ -3097,6 +3102,7 @@ model RestaurantTicket {
   posSale        PosSale?               @relation(fields: [posSaleId], references: [id], onDelete: SetNull)
   items          RestaurantTicketItem[]
   kitchenTickets KitchenTicket[]
+  mealCharge     RestaurantMealCharge?
 
   @@index([organizationId, status])
   @@index([branchId, status])
@@ -3200,6 +3206,102 @@ enum KitchenTicketStatus {
   CANCELLED
 }
 
+enum RestaurantMealContractStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RestaurantMealChargeStatus {
+  ACTIVE
+  VOIDED
+}
+
+/// A zero-interest meal-account agreement with an external organization.
+/// Payment collection stays outside MGL Store; only meal usage is recorded.
+model RestaurantMealContract {
+  id                   String                         @id @default(uuid())
+  organizationId       String
+  customerOrganization String
+  customerRegisterNo   String?
+  startDate            DateTime                       @db.Date
+  endDate              DateTime                       @db.Date
+  status               RestaurantMealContractStatus   @default(ACTIVE)
+  note                 String?
+  createdById          String
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+  organization         Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy            User                           @relation("RestaurantMealContractCreatedBy", fields: [createdById], references: [id])
+  members              RestaurantMealContractMember[]
+  charges              RestaurantMealCharge[]
+
+  @@index([organizationId, status, startDate, endDate])
+  @@index([customerOrganization])
+  @@index([customerRegisterNo])
+  @@index([createdById])
+}
+
+model RestaurantMealContractMember {
+  id           String                 @id @default(uuid())
+  contractId   String
+  employeeCode String
+  fullName     String
+  department   String?
+  accessToken  String                 @unique
+  pinHash      String
+  dailyLimit   Decimal?               @db.Decimal(18, 2)
+  monthlyLimit Decimal?               @db.Decimal(18, 2)
+  isActive     Boolean                @default(true)
+  lastUsedAt   DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  contract     RestaurantMealContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  charges      RestaurantMealCharge[]
+
+  @@unique([contractId, employeeCode])
+  @@index([contractId, isActive])
+  @@index([fullName])
+}
+
+model RestaurantMealCharge {
+  id                   String                       @id @default(uuid())
+  organizationId       String
+  contractId           String
+  memberId             String
+  branchId             String
+  shiftId              String
+  cashierId            String
+  restaurantTicketId   String                       @unique
+  clientRequestId      String?                      @unique
+  companyNameSnapshot  String
+  employeeCodeSnapshot String
+  employeeNameSnapshot String
+  amount               Decimal                      @db.Decimal(18, 2)
+  packagingFee         Decimal                      @default(0) @db.Decimal(18, 2)
+  status               RestaurantMealChargeStatus   @default(ACTIVE)
+  note                 String?
+  orderedAt            DateTime                     @default(now())
+  voidedAt             DateTime?
+  voidReason           String?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  organization         Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract             RestaurantMealContract       @relation(fields: [contractId], references: [id])
+  member               RestaurantMealContractMember @relation(fields: [memberId], references: [id])
+  branch               Branch                       @relation(fields: [branchId], references: [id])
+  shift                PosShift                     @relation(fields: [shiftId], references: [id])
+  cashier              User                         @relation("RestaurantMealChargeCashier", fields: [cashierId], references: [id])
+  restaurantTicket     RestaurantTicket             @relation(fields: [restaurantTicketId], references: [id])
+
+  @@index([organizationId, orderedAt])
+  @@index([contractId, orderedAt])
+  @@index([memberId, orderedAt])
+  @@index([branchId, orderedAt])
+  @@index([shiftId])
+  @@index([cashierId])
+  @@index([status, orderedAt])
+}
+
 model PosShift {
   id                String             @id @default(uuid())
   organizationId    String
@@ -3226,6 +3328,7 @@ model PosShift {
   sales             PosSale[]
   creditSales       PosCreditSale[]
   restaurantTickets RestaurantTicket[]
+  restaurantMealCharges RestaurantMealCharge[]
 
   @@index([organizationId])
   @@index([organizationId, mode])

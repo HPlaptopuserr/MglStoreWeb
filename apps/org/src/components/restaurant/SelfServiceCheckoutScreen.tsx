@@ -11,6 +11,7 @@ import {
 
 import {
   ArrowLeft,
+  BadgeCheck,
   BadgePercent,
   Banknote,
   Building2,
@@ -21,6 +22,7 @@ import {
   CreditCard,
   Expand,
   Loader2,
+  KeyRound,
   Minus,
   PackageOpen,
   Plus,
@@ -51,6 +53,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useOrg } from "@/components/org/OrgContext";
 import {
   cancelRestaurantQPayInvoice,
+  checkoutRestaurantContractMeal,
   chargeRestaurantClientBridge,
   createRestaurantCardAttempt,
   createRestaurantCardSale,
@@ -67,6 +70,9 @@ import {
   openRestaurantPosShift,
   saveRestaurantTicket,
   submitRestaurantClientBridgeResult,
+  verifyRestaurantMealMember,
+  type RestaurantMealCheckoutResult,
+  type RestaurantMealVerification,
   type RestaurantPosProduct,
   type CafeRegularCustomer,
   type RestaurantPosQPayInvoice,
@@ -101,7 +107,7 @@ import {
 
 type Screen = "welcome" | "menu" | "checkout" | "payment" | "card" | "success";
 type OrderMode = "DINE_IN" | "TO_GO";
-type PaymentMethod = "QPAY" | "CARD" | "CASH";
+type PaymentMethod = "QPAY" | "CARD" | "CASH" | "CONTRACT";
 type Category = string;
 
 type CartLine = SelfServiceCartLine;
@@ -343,6 +349,13 @@ function SelfServiceCheckoutContent() {
     useState<EbarimtTinLookupResult | null>(null);
   const [companyLookupLoading, setCompanyLookupLoading] = useState(false);
   const [companyLookupError, setCompanyLookupError] = useState("");
+  const [mealAccessToken, setMealAccessToken] = useState("");
+  const [mealPin, setMealPin] = useState("");
+  const [mealVerification, setMealVerification] =
+    useState<RestaurantMealVerification | null>(null);
+  const [mealVerifying, setMealVerifying] = useState(false);
+  const [contractCheckoutResult, setContractCheckoutResult] =
+    useState<RestaurantMealCheckoutResult | null>(null);
   const [regularCustomerPhone, setRegularCustomerPhone] = useState("");
   const [regularCustomer, setRegularCustomer] =
     useState<CafeRegularCustomer | null>(null);
@@ -815,6 +828,35 @@ function SelfServiceCheckoutContent() {
     }
   }, [companyLookup, companyRegNo, register]);
 
+  const verifyContractMember = async () => {
+    if (!register || mealVerifying || isCafe) return;
+    if (!mealAccessToken.trim() || !/^\d{4,8}$/.test(mealPin)) {
+      setActionError(
+        "Ажилтны QR кодыг уншуулаад 4-8 оронтой PIN оруулна уу.",
+      );
+      return;
+    }
+    setMealVerifying(true);
+    setMealVerification(null);
+    setActionError("");
+    try {
+      const verification = await verifyRestaurantMealMember({
+        branchId: register.branchId,
+        accessToken: mealAccessToken.trim(),
+        pin: mealPin,
+      });
+      setMealVerification(verification);
+    } catch (error) {
+      setActionError(
+        error instanceof Error
+          ? error.message
+          : "Гэрээт ажилтны эрхийг шалгаж чадсангүй.",
+      );
+    } finally {
+      setMealVerifying(false);
+    }
+  };
+
   const resolveRegularCustomer = useCallback(
     async (phone: string, syncUi = false): Promise<CafeRegularCustomer> => {
       const normalizedPhone = phone.replace(/\D/g, "").slice(-8);
@@ -1035,6 +1077,11 @@ function SelfServiceCheckoutContent() {
       setCompanyLookup(null);
       setCompanyLookupError("");
       setCompanyLookupLoading(false);
+      setMealAccessToken("");
+      setMealPin("");
+      setMealVerification(null);
+      setMealVerifying(false);
+      setContractCheckoutResult(null);
       setRegularCustomerPhone("");
       setRegularCustomer(null);
       setRegularCustomerLoading(false);
@@ -1643,7 +1690,8 @@ function SelfServiceCheckoutContent() {
       !user.organizationId ||
       !orderMode ||
       cart.length === 0 ||
-      submitting
+      submitting ||
+      (paymentMethod === "CONTRACT" && (isCafe || !mealVerification))
     ) {
       return;
     }
@@ -1656,10 +1704,13 @@ function SelfServiceCheckoutContent() {
     let savedTicket: RestaurantTicket | null = null;
     let recoverableCardCheckout: PendingCardCheckout | null = null;
     try {
-      const ebarimtBuyer = await resolveEbarimtBuyer();
+      const isContractMeal = paymentMethod === "CONTRACT";
+      const ebarimtBuyer: EbarimtBuyer = isContractMeal
+        ? { type: "B2C" }
+        : await resolveEbarimtBuyer();
       setCompletedEbarimtBuyer(ebarimtBuyer);
       const checkoutRegularCustomer =
-        regularCustomer
+        !isContractMeal && regularCustomer
           ? await resolveRegularCustomer(regularCustomer.phone)
           : null;
       if (checkoutRegularCustomer) {
@@ -1709,6 +1760,26 @@ function SelfServiceCheckoutContent() {
       if (!savedTicket) throw new Error("Захиалгын ticket үүссэнгүй.");
 
       const clientSaleId = createClientSaleId();
+
+      if (paymentMethod === "CONTRACT") {
+        const contractCharge = await checkoutRestaurantContractMeal({
+          branchId: register.branchId,
+          shiftId: activeShift.id,
+          ticketId: savedTicket.id,
+          clientRequestId: clientSaleId,
+          accessToken: mealAccessToken.trim(),
+          pin: mealPin,
+          note: `Өөртөө үйлчлэх касс · Гэрээт хоол · ${
+            orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"
+          }`,
+        });
+        clearSelfServicePendingPayment();
+        setContractCheckoutResult(contractCharge);
+        setCompletedTicketNo(contractCharge.ticketNo);
+        setReceipt(null);
+        setScreen("success");
+        return;
+      }
 
       if (paymentMethod === "CASH" && DEMO_CASH_PAYMENT_ENABLED) {
         const saleReceipt = await createRestaurantCashSale({
@@ -1808,9 +1879,11 @@ function SelfServiceCheckoutContent() {
           ? error.message
           : paymentMethod === "CARD"
             ? "Картын төлбөр хийж чадсангүй."
-            : paymentMethod === "CASH"
-              ? "Тест борлуулалт үүсгэж чадсангүй."
-              : "QPay төлбөр үүсгэж чадсангүй.";
+            : paymentMethod === "CONTRACT"
+              ? "Гэрээт хоолны захиалгыг бүртгэж чадсангүй."
+              : paymentMethod === "CASH"
+                ? "Тест борлуулалт үүсгэж чадсангүй."
+                : "QPay төлбөр үүсгэж чадсангүй.";
       const cardPaymentCancelled =
         paymentMethod === "CARD" &&
         errorMessage === CARD_PAYMENT_CANCELLED_MESSAGE;
@@ -2392,6 +2465,76 @@ function SelfServiceCheckoutContent() {
     );
   }
 
+  if (screen === "success" && contractCheckoutResult) {
+    return (
+      <main className="flex min-h-[100dvh] items-center justify-center bg-[#11231d] px-5 py-10 text-white">
+        <section className="w-full max-w-xl text-center">
+          <div className="mx-auto grid h-28 w-28 place-items-center rounded-full bg-emerald-400 text-[#10221c] shadow-[0_0_0_16px_rgba(52,211,153,0.08)]">
+            <BadgeCheck className="h-14 w-14" strokeWidth={2.5} />
+          </div>
+          <h1 className="mt-9 text-4xl font-black tracking-tight sm:text-5xl">
+            Захиалга бүртгэгдлээ
+          </h1>
+          <p className="mx-auto mt-4 max-w-md text-base font-semibold leading-7 text-white/60">
+            Захиалга гал тогоонд илгээгдэж, байгууллагын сарын хоолны
+            тооцоонд нэмэгдлээ.
+          </p>
+
+          <div className="mx-auto mt-8 rounded-[32px] bg-white p-7 text-[#10221c] shadow-2xl">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+              Захиалгын дугаар
+            </p>
+            <p className="mt-2 text-4xl font-black tracking-tight">
+              {formatRestaurantOrderNumber(
+                contractCheckoutResult.ticketNo,
+                contractCheckoutResult.id,
+              )}
+            </p>
+            <div className="mt-6 space-y-3 border-t border-dashed border-slate-200 pt-5 text-sm">
+              <div className="flex justify-between gap-4">
+                <span className="font-semibold text-slate-500">
+                  Байгууллага
+                </span>
+                <span className="text-right font-black">
+                  {contractCheckoutResult.companyName}
+                </span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="font-semibold text-slate-500">Ажилтан</span>
+                <span className="text-right font-black">
+                  {contractCheckoutResult.employeeName}
+                </span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="font-semibold text-slate-500">
+                  Сарын тооцоонд
+                </span>
+                <span className="text-lg font-black">
+                  {formatMoney(contractCheckoutResult.amount)}
+                </span>
+              </div>
+            </div>
+            <p className="mt-5 rounded-xl bg-emerald-50 px-4 py-3 text-xs font-bold leading-5 text-emerald-800">
+              Одоо төлбөр болон Ebarimt үүсээгүй.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => resetOrder({ reload: true })}
+            className="mt-8 inline-flex h-14 items-center justify-center gap-2 rounded-2xl bg-[#d9a62e] px-8 text-sm font-black text-[#172219] transition hover:bg-[#e2b440]"
+          >
+            Шинэ захиалга
+            <ChevronRight className="h-5 w-5" />
+          </button>
+          <p className="mt-4 text-xs font-bold text-white/35">
+            {secondsToReset} секундийн дараа эхлэх дэлгэц рүү шилжинэ
+          </p>
+        </section>
+      </main>
+    );
+  }
+
   if (screen === "success" && receipt) {
     const ebarimt = receipt.ebarimt;
     const ebarimtSucceeded = ebarimt?.status === "SUCCESS";
@@ -2637,7 +2780,9 @@ function SelfServiceCheckoutContent() {
 
             <aside className="h-fit rounded-[28px] border border-[#e7e1d3] bg-[#fffdf8] p-6 text-[#10221c] shadow-xl shadow-slate-200/70">
               <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                Төлбөрийн мэдээлэл
+                {paymentMethod === "CONTRACT"
+                  ? "Захиалгын тооцоо"
+                  : "Төлбөрийн мэдээлэл"}
               </p>
               <div className="mt-6 space-y-3 text-sm">
                 <div className="flex justify-between">
@@ -2673,15 +2818,18 @@ function SelfServiceCheckoutContent() {
               </div>
               <div className="mt-6 flex items-end justify-between border-t border-slate-200 pt-6">
                 <span className="text-sm font-bold text-slate-500">
-                  Нийт төлөх
+                  {paymentMethod === "CONTRACT"
+                    ? "Сарын тооцоонд"
+                    : "Нийт төлөх"}
                 </span>
                 <span className="text-3xl font-black tracking-tight">
                   {formatMoney(cartTotal)}
                 </span>
               </div>
 
-              {features.selfServiceMode === "CAFE" ||
-              features.selfServiceMode === "RESTAURANT" ? (
+              {paymentMethod !== "CONTRACT" &&
+              (features.selfServiceMode === "CAFE" ||
+                features.selfServiceMode === "RESTAURANT") ? (
                 <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-3">
                   <div className="flex items-center gap-2">
                     <BadgePercent className="h-4 w-4 text-emerald-600" />
@@ -2779,7 +2927,7 @@ function SelfServiceCheckoutContent() {
                 </div>
               ) : null}
 
-              {ebarimtReady ? (
+              {paymentMethod !== "CONTRACT" && ebarimtReady ? (
                 <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-3">
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
                     Ebarimt авах төрөл
@@ -2873,7 +3021,7 @@ function SelfServiceCheckoutContent() {
                     </div>
                   ) : null}
                 </div>
-              ) : register.ebarimtEnabled ? (
+              ) : paymentMethod !== "CONTRACT" && register.ebarimtEnabled ? (
                 <p className="mt-4 rounded-xl bg-amber-100 px-3 py-2 text-xs font-bold leading-5 text-amber-800">
                   Ebarimt үйлчилгээний орчны тохиргоо идэвхгүй байна.
                 </p>
@@ -2884,7 +3032,11 @@ function SelfServiceCheckoutContent() {
               </p>
               <div
                 className={`mt-3 grid gap-2 ${
-                  DEMO_CASH_PAYMENT_ENABLED ? "grid-cols-3" : "grid-cols-2"
+                  !isCafe
+                    ? "grid-cols-2"
+                    : DEMO_CASH_PAYMENT_ENABLED
+                      ? "grid-cols-3"
+                      : "grid-cols-2"
                 }`}
               >
                 <button
@@ -2919,6 +3071,25 @@ function SelfServiceCheckoutContent() {
                   <CreditCard className="h-6 w-6" />
                   Карт
                 </button>
+                {!isCafe ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPaymentMethod("CONTRACT");
+                      setRegularCustomer(null);
+                      setRegularCustomerPhone("");
+                      setActionError("");
+                    }}
+                    className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border px-1 text-center text-xs font-black transition ${
+                      paymentMethod === "CONTRACT"
+                        ? "border-emerald-400 bg-emerald-100 text-emerald-950"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <Building2 className="h-6 w-6" />
+                    Гэрээт байгууллага
+                  </button>
+                ) : null}
                 {DEMO_CASH_PAYMENT_ENABLED ? (
                   <button
                     type="button"
@@ -2937,7 +3108,97 @@ function SelfServiceCheckoutContent() {
                   </button>
                 ) : null}
               </div>
-              {!cardTerminalReady ? (
+              {paymentMethod === "CONTRACT" ? (
+                <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white">
+                      <BadgeCheck className="h-5 w-5" />
+                    </span>
+                    <div>
+                      <p className="text-sm font-black text-emerald-950">
+                        Ажилтны эрх баталгаажуулах
+                      </p>
+                      <p className="mt-1 text-xs font-semibold leading-5 text-emerald-800">
+                        QR картаа уншуулаад хувийн PIN кодоо оруулна уу.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    <label className="flex h-11 items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3">
+                      <QrCode className="h-4 w-4 shrink-0 text-emerald-600" />
+                      <input
+                        autoComplete="off"
+                        value={mealAccessToken}
+                        onChange={(event) => {
+                          setMealAccessToken(event.target.value);
+                          setMealVerification(null);
+                          setActionError("");
+                        }}
+                        placeholder="QR код уншуулах"
+                        className="h-full min-w-0 flex-1 bg-transparent text-sm font-bold text-slate-800 outline-none placeholder:text-slate-400"
+                      />
+                    </label>
+                    <div className="flex gap-2">
+                      <label className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3">
+                        <KeyRound className="h-4 w-4 shrink-0 text-emerald-600" />
+                        <input
+                          inputMode="numeric"
+                          autoComplete="off"
+                          maxLength={8}
+                          value={mealPin}
+                          onChange={(event) => {
+                            setMealPin(
+                              event.target.value.replace(/\D/g, "").slice(0, 8),
+                            );
+                            setMealVerification(null);
+                            setActionError("");
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void verifyContractMember();
+                            }
+                          }}
+                          placeholder="PIN код"
+                          type="password"
+                          className="h-full min-w-0 flex-1 bg-transparent text-sm font-black tracking-[0.25em] text-slate-800 outline-none placeholder:tracking-normal placeholder:text-slate-400"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void verifyContractMember()}
+                        disabled={
+                          mealVerifying ||
+                          !mealAccessToken.trim() ||
+                          !/^\d{4,8}$/.test(mealPin)
+                        }
+                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-xs font-black text-white disabled:opacity-40"
+                      >
+                        {mealVerifying ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="h-4 w-4" />
+                        )}
+                        Шалгах
+                      </button>
+                    </div>
+                  </div>
+                  {mealVerification ? (
+                    <div className="mt-3 rounded-xl bg-white px-3 py-3 text-xs leading-5 text-emerald-900 shadow-sm">
+                      <p className="font-black">
+                        {mealVerification.member.fullName}
+                      </p>
+                      <p className="font-semibold text-emerald-700">
+                        {mealVerification.contract.customerOrganization}
+                        {mealVerification.member.department
+                          ? ` · ${mealVerification.member.department}`
+                          : ""}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {paymentMethod === "CARD" && !cardTerminalReady ? (
                 <p className="mt-2 text-[11px] font-semibold leading-4 text-amber-700">
                   Карт ашиглахын тулд POS терминалаа тохируулна уу.
                 </p>
@@ -2956,7 +3217,8 @@ function SelfServiceCheckoutContent() {
                   submitting ||
                   companyLookupLoading ||
                   cart.length === 0 ||
-                  (paymentMethod === "CARD" && !cardTerminalReady)
+                  (paymentMethod === "CARD" && !cardTerminalReady) ||
+                  (paymentMethod === "CONTRACT" && !mealVerification)
                 }
                 className="mt-6 inline-flex h-16 w-full items-center justify-center gap-3 rounded-2xl bg-[#d9a62e] px-5 text-base font-black text-[#172219] transition hover:bg-[#e2b440] disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -2966,6 +3228,8 @@ function SelfServiceCheckoutContent() {
                   <CreditCard className="h-5 w-5" />
                 ) : paymentMethod === "CASH" ? (
                   <Banknote className="h-5 w-5" />
+                ) : paymentMethod === "CONTRACT" ? (
+                  <Building2 className="h-5 w-5" />
                 ) : (
                   <QrCode className="h-5 w-5" />
                 )}
@@ -2973,11 +3237,15 @@ function SelfServiceCheckoutContent() {
                   ? "Картаар төлөх"
                   : paymentMethod === "CASH"
                     ? "Тест борлуулалт үүсгэх"
-                    : "QPay-аар төлөх"}
+                    : paymentMethod === "CONTRACT"
+                      ? "Сарын тооцоонд бүртгэх"
+                      : "QPay-аар төлөх"}
               </button>
               <div className="mt-4 flex items-center justify-center gap-2 text-[11px] font-bold text-slate-400">
                 <Check className="h-3.5 w-3.5" />
-                Төлөгдсөний дараа захиалга шууд илгээгдэнэ
+                {paymentMethod === "CONTRACT"
+                  ? "Төлбөр авахгүй, захиалга гал тогоонд шууд илгээгдэнэ"
+                  : "Төлөгдсөний дараа захиалга шууд илгээгдэнэ"}
               </div>
             </aside>
           </div>

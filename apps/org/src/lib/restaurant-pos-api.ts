@@ -193,6 +193,118 @@ export type RestaurantTicket = {
   }>;
 };
 
+export type RestaurantMealContractMember = {
+  id: string;
+  contractId: string;
+  employeeCode: string;
+  fullName: string;
+  department: string | null;
+  accessToken: string;
+  qrPayload: string;
+  dailyLimit: number | null;
+  monthlyLimit: number | null;
+  isActive: boolean;
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RestaurantMealContract = {
+  id: string;
+  organizationId: string;
+  customerOrganization: string;
+  customerRegisterNo: string | null;
+  startDate: string;
+  endDate: string;
+  status: "ACTIVE" | "INACTIVE";
+  activeNow: boolean;
+  note: string | null;
+  chargeCount: number;
+  members: RestaurantMealContractMember[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RestaurantMealVerification = {
+  member: {
+    id: string;
+    employeeCode: string;
+    fullName: string;
+    department: string | null;
+    dailyLimit: number | null;
+    monthlyLimit: number | null;
+  };
+  contract: {
+    id: string;
+    customerOrganization: string;
+    endDate: string;
+  };
+  usage: {
+    daily: number;
+    monthly: number;
+  };
+};
+
+export type RestaurantMealCheckoutResult = {
+  id: string;
+  ticketId: string;
+  ticketNo: string;
+  amount: number;
+  packagingFee: number;
+  orderedAt: string;
+  companyName: string;
+  employeeCode: string;
+  employeeName: string;
+};
+
+export type RestaurantMealReport = {
+  from: string;
+  to: string;
+  orderCount: number;
+  total: number;
+  companies: Array<{
+    contractId: string;
+    companyName: string;
+    registerNo: string | null;
+    orderCount: number;
+    total: number;
+  }>;
+  employees: Array<{
+    contractId: string;
+    memberId: string;
+    companyName: string;
+    employeeCode: string;
+    employeeName: string;
+    orderCount: number;
+    total: number;
+  }>;
+  charges: Array<{
+    id: string;
+    contractId: string;
+    memberId: string;
+    companyName: string;
+    registerNo: string | null;
+    employeeCode: string;
+    employeeName: string;
+    branchId: string;
+    branchName: string;
+    ticketNo: string;
+    orderMode: "DINE_IN" | "TO_GO" | "DELIVERY";
+    amount: number;
+    packagingFee: number;
+    orderedAt: string;
+    note: string | null;
+    items: Array<{
+      id: string;
+      productId: string;
+      productName: string;
+      qty: number;
+      unitPrice: number;
+      lineTotal: number;
+    }>;
+  }>;
+};
+
 export type RestaurantDiningTable = {
   id: string;
   code: string;
@@ -961,6 +1073,145 @@ export async function deleteRestaurantMenuCategory(id: string) {
     { method: "DELETE" },
   );
   return readApiResponse<{ ok: true; detachedProducts: number }>(response);
+}
+
+export async function getRestaurantMealContracts(organizationId: string) {
+  const params = new URLSearchParams({ organizationId });
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/contracts?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantMealContract[]>(response);
+}
+
+export async function createRestaurantMealContract(input: {
+  organizationId: string;
+  customerOrganization: string;
+  customerRegisterNo?: string;
+  startDate: string;
+  endDate: string;
+  note?: string;
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/contracts`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return readApiResponse<RestaurantMealContract>(response);
+}
+
+export async function updateRestaurantMealContract(input: {
+  id: string;
+  customerOrganization?: string;
+  customerRegisterNo?: string | null;
+  startDate?: string;
+  endDate?: string;
+  status?: "ACTIVE" | "INACTIVE";
+  note?: string | null;
+}) {
+  const { id, ...body } = input;
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/contracts/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+  );
+  return readApiResponse<RestaurantMealContract>(response);
+}
+
+export async function createRestaurantMealContractMember(input: {
+  contractId: string;
+  employeeCode: string;
+  fullName: string;
+  department?: string;
+  pin: string;
+  dailyLimit?: number | null;
+  monthlyLimit?: number | null;
+}) {
+  const { contractId, ...body } = input;
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/contracts/${encodeURIComponent(contractId)}/members`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+  return readApiResponse<RestaurantMealContractMember>(response);
+}
+
+export async function updateRestaurantMealContractMember(input: {
+  id: string;
+  employeeCode?: string;
+  fullName?: string;
+  department?: string | null;
+  pin?: string;
+  dailyLimit?: number | null;
+  monthlyLimit?: number | null;
+  isActive?: boolean;
+  resetQr?: boolean;
+}) {
+  const { id, ...body } = input;
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/members/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+  );
+  return readApiResponse<RestaurantMealContractMember>(response);
+}
+
+export async function verifyRestaurantMealMember(input: {
+  branchId: string;
+  accessToken: string;
+  pin: string;
+}) {
+  const response = await authFetch(`${API}/restaurant/contract-meals/verify`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<RestaurantMealVerification>(response);
+}
+
+export async function checkoutRestaurantContractMeal(input: {
+  branchId: string;
+  shiftId: string;
+  ticketId: string;
+  clientRequestId: string;
+  accessToken: string;
+  pin: string;
+  note?: string;
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/checkout`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return readApiResponse<RestaurantMealCheckoutResult>(response);
+}
+
+export async function getRestaurantMealReport(input: {
+  organizationId: string;
+  from: string;
+  to: string;
+  contractId?: string;
+}) {
+  const params = new URLSearchParams({
+    organizationId: input.organizationId,
+    from: input.from,
+    to: input.to,
+  });
+  if (input.contractId) params.set("contractId", input.contractId);
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/report?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantMealReport>(response);
 }
 
 export async function getRestaurantCreditCustomers(

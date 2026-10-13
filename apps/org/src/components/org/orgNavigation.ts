@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Clapperboard,
   Coffee,
+  Handshake,
   MonitorSmartphone,
   UtensilsCrossed,
   LayoutDashboard,
@@ -60,6 +61,15 @@ export function getOrgNavItems(
         href: "/dashboard/kitchen-display",
         icon: isCafe ? Coffee : ChefHat,
       },
+      ...(!isCafe
+        ? [
+            {
+              label: "Гэрээт хоол",
+              href: "/dashboard/contract-meals",
+              icon: Handshake,
+            },
+          ]
+        : []),
       { label: "Бүтээгдэхүүн", href: "/dashboard/products", icon: Package },
       ...(isCafe
         ? [

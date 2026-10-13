@@ -10,6 +10,7 @@ import restaurantRoutes from "./restaurant.routes";
 import goodsReceiptsRoutes from "./goods-receipts.routes";
 import cafeDailyStockRoutes from "./cafe-daily-stock.routes";
 import cafeRegularCustomerRoutes from "./cafe-regular-customers.routes";
+import contractMealsRoutes from "./contract-meals.routes";
 
 import stocktakesRoutes from "./stocktakes.routes";
 
@@ -30,5 +31,6 @@ router.use(restaurantRoutes);
 router.use(goodsReceiptsRoutes);
 router.use(cafeDailyStockRoutes);
 router.use(cafeRegularCustomerRoutes);
+router.use(contractMealsRoutes);
 
 export default router;
