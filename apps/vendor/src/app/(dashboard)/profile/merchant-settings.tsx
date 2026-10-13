@@ -34,6 +34,7 @@ import type {
 import { MerchantSettingsMessage, Field } from "./_merchant-settings/shared";
 import { MinuTerminalMerchantCard } from "./_merchant-settings/MinuTerminalMerchantCard";
 import { ConnectedMerchantStatusCard } from "./_merchant-settings/ConnectedMerchantStatusCard";
+import { SystemQrCredentialRecoveryCard } from "./_merchant-settings/SystemQrCredentialRecoveryCard";
 import { useMerchantBankAccounts } from "./_merchant-settings/useMerchantBankAccounts";
 import { BankAccountsEditor } from "./_merchant-settings/BankAccountsEditor";
 import { SearchableSelect } from "./_merchant-settings/SearchableSelect";
@@ -520,6 +521,53 @@ export function MerchantSettingsSection({
     }
   };
 
+  const handleRecoverSystemQrCredentials = async () => {
+    const merchantCode = String(merchantStatus?.merchantId || "").trim();
+    if (!merchantStatus?.managedBySystem || !merchantCode) {
+      setMessage({
+        type: "error",
+        text: "Minu Dynamic QR merchant code олдсонгүй.",
+      });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Зөвхөн ${merchantCode} merchant code-ийн Minu нууц үг шинэчлэгдэнэ. Энэ кодыг өөр систем ашиглаж байгаа бол хуучин нууц үг нь ажиллахаа болино. Үргэлжлүүлэх үү?`,
+    );
+    if (!confirmed) return;
+
+    setIsSubmitting(true);
+    setMessage(null);
+    try {
+      const res = await authFetch(
+        `${API}/vendor/merchant/systemqr/recover-credentials`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            merchantId: merchantCode,
+            channel,
+            ...(organizationId ? { organizationId } : {}),
+          }),
+        },
+      );
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMessage({ type: "success", text: data.message });
+        await loadMerchantStatus();
+      } else {
+        setMessage({
+          type: "error",
+          text: data.message || "Minu нэвтрэх эрх сэргээж чадсангүй.",
+        });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Серверийн алдаа" });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleMinuConnect = async () => {
     if (!minuUsername.trim() || !minuBranchId.trim()) {
       setMessage({
@@ -787,6 +835,17 @@ export function MerchantSettingsSection({
     return (
       <div className="space-y-6">
         <ConnectedMerchantStatusCard />
+
+        {merchantStatus.managedBySystem && merchantStatus.merchantId && (
+          <SystemQrCredentialRecoveryCard
+            merchantCode={merchantStatus.merchantId}
+            credentialsStored={Boolean(
+              merchantStatus.systemQrCredentialsStored,
+            )}
+            isSubmitting={isSubmitting}
+            onRecover={handleRecoverSystemQrCredentials}
+          />
+        )}
 
         {/* Bank accounts section */}
         <BankAccountsEditor

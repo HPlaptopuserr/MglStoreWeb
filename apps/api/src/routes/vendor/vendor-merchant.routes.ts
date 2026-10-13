@@ -405,9 +405,18 @@ router.post(
         });
       }
 
+      const merchantCode = String(req.body?.merchantId || "").trim();
+      if (!merchantCode) {
+        return res.status(400).json({
+          success: false,
+          message: "Сэргээх merchant code шаардлагатай.",
+        });
+      }
+
       const result = await recoverVendorSystemQrCredentials(
         organizationId,
         channel,
+        merchantCode,
       );
       if (!result.success) return res.status(400).json(result);
 

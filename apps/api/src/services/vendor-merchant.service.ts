@@ -113,6 +113,23 @@ const pickMerchantFields = (org: any, channel: MerchantChannel) => {
   };
 };
 
+async function findActiveMerchantOrganizationConflict(
+  organizationId: string,
+  merchantCode: string,
+) {
+  return prisma.organization.findFirst({
+    where: {
+      id: { not: organizationId },
+      deletedAt: null,
+      OR: [
+        { qpayEnabled: true, qpayMerchantId: merchantCode },
+        { webQpayEnabled: true, webQpayMerchantId: merchantCode },
+      ],
+    },
+    select: { id: true },
+  });
+}
+
 /**
  * Connect vendor organization to multi-merchant QPay account
  * Stores the QPay merchant ID and key for the organization
@@ -143,13 +160,33 @@ export async function connectVendorMerchant(
       };
     }
 
+    const normalizedMerchantId = merchantId.trim();
+    const normalizedMerchantKey = merchantKey.trim();
+    const normalizedInvoiceCode = invoiceCode?.trim() || null;
+    const isSystemQr =
+      isSystemQrMarker(normalizedMerchantKey) ||
+      isSystemQrMarker(normalizedInvoiceCode);
+    if (
+      isSystemQr &&
+      (await findActiveMerchantOrganizationConflict(
+        organizationId,
+        normalizedMerchantId,
+      ))
+    ) {
+      return {
+        success: false,
+        message:
+          "Энэ merchant code өөр байгууллагад идэвхтэй ашиглагдаж байна. Эхлээд хуучин холболтыг салгана уу.",
+      };
+    }
+
     // Update organization with merchant credentials
     await prisma.organization.update({
       where: { id: organizationId },
       data: buildMerchantUpdateData(channel, {
-        merchantId: merchantId.trim(),
-        merchantKey: merchantKey.trim(),
-        invoiceCode: invoiceCode?.trim() || null,
+        merchantId: normalizedMerchantId,
+        merchantKey: normalizedMerchantKey,
+        invoiceCode: normalizedInvoiceCode,
         enabled: true,
         connectedAt: new Date(),
       }),
@@ -498,6 +535,7 @@ export async function getVendorSystemQrConfig(
 export async function recoverVendorSystemQrCredentials(
   organizationId: string,
   channel: MerchantChannel = "POS",
+  expectedMerchantCode?: string,
 ): Promise<ConnectMerchantResult & { username?: string }> {
   const org = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -533,7 +571,36 @@ export async function recoverVendorSystemQrCredentials(
     };
   }
 
+  const normalizedExpectedMerchantCode = String(
+    expectedMerchantCode || "",
+  ).trim();
+  if (
+    normalizedExpectedMerchantCode &&
+    normalizedExpectedMerchantCode !== merchantCode
+  ) {
+    return {
+      success: false,
+      message:
+        "Merchant code өөрчлөгдсөн байна. Хуудсаа шинэчлээд дахин оролдоно уу.",
+    };
+  }
+
   try {
+    // A password reset affects the Minu submerchant itself. Refuse to rotate
+    // credentials while another organization actively references this code.
+    const conflictingOrganization =
+      await findActiveMerchantOrganizationConflict(
+        organizationId,
+        merchantCode,
+      );
+    if (conflictingOrganization) {
+      return {
+        success: false,
+        message:
+          "Энэ merchant code өөр байгууллагад идэвхтэй ашиглагдаж байгаа тул нэвтрэх эрхийг сэргээсэнгүй.",
+      };
+    }
+
     const result = await resetSystemQrSubMerchantPassword(merchantCode);
     const returnedMerchantCode = String(result.merchantCode || "").trim();
     const username = String(result.username || returnedMerchantCode).trim();
@@ -546,15 +613,40 @@ export async function recoverVendorSystemQrCredentials(
       throw new Error("Minu шинэ username/password буцаасангүй.");
     }
 
+    const merchantAuth = encodeSystemQrMerchantAuth(username, password);
+    const updateData = buildMerchantUpdateData(channel, {
+      merchantId: merchantCode,
+      merchantKey: merchantAuth,
+      invoiceCode: "SYSTEMQR",
+      enabled: true,
+      connectedAt: selected.connectedAt || new Date(),
+    });
+
+    // If the same organization uses this exact Minu merchant on both POS and
+    // WEB, keep both channels valid after the provider rotates the password.
+    const otherChannel: MerchantChannel = channel === "POS" ? "WEB" : "POS";
+    const otherSelected = pickMerchantFields(org, otherChannel);
+    if (
+      otherSelected.enabled &&
+      String(otherSelected.merchantId || "").trim() === merchantCode &&
+      (isSystemQrMarker(otherSelected.invoiceCode) ||
+        isSystemQrMarker(otherSelected.merchantKey))
+    ) {
+      Object.assign(
+        updateData,
+        buildMerchantUpdateData(otherChannel, {
+          merchantId: merchantCode,
+          merchantKey: merchantAuth,
+          invoiceCode: "SYSTEMQR",
+          enabled: true,
+          connectedAt: otherSelected.connectedAt || new Date(),
+        }),
+      );
+    }
+
     await prisma.organization.update({
       where: { id: organizationId },
-      data: buildMerchantUpdateData(channel, {
-        merchantId: merchantCode,
-        merchantKey: encodeSystemQrMerchantAuth(username, password),
-        invoiceCode: "SYSTEMQR",
-        enabled: true,
-        connectedAt: selected.connectedAt || new Date(),
-      }),
+      data: updateData,
     });
 
     return {
@@ -1013,6 +1105,12 @@ export async function getVendorMerchantStatus(
     const isSystemQr =
       isSystemQrMarker(selected.merchantKey) ||
       isSystemQrMarker(selected.invoiceCode);
+    const systemQrAuth = isSystemQr
+      ? decodeSystemQrMerchantAuth(
+          selected.merchantKey,
+          String(selected.merchantId || "").trim(),
+        )
+      : null;
 
     return {
       success: true,
@@ -1021,6 +1119,7 @@ export async function getVendorMerchantStatus(
       connectedAt: selected.connectedAt,
       orgName: org.name,
       managedBySystem: isSystemQr,
+      systemQrCredentialsStored: Boolean(systemQrAuth?.password),
       provider: isSystemQr ? "SYSTEMQR" : "QPAY",
       channel,
       settlementMode: isSystemQr ? "PROVIDER" : isQuickQrMerchantId(selected.merchantId || "") ? "BANK_ACCOUNTS" : selected.enabled && selected.merchantId ? "PROVIDER" : "UNCONNECTED",

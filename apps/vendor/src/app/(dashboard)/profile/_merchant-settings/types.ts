@@ -4,6 +4,7 @@ export type MerchantStatus = {
   connectedAt: string | null;
   orgName: string;
   managedBySystem?: boolean;
+  systemQrCredentialsStored?: boolean;
   provider?: string;
 };
 
