@@ -4,13 +4,13 @@ import { warehouseCatalogOwner, warehouseProductReadScope, warehouseProductOwner
 
 test("distribution assignments never expose a customer's editable catalog", () => {
   assert.deepEqual(warehouseProductReadScope("central", ["store-a", "store-b"]), {
-    OR: [{ managedByWarehouseId: "central" }, { warehouseInventories: { some: { warehouseId: "central" } } }],
+    organizationId: null, managedByWarehouseId: "central",
   });
   assert.equal(warehouseCatalogOwner({ catalogOrganizationId: null, organizations: [{ organizationId: "store-a" }] }), null);
-  assert.deepEqual(warehouseProductOwnerScope("central", null), { managedByWarehouseId: "central" });
+  assert.deepEqual(warehouseProductOwnerScope("central", null), { organizationId: null, managedByWarehouseId: "central" });
 });
 
-test("explicit shared catalogs keep their intended organization owner", () => {
-  assert.equal(warehouseCatalogOwner({ catalogOrganizationId: "hypermarket", organizations: [{ organizationId: "customer" }] }), "hypermarket");
-  assert.deepEqual(warehouseProductReadScope("central", ["customer"], "hypermarket"), { organizationId: "hypermarket" });
+test("legacy shared catalogs cannot override independent warehouse ownership", () => {
+  assert.equal(warehouseCatalogOwner({ catalogOrganizationId: "hypermarket", organizations: [{ organizationId: "customer" }] }), null);
+  assert.deepEqual(warehouseProductReadScope("central", ["customer"], "hypermarket"), { organizationId: null, managedByWarehouseId: "central" });
 });

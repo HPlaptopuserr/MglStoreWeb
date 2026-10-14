@@ -54,31 +54,32 @@ test("central-only legacy customer stock is neither adopted nor duplicated by im
   assert.equal(await tx.warehouse.count({ where: { type: "VENDOR_INTERNAL", organizations: { some: { organizationId: org.id } } } }), 0);
 }));
 
-test("explicit shared catalog preserves its physical stock while rejecting unrelated recipients", { skip: !enabled }, () => withRollback(async tx => {
+test("legacy shared catalog cannot route new vendor stock into central inventory", { skip: !enabled }, () => withRollback(async tx => {
   const key = randomUUID();
   const org = await tx.organization.create({ data: { name: key, slug: key, taxId: key } });
   const recipient = await tx.organization.create({ data: { name: key, slug: `${key}-recipient`, taxId: `${key}-recipient` } });
   const warehouse = await tx.warehouse.create({ data: { name: key, address: "Test", type: "CENTRAL", catalogOrganizationId: org.id, organizations: { create: { organizationId: recipient.id } } } });
   const product = await tx.product.create({ data: { organizationId: org.id, name: key, price: 1, stock: 8 } });
-  assert.equal(await resolveProductInventoryWarehouse(tx, org.id, product.id, null, true), warehouse.id);
-  await adjustStock(tx, { productId: product.id, warehouseId: warehouse.id, change: -2, reason: "ORDER" });
+  const internalId = await resolveProductInventoryWarehouse(tx, org.id, product.id, null, true);
+  assert.notEqual(internalId, warehouse.id);
+  await assert.rejects(adjustStock(tx, { productId: product.id, warehouseId: warehouse.id, change: -2, reason: "ORDER" }), WarehouseProductOwnershipError);
   await assert.rejects(resolveProductInventoryWarehouse(tx, recipient.id, product.id), ProductInventoryConflictError);
   const current = await tx.product.findUniqueOrThrow({ where: { id: product.id } });
-  assert.equal(current.stock, 6);
+  assert.equal(current.stock, 8);
   assert.equal(current.organizationId, org.id);
-  assert.equal(current.managedByWarehouseId, warehouse.id);
-  assert.equal((await tx.warehouseInventory.findUniqueOrThrow({ where: { warehouseId_productId: { warehouseId: warehouse.id, productId: product.id } } })).quantity, 6);
+  assert.equal(current.managedByWarehouseId, null);
+  assert.equal(await tx.warehouseInventory.count({ where: { warehouseId: warehouse.id, productId: product.id } }), 0);
 }));
 
-test("explicit legacy warehouse management stays usable centrally without granting vendor stock access", { skip: !enabled }, () => withRollback(async tx => {
+test("mixed legacy ownership rejects stock mutations until separated", { skip: !enabled }, () => withRollback(async tx => {
   const key = randomUUID();
   const org = await tx.organization.create({ data: { name: key, slug: key, taxId: key } });
   const warehouse = await tx.warehouse.create({ data: { name: key, address: "Test", type: "CENTRAL" } });
   const product = await tx.product.create({ data: { organizationId: org.id, managedByWarehouseId: warehouse.id, name: key, sku: key, price: 1, stock: 120, warehouseInventories: { create: { warehouseId: warehouse.id, quantity: 120 } } } });
-  await adjustStock(tx, { productId: product.id, warehouseId: warehouse.id, change: 5, reason: "RESTOCK" });
-  await assertWarehouseImportIdentity(tx, warehouse.id, { sku: key, name: key });
+  await assert.rejects(adjustStock(tx, { productId: product.id, warehouseId: warehouse.id, change: 5, reason: "RESTOCK" }), WarehouseProductOwnershipError);
+  await assert.rejects(assertWarehouseImportIdentity(tx, warehouse.id, { sku: key, name: key }), WarehouseProductOwnershipError);
   await assert.rejects(resolveProductInventoryWarehouse(tx, org.id, product.id), ProductInventoryConflictError);
   const current = await tx.product.findUniqueOrThrow({ where: { id: product.id } });
-  assert.equal(current.stock, 125);
+  assert.equal(current.stock, 120);
   assert.equal(current.organizationId, org.id);
 }));
