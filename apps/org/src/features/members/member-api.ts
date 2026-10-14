@@ -52,6 +52,26 @@ function parseMembers(value: unknown): OrganizationMember[] {
   );
 }
 
+function parseCapabilities(value: unknown): MemberCapability[] {
+  const allowed: MemberCapability[] = [
+    "POS_CASHIER",
+    "DELIVERY_DRIVER",
+    "STOCK_MANAGER",
+    "ORDER_PROCESSOR",
+  ];
+  const capabilities =
+    value &&
+    typeof value === "object" &&
+    "capabilities" in value &&
+    Array.isArray(value.capabilities)
+      ? value.capabilities
+      : [];
+  return capabilities.filter(
+    (item): item is MemberCapability =>
+      typeof item === "string" && allowed.includes(item as MemberCapability),
+  );
+}
+
 export const memberApi = {
   async list(organizationId: string, signal?: AbortSignal) {
     const query = new URLSearchParams({ organizationId }).toString();
@@ -71,6 +91,19 @@ export const memberApi = {
       );
     }
     return parseMembers(body);
+  },
+
+  async availableCapabilities(organizationId: string, signal?: AbortSignal) {
+    const query = new URLSearchParams({ organizationId }).toString();
+    const response = await authFetch(
+      `${API}/org/members/available-capabilities?${query}`,
+      { cache: "no-store", signal },
+    );
+    const body = (await response.json().catch(() => null)) as unknown;
+    if (!response.ok) {
+      throw new Error("Ажлын эрхүүдийг авч чадсангүй.");
+    }
+    return parseCapabilities(body);
   },
 
   create(input: CreateMemberInput) {

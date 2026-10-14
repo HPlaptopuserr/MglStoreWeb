@@ -190,10 +190,12 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function CapabilityPicker({
   value,
+  options,
   disabled,
   onChange,
 }: {
   value: MemberCapability[];
+  options: MemberCapability[];
   disabled?: boolean;
   onChange: (value: MemberCapability[]) => void;
 }) {
@@ -207,7 +209,9 @@ function CapabilityPicker({
 
   return (
     <div className="grid gap-2 sm:grid-cols-2">
-      {CAPABILITY_OPTIONS.map((option) => {
+      {CAPABILITY_OPTIONS.filter((option) =>
+        options.includes(option.value),
+      ).map((option) => {
         const selected = value.includes(option.value);
         return (
           <button
@@ -248,11 +252,13 @@ function CapabilityPicker({
 function AddMemberDialog({
   organizationId,
   actorRole,
+  availableCapabilities,
   onClose,
   onSaved,
 }: {
   organizationId: string;
   actorRole?: string | null;
+  availableCapabilities: MemberCapability[];
   onClose: () => void;
   onSaved: (message: string) => Promise<void>;
 }) {
@@ -413,6 +419,7 @@ function AddMemberDialog({
           </div>
           <CapabilityPicker
             value={capabilities}
+            options={availableCapabilities}
             disabled={saving || role === "VIEWER"}
             onChange={setCapabilities}
           />
@@ -444,11 +451,13 @@ function AddMemberDialog({
 function EditMemberDialog({
   member,
   actorRole,
+  availableCapabilities,
   onClose,
   onSaved,
 }: {
   member: OrganizationMember;
   actorRole?: string | null;
+  availableCapabilities: MemberCapability[];
   onClose: () => void;
   onSaved: (message: string) => Promise<void>;
 }) {
@@ -558,6 +567,9 @@ function EditMemberDialog({
           </div>
           <CapabilityPicker
             value={capabilities}
+            options={[
+              ...new Set([...availableCapabilities, ...member.capabilities]),
+            ]}
             disabled={saving || role === "VIEWER"}
             onChange={setCapabilities}
           />
@@ -656,6 +668,9 @@ export default function MembersScreen() {
   const { user } = useOrg();
   const organizationId = user.organizationId || "";
   const [members, setMembers] = useState<OrganizationMember[]>([]);
+  const [availableCapabilities, setAvailableCapabilities] = useState<
+    MemberCapability[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -671,7 +686,14 @@ export default function MembersScreen() {
       setLoading(true);
       setError("");
       try {
-        setMembers(await memberApi.list(organizationId, signal));
+        const [memberList, capabilityList] = await Promise.all([
+          memberApi.list(organizationId, signal),
+          manageable
+            ? memberApi.availableCapabilities(organizationId, signal)
+            : Promise.resolve([] as MemberCapability[]),
+        ]);
+        setMembers(memberList);
+        setAvailableCapabilities(capabilityList);
       } catch (cause) {
         if (cause instanceof DOMException && cause.name === "AbortError") return;
         setError(errorMessage(cause));
@@ -679,7 +701,7 @@ export default function MembersScreen() {
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [organizationId],
+    [manageable, organizationId],
   );
 
   useEffect(() => {
@@ -972,6 +994,7 @@ export default function MembersScreen() {
         <AddMemberDialog
           organizationId={organizationId}
           actorRole={user.orgRole}
+          availableCapabilities={availableCapabilities}
           onClose={() => setAdding(false)}
           onSaved={saved}
         />
@@ -980,6 +1003,7 @@ export default function MembersScreen() {
         <EditMemberDialog
           member={editing}
           actorRole={user.orgRole}
+          availableCapabilities={availableCapabilities}
           onClose={() => setEditing(null)}
           onSaved={saved}
         />

@@ -6,10 +6,7 @@ import { isPhoneNumberConflict, normalizePhoneNumber } from "../../utils/phone-n
 import storeEmployeeRoutes from "./store-employees.routes";
 import { Permission } from "@mgl/types";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
-import {
-  requireOrgPermission,
-  resolvePermissionsForOrg,
-} from "../../services/permission.service";
+import { requireOrgPermission } from "../../services/permission.service";
 
 import { availableMemberCapabilities, blockedCapabilityGrants, getOrganizationAppFeatures } from "../../services/business-member-capabilities";
 
@@ -239,8 +236,10 @@ router.post(
       });
       if (!org)
         return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+      const normalizedCapabilities =
+        targetRole === "VIEWER" ? [] : [...new Set(capabilities)];
       const features = await getOrganizationAppFeatures(organizationId);
-      if (!features || blockedCapabilityGrants(capabilities, [], features).length > 0) {
+      if (!features || blockedCapabilityGrants(normalizedCapabilities, [], features).length > 0) {
         return res.status(409).json({ message: "Admin-аас нээгээгүй аппын эрх оноох боломжгүй. Ажлын эрхийн жагсаалтаа шинэчилнэ үү." });
       }
 
@@ -272,9 +271,16 @@ router.post(
         }
       }
 
-      const passwordHash = password?.trim()
-        ? await bcrypt.hash(password.trim(), 10)
-        : await bcrypt.hash("Mgl@12345", 10);
+      const newPassword = password?.trim();
+      if (!existingUser && (!newPassword || newPassword.length < 8)) {
+        return res.status(400).json({
+          message: "Шинэ хэрэглэгчийн нууц үг хамгийн багадаа 8 тэмдэгт байна",
+        });
+      }
+
+      const passwordHash = existingUser
+        ? null
+        : await bcrypt.hash(newPassword as string, 10);
 
       const result = await prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
@@ -287,7 +293,7 @@ router.post(
                   isActive: true,
                   emailVerified: true,
                   onboardingSource: "ADMIN" as any,
-                  passwordHash,
+                  passwordHash: passwordHash as string,
                 },
                 select: { id: true },
               });
@@ -309,19 +315,11 @@ router.post(
               userId: targetUser.id,
               organizationId,
               role: targetRole,
-              capabilities: [...new Set(capabilities)],
+              capabilities: normalizedCapabilities,
               department: cleanOptionalText(department),
               isActive: true,
             },
           });
-
-          // If user already exists and password was provided, update it
-          if (existingUser && password?.trim()) {
-            await tx.user.update({
-              where: { id: existingUser.id },
-              data: { passwordHash },
-            });
-          }
 
           return { userId: targetUser.id, memberId: member.id };
         },
@@ -335,6 +333,7 @@ router.post(
         role: targetRole,
         roleLabel: ROLE_LABEL[targetRole],
         department: cleanOptionalText(department),
+        capabilities: normalizedCapabilities,
       });
     } catch (error) {
       console.error("add org member error", error);
@@ -387,10 +386,6 @@ router.patch("/org/members/:memberId/role", requireAuth, async (req, res) => {
         .status(403)
         .json({ message: "Энэ байгууллагад хандах эрхгүй" });
     }
-    if (callerRole !== "OWNER") {
-      return res.status(403).json({ message: "Ажилтны эрхийг зөвхөн дэлгүүрийн эзэмшигч өөрчилнө" });
-    }
-
     // Cannot change own role
     if (targetMember.userId === user.userId) {
       return res
@@ -421,7 +416,10 @@ router.patch("/org/members/:memberId/role", requireAuth, async (req, res) => {
 
     const updated = await prisma.organizationMember.update({
       where: { id: memberId },
-      data: { role: newRole as any },
+      data: {
+        role: newRole as any,
+        ...(newRole === "VIEWER" ? { capabilities: [] } : {}),
+      },
       select: { id: true, role: true },
     });
 
@@ -478,10 +476,6 @@ router.delete("/org/members/:memberId", requireAuth, async (req, res) => {
         .status(403)
         .json({ message: "Энэ байгууллагад хандах эрхгүй" });
     }
-    if (callerRole !== "OWNER") {
-      return res.status(403).json({ message: "Ажилтныг зөвхөн дэлгүүрийн эзэмшигч хасна" });
-    }
-
     // Can only remove people at lower level
     if (ROLE_LEVEL[targetMember.role as OrgRole] <= ROLE_LEVEL[callerRole]) {
       return res
@@ -541,12 +535,26 @@ router.patch("/org/members/:memberId/toggle", requireAuth, async (req, res) => {
         .status(403)
         .json({ message: "Энэ байгууллагад хандах эрхгүй" });
     }
-    if (callerRole !== "OWNER") {
-      return res.status(403).json({ message: "Ажилтны төлөвийг зөвхөн дэлгүүрийн эзэмшигч өөрчилнө" });
-    }
-
     if (ROLE_LEVEL[targetMember.role as OrgRole] <= ROLE_LEVEL[callerRole]) {
       return res.status(403).json({ message: "Эрх хүрэлцэхгүй" });
+    }
+
+    if (!targetMember.isActive) {
+      const organization = await prisma.organization.findUnique({
+        where: { id: targetMember.organizationId },
+        select: { maxMembers: true },
+      });
+      if (!organization) {
+        return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+      }
+      const activeMemberCount = await prisma.organizationMember.count({
+        where: { organizationId: targetMember.organizationId, isActive: true },
+      });
+      if (activeMemberCount >= organization.maxMembers) {
+        return res.status(409).json({
+          message: `Идэвхтэй ажилтны хязгаар (${organization.maxMembers}) хүрсэн байна`,
+        });
+      }
     }
 
     const updated = await prisma.organizationMember.update({
@@ -615,9 +623,6 @@ router.patch("/org/members/:memberId", requireAuth, async (req, res) => {
     }
 
     const isSelf = targetMember.userId === user.userId;
-    if (callerRole !== "OWNER" && !isSelf) {
-      return res.status(403).json({ message: "Ажилтны мэдээллийг зөвхөн дэлгүүрийн эзэмшигч засна" });
-    }
     const canManageTarget =
       ROLE_LEVEL[targetMember.role as OrgRole] > ROLE_LEVEL[callerRole];
     if (!isSelf && !canManageTarget) {
@@ -641,6 +646,11 @@ router.patch("/org/members/:memberId", requireAuth, async (req, res) => {
         return res
           .status(400)
           .json({ message: "Тусгай эрхийн утга буруу байна" });
+      }
+      if (targetMember.role === "VIEWER" && capabilities.length > 0) {
+        return res.status(400).json({
+          message: "Ажиглагчид тусгай ажлын эрх олгох боломжгүй",
+        });
       }
       const features = await getOrganizationAppFeatures(targetMember.organizationId);
       if (!features || blockedCapabilityGrants(capabilities as Capability[], targetMember.capabilities, features).length > 0) {
