@@ -51,11 +51,11 @@ test("linking rejects aliases, SKU, and master identity collisions without mergi
     [],
   );
 });
-test("catalog ownership requires an explicit link, never a delivery assignment", () => {
+test("warehouse scopes never adopt vendor or legacy shared catalogs", () => {
   const organizations = [{ organizationId: "recipient" }];
   assert.equal(
     warehouseCatalogOwner({ catalogOrganizationId: "owner", organizations }),
-    "owner",
+    null,
   );
   assert.equal(
     warehouseCatalogOwner({ catalogOrganizationId: null, organizations }),
@@ -66,7 +66,7 @@ test("catalog ownership requires an explicit link, never a delivery assignment",
     null,
   );
   assert.deepEqual(warehouseProductReadScope("w", ["recipient"], "owner"), {
-    organizationId: "owner",
+    organizationId: null, managedByWarehouseId: "w",
   });
   assert.deepEqual(
     warehouseProductReadScope("w", ["recipient"], null),

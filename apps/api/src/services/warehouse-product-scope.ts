@@ -1,33 +1,33 @@
 import type { Prisma } from "@mgl/database";
 
-/** An unassigned warehouse owns its catalog directly; it needs no business tenant. */
+/** Distribution assignments and legacy shared links never confer ownership. */
 export function warehouseProductOwnerScope(
   warehouseId: string,
-  organizationId: string | null,
+  _organizationId?: string | null,
 ): Prisma.ProductWhereInput {
-  return organizationId
-    ? { organizationId }
-    : { managedByWarehouseId: warehouseId };
+  return { organizationId: null, managedByWarehouseId: warehouseId };
 }
 
 export function warehouseProductReadScope(
   warehouseId: string,
-  _organizationIds: readonly string[],
-  catalogOrganizationId?: string | null,
+  _organizationIds: readonly string[] = [],
+  _catalogOrganizationId?: string | null,
 ): Prisma.ProductWhereInput {
-  if (catalogOrganizationId) return { organizationId: catalogOrganizationId };
-  return {
-    OR: [
-      { managedByWarehouseId: warehouseId },
-      { warehouseInventories: { some: { warehouseId } } },
-    ],
-  };
+  return warehouseProductOwnerScope(warehouseId);
 }
 
-/** Distribution customers are not catalog owners. Sharing requires an explicit link. */
-export function warehouseCatalogOwner(warehouse: {
+/** Warehouse products are never created under a vendor organization. */
+export function warehouseCatalogOwner(_warehouse: {
   catalogOrganizationId: string | null;
   organizations: readonly { organizationId: string }[];
-}): string | null {
-  return warehouse.catalogOrganizationId ?? null;
+}): null {
+  return null;
+}
+
+/** Central warehouse inventory must never leak through legacy vendor ownership. */
+export function vendorProductReadScope(): Prisma.ProductWhereInput {
+  return {
+    managedByWarehouseId: null,
+    warehouseInventories: { none: { warehouse: { type: "CENTRAL" } } },
+  };
 }

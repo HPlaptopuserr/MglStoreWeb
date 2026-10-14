@@ -45,51 +45,12 @@ export async function resolveProductInventoryWarehouse(
     return warehouseId;
   };
   if (product.managedByWarehouseId) {
-    const managedWarehouse = await tx.warehouse.findUnique({
-      where: { id: product.managedByWarehouseId },
-      select: { type: true, catalogOrganizationId: true },
-    });
-    if (organizationId && managedWarehouse?.type === WarehouseType.CENTRAL &&
-      managedWarehouse.catalogOrganizationId !== organizationId) {
-      throw new ProductInventoryConflictError("Энэ бараа төв агуулахын бүртгэлд байна. Дэлгүүрийн өөрийн барааг сонгоно уу.");
+    if (organizationId) {
+      throw new ProductInventoryConflictError("Vendor болон агуулахын барааны эзэмшил зөрсөн байна. Эхлээд бүртгэлийг тулгана уу.");
     }
     return verifyWarehouse(product.managedByWarehouseId);
   }
   if (!organizationId) return null;
-  // An explicit shared catalog routes both portals to the same physical stock.
-  // Distribution assignments alone must never enable this behavior.
-  const catalogWarehouse = await tx.warehouse.findUnique({
-    where: { catalogOrganizationId: organizationId },
-    select: { id: true, isActive: true, deletedAt: true },
-  });
-  if (catalogWarehouse) {
-    if (!catalogWarehouse.isActive || catalogWarehouse.deletedAt) {
-      throw new ProductInventoryConflictError("Холбогдсон агуулах идэвхгүй байна");
-    }
-    const otherInventory = await tx.warehouseInventory.findFirst({
-      where: { productId, warehouseId: { not: catalogWarehouse.id } },
-      select: { id: true },
-    });
-    if (otherInventory)
-      throw new ProductInventoryConflictError("Барааны агуулахын холбоосыг эхлээд тулгана уу");
-    await verifyWarehouse(catalogWarehouse.id);
-    await tx.product.update({
-      where: { id: productId },
-      data: { managedByWarehouseId: catalogWarehouse.id },
-    });
-    await tx.warehouseInventory.upsert({
-      where: {
-        warehouseId_productId: { warehouseId: catalogWarehouse.id, productId },
-      },
-      create: {
-        warehouseId: catalogWarehouse.id,
-        productId,
-        quantity: initializeUnassignedStock ? product.stock : 0,
-      },
-      update: {},
-    });
-    return catalogWarehouse.id;
-  }
   // Legacy distribution links require an evidence-backed ownership repair;
   // customer assignments must never route a store sale into central stock.
   const inventories = await tx.warehouseInventory.findMany({

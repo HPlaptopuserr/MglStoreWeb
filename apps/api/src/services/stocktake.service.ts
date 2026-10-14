@@ -61,6 +61,7 @@ async function snapshot(
   const products = await tx.product.findMany({
     where: {
       ...stocktakeProductFilter(organizationId),
+      managedByWarehouseId: null,
       ...stocktakeInventoryScopeFilter(warehouseId, includeUnassigned),
     },
     select: {

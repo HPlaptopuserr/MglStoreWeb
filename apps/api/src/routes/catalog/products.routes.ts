@@ -1,3 +1,5 @@
+import { vendorProductReadScope } from "../../services/warehouse-product-scope";
+import { syncProductStock } from "../../services/inventory.service";
 import { productMutationErrorResponse } from "../../lib/product-mutation-errors";
 import { lockOrganizationInventory, resolveProductInventoryWarehouse } from "../../services/vendor-inventory-warehouse.service";
 import { assertProductInventoryOwnership, WarehouseProductOwnershipError } from "../../services/warehouse-product-ownership";
@@ -361,29 +363,9 @@ async function assertProductMutationPermission(
     );
   }
 
-  // Catalog owners retain their existing organization permissions. Being a
-  // recipient of this warehouse does not grant catalog ownership.
   if (product.organizationId) {
-    const sharedCatalog = await prisma.warehouse.findFirst({
-      where: {
-        id: product.managedByWarehouseId,
-        catalogOrganizationId: product.organizationId,
-        isActive: true,
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
-    const actor = (
-      req as typeof req & { user?: { userId: string; role: string } }
-    ).user;
-    if (sharedCatalog && actor) {
-      const permissions = await resolvePermissionsForOrg(
-        actor.userId, actor.role, product.organizationId,
-      );
-      if (permissions.permissions.has(Permission.MANAGE_PRODUCTS)) {
-        return { warehouseManaged: true };
-      }
-    }
+    res.status(409).json({ message: "Vendor болон агуулахын барааны эзэмшил зөрсөн байна. Эхлээд бүртгэлийг тулгана уу." });
+    return false;
   }
 
   const user = (
@@ -774,18 +756,6 @@ async function getImportBusinessCategoryChoices() {
     select: { id: true, name: true, slug: true, parentId: true },
   });
   return buildBusinessCategoryChoices(categories);
-}
-
-async function syncProductStock(tx: Tx, productId: string) {
-  const result = await tx.warehouseInventory.aggregate({
-    where: { productId },
-    _sum: { quantity: true },
-  });
-
-  await tx.product.update({
-    where: { id: productId },
-    data: { stock: result._sum.quantity ?? 0 },
-  });
 }
 
 async function findProductExpiryDate(
@@ -1238,6 +1208,7 @@ router.get("/products", optionalAuth, async (req, res) => {
       (canBypassAllVisibility || canBypassRequestedOrg);
 
     const where: any = {
+      ...vendorProductReadScope(),
       deletedAt: null,
       AND: [
         {
@@ -2771,8 +2742,9 @@ router.post(
                 where: {
                   organizationId_sku: { organizationId, sku: normalizedSku },
                 },
-                select: { id: true, masterProductId: true },
+                select: { id: true, masterProductId: true, managedByWarehouseId: true },
               });
+              if (existing?.managedByWarehouseId) throw new Error("Vendor болон агуулахын барааны эзэмшил зөрсөн байна");
               wasUpdate = !!existing;
               const masterProduct = await resolveMasterProduct(tx, {
                 masterProductId: existing?.masterProductId,

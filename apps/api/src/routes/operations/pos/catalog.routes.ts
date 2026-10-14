@@ -1,3 +1,4 @@
+import { vendorProductReadScope } from "../../../services/warehouse-product-scope";
 import { readCashPayment } from "@mgl/types";
 import { Router, type Router as ExpressRouter } from "express";
 import {
@@ -713,7 +714,7 @@ router.get("/pos/sales/history", async (req, res) => {
     const page = Math.max(1, Number(req.query.page || 1));
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
 
-    const where: Record<string, unknown> = { organizationId: effectiveOrgId };
+    const where: Record<string, unknown> = { organizationId: effectiveOrgId, ...vendorProductReadScope() };
     if (branchId) where.branchId = branchId;
     if (fromStr || toStr) {
       where.createdAt = {

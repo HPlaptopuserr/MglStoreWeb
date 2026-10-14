@@ -1835,7 +1835,7 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
     const status = String(req.query.status ?? "all");
     const baseWhere: Prisma.WarehouseInventoryWhereInput = {
       warehouseId: id,
-      product: { deletedAt: null },
+      product: { deletedAt: null, ...warehouseProductOwnerScope(id) },
     };
     const where: Prisma.WarehouseInventoryWhereInput = {
       ...baseWhere,
@@ -2294,6 +2294,7 @@ router.post(
       }
 
       const dispatch = await prisma.$transaction(async (tx) => {
+        await assertWarehouseProductsOwned(tx, warehouseId, items.map(item => item.productId));
         const warehouse = await tx.warehouse.findFirst({
           where: {
             id: warehouseId,

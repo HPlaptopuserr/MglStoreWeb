@@ -8,18 +8,11 @@ export function stocktakeWarehouseFilter(
   return {
     isActive: true,
     deletedAt: null,
-    OR: [
-      { catalogOrganizationId: organizationId },
-      {
-        type: "VENDOR_INTERNAL",
-        organizations: {
-          some: {
-            organizationId,
-            organization: { catalogWarehouse: { is: null } },
-          },
-        },
-      },
-    ],
+    type: "VENDOR_INTERNAL",
+    organizations: {
+      some: { organizationId },
+      every: { organizationId },
+    },
   };
 }
 
@@ -35,15 +28,6 @@ export async function assertStocktakeScope(
   if (!organization)
     throw new StocktakeError("Байгууллага идэвхгүй байна", 403);
   if (
-    organization.catalogWarehouse &&
-    warehouseId !== organization.catalogWarehouse.id
-  ) {
-    throw new StocktakeError(
-      "Нэгдсэн барааны сангийн агуулахыг сонгоно уу",
-      403,
-    );
-  }
-  if (
     warehouseId &&
     !(await tx.warehouse.findFirst({
       where: {
@@ -54,5 +38,5 @@ export async function assertStocktakeScope(
     }))
   )
     throw new StocktakeError("Энэ агуулахад тооллого хийх эрхгүй байна", 403);
-  return organization.catalogWarehouse?.id ?? null;
+  return null;
 }

@@ -35,16 +35,11 @@ interface ProductOwnership {
 /** Delivery assignments are customer relationships, never catalog ownership. */
 export function warehouseOwnsProduct(warehouse: WarehouseOwnership, product: ProductOwnership): boolean {
   if (!warehouse.isActive || warehouse.deletedAt) return false;
-  const ownerId = warehouse.catalogOrganizationId ??
-    (warehouse.type === "VENDOR_INTERNAL" && warehouse.organizations.length === 1
-      ? warehouse.organizations[0].organizationId : null);
-  if (ownerId) {
-    return product.organizationId === ownerId &&
-      (product.managedByWarehouseId === null || product.managedByWarehouseId === warehouse.id);
+  if (warehouse.type === "CENTRAL") {
+    return product.organizationId === null && product.managedByWarehouseId === warehouse.id;
   }
-  // Older explicitly managed catalogs retain a legacy organizationId. Their
-  // warehouse remains authoritative; vendor resolution separately denies them.
-  return warehouse.type === "CENTRAL" && product.managedByWarehouseId === warehouse.id;
+  return warehouse.type === "VENDOR_INTERNAL" && warehouse.organizations.length === 1 &&
+    product.organizationId === warehouse.organizations[0].organizationId && product.managedByWarehouseId === null;
 }
 
 async function ownedProducts(tx: OwnershipTransaction, productIds: readonly string[]) {
