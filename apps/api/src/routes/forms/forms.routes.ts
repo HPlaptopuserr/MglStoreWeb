@@ -4,7 +4,27 @@ import { Permission } from "@mgl/types";
 import crypto from "crypto";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 
+import { rateLimit } from "express-rate-limit";
+import { communityFields, parseCommunityResponse } from "./community-2003";
+
 const router: ExpressRouter = Router();
+
+router.post("/forms/2003/responses", rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false }), async (req, res) => {
+  const data = parseCommunityResponse(req.body?.data);
+  if (!data) return res.status(400).json({ message: "Мэдээллээ шалгаад дахин илгээнэ үү." });
+  try {
+    const form = await prisma.form.upsert({
+      where: { slug: "2003" },
+      update: {},
+      create: { slug: "2003", title: "2003 • Танилцах бүртгэл", fields: communityFields },
+    });
+    if (!form.isActive) return res.status(410).json({ message: "Бүртгэл хаагдсан байна." });
+    await prisma.formResponse.create({ data: { formId: form.id, data } });
+    return res.status(201).json({ success: true });
+  } catch {
+    return res.status(500).json({ message: "Мэдээлэл хадгалахад алдаа гарлаа. Дахин оролдоно уу." });
+  }
+});
 
 // ── Helper: generate short slug ──
 function generateSlug(): string {

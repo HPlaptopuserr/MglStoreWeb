@@ -24,6 +24,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     pathname || "",
   );
   const hideGlobalShell =
+    pathname === "/2003" ||
     isContractRoute ||
     isPaidAccessDetailRoute ||
     isReelsRoute ||
