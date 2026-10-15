@@ -3,11 +3,14 @@ import { useEffect, useState } from "react";
 import { DEMO_STATE } from "./demo-data";
 import { isDemoState, type DemoState, type Member } from "./model";
 const KEY = "mgl-2003-community-demo-v1";
-export function useDemoDirectory() {
-  const [data, setData] = useState<DemoState>(DEMO_STATE);
-  const [ready, setReady] = useState(false);
+export function useDemoDirectory(demo = true) {
+  const [data, setData] = useState<DemoState>(
+    demo ? DEMO_STATE : { members: [], requests: [] },
+  );
+  const [ready, setReady] = useState(!demo);
   const [error, setError] = useState("");
   useEffect(() => {
+    if (!demo) return;
     try {
       const stored = localStorage.getItem(KEY);
       if (stored) {
@@ -38,8 +41,9 @@ export function useDemoDirectory() {
       setError("Хадгалсан жишээг уншиж чадсангүй. Анхны мэдээллийг харууллаа.");
     }
     setReady(true);
-  }, []);
+  }, [demo]);
   function save(next: DemoState) {
+    if (!demo) return;
     setData(next);
     try {
       localStorage.setItem(KEY, JSON.stringify(next));

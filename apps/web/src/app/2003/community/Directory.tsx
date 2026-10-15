@@ -29,8 +29,8 @@ const tabs = [
   { id: "business", label: ACTIVITY_TYPES.business.label, icon: Store },
   { id: "planning", label: ACTIVITY_TYPES.planning.label, icon: Rocket },
 ] as const;
-export function Directory() {
-  const { data, ready, error, reset } = useDemoDirectory();
+export function Directory({ demo = true }: { demo?: boolean }) {
+  const { data, ready, error, reset } = useDemoDirectory(demo);
   const [tab, setTab] = useState<DirectoryTab>("all");
   const [query, setQuery] = useState("");
   const [city, setCity] = useState("");
@@ -56,10 +56,12 @@ export function Directory() {
   }
   return (
     <div className={styles.page}>
-      <div className={styles.demoBanner}>
-        LOCAL DEMO · Бүх нэр, байгууллага, хүсэлт зохиомол. Бодит бүртгэлээс
-        тусдаа.
-      </div>
+      {demo && (
+        <div className={styles.demoBanner}>
+          LOCAL DEMO · Бүх нэр, байгууллага, хүсэлт зохиомол. Бодит бүртгэлээс
+          тусдаа.
+        </div>
+      )}
       <header className={styles.header}>
         <Link href="/2003" className={styles.logo}>
           2003<span>Бидний хүрээлэл</span>
@@ -98,7 +100,11 @@ export function Directory() {
               </strong>
               <span>үйл ажиллагааны чиглэл</span>
             </div>
-            <p>Жишээ өгөгдөл · Хамтын боломжийг туршъя ↗</p>
+            <p>
+              {demo
+                ? "Жишээ өгөгдөл · Хамтын боломжийг туршъя ↗"
+                : "Хамтдаа шинэ боломжийг нээе ↗"}
+            </p>
           </aside>
         </section>
         <nav className={styles.tabs} aria-label="Мэдээллийн төрөл">
@@ -191,11 +197,25 @@ export function Directory() {
         ) : count === 0 ? (
           <div className={styles.empty}>
             <Search size={30} />
-            <h2>Тохирох мэдээлэл олдсонгүй</h2>
-            <p>Өөр үгээр хайх эсвэл шүүлтүүрээ цэвэрлээрэй.</p>
-            <button className={styles.primary} onClick={clear}>
-              Бүгдийг харах
-            </button>
+            <h2>
+              {!demo && data.members.length === 0
+                ? "Танилцуулгууд удахгүй нэмэгдэнэ"
+                : "Тохирох мэдээлэл олдсонгүй"}
+            </h2>
+            <p>
+              {!demo && data.members.length === 0
+                ? "Бүртгэл нээлттэй байна. Нийтлэх зөвшөөрөлтэй танилцуулгуудыг баталгаажуулсны дараа энд харуулна."
+                : "Өөр үгээр хайх эсвэл шүүлтүүрээ цэвэрлээрэй."}
+            </p>
+            {!demo && data.members.length === 0 ? (
+              <Link href="/2003/join" className={styles.primary}>
+                Нэгдэх
+              </Link>
+            ) : (
+              <button className={styles.primary} onClick={clear}>
+                Бүгдийг харах
+              </button>
+            )}
           </div>
         ) : (
           <div className={styles.sectorGroups}>
@@ -239,20 +259,22 @@ export function Directory() {
         </section>
         <footer className={styles.footer}>
           <span>2003 · Танилцаанаас хамтын ажиллагаа руу.</span>
-          <button
-            onClick={() => {
-              if (
-                window.confirm(
-                  "Энэ браузерын туршилтын өөрчлөлтүүдийг арилгаж, анхны жишээг сэргээх үү?",
-                )
-              ) {
-                reset();
-                clear();
-              }
-            }}
-          >
-            Жишээг эхнээс нь сэргээх
-          </button>
+          {demo && (
+            <button
+              onClick={() => {
+                if (
+                  window.confirm(
+                    "Энэ браузерын туршилтын өөрчлөлтүүдийг арилгаж, анхны жишээг сэргээх үү?",
+                  )
+                ) {
+                  reset();
+                  clear();
+                }
+              }}
+            >
+              Жишээг эхнээс нь сэргээх
+            </button>
+          )}
         </footer>
       </div>
       {selected && (
