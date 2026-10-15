@@ -20,8 +20,8 @@ export default function CommunityRegistrationPage() {
           <span className={styles.brandDivider} />
           2003
         </a>
-        <a href="#registration" className={styles.headerLink}>
-          Танилцах бүртгэл <ArrowUpRight size={16} />
+        <a href="/2003" className={styles.headerLink}>
+          Гишүүдийн мэдээлэл <ArrowUpRight size={16} />
         </a>
       </header>
       <div className={styles.layout}>
