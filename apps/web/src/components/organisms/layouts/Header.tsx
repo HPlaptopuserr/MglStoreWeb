@@ -469,6 +469,14 @@ export const Header = () => {
                   <MapPinned size={14} />
                   Орон нутаг
                 </Link>
+                <Link
+                  href="/2003"
+                  title="2003 — Танилцах бүртгэл"
+                  className="inline-flex items-center gap-2 self-center rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-900 transition-colors hover:border-emerald-300 hover:bg-emerald-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-emerald-600"
+                >
+                  <UsersRound size={15} aria-hidden="true" />
+                  2003
+                </Link>
               </div>
             </div>
           </div>
@@ -555,6 +563,12 @@ export const Header = () => {
                 </span>
               </button>
             )}
+
+            <Link href="/2003" onClick={closeMobile} className="mt-5 flex min-h-20 items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950 transition-colors active:bg-emerald-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
+              <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-emerald-900 text-sm font-black text-lime-200">2003</span>
+              <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Танилцъя. Холбоотой байцгаая.</span><span className="mt-1 block text-xs text-emerald-800">Танилцах бүртгэл · 1–2 минут</span></span>
+              <ChevronRight size={20} aria-hidden="true" />
+            </Link>
 
             <div className="mt-5">
               <div className="mb-3 flex items-end justify-between gap-3">

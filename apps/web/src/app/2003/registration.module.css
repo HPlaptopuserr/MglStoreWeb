@@ -533,94 +533,136 @@
 }
 @media (max-width: 700px) {
   .page {
-    padding: 0 20px;
+    padding: 0 16px;
   }
   .header {
-    padding: 20px 0;
+    padding: 12px 0;
+    gap: 8px;
   }
   .brand {
     font-size: 10px;
-    gap: 9px;
+    gap: 8px;
   }
   .headerLink {
-    font-size: 10px;
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 12px;
+    border-radius: 10px;
+    background: #eaf0df;
     gap: 5px;
   }
   .layout {
     grid-template-columns: 1fr;
-    gap: 30px;
-    padding: 30px 0 40px;
+    gap: 24px;
+    padding: 24px 0 32px;
   }
   .intro {
     position: relative;
     top: auto;
-    padding: 0;
+    padding: 0 4px;
   }
   .eyebrow {
-    font-size: 8px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
   }
   .year {
-    font-size: 88px;
+    font-size: 64px;
     margin: 12px 0;
-    line-height: 1.1;
+    line-height: 1;
   }
   .year > span {
-    font-size: 48px;
-    margin-top: 5px;
+    font-size: 38px;
+    margin-top: 2px;
   }
   .intro h1 {
-    font-size: 30px;
+    font-size: 28px;
     line-height: 1.25;
   }
   .description {
-    font-size: 13px;
-    margin-top: 15px;
+    font-size: 14px;
+    line-height: 1.7;
+    margin-top: 12px;
     max-width: 100%;
   }
   .introMeta {
-    margin-top: 16px;
-    font-size: 10px;
+    margin-top: 14px;
+    font-size: 11px;
+    gap: 6px;
   }
   .connectionCard {
     display: none;
   }
   .form {
-    padding: 24px 20px;
-    border-radius: 22px;
+    padding: 24px 18px;
+    border-radius: 20px;
+    scroll-margin-top: 16px;
   }
   .formHeading h2 {
     font-size: 26px;
   }
-  .choices {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .formHeading > p:last-child {
+    font-size: 14px;
+    line-height: 1.6;
   }
-  .choice {
-    display: flex;
-    padding: 14px 9px;
-    gap: 6px;
-  }
-  .choice input {
-    top: 12px;
-    right: 8px;
-  }
-  .choice strong {
+  .formEyebrow {
     font-size: 10px;
-    margin-top: 7px;
   }
-  .choice > span {
-    font-size: 8px;
+  .sectionTitle h3 {
+    font-size: 14px;
   }
-  .choice svg {
-    align-self: flex-start;
-  }
-  .footer {
-    font-size: 9px;
-  }
-  .form > fieldset {
-    gap: 0;
+  .sectionTitle small {
+    font-size: 10px;
   }
   .form label {
-    font-size: 12px;
+    font-size: 14px;
+  }
+  .form input::placeholder,
+  .form textarea::placeholder {
+    font-size: 14px;
+  }
+  .form input:not([type="radio"]):not([type="checkbox"]) {
+    min-height: 52px;
+  }
+  .choices {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .choice {
+    display: grid;
+    grid-template-columns: 28px 1fr;
+    gap: 5px 12px;
+    padding: 17px 44px 17px 16px;
+    min-height: 76px;
+  }
+  .choice svg {
+    grid-row: span 2;
+    align-self: center;
+  }
+  .choice input {
+    width: 20px;
+    height: 20px;
+    right: 16px;
+    top: calc(50% - 10px);
+  }
+  .choice strong {
+    margin: 0;
+  }
+  .consent {
+    line-height: 1.75;
+    padding: 14px;
+  }
+  .consent input {
+    width: 20px;
+    height: 20px;
+  }
+  .submit {
+    min-height: 56px;
+    font-size: 15px;
+  }
+  .footer {
+    font-size: 10px;
+    padding-bottom: max(24px, env(safe-area-inset-bottom));
+    gap: 12px;
   }
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -681,9 +723,9 @@
 }
 @media (max-width: 700px) {
   .choice strong {
-    font-size: 11px;
+    font-size: 14px;
   }
   .choice > span {
-    font-size: 10px;
+    font-size: 12px;
   }
 }
