@@ -66,15 +66,18 @@ export function TransferComposer({
               onChange={(event) => state.setDestinationId(event.target.value)}
               className="mt-2 w-full rounded-lg border border-slate-200 p-3 text-slate-900"
             >
-              {!state.destinations.length && (
-                <option value="">
-                  {state.loading
-                    ? "Агуулах ачаалж байна…"
-                    : state.error
-                      ? "Агуулах ачаалагдсангүй"
-                      : "Очих агуулах олдсонгүй"}
-                </option>
-              )}
+              <option value="">
+                {state.loading
+                  ? "Агуулах ачаалж байна…"
+                  : state.error && !state.destinations.length
+                    ? "Агуулах ачаалагдсангүй"
+                    : !state.destinations.length
+                      ? "Очих агуулах олдсонгүй"
+                      : "Очих агуулахаа сонгоно уу"}
+              </option>
+              <option value={sourceId} disabled>
+                {sourceName} — эх агуулах
+              </option>
               {state.destinations.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.name}
@@ -82,7 +85,7 @@ export function TransferComposer({
               ))}
             </select>
             <span className="mt-1 block text-xs text-slate-500">
-              Админ үүсгэсэн бүх идэвхтэй агуулах
+              Админ үүсгэсэн бүх идэвхтэй агуулах. Эх агуулах руу шилжүүлэхгүй.
             </span>
           </label>
         </section>

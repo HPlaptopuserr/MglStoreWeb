@@ -49,9 +49,10 @@ export function useTransferComposer(sourceId: string, onSent: () => void) {
         setInventory(detail);
         setDestinations(options);
         setDestinationId((current) =>
+          current !== sourceId &&
           options.some((option) => option.id === current)
             ? current
-            : (options[0]?.id ?? ""),
+            : "",
         );
       } catch (error) {
         if (!signal?.aborted) setError(requestError(error));
@@ -80,7 +81,7 @@ export function useTransferComposer(sourceId: string, onSent: () => void) {
     return () => controller.abort();
   }, [sourceId, refresh]);
   const send = async () => {
-    if (submitting.current) return false;
+    if (submitting.current || loading || (!pending && !valid)) return false;
     submitting.current = true;
     setBusy(true);
     setError("");
@@ -108,6 +109,7 @@ export function useTransferComposer(sourceId: string, onSent: () => void) {
       sessionStorage.removeItem(`warehouse-transfer:${sourceId}`);
       setPending(null);
       setItems([]);
+      setDestinationId("");
       setNote("");
       setMessage(
         "Илгээгдлээ. Очих агуулах падааныг баталсны дараа үлдэгдэлд нэмэгдэнэ.",
@@ -132,6 +134,8 @@ export function useTransferComposer(sourceId: string, onSent: () => void) {
   };
   const valid = Boolean(
     destinationId &&
+    destinationId !== sourceId &&
+    destinations.some((option) => option.id === destinationId) &&
     items.length &&
     items.every(
       (item) =>
