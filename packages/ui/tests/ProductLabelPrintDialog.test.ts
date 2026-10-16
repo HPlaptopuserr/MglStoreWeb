@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildProductLabelValue,
   calculatePrintLayout,
+  renderProductLabelMarkup,
   type LabelPrintSettings,
 } from "../src/organisms/ProductLabelPrintDialog";
 
@@ -85,4 +87,34 @@ test("layout rejects a label wider than the selected roll's printable area", () 
   );
 
   assert.equal(layout.fitsOnPage, false);
+});
+
+test("product label includes the stored wholesale price", () => {
+  const label = buildProductLabelValue({
+    id: "product-1",
+    name: "Туршилтын бараа",
+    barcode: "8650000000011",
+    price: 25_000,
+    wholesalePrice: 22_000,
+  });
+
+  assert.equal(label.priceText, "25000₮");
+  assert.equal(label.wholesalePriceText, "22000₮");
+
+  const markup = renderProductLabelMarkup(label);
+  assert.match(markup, /ЗАРАХ ҮНЭ:/);
+  assert.match(markup, /БӨӨНИЙ ҮНЭ:/);
+  assert.match(markup, /22000₮/);
+});
+
+test("missing wholesale price stays blank instead of printing a false zero", () => {
+  const label = buildProductLabelValue({
+    id: "product-2",
+    name: "Бөөний үнэ тохируулаагүй бараа",
+    sku: "SKU-002",
+    price: 10_000,
+    wholesalePrice: null,
+  });
+
+  assert.equal(label.wholesalePriceText, "");
 });

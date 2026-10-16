@@ -1,18 +1,27 @@
 "use client";
 
-import { Minus, PackageSearch, Plus, Printer, Search, Settings2, Trash2, X } from "lucide-react";
+import {
+  Minus,
+  PackageSearch,
+  Plus,
+  Printer,
+  Search,
+  Settings2,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 
-type ProductLabelDraft = {
+export type ProductLabelValue = {
   productId: string;
   name: string;
   code: string;
   priceText: string;
-  qty: number;
+  wholesalePriceText: string;
 };
 
-type ProductLabelValue = Omit<ProductLabelDraft, "qty">;
+type ProductLabelDraft = ProductLabelValue & { qty: number };
 
 export type ProductLabelProduct = {
   id: string;
@@ -20,6 +29,7 @@ export type ProductLabelProduct = {
   sku?: string | null;
   barcode?: string | null;
   price?: number | string | null;
+  wholesalePrice?: number | string | null;
 };
 
 type ProductLabelPrintDialogProps = {
@@ -194,7 +204,9 @@ export function ProductLabelPrintDialog({
 }: ProductLabelPrintDialogProps) {
   const [labelSearch, setLabelSearch] = useState("");
   const [drafts, setDrafts] = useState<ProductLabelDraft[]>([]);
-  const [printSettings, setPrintSettings] = useState<LabelPrintSettings>(DEFAULT_PRINT_SETTINGS);
+  const [printSettings, setPrintSettings] = useState<LabelPrintSettings>(
+    DEFAULT_PRINT_SETTINGS,
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -222,15 +234,21 @@ export function ProductLabelPrintDialog({
           name: draft.name,
           code: draft.code,
           priceText: draft.priceText,
+          wholesalePriceText: draft.wholesalePriceText,
         })),
       ),
     [drafts],
   );
 
   const selectedLabelCount = labels.length;
-  const printLayout = useMemo(() => calculatePrintLayout(printSettings), [printSettings]);
+  const printLayout = useMemo(
+    () => calculatePrintLayout(printSettings),
+    [printSettings],
+  );
   const pageCount =
-    selectedLabelCount === 0 ? 0 : Math.ceil(selectedLabelCount / printLayout.labelsPerPage);
+    selectedLabelCount === 0
+      ? 0
+      : Math.ceil(selectedLabelCount / printLayout.labelsPerPage);
 
   const addProduct = (product: ProductLabelProduct) => {
     setDrafts((current) => {
@@ -247,7 +265,10 @@ export function ProductLabelPrintDialog({
     });
   };
 
-  const updateDraft = (productId: string, updates: Partial<ProductLabelDraft>) => {
+  const updateDraft = (
+    productId: string,
+    updates: Partial<ProductLabelDraft>,
+  ) => {
     setDrafts((current) =>
       current.map((draft) =>
         draft.productId === productId ? { ...draft, ...updates } : draft,
@@ -260,7 +281,9 @@ export function ProductLabelPrintDialog({
   };
 
   const removeDraft = (productId: string) => {
-    setDrafts((current) => current.filter((draft) => draft.productId !== productId));
+    setDrafts((current) =>
+      current.filter((draft) => draft.productId !== productId),
+    );
   };
 
   const handlePrint = () => {
@@ -292,7 +315,10 @@ export function ProductLabelPrintDialog({
             <p className="text-[10px] font-black uppercase tracking-[0.2em] text-sky-700">
               MGL
             </p>
-            <h3 id="product-label-print-title" className="text-xl font-black text-slate-950">
+            <h3
+              id="product-label-print-title"
+              className="text-xl font-black text-slate-950"
+            >
               Үнэний шошго хэвлэх
             </h3>
             <p className="mt-1 text-xs font-semibold text-slate-500">
@@ -338,7 +364,10 @@ export function ProductLabelPrintDialog({
           <section className="flex min-h-0 flex-col border-r border-slate-200">
             <div className="shrink-0 border-b border-slate-100 p-4">
               <div className="relative">
-                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search
+                  size={15}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                />
                 <input
                   value={labelSearch}
                   onChange={(event) => setLabelSearch(event.target.value)}
@@ -353,14 +382,17 @@ export function ProductLabelPrintDialog({
                 <div className="flex min-h-56 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center">
                   <div>
                     <PackageSearch className="mx-auto mb-3 h-9 w-9 text-slate-300" />
-                    <p className="text-sm font-bold text-slate-700">Бараа олдсонгүй</p>
+                    <p className="text-sm font-bold text-slate-700">
+                      Бараа олдсонгүй
+                    </p>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {filteredProducts.map((product) => {
                     const selectedQty =
-                      drafts.find((draft) => draft.productId === product.id)?.qty ?? 0;
+                      drafts.find((draft) => draft.productId === product.id)
+                        ?.qty ?? 0;
                     const labelCode = resolveProductLabelCode(product);
 
                     return (
@@ -375,7 +407,11 @@ export function ProductLabelPrintDialog({
                             {product.name}
                           </p>
                           <p className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
-                            {labelCode.label} {labelCode.value || "-"} · {formatLabelPrice(product.price)}
+                            {labelCode.label} {labelCode.value || "-"} · Зарах{" "}
+                            {formatLabelPrice(product.price)}
+                            {hasLabelPrice(product.wholesalePrice)
+                              ? ` · Бөөний ${formatLabelPrice(product.wholesalePrice)}`
+                              : ""}
                           </p>
                         </div>
                         <span
@@ -402,12 +438,17 @@ export function ProductLabelPrintDialog({
             <div className="min-h-0 flex-1 overflow-y-auto p-3">
               {drafts.length === 0 ? (
                 <div className="flex min-h-56 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 text-center">
-                  <p className="text-sm font-bold text-slate-500">Сонгосон бараа байхгүй</p>
+                  <p className="text-sm font-bold text-slate-500">
+                    Сонгосон бараа байхгүй
+                  </p>
                 </div>
               ) : (
                 <div className="space-y-3">
                   {drafts.map((draft) => (
-                    <div key={draft.productId} className="rounded-lg border border-slate-200 bg-white p-3">
+                    <div
+                      key={draft.productId}
+                      className="rounded-lg border border-slate-200 bg-white p-3"
+                    >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="line-clamp-1 text-sm font-black text-slate-950">
@@ -427,31 +468,50 @@ export function ProductLabelPrintDialog({
                         </button>
                       </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-2">
+                      <div className="mt-3 grid grid-cols-3 gap-2">
                         <LabelInput
                           label="Нэр"
                           value={draft.name}
-                          onChange={(value) => updateDraft(draft.productId, { name: value })}
-                          className="col-span-2"
+                          onChange={(value) =>
+                            updateDraft(draft.productId, { name: value })
+                          }
+                          className="col-span-3"
                         />
                         <LabelInput
                           label="Код"
                           value={draft.code}
-                          onChange={(value) => updateDraft(draft.productId, { code: value })}
+                          onChange={(value) =>
+                            updateDraft(draft.productId, { code: value })
+                          }
                         />
                         <LabelInput
-                          label="Үнэ"
+                          label="Зарах үнэ"
                           value={draft.priceText}
-                          onChange={(value) => updateDraft(draft.productId, { priceText: value })}
+                          onChange={(value) =>
+                            updateDraft(draft.productId, { priceText: value })
+                          }
+                        />
+                        <LabelInput
+                          label="Бөөний үнэ"
+                          value={draft.wholesalePriceText}
+                          onChange={(value) =>
+                            updateDraft(draft.productId, {
+                              wholesalePriceText: value,
+                            })
+                          }
                         />
                       </div>
 
                       <div className="mt-3 flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-2 py-2">
-                        <span className="text-xs font-bold text-slate-500">Тоо</span>
+                        <span className="text-xs font-bold text-slate-500">
+                          Тоо
+                        </span>
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
-                            onClick={() => updateQty(draft.productId, draft.qty - 1)}
+                            onClick={() =>
+                              updateQty(draft.productId, draft.qty - 1)
+                            }
                             aria-label={`${draft.name} тоо бууруулах`}
                             className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100"
                           >
@@ -459,14 +519,21 @@ export function ProductLabelPrintDialog({
                           </button>
                           <input
                             value={draft.qty}
-                            onChange={(event) => updateQty(draft.productId, Number(event.target.value))}
+                            onChange={(event) =>
+                              updateQty(
+                                draft.productId,
+                                Number(event.target.value),
+                              )
+                            }
                             inputMode="numeric"
                             className="h-8 w-14 rounded-lg border border-slate-200 bg-white text-center text-sm font-black tabular-nums text-slate-950 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
                             aria-label={`${draft.name} хэвлэх тоо`}
                           />
                           <button
                             type="button"
-                            onClick={() => updateQty(draft.productId, draft.qty + 1)}
+                            onClick={() =>
+                              updateQty(draft.productId, draft.qty + 1)
+                            }
                             aria-label={`${draft.name} тоо нэмэх`}
                             className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:bg-slate-100"
                           >
@@ -488,18 +555,24 @@ export function ProductLabelPrintDialog({
             <div className="min-h-0 flex-1 overflow-y-auto p-4">
               {labels.length === 0 ? (
                 <div className="flex min-h-40 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-center">
-                  <p className="text-sm font-bold text-slate-500">Сонгосон шошго байхгүй</p>
+                  <p className="text-sm font-bold text-slate-500">
+                    Сонгосон шошго байхгүй
+                  </p>
                 </div>
               ) : (
                 <div
                   className="grid gap-1"
-                  style={{ gridTemplateColumns: `repeat(${Math.min(printLayout.columns, 3)}, minmax(0, 1fr))` }}
+                  style={{
+                    gridTemplateColumns: `repeat(${Math.min(printLayout.columns, 3)}, minmax(0, 1fr))`,
+                  }}
                 >
                   {labels.map((label, index) => (
                     <LabelPreviewCard
                       key={`${label.productId}-${index}`}
                       label={label}
-                      aspectRatio={printSettings.labelWidth / printSettings.labelHeight}
+                      aspectRatio={
+                        printSettings.labelWidth / printSettings.labelHeight
+                      }
                     />
                   ))}
                 </div>
@@ -580,7 +653,9 @@ function PrintSettingsBar({
       <SettingsField label="Цаас">
         <select
           value={settings.paperPreset}
-          onChange={(event) => selectPaperPreset(event.target.value as PaperPreset)}
+          onChange={(event) =>
+            selectPaperPreset(event.target.value as PaperPreset)
+          }
           className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
         >
           <option value="A4">A4</option>
@@ -594,7 +669,9 @@ function PrintSettingsBar({
       <SettingsField label="Чиглэл">
         <select
           value={settings.orientation}
-          onChange={(event) => update("orientation", event.target.value as PaperOrientation)}
+          onChange={(event) =>
+            update("orientation", event.target.value as PaperOrientation)
+          }
           disabled={!hasOrientation}
           className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -625,7 +702,8 @@ function PrintSettingsBar({
           value={labelPreset}
           onChange={(event) => {
             const [width, height] = event.target.value.split("x").map(Number);
-            if (width && height) onChange({ ...settings, labelWidth: width, labelHeight: height });
+            if (width && height)
+              onChange({ ...settings, labelWidth: width, labelHeight: height });
           }}
           className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
         >
@@ -633,7 +711,9 @@ function PrintSettingsBar({
           <option value="100x50">Дунд (100 × 50)</option>
           <option value="70x40">Жижиг (70 × 40)</option>
           <option value="50x30">Мини (50 × 30)</option>
-          <option value="custom" disabled>Тусгай хэмжээ</option>
+          <option value="custom" disabled>
+            Тусгай хэмжээ
+          </option>
         </select>
       </SettingsField>
       <SettingsNumberField
@@ -666,7 +746,9 @@ function PrintSettingsBar({
       />
       <div
         className={`mb-0.5 ml-auto rounded-lg px-3 py-2 text-xs font-black ${
-          layout.fitsOnPage ? "bg-sky-100 text-sky-800" : "bg-rose-100 text-rose-700"
+          layout.fitsOnPage
+            ? "bg-sky-100 text-sky-800"
+            : "bg-rose-100 text-rose-700"
         }`}
       >
         {layout.fitsOnPage
@@ -677,10 +759,18 @@ function PrintSettingsBar({
   );
 }
 
-function SettingsField({ label, children }: { label: string; children: ReactNode }) {
+function SettingsField({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</span>
+      <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">
+        {label}
+      </span>
       {children}
     </label>
   );
@@ -710,7 +800,8 @@ function SettingsNumberField({
         step="0.1"
         onChange={(event) => {
           const nextValue = Number(event.target.value);
-          if (Number.isFinite(nextValue)) onChange(Math.max(min, Math.min(max, nextValue)));
+          if (Number.isFinite(nextValue))
+            onChange(Math.max(min, Math.min(max, nextValue)));
         }}
         className="h-9 w-20 rounded-lg border border-slate-200 bg-white px-2 text-xs font-bold tabular-nums text-slate-900 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
       />
@@ -759,23 +850,31 @@ function LabelPreviewCard({
         <MglLabelLogo className="h-4 w-[50px]" />
       </div>
       <div className="p-1.5 text-[#002b52]">
-        <p className="text-[8px] font-black leading-none">БҮТЭЭГДЭХҮҮНИЙ НЭР:</p>
+        <p className="text-[8px] font-black leading-none">
+          БҮТЭЭГДЭХҮҮНИЙ НЭР:
+        </p>
         <div className="mt-1 flex h-5 items-center justify-center rounded-[4px] border-2 border-[#002b52] px-1">
           <span className="line-clamp-1 text-[10px] font-black text-slate-900">
             {label?.name ?? ""}
           </span>
         </div>
-        <div className="mt-1 grid grid-cols-2 gap-1 text-[8px] font-black leading-none">
+        <div className="mt-1 grid grid-cols-[1.2fr_1fr_1fr] gap-1 text-[7px] font-black leading-none">
           <span>КОД:</span>
-          <span>ҮНЭ:</span>
+          <span>ЗАРАХ ҮНЭ:</span>
+          <span>БӨӨНИЙ ҮНЭ:</span>
         </div>
-        <div className="mt-1 grid grid-cols-2 gap-1">
+        <div className="mt-1 grid grid-cols-[1.2fr_1fr_1fr] gap-1">
           <div className="flex h-6 items-center justify-center rounded-[4px] border-2 border-[#002b52] px-1">
             {label?.code ? <BarcodePreview value={label.code} /> : null}
           </div>
           <div className="flex h-6 items-center justify-center rounded-[4px] border-2 border-[#002b52] px-1">
             <span className="truncate text-[10px] font-black text-slate-900">
               {label?.priceText ?? ""}
+            </span>
+          </div>
+          <div className="flex h-6 items-center justify-center rounded-[4px] border-2 border-[#002b52] px-1">
+            <span className="truncate text-[10px] font-black text-slate-900">
+              {label?.wholesalePriceText ?? ""}
             </span>
           </div>
         </div>
@@ -787,7 +886,11 @@ function LabelPreviewCard({
 function BarcodePreview({ value }: { value: string }) {
   const barcode = createCode128Barcode(value);
   if (!barcode) {
-    return <span className="truncate text-[8px] font-black text-slate-900">{value}</span>;
+    return (
+      <span className="truncate text-[8px] font-black text-slate-900">
+        {value}
+      </span>
+    );
   }
 
   return (
@@ -800,7 +903,14 @@ function BarcodePreview({ value }: { value: string }) {
         className="h-2.5 w-full"
       >
         {barcode.bars.map((bar, index) => (
-          <rect key={`${bar.x}-${index}`} x={bar.x} y="0" width={bar.width} height="50" fill="#111111" />
+          <rect
+            key={`${bar.x}-${index}`}
+            x={bar.x}
+            y="0"
+            width={bar.width}
+            height="50"
+            fill="#111111"
+          />
         ))}
       </svg>
       <span className="mt-0.5 max-w-full truncate text-[7px] font-black leading-none text-slate-900">
@@ -812,12 +922,7 @@ function BarcodePreview({ value }: { value: string }) {
 
 function MglLabelLogo({ className }: { className: string }) {
   return (
-    <svg
-      viewBox="0 0 125 41"
-      aria-label="MGL"
-      role="img"
-      className={className}
-    >
+    <svg viewBox="0 0 125 41" aria-label="MGL" role="img" className={className}>
       <path
         fill="#ffffff"
         d="M5.5 31.5V9.4c0-2 1.6-3.5 3.7-3.5h3.5c1.2 0 2.2.4 3 1.3l12.7 12.1L41.1 7.2c.9-.9 1.9-1.3 3.1-1.3h3.5c2.1 0 3.7 1.5 3.7 3.5v22.1h-9.2V18.9L31.5 29.2c-.9.9-1.9 1.3-3.1 1.3s-2.2-.4-3.1-1.3L14.7 18.9v12.6H5.5Z"
@@ -830,30 +935,38 @@ function MglLabelLogo({ className }: { className: string }) {
         fill="#1b4dff"
         d="M66.8 18.8c5.7-3.2 12.6-4.6 21.2-4.2-3.7 2.8-8.2 5.1-13.4 6.8-3.1 1-6.7.1-7.8-2.6Z"
       />
-      <path
-        fill="#ffffff"
-        d="M94 31.5V6h9.9v18.4h21.1v7.1H94Z"
-      />
+      <path fill="#ffffff" d="M94 31.5V6h9.9v18.4h21.1v7.1H94Z" />
     </svg>
   );
 }
 
 function createDraft(product: ProductLabelProduct): ProductLabelDraft {
   return {
+    ...buildProductLabelValue(product),
+    qty: 1,
+  };
+}
+
+export function buildProductLabelValue(
+  product: ProductLabelProduct,
+): ProductLabelValue {
+  return {
     productId: product.id,
     name: product.name,
     code: resolveProductLabelCode(product).value,
     priceText: formatLabelPrice(product.price),
-    qty: 1,
+    wholesalePriceText: formatOptionalLabelPrice(product.wholesalePrice),
   };
 }
 
 function getLabelPreset(width: number, height: number) {
   const presets = ["144.5x67.3", "100x50", "70x40", "50x30"];
-  return presets.find((preset) => {
-    const [presetWidth, presetHeight] = preset.split("x").map(Number);
-    return presetWidth === width && presetHeight === height;
-  }) ?? "custom";
+  return (
+    presets.find((preset) => {
+      const [presetWidth, presetHeight] = preset.split("x").map(Number);
+      return presetWidth === width && presetHeight === height;
+    }) ?? "custom"
+  );
 }
 
 function resolvePaperSize(settings: LabelPrintSettings) {
@@ -883,11 +996,15 @@ export function calculatePrintLayout(settings: LabelPrintSettings) {
   const printableHeight = Math.max(1, paperHeight - settings.margin * 2);
   const columns = Math.max(
     1,
-    Math.floor((printableWidth + settings.gap) / (settings.labelWidth + settings.gap)),
+    Math.floor(
+      (printableWidth + settings.gap) / (settings.labelWidth + settings.gap),
+    ),
   );
   const rows = Math.max(
     1,
-    Math.floor((printableHeight + settings.gap) / (settings.labelHeight + settings.gap)),
+    Math.floor(
+      (printableHeight + settings.gap) / (settings.labelHeight + settings.gap),
+    ),
   );
 
   return {
@@ -931,12 +1048,32 @@ function formatLabelPrice(value: number | string | null | undefined) {
   return `${Number.isInteger(amount) ? amount.toFixed(0) : amount.toFixed(1)}₮`;
 }
 
-function printProductLabels(labels: ProductLabelValue[], settings: LabelPrintSettings) {
+function hasLabelPrice(value: number | string | null | undefined) {
+  if (
+    value === null ||
+    value === undefined ||
+    (typeof value === "string" && value.trim() === "")
+  ) {
+    return false;
+  }
+  return Number.isFinite(Number(value));
+}
+
+function formatOptionalLabelPrice(value: number | string | null | undefined) {
+  return hasLabelPrice(value) ? formatLabelPrice(value) : "";
+}
+
+function printProductLabels(
+  labels: ProductLabelValue[],
+  settings: LabelPrintSettings,
+) {
   if (typeof window === "undefined" || labels.length === 0) return;
 
   const popup = window.open("", "_blank", "width=1120,height=780");
   if (!popup) {
-    window.alert("Хэвлэх цонх нээгдсэнгүй. Browser popup тохиргоогоо шалгана уу.");
+    window.alert(
+      "Хэвлэх цонх нээгдсэнгүй. Browser popup тохиргоогоо шалгана уу.",
+    );
     return;
   }
 
@@ -1061,14 +1198,14 @@ function printProductLabels(labels: ProductLabelValue[], settings: LabelPrintSet
           }
           .split-title {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: ${6 * labelScale}mm;
+            grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+            gap: ${3 * labelScale}mm;
             margin-top: ${1.5 * labelScale}mm;
           }
           .small-boxes {
             display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: ${6 * labelScale}mm;
+            grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr);
+            gap: ${3 * labelScale}mm;
             margin-top: ${1.1 * labelScale}mm;
           }
           .small-box {
@@ -1156,12 +1293,12 @@ function chunkLabels(labels: ProductLabelValue[], size: number) {
 function renderPrintPage(pageLabels: ProductLabelValue[]) {
   return `
     <section class="sheet">
-      ${pageLabels.map((label) => renderPrintLabel(label)).join("")}
+      ${pageLabels.map((label) => renderProductLabelMarkup(label)).join("")}
     </section>
   `;
 }
 
-function renderPrintLabel(label: ProductLabelValue | null) {
+export function renderProductLabelMarkup(label: ProductLabelValue | null) {
   const isEmpty = !label;
 
   return `
@@ -1174,11 +1311,13 @@ function renderPrintLabel(label: ProductLabelValue | null) {
         </div>
         <div class="split-title">
           <div class="field-title">КОД:</div>
-          <div class="field-title">ҮНЭ:</div>
+          <div class="field-title">ЗАРАХ ҮНЭ:</div>
+          <div class="field-title">БӨӨНИЙ ҮНЭ:</div>
         </div>
         <div class="small-boxes">
           <div class="small-box barcode-box">${renderBarcodeMarkup(label?.code ?? "")}</div>
           <div class="small-box"><span class="price-value">${escapeHtml(label?.priceText ?? "")}</span></div>
+          <div class="small-box"><span class="price-value">${escapeHtml(label?.wholesalePriceText ?? "")}</span></div>
         </div>
       </div>
     </article>
@@ -1195,7 +1334,10 @@ function renderBarcodeMarkup(value: string) {
   }
 
   const rects = barcode.bars
-    .map((bar) => `<rect x="${bar.x}" y="0" width="${bar.width}" height="50"></rect>`)
+    .map(
+      (bar) =>
+        `<rect x="${bar.x}" y="0" width="${bar.width}" height="50"></rect>`,
+    )
     .join("");
 
   return `
@@ -1218,7 +1360,10 @@ function createCode128Barcode(value: string) {
   }
 
   const checksum =
-    values.reduce((sum, value, index) => (index === 0 ? value : sum + value * index), 0) % 103;
+    values.reduce(
+      (sum, value, index) => (index === 0 ? value : sum + value * index),
+      0,
+    ) % 103;
   values.push(checksum, 106);
 
   const quietZone = 10;
