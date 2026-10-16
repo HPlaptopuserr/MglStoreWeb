@@ -1,5 +1,6 @@
 "use client";
 
+import { ProductHistoryTrigger } from "../product-history/ProductHistory";
 import { Fragment, type ReactNode } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { normalizePosMeasureUnit, POS_WEIGHT_STEP_KG } from "@mgl/types";
@@ -108,6 +109,7 @@ export function ReceiptLinesTable({
                           </p>
                         </>
                       )}
+                      <ProductHistoryTrigger productId={line.product.id} name={line.product.name} />
                     </td>
                     <td className="px-3 py-4 text-slate-500">
                       {renderUnit?.(line) ?? (unit === "kg" ? "кг" : "ш")}

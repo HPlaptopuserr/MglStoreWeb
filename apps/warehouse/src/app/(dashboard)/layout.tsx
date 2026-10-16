@@ -1,5 +1,6 @@
 "use client";
 
+import ProductHistoryScope from "@/components/ProductHistoryScope";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import WmsSidebar from "@/components/WmsSidebar";
@@ -72,7 +73,9 @@ export default function DashboardLayout({
             userName={userData.name}
             userInitials={userData.initials}
           />
-          <main className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
+          <main className="min-w-0 flex-1 p-4 sm:p-6">
+            <ProductHistoryScope>{children}</ProductHistoryScope>
+          </main>
         </div>
       </div>
     </WarehouseScopeProvider>

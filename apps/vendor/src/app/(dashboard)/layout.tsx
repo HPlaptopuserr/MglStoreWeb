@@ -1,5 +1,6 @@
 "use client";
 
+import ProductHistoryScope from "@/components/ProductHistoryScope";
 import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -178,7 +179,7 @@ export default function VendorDashboardLayout({
               {switchError}
             </div>
           )}
-          {children}
+          <ProductHistoryScope>{children}</ProductHistoryScope>
         </DashboardLayout>
       </VendorNavigationActionsProvider>
     </>

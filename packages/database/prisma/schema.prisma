@@ -1094,6 +1094,8 @@ model Category {
 }
 
 model Product {
+  sentTransferItems WarehouseTransferItem[] @relation("TransferSourceProduct")
+  receivedTransferItems WarehouseTransferItem[] @relation("TransferTargetProduct")
   stocktakeLines StocktakeLine[]
 
   id                     String                        @id @default(uuid())
@@ -1890,6 +1892,8 @@ enum WarehouseType {
 }
 
 model Warehouse {
+  outgoingTransfers WarehouseTransfer[] @relation("TransferSource")
+  incomingTransfers WarehouseTransfer[] @relation("TransferDestination")
   catalogOrganizationId String? @unique
   catalogOrganization Organization? @relation("WarehouseCatalogOwner", fields: [catalogOrganizationId], references: [id], onDelete: Restrict)
   stocktakes Stocktake[]
@@ -3959,4 +3963,45 @@ model PosGoodsReceiptRevision {
   receipt    PosGoodsReceipt @relation(fields: [receiptId], references: [id])
 
   @@index([receiptId, createdAt])
+}
+
+enum WarehouseTransferStatus {
+  SENT
+  RECEIVED
+}
+
+model WarehouseTransfer {
+  id String @id
+  sourceWarehouseId String
+  destinationWarehouseId String
+  status WarehouseTransferStatus @default(SENT)
+  note String?
+  sentById String
+  receivedById String?
+  sentAt DateTime @default(now())
+  receivedAt DateTime?
+  sourceWarehouse Warehouse @relation("TransferSource", fields: [sourceWarehouseId], references: [id])
+  destinationWarehouse Warehouse @relation("TransferDestination", fields: [destinationWarehouseId], references: [id])
+  items WarehouseTransferItem[]
+  @@index([destinationWarehouseId, status, sentAt])
+  @@index([sourceWarehouseId, sentAt])
+}
+
+model WarehouseTransferItem {
+  unitCost Decimal? @db.Decimal(18, 2)
+  id String @id @default(uuid())
+  transferId String
+  sourceProductId String
+  targetProductId String?
+  name String
+  sku String?
+  barcode String?
+  quantity Int
+  salePrice Decimal? @db.Decimal(18, 2)
+  transfer WarehouseTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  sourceProduct Product @relation("TransferSourceProduct", fields: [sourceProductId], references: [id])
+  targetProduct Product? @relation("TransferTargetProduct", fields: [targetProductId], references: [id])
+  @@unique([transferId, sourceProductId])
+  @@index([sourceProductId])
+  @@index([targetProductId])
 }

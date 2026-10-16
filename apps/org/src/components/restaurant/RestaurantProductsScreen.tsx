@@ -1,5 +1,6 @@
 "use client";
 
+import { ProductHistoryTrigger } from "@mgl/ui";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -775,6 +776,7 @@ function RestaurantProductsContent({ onLock }: { onLock: () => void }) {
                       <h3 className="truncate text-sm font-black text-slate-950">
                         {product.name}
                       </h3>
+                      <ProductHistoryTrigger productId={product.id} name={product.name} />
                       <span
                         className={`h-2 w-2 shrink-0 rounded-full ${
                           product.isActive ? "bg-emerald-500" : "bg-slate-300"

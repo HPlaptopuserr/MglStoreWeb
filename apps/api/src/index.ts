@@ -1,4 +1,6 @@
 import "./config/env";
+import productHistoryRoutes from "./routes/operations/product-history.routes";
+import warehouseTransfersRoutes from "./routes/operations/warehouse-transfers.routes";
 import miniAppAdminRoutes from "./routes/store/mini-app-admin.routes";
 import miniAppCatalogRoutes from "./routes/store/mini-app-catalog.routes";
 import visualSearchRoutes from "./routes/catalog/visual-search.routes";
@@ -164,6 +166,8 @@ app.use("/api/mobile", posRoutes);
 app.use("/api", serviceRequestsRoutes);
 app.use("/api", warehousesRoutes);
 app.use("/api", warehouseGoodsReceiptsRoutes);
+app.use("/api", warehouseTransfersRoutes);
+app.use("/api", productHistoryRoutes);
 app.use("/api", deliveriesRoutes);
 app.use("/api", deliveryPartnershipsRoutes);
 app.use("/api", stockRequestsRoutes);

@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { ProductHistoryPanel } from "@mgl/ui";
 import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Plus,
@@ -1215,6 +1216,7 @@ export default function ProductsPage() {
                 </div>
               )}
 
+              <ProductHistoryPanel productId={selectedProduct.id} />
               {selectedProduct.description && (
                 <div className="space-y-2">
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">

@@ -7,3 +7,5 @@ export * from "./lib";
 export * from "./constants";
 
 export * from "./organisms/goods-receipt";
+
+export * from "./organisms/product-history/ProductHistory";
