@@ -36,8 +36,8 @@ export function useTransferComposer(sourceId: string, onSent: () => void) {
       setError("");
       try {
         const [detail, options] = await Promise.all([
-          transferRequest<{ inventories: TransferStock[] }>(
-            `/warehouses/${encodeURIComponent(sourceId)}/detail`,
+          transferRequest<TransferStock[]>(
+            `/warehouse-transfers/inventory?sourceWarehouseId=${encodeURIComponent(sourceId)}`,
             { signal },
           ),
           transferRequest<WarehouseOption[]>(
@@ -46,7 +46,7 @@ export function useTransferComposer(sourceId: string, onSent: () => void) {
           ),
         ]);
         if (signal?.aborted) return;
-        setInventory(detail.inventories);
+        setInventory(detail);
         setDestinations(options);
         setDestinationId((current) =>
           options.some((option) => option.id === current)

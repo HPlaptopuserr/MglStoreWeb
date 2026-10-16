@@ -55,6 +55,52 @@ function handler(run: (req: Request, res: Response) => Promise<unknown>) {
   };
 }
 router.get(
+  "/warehouse-transfers/inventory",
+  requireAuth,
+  handler(async (req, res) => {
+    const sourceId =
+      typeof req.query.sourceWarehouseId === "string"
+        ? req.query.sourceWarehouseId
+        : "";
+    await access(req, sourceId);
+    const warehouse = await prisma.warehouse.findFirst({
+      where: { id: sourceId, type: "CENTRAL", isActive: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (!warehouse) throw new TransferError("Идэвхтэй агуулах олдсонгүй", 404);
+    res.json(
+      await prisma.warehouseInventory.findMany({
+        where: {
+          warehouseId: sourceId,
+          quantity: { gt: 0 },
+          product: {
+            organizationId: null,
+            managedByWarehouseId: sourceId,
+            deletedAt: null,
+            isActive: true,
+          },
+        },
+        select: {
+          id: true,
+          quantity: true,
+          product: {
+            select: {
+              id: true,
+              name: true,
+              sku: true,
+              barcode: true,
+              barcodeAliases: true,
+              price: true,
+              isActive: true,
+            },
+          },
+        },
+        orderBy: [{ product: { name: "asc" } }, { id: "asc" }],
+      }),
+    );
+  }),
+);
+router.get(
   "/warehouse-transfers/destinations",
   requireAuth,
   handler(async (req, res) => {

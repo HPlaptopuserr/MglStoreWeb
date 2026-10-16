@@ -76,6 +76,15 @@ test(
         body: body ? JSON.stringify(body) : undefined,
       });
     try {
+      const inventoryPath = `/warehouse-transfers/inventory?sourceWarehouseId=${source.id}`;
+      assert.equal((await request(inventoryPath, 1)).status, 403);
+      const inventoryResponse = await request(inventoryPath, 0);
+      assert.equal(inventoryResponse.status, 200);
+      const inventory = await inventoryResponse.json() as { quantity: number; product: { id: string; price: string } }[];
+      assert.equal(inventory.length, 1);
+      assert.equal(inventory[0].product.id, product.id);
+      assert.equal(inventory[0].quantity, 3);
+      assert.equal(Number(inventory[0].product.price), 1);
       const options = (await (
         await request(
           `/warehouse-transfers/destinations?sourceWarehouseId=${source.id}`,

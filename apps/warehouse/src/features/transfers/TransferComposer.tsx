@@ -67,7 +67,13 @@ export function TransferComposer({
               className="mt-2 w-full rounded-lg border border-slate-200 p-3 text-slate-900"
             >
               {!state.destinations.length && (
-                <option value="">Очих агуулах олдсонгүй</option>
+                <option value="">
+                  {state.loading
+                    ? "Агуулах ачаалж байна…"
+                    : state.error
+                      ? "Агуулах ачаалагдсангүй"
+                      : "Очих агуулах олдсонгүй"}
+                </option>
               )}
               {state.destinations.map((row) => (
                 <option key={row.id} value={row.id}>
