@@ -8,6 +8,7 @@ datasource db {
 }
 
 model User {
+  platformAccounts PlatformAccount[]
   createdStocktakes Stocktake[] @relation("StocktakeCreator")
   approvedStocktakes Stocktake[] @relation("StocktakeApprover")
 
@@ -158,6 +159,38 @@ model DeliveryDriverProfile {
 
   @@index([vehiclePlateNumber])
   @@index([insuranceExpiresAt])
+}
+
+// Additive staging only: existing authentication still uses User.passwordHash.
+// Possession of a platform credential does not grant organization permissions.
+enum AccountPlatform {
+  STORE
+  BUSINESS
+  VENDOR
+  WAREHOUSE
+  ORG
+  ADMIN
+}
+
+model PlatformAccount {
+  id                String          @id @default(uuid())
+  userId            String
+  platform          AccountPlatform
+  passwordHash      String?
+  credentialVersion Int             @default(1)
+  status            PlatformAccountStatus @default(STAGED)
+  migratedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform])
+}
+
+enum PlatformAccountStatus {
+  STAGED
+  ACTIVE
+  DISABLED
 }
 
 model UserSession {
