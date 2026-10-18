@@ -540,6 +540,20 @@ model Organization {
   @@index([deletedAt])
   @@index([scheduledPermanentDeletionAt])
   @@index([subdomainEnabled])
+  workforcePulses WorkforcePulse[]
+  workforceTrackingPreferences WorkforceTrackingPreference[]
+  workforceLocationPoints WorkforceLocationPoint[]
+  workforceMailCampaigns WorkforceMailCampaign[]
+  workforceDepartments WorkforceDepartment[]
+  workforceShifts WorkforceShift[]
+  workforceAssignments WorkforceAssignment[]
+  workforceRequests WorkforceRequest[]
+  workforcePolicy WorkforcePolicy?
+  workforceNotices WorkforceNotice[]
+  workforceTokens WorkforceApiToken[]
+  workforceAudit WorkforceAudit[]
+  workforceSubscription WorkforceSubscription?
+  workforceOrders WorkforceBillingOrder[]
 }
 
 model OrganizationDailyActivity {
@@ -747,6 +761,9 @@ model OrganizationMember {
   @@index([department])
   @@index([isActive])
   @@index([deletedAt])
+  employmentEndedAt DateTime? @db.Date
+  employmentEndReason String?
+  employmentEndedBy String?
 }
 
 model SalesVisitLocation {
@@ -2531,8 +2548,8 @@ model AttendanceRecord {
   organizationId String
   zoneId         String
   clockIn        DateTime
-  clockInLat     Float
-  clockInLng     Float
+  clockInLat     Float?
+  clockInLng     Float?
   clockInMethod  AttendanceAuth
   clockOut       DateTime?
   clockOutLat    Float?
@@ -4037,4 +4054,211 @@ model WarehouseTransferItem {
   @@unique([transferId, sourceProductId])
   @@index([sourceProductId])
   @@index([targetProductId])
+}
+
+
+model WorkforceDepartment {
+  id String @id @default(uuid())
+  organizationId String
+  name String
+  parentId String?
+  managerId String?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+model WorkforceShift {
+  id String @id @default(uuid())
+  organizationId String
+  name String
+  startMinute Int
+  endMinute Int
+  breakMinutes Int @default(60)
+  weekdays Int[] @default([1,2,3,4,5])
+  color String @default("#5b8cff")
+  active Boolean @default(true)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignments WorkforceAssignment[]
+  @@index([organizationId])
+}
+
+model WorkforceAssignment {
+  id String @id @default(uuid())
+  organizationId String
+  userId String
+  shiftId String
+  from DateTime @db.Date
+  to DateTime @db.Date
+  zoneId String?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  shift WorkforceShift @relation(fields: [shiftId], references: [id])
+  @@index([organizationId, userId, from, to])
+}
+
+model WorkforceRequest {
+  id String @id @default(uuid())
+  organizationId String
+  userId String
+  kind String
+  state String @default("PENDING")
+  from DateTime
+  to DateTime
+  note String
+  direction String?
+  zoneId String?
+  recordId String?
+  decisionNote String?
+  decidedBy String?
+  decidedAt DateTime?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, state, createdAt])
+  @@index([organizationId, userId, from])
+}
+
+model WorkforcePolicy {
+  organizationId String @id
+  timeZone String @default("Asia/Ulaanbaatar")
+  lateGraceMinutes Int @default(0)
+  features Json @default("{}")
+  requestKinds String[] @default(["REMOTE", "CORRECTION", "LEAVE", "OVERTIME"])
+  approvalRequired Boolean @default(true)
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model WorkforceNotice {
+  id String @id @default(uuid())
+  organizationId String
+  title String
+  content String
+  userIds String[]
+  readBy String[] @default([])
+  createdBy String
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, createdAt])
+}
+
+model WorkforceApiToken {
+  id String @id @default(uuid())
+  organizationId String
+  name String
+  prefix String
+  tokenHash String @unique
+  scopes String[]
+  expiresAt DateTime
+  revokedAt DateTime?
+  lastUsedAt DateTime?
+  createdAt DateTime @default(now())
+  createdBy String
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId])
+}
+
+model WorkforceAudit {
+  id String @id @default(uuid())
+  organizationId String
+  actorId String
+  action String
+  entityId String
+  before Json?
+  after Json?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, createdAt])
+}
+
+model WorkforceSubscription {
+  organizationId String @id
+  planName String @default("Үндсэн")
+  expiresAt DateTime?
+  seatUnitPrice Int?
+  currency String @default("MNT")
+  addons String[] @default([])
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model WorkforceBillingOrder {
+  kind String @default("SEATS")
+  addonCode String?
+  providerPaymentId String? @unique
+  invoiceData Json?
+
+  id String @id @default(uuid())
+  organizationId String
+  seats Int
+  amount Int
+  state String @default("PENDING")
+  idempotencyKey String @unique
+  invoiceId String? @unique
+  createdAt DateTime @default(now())
+  paidAt DateTime?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, createdAt])
+}
+
+model WorkforcePulse {
+  id String @id @default(uuid())
+  organizationId String
+  userId String
+  date DateTime @db.Date
+  score Int
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@unique([organizationId, userId, date])
+  @@index([organizationId, date])
+}
+
+model WorkforceTrackingPreference {
+  id String @id @default(uuid())
+  organizationId String
+  userId String
+  enabled Boolean @default(false)
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@unique([organizationId, userId])
+}
+
+model WorkforceLocationPoint {
+  id String @id @default(uuid())
+  organizationId String
+  userId String
+  lat Float
+  lng Float
+  accuracy Float
+  capturedAt DateTime
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, userId, capturedAt])
+}
+
+model WorkforceMailCampaign {
+  id String @id @default(uuid())
+  organizationId String
+  createdBy String
+  title String
+  content String
+  idempotencyKey String @unique
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveries WorkforceMailDelivery[]
+  @@index([organizationId, createdAt])
+}
+
+model WorkforceMailDelivery {
+  id String @id @default(uuid())
+  campaignId String
+  userId String
+  email String
+  state String @default("PENDING")
+  attempts Int @default(0)
+  sentAt DateTime?
+  lastError String?
+  updatedAt DateTime @updatedAt
+  campaign WorkforceMailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  @@unique([campaignId, userId])
+  @@index([state, updatedAt])
 }

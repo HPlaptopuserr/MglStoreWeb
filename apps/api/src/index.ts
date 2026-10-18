@@ -1,4 +1,8 @@
 import "./config/env";
+import { processWorkforceMailQueue } from "./services/workforce/mail-worker";
+import { workforceIntegrationRouter } from "./routes/workforce/integration.routes";
+import { workforceBillingPublicRouter } from "./routes/workforce/billing.routes";
+import { workforceRoutes, workforceAdminRouter } from "./routes/workforce";
 import productHistoryRoutes from "./routes/operations/product-history.routes";
 import warehouseTransfersRoutes from "./routes/operations/warehouse-transfers.routes";
 import miniAppAdminRoutes from "./routes/store/mini-app-admin.routes";
@@ -184,6 +188,10 @@ app.use("/api", postsRoutes);
 app.use("/api", vendorContentReviewRoutes);
 app.use("/api", formRoutes);
 app.use("/api", attendanceRoutes);
+app.use("/api", workforceIntegrationRouter);
+app.use("/api", workforceBillingPublicRouter);
+app.use("/api", workforceRoutes);
+app.use("/api", workforceAdminRouter);
 app.use("/api", salesRepresentativeRoutes);
 app.use("/api", qualityRoutes);
 app.use("/api", chatRoutes);
@@ -273,3 +281,6 @@ const checkoutExpirationTimer = setInterval(() => {
   });
 }, 30_000);
 checkoutExpirationTimer.unref();
+
+const workforceMailTimer = setInterval(() => { void processWorkforceMailQueue(); }, 60_000);
+workforceMailTimer.unref();

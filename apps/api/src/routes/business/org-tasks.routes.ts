@@ -170,10 +170,14 @@ async function findOrganizationTasks(args: {
       organizationId: args.organizationId,
       deletedAt: null,
       ...(args.scope === "assigned" || args.status
-        ? { assignees: { some: {
-            ...(args.scope === "assigned" ? { userId: args.userId } : {}),
-            ...(args.status ? { status: args.status } : {}),
-          } } }
+        ? {
+            assignees: {
+              some: {
+                ...(args.scope === "assigned" ? { userId: args.userId } : {}),
+                ...(args.status ? { status: args.status } : {}),
+              },
+            },
+          }
         : {}),
       ...(args.scope === "created" ? { createdById: args.userId } : {}),
     },
@@ -264,147 +268,154 @@ async function findTaskPayloadById(taskId: string) {
   });
 }
 
-router.get(
-  "/org/tasks",
-  requireAuth,
-  async (req, res) => {
-    try {
-      const user = getAuthUser(req);
-      const organizationId = String(req.query.organizationId || "");
-      const membership = await getCallerMembership(user.userId, organizationId);
-      if (!membership) {
-        return res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
-      }
-      const isManager = MANAGER_ROLES.has(membership.role);
-      const scope = parseScope(req.query.scope, isManager);
-      const status = parseTaskStatus(req.query.status);
+router.get("/org/tasks", requireAuth, async (req, res) => {
+  try {
+    const user = getAuthUser(req);
+    const organizationId = String(req.query.organizationId || "");
+    const membership = await getCallerMembership(user.userId, organizationId);
+    if (!membership) {
+      return res
+        .status(403)
+        .json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
+    }
+    const isManager = MANAGER_ROLES.has(membership.role);
+    const scope = parseScope(req.query.scope, isManager);
+    const status = parseTaskStatus(req.query.status);
 
-      const tasks = await findOrganizationTasks({
+    const tasks = await findOrganizationTasks({
+      organizationId,
+      userId: user.userId,
+      scope,
+      status,
+    });
+
+    return res.json(tasks.map(toTaskPayload));
+  } catch (error) {
+    console.error("list org tasks error", error);
+    return res
+      .status(500)
+      .json({ message: "Даалгаврын жагсаалт авахад алдаа гарлаа" });
+  }
+});
+
+export async function createOrganizationTask(
+  req: import("express").Request,
+  res: import("express").Response,
+) {
+  try {
+    const user = getAuthUser(req);
+    const body = req.body as {
+      organizationId?: string;
+      title?: string;
+      description?: string;
+      priority?: string;
+      dueAt?: string | null;
+      assigneeIds?: unknown;
+      subTasks?: unknown;
+    };
+    const organizationId = String(body.organizationId || "").trim();
+    const title = String(body.title || "").trim();
+    const membership = await getCallerMembership(user.userId, organizationId);
+    const isManager = MANAGER_ROLES.has(membership?.role || "");
+    const assigneeIds = normalizeAssigneeIds(body.assigneeIds);
+    const subTaskTitles = normalizeSubTaskTitles(body.subTasks);
+    if (!membership) {
+      return res
+        .status(403)
+        .json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
+    }
+    const isSelfPlan =
+      assigneeIds.length === 1 && assigneeIds[0] === user.userId;
+
+    if (!title) {
+      return res
+        .status(400)
+        .json({ message: "Даалгаврын гарчиг шаардлагатай" });
+    }
+    if (!isManager && !isSelfPlan) {
+      return res
+        .status(403)
+        .json({ message: "Даалгавар оноох эрх хүрэлцэхгүй байна" });
+    }
+    if (assigneeIds.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "Даалгавар оноох ажилтан сонгоно уу" });
+    }
+    if (!isSelfPlan && assigneeIds.includes(user.userId)) {
+      return res
+        .status(400)
+        .json({ message: "Өөртөө даалгавар оноох боломжгүй" });
+    }
+
+    const assignees = await prisma.organizationMember.findMany({
+      where: {
         organizationId,
-        userId: user.userId,
-        scope,
-        status,
-      });
-
-      return res.json(tasks.map(toTaskPayload));
-    } catch (error) {
-      console.error("list org tasks error", error);
+        userId: { in: assigneeIds },
+        isActive: true,
+        deletedAt: null,
+      },
+      select: { userId: true, role: true },
+    });
+    const validAssigneeIds = assignees.map((item) => item.userId);
+    if (validAssigneeIds.length !== assigneeIds.length) {
       return res
-        .status(500)
-        .json({ message: "Даалгаврын жагсаалт авахад алдаа гарлаа" });
+        .status(400)
+        .json({ message: "Сонгосон ажилтан байгууллагад хамаарахгүй байна" });
     }
-  },
-);
 
-router.post(
-  "/org/tasks",
-  requireAuth,
-  async (req, res) => {
-    try {
-      const user = getAuthUser(req);
-      const body = req.body as {
-        organizationId?: string;
-        title?: string;
-        description?: string;
-        priority?: string;
-        dueAt?: string | null;
-        assigneeIds?: unknown;
-        subTasks?: unknown;
-      };
-      const organizationId = String(body.organizationId || "").trim();
-      const title = String(body.title || "").trim();
-      const membership = await getCallerMembership(user.userId, organizationId);
-      const isManager = MANAGER_ROLES.has(membership?.role || "");
-      const assigneeIds = normalizeAssigneeIds(body.assigneeIds);
-      const subTaskTitles = normalizeSubTaskTitles(body.subTasks);
-      if (!membership) {
-        return res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
-      }
-      const isSelfPlan = assigneeIds.length === 1 && assigneeIds[0] === user.userId;
-
-      if (!title) {
-        return res
-          .status(400)
-          .json({ message: "Даалгаврын гарчиг шаардлагатай" });
-      }
-      if (!isManager && !isSelfPlan) {
-        return res
-          .status(403)
-          .json({ message: "Даалгавар оноох эрх хүрэлцэхгүй байна" });
-      }
-      if (assigneeIds.length === 0) {
-        return res
-          .status(400)
-          .json({ message: "Даалгавар оноох ажилтан сонгоно уу" });
-      }
-      if (!isSelfPlan && assigneeIds.includes(user.userId)) {
-        return res
-          .status(400)
-          .json({ message: "Өөртөө даалгавар оноох боломжгүй" });
-      }
-
-      const assignees = await prisma.organizationMember.findMany({
-        where: {
-          organizationId,
-          userId: { in: assigneeIds },
-          isActive: true,
-          deletedAt: null,
-        },
-        select: { userId: true, role: true },
+    if (
+      !isSelfPlan &&
+      assignees.some(
+        (member) => !canAssignTaskToRole(membership?.role || "", member.role),
+      )
+    ) {
+      return res.status(403).json({
+        message:
+          "Менежер ажилтанд, Owner / CEO менежер болон ажилтанд даалгавар онооно.",
       });
-      const validAssigneeIds = assignees.map((item) => item.userId);
-      if (validAssigneeIds.length !== assigneeIds.length) {
-        return res
-          .status(400)
-          .json({ message: "Сонгосон ажилтан байгууллагад хамаарахгүй байна" });
-      }
-
-      if (!isSelfPlan && assignees.some((member) => !canAssignTaskToRole(membership?.role || "", member.role))) {
-        return res.status(403).json({ message: "Менежер ажилтанд, Owner / CEO менежер болон ажилтанд даалгавар онооно." });
-      }
-
-      const dueAt = body.dueAt ? new Date(body.dueAt) : null;
-      if (!dueAt) {
-        return res.status(400).json({ message: "Дуусах хугацаа шаардлагатай" });
-      }
-      if (dueAt && Number.isNaN(dueAt.getTime())) {
-        return res.status(400).json({ message: "Дуусах огноо буруу байна" });
-      }
-
-      const task = await prisma.organizationTask.create({
-        data: {
-          organizationId,
-          title,
-          description: body.description?.trim() || null,
-          priority: parseTaskPriority(body.priority),
-          dueAt,
-          createdById: user.userId,
-          assignees: {
-            create: validAssigneeIds.map((userId) => ({ userId })),
-          },
-          ...(subTaskTitles.length > 0
-            ? {
-                subTasks: {
-                  create: subTaskTitles.map((subTaskTitle, index) => ({
-                    title: subTaskTitle,
-                    sortOrder: index,
-                  })),
-                },
-              }
-            : {}),
-        },
-        include: taskPayloadInclude,
-      });
-
-      return res.status(201).json(toTaskPayload(task));
-    } catch (error) {
-      console.error("create org task error", error);
-      return res
-        .status(500)
-        .json({ message: "Даалгавар үүсгэхэд алдаа гарлаа" });
     }
-  },
-);
+
+    const dueAt = body.dueAt ? new Date(body.dueAt) : null;
+    if (!dueAt) {
+      return res.status(400).json({ message: "Дуусах хугацаа шаардлагатай" });
+    }
+    if (dueAt && Number.isNaN(dueAt.getTime())) {
+      return res.status(400).json({ message: "Дуусах огноо буруу байна" });
+    }
+
+    const task = await prisma.organizationTask.create({
+      data: {
+        organizationId,
+        title,
+        description: body.description?.trim() || null,
+        priority: parseTaskPriority(body.priority),
+        dueAt,
+        createdById: user.userId,
+        assignees: {
+          create: validAssigneeIds.map((userId) => ({ userId })),
+        },
+        ...(subTaskTitles.length > 0
+          ? {
+              subTasks: {
+                create: subTaskTitles.map((subTaskTitle, index) => ({
+                  title: subTaskTitle,
+                  sortOrder: index,
+                })),
+              },
+            }
+          : {}),
+      },
+      include: taskPayloadInclude,
+    });
+
+    return res.status(201).json(toTaskPayload(task));
+  } catch (error) {
+    console.error("create org task error", error);
+    return res.status(500).json({ message: "Даалгавар үүсгэхэд алдаа гарлаа" });
+  }
+}
+router.post("/org/tasks", requireAuth, createOrganizationTask);
 
 router.patch("/org/tasks/:taskId/status", requireAuth, async (req, res) => {
   try {
@@ -641,7 +652,10 @@ router.post(
   },
 );
 
-router.patch("/org/tasks/:taskId/approve", requireAuth, async (req, res) => {
+export async function approveOrganizationTask(
+  req: import("express").Request,
+  res: import("express").Response,
+) {
   try {
     const user = getAuthUser(req);
     const { taskId } = req.params;
@@ -700,7 +714,11 @@ router.patch("/org/tasks/:taskId/approve", requireAuth, async (req, res) => {
     );
     const isManager = MANAGER_ROLES.has(membership?.role || "");
     const isCreator = assignment.task.createdById === user.userId;
-    if (!isManager && !isCreator) {
+    if (
+      !membership ||
+      (!isManager && !isCreator) ||
+      assignment.userId === user.userId
+    ) {
       return res
         .status(403)
         .json({ message: "Даалгавар батлах эрх хүрэлцэхгүй байна" });
@@ -716,9 +734,12 @@ router.patch("/org/tasks/:taskId/approve", requireAuth, async (req, res) => {
         .json({ message: "Баталгаажуулах зураг байхгүй байна" });
     }
 
-    await prisma.$transaction([
-      prisma.organizationTaskAssignee.update({
-        where: { id: assignment.id },
+    const approved = await prisma.$transaction(async (tx) => {
+      const claimed = await tx.organizationTaskAssignee.updateMany({
+        where: {
+          id: assignment.id,
+          status: OrganizationTaskStatus.PENDING_REVIEW,
+        },
         data: {
           status: OrganizationTaskStatus.DONE,
           completedAt: new Date(),
@@ -728,16 +749,22 @@ router.patch("/org/tasks/:taskId/approve", requireAuth, async (req, res) => {
           productivityPercent,
           evaluationNote: body.note?.trim() || null,
         },
-      }),
-      prisma.organizationTaskApprovalLog.create({
+      });
+      if (claimed.count !== 1) return false;
+      await tx.organizationTaskApprovalLog.create({
         data: {
           assigneeId: assignment.id,
           approvedById: user.userId,
           action: "APPROVED",
           note: body.note?.trim() || null,
         },
-      }),
-    ]);
+      });
+      return true;
+    });
+    if (!approved)
+      return res
+        .status(409)
+        .json({ message: "Тайлан аль хэдийн шийдвэрлэгдсэн. Шинэчилнэ үү" });
 
     const task = await findTaskPayloadById(taskId);
     if (!task) {
@@ -749,7 +776,12 @@ router.patch("/org/tasks/:taskId/approve", requireAuth, async (req, res) => {
     console.error("approve org task completion error", error);
     return res.status(500).json({ message: "Даалгавар батлахад алдаа гарлаа" });
   }
-});
+}
+router.patch(
+  "/org/tasks/:taskId/approve",
+  requireAuth,
+  approveOrganizationTask,
+);
 
 router.post("/org/tasks/:taskId/comments", requireAuth, async (req, res) => {
   try {
