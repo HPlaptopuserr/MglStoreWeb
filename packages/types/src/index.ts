@@ -41,3 +41,6 @@ export type { MerchantDiagnostics, MerchantDiagnosticsChannel, MerchantConfigura
 export * from "./domain/stocktake";
 
 export * from "./domain/credit-customer";
+
+export * from "./building";
+export * from "./workforce";

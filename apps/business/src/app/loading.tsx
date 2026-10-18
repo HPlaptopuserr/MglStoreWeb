@@ -1,5 +1,4 @@
-import { MglLoadingScreen } from "@mgl/ui";
-
+import { BusinessLoading } from "@/components/BusinessLoading";
 export default function Loading() {
-  return <MglLoadingScreen label="MGL Business ачааллаж байна" />;
+  return <BusinessLoading />;
 }

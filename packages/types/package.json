@@ -8,6 +8,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./building-plans": {
+      "types": "./dist/building-plans.d.ts",
+      "default": "./dist/building-plans.js"
+    },
+    "./building-website": {
+      "types": "./dist/building-website.d.ts",
+      "default": "./dist/building-website.js"
     }
   },
   "scripts": {

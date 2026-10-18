@@ -1,0 +1,127 @@
+/* Specificity intentionally overrides the shared boot loader's default surface. */
+.business-digital-loader.business-digital-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: 24px;
+  color: #e1e1ef;
+  background: radial-gradient(ellipse at 50% 45%, #20233b 0%, #11131c 62%);
+  color-scheme: dark;
+}
+.digital-loading-content {
+  width: min(100%, 300px);
+  text-align: center;
+}
+.digital-circuit {
+  width: 240px;
+  max-width: 100%;
+  margin: 0 auto 12px;
+}
+.digital-circuit svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.digital-circuit-traces {
+  stroke: #414963;
+  stroke-width: 1.5;
+}
+.digital-circuit-signals {
+  stroke: #a7b3ff;
+  stroke-width: 2;
+  stroke-dasharray: 12 88;
+  animation: digital-data-flow 2.4s linear infinite;
+}
+.digital-circuit-nodes {
+  fill: #7786ff;
+  stroke: #bcc2ff;
+  stroke-width: 1;
+}
+.digital-circuit-nodes circle:nth-child(even) {
+  fill: #78d9d1;
+  stroke: #a9ebe7;
+}
+.digital-chip-glow {
+  fill: #7786ff0a;
+  stroke: #7786ff44;
+  animation: digital-chip-pulse 2.4s ease-in-out infinite;
+  transform-origin: center;
+}
+.digital-chip {
+  fill: #242b4c;
+  stroke: #9aa9ff;
+  stroke-width: 1.5;
+}
+.digital-chip-mark {
+  stroke: #c5cdff;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.digital-loading-content > strong {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+.digital-loading-content > strong span {
+  font-weight: 500;
+  color: #bcc2ff;
+}
+.digital-loading-content > p {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #a8a9bc;
+  margin: 10px 0 24px;
+}
+.digital-loading-progress {
+  height: 3px;
+  max-width: 150px;
+  margin: auto;
+  background: #343643;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.digital-loading-progress span {
+  display: block;
+  width: 45%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #7786ff, #8ee3dc);
+  animation: digital-load-progress 1.8s ease-in-out infinite;
+}
+.digital-loading-label {
+  display: block;
+  font-size: 10px;
+  color: #9095b0;
+  margin-top: 13px;
+}
+@keyframes digital-data-flow {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+@keyframes digital-chip-pulse {
+  50% {
+    opacity: 0.4;
+    transform: scale(0.95);
+  }
+}
+@keyframes digital-load-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(330%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .digital-loading-content * {
+    animation: none !important;
+  }
+  .digital-loading-progress span {
+    width: 100%;
+  }
+}

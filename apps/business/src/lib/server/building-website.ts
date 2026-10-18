@@ -1,0 +1,3 @@
+import type { WebsiteProject } from '@mgl/types/building-website';
+import { buildingApiBase,buildingToken } from './building-session';
+export async function getWebsiteProject(id:string,preview=false):Promise<WebsiteProject|null>{const token=preview?await buildingToken():null;if(preview&&!token)return null;const response=await fetch(`${buildingApiBase}/api/building/${preview?'admin/':''}projects/${encodeURIComponent(id)}/website`,{headers:token?{Authorization:`Bearer ${token}`}:{},cache:'no-store',signal:AbortSignal.timeout(15000)});if([401,403,404].includes(response.status))return null;if(!response.ok)throw new Error('Төслийн мэдээлэл ачаалж чадсангүй');const result=await response.json() as {project:WebsiteProject};return result.project;}

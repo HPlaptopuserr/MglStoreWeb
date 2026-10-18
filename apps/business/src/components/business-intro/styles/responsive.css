@@ -1,0 +1,220 @@
+@media (min-width: 1100px) {
+  .intro-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: #11131cf5;
+    backdrop-filter: blur(18px);
+  }
+}
+@media (max-width: 1100px) {
+  .intro-container {
+    padding: 0 26px;
+  }
+  .intro-header nav {
+    gap: 14px;
+    font-size: 10px;
+  }
+  .intro-brand {
+    font-size: 17px;
+  }
+  .intro-hero {
+    gap: 36px;
+    padding: 65px 0;
+  }
+  .intro-contact {
+    gap: 38px;
+  }
+  .showcase-highlights {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .role-list {
+    padding: 14px 20px;
+  }
+  .audience-panel {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+@media (max-width: 760px) {
+  .intro-container {
+    padding: 0 20px;
+  }
+  .intro-header {
+    flex-wrap: wrap;
+    padding: 18px 0;
+    gap: 18px;
+  }
+  .intro-header nav {
+    order: 3;
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 13px 20px;
+    font-size: 11px;
+  }
+  .intro-header .intro-button {
+    margin-left: auto;
+  }
+  .intro-hero {
+    grid-template-columns: 1fr;
+    padding: 48px 0 56px;
+    gap: 38px;
+  }
+  .business-intro h1 {
+    font-size: 42px;
+    letter-spacing: -1.7px;
+  }
+  .intro-lead {
+    font-size: 14px;
+  }
+  .intro-eyebrow {
+    font-size: 9px;
+    letter-spacing: 1px;
+  }
+  .workspace-preview {
+    max-width: 520px;
+    width: 100%;
+    margin: auto;
+    padding: 20px;
+  }
+  .hero-highlights {
+    margin-top: 25px;
+  }
+  .hero-highlights strong {
+    font-size: 16px;
+  }
+  .intro-section {
+    padding: 52px 0;
+  }
+  .section-heading {
+    display: block;
+  }
+  .section-heading > p,
+  .section-heading > div:last-child > p {
+    margin-top: 20px;
+  }
+  .service-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 14px;
+  }
+  .service-card {
+    padding: 20px;
+  }
+  .product-showcase {
+    padding: 20px;
+    margin-bottom: 48px;
+  }
+  .product-showcase h2 {
+    font-size: 28px;
+  }
+  .visual-toolbar {
+    font-size: 9px;
+    padding: 10px;
+  }
+  .product-visual figcaption {
+    font-size: 9px;
+  }
+  .intro-extra {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .intro-extra strong {
+    white-space: normal;
+  }
+  .audience-panel,
+  .intro-contact {
+    grid-template-columns: 1fr;
+  }
+  .audience-panel {
+    gap: 0;
+  }
+  .role-list {
+    padding: 12px 22px;
+  }
+  .mobile-visual {
+    border-top: 1px solid var(--line);
+  }
+  .steps-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .steps-grid li {
+    padding: 23px;
+  }
+  .steps-grid h3 {
+    margin-top: 14px;
+  }
+  .intro-contact {
+    gap: 24px;
+  }
+  .footer-top {
+    grid-template-columns: 1fr 1fr;
+    gap: 30px;
+  }
+  .footer-bottom {
+    flex-direction: column;
+    gap: 8px;
+  }
+  .business-intro [id] {
+    scroll-margin-top: 24px;
+  }
+}
+@media (max-width: 440px) {
+  .service-grid {
+    grid-template-columns: 1fr;
+  }
+  .showcase-highlights {
+    gap: 8px;
+  }
+  .showcase-highlights > div {
+    padding: 10px 8px;
+    gap: 7px;
+  }
+  .showcase-highlights strong {
+    font-size: 10px;
+  }
+  .showcase-highlights small {
+    font-size: 8px;
+  }
+  .contact-fields {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .contact-form {
+    padding: 21px;
+  }
+  .preview-label {
+    font-size: 8px;
+  }
+  .preview-grid > a {
+    padding: 17px 12px;
+  }
+  .intro-actions {
+    gap: 20px;
+  }
+  .footer-top {
+    grid-template-columns: 1fr 1fr;
+  }
+  .footer-top > div:first-child {
+    grid-column: 1/-1;
+  }
+  .intro-button {
+    font-size: 12px;
+  }
+  .visual-toolbar span:first-child {
+    max-width: 60%;
+  }
+  .business-intro h1 {
+    font-size: 37px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .business-intro * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

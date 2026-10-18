@@ -1,0 +1,104 @@
+.unit-management-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+.unit-management-grid > button {
+  text-align: left;
+  display: grid;
+  gap: 12px;
+  background: white;
+  border: 1px solid #d9e5e1;
+  border-radius: 16px;
+  padding: 20px;
+  color: #203e39;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+.unit-management-grid > button:hover {
+  border-color: #1d7f69;
+  background: #f6fbf8;
+}
+.unit-management-grid > button:focus-visible {
+  outline: 3px solid #157c70;
+  outline-offset: 3px;
+}
+.unit-management-grid strong {
+  font-size: 18px;
+}
+.unit-management-grid small {
+  font-size: 11px;
+  color: #71857e;
+}
+.unit-card-edit {
+  color: #157c70;
+  font-size: 12px;
+  font-weight: 650;
+}
+.unit-details-form label {
+  display: grid;
+  gap: 8px;
+  margin: 15px 0;
+}
+.unit-details-form .website-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.unit-details-form textarea {
+  width: 100%;
+}
+.unit-image-fields {
+  margin: 16px 0;
+}
+.unit-image-fields legend {
+  font-size: 18px;
+  font-weight: 700;
+}
+.unit-image-fields img {
+  max-width: 100%;
+  height: auto;
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid #dbe6e1;
+  border-radius: 12px;
+  margin: 12px 0;
+}
+.unit-gallery-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.unit-gallery-thumbs > div {
+  max-width: 160px;
+}
+.unit-editor-total {
+  padding: 18px;
+  background: #edf6f2;
+  border-radius: 12px;
+}
+.unit-prepare {
+  padding: 20px;
+  background: #eef6f3;
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+@media (max-width: 600px) {
+  .unit-management-grid {
+    grid-template-columns: 1fr;
+  }
+  .unit-details-form .website-field-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .unit-management-grid > button {
+    transition: none;
+  }
+}

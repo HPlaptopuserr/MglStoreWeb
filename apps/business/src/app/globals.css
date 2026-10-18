@@ -10,8 +10,9 @@
   --accent: #23633a;
   --accent-strong: #184a2a;
   --gold: #c99a2e;
-  --font-site: "Noto Sans", ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-site:
+    "Noto Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
 }
 
 @theme inline {
@@ -25,13 +26,15 @@
 }
 
 html {
+  background: #11131c;
+  overscroll-behavior-y: none;
   scroll-behavior: smooth;
 }
 
 body {
   min-height: 100vh;
   margin: 0;
-  background: var(--background);
+  background: #11131c;
   color: var(--foreground);
   font-family: var(--font-site);
   text-rendering: optimizeLegibility;

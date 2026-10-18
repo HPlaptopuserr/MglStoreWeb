@@ -1,9 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { MglAppBootLoader } from "@mgl/ui";
+import { BusinessLoading } from "@/components/BusinessLoading";
 import "./globals.css";
 
-const SITE_URL = "https://business.mglstore.mn";
+const SITE_URL = "https://mglbusiness.mn";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -12,13 +12,13 @@ export const metadata: Metadata = {
     template: "%s | MGL Business",
   },
   description:
-    "Монгол бизнесүүдэд зориулсан байгууллагын танилцуулга, ажлын зар, сургалт, контентын платформ.",
+    "Багийн ирц, даалгавар, борлуулалт, POS, бараа таталт, захиалга, хүргэлт — бизнесийн өдөр тутмын ажил нэг апп дотор.",
   openGraph: {
     type: "website",
     siteName: "MGL Business",
     title: "MGL Business",
     description:
-      "Байгууллага, ажлын зар, сургалт, бизнес контентыг нэг экосистемд.",
+      "MGL Business: ажилтан, цаг бүртгэл, борлуулалт, бараа, хүргэлтийн нэгдсэн ажлын орчин.",
     url: SITE_URL,
   },
 };
@@ -27,13 +27,14 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: "#11131c",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="mn">
       <body suppressHydrationWarning>
-        <MglAppBootLoader label="MGL Business ачааллаж байна" />
+        <BusinessLoading boot />
         {children}
       </body>
     </html>
