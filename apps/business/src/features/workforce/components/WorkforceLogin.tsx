@@ -1,6 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
+import { PasswordInput } from "@/components/forms/PasswordInput";
 import { useRouter } from "next/navigation";
 import { Clock3, ArrowRight } from "lucide-react";
 import "../workforce.css";
@@ -68,16 +69,16 @@ export function WorkforceLogin() {
               maxLength={254}
             />
           </label>
-          <label>
-            Нууц үг
-            <input
+          <div className="wf-field">
+            <label htmlFor="workforce-password">Нууц үг</label>
+            <PasswordInput
+              id="workforce-password"
               name="password"
-              type="password"
               autoComplete="current-password"
               required
               maxLength={1024}
             />
-          </label>
+          </div>
           <button className="wf-primary" disabled={pending}>
             {pending ? "Нэвтэрч байна…" : "Нэвтрэх"}
             <ArrowRight size={17} />
