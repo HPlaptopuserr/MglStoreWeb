@@ -49,12 +49,13 @@ import { ORG_PORTAL_URL, VENDOR_PORTAL_URL } from "@/lib/portal-links";
 import { QuickProductSupplyFields } from "./QuickProductSupplyFields";
 import { StorefrontVisibilityControl } from "./StorefrontVisibilityControl";
 import type {
-  PreorderCurrency,
   QuickProductFormState,
-  QuickProductSupplyType,
   QuickProductSupplyValues,
   QuickProductTextField,
 } from "./quick-product.types";
+
+import type { ManagedProduct } from "./managed-product.types";
+import { ManagedProductCatalog } from "./ManagedProductCatalog";
 
 const ORG_URL = ORG_PORTAL_URL;
 const VENDOR_URL = VENDOR_PORTAL_URL;
@@ -80,22 +81,6 @@ type ManagedOrgDetails = {
   customers?: string | null;
   operatingYears?: number;
   years?: number;
-};
-
-type ManagedProduct = {
-  id: string;
-  name: string;
-  description?: string | null;
-  price?: number | string | null;
-  stock?: number | null;
-  supplyType?: QuickProductSupplyType | null;
-  preorderPriceCurrency?: PreorderCurrency | null;
-  preorderPriceAmount?: number | string | null;
-  preorderLeadTimeDays?: number | null;
-  preorderCapacity?: number | null;
-  preorderNote?: string | null;
-  images?: Array<{ url?: string | null }>;
-  createdAt?: string | Date;
 };
 
 type ManagedServicePost = {
@@ -269,7 +254,7 @@ const roleLabel: Record<string, string> = {
 const contentTabs: Array<{ id: ContentTab; label: string }> = [
   { id: "home", label: "Нүүр" },
   { id: "about", label: "Тухай" },
-  { id: "products", label: "Бүтээгдэхүүн" },
+  { id: "products", label: "Бараа удирдах" },
   { id: "reels", label: "Reel" },
   { id: "ads", label: "Зар" },
   { id: "more", label: "Илүү" },
@@ -362,7 +347,7 @@ function PublicProfileActions({
         aria-label={`${organizationName} байгууллагыг хэрэглэгчийн нүдээр харах`}
       >
         <Eye size={compact ? 14 : 16} />
-        {compact ? "Харах" : "Хэрэглэгчийн нүдээр"}
+        {compact ? "Харах" : "Дэлгүүрээ харах"}
         {!compact && <ArrowUpRight size={15} />}
       </a>
       <button
@@ -436,6 +421,37 @@ function productListForReels(products: ManagedProduct[]) {
   }));
 }
 
+function toProductTimelineItem(
+  product: ManagedProduct,
+): Extract<ManagedTimelineItem, { kind: "product" }> {
+  return {
+    id: product.id,
+    kind: "product" as const,
+    title: product.name,
+    description: product.description || `${product.stock ?? 0} нөөцтэй`,
+    image: product.images?.[0]?.url || null,
+    images: compactImageUrls(product.images),
+    meta: formatPrice(product.price),
+    stats: `${product.stock ?? 0} нөөц`,
+    edit: {
+      description: product.description || "",
+      price: String(product.price ?? ""),
+      stock: String(product.stock ?? 0),
+      title: product.name,
+      supplyType: product.supplyType || "IN_STOCK",
+      preorderPriceCurrency: product.preorderPriceCurrency || "MNT",
+      preorderPriceAmount: String(
+        product.preorderPriceAmount ?? product.price ?? "",
+      ),
+      preorderLeadTimeDays: String(product.preorderLeadTimeDays ?? 14),
+      preorderCapacity: String(product.preorderCapacity ?? 1),
+      preorderNote: product.preorderNote || "",
+    },
+    href: `/products/${encodeURIComponent(product.id)}`,
+    createdAt: product.createdAt,
+  };
+}
+
 export function ManagedOrganizationProfile({
   activeOrganizationId,
   onBackToPersonal,
@@ -469,7 +485,9 @@ export function ManagedOrganizationProfile({
   const [postContact, setPostContact] = useState("");
   const [postLocation, setPostLocation] = useState("");
   const [postPromo, setPostPromo] = useState("");
-  const [activeContentTab, setActiveContentTab] = useState<ContentTab>("home");
+  const [activeContentTab, setActiveContentTab] =
+    useState<ContentTab>("products");
+  const [catalogRevision, setCatalogRevision] = useState(0);
   const [focusedReelId, setFocusedReelId] = useState<string | null>(null);
   const [createMode, setCreateMode] = useState<CreateMode>("product");
   const [posting, setPosting] = useState(false);
@@ -622,6 +640,7 @@ export function ManagedOrganizationProfile({
   );
 
   const loadOrgContent = useCallback(async () => {
+    setCatalogRevision((revision) => revision + 1);
     await loadOrgContentPage({
       append: false,
       postOffset: 0,
@@ -961,7 +980,7 @@ export function ManagedOrganizationProfile({
           <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100">
             <ArrowLeft size={17} />
           </span>
-          Personal account
+          Хувийн хэсэг рүү буцах
         </button>
 
         <label className="relative mt-3 block">
@@ -1000,6 +1019,22 @@ export function ManagedOrganizationProfile({
         </label>
       </div>
 
+      {activeContentTab === "products" && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3">
+          <button
+            type="button"
+            onClick={() => setProfileEditorOpen(true)}
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl px-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 focus-visible:ring-4 focus-visible:ring-orange-100"
+          >
+            <Pencil size={16} /> Байгууллагын мэдээлэл засах
+          </button>
+          <PublicProfileActions
+            href={orgPublicHref(org || selectedOrg)}
+            organizationName={name}
+          />
+        </div>
+      )}
+
       {selectedOrg.role === "OWNER" && (
         <StorefrontVisibilityControl
           authFetch={authFetch}
@@ -1007,187 +1042,195 @@ export function ManagedOrganizationProfile({
         />
       )}
 
-      <MobileOrganizationHero
-        category={category}
-        cover={cover}
-        imageActionMenu={imageActionMenu}
-        imageUploading={imageUploading}
-        isOpen={isOpen}
-        isVerified={isVerified}
-        logo={logo}
-        name={name}
-        onEditProfile={() => setProfileEditorOpen(true)}
-        onPreviewImage={(title, url) => {
-          setImagePreview({ title, url });
-          setImageActionMenu(null);
-        }}
-        onToggleImageMenu={setImageActionMenu}
-        onUploadImage={updateProfileImage}
-        publicHref={orgPublicHref(org || selectedOrg)}
-        rating={metrics.rating}
-        reviewCount={metrics.reviewCount}
-        role={roleLabel[selectedOrg.role] || selectedOrg.role}
-        shortDescription={shortDescription}
-      />
-
-      <div className="hidden overflow-visible rounded-2xl border border-slate-100 bg-white shadow-sm sm:block">
-        <div className="relative h-24 overflow-hidden rounded-t-2xl bg-slate-200">
-          <button
-            type="button"
-            onClick={() =>
-              setImageActionMenu((current) =>
-                current === "bannerUrl" ? null : "bannerUrl",
-              )
-            }
-            className="block h-full w-full text-left"
-            aria-label="Cover зурагны сонголт"
-          >
-            <img
-              src={cover}
-              alt=""
-              className="h-full w-full object-cover"
-              referrerPolicy="no-referrer"
-            />
-          </button>
-          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/55 via-slate-950/20 to-transparent" />
-          <ImageActionMenu
-            field="bannerUrl"
-            isOpen={imageActionMenu === "bannerUrl"}
-            label="Cover зураг"
-            onToggle={() =>
-              setImageActionMenu((current) =>
-                current === "bannerUrl" ? null : "bannerUrl",
-              )
-            }
-            onPreview={() => {
-              setImagePreview({ title: "Cover зураг", url: cover });
+      {activeContentTab !== "products" && (
+        <>
+          <MobileOrganizationHero
+            category={category}
+            cover={cover}
+            imageActionMenu={imageActionMenu}
+            imageUploading={imageUploading}
+            isOpen={isOpen}
+            isVerified={isVerified}
+            logo={logo}
+            name={name}
+            onEditProfile={() => setProfileEditorOpen(true)}
+            onPreviewImage={(title, url) => {
+              setImagePreview({ title, url });
               setImageActionMenu(null);
             }}
-            onUpload={updateProfileImage}
-            uploading={imageUploading === "bannerUrl"}
-            variant="cover"
+            onToggleImageMenu={setImageActionMenu}
+            onUploadImage={updateProfileImage}
+            publicHref={orgPublicHref(org || selectedOrg)}
+            rating={metrics.rating}
+            reviewCount={metrics.reviewCount}
+            role={roleLabel[selectedOrg.role] || selectedOrg.role}
+            shortDescription={shortDescription}
           />
-          <div className="absolute right-4 top-4">
-            <PublicProfileActions
-              href={orgPublicHref(org || selectedOrg)}
-              organizationName={name}
-            />
-          </div>
-        </div>
 
-        <div className="relative -mt-8 mx-4 mb-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-lg shadow-slate-200/60">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex min-w-0 items-start gap-4 text-left">
-              <div className="relative h-20 w-20 shrink-0 rounded-2xl bg-slate-100 shadow-md ring-4 ring-white">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setImageActionMenu((current) =>
-                      current === "logoUrl" ? null : "logoUrl",
-                    )
-                  }
-                  className="group h-full w-full overflow-hidden rounded-2xl"
-                  aria-label="Profile зурагны сонголт"
-                >
-                  <img
-                    src={logo}
-                    alt=""
-                    className="h-full w-full object-cover transition group-hover:scale-105"
-                    referrerPolicy="no-referrer"
-                  />
-                  <span className="absolute inset-x-0 bottom-0 flex h-9 items-center justify-center bg-slate-950/60 text-[11px] font-black text-white opacity-0 transition group-hover:opacity-100">
-                    Зураг
-                  </span>
-                </button>
-                {isOpen && (
-                  <span className="absolute bottom-2 right-2 h-4 w-4 rounded-full border-2 border-white bg-emerald-500" />
-                )}
-                <ImageActionMenu
-                  field="logoUrl"
-                  isOpen={imageActionMenu === "logoUrl"}
-                  label="Profile зураг"
-                  onToggle={() =>
-                    setImageActionMenu((current) =>
-                      current === "logoUrl" ? null : "logoUrl",
-                    )
-                  }
-                  onPreview={() => {
-                    setImagePreview({ title: "Profile зураг", url: logo });
-                    setImageActionMenu(null);
-                  }}
-                  onUpload={updateProfileImage}
-                  uploading={imageUploading === "logoUrl"}
-                  variant="avatar"
+          <div className="hidden overflow-visible rounded-2xl border border-slate-100 bg-white shadow-sm sm:block">
+            <div className="relative h-24 overflow-hidden rounded-t-2xl bg-slate-200">
+              <button
+                type="button"
+                onClick={() =>
+                  setImageActionMenu((current) =>
+                    current === "bannerUrl" ? null : "bannerUrl",
+                  )
+                }
+                className="block h-full w-full text-left"
+                aria-label="Cover зурагны сонголт"
+              >
+                <img
+                  src={cover}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              </button>
+              <div className="absolute inset-0 bg-gradient-to-r from-slate-950/55 via-slate-950/20 to-transparent" />
+              <ImageActionMenu
+                field="bannerUrl"
+                isOpen={imageActionMenu === "bannerUrl"}
+                label="Cover зураг"
+                onToggle={() =>
+                  setImageActionMenu((current) =>
+                    current === "bannerUrl" ? null : "bannerUrl",
+                  )
+                }
+                onPreview={() => {
+                  setImagePreview({ title: "Cover зураг", url: cover });
+                  setImageActionMenu(null);
+                }}
+                onUpload={updateProfileImage}
+                uploading={imageUploading === "bannerUrl"}
+                variant="cover"
+              />
+              <div className="absolute right-4 top-4">
+                <PublicProfileActions
+                  href={orgPublicHref(org || selectedOrg)}
+                  organizationName={name}
                 />
               </div>
+            </div>
 
-              <div
-                className={`min-w-0 transition-[padding] ${
-                  imageActionMenu === "logoUrl" ? "pt-28 sm:pt-0" : "pt-0"
-                }`}
-              >
-                <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
-                  {isOpen && (
-                    <Badge tone="emerald">
-                      <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                      Нээлттэй
-                    </Badge>
-                  )}
-                  {isVerified && (
-                    <Badge tone="blue">
-                      <ShieldCheck size={13} />
-                      Баталгаат
-                    </Badge>
-                  )}
-                  <Badge tone="slate">{category}</Badge>
-                  <Badge tone="amber">
-                    {roleLabel[selectedOrg.role] || selectedOrg.role}
-                  </Badge>
+            <div className="relative -mt-8 mx-4 mb-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-lg shadow-slate-200/60">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex min-w-0 items-start gap-4 text-left">
+                  <div className="relative h-20 w-20 shrink-0 rounded-2xl bg-slate-100 shadow-md ring-4 ring-white">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setImageActionMenu((current) =>
+                          current === "logoUrl" ? null : "logoUrl",
+                        )
+                      }
+                      className="group h-full w-full overflow-hidden rounded-2xl"
+                      aria-label="Profile зурагны сонголт"
+                    >
+                      <img
+                        src={logo}
+                        alt=""
+                        className="h-full w-full object-cover transition group-hover:scale-105"
+                        referrerPolicy="no-referrer"
+                      />
+                      <span className="absolute inset-x-0 bottom-0 flex h-9 items-center justify-center bg-slate-950/60 text-[11px] font-black text-white opacity-0 transition group-hover:opacity-100">
+                        Зураг
+                      </span>
+                    </button>
+                    {isOpen && (
+                      <span className="absolute bottom-2 right-2 h-4 w-4 rounded-full border-2 border-white bg-emerald-500" />
+                    )}
+                    <ImageActionMenu
+                      field="logoUrl"
+                      isOpen={imageActionMenu === "logoUrl"}
+                      label="Profile зураг"
+                      onToggle={() =>
+                        setImageActionMenu((current) =>
+                          current === "logoUrl" ? null : "logoUrl",
+                        )
+                      }
+                      onPreview={() => {
+                        setImagePreview({ title: "Profile зураг", url: logo });
+                        setImageActionMenu(null);
+                      }}
+                      onUpload={updateProfileImage}
+                      uploading={imageUploading === "logoUrl"}
+                      variant="avatar"
+                    />
+                  </div>
+
+                  <div
+                    className={`min-w-0 transition-[padding] ${
+                      imageActionMenu === "logoUrl" ? "pt-28 sm:pt-0" : "pt-0"
+                    }`}
+                  >
+                    <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
+                      {isOpen && (
+                        <Badge tone="emerald">
+                          <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                          Нээлттэй
+                        </Badge>
+                      )}
+                      {isVerified && (
+                        <Badge tone="blue">
+                          <ShieldCheck size={13} />
+                          Баталгаат
+                        </Badge>
+                      )}
+                      <Badge tone="slate">{category}</Badge>
+                      <Badge tone="amber">
+                        {roleLabel[selectedOrg.role] || selectedOrg.role}
+                      </Badge>
+                    </div>
+
+                    <h1 className="mt-2 line-clamp-2 break-words text-2xl font-black tracking-tight text-slate-950 sm:truncate">
+                      {name}
+                    </h1>
+
+                    <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-sm font-bold sm:justify-start">
+                      <span className="inline-flex items-center gap-1 text-slate-900">
+                        <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                        {metrics.rating.toFixed(1)} ({metrics.reviewCount})
+                      </span>
+                      {isOpen && (
+                        <span className="text-emerald-600">
+                          Яг одоо идэвхтэй
+                        </span>
+                      )}
+                      {loading && (
+                        <span className="text-slate-400">
+                          Ачааллаж байна...
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="mt-2 max-w-3xl line-clamp-2 text-xs font-semibold leading-5 text-slate-500">
+                      {shortDescription}
+                    </p>
+                  </div>
                 </div>
 
-                <h1 className="mt-2 line-clamp-2 break-words text-2xl font-black tracking-tight text-slate-950 sm:truncate">
-                  {name}
-                </h1>
-
-                <div className="mt-2 flex flex-wrap items-center justify-center gap-3 text-sm font-bold sm:justify-start">
-                  <span className="inline-flex items-center gap-1 text-slate-900">
-                    <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-                    {metrics.rating.toFixed(1)} ({metrics.reviewCount})
-                  </span>
-                  {isOpen && (
-                    <span className="text-emerald-600">Яг одоо идэвхтэй</span>
-                  )}
-                  {loading && (
-                    <span className="text-slate-400">Ачааллаж байна...</span>
-                  )}
+                <div className="grid grid-cols-3 gap-2 lg:w-[440px]">
+                  <QuickStat
+                    icon={ShieldCheck}
+                    label="Албан ёсны"
+                    value={isVerified ? "Баталгаат" : "Хүлээгдэж буй"}
+                  />
+                  <QuickStat
+                    icon={Users}
+                    label="Харилцагч"
+                    value={metrics.customers}
+                  />
+                  <QuickStat
+                    icon={CalendarDays}
+                    label="Туршлага"
+                    value={`${metrics.years} жил`}
+                  />
                 </div>
-
-                <p className="mt-2 max-w-3xl line-clamp-2 text-xs font-semibold leading-5 text-slate-500">
-                  {shortDescription}
-                </p>
               </div>
             </div>
-
-            <div className="grid grid-cols-3 gap-2 lg:w-[440px]">
-              <QuickStat
-                icon={ShieldCheck}
-                label="Албан ёсны"
-                value={isVerified ? "Баталгаат" : "Хүлээгдэж буй"}
-              />
-              <QuickStat
-                icon={Users}
-                label="Харилцагч"
-                value={metrics.customers}
-              />
-              <QuickStat
-                icon={CalendarDays}
-                label="Туршлага"
-                value={`${metrics.years} жил`}
-              />
-            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {imageMessage && (
         <div className="rounded-2xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm font-bold text-orange-700">
@@ -1212,6 +1255,7 @@ export function ManagedOrganizationProfile({
                 key={item.id}
                 type="button"
                 onClick={() => setActiveContentTab(item.id)}
+                aria-pressed={active}
                 className={`h-10 min-w-0 rounded-2xl px-2 text-[13px] font-black leading-none transition sm:h-11 sm:shrink-0 sm:px-4 sm:text-sm ${
                   active
                     ? "bg-orange-50 text-orange-600"
@@ -1225,8 +1269,20 @@ export function ManagedOrganizationProfile({
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <aside className="space-y-5 lg:self-start">
+      <div
+        className={
+          activeContentTab === "products"
+            ? "space-y-5"
+            : "grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]"
+        }
+      >
+        <aside
+          className={
+            activeContentTab === "products"
+              ? "hidden"
+              : "space-y-5 lg:self-start"
+          }
+        >
           <WidgetCard
             action={
               <button
@@ -1317,8 +1373,15 @@ export function ManagedOrganizationProfile({
           </WidgetCard>
         </aside>
 
-        <div className="mx-auto w-full max-w-[820px] space-y-4">
+        <div
+          className={
+            activeContentTab === "products"
+              ? "w-full space-y-4"
+              : "mx-auto w-full max-w-[820px] space-y-4"
+          }
+        >
           <OrganizationCreateHub
+            compact={activeContentTab === "products"}
             authFetch={authFetch}
             createMode={createMode}
             message={message}
@@ -1343,35 +1406,47 @@ export function ManagedOrganizationProfile({
             selectedOrganizationId={selectedOrg.id}
           />
 
-          <OrganizationContentFeed
-            activeTab={activeContentTab}
-            focusedReelId={focusedReelId}
-            hasMore={contentHasMore}
-            loading={contentLoading}
-            loadingMore={contentLoadingMore}
-            loadMoreRef={contentLoadMoreRef}
-            organization={{
-              address: org?.address || "",
-              category,
-              email: org?.email || "",
-              logo,
-              name,
-              phone: org?.phone || "",
-              shortDescription,
-              status: isOpen ? "Нээлттэй" : "Идэвхгүй",
-            }}
-            onDelete={deleteTimelineItem}
-            onEdit={setEditingTimelineItem}
-            posts={content.posts}
-            products={content.products}
-            reels={content.reels}
-            onOpenReel={(reelId) => {
-              setFocusedReelId(reelId);
-              setActiveContentTab("reels");
-            }}
-            statusMessage={timelineActionMessage}
-            services={content.services}
-          />
+          {activeContentTab === "products" ? (
+            <ManagedProductCatalog
+              key={selectedOrg.id}
+              organizationId={selectedOrg.id}
+              revision={catalogRevision}
+              statusMessage={timelineActionMessage}
+              onEdit={(product) =>
+                setEditingTimelineItem(toProductTimelineItem(product))
+              }
+            />
+          ) : (
+            <OrganizationContentFeed
+              activeTab={activeContentTab}
+              focusedReelId={focusedReelId}
+              hasMore={contentHasMore}
+              loading={contentLoading}
+              loadingMore={contentLoadingMore}
+              loadMoreRef={contentLoadMoreRef}
+              organization={{
+                address: org?.address || "",
+                category,
+                email: org?.email || "",
+                logo,
+                name,
+                phone: org?.phone || "",
+                shortDescription,
+                status: isOpen ? "Нээлттэй" : "Идэвхгүй",
+              }}
+              onDelete={deleteTimelineItem}
+              onEdit={setEditingTimelineItem}
+              posts={content.posts}
+              products={content.products}
+              reels={content.reels}
+              onOpenReel={(reelId) => {
+                setFocusedReelId(reelId);
+                setActiveContentTab("reels");
+              }}
+              statusMessage={timelineActionMessage}
+              services={content.services}
+            />
+          )}
 
           <aside className="grid gap-3 md:grid-cols-3">
             <PortalLink
@@ -1487,32 +1562,7 @@ function OrganizationContentFeed({
   useLockBodyScroll(filterOpen);
   const timeline = useMemo(() => {
     const items: ManagedTimelineItem[] = [
-      ...products.map((product) => ({
-        id: product.id,
-        kind: "product" as const,
-        title: product.name,
-        description: product.description || `${product.stock ?? 0} нөөцтэй`,
-        image: product.images?.[0]?.url || null,
-        images: compactImageUrls(product.images),
-        meta: formatPrice(product.price),
-        stats: `${product.stock ?? 0} нөөц`,
-        edit: {
-          description: product.description || "",
-          price: String(product.price ?? ""),
-          stock: String(product.stock ?? 0),
-          title: product.name,
-          supplyType: product.supplyType || "IN_STOCK",
-          preorderPriceCurrency: product.preorderPriceCurrency || "MNT",
-          preorderPriceAmount: String(
-            product.preorderPriceAmount ?? product.price ?? "",
-          ),
-          preorderLeadTimeDays: String(product.preorderLeadTimeDays ?? 14),
-          preorderCapacity: String(product.preorderCapacity ?? 1),
-          preorderNote: product.preorderNote || "",
-        },
-        href: `/products/${encodeURIComponent(product.id)}`,
-        createdAt: product.createdAt,
-      })),
+      ...products.map(toProductTimelineItem),
       ...services.map((service) => ({
         id: service.id,
         kind: "service" as const,
@@ -3718,6 +3768,7 @@ function ProfileTextarea({
 }
 
 function OrganizationCreateHub({
+  compact = false,
   authFetch,
   createMode,
   message,
@@ -3741,6 +3792,7 @@ function OrganizationCreateHub({
   products,
   selectedOrganizationId,
 }: {
+  compact?: boolean;
   authFetch: (url: string, init?: RequestInit) => Promise<Response>;
   createMode: CreateMode;
   message: string;
@@ -4029,72 +4081,90 @@ function OrganizationCreateHub({
       )}
 
       <section className="rounded-[24px] border border-white bg-white p-3 shadow-[0_18px_55px_rgba(15,23,42,0.08)] sm:p-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-sm font-black text-white ring-4 ring-slate-100">
-            {getInitials(name)}
+        {compact ? (
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm text-slate-500">
+              Шинэ бараагаа дэлгүүртээ бүртгэх
+            </p>
+            <button
+              type="button"
+              onClick={() => openComposer("product")}
+              className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-orange-600 px-4 text-sm font-bold text-white transition hover:bg-orange-700 focus-visible:ring-4 focus-visible:ring-orange-200"
+            >
+              <PlusCircle size={18} />
+              Бараа нэмэх
+            </button>
           </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-950 text-sm font-black text-white ring-4 ring-slate-100">
+                {getInitials(name)}
+              </div>
 
-          <button
-            type="button"
-            onClick={() => openComposer("product")}
-            className="min-w-0 flex-1 rounded-full bg-slate-100 px-5 py-3.5 text-left text-sm font-black text-slate-500 transition hover:bg-slate-200 sm:text-base"
-          >
-            Бүтээгдэхүүн эсвэл Reel нэмэх
-          </button>
-
-          <div className="hidden items-center gap-2 sm:flex">
-            {modes.map((mode) => {
-              const Icon = mode.icon;
-              return (
-                <button
-                  key={mode.id}
-                  type="button"
-                  onClick={() => openComposer(mode.id)}
-                  className={`flex h-11 w-11 items-center justify-center rounded-2xl transition hover:-translate-y-0.5 ${
-                    createMode === mode.id
-                      ? mode.tone
-                      : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                  }`}
-                  title={mode.label}
-                >
-                  <Icon size={22} />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div
-          className={`mt-3 grid gap-2 ${
-            SHOW_POST_SECTION ? "grid-cols-3" : "grid-cols-2"
-          }`}
-        >
-          {modes.map((mode) => {
-            const Icon = mode.icon;
-            const active = createMode === mode.id;
-            return (
               <button
-                key={mode.id}
                 type="button"
-                onClick={() => openComposer(mode.id)}
-                className={`inline-flex h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-black transition sm:h-10 sm:flex-row sm:gap-2 sm:rounded-full sm:text-sm ${
-                  active
-                    ? "bg-slate-950 text-white shadow-lg shadow-slate-900/10"
-                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                }`}
+                onClick={() => openComposer("product")}
+                className="min-w-0 flex-1 rounded-full bg-slate-100 px-5 py-3.5 text-left text-sm font-black text-slate-500 transition hover:bg-slate-200 sm:text-base"
               >
-                <Icon size={16} />
-                <span className="w-full truncate text-center sm:w-auto">
-                  {mode.label}
-                </span>
+                Бараа нэмэх
               </button>
-            );
-          })}
-        </div>
 
-        <p className="mt-3 hidden px-1 text-xs font-bold text-slate-400 sm:block">
-          Бүтээгдэхүүн эсвэл Reel оруулахдаа дээрээс сонгоно.
-        </p>
+              <div className="hidden items-center gap-2 sm:flex">
+                {modes.map((mode) => {
+                  const Icon = mode.icon;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => openComposer(mode.id)}
+                      className={`flex h-11 w-11 items-center justify-center rounded-2xl transition hover:-translate-y-0.5 ${
+                        createMode === mode.id
+                          ? mode.tone
+                          : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                      }`}
+                      title={mode.label}
+                    >
+                      <Icon size={22} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div
+              className={`mt-3 grid gap-2 ${
+                SHOW_POST_SECTION ? "grid-cols-3" : "grid-cols-2"
+              }`}
+            >
+              {modes.map((mode) => {
+                const Icon = mode.icon;
+                const active = createMode === mode.id;
+                return (
+                  <button
+                    key={mode.id}
+                    type="button"
+                    onClick={() => openComposer(mode.id)}
+                    className={`inline-flex h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[10px] font-black transition sm:h-10 sm:flex-row sm:gap-2 sm:rounded-full sm:text-sm ${
+                      active
+                        ? "bg-slate-950 text-white shadow-lg shadow-slate-900/10"
+                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                    }`}
+                  >
+                    <Icon size={16} />
+                    <span className="w-full truncate text-center sm:w-auto">
+                      {mode.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="mt-3 hidden px-1 text-xs font-bold text-slate-400 sm:block">
+              Бүтээгдэхүүн эсвэл Reel оруулахдаа дээрээс сонгоно.
+            </p>
+          </>
+        )}
 
         {composerOpen && (
           <CreateContentModal
