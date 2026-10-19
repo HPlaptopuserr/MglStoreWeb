@@ -1,3 +1,4 @@
+import { formatReportExpiry } from "./report-expiry";
 import {
   calculateMarginPercent,
   calculateProductInventoryValue,
@@ -54,6 +55,7 @@ export function exportProductReportToPdf({
         <td class="number">${money(Number(product.price) || 0)}</td>
         <td class="number">${product.wholesalePrice == null ? "-" : money(Number(product.wholesalePrice))}</td>
         <td class="number">${Number(product.stock).toLocaleString("mn-MN")} ${product.unit === "kg" ? "кг" : "ш"}</td>
+        <td>${formatReportExpiry(product.expiryDate)}</td>
         <td class="number">${margin == null ? "-" : `${margin.toFixed(1)}%`}</td>
         <td>${product.isActive ? "Идэвхтэй" : "Идэвхгүй"}</td>
       </tr>`;
@@ -110,7 +112,7 @@ export function exportProductReportToPdf({
         : ""
     }
     <h2>Бүтээгдэхүүний задаргаа</h2>
-    <table><thead><tr><th style="width:3%">№</th><th style="width:21%">Бүтээгдэхүүн</th><th style="width:12%">Ангилал</th><th>Дундаж өртөг</th><th>Зарах үнэ</th><th>Бөөний үнэ</th><th>Үлдэгдэл</th><th>Ашгийн хувь</th><th>Төлөв</th></tr></thead>
+    <table><thead><tr><th style="width:3%">№</th><th style="width:21%">Бүтээгдэхүүн</th><th style="width:12%">Ангилал</th><th>Дундаж өртөг</th><th>Зарах үнэ</th><th>Бөөний үнэ</th><th>Үлдэгдэл</th><th>Дуусах хугацаа</th><th>Ашгийн хувь</th><th>Төлөв</th></tr></thead>
       <tbody>${rows}</tbody></table>
     <footer>${escapeHtml(INVENTORY_VALUATION_DESCRIPTION)} Өртөг дутуу бараа: ${totals.missingCostCount}. Үлдэгдлийн зөрүүтэй бараа: ${totals.inconsistentLotCount}.</footer>
     <script>window.addEventListener("load", () => { window.print(); });<\/script>
@@ -218,6 +220,7 @@ export function createProductReportSheet(
       "Бөөний үнэ": wholesalePrice,
       Үлдэгдэл: stock,
       Нэгж: product.unit === "kg" ? "кг" : "ш",
+      "Дуусах хугацаа": formatReportExpiry(product.expiryDate),
       "Ашгийн хувь": margin == null ? null : Number(margin.toFixed(1)),
       Төлөв: product.isActive ? "Идэвхтэй" : "Идэвхгүй",
     };

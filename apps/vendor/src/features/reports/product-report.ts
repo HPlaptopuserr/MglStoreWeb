@@ -10,6 +10,7 @@ export type ProductReportRow = Pick<
   | "wholesalePrice"
   | "costPrice"
   | "receiptLots"
+  | "expiryDate"
   | "stock"
   | "unit"
   | "isActive"

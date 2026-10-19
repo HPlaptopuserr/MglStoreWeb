@@ -1,4 +1,5 @@
 "use client";
+import { formatReportExpiry } from "./report-expiry";
 import { FileText, Loader2 } from "lucide-react";
 import type { ProductReportRow } from "./product-report";
 import { ProductBreakdownExport } from "./ProductBreakdownExport";
@@ -67,7 +68,7 @@ export function ProductReportTable({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-[920px] w-full text-sm">
+            <table className="min-w-[1080px] w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th scope="col" className="px-4 py-3">
@@ -90,6 +91,9 @@ export function ProductReportTable({
                   </th>
                   <th scope="col" className="px-4 py-3 text-right">
                     Үлдэгдэл
+                  </th>
+                  <th scope="col" className="px-4 py-3">
+                    Дуусах хугацаа
                   </th>
                   <th scope="col" className="px-4 py-3 text-right">
                     Ашгийн хувь
@@ -143,6 +147,12 @@ export function ProductReportTable({
                       <td className="px-4 py-3 text-right text-slate-700">
                         {product.stock.toLocaleString("mn-MN")}{" "}
                         {product.unit === "kg" ? "кг" : "ш"}
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-700"
+                        title="Үлдэгдэлтэй барааны хамгийн ойрын дуусах хугацаа"
+                      >
+                        {formatReportExpiry(product.expiryDate)}
                       </td>
                       <td
                         className={`px-4 py-3 text-right font-bold ${margin != null && margin < 0 ? "text-red-600" : "text-emerald-600"}`}
