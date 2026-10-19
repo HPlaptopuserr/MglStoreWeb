@@ -41,7 +41,7 @@ export function SharedStoreTopbar({
         ordersHref="/shared-store#shared-orders"
       />
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur-md">
-        <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-3 sm:gap-6 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-[1600px] items-center gap-3 px-4 py-2 sm:gap-6 sm:px-6 lg:px-8">
           <Link
             href="/"
             aria-label={compact ? "Дундын дэлгүүр · Нүүр" : "MGL Store · Нүүр"}
@@ -65,9 +65,9 @@ export function SharedStoreTopbar({
               <Image
                 src="/logo-storefront.webp"
                 alt="MGL Store"
-                width={140}
-                height={62}
-                className="h-12 w-28 object-contain sm:h-16 sm:w-36"
+                width={86}
+                height={38}
+                className="h-7 w-[67px] object-contain sm:h-[38px] sm:w-[86px]"
                 priority
               />
             )}
