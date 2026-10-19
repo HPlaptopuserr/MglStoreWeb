@@ -3,7 +3,8 @@ import { useState } from "react";
 import { MapPin, Plus, Search } from "lucide-react";
 import type { WorkforceZone } from "@mgl/types";
 import type { WorkforceController } from "../useWorkforce";
-import { Empty, Field, FormDialog } from "../components/shared";
+import { Empty } from "../components/shared";
+import { LocationDialog } from "../locations/LocationDialog";
 export function LocationsView({
   controller,
 }: {
@@ -155,8 +156,8 @@ export function LocationsView({
         </section>
       </div>
       {edit && (
-        <FormDialog
-          title={edit.id ? "Байршил засах" : "Байршил нэмэх"}
+        <LocationDialog
+          zone={edit}
           onClose={() => setEdit(null)}
           onSubmit={async (f) => {
             await run(
@@ -172,58 +173,7 @@ export function LocationsView({
             );
             setToast("Байршил хадгалагдлаа");
           }}
-        >
-          <Field label="Байршлын нэр">
-            <input
-              name="name"
-              required
-              defaultValue={edit.name}
-              maxLength={150}
-            />
-          </Field>
-          <div className="wf-form-grid">
-            <Field label="Өргөрөг">
-              <input
-                name="lat"
-                type="number"
-                step="any"
-                min={-90}
-                max={90}
-                defaultValue={edit.lat}
-                required
-              />
-            </Field>
-            <Field label="Уртраг">
-              <input
-                name="lng"
-                type="number"
-                step="any"
-                min={-180}
-                max={180}
-                defaultValue={edit.lng}
-                required
-              />
-            </Field>
-          </div>
-          <Field label="Радиус (метр)">
-            <input
-              name="radius"
-              type="number"
-              min={10}
-              max={10000}
-              defaultValue={edit.radiusMeters}
-              required
-            />
-          </Field>
-          <label className="wf-checkbox">
-            <input
-              type="checkbox"
-              name="active"
-              defaultChecked={edit.isActive}
-            />{" "}
-            Идэвхтэй
-          </label>
-        </FormDialog>
+        />
       )}
     </>
   );

@@ -1,4 +1,5 @@
 "use client";
+import { reportPeriodRange } from "./report-period";
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -8,7 +9,7 @@ import {
 } from "@mgl/types";
 import type { WorkforceController } from "../useWorkforce";
 import { emptyReportFilters, type ReportFilterState } from "./ReportFilters";
-export function useReportState({ data, range }: WorkforceController) {
+export function useReportState({ data, range, setRange }: WorkforceController) {
   const search = useSearchParams(),
     router = useRouter(),
     view = parseWorkforceReportView(search.get("report"));
@@ -30,7 +31,9 @@ export function useReportState({ data, range }: WorkforceController) {
     [data, employee, filters, view, selectedDay],
   );
   const summaries = useMemo(() => summarizeWorkforceReport(rows), [rows]);
-  const needsEmployee = view === "employee" && !employee;
+  const needsEmployee =
+    view === "employee" &&
+    !data?.employees.some((item) => item.userId === employee);
   const total = view === "summary" ? summaries.length : rows.length,
     pages = Math.max(1, Math.ceil(total / 25)),
     current = Math.min(page, pages);
@@ -54,6 +57,9 @@ export function useReportState({ data, range }: WorkforceController) {
     }
   }
   function openEmployee(userId: string) {
+    setFilters({ ...emptyReportFilters, employee: userId });
+    if (data && range.from === data.today && range.to === data.today)
+      setRange(reportPeriodRange("month", data.today));
     const params = new URLSearchParams(search.toString());
     params.set("report", "employee");
     params.set("userId", userId);

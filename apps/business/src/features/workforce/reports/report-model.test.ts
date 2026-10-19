@@ -1,3 +1,4 @@
+import { reportPeriodRange } from "./report-period";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -60,4 +61,15 @@ test("day, employee and export search filters select the same report rows", () =
     0,
   );
   assert.deepEqual(summarizeWorkforceReport([]), []);
+});
+
+test("report period presets respect month length and year boundaries", () => {
+  assert.deepEqual(reportPeriodRange("month", "2024-02-12"), {
+    from: "2024-02-01",
+    to: "2024-02-29",
+  });
+  assert.deepEqual(reportPeriodRange("week", "2026-01-03"), {
+    from: "2025-12-28",
+    to: "2026-01-03",
+  });
 });

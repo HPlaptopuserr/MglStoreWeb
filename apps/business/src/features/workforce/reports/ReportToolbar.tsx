@@ -5,36 +5,40 @@ export function ReportToolbar({
   canExport,
   exportQuery,
   onManual,
+  selectionPending = false,
 }: {
   canManage: boolean;
   canExport: boolean;
   exportQuery: URLSearchParams;
   onManual: () => void;
+  selectionPending?: boolean;
 }) {
   return (
     <div className="wf-toolbar">
       <ReportNavigation />
-      <div className="wf-actions">
-        {canManage && (
-          <button className="wf-primary" onClick={onManual}>
-            <Plus size={16} />
-            Гараар цаг бүртгэх
+      {!selectionPending && (
+        <div className="wf-actions">
+          {canManage && (
+            <button className="wf-primary" onClick={onManual}>
+              <Plus size={16} />
+              Гараар цаг бүртгэх
+            </button>
+          )}
+          {canExport && (
+            <a
+              className="wf-button"
+              href={`/api/workforce/export?${exportQuery}`}
+            >
+              <Download size={16} />
+              Excel экспорт
+            </a>
+          )}
+          <button onClick={() => window.print()}>
+            <Printer size={16} />
+            Хэвлэх / PDF
           </button>
-        )}
-        {canExport && (
-          <a
-            className="wf-button"
-            href={`/api/workforce/export?${exportQuery}`}
-          >
-            <Download size={16} />
-            Excel экспорт
-          </a>
-        )}
-        <button onClick={() => window.print()}>
-          <Printer size={16} />
-          Хэвлэх / PDF
-        </button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -207,40 +207,42 @@ export function WorkforceApp({ section }: { section: WorkforceSection }) {
               <p className="wf-kicker">MGL BUSINESS / WORKFORCE</p>
               <h1>{current.label}</h1>
             </div>
-            <div className="wf-range">
-              <label>
-                Эхлэх огноо
-                <input
-                  type="date"
-                  value={range.from}
-                  max={range.to}
-                  onChange={(e) => {
-                    if (e.target.value)
-                      setRange((v) => ({ ...v, from: e.target.value }));
-                  }}
-                />
-              </label>
-              <span>→</span>
-              <label>
-                Дуусах огноо
-                <input
-                  type="date"
-                  value={range.to}
-                  min={range.from}
-                  onChange={(e) => {
-                    if (e.target.value)
-                      setRange((v) => ({ ...v, to: e.target.value }));
-                  }}
-                />
-              </label>
-              <button
-                onClick={refresh}
-                disabled={loading}
-                aria-label="Мэдээлэл шинэчлэх"
-              >
-                <RefreshCw size={17} className={loading ? "wf-spin" : ""} />
-              </button>
-            </div>
+            {section !== "reports" && (
+              <div className="wf-range">
+                <label>
+                  Эхлэх огноо
+                  <input
+                    type="date"
+                    value={range.from}
+                    max={range.to}
+                    onChange={(e) => {
+                      if (e.target.value)
+                        setRange((v) => ({ ...v, from: e.target.value }));
+                    }}
+                  />
+                </label>
+                <span>→</span>
+                <label>
+                  Дуусах огноо
+                  <input
+                    type="date"
+                    value={range.to}
+                    min={range.from}
+                    onChange={(e) => {
+                      if (e.target.value)
+                        setRange((v) => ({ ...v, to: e.target.value }));
+                    }}
+                  />
+                </label>
+                <button
+                  onClick={refresh}
+                  disabled={loading}
+                  aria-label="Мэдээлэл шинэчлэх"
+                >
+                  <RefreshCw size={17} className={loading ? "wf-spin" : ""} />
+                </button>
+              </div>
+            )}
           </div>
           {toast && (
             <div className="wf-toast" role="status">
