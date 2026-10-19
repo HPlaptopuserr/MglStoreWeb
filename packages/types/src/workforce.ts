@@ -156,7 +156,7 @@ export interface WorkforceRecord {
   userId: string;
   clockIn: string;
   clockOut: string | null;
-  zoneId: string;
+  zoneId: string | null;
   method: string;
   totalMinutes: number | null;
   note: string | null;

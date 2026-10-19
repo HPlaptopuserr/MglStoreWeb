@@ -21,14 +21,13 @@ export function ManualAttendanceDialog({
     <FormDialog
       title="Гараар цаг бүртгэх"
       onClose={onClose}
-      submitDisabled={!zones.length}
       onSubmit={async (form) => {
         const day = String(form.get("day"));
         const nextDay = new Date(`${day}T00:00:00Z`);
         nextDay.setUTCDate(nextDay.getUTCDate() + 1);
         await controller.run("manual-attendance", "POST", {
           userId: form.get("userId"),
-          zoneId: form.get("zoneId"),
+          zoneId: form.get("zoneId") || null,
           reason: form.get("reason"),
           clockIn: `${day}T${String(form.get("clockIn"))}:00`,
           clockOut: `${form.get("overnight") ? nextDay.toISOString().slice(0, 10) : day}T${String(form.get("clockOut"))}:00`,
@@ -56,10 +55,10 @@ export function ManualAttendanceDialog({
             max={data.today}
           />
         </Field>
-        <Field label="Байршлын бүс">
-          <select name="zoneId" required defaultValue="">
-            <option value="" disabled>
-              Бүс сонгох
+        <Field label="Байршлын бүс (заавал биш)">
+          <select name="zoneId" defaultValue="">
+            <option value="">
+              Байршилгүй
             </option>
             {zones.map((zone) => (
               <option key={zone.id} value={zone.id}>
@@ -69,11 +68,6 @@ export function ManualAttendanceDialog({
           </select>
         </Field>
       </div>
-      {!zones.length && (
-        <p className="wf-error" role="alert">
-          Эхлээд Байршил хэсэгт идэвхтэй бүс нэмнэ үү.
-        </p>
-      )}
       <div className="wf-form-grid">
         <Field label="Ирсэн цаг">
           <input name="clockIn" type="time" required defaultValue="09:00" />

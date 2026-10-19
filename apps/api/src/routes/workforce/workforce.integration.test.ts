@@ -205,6 +205,21 @@ run(
           where: { action: "ATTENDANCE_MANUAL_CREATED", entityId: record.id },
         }),
       );
+      for (const [index, zoneId] of [null, "", undefined].entries()) {
+        const day = `2026-01-${String(6 + index).padStart(2, "0")}`;
+        const result = await request("manual-attendance", adminToken, "POST", {
+          ...body, zoneId, clockIn: `${day}T09:00:00`, clockOut: `${day}T18:00:00`,
+        });
+        assert.equal(result.status, 201);
+        const saved = await prisma.attendanceRecord.findUniqueOrThrow({ where: { id: String(result.data.id) } });
+        assert.equal(saved.zoneId, null);
+        assert.equal(saved.clockInLat, null);
+        assert.ok(await prisma.workforceAudit.findFirst({ where: { entityId: saved.id, action: "ATTENDANCE_MANUAL_CREATED" } }));
+      }
+      const invalidZone = await request("manual-attendance", adminToken, "POST", {
+        ...body, zoneId: randomUUID(), clockIn: "2026-01-09T09:00:00", clockOut: "2026-01-09T18:00:00",
+      });
+      assert.equal(invalidZone.status, 400);
       const response = await fetch(
         `${base}/api/workforce/export?organizationId=${orgId}&from=2026-01-05&to=2026-01-05&report=summary&userId=${worker.id}`,
         { headers: { Authorization: `Bearer ${adminToken}` } },

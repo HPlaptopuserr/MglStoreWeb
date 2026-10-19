@@ -2546,7 +2546,7 @@ model AttendanceRecord {
   id             String           @id @default(uuid())
   userId         String
   organizationId String
-  zoneId         String
+  zoneId         String?
   clockIn        DateTime
   clockInLat     Float?
   clockInLng     Float?
@@ -2562,7 +2562,7 @@ model AttendanceRecord {
   updatedAt      DateTime         @updatedAt
   organization   Organization     @relation("OrgAttendanceRecords", fields: [organizationId], references: [id])
   user           User             @relation("AttendanceRecordUser", fields: [userId], references: [id])
-  zone           AttendanceZone   @relation(fields: [zoneId], references: [id])
+  zone           AttendanceZone?  @relation(fields: [zoneId], references: [id])
 
   @@index([userId, clockIn])
   @@index([organizationId, clockIn])

@@ -428,6 +428,10 @@ router.post("/attendance/clock-out", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "Ирсэн бүртгэл олдсонгүй" });
     }
 
+    if (!record.zone) {
+      return res.status(400).json({ message: "Байршилгүй бүртгэлийг удирдлагаар засварлуулна уу" });
+    }
+
     const attendanceMethod = parseAttendanceMethod(method);
 
     // Clock-out is an explicit biometric action and must happen inside the

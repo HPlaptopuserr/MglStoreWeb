@@ -17,7 +17,7 @@ manualAttendanceRouter.post(
     });
     const body = object(req.body);
     const userId = text(body.userId, "Ажилтан", 100);
-    const zoneId = text(body.zoneId, "Байршлын бүс", 100);
+    const zoneId = text(body.zoneId, "Байршлын бүс", 100, true) || null;
     const reason = text(body.reason, "Шалтгаан", 1000);
     const timeZone =
       ctx.member.organization.workforcePolicy?.timeZone ?? "Asia/Ulaanbaatar";
@@ -52,14 +52,14 @@ manualAttendanceRouter.post(
           );
         // Serialize concurrent manual entries for the same organization member.
         await tx.$queryRaw`SELECT id FROM "OrganizationMember" WHERE id = ${member.id} FOR UPDATE`;
-        const zone = await tx.attendanceZone.findFirst({
+        const zone = zoneId ? await tx.attendanceZone.findFirst({
           where: {
             id: zoneId,
             organizationId: ctx.organizationId,
             isActive: true,
           },
-        });
-        if (!zone)
+        }) : null;
+        if (zoneId && !zone)
           throw new WorkforceError(400, "Идэвхтэй байршлын бүс сонгоно уу");
         const existing = await tx.attendanceRecord.findFirst({
           where: {
