@@ -220,6 +220,24 @@ run(
         ...body, zoneId: randomUUID(), clockIn: "2026-01-09T09:00:00", clockOut: "2026-01-09T18:00:00",
       });
       assert.equal(invalidZone.status, 400);
+      const openBody = { ...body, zoneId: null, clockIn: "2026-01-10T09:00:00", clockOut: null };
+      const arrival = await request("manual-attendance", adminToken, "POST", openBody);
+      assert.equal(arrival.status, 201);
+      const arrivalId = String(arrival.data.id);
+      const openRecord = await prisma.attendanceRecord.findUniqueOrThrow({ where: { id: arrivalId } });
+      assert.equal(openRecord.clockOut, null);
+      assert.equal(openRecord.totalMinutes, null);
+      assert.equal(openRecord.clockOutMethod, null);
+      assert.equal((await request("manual-attendance", adminToken, "POST", openBody)).status, 409);
+      const departureBody = { ...body, zoneId: null, clockIn: null, clockOut: "2026-01-10T17:00:00" };
+      const departure = await request("manual-attendance", adminToken, "POST", departureBody);
+      assert.equal(departure.status, 201);
+      assert.equal(departure.data.id, arrivalId);
+      const closed = await prisma.attendanceRecord.findUniqueOrThrow({ where: { id: arrivalId } });
+      assert.equal(closed.totalMinutes, 480);
+      assert.ok(await prisma.workforceAudit.findFirst({ where: { entityId: arrivalId, action: "ATTENDANCE_MANUAL_CLOSED" } }));
+      assert.equal((await request("manual-attendance", adminToken, "POST", departureBody)).status, 400);
+      assert.equal((await request("manual-attendance", adminToken, "POST", { ...body, clockIn: null, clockOut: null })).status, 400);
       const response = await fetch(
         `${base}/api/workforce/export?organizationId=${orgId}&from=2026-01-05&to=2026-01-05&report=summary&userId=${worker.id}`,
         { headers: { Authorization: `Bearer ${adminToken}` } },

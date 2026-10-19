@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import type { WorkforceController } from "../useWorkforce";
 import { FormDialog, Field, EmployeeSelect } from "../components/shared";
 export interface ManualAttendanceSelection {
@@ -14,6 +15,7 @@ export function ManualAttendanceDialog({
   selection: ManualAttendanceSelection;
   onClose: () => void;
 }) {
+  const [mode, setMode] = useState("in");
   const data = controller.data;
   if (!data) return null;
   const zones = data.zones.filter((zone) => zone.isActive);
@@ -29,8 +31,12 @@ export function ManualAttendanceDialog({
           userId: form.get("userId"),
           zoneId: form.get("zoneId") || null,
           reason: form.get("reason"),
-          clockIn: `${day}T${String(form.get("clockIn"))}:00`,
-          clockOut: `${form.get("overnight") ? nextDay.toISOString().slice(0, 10) : day}T${String(form.get("clockOut"))}:00`,
+          clockIn:
+            mode === "out" ? null : `${day}T${String(form.get("clockIn"))}:00`,
+          clockOut:
+            mode === "in"
+              ? null
+              : `${form.get("overnight") ? nextDay.toISOString().slice(0, 10) : day}T${String(form.get("clockOut"))}:00`,
         });
         controller.setToast("Гараар оруулсан цаг хадгалагдлаа");
       }}
@@ -39,6 +45,19 @@ export function ManualAttendanceDialog({
         Байгууллагын цагийн бүс: <strong>{data.policy.timeZone}</strong>. Гараар
         нэмсэн бүртгэл өөрчлөлтийн түүхэд хадгалагдана.
       </p>
+      <Field label="Бүртгэлийн төрөл">
+        <select value={mode} onChange={(event) => setMode(event.target.value)}>
+          <option value="in">Зөвхөн ирсэн — одоо ажиллаж байгаа</option>
+          <option value="out">Зөвхөн явсан — нээлттэй бүртгэл хаах</option>
+          <option value="both">Ирсэн ба явсан</option>
+        </select>
+      </Field>
+      {mode === "out" && (
+        <p className="wf-muted">
+          Сонгосон ажилтны хаагдаагүй ирсэн бүртгэлд явсан цагийг нэмнэ. Өдрийг
+          явсан өдрөөр сонгоно уу.
+        </p>
+      )}
       <Field label="Ажилтан">
         <EmployeeSelect
           employees={data.employees}
@@ -57,9 +76,7 @@ export function ManualAttendanceDialog({
         </Field>
         <Field label="Байршлын бүс (заавал биш)">
           <select name="zoneId" defaultValue="">
-            <option value="">
-              Байршилгүй
-            </option>
+            <option value="">Байршилгүй</option>
             {zones.map((zone) => (
               <option key={zone.id} value={zone.id}>
                 {zone.name}
@@ -69,17 +86,23 @@ export function ManualAttendanceDialog({
         </Field>
       </div>
       <div className="wf-form-grid">
-        <Field label="Ирсэн цаг">
-          <input name="clockIn" type="time" required defaultValue="09:00" />
-        </Field>
-        <Field label="Явсан цаг">
-          <input name="clockOut" type="time" required defaultValue="18:00" />
-        </Field>
+        {mode !== "out" && (
+          <Field label="Ирсэн цаг">
+            <input name="clockIn" type="time" required defaultValue="09:00" />
+          </Field>
+        )}
+        {mode !== "in" && (
+          <Field label="Явсан цаг">
+            <input name="clockOut" type="time" required defaultValue="18:00" />
+          </Field>
+        )}
       </div>
-      <label className="wf-checkbox">
-        <input name="overnight" type="checkbox" />
-        Явсан цаг дараагийн өдөрт хамаарна
-      </label>
+      {mode === "both" && (
+        <label className="wf-checkbox">
+          <input name="overnight" type="checkbox" />
+          Явсан цаг дараагийн өдөрт хамаарна
+        </label>
+      )}
       <Field label="Гараар бүртгэх шалтгаан">
         <textarea
           name="reason"

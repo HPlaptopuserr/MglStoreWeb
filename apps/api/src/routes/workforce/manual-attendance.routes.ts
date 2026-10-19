@@ -21,15 +21,21 @@ manualAttendanceRouter.post(
     const reason = text(body.reason, "Шалтгаан", 1000);
     const timeZone =
       ctx.member.organization.workforcePolicy?.timeZone ?? "Asia/Ulaanbaatar";
-    const clockIn = wallToInstant(date(body.clockIn, "Ирсэн цаг"), timeZone);
-    const clockOut = wallToInstant(date(body.clockOut, "Явсан цаг"), timeZone);
-    const duration = (+clockOut - +clockIn) / 60000;
-    if (duration <= 0 || duration > 24 * 60)
+    const clockIn = body.clockIn
+      ? wallToInstant(date(body.clockIn, "Ирсэн цаг"), timeZone)
+      : null;
+    const clockOut = body.clockOut
+      ? wallToInstant(date(body.clockOut, "Явсан цаг"), timeZone)
+      : null;
+    if (!clockIn && !clockOut)
       throw new WorkforceError(
         400,
-        "Явсан цаг ирсэн цагаас хойш, хугацаа 24 цагаас ихгүй байна",
+        "Ирсэн эсвэл явсан цагийн аль нэгийг оруулна уу",
       );
-    if (+clockOut > Date.now() + 120000)
+    if (
+      (clockIn && +clockIn > Date.now() + 120000) ||
+      (clockOut && +clockOut > Date.now() + 120000)
+    )
       throw new WorkforceError(400, "Ирээдүйн цаг бүртгэх боломжгүй");
     const record = await prisma.$transaction(
       async (tx) => {
@@ -43,8 +49,9 @@ manualAttendanceRouter.post(
           },
         });
         if (
-          wallNow(timeZone, clockIn).toISOString().slice(0, 10) <
-          member.createdAt.toISOString().slice(0, 10)
+          wallNow(timeZone, clockIn ?? clockOut!)
+            .toISOString()
+            .slice(0, 10) < member.createdAt.toISOString().slice(0, 10)
         )
           throw new WorkforceError(
             400,
@@ -52,21 +59,46 @@ manualAttendanceRouter.post(
           );
         // Serialize concurrent manual entries for the same organization member.
         await tx.$queryRaw`SELECT id FROM "OrganizationMember" WHERE id = ${member.id} FOR UPDATE`;
-        const zone = zoneId ? await tx.attendanceZone.findFirst({
-          where: {
-            id: zoneId,
-            organizationId: ctx.organizationId,
-            isActive: true,
-          },
-        }) : null;
+        const zone = zoneId
+          ? await tx.attendanceZone.findFirst({
+              where: {
+                id: zoneId,
+                organizationId: ctx.organizationId,
+                isActive: true,
+              },
+            })
+          : null;
         if (zoneId && !zone)
           throw new WorkforceError(400, "Идэвхтэй байршлын бүс сонгоно уу");
+        const open = !clockIn
+          ? await tx.attendanceRecord.findFirst({
+              where: {
+                organizationId: ctx.organizationId,
+                userId,
+                clockOut: null,
+              },
+              orderBy: { clockIn: "desc" },
+            })
+          : null;
+        if (!clockIn && !open)
+          throw new WorkforceError(
+            400,
+            "Явсан цаг бүртгэхийн өмнө ирсэн бүртгэл байх шаардлагатай",
+          );
+        const start = clockIn ?? open!.clockIn;
+        const duration = clockOut ? (+clockOut - +start) / 60000 : null;
+        if (duration !== null && (duration <= 0 || duration > 24 * 60))
+          throw new WorkforceError(
+            400,
+            "Явсан цаг ирсэн цагаас хойш, хугацаа 24 цагаас ихгүй байна",
+          );
         const existing = await tx.attendanceRecord.findFirst({
           where: {
             organizationId: ctx.organizationId,
             userId,
-            clockIn: { lt: clockOut },
-            OR: [{ clockOut: null }, { clockOut: { gt: clockIn } }],
+            ...(open ? { id: { not: open.id } } : {}),
+            ...(clockOut ? { clockIn: { lt: clockOut } } : {}),
+            OR: [{ clockOut: null }, { clockOut: { gt: start } }],
           },
         });
         if (existing)
@@ -74,28 +106,39 @@ manualAttendanceRouter.post(
             409,
             "Энэ хугацаанд давхардсан эсвэл хаагдаагүй цагийн бүртгэл байна",
           );
-        const saved = await tx.attendanceRecord.create({
-          data: {
-            organizationId: ctx.organizationId,
-            userId,
-            zoneId,
-            clockIn,
-            clockOut,
-            totalMinutes: Math.round(duration),
-            clockInLat: null,
-            clockInLng: null,
-            clockInMethod: "PIN",
-            clockOutMethod: "PIN",
-            note: `[ADMIN_MANUAL] ${reason}`,
-          },
-        });
+        const totalMinutes = duration === null ? null : Math.round(duration);
+        const saved = open
+          ? await tx.attendanceRecord.update({
+              where: { id: open.id },
+              data: {
+                clockOut,
+                totalMinutes,
+                clockOutMethod: "PIN",
+                note: `${open.note ?? ""}\n[ADMIN_MANUAL_OUT] ${reason}`,
+              },
+            })
+          : await tx.attendanceRecord.create({
+              data: {
+                organizationId: ctx.organizationId,
+                userId,
+                zoneId,
+                clockIn: start,
+                clockOut,
+                totalMinutes,
+                clockInLat: null,
+                clockInLng: null,
+                clockInMethod: "PIN",
+                clockOutMethod: clockOut ? "PIN" : null,
+                note: `[ADMIN_MANUAL] ${reason}`,
+              },
+            });
         await audit(
           tx,
           ctx.organizationId,
           ctx.user.userId,
-          "ATTENDANCE_MANUAL_CREATED",
+          open ? "ATTENDANCE_MANUAL_CLOSED" : "ATTENDANCE_MANUAL_CREATED",
           saved.id,
-          null,
+          open,
           { ...saved, reason, source: "ADMIN_MANUAL" },
         );
         return saved;
