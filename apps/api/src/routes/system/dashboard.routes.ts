@@ -561,7 +561,7 @@ async function buildVendorExpiryInsights(organizationId: string) {
     riskValue,
     highestRiskScore: products[0]?.riskScore ?? 0,
     recommendations,
-    products: products.slice(0, 5),
+    products,
   };
 }
 
