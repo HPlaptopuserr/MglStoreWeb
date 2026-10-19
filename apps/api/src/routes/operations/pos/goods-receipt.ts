@@ -1,3 +1,5 @@
+import { normalizePosMeasureUnit } from "@mgl/types";
+
 export type ReceiptProductSnapshot = {
   name: string;
   barcode: string | null;
@@ -95,39 +97,40 @@ export function parsePosGoodsReceiptInput(
       return { ok: false, message: "Барааны эх сурвалж давхар байна" };
     if (masterProductId && item.salePrice === undefined)
       return { ok: false, message: "Шинэ барааны зарах үнийг оруулна уу" };
+    // Snapshot fields are recovery hints from an older browser draft, not
+    // prerequisites for receiving an existing authorized catalog product.
     let productSnapshot: ReceiptProductSnapshot | undefined;
-    if (item.productSnapshot !== undefined) {
-      const raw = item.productSnapshot;
-      if (!raw || typeof raw !== "object" || Array.isArray(raw))
-        return { ok: false, message: "Барааны нооргийн мэдээлэл буруу байна" };
-      const snapshot = raw as Record<string, unknown>;
+    const rawSnapshot = item.productSnapshot;
+    if (
+      rawSnapshot &&
+      typeof rawSnapshot === "object" &&
+      !Array.isArray(rawSnapshot)
+    ) {
+      const snapshot = rawSnapshot as Record<string, unknown>;
       const name =
         typeof snapshot.name === "string" ? snapshot.name.trim() : "";
-      const unit = snapshot.unit;
-      const price = snapshot.price;
-      if (
-        !name ||
-        name.length > 300 ||
-        (unit !== "pcs" && unit !== "kg") ||
-        (snapshot.barcode != null &&
-          (typeof snapshot.barcode !== "string" ||
-            snapshot.barcode.length > 100)) ||
-        (price !== undefined &&
-          (typeof price !== "number" ||
-            !Number.isFinite(price) ||
-            price < 0 ||
-            price > 1_000_000_000))
-      )
-        return {
-          ok: false,
-          message: "Барааны нэр, баркод, нэгж эсвэл үнэ буруу байна",
+      const rawPrice = snapshot.price;
+      const price =
+        typeof rawPrice === "number" ||
+        (typeof rawPrice === "string" && rawPrice.trim())
+          ? Number(rawPrice)
+          : undefined;
+      if (name) {
+        productSnapshot = {
+          name,
+          unit: normalizePosMeasureUnit(snapshot.unit),
+          barcode:
+            typeof snapshot.barcode === "string"
+              ? snapshot.barcode.trim() || null
+              : null,
+          ...(price !== undefined &&
+          Number.isFinite(price) &&
+          price >= 0 &&
+          price <= 1_000_000_000
+            ? { price }
+            : {}),
         };
-      productSnapshot = {
-        name,
-        unit,
-        barcode: cleanText(snapshot.barcode, 100),
-        ...(price !== undefined ? { price } : {}),
-      };
+      }
     }
     const quantity = Number(item.quantity);
     const unitCost = Number(item.unitCost);

@@ -132,19 +132,59 @@ test("missing prices are not invented for newly registered products", async () =
     /Oil.*зарах үнийг/,
   );
 });
-test("snapshot parser accepts existing drafts and rejects invalid prices and units", () => {
+test("legacy snapshot metadata does not reject an otherwise valid receipt", () => {
   const body = { registerId: "r", supplierName: "supplier", items: [line()] };
-  assert.equal(parsePosGoodsReceiptInput(body).ok, true);
-  for (const snapshot of [
-    { name: "Oil", unit: "litre" },
+  for (const productSnapshot of [
+    null,
+    {},
+    { name: "Oil", unit: "ш", price: null },
     { name: "Oil", unit: "pcs", price: -1 },
+    {
+      name: "Oil".repeat(150),
+      barcode: "8".repeat(110),
+      unit: "pcs",
+      price: "5000",
+    },
   ]) {
-    assert.equal(
-      parsePosGoodsReceiptInput({
-        ...body,
-        items: [{ ...line(), productSnapshot: snapshot }],
-      }).ok,
-      false,
-    );
+    const parsed = parsePosGoodsReceiptInput({
+      ...body,
+      items: [{ ...line(), productSnapshot }],
+    });
+    assert.equal(parsed.ok, true);
+    if (parsed.ok) assert.equal(parsed.value.items[0].quantity, 2);
   }
+});
+test("legacy decimal prices and weight units normalize without losing quantities", () => {
+  const parsed = parsePosGoodsReceiptInput({
+    registerId: "r",
+    supplierName: "s",
+    items: [
+      {
+        ...line(),
+        quantity: 1234,
+        productSnapshot: { name: "Oil", unit: "кг", price: "5000.50" },
+      },
+    ],
+  });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(parsed.value.items[0].productSnapshot?.unit, "kg");
+  assert.equal(parsed.value.items[0].productSnapshot?.price, 5000.5);
+  assert.equal(parsed.value.items[0].quantity, 1234);
+});
+test("existing store products receive even with unusable recovery metadata", async () => {
+  const parsed = parsePosGoodsReceiptInput({
+    registerId: "r",
+    supplierName: "s",
+    items: [{ ...line(), productSnapshot: {} }],
+  });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const { tx, calls } = fixture(current);
+  await recoverReceiptProducts(tx, "ub-oil", parsed.value.items);
+  assert.equal(parsed.value.items[0].productId, current.id);
+  assert.equal(
+    calls.some((call) => call.method === "create"),
+    false,
+  );
 });
