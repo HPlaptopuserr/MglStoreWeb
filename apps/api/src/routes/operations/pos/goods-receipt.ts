@@ -1,4 +1,12 @@
+export type ReceiptProductSnapshot = {
+  name: string;
+  barcode: string | null;
+  unit: string;
+  price?: number;
+};
+
 export type PosGoodsReceiptLine = {
+  productSnapshot?: ReceiptProductSnapshot;
   productId: string;
   masterProductId?: string;
   quantity: number;
@@ -80,9 +88,47 @@ export function parsePosGoodsReceiptInput(
 
     const item = rawItem as Record<string, unknown>;
     const masterProductId = cleanText(item.masterProductId, 100);
-    const productId = masterProductId ? `catalog:${masterProductId}` : cleanText(item.productId, 100);
-    if (masterProductId && item.productId) return { ok: false, message: "Барааны эх сурвалж давхар байна" };
-    if (masterProductId && item.salePrice === undefined) return { ok: false, message: "Шинэ барааны зарах үнийг оруулна уу" };
+    const productId = masterProductId
+      ? `catalog:${masterProductId}`
+      : cleanText(item.productId, 100);
+    if (masterProductId && item.productId)
+      return { ok: false, message: "Барааны эх сурвалж давхар байна" };
+    if (masterProductId && item.salePrice === undefined)
+      return { ok: false, message: "Шинэ барааны зарах үнийг оруулна уу" };
+    let productSnapshot: ReceiptProductSnapshot | undefined;
+    if (item.productSnapshot !== undefined) {
+      const raw = item.productSnapshot;
+      if (!raw || typeof raw !== "object" || Array.isArray(raw))
+        return { ok: false, message: "Барааны нооргийн мэдээлэл буруу байна" };
+      const snapshot = raw as Record<string, unknown>;
+      const name =
+        typeof snapshot.name === "string" ? snapshot.name.trim() : "";
+      const unit = snapshot.unit;
+      const price = snapshot.price;
+      if (
+        !name ||
+        name.length > 300 ||
+        (unit !== "pcs" && unit !== "kg") ||
+        (snapshot.barcode != null &&
+          (typeof snapshot.barcode !== "string" ||
+            snapshot.barcode.length > 100)) ||
+        (price !== undefined &&
+          (typeof price !== "number" ||
+            !Number.isFinite(price) ||
+            price < 0 ||
+            price > 1_000_000_000))
+      )
+        return {
+          ok: false,
+          message: "Барааны нэр, баркод, нэгж эсвэл үнэ буруу байна",
+        };
+      productSnapshot = {
+        name,
+        unit,
+        barcode: cleanText(snapshot.barcode, 100),
+        ...(price !== undefined ? { price } : {}),
+      };
+    }
     const quantity = Number(item.quantity);
     const unitCost = Number(item.unitCost);
     const salePrice =
@@ -151,6 +197,7 @@ export function parsePosGoodsReceiptInput(
     }
     linesByLot.set(lotKey, {
       productId,
+      ...(productSnapshot ? { productSnapshot } : {}),
       ...(masterProductId ? { masterProductId } : {}),
       quantity: nextQuantity,
       ...(pricesByProduct.has(productId)

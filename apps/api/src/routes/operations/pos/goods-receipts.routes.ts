@@ -1,3 +1,8 @@
+import {
+  recoverReceiptProducts,
+  ReceiptProductRecoveryError,
+} from "../../../services/receipt-product-recovery";
+import { vendorProductReadScope } from "../../../services/warehouse-product-scope";
 import { correctReceipt } from "../../../services/receipt-correction.service";
 import { inventoryConflictResponse } from "../../../lib/inventory-conflict-errors";
 import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
@@ -250,6 +255,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
             const existing = await tx.product.findFirst({
               where: {
                 organizationId: register.organizationId,
+                ...vendorProductReadScope(),
                 deletedAt: null,
                 OR: [
                   { masterProductId: master.id },
@@ -257,13 +263,6 @@ router.post("/pos/goods-receipts", async (req, res) => {
                 ],
               },
             });
-            if (
-              existing &&
-              (!existing.isActive || existing.supplyType !== "IN_STOCK")
-            )
-              throw new ReceiptInputError(
-                "Бараа идэвхгүй эсвэл захиалгын төрөлтэй байна.",
-              );
             if (
               existing &&
               normalizePosMeasureUnit(existing.unit) !==
@@ -278,6 +277,15 @@ router.post("/pos/goods-receipts", async (req, res) => {
                   select: { id: true },
                 })
               : null;
+            if (
+              existing &&
+              (!existing.isActive || existing.supplyType !== "IN_STOCK")
+            ) {
+              await tx.product.update({
+                where: { id: existing.id },
+                data: { isActive: true, supplyType: "IN_STOCK" },
+              });
+            }
             const product =
               existing ??
               (await tx.product.create({
@@ -302,6 +310,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
           }
           item.productId = id;
         }
+        await recoverReceiptProducts(tx, register.organizationId, input.items);
         const productIds = Array.from(
           new Set(input.items.map((item) => item.productId)),
         );
@@ -310,6 +319,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
             id: { in: productIds },
             organizationId: register.organizationId,
             isActive: true,
+            ...vendorProductReadScope(),
             deletedAt: null,
           },
           select: {
@@ -436,7 +446,10 @@ router.post("/pos/goods-receipts", async (req, res) => {
       }),
     });
   } catch (error) {
-    if (error instanceof ReceiptInputError)
+    if (
+      error instanceof ReceiptInputError ||
+      error instanceof ReceiptProductRecoveryError
+    )
       return res.status(400).json({ message: error.message });
     const conflict = inventoryConflictResponse(error);
     if (conflict) return res.status(conflict.status).json({ message: conflict.message });
