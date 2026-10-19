@@ -8,6 +8,7 @@ datasource db {
 }
 
 model User {
+  warehouseRetailOrders WarehouseRetailOrder[]
   platformAccounts PlatformAccount[]
   createdStocktakes Stocktake[] @relation("StocktakeCreator")
   approvedStocktakes Stocktake[] @relation("StocktakeApprover")
@@ -1144,6 +1145,7 @@ model Category {
 }
 
 model Product {
+  warehouseRetailItems WarehouseRetailOrderItem[]
   sentTransferItems WarehouseTransferItem[] @relation("TransferSourceProduct")
   receivedTransferItems WarehouseTransferItem[] @relation("TransferTargetProduct")
   stocktakeLines StocktakeLine[]
@@ -1942,6 +1944,7 @@ enum WarehouseType {
 }
 
 model Warehouse {
+  retailOrders WarehouseRetailOrder[]
   outgoingTransfers WarehouseTransfer[] @relation("TransferSource")
   incomingTransfers WarehouseTransfer[] @relation("TransferDestination")
   catalogOrganizationId String? @unique
@@ -4261,4 +4264,53 @@ model WorkforceMailDelivery {
   campaign WorkforceMailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   @@unique([campaignId, userId])
   @@index([state, updatedAt])
+}
+
+// Customer sales belong to the warehouse and use its selected Minu account.
+// They do not change warehouse product ownership or require vendor membership.
+model WarehouseRetailOrder {
+  id String @id @default(uuid())
+  orderNumber String @unique
+  checkoutKey String
+  customerId String
+  warehouseId String
+  phone String
+  shippingAddress String
+  note String?
+  status OrderStatus @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING)
+  total Decimal @db.Decimal(18, 2)
+  invoiceId String? @unique
+  merchantCode String?
+  qrText String?
+  deepLinks Json?
+  fulfillmentIssue String?
+  expiresAt DateTime
+  paidAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  customer User @relation(fields: [customerId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  items WarehouseRetailOrderItem[]
+
+  @@unique([customerId, checkoutKey])
+  @@index([warehouseId, status, paymentStatus])
+  @@index([customerId, createdAt])
+  @@index([paymentStatus, expiresAt])
+}
+
+model WarehouseRetailOrderItem {
+  id String @id @default(uuid())
+  orderId String
+  productId String
+  productName String
+  quantity Int
+  storedQuantity Int
+  price Decimal @db.Decimal(18, 2)
+  subtotal Decimal @db.Decimal(18, 2)
+  order WarehouseRetailOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([orderId, productId])
+  @@index([productId])
 }

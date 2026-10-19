@@ -4,6 +4,7 @@ import Link from "next/link";
 import React, { useState, useEffect, useRef } from "react";
 import {
   ShoppingCart,
+  Store,
   User,
   Search,
   Menu,
@@ -477,6 +478,10 @@ export const Header = () => {
                   <UsersRound size={15} aria-hidden="true" />
                   2003
                 </Link>
+                <Link href="/shared-store" aria-current={pathname.startsWith("/shared-store") ? "page" : undefined}
+                  className="inline-flex items-center gap-2 self-center whitespace-nowrap rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-bold text-orange-800 transition-colors hover:border-orange-300 hover:bg-orange-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-orange-600">
+                  <Store size={15} aria-hidden="true" />Дундын дэлгүүр
+                </Link>
               </div>
             </div>
           </div>
@@ -568,6 +573,10 @@ export const Header = () => {
               <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-emerald-900 text-sm font-black text-lime-200">2003</span>
               <span className="min-w-0 flex-1"><span className="block text-sm font-bold">Танилцъя. Холбоотой байцгаая.</span><span className="mt-1 block text-xs text-emerald-800">Танилцах бүртгэл · 1–2 минут</span></span>
               <ChevronRight size={20} aria-hidden="true" />
+            </Link>
+
+            <Link href="/shared-store" onClick={closeMobile} className="mt-3 flex min-h-20 items-center gap-4 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-orange-950 transition hover:bg-orange-100 focus-visible:ring-2 focus-visible:ring-orange-600">
+              <Store size={24} aria-hidden="true" /><span className="flex-1"><span className="block text-sm font-bold">Дундын дэлгүүр</span><span className="mt-1 block text-xs text-orange-800">Бэлэн бараа · Агуулахаас шууд</span></span><ChevronRight size={20} aria-hidden="true" />
             </Link>
 
             <div className="mt-5">

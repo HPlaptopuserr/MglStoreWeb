@@ -1,4 +1,6 @@
 import "./config/env";
+import { reconcileRetailPayments } from "./services/warehouse-retail.service";
+import warehouseRetailRoutes from "./routes/store/warehouse-retail.routes";
 import { processWorkforceMailQueue } from "./services/workforce/mail-worker";
 import { workforceIntegrationRouter } from "./routes/workforce/integration.routes";
 import { workforceBillingPublicRouter } from "./routes/workforce/billing.routes";
@@ -203,6 +205,7 @@ app.use("/api", storeBranchRoutes);
 app.use("/api", hypermarketRoutes);
 app.use("/api", miniAppAdminRoutes);
 app.use("/api", miniAppCatalogRoutes);
+app.use("/api", warehouseRetailRoutes);
 app.use("/api", vendorMerchantRoutes);
 app.use("/api", vendorUpgradeRoutes);
 app.use("/api", vendorCardTerminalRoutes);
@@ -284,3 +287,11 @@ checkoutExpirationTimer.unref();
 
 const workforceMailTimer = setInterval(() => { void processWorkforceMailQueue(); }, 60_000);
 workforceMailTimer.unref();
+
+let retailReconciliationRunning = false;
+const retailReconciliationTimer = setInterval(() => {
+  if (retailReconciliationRunning) return;
+  retailReconciliationRunning = true;
+  void reconcileRetailPayments().catch((error: unknown) => { console.error("[warehouse retail] reconciliation unavailable", error); }).finally(() => { retailReconciliationRunning = false; });
+}, 60_000);
+retailReconciliationTimer.unref();

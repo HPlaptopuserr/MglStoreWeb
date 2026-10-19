@@ -1,5 +1,6 @@
 "use client";
 
+import { RetailOrdersPanel } from "@/features/retail-orders/RetailOrdersPanel";
 import { useState } from "react";
 import {
   Inbox,
@@ -81,6 +82,7 @@ export default function OnlineOrdersPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
+      <RetailOrdersPanel warehouseId={selectedWarehouseId} />
       <header className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
           <h1 className="shrink-0 text-xl font-black tracking-tight text-slate-950">

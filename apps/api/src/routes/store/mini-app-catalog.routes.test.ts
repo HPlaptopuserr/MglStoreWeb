@@ -75,6 +75,7 @@ beforeEach(() => {
     { id: "warehouse-one", name: "Warehouse" },
   ]);
   stub(prisma.warehouseStockRequestItem, "findMany", async () => []);
+  stub(prisma.warehouseRetailOrderItem, "findMany", async () => []);
   stub(prisma.product, "count", async () => 0);
   stub(prisma.product, "findMany", async () => []);
   stub(
@@ -290,18 +291,73 @@ test("unassigned warehouse goods remain visible but cannot be ordered before sel
   assert.equal(body.products[0].orderable, false);
 });
 
- test("mini app catalogs include products without images while preserving publication and price rules", async () => {
-  stub(prisma.product, "findMany", async ({where}: {where: Record<string, unknown>}) => {
-    assert.equal(where.images, undefined);
-    assert.equal(where.isActive, true);
-    assert.equal(where.deletedAt, null);
-    assert.deepEqual(where.price, {gte: 100});
-    return [{id: "no-photo", name: "Milk", unit: "pcs", price: 4500, stock: 2, managedByWarehouseId: null, warehouseInventories: [], images: [], organization: {id: "vendor", name: "Vendor"}}];
-  });
+test("mini app catalogs include products without images while preserving publication and price rules", async () => {
+  stub(
+    prisma.product,
+    "findMany",
+    async ({ where }: { where: Record<string, unknown> }) => {
+      assert.equal(where.images, undefined);
+      assert.equal(where.isActive, true);
+      assert.equal(where.deletedAt, null);
+      assert.deepEqual(where.price, { gte: 100 });
+      return [
+        {
+          id: "no-photo",
+          name: "Milk",
+          unit: "pcs",
+          price: 4500,
+          stock: 2,
+          managedByWarehouseId: null,
+          warehouseInventories: [],
+          images: [],
+          organization: { id: "vendor", name: "Vendor" },
+        },
+      ];
+    },
+  );
   for (const id of ["store-owners", "shared-store"]) {
     const response = await fetch(`${base}/store/mini-apps/${id}/products`);
-    const body = await response.json() as {products: Array<{images: unknown[]}>};
+    const body = (await response.json()) as {
+      products: Array<{ images: unknown[] }>;
+    };
     assert.equal(response.status, 200);
     assert.deepEqual(body.products[0].images, []);
   }
+});
+
+test("warehouse Minu account enables retail ordering without changing product ownership or exposing account IDs", async () => {
+  stub(prisma.product, "findMany", async () => [
+    {
+      id: "retail",
+      name: "POS",
+      price: 5000,
+      unit: "pcs",
+      organization: null,
+      managedByWarehouseId: "warehouse-one",
+      managedByWarehouse: {
+        id: "warehouse-one",
+        name: "Shared store",
+        address: "Public address",
+        phone: "99112233",
+        paymentAccountId: "private-account-id",
+      },
+      warehouseInventories: [{ warehouseId: "warehouse-one", quantity: 5 }],
+      stock: 5,
+      images: [],
+      discounts: [],
+    },
+  ]);
+  const response = await fetch(`${base}/store/mini-apps/shared-store/products`);
+  const body = (await response.json()) as {
+    products: Array<{
+      orderable: boolean;
+      organization: null;
+      warehouse: { id: string };
+      managedByWarehouse?: unknown;
+    }>;
+  };
+  assert.equal(body.products[0].orderable, true);
+  assert.equal(body.products[0].organization, null);
+  assert.equal(body.products[0].warehouse.id, "warehouse-one");
+  assert.equal(JSON.stringify(body).includes("private-account-id"), false);
 });

@@ -28,7 +28,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     isContractRoute ||
     isPaidAccessDetailRoute ||
     isReelsRoute ||
-    isOrganizationStorefrontRoute;
+    isOrganizationStorefrontRoute || pathname === "/shared-store";
   const hideGlobalFooter =
     hideGlobalShell || isProfileRoute || isCheckoutRoute;
 

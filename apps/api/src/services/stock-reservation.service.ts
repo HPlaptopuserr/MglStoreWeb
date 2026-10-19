@@ -54,7 +54,13 @@ export async function reservedStock(
       },
     },
   });
-  return sumReservedStock(items);
+  const reserved = sumReservedStock(items);
+  const retailItems = await db.warehouseRetailOrderItem.findMany({
+    where: { productId: { in: productIds }, order: { warehouseId, paymentStatus: "PENDING", expiresAt: { gt: new Date() } } },
+    select: { productId: true, storedQuantity: true },
+  });
+  for (const item of retailItems) reserved.set(item.productId, (reserved.get(item.productId) ?? 0) + item.storedQuantity);
+  return reserved;
 }
 
 export function sumReservedStock(

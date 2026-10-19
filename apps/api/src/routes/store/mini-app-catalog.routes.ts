@@ -43,7 +43,21 @@ router.get(
           ? Boolean(user)
           : Boolean(user && canOrderVendorMiniApp(config, user.id));
       res.setHeader("Cache-Control", "private, no-store");
+      const warehouses =
+        id === "shared-store" && app.enabled
+          ? await prisma.warehouse.findMany({
+              where: {
+                id: { in: app.sourceIds },
+                isActive: true,
+                deletedAt: null,
+                type: "CENTRAL",
+              },
+              select: { id: true, name: true, address: true, phone: true },
+              orderBy: { name: "asc" },
+            })
+          : [];
       const meta = {
+        warehouses,
         title: STORE_MINI_APP_TITLES[id],
         configured: app.enabled && app.sourceIds.length > 0,
         canOrder,
@@ -67,8 +81,21 @@ router.get(
         id === "store-owners"
           ? app.sourceIds.filter((source) => visibleOrgs.includes(source))
           : visibleOrgs;
-      const warehouseConditions: Prisma.ProductWhereInput[] = app.sourceIds.map(
-        (warehouseId) => ({
+      const requestedWarehouse = String(req.query.warehouseId ?? "").trim();
+      const warehouseSources = requestedWarehouse
+        ? app.sourceIds.filter((source) => source === requestedWarehouse)
+        : app.sourceIds;
+      const sort = String(req.query.sort ?? "name");
+      const orderBy: Prisma.ProductOrderByWithRelationInput[] =
+        sort === "price_asc"
+          ? [{ price: "asc" }, { id: "asc" }]
+          : sort === "price_desc"
+            ? [{ price: "desc" }, { id: "asc" }]
+            : sort === "newest"
+              ? [{ createdAt: "desc" }, { id: "asc" }]
+              : [{ name: "asc" }, { id: "asc" }];
+      const warehouseConditions: Prisma.ProductWhereInput[] =
+        warehouseSources.map((warehouseId) => ({
           managedByWarehouseId: warehouseId,
           warehouseInventories: {
             some: {
@@ -79,10 +106,15 @@ router.get(
               OR: [{ expiryDate: null }, { expiryDate: { gt: new Date() } }],
             },
           },
-        }),
-      );
+        }));
+      const requestedIds = String(req.query.ids ?? "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+        .slice(0, 60);
       const where: Prisma.ProductWhereInput = {
         ...MINI_APP_PRODUCT_STATE_FILTER,
+        ...(requestedIds.length ? { id: { in: requestedIds } } : {}),
         ...(id === "shared-store"
           ? {
               OR: [
@@ -126,7 +158,7 @@ router.get(
           where,
           skip: offset,
           take: limit,
-          orderBy: [{ name: "asc" }, { id: "asc" }],
+          orderBy,
           select: {
             id: true,
             name: true,
@@ -137,6 +169,15 @@ router.get(
             stock: true,
             supplyType: true,
             managedByWarehouseId: true,
+            managedByWarehouse: {
+              select: {
+                id: true,
+                name: true,
+                address: true,
+                phone: true,
+                paymentAccountId: true,
+              },
+            },
             warehouseInventories: {
               where: { warehouse: { isActive: true, deletedAt: null } },
               select: { warehouseId: true, quantity: true },
@@ -193,7 +234,20 @@ router.get(
             ...product
           }) => ({
             ...product,
-            orderable: product.organization != null,
+            warehouse: product.managedByWarehouse
+              ? {
+                  id: product.managedByWarehouse.id,
+                  name: product.managedByWarehouse.name,
+                  address: product.managedByWarehouse.address,
+                  phone: product.managedByWarehouse.phone,
+                }
+              : null,
+            managedByWarehouse: undefined,
+            orderable:
+              id === "shared-store"
+                ? Boolean(product.managedByWarehouse?.paymentAccountId) &&
+                  product.organization == null
+                : product.organization != null,
             stock: fromPosStoredStockQuantity(
               Math.max(
                 0,
