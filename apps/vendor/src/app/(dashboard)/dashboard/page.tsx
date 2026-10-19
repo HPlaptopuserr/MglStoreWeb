@@ -105,6 +105,7 @@ interface ExpiryInsights {
   criticalCount: number;
   highCount: number;
   urgentCount: number;
+  urgentProducts?: ExpiryInsightProduct[];
   stagnantCount: number;
   riskValue: number;
   highestRiskScore: number;
@@ -367,6 +368,7 @@ export default function Dashboard() {
           </div>
 
           <DashboardImprovementPanel
+            urgentProducts={data?.expiryInsights?.urgentProducts}
             metrics={{
               inactiveProducts: data?.products.inactive ?? 0,
               inactiveServicePosts: Math.max(
