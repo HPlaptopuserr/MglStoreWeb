@@ -139,6 +139,98 @@ after(async () => {
   }
   await prisma.$disconnect();
 });
+run(
+  "manual attendance checks permissions, times, overlap, audit and summary export",
+  async () => {
+    const worker = await prisma.user.create({
+      data: { email: `manual-${randomUUID()}@test.local` },
+    });
+    const zone = await prisma.attendanceZone.create({
+      data: {
+        organizationId: orgId,
+        name: "Manual test",
+        lat: 47.9,
+        lng: 106.9,
+        radiusMeters: 100,
+      },
+    });
+    await prisma.organizationMember.create({
+      data: { userId: worker.id, organizationId: orgId, role: "STAFF", createdAt:new Date("2025-01-01T00:00:00Z") },
+    });
+    const body = {
+      userId: worker.id,
+      zoneId: zone.id,
+      clockIn: "2026-01-05T09:00:00",
+      clockOut: "2026-01-05T18:00:00",
+      reason: "Test manual time entry",
+    };
+    try {
+      assert.equal(
+        (await request("manual-attendance", staffToken, "POST", body)).status,
+        403,
+      );
+      assert.equal(
+        (
+          await request("manual-attendance", adminToken, "POST", {
+            ...body,
+            clockOut: "2026-01-05T08:00:00",
+          })
+        ).status,
+        400,
+      );
+      assert.equal(
+        (
+          await request("manual-attendance", adminToken, "POST", {
+            ...body,
+            clockIn: "2099-01-05T09:00:00",
+            clockOut: "2099-01-05T18:00:00",
+          })
+        ).status,
+        400,
+      );
+      const results = await Promise.all([
+        request("manual-attendance", adminToken, "POST", body),
+        request("manual-attendance", adminToken, "POST", body),
+      ]);
+      assert.deepEqual(results.map((r) => r.status).sort(), [201, 409]);
+      const record = await prisma.attendanceRecord.findFirstOrThrow({
+        where: { userId: worker.id },
+      });
+      assert.equal(record.clockIn.toISOString(), "2026-01-05T01:00:00.000Z");
+      assert.equal(record.totalMinutes, 540);
+      assert.equal(record.clockInLat, null);
+      assert.equal(record.clockInLng, null);
+      assert.ok(
+        await prisma.workforceAudit.findFirst({
+          where: { action: "ATTENDANCE_MANUAL_CREATED", entityId: record.id },
+        }),
+      );
+      const response = await fetch(
+        `${base}/api/workforce/export?organizationId=${orgId}&from=2026-01-05&to=2026-01-05&report=summary&userId=${worker.id}`,
+        { headers: { Authorization: `Bearer ${adminToken}` } },
+      );
+      assert.equal(response.status, 200);
+      const XLSX = await import("xlsx");
+      const book = XLSX.read(await response.arrayBuffer(), { type: "array" });
+      const sheet = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+        book.Sheets[book.SheetNames[0]],
+      );
+      assert.equal(sheet.length, 1);
+      assert.equal(sheet[0]["Ажилласан минут"], 540);
+      assert.equal(sheet[0]["Бүртгэлтэй өдөр"], 1);
+    } finally {
+      await prisma.attendanceRecord.deleteMany({
+        where: { userId: worker.id },
+      });
+      await prisma.attendanceZone.delete({ where: { id: zone.id } });
+      await prisma.organizationMember.deleteMany({
+        where: { userId: worker.id },
+      });
+      await prisma.user.delete({ where: { id: worker.id } });
+    }
+  },
+);
+
 run("workforce login session lists only organizations the user can manage", async () => {
   const session = await request("session", adminToken);
   assert.equal(session.status, 200);

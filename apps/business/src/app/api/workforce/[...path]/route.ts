@@ -7,7 +7,7 @@ import {
 } from "@/lib/server/workforce-session";
 const allowed: Record<string, RegExp> = {
   GET: /^(work-tasks|work-tasks\/export|work-tasks\/evidence\/[a-zA-Z0-9-]+|snapshot|export|self|tracking|mail|billing|billing\/[a-zA-Z0-9-]+)$/,
-  POST: /^(work-tasks|employees\/[a-zA-Z0-9-]+\/offboard|employees\/assign-department|pulse|tracking\/consent|tracking\/points|mail|departments|employees|shifts|assignments|zones|notices|requests|requests\/decide|requests\/[a-zA-Z0-9-]+\/cancel|notices\/[a-zA-Z0-9-]+\/read|tokens|billing|billing\/[a-zA-Z0-9-]+\/check)$/,
+  POST: /^(manual-attendance|work-tasks|employees\/[a-zA-Z0-9-]+\/offboard|employees\/assign-department|pulse|tracking\/consent|tracking\/points|mail|departments|employees|shifts|assignments|zones|notices|requests|requests\/decide|requests\/[a-zA-Z0-9-]+\/cancel|notices\/[a-zA-Z0-9-]+\/read|tokens|billing|billing\/[a-zA-Z0-9-]+\/check)$/,
   PATCH:
     /^(work-tasks\/[a-zA-Z0-9-]+\/approve|policy|departments\/[a-zA-Z0-9-]+|employees\/[a-zA-Z0-9-]+|zones\/[a-zA-Z0-9-]+|shifts\/[a-zA-Z0-9-]+)$/,
   DELETE: /^(departments|assignments|tokens)\/[a-zA-Z0-9-]+$/,

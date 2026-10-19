@@ -19,7 +19,7 @@ export function endpoint(
         error &&
         typeof error === "object" &&
         "code" in error &&
-        error.code === "P2002"
+        (error.code === "P2002" || error.code === "P2034")
       ) {
         res.status(409).json({
           message: "Давхардсан мэдээлэл байна. Шинэчлээд дахин оролдоно уу",

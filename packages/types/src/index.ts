@@ -44,3 +44,5 @@ export * from "./domain/credit-customer";
 
 export * from "./building";
 export * from "./workforce";
+
+export * from "./workforce-report";

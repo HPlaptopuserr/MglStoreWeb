@@ -1,3 +1,9 @@
+import { manualAttendanceRouter } from "./manual-attendance.routes";
+import {
+  filterWorkforceReportRows,
+  summarizeWorkforceReport,
+  parseWorkforceReportView,
+} from "@mgl/types";
 import { formatWorkforceInstant } from "../../services/workforce/format";
 import { workTasksRouter } from "./work-tasks.routes";
 import { Router, type Router as ExpressRouter } from "express";
@@ -73,32 +79,52 @@ workforceRoutes.get(
     if (!ctx.canExport)
       throw new WorkforceError(403, "Тайлан экспортлох эрх хүрэлцэхгүй");
     const data = await workforceSnapshot(req);
-    const rows = data.rows.filter(
-      (row) =>
-        (!req.query.userId || row.userId === req.query.userId) &&
-        (!req.query.department || row.department === req.query.department) &&
-        (!req.query.status || row.status === req.query.status),
-    );
+    const view = parseWorkforceReportView(req.query.report);
+    const rows = filterWorkforceReportRows(data.rows, {
+      userId:
+        typeof req.query.userId === "string" ? req.query.userId : undefined,
+      department:
+        typeof req.query.department === "string"
+          ? req.query.department
+          : undefined,
+      status:
+        typeof req.query.status === "string" ? req.query.status : undefined,
+      query: typeof req.query.q === "string" ? req.query.q : undefined,
+    });
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
       book,
       XLSX.utils.json_to_sheet(
-        rows.map((r) => ({
-          Огноо: r.date,
-          Ажилтан: r.employeeName,
-          Хэлтэс: r.department,
-          Төлөв: workforceStatusLabels[r.status],
-          Хуваарь: r.shiftName ?? "",
-          Ирсэн: formatWorkforceInstant(r.clockIn, data.policy.timeZone),
-          Явсан: formatWorkforceInstant(r.clockOut, data.policy.timeZone),
-          "Ажиллах минут": r.plannedMinutes,
-          "Ажилласан минут": r.workedMinutes,
-          "Хоцролт минут": r.lateMinutes,
-          "Эрт явалт минут": r.earlyMinutes,
-          "Тасалсан минут": r.absentMinutes,
-          "Илүү минут": r.overtimeMinutes,
-          "Батлагдсан илүү минут": r.approvedOvertimeMinutes,
-        })),
+        view === "summary"
+          ? summarizeWorkforceReport(rows).map((r) => ({
+              Ажилтан: r.employeeName,
+              Хэлтэс: r.department,
+              "Бүртгэлтэй өдөр": r.recordedDays,
+              "Хоцорсон өдөр": r.lateDays,
+              "Тасалсан өдөр": r.absentDays,
+              "Ажиллах минут": r.plannedMinutes,
+              "Ажилласан минут": r.workedMinutes,
+              "Хоцролт минут": r.lateMinutes,
+              "Эрт явалт минут": r.earlyMinutes,
+              "Тасалсан минут": r.absentMinutes,
+              "Батлагдсан илүү минут": r.approvedOvertimeMinutes,
+            }))
+          : rows.map((r) => ({
+              Огноо: r.date,
+              Ажилтан: r.employeeName,
+              Хэлтэс: r.department,
+              Төлөв: workforceStatusLabels[r.status],
+              Хуваарь: r.shiftName ?? "",
+              Ирсэн: formatWorkforceInstant(r.clockIn, data.policy.timeZone),
+              Явсан: formatWorkforceInstant(r.clockOut, data.policy.timeZone),
+              "Ажиллах минут": r.plannedMinutes,
+              "Ажилласан минут": r.workedMinutes,
+              "Хоцролт минут": r.lateMinutes,
+              "Эрт явалт минут": r.earlyMinutes,
+              "Тасалсан минут": r.absentMinutes,
+              "Илүү минут": r.overtimeMinutes,
+              "Батлагдсан илүү минут": r.approvedOvertimeMinutes,
+            })),
       ),
       "Цагийн тайлан",
     );
@@ -112,7 +138,7 @@ workforceRoutes.get(
     );
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="attendance-${data.range.from}-${data.range.to}.xlsx"`,
+      `attachment; filename="attendance-${view}-${data.range.from}-${data.range.to}.xlsx"`,
     );
     res.send(buffer);
   }),
@@ -120,6 +146,7 @@ workforceRoutes.get(
 workforceRoutes.use(
   "/workforce",
   managementRouter,
+  manualAttendanceRouter,
   workTasksRouter,
   requestsRouter,
   settingsRouter,

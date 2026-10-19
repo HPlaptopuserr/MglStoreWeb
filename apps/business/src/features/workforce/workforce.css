@@ -2206,3 +2206,19 @@
 .wf-route-loading{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;min-height:100dvh;background:#0b1020;color:#f1f3fa;text-align:center}
 .wf-route-loading-icon{display:grid;place-items:center;width:64px;height:64px;border-radius:20px;background:#818cf81f;color:#a5abff;margin:0 auto 18px;border:1px solid #818cf840}
 .wf-route-loading strong{display:block;font-size:20px;letter-spacing:-.03em}.wf-route-loading p{color:#969cb3;margin:8px 0;font-size:13px}
+
+.wf-report-navigation a{padding:9px 17px;border-radius:7px;font-size:12px;white-space:nowrap;}
+.wf-report-navigation a.active{background:var(--wf-blue);color:#080c23;}
+.wf-report-day{display:flex;align-items:center;gap:12px;font-size:12px;color:var(--wf-muted);}
+.wf .wf-report-employee{display:flex;align-items:center;gap:10px;text-align:left;background:transparent;border:0;padding:0;color:var(--wf-blue);}
+.wf-report-employee small{display:block;}
+@media(max-width:600px){.wf-report-navigation{width:100%;justify-content:space-between;}.wf-report-day{width:100%;justify-content:space-between;}}
+.wf-report-picker{padding:24px;}
+.wf-report-picker-heading{display:flex;align-items:center;gap:12px;margin-bottom:20px;color:var(--wf-text);}
+.wf-report-picker-heading>svg{color:var(--wf-blue);flex-shrink:0;}
+.wf-report-picker-heading h3{margin:0 0 5px;}.wf-report-picker-heading p{margin:0;font-size:12px;color:var(--wf-muted);}
+.wf-report-employee-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;}
+.wf .wf-report-picker-card{display:flex;align-items:center;gap:12px;padding:17px;text-align:left;width:100%;min-width:0;transition:background .15s,border-color .15s;}
+.wf-report-picker-card>span{min-width:0;}.wf-report-picker-card strong{display:block;overflow-wrap:anywhere;}.wf-report-picker-card small{display:block;margin-top:6px;}.wf-report-picker-card>svg:last-child{margin-left:auto;flex-shrink:0;color:var(--wf-blue);}
+.wf .wf-report-picker-card:hover{border-color:var(--wf-blue);background:#818cf815;}
+@media(max-width:600px){.wf-report-picker{padding:16px;}.wf-report-employee-grid{grid-template-columns:1fr;}}
