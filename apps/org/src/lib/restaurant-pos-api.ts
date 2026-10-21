@@ -150,6 +150,8 @@ export type CafeRegularCustomerLookup =
   | { found: true; customer: CafeRegularCustomer };
 
 export type RestaurantTicketLine = {
+  applyDiscount?: boolean;
+  discountPercent?: number;
   id: string;
   productId: string;
   name: string;
@@ -1159,13 +1161,17 @@ export interface CreateRestaurantCreditCustomerInput {
   jobTitle?: string;
 }
 
-export async function createRestaurantCreditCustomer(input: CreateRestaurantCreditCustomerInput) {
+export async function createRestaurantCreditCustomer(
+  input: CreateRestaurantCreditCustomerInput,
+) {
   const response = await authFetch(`${API}/pos/credit-customers`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  const payload = await readApiResponse<{ customer: PosCreditBorrower }>(response);
+  const payload = await readApiResponse<{ customer: PosCreditBorrower }>(
+    response,
+  );
   return payload.customer;
 }
 
@@ -1445,7 +1451,13 @@ export async function saveRestaurantTicket(input: {
   source?: "SELF_SERVICE";
   orderMode: "DINE_IN" | "TO_GO" | "DELIVERY";
   note?: string;
-  lines: Array<{ productId: string; qty: number; note?: string }>;
+  lines: Array<{
+    productId: string;
+    qty: number;
+    note?: string;
+    applyDiscount?: boolean;
+    discountPercent?: number;
+  }>;
 }) {
   const response = await authFetch(`${API}/restaurant/pos/tickets`, {
     method: "POST",

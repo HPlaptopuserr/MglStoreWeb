@@ -1,0 +1,18 @@
+dialog.dialog {
+  color-scheme: dark;
+  color: #e2e8f0;
+  background: #0d1c2d;
+  border: 1px solid #304255;
+  box-shadow: 0 28px 90px rgb(0 0 0 / 45%);
+}
+.dialog::backdrop {
+  background: rgb(2 8 23 / 78%);
+  backdrop-filter: blur(6px);
+}
+.header {
+  background: #102235;
+  border-bottom: 1px solid #283d50;
+}
+.body {
+  scrollbar-color: #40576e #0d1c2d;
+}

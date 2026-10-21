@@ -1,8 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import workspaceStyles from "./RestaurantWorkspace.module.css";
+import { RestaurantManagementMenu } from "./RestaurantManagementMenu";
+import { RestaurantMenuCard } from "./RestaurantMenuCard";
 import { RestaurantNotice } from "@/components/feedback/RestaurantNotice";
 import { RestaurantBorrowerDialog } from "./RestaurantBorrowerDialog";
+import { RestaurantEmployeeDiscount } from "./RestaurantEmployeeDiscount";
 import { RestaurantPaymentDialog } from "./RestaurantPaymentDialog";
 import { RestaurantCartItem } from "./RestaurantCartItem";
 import { RestaurantKitchenProgress } from "./RestaurantKitchenProgress";
@@ -24,7 +28,6 @@ import {
 import { QrGenerator } from "@mgl/ui";
 import {
   ArrowLeft,
-  BadgePercent,
   Banknote,
   Building2,
   ChefHat,
@@ -32,10 +35,8 @@ import {
   ChevronDown,
   CreditCard,
   HandCoins,
-  History,
   LayoutGrid,
   Loader2,
-  Monitor,
   Plus,
   Printer,
   QrCode,
@@ -75,7 +76,6 @@ import {
   getRestaurantCreditSales,
   getRestaurantQPayInvoiceStatus,
   getRestaurantDiningTables,
-  getRestaurantDiscountSchedule,
   getRestaurantMenuCategories,
   getRestaurantMenuClassificationCode,
   getRestaurantPosProducts,
@@ -90,12 +90,10 @@ import {
   saveRestaurantTicket,
   sendRestaurantTicketToKitchen,
   submitRestaurantClientBridgeResult,
-  updateRestaurantDiscountSchedule,
   voidRestaurantSale,
   type RestaurantDiningTable,
   type CafeRegularCustomer,
   type RestaurantCreditSale,
-  type RestaurantDiscountSchedule,
   type RestaurantMenuCategory,
   type RestaurantPosQPayInvoice,
   type RestaurantPosProduct,
@@ -109,7 +107,7 @@ import {
   type RestaurantCustomerDisplayPayload,
   type RestaurantCustomerDisplaySuccess,
 } from "./customer-display";
-import { calculateCafeRegularCustomerUnitDiscount } from "@mgl/types";
+import { calculateRestaurantSelectedUnitDiscount } from "@mgl/types";
 import type {
   CardAttempt,
   CashDenominationCount,
@@ -158,6 +156,8 @@ type MenuItem = {
 };
 
 type TicketLine = {
+  applyDiscount: boolean;
+  discountPercent: number;
   id: string;
   ticketItemId?: string;
   name: string;
@@ -264,12 +264,12 @@ const tableStatusCopy: Record<TableStatus, string> = {
 };
 
 const tableStatusStyles: Record<TableStatus, string> = {
-  FREE: "border-slate-200 bg-white text-slate-700",
-  OPEN: "border-sky-300 bg-sky-50 text-sky-700",
-  KITCHEN: "border-amber-300 bg-amber-50 text-amber-700",
-  READY: "border-emerald-300 bg-emerald-50 text-emerald-700",
-  PAID: "border-emerald-300 bg-emerald-50 text-emerald-700",
-  RESERVED: "border-rose-300 bg-rose-50 text-rose-700",
+  FREE: "border-[#3d484f] bg-[#122131] text-[#d4e4fa]",
+  OPEN: "border-[#00c2ff]/70 bg-[#00c2ff]/15 text-[#92d9ff]",
+  KITCHEN: "border-amber-300/70 bg-amber-300/10 text-amber-200",
+  READY: "border-emerald-300/70 bg-emerald-300/10 text-emerald-200",
+  PAID: "border-emerald-300/70 bg-emerald-300/10 text-emerald-200",
+  RESERVED: "border-rose-300/70 bg-rose-300/10 text-rose-200",
 };
 
 const orderModeCopy: Record<OrderMode, string> = {
@@ -467,42 +467,6 @@ const createClientSaleId = () =>
     ? `restaurant-${crypto.randomUUID()}`
     : `restaurant-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
-const getMinuteInTimeZone = (date: Date, timeZone: string) => {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone,
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(date);
-  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
-  const minute = Number(
-    parts.find((part) => part.type === "minute")?.value || 0,
-  );
-  return hour * 60 + minute;
-};
-
-const timeToMinute = (value: string) => {
-  const [hour, minute] = value.split(":").map(Number);
-  return hour * 60 + minute;
-};
-
-const isDiscountScheduleActive = (
-  schedule: RestaurantDiscountSchedule | null,
-  at: Date,
-) => {
-  if (!schedule?.isEnabled || schedule.percent <= 0) return false;
-  const startMinute = timeToMinute(schedule.startTime);
-  const endMinute = timeToMinute(schedule.endTime);
-  const currentMinute = getMinuteInTimeZone(at, schedule.timeZone);
-  if (startMinute === endMinute) return false;
-  return startMinute < endMinute
-    ? currentMinute >= startMinute && currentMinute < endMinute
-    : currentMinute >= startMinute || currentMinute < endMinute;
-};
-
-const calculateScheduledUnitDiscount = (price: number, percent: number) =>
-  roundMoney(price * (Math.min(99, Math.max(0, percent)) / 100));
-
 const mapDiningTable = (table: RestaurantDiningTable): DiningTable => ({
   id: table.id,
   label: table.label,
@@ -538,6 +502,8 @@ const mapTicketLines = (
       price: item.price,
       qty: item.qty,
       sentQty: item.sentQty,
+      applyDiscount: item.applyDiscount === true,
+      discountPercent: item.discountPercent ?? 0,
       note: item.note,
       available: Math.max(item.qty, menuItem?.available ?? item.qty),
       taxRate: menuItem?.taxRate ?? 0,
@@ -722,16 +688,6 @@ function RestaurantPosContent() {
   >([]);
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState("");
-  const [discountSchedule, setDiscountSchedule] =
-    useState<RestaurantDiscountSchedule | null>(null);
-  const [discountClock, setDiscountClock] = useState(() => Date.now());
-  const [discountModalOpen, setDiscountModalOpen] = useState(false);
-  const [discountEnabled, setDiscountEnabled] = useState(false);
-  const [discountPercent, setDiscountPercent] = useState("20");
-  const [discountStartTime, setDiscountStartTime] = useState("09:00");
-  const [discountEndTime, setDiscountEndTime] = useState("17:00");
-  const [discountSaving, setDiscountSaving] = useState(false);
-  const [discountError, setDiscountError] = useState("");
   const [productManagerOpen, setProductManagerOpen] = useState(false);
   const [productManagerMode, setProductManagerMode] =
     useState<ProductManagerMode>("new");
@@ -805,7 +761,10 @@ function RestaurantPosContent() {
   const dismissNotice = useCallback(() => setNotice(""), []);
   const [borrowerDialogOpen, setBorrowerDialogOpen] = useState(false);
   const handleBorrowerCreated = (borrower: PosCreditBorrower) => {
-    setCreditBorrowers((current) => [borrower, ...current.filter((item) => item.id !== borrower.id)]);
+    setCreditBorrowers((current) => [
+      borrower,
+      ...current.filter((item) => item.id !== borrower.id),
+    ]);
     setSelectedCreditBorrowerId(borrower.id);
     setCreditSearch("");
     setCreditBorrowersError("");
@@ -854,10 +813,6 @@ function RestaurantPosContent() {
       registers.find((register) => register.id === selectedRegisterId) ?? null,
     [registers, selectedRegisterId],
   );
-  const canManageDiscount =
-    user.orgRole === "OWNER" ||
-    user.role === "ADMIN" ||
-    user.role === "SUPER_ADMIN";
   const ebarimtReady = Boolean(selectedRegister?.ebarimtEnabled);
   const lookupCompanyBuyer =
     useCallback(async (): Promise<EbarimtTinLookupResult> => {
@@ -1268,11 +1223,7 @@ function RestaurantPosContent() {
       if (nextRegister && typeof window !== "undefined") {
         window.localStorage.setItem(REGISTER_STORAGE_KEY, nextRegister.id);
       }
-      if (
-        nextRegister &&
-        shiftResult.status === "fulfilled" &&
-        !currentShift
-      ) {
+      if (nextRegister && shiftResult.status === "fulfilled" && !currentShift) {
         setShowOpenShift(true);
       }
     } catch (error) {
@@ -1394,43 +1345,6 @@ function RestaurantPosContent() {
   useEffect(() => {
     void loadMenu();
   }, [loadMenu]);
-
-  const loadDiscountSchedule = useCallback(async () => {
-    if (!selectedRegister?.organizationId) {
-      setDiscountSchedule(null);
-      return;
-    }
-
-    try {
-      const schedule = await getRestaurantDiscountSchedule(
-        selectedRegister.organizationId,
-      );
-      setDiscountSchedule(schedule);
-      setDiscountEnabled(schedule.isEnabled);
-      setDiscountPercent(String(schedule.percent));
-      setDiscountStartTime(schedule.startTime);
-      setDiscountEndTime(schedule.endTime);
-      setDiscountClock(Date.now());
-    } catch (error) {
-      setDiscountError(
-        error instanceof Error
-          ? error.message
-          : "Цагийн хямдралын тохиргоо авахад алдаа гарлаа",
-      );
-    }
-  }, [selectedRegister?.organizationId]);
-
-  useEffect(() => {
-    void loadDiscountSchedule();
-  }, [loadDiscountSchedule]);
-
-  useEffect(() => {
-    const timer = window.setInterval(
-      () => setDiscountClock(Date.now()),
-      30_000,
-    );
-    return () => window.clearInterval(timer);
-  }, []);
 
   const loadCatalogProducts = useCallback(async () => {
     if (!selectedRegister?.branchId) {
@@ -1654,28 +1568,15 @@ function RestaurantPosContent() {
   const availableCatalogProducts = filteredCatalogProducts.filter(
     (product) => !product.isRestaurantMenuItem,
   );
-  const discountIsActive = isDiscountScheduleActive(
-    discountSchedule,
-    new Date(discountClock),
-  );
-  const activeDiscountPercent = discountIsActive
-    ? discountSchedule?.percent || 0
-    : 0;
   const getLineUnitDiscount = useCallback(
-    (line: TicketLine | MenuItem) => {
-      const employeeUnitDiscount = employeeDiscount
-        ? calculateCafeRegularCustomerUnitDiscount(
-            line.price,
-            employeeDiscount.discountPercent,
-          )
-        : 0;
-      const scheduledUnitDiscount = line.discountEligible
-        ? calculateScheduledUnitDiscount(line.price, activeDiscountPercent)
-        : 0;
-      return Math.max(employeeUnitDiscount, scheduledUnitDiscount);
-    },
-    [activeDiscountPercent, employeeDiscount],
+    (line: TicketLine | MenuItem) =>
+      calculateRestaurantSelectedUnitDiscount({
+        unitPrice: line.price,
+        discountPercent: "discountPercent" in line ? line.discountPercent : 0,
+      }),
+    [],
   );
+
   const subtotal = ticketLines.reduce(
     (sum, line) => sum + line.price * line.qty,
     0,
@@ -1827,6 +1728,7 @@ function RestaurantPosContent() {
     !cardProcessing &&
     !checkoutSubmitting &&
     !qpayFinalizing &&
+    !employeeDiscountLoading &&
     !ticketSaving &&
     !kitchenSubmitting &&
     ebarimtBuyerReady &&
@@ -2040,6 +1942,8 @@ function RestaurantPosContent() {
           productId: line.id,
           qty: line.qty,
           note: line.note,
+          applyDiscount: line.applyDiscount,
+          discountPercent: line.discountPercent,
         })),
       });
       updateTableTicket(targetTableId, ticket);
@@ -2059,29 +1963,17 @@ function RestaurantPosContent() {
     }
   };
 
-  const buildSaleLines = (
-    lines: TicketLine[],
-    discountCustomer = employeeDiscount,
-    scheduledPercent = activeDiscountPercent,
-  ): SaleLinePayload[] =>
-    lines.map((line) => {
-      const employeeUnitDiscount = discountCustomer
-        ? calculateCafeRegularCustomerUnitDiscount(
-            line.price,
-            discountCustomer.discountPercent,
-          )
-        : 0;
-      const scheduledUnitDiscount = line.discountEligible
-        ? calculateScheduledUnitDiscount(line.price, scheduledPercent)
-        : 0;
-      return {
-        productId: line.id,
-        qty: line.qty,
+  const buildSaleLines = (lines: TicketLine[]): SaleLinePayload[] =>
+    lines.map((line) => ({
+      productId: line.id,
+      qty: line.qty,
+      unitPrice: line.price,
+      discountAmount: calculateRestaurantSelectedUnitDiscount({
         unitPrice: line.price,
-        discountAmount: Math.max(employeeUnitDiscount, scheduledUnitDiscount),
-        taxRate: line.taxRate,
-      };
-    });
+        discountPercent: line.discountPercent,
+      }),
+      taxRate: line.taxRate,
+    }));
 
   const buildSaleNote = (
     lines: TicketLine[],
@@ -3137,17 +3029,7 @@ function RestaurantPosContent() {
         setEmployeeDiscount(checkoutEmployeeDiscount);
         setEmployeePhone(checkoutEmployeeDiscount.phone);
       }
-      const checkoutScheduledPercent = isDiscountScheduleActive(
-        discountSchedule,
-        new Date(),
-      )
-        ? discountSchedule?.percent || 0
-        : 0;
-      const checkoutSaleLines = buildSaleLines(
-        ticketLines,
-        checkoutEmployeeDiscount,
-        checkoutScheduledPercent,
-      );
+      const checkoutSaleLines = buildSaleLines(ticketLines);
       const checkoutDiscount = roundMoney(
         checkoutSaleLines.reduce(
           (sum, line) => sum + line.discountAmount * line.qty,
@@ -3840,6 +3722,8 @@ function RestaurantPosContent() {
             price: item.price,
             qty: 1,
             sentQty: 0,
+            applyDiscount: false,
+            discountPercent: 0,
             note: "",
             available: item.available,
             taxRate: item.taxRate,
@@ -3972,62 +3856,6 @@ function RestaurantPosContent() {
     }
   };
 
-  const openDiscountModal = () => {
-    if (discountSchedule) {
-      setDiscountEnabled(discountSchedule.isEnabled);
-      setDiscountPercent(String(discountSchedule.percent));
-      setDiscountStartTime(discountSchedule.startTime);
-      setDiscountEndTime(discountSchedule.endTime);
-    }
-    setDiscountError("");
-    setDiscountModalOpen(true);
-  };
-
-  const handleSaveDiscountSchedule = async (
-    event: FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
-    if (!selectedRegister?.organizationId || !canManageDiscount) return;
-
-    const percent = Math.floor(Number(discountPercent));
-    if (!Number.isFinite(percent) || percent < 1 || percent > 99) {
-      setDiscountError("Хямдралын хувь 1-99 хооронд байна.");
-      return;
-    }
-    if (discountStartTime === discountEndTime) {
-      setDiscountError("Эхлэх, дуусах цаг ижил байж болохгүй.");
-      return;
-    }
-
-    setDiscountSaving(true);
-    setDiscountError("");
-    try {
-      const schedule = await updateRestaurantDiscountSchedule({
-        organizationId: selectedRegister.organizationId,
-        isEnabled: discountEnabled,
-        percent,
-        startTime: discountStartTime,
-        endTime: discountEndTime,
-      });
-      setDiscountSchedule(schedule);
-      setDiscountClock(Date.now());
-      setDiscountModalOpen(false);
-      setNotice(
-        schedule.isEnabled
-          ? `Өдөр бүр ${schedule.startTime}-${schedule.endTime} цагт хоолнууд ${schedule.percent}% хямдарна. Уух зүйлс хямдрахгүй.`
-          : "Цагийн хямдрал унтраалаа.",
-      );
-    } catch (error) {
-      setDiscountError(
-        error instanceof Error
-          ? error.message
-          : "Цагийн хямдрал хадгалахад алдаа гарлаа",
-      );
-    } finally {
-      setDiscountSaving(false);
-    }
-  };
-
   const openCustomerDisplay = () => {
     if (typeof window === "undefined") return;
     window.open(
@@ -4038,31 +3866,33 @@ function RestaurantPosContent() {
   };
 
   return (
-    <section className="relative h-full overflow-hidden bg-[#f3f7fa] text-slate-900 shadow-2xl shadow-slate-300/40">
-      <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_430px] bg-[#f3f7fa] max-xl:grid-cols-1 max-xl:overflow-y-auto">
-        <main className="flex min-h-0 flex-col px-7 py-5 max-xl:min-h-[760px] max-md:px-4">
-          <header className="shrink-0 rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_60px_rgba(15,23,42,0.08)]">
+    <section
+      className={`${workspaceStyles.workspace} relative bg-[#051424] text-slate-100 shadow-2xl shadow-slate-950/20`}
+    >
+      <div className={`${workspaceStyles.grid} bg-[#051424]`}>
+        <main className={workspaceStyles.catalog}>
+          <header className="shrink-0 rounded-xl border border-[#273647] bg-[#010f1f] p-3 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
             <div className="flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 <Link
                   href="/dashboard"
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 transition hover:border-sky-300 hover:bg-sky-50 hover:text-sky-700"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#3d484f] bg-[#122131] text-[#bcc8d1] transition hover:border-[#75d1ff]/60 hover:text-white"
                   aria-label="Буцах"
                   title="Буцах"
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </Link>
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#00c2ff] text-[#003548]">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#00c2ff] text-[#003548]">
                   <UtensilsCrossed className="h-6 w-6" />
                 </span>
-                <div className="min-w-0 border-l border-slate-200 pl-3">
-                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-sky-600">
+                <div className="min-w-0 border-l border-[#273647] pl-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#92d9ff]">
                     Restaurant POS
                   </p>
-                  <h2 className="truncate text-4xl font-black leading-none tracking-tight text-slate-950 max-2xl:text-3xl">
+                  <h2 className="truncate text-xl font-black leading-none tracking-tight text-[#d4e4fa]">
                     Ресторан касс
                   </h2>
-                  <p className="mt-1 truncate text-xs font-semibold text-slate-500">
+                  <p className="mt-1 truncate text-xs font-semibold text-[#bcc8d1]">
                     {selectedRegister?.branch.name || "Салбар сонгоогүй"} ·{" "}
                     {shiftMatchesRegister ? "Ээлж нээлттэй" : "Ээлж хаалттай"} ·
                     Ширээ {selectedTable.label}
@@ -4071,166 +3901,93 @@ function RestaurantPosContent() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
-                <span
-                  className={`inline-flex h-9 items-center rounded-full px-3 text-xs font-black ${
-                    shiftMatchesRegister
-                      ? "bg-sky-100 text-sky-700"
-                      : "bg-amber-100 text-amber-700"
-                  }`}
-                >
-                  {shiftMatchesRegister ? "Ээлж нээлттэй" : "Ээлж хаалттай"}
-                </span>
-                <select
-                  value={selectedRegisterId}
-                  onChange={(event) => handleRegisterChange(event.target.value)}
-                  disabled={
-                    setupLoading ||
-                    registers.length === 0 ||
-                    Boolean(shift?.registerId)
-                  }
-                  className="h-10 min-w-48 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-bold text-slate-700 outline-none focus:border-sky-400 disabled:cursor-not-allowed disabled:opacity-60"
-                  aria-label="POS касс сонгох"
-                >
-                  {registers.length === 0 ? (
-                    <option value="">POS касс байхгүй</option>
-                  ) : null}
-                  {registers.map((register) => (
-                    <option key={register.id} value={register.id}>
-                      {register.branch.name} · {register.label || register.name}
-                    </option>
-                  ))}
-                </select>
-                {shiftMatchesRegister ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSetupError("");
-                      setDrawerError("");
-                      setShowCloseShift(true);
-                    }}
-                    className="h-10 shrink-0 rounded-lg border border-rose-300 bg-rose-50 px-4 text-sm font-black text-rose-700 transition hover:bg-rose-100"
-                  >
-                    Ээлж хаах
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowOpenShift(true)}
-                    disabled={!selectedRegister || setupLoading}
-                    className="h-10 shrink-0 rounded-lg bg-[#00c2ff] px-4 text-sm font-black text-[#003548] transition hover:bg-[#75d1ff] disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-                  >
-                    Ээлж нээх
-                  </button>
-                )}
+                <RestaurantManagementMenu
+                  shiftOpen={shiftMatchesRegister}
+                  qrDisabled={!selectedRegister || diningTables.length === 0}
+                  onQr={() => void handleOpenQrModal()}
+                  onCustomerDisplay={openCustomerDisplay}
+                  onShiftHistory={() => {
+                    setShowShiftHistory(true);
+                    setShiftHistoryError("");
+                  }}
+                  onSalesHistory={() => {
+                    setSalesHistoryOpen(true);
+                    setSalesHistoryError("");
+                  }}
+                  registerControls={(closeMenu) => (
+                    <div className="flex flex-col gap-3">
+                      <select
+                        value={selectedRegisterId}
+                        onChange={(event) =>
+                          handleRegisterChange(event.target.value)
+                        }
+                        disabled={
+                          setupLoading ||
+                          registers.length === 0 ||
+                          Boolean(shift?.registerId)
+                        }
+                        className="h-10 w-full min-w-0 rounded-lg border border-[#3d484f] bg-[#122131] px-3 text-sm font-bold text-[#d4e4fa] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                        aria-label="POS касс сонгох"
+                      >
+                        {registers.length === 0 ? (
+                          <option value="">POS касс байхгүй</option>
+                        ) : null}
+                        {registers.map((register) => (
+                          <option key={register.id} value={register.id}>
+                            {register.branch.name} ·{" "}
+                            {register.label || register.name}
+                          </option>
+                        ))}
+                      </select>
+                      {shiftMatchesRegister ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSetupError("");
+                            setDrawerError("");
+                            closeMenu();
+                            setShowCloseShift(true);
+                          }}
+                          className="h-10 shrink-0 rounded-lg border border-rose-300/50 px-4 text-sm font-black text-rose-200 transition hover:bg-rose-300 hover:text-white"
+                        >
+                          Ээлж хаах
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            closeMenu();
+                            setShowOpenShift(true);
+                          }}
+                          disabled={!selectedRegister || setupLoading}
+                          className="h-10 shrink-0 rounded-lg bg-[#00c2ff] px-4 text-sm font-black text-[#003548] transition hover:bg-[#75d1ff] disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                        >
+                          Ээлж нээх
+                        </button>
+                      )}
+                    </div>
+                  )}
+                />
               </div>
             </div>
-
-            <div className="mt-3 flex w-full flex-wrap items-center gap-2 border-t border-slate-200 pt-3">
-              {canManageDiscount ? (
-                <button
-                  type="button"
-                  onClick={openDiscountModal}
-                  disabled={!selectedRegister}
-                  className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 text-sm font-black text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  <BadgePercent className="h-4 w-4" />
-                  Цагийн хямдрал
-                </button>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void handleOpenQrModal()}
-                disabled={!selectedRegister || diningTables.length === 0}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-4 text-sm font-black text-slate-700 transition hover:bg-slate-200 disabled:cursor-not-allowed disabled:text-slate-400"
-              >
-                <QrCode className="h-4 w-4" />
-                QR хэвлэх
-              </button>
-              <button
-                type="button"
-                onClick={openCustomerDisplay}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-4 text-sm font-black text-slate-700 transition hover:bg-slate-200"
-              >
-                <Monitor className="h-4 w-4" />
-                Хэрэглэгчийн дэлгэц
-              </button>
-              <Link
-                href="/dashboard/kitchen-display"
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-4 text-sm font-black text-slate-700 transition hover:bg-slate-200"
-              >
-                <ChefHat className="h-4 w-4" />
-                Гал тогоо
-              </Link>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowShiftHistory(true);
-                  setShiftHistoryError("");
-                }}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-4 text-sm font-black text-slate-700 transition hover:bg-slate-200"
-              >
-                <History className="h-4 w-4" />
-                Хаалтын түүх
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSalesHistoryOpen(true);
-                  setSalesHistoryError("");
-                }}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-4 text-sm font-black text-slate-700 transition hover:bg-slate-200"
-              >
-                <ReceiptText className="h-4 w-4" />
-                Борлуулалтын түүх
-              </button>
-
-              <label className="relative min-w-56 flex-1">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-sky-500" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  className="h-11 w-full rounded-lg border border-slate-200 bg-slate-50 pl-11 pr-4 text-sm font-semibold text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-sky-400 focus:bg-white"
-                  placeholder="Хоол, ундаа хайх..."
-                />
-              </label>
-            </div>
           </header>
-
-          {discountSchedule?.isEnabled ? (
-            <div
-              className={`mt-3 flex items-center gap-2 rounded-lg border px-4 py-3 text-sm font-bold ${
-                discountIsActive
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                  : "border-sky-200 bg-sky-50 text-sky-800"
-              }`}
-            >
-              <BadgePercent className="h-4 w-4 shrink-0" />
-              <span>
-                {discountIsActive ? "Идэвхтэй" : "Хуваарь"}: өдөр бүр{" "}
-                {discountSchedule.startTime}-{discountSchedule.endTime} · хоол{" "}
-                {discountSchedule.percent}% · уух зүйлс орохгүй
-              </span>
-            </div>
-          ) : null}
 
           <ProductImageNotice className="mt-3" />
 
           {setupLoading ? (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-600">
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#273647] bg-[#122131] px-4 py-3 text-sm font-bold text-slate-300">
               <Loader2 className="h-4 w-4 animate-spin" />
               POS кассын тохиргоо ачаалж байна...
             </div>
           ) : null}
 
           {setupError ? (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700">
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-rose-300/30 bg-rose-300/10 px-4 py-3 text-sm font-bold text-rose-200">
               <span>{setupError}</span>
               <button
                 type="button"
                 onClick={() => void loadPosSetup()}
-                className="inline-flex shrink-0 items-center gap-1.5 text-xs font-black text-rose-700"
+                className="inline-flex shrink-0 items-center gap-1.5 text-xs font-black text-rose-200"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Дахин шалгах
@@ -4239,7 +3996,7 @@ function RestaurantPosContent() {
           ) : null}
 
           {!setupLoading && registers.length === 0 ? (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-200">
               <span>
                 Энэ байгууллагад батлагдсан POS register алга. Admin хэсгээс
                 салбар, POS register үүсгэж идэвхжүүлсний дараа касс ажиллана.
@@ -4247,7 +4004,7 @@ function RestaurantPosContent() {
               <button
                 type="button"
                 onClick={() => void loadPosSetup()}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-800 transition hover:bg-amber-100"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-[#122131] px-3 py-2 text-xs font-black text-amber-200 transition hover:bg-amber-300/15"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Дахин шалгах
@@ -4255,16 +4012,14 @@ function RestaurantPosContent() {
             </div>
           ) : null}
 
-
-
-          <section className="mt-2 shrink-0 rounded-lg border border-slate-200 bg-white px-2 py-2 shadow-sm">
+          <section className="mt-2 shrink-0 rounded-lg border border-[#273647] bg-[#122131] px-2 py-2 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-50 text-sky-600">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-300/10 text-sky-600">
                   <LayoutGrid className="h-4 w-4" />
                 </span>
                 <div>
-                  <p className="text-xs font-black text-slate-800">Ширээ</p>
+                  <p className="text-xs font-black text-slate-100">Ширээ</p>
                   <p className="text-[10px] font-semibold text-slate-400">
                     Compact map
                   </p>
@@ -4278,7 +4033,7 @@ function RestaurantPosContent() {
                   type="button"
                   onClick={openCreateTableModal}
                   disabled={!selectedRegister}
-                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-sky-300 bg-sky-50 px-2.5 text-[11px] font-black text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-sky-300/40 bg-sky-300/10 px-2.5 text-[11px] font-black text-sky-200 transition hover:bg-sky-300/15 disabled:cursor-not-allowed disabled:border-[#273647] disabled:bg-[#0d1c2d] disabled:text-slate-400"
                 >
                   <Plus className="h-3 w-3" />
                   Нэмэх
@@ -4286,7 +4041,7 @@ function RestaurantPosContent() {
               </div>
             </div>
             {tablesError ? (
-              <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
+              <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-200">
                 <span>{tablesError}</span>
                 <button type="button" onClick={() => void loadTables()}>
                   Дахин ачаалах
@@ -4350,7 +4105,19 @@ function RestaurantPosContent() {
             </div>
           </section>
 
-          <div className="mt-4 flex shrink-0 items-center justify-between gap-4">
+          <div className="mt-2 flex shrink-0 w-full items-center gap-2">
+            <label className="relative min-w-56 flex-1">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#75d1ff]" />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                className="h-9 w-full rounded-lg border border-[#3d484f] bg-[#051424] pl-11 pr-4 text-sm font-semibold text-[#d4e4fa] outline-none transition placeholder:text-[#86929a] focus:border-[#00c2ff]/70"
+                aria-label="Хоол, ундаа хайх"
+                placeholder="Хоол, ундаа хайх..."
+              />
+            </label>
+          </div>
+          <div className="mt-2 flex shrink-0 items-center justify-between gap-4">
             <div className="flex min-w-0 gap-7 overflow-x-auto pb-1">
               {categoryFilters.map((category) => (
                 <button
@@ -4359,8 +4126,8 @@ function RestaurantPosContent() {
                   onClick={() => setActiveCategory(category.id)}
                   className={`relative h-9 shrink-0 text-sm font-bold transition ${
                     activeCategory === category.id
-                      ? "text-sky-700"
-                      : "text-slate-500 hover:text-slate-900"
+                      ? "text-sky-200"
+                      : "text-slate-500 hover:text-slate-100"
                   }`}
                 >
                   {category.label}
@@ -4373,16 +4140,16 @@ function RestaurantPosContent() {
 
             <button
               type="button"
-              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-[#273647] bg-[#122131] px-4 text-sm font-bold text-slate-200 shadow-sm transition hover:bg-[#0d1c2d]"
             >
               <ChevronDown className="h-4 w-4" />
               Ширээ {selectedTable.label} · {orderModeCopy[orderMode]}
             </button>
           </div>
 
-          <div className="mt-4 flex min-h-0 flex-1 flex-col">
+          <div className="mt-2 flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center justify-between gap-4">
-              <h3 className="text-xl font-bold tracking-normal text-slate-900">
+              <h3 className="text-xl font-bold tracking-normal text-slate-100">
                 Меню сонгох
               </h3>
               <div className="flex items-center gap-3">
@@ -4393,7 +4160,7 @@ function RestaurantPosContent() {
                   type="button"
                   onClick={() => void loadMenu()}
                   disabled={menuLoading}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-black text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#273647] bg-[#122131] px-3 text-sm font-black text-slate-300 transition hover:bg-[#0d1c2d] disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label="Меню шинэчлэх"
                 >
                   <RefreshCw
@@ -4405,7 +4172,7 @@ function RestaurantPosContent() {
                   type="button"
                   onClick={openProductManager}
                   disabled={!selectedRegister}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-sky-300 bg-sky-50 px-3 text-sm font-black text-sky-700 transition hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-sky-300/40 bg-sky-300/10 px-3 text-sm font-black text-sky-200 transition hover:bg-sky-300/15 disabled:cursor-not-allowed disabled:border-[#273647] disabled:bg-[#0d1c2d] disabled:text-slate-400"
                 >
                   <Plus className="h-4 w-4" />
                   Хоол нэмэх
@@ -4423,15 +4190,15 @@ function RestaurantPosContent() {
                 <button
                   type="button"
                   onClick={() => void loadMenu()}
-                  className="mt-3 h-9 rounded-lg border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                  className="mt-3 h-9 rounded-lg border border-[#273647] bg-[#122131] px-4 text-sm font-bold text-slate-200 hover:bg-[#0d1c2d]"
                 >
                   Дахин ачаалах
                 </button>
               </div>
             ) : filteredMenu.length === 0 ? (
-              <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-white/60 text-center">
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-[#3d484f] bg-[#122131]/60 text-center">
                 <ChefHat className="h-9 w-9 text-slate-400" />
-                <p className="mt-3 text-sm font-bold text-slate-600">
+                <p className="mt-3 text-sm font-bold text-slate-300">
                   {query || activeCategory !== "all"
                     ? "Тохирох хоол олдсонгүй"
                     : "Менюд хоол бүртгэгдээгүй байна"}
@@ -4448,12 +4215,21 @@ function RestaurantPosContent() {
                 ) : null}
               </div>
             ) : (
-              <div className="mt-3 grid min-h-0 flex-1 auto-rows-[184px] grid-cols-5 content-start gap-3 overflow-y-auto pr-2 2xl:grid-cols-6 max-2xl:grid-cols-4 max-lg:grid-cols-3 max-sm:grid-cols-2">
+              <div className="mt-2 grid min-h-0 flex-1 auto-rows-[124px] grid-cols-[repeat(auto-fill,minmax(150px,1fr))] content-start gap-2 overflow-y-auto pr-1">
                 {filteredMenu.map((item) => (
-                  <button
+                  <RestaurantMenuCard
                     key={item.id}
-                    type="button"
-                    onClick={() => void addItem(item)}
+                    name={item.name}
+                    price={formatMoney(item.price)}
+                    available={item.available}
+                    visual={
+                      <DishVisual
+                        tone={item.tone}
+                        size="sm"
+                        imageUrl={item.imageUrl}
+                      />
+                    }
+                    onSelect={() => void addItem(item)}
                     disabled={
                       item.available <= 0 ||
                       !selectedTable.id ||
@@ -4465,53 +4241,26 @@ function RestaurantPosContent() {
                       clearSubmitting ||
                       qpayPaymentActive
                     }
-                    className="group relative flex h-full flex-col items-center rounded-lg border border-slate-200 bg-white p-3 text-center shadow-md shadow-slate-200/60 transition hover:-translate-y-1 hover:border-sky-300 hover:bg-sky-50/40 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-                  >
-                    <DishVisual
-                      tone={item.tone}
-                      size="md"
-                      imageUrl={item.imageUrl}
-                      className="mb-2"
-                    />
-                    <div className="flex min-h-0 w-full flex-1 flex-col items-center">
-                      <p className="line-clamp-2 min-h-10 w-full px-1 text-sm font-black leading-5 text-slate-800">
-                        {item.name}
-                      </p>
-                      <div className="mt-auto flex items-baseline gap-2 pt-2">
-                        {getLineUnitDiscount(item) > 0 ? (
-                          <span className="text-xs font-bold tabular-nums text-slate-400 line-through">
-                            {formatMoney(item.price)}
-                          </span>
-                        ) : null}
-                        <span className="text-base font-black tabular-nums text-sky-700">
-                          {formatMoney(item.price - getLineUnitDiscount(item))}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-[10px] font-semibold text-slate-400">
-                        {item.available > 0
-                          ? `${item.available} порц боломжтой`
-                          : "Дууссан"}
-                      </p>
-                    </div>
-                    <span className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg border border-sky-200 bg-white/90 text-sky-600 opacity-0 transition group-hover:opacity-100">
-                      <Plus className="h-3.5 w-3.5" />
-                    </span>
-                  </button>
+                  />
                 ))}
               </div>
             )}
           </div>
         </main>
 
-        <aside className="flex min-h-0 flex-col overflow-hidden border-l border-slate-200 bg-white px-3 py-3 max-xl:min-h-[640px] max-sm:px-3 max-sm:py-3">
+        <aside
+          className={`${workspaceStyles.cart} flex flex-col overflow-hidden border-l border-[#273647] bg-[#122131] px-3 py-3`}
+        >
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             <div>
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="text-[10px] font-semibold text-slate-500">
-                    {selectedTicketPaid ? "Төлсөн захиалга" : "Идэвхтэй захиалга"}
+                    {selectedTicketPaid
+                      ? "Төлсөн захиалга"
+                      : "Идэвхтэй захиалга"}
                   </p>
-                  <h3 className="truncate text-base font-bold leading-5 text-slate-900">
+                  <h3 className="truncate text-base font-bold leading-5 text-slate-100">
                     Ширээ {selectedTable.label}
                   </h3>
                   <p className="mt-0.5 text-[10px] font-medium text-slate-500">
@@ -4522,13 +4271,15 @@ function RestaurantPosContent() {
                   className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-bold ${
                     shiftMatchesRegister
                       ? "bg-[#00c2ff]/15 text-[#92d9ff]"
-                      : "bg-amber-300/10 text-amber-700"
+                      : "bg-amber-300/10 text-amber-200"
                   }`}
                 >
                   {shiftMatchesRegister ? "Ээлж нээлттэй" : "Ээлж хаалттай"}
                 </span>
               </div>
-              <RestaurantKitchenProgress tickets={selectedTable.currentTicket?.kitchenTickets ?? []} />
+              <RestaurantKitchenProgress
+                tickets={selectedTable.currentTicket?.kitchenTickets ?? []}
+              />
               <div className="mt-2 grid grid-cols-3 gap-1.5">
                 {(["DINE_IN", "TO_GO", "DELIVERY"] as const).map((mode) => (
                   <button
@@ -4544,7 +4295,7 @@ function RestaurantPosContent() {
                     className={`h-8 rounded-md border text-xs font-bold transition ${
                       orderMode === mode
                         ? "border-[#00c2ff] bg-[#00c2ff] text-[#003548]"
-                        : "border-slate-200 bg-slate-50 text-[#bcc8d1] hover:bg-[#1c2b3c]"
+                        : "border-[#273647] bg-[#0d1c2d] text-[#bcc8d1] hover:bg-[#1c2b3c]"
                     }`}
                   >
                     {orderModeCopy[mode]}
@@ -4564,7 +4315,7 @@ function RestaurantPosContent() {
                         ? "Төлөгдсөн ticket-ийг гал тогоо руу илгээх боломжгүй"
                         : "Гал тогоо руу илгээх шинэ хоол байхгүй"
                   }
-                  className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[#00c2ff]/40 bg-[#00c2ff]/10 text-xs font-bold text-[#92d9ff] transition hover:border-[#00c2ff] hover:bg-[#00c2ff] hover:text-[#003548] disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-white/5 disabled:text-slate-500"
+                  className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[#00c2ff]/40 bg-[#00c2ff]/10 text-xs font-bold text-[#92d9ff] transition hover:border-[#00c2ff] hover:bg-[#00c2ff] hover:text-[#003548] disabled:cursor-not-allowed disabled:border-[#273647] disabled:bg-[#122131]/5 disabled:text-slate-500"
                 >
                   {kitchenSubmitting ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -4577,15 +4328,15 @@ function RestaurantPosContent() {
                   <Send className="h-4 w-4" />
                 </button>
               ) : (
-                <div className="mt-2 rounded-md border border-sky-300/30 bg-sky-300/10 px-2 py-1.5 text-[10px] font-medium leading-4 text-sky-100">
+                <div className="mt-2 rounded-md border border-sky-300/40/30 bg-sky-300/10 px-2 py-1.5 text-[10px] font-medium leading-4 text-sky-100">
                   Төлбөр амжилттай бүртгэгдсэний дараа захиалга гал тогоо руу
                   автоматаар илгээгдэнэ.
                 </div>
               )}
 
-              <div className="mt-2 flex items-center justify-between gap-2 border-b border-slate-200 pb-1.5 text-xs font-bold text-slate-200">
+              <div className="mt-2 flex items-center justify-between gap-2 border-b border-[#273647] pb-1.5 text-xs font-bold text-slate-200">
                 <span>Сагсны бараа</span>
-                <span className="shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-[10px] font-black text-slate-500">
+                <span className="shrink-0 rounded-full bg-[#122131]/5 px-2 py-0.5 text-[10px] font-black text-slate-500">
                   {ticketLines.length} мөр
                 </span>
               </div>
@@ -4594,7 +4345,7 @@ function RestaurantPosContent() {
             <div className="min-h-24 space-y-1.5 py-2 pr-1">
               {ticketLines.length === 0 ? (
                 <div className="flex h-full min-h-40 flex-col items-center justify-center text-center">
-                  <UtensilsCrossed className="h-8 w-8 text-slate-700" />
+                  <UtensilsCrossed className="h-8 w-8 text-slate-200" />
                   <p className="mt-3 text-sm font-bold text-slate-500">
                     Менюгээс хоол сонгоно уу
                   </p>
@@ -4605,14 +4356,14 @@ function RestaurantPosContent() {
                       </p>
                       <div className="mt-2 flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-black text-slate-900">
+                          <p className="truncate text-sm font-black text-slate-100">
                             {lastReceipt.receiptNo}
                           </p>
                           <p className="mt-1 text-xs font-semibold text-emerald-100/80">
                             Төлөгдсөн ticket active захиалгаас гарсан.
                           </p>
                         </div>
-                        <span className="shrink-0 text-sm font-black tabular-nums text-slate-900">
+                        <span className="shrink-0 text-sm font-black tabular-nums text-slate-100">
                           {formatMoney(lastReceipt.grandTotal)}
                         </span>
                       </div>
@@ -4620,7 +4371,7 @@ function RestaurantPosContent() {
                         <button
                           type="button"
                           onClick={() => printReceipt(lastReceipt)}
-                          className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-200/30 text-xs font-black text-emerald-100 hover:bg-emerald-300 hover:text-slate-950"
+                          className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-300/30/30 text-xs font-black text-emerald-100 hover:bg-emerald-300 hover:text-white"
                         >
                           <Printer className="h-3.5 w-3.5" />
                           Дахин хэвлэх
@@ -4628,7 +4379,7 @@ function RestaurantPosContent() {
                         <button
                           type="button"
                           onClick={() => setReceiptPreviewOpen(true)}
-                          className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-300 text-xs font-black text-slate-950 hover:bg-emerald-200"
+                          className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-300 text-xs font-black text-white hover:bg-emerald-200"
                         >
                           <ReceiptText className="h-3.5 w-3.5" />
                           Баримт харах
@@ -4641,12 +4392,41 @@ function RestaurantPosContent() {
                 ticketLines.map((line) => (
                   <RestaurantCartItem
                     key={line.id}
-                    line={{ ...line, price: line.price - getLineUnitDiscount(line) }}
+                    line={{
+                      ...line,
+                      price: line.price - getLineUnitDiscount(line),
+                    }}
                     originalPrice={line.price}
+                    onDiscountChange={(discountPercent) => {
+                      if (
+                        ticketSaving ||
+                        selectedTicketPaid ||
+                        qpayPaymentActive ||
+                        checkoutSubmitting ||
+                        cardProcessing
+                      )
+                        return;
+                      void persistTicketLines(
+                        ticketLines.map((item) =>
+                          item.id === line.id
+                            ? {
+                                ...item,
+                                discountPercent,
+                                applyDiscount: discountPercent > 0,
+                              }
+                            : item,
+                        ),
+                      ).catch(() => null);
+                    }}
                     ticketSaving={ticketSaving}
                     cancellationPending={Boolean(cancellingLineId)}
                     cancellingLine={cancellingLineId === line.id}
-                    readOnly={selectedTicketPaid || qpayPaymentActive}
+                    readOnly={
+                      selectedTicketPaid ||
+                      qpayPaymentActive ||
+                      checkoutSubmitting ||
+                      cardProcessing
+                    }
                     formatPrice={formatMoney}
                     onQuantityChange={(delta) => void changeQty(line.id, delta)}
                     onNoteChange={(note) => updateNote(line.id, note)}
@@ -4656,20 +4436,13 @@ function RestaurantPosContent() {
                 ))
               )}
             </div>
-
           </div>
 
-          <div className="min-h-0 max-h-[46dvh] shrink-0 overflow-y-auto overscroll-contain border-t border-slate-200 pt-2 pr-1 max-xl:max-h-[42dvh]">
+          <div
+            className={`${workspaceStyles.summary} min-h-0 shrink-0 overflow-y-auto overscroll-contain border-t border-[#273647] pt-2 pr-1`}
+          >
             <TotalLine
-              label={
-                discountIsActive && employeeDiscount
-                  ? `Хямдрал (цагийн ${activeDiscountPercent}% / ажилтан ${employeeDiscount.discountPercent}%)`
-                  : discountIsActive
-                    ? `Цагийн хямдрал (${activeDiscountPercent}%)`
-                    : employeeDiscount
-                      ? `Ажилтны хөнгөлөлт (${employeeDiscount.discountPercent}%)`
-                      : "Хямдрал"
-              }
+              label="Сонгосон хөнгөлөлт"
               value={
                 discount > 0 ? `-${formatMoney(discount)}` : formatMoney(0)
               }
@@ -4677,101 +4450,8 @@ function RestaurantPosContent() {
             <TotalLine label="Sub total" value={formatMoney(subtotal)} />
             <TotalLine label="Total" value={formatMoney(total)} strong />
 
-            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-              <div className="flex items-center gap-2">
-                <BadgePercent className="h-4 w-4 text-emerald-600" />
-                <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">
-                  Ажилтны хөнгөлөлт
-                </p>
-              </div>
-              {employeeDiscount ? (
-                <div className="mt-2 flex items-center justify-between gap-3 rounded-lg bg-emerald-50 px-3 py-2.5">
-                  <div className="min-w-0">
-                    <p className="truncate text-xs font-black text-emerald-800">
-                      {employeeDiscount.name}
-                    </p>
-                    <p className="mt-0.5 text-[11px] font-bold text-slate-500">
-                      {employeeDiscount.phone} ·{" "}
-                      {employeeDiscount.discountPercent}%
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmployeeDiscount(null);
-                      setEmployeePhone("");
-                      setEmployeeDiscountError("");
-                      setCheckoutError("");
-                    }}
-                    disabled={checkoutSubmitting || qpayPaymentActive}
-                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-emerald-200 text-emerald-700 transition hover:bg-white disabled:opacity-50"
-                    aria-label="Ажилтны хөнгөлөлтийг салгах"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-2 flex gap-2">
-                  <input
-                    inputMode="numeric"
-                    maxLength={8}
-                    value={employeePhone}
-                    onChange={(event) => {
-                      setEmployeePhone(
-                        event.target.value.replace(/\D/g, "").slice(0, 8),
-                      );
-                      setEmployeeDiscount(null);
-                      setEmployeeDiscountError("");
-                      setCheckoutError("");
-                    }}
-                    onKeyDown={(event) => {
-                      if (
-                        event.key === "Enter" &&
-                        employeePhone.length === 8 &&
-                        !employeeDiscountLoading
-                      ) {
-                        event.preventDefault();
-                        void resolveEmployeeDiscount(employeePhone, true).catch(
-                          () => null,
-                        );
-                      }
-                    }}
-                    disabled={checkoutSubmitting || qpayPaymentActive}
-                    placeholder="Ажилтны утасны 8 орон"
-                    className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-500 focus:border-emerald-400 focus:bg-white disabled:opacity-50"
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void resolveEmployeeDiscount(employeePhone, true).catch(
-                        () => null,
-                      )
-                    }
-                    disabled={
-                      employeePhone.length !== 8 ||
-                      employeeDiscountLoading ||
-                      checkoutSubmitting ||
-                      qpayPaymentActive
-                    }
-                    className="flex h-10 min-w-16 items-center justify-center rounded-lg bg-slate-900 px-3 text-xs font-black text-slate-900 disabled:opacity-40"
-                  >
-                    {employeeDiscountLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      "Шалгах"
-                    )}
-                  </button>
-                </div>
-              )}
-              {employeeDiscountError ? (
-                <p className="mt-2 text-[11px] font-bold leading-4 text-rose-600">
-                  {employeeDiscountError}
-                </p>
-              ) : null}
-            </div>
-
             {ebarimtReady && paymentMethod !== "CREDIT" ? (
-              <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="mt-3 rounded-xl border border-[#273647] bg-[#122131] p-3 shadow-sm">
                 <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">
                   Ebarimt авах төрөл
                 </p>
@@ -4788,8 +4468,8 @@ function RestaurantPosContent() {
                     disabled={checkoutSubmitting || qpayPaymentActive}
                     className={`flex h-10 items-center justify-center gap-2 rounded-lg border text-xs font-black transition disabled:opacity-50 ${
                       ebarimtBuyerMode === "B2C"
-                        ? "border-emerald-300 bg-emerald-300 text-slate-950"
-                        : "border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50"
+                        ? "border-emerald-300 bg-emerald-300 text-white"
+                        : "border-[#273647] bg-[#0d1c2d] text-slate-300 hover:border-emerald-300 hover:bg-emerald-300/10"
                     }`}
                   >
                     <UserRound className="h-4 w-4" />
@@ -4804,8 +4484,8 @@ function RestaurantPosContent() {
                     disabled={checkoutSubmitting || qpayPaymentActive}
                     className={`flex h-10 items-center justify-center gap-2 rounded-lg border text-xs font-black transition disabled:opacity-50 ${
                       ebarimtBuyerMode === "B2B"
-                        ? "border-emerald-300 bg-emerald-300 text-slate-950"
-                        : "border-slate-200 bg-slate-50 text-slate-600 hover:border-emerald-300 hover:bg-emerald-50"
+                        ? "border-emerald-300 bg-emerald-300 text-white"
+                        : "border-[#273647] bg-[#0d1c2d] text-slate-300 hover:border-emerald-300 hover:bg-emerald-300/10"
                     }`}
                   >
                     <Building2 className="h-4 w-4" />
@@ -4833,7 +4513,7 @@ function RestaurantPosContent() {
                         }}
                         disabled={checkoutSubmitting || qpayPaymentActive}
                         placeholder="Регистрийн 7 орон"
-                        className="h-10 min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-500 focus:border-emerald-400 focus:bg-white disabled:opacity-50"
+                        className="h-10 min-w-0 flex-1 rounded-lg border border-[#273647] bg-[#0d1c2d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-400 focus:bg-[#122131] disabled:opacity-50"
                       />
                       <button
                         type="button"
@@ -4846,7 +4526,7 @@ function RestaurantPosContent() {
                           checkoutSubmitting ||
                           qpayPaymentActive
                         }
-                        className="flex h-10 min-w-16 items-center justify-center rounded-lg bg-slate-900 px-3 text-xs font-black text-slate-900 disabled:opacity-40"
+                        className="flex h-10 min-w-16 items-center justify-center rounded-lg bg-slate-900 px-3 text-xs font-black text-slate-100 disabled:opacity-40"
                       >
                         {companyLookupLoading ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -4856,7 +4536,7 @@ function RestaurantPosContent() {
                       </button>
                     </div>
                     {companyLookup ? (
-                      <div className="mt-2 flex items-start gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] font-bold leading-4 text-emerald-700">
+                      <div className="mt-2 flex items-start gap-2 rounded-lg bg-emerald-300/10 px-3 py-2 text-[11px] font-bold leading-4 text-emerald-200">
                         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                         <span>
                           {companyLookup.name || "Байгууллага"} · TIN{" "}
@@ -4883,7 +4563,7 @@ function RestaurantPosContent() {
                   type="button"
                   onClick={openCreditList}
                   disabled={!user.organizationId}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 text-[11px] font-black text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-500"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-300/10 px-2.5 text-[11px] font-black text-amber-200 transition hover:bg-amber-300/15 disabled:cursor-not-allowed disabled:border-[#273647] disabled:bg-[#0d1c2d] disabled:text-slate-500"
                 >
                   <HandCoins className="h-3.5 w-3.5" />
                   Зээлийн жагсаалт
@@ -4929,8 +4609,8 @@ function RestaurantPosContent() {
                         isActive
                           ? "border-[#92d9ff] bg-[#92d9ff] text-[#003548] shadow-lg shadow-[#00c2ff]/20"
                           : option.enabled
-                            ? "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:bg-sky-50"
-                            : "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500"
+                            ? "border-[#273647] bg-[#122131] text-slate-300 hover:border-sky-300/40 hover:bg-sky-300/10"
+                            : "cursor-not-allowed border-[#273647] bg-[#122131] text-slate-500"
                       }`}
                     >
                       <Icon className="h-4 w-4" />
@@ -4940,399 +4620,465 @@ function RestaurantPosContent() {
                 })}
               </div>
             </div>
-
           </div>
           {selectedTicketPaid ? (
-            <button type="button" onClick={() => setPaymentDialogOpen(true)} aria-haspopup="dialog" className="mt-2 min-h-9 w-full shrink-0 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 transition-colors hover:bg-emerald-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500">
+            <button
+              type="button"
+              onClick={() => setPaymentDialogOpen(true)}
+              aria-haspopup="dialog"
+              className="mt-2 min-h-9 w-full shrink-0 rounded-lg border border-emerald-300 bg-emerald-300/10 px-3 py-2 text-xs font-bold text-emerald-200 transition-colors hover:bg-emerald-300/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500"
+            >
               Төлсөн захиалга · Ширээ чөлөөлөх
             </button>
           ) : null}
         </aside>
       </div>
 
-      {notice ? <RestaurantNotice message={notice} onDismiss={dismissNotice} /> : null}
+      {notice ? (
+        <RestaurantNotice message={notice} onDismiss={dismissNotice} />
+      ) : null}
       {borrowerDialogOpen && user.organizationId ? (
-        <RestaurantBorrowerDialog organizationId={user.organizationId} onClose={() => setBorrowerDialogOpen(false)} onCreated={handleBorrowerCreated} />
+        <RestaurantBorrowerDialog
+          organizationId={user.organizationId}
+          onClose={() => setBorrowerDialogOpen(false)}
+          onCreated={handleBorrowerCreated}
+        />
       ) : null}
       {paymentDialogOpen ? (
-        <RestaurantPaymentDialog title={selectedTicketPaid ? "Төлсөн захиалга" : `${selectedPayment.label} төлбөр`} tableLabel={selectedTable.label} amount={formatMoney(total)} busy={checkoutSubmitting || cardProcessing || cardSetupSubmitting || clearSubmitting} onClose={() => setPaymentDialogOpen(false)}>
-            {paymentMethod === "CARD" ? (
-              <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-2.5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-black text-sky-800">
-                      Картын terminal
-                    </p>
-                    <p className="mt-1 text-[11px] font-semibold leading-4 text-sky-700">
-                      {cardTerminalReady
-                        ? cardPaymentModeLabel
-                        : `${cardPaymentModeLabel} Terminal холбовол төлбөр terminal руу илгээгдэнэ.`}
-                    </p>
-                  </div>
-                  {cardTerminalReady ? (
-                    <span className="shrink-0 rounded-full bg-emerald-300 px-2 py-1 text-[10px] font-black text-slate-950">
-                      READY
-                    </span>
-                  ) : (
-                    <span className="shrink-0 rounded-full bg-amber-300 px-2 py-1 text-[10px] font-black text-slate-950">
-                      MANUAL
-                    </span>
-                  )}
-                </div>
-
-                {cardMessage ? (
-                  <p className="mt-2 rounded-lg border border-sky-200 bg-white px-3 py-2 text-xs font-bold leading-5 text-sky-800">
-                    {cardMessage}
+        <RestaurantPaymentDialog
+          title={
+            selectedTicketPaid
+              ? "Төлсөн захиалга"
+              : `${selectedPayment.label} төлбөр`
+          }
+          tableLabel={selectedTable.label}
+          amount={formatMoney(total)}
+          busy={
+            checkoutSubmitting ||
+            cardProcessing ||
+            cardSetupSubmitting ||
+            clearSubmitting
+          }
+          onClose={() => setPaymentDialogOpen(false)}
+        >
+          {!selectedTicketPaid ? (
+            <RestaurantEmployeeDiscount
+              customer={employeeDiscount}
+              phone={employeePhone}
+              loading={employeeDiscountLoading}
+              disabled={
+                checkoutSubmitting || cardProcessing || qpayPaymentActive
+              }
+              error={employeeDiscountError}
+              onPhoneChange={(phone) => {
+                setEmployeePhone(phone);
+                setEmployeeDiscount(null);
+                setEmployeeDiscountError("");
+                setCheckoutError("");
+              }}
+              onCheck={() =>
+                void resolveEmployeeDiscount(employeePhone, true).catch(
+                  () => null,
+                )
+              }
+              onRemove={() => {
+                setEmployeeDiscount(null);
+                setEmployeePhone("");
+                setEmployeeDiscountError("");
+                setCheckoutError("");
+              }}
+            />
+          ) : null}
+          {paymentMethod === "CARD" ? (
+            <div className="mt-3 rounded-xl border border-sky-300/25 bg-sky-300/10 p-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-sky-200">
+                    Картын terminal
                   </p>
-                ) : null}
-
-                {!cardTerminalReady ? (
-                  <div className="mt-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowCardTerminalSetup((current) => !current);
-                        setCardSetupError("");
-                      }}
-                      className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-sky-300 bg-white px-3 text-[11px] font-black text-sky-700 transition hover:bg-sky-100"
-                    >
-                      <CreditCard className="h-3.5 w-3.5" />
-                      {showCardTerminalSetup
-                        ? "Terminal тохиргоо хаах"
-                        : "Terminal тохируулах"}
-                    </button>
-
-                    {showCardTerminalSetup ? (
-                      <div className="mt-3 space-y-3">
-                        <div className="grid grid-cols-2 gap-2">
-                          {(["ANDROID_PGW", "MINU_AGENT"] as const).map(
-                            (provider) => (
-                              <button
-                                key={provider}
-                                type="button"
-                                onClick={() => {
-                                  setCardSetupProvider(provider);
-                                  setCardSetupError("");
-                                }}
-                                className={`h-9 rounded-lg border text-xs font-black transition ${
-                                  cardSetupProvider === provider
-                                    ? "border-sky-300 bg-sky-300 text-slate-950"
-                                    : "border-slate-200 bg-white text-slate-600 hover:border-sky-300 hover:text-sky-700"
-                                }`}
-                              >
-                                {provider === "ANDROID_PGW"
-                                  ? "Android PGW"
-                                  : "Minu Agent"}
-                              </button>
-                            ),
-                          )}
-                        </div>
-
-                        {cardSetupProvider === "ANDROID_PGW" ? (
-                          <label className="block">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-sky-700">
-                              Bridge URL
-                            </span>
-                            <input
-                              value={cardSetupBridgeUrl}
-                              onChange={(event) =>
-                                setCardSetupBridgeUrl(event.target.value)
-                              }
-                              placeholder={DEFAULT_ANDROID_PGW_BRIDGE_URL}
-                              className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-500 focus:border-sky-400"
-                            />
-                          </label>
-                        ) : (
-                          <div className="space-y-2">
-                            <input
-                              value={cardSetupTerminalId}
-                              onChange={(event) =>
-                                setCardSetupTerminalId(event.target.value)
-                              }
-                              placeholder="Minu terminalId"
-                              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-500 focus:border-sky-400"
-                            />
-                            <div className="grid grid-cols-2 gap-2">
-                              <input
-                                value={cardSetupMinuUsername}
-                                onChange={(event) =>
-                                  setCardSetupMinuUsername(event.target.value)
-                                }
-                                placeholder={
-                                  selectedRegister?.minuAgentUsername ||
-                                  "Minu username"
-                                }
-                                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-500 focus:border-sky-400"
-                              />
-                              <input
-                                value={cardSetupMinuBranchId}
-                                onChange={(event) =>
-                                  setCardSetupMinuBranchId(event.target.value)
-                                }
-                                placeholder={
-                                  selectedRegister?.minuAgentBranchId ||
-                                  "Minu branchId"
-                                }
-                                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-500 focus:border-sky-400"
-                              />
-                            </div>
-                            <input
-                              value={cardSetupMinuPassword}
-                              onChange={(event) =>
-                                setCardSetupMinuPassword(event.target.value)
-                              }
-                              type="password"
-                              placeholder={
-                                selectedRegister?.minuAgentPasswordSet
-                                  ? "Password хадгалагдсан бол хоосон үлдээж болно"
-                                  : "Minu password"
-                              }
-                              className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-500 focus:border-sky-400"
-                            />
-                          </div>
-                        )}
-
-                        {cardSetupError ? (
-                          <p className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-100">
-                            {cardSetupError}
-                          </p>
-                        ) : null}
-
-                        <button
-                          type="button"
-                          onClick={() => void handleConnectCardTerminal()}
-                          disabled={cardSetupSubmitting || !selectedRegister}
-                          className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-sky-300 text-xs font-black text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500"
-                        >
-                          {cardSetupSubmitting ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <CreditCard className="h-4 w-4" />
-                          )}
-                          Terminal холбох
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
+                  <p className="mt-1 text-[11px] font-semibold leading-4 text-sky-200">
+                    {cardTerminalReady
+                      ? cardPaymentModeLabel
+                      : `${cardPaymentModeLabel} Terminal холбовол төлбөр terminal руу илгээгдэнэ.`}
+                  </p>
+                </div>
+                {cardTerminalReady ? (
+                  <span className="shrink-0 rounded-full bg-emerald-300 px-2 py-1 text-[10px] font-black text-slate-950">
+                    READY
+                  </span>
+                ) : (
+                  <span className="shrink-0 rounded-full bg-amber-300 px-2 py-1 text-[10px] font-black text-slate-950">
+                    MANUAL
+                  </span>
+                )}
               </div>
-            ) : null}
 
-            {paymentMethod === "CREDIT" ? (
-              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2.5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-black text-amber-800">
-                      Бүртгэлтэй зээлдэгч
-                    </p>
-                    <p className="mt-1 text-[11px] font-semibold leading-4 text-amber-700">
-                      Бүртгэлтэй зээлдэгчээс сонгох эсвэл шинээр бүртгэнэ.
-                    </p>
-                  </div>
+              {cardMessage ? (
+                <p className="mt-2 rounded-lg border border-sky-300/25 bg-[#122131] px-3 py-2 text-xs font-bold leading-5 text-sky-200">
+                  {cardMessage}
+                </p>
+              ) : null}
+
+              {!cardTerminalReady ? (
+                <div className="mt-3">
                   <button
                     type="button"
-                    onClick={() => void loadCreditBorrowers()}
-                    disabled={creditBorrowersLoading}
-                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-2 text-[11px] font-black text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => {
+                      setShowCardTerminalSetup((current) => !current);
+                      setCardSetupError("");
+                    }}
+                    className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-sky-300 bg-[#122131] px-3 text-[11px] font-black text-sky-200 transition hover:bg-sky-100"
                   >
-                    <RefreshCw
-                      className={`h-3.5 w-3.5 ${
-                        creditBorrowersLoading ? "animate-spin" : ""
-                      }`}
-                    />
-                    Шинэчлэх
+                    <CreditCard className="h-3.5 w-3.5" />
+                    {showCardTerminalSetup
+                      ? "Terminal тохиргоо хаах"
+                      : "Terminal тохируулах"}
                   </button>
-                </div>
 
-                <button type="button" onClick={() => setBorrowerDialogOpen(true)} disabled={checkoutSubmitting} aria-haspopup="dialog" className="mt-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-amber-300 text-xs font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-50">
-                  <Plus aria-hidden="true" className="h-4 w-4" />Зээлдэгч бүртгэх
-                </button>
-                <label className="mt-3 flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3">
-                  <Search className="h-3.5 w-3.5 text-slate-500" />
-                  <input
-                    value={creditSearch}
-                    onChange={(event) => setCreditSearch(event.target.value)}
-                    placeholder="Нэр, утас, ажилтан хайх..."
-                    className="h-full min-w-0 flex-1 bg-transparent text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-500"
-                  />
-                </label>
+                  {showCardTerminalSetup ? (
+                    <div className="mt-3 space-y-3">
+                      <div className="grid grid-cols-2 gap-2">
+                        {(["ANDROID_PGW", "MINU_AGENT"] as const).map(
+                          (provider) => (
+                            <button
+                              key={provider}
+                              type="button"
+                              onClick={() => {
+                                setCardSetupProvider(provider);
+                                setCardSetupError("");
+                              }}
+                              className={`h-9 rounded-lg border text-xs font-black transition ${
+                                cardSetupProvider === provider
+                                  ? "border-sky-300 bg-sky-300 text-slate-950"
+                                  : "border-white/10 bg-[#122131] text-slate-600 hover:border-sky-300 hover:text-sky-200"
+                              }`}
+                            >
+                              {provider === "ANDROID_PGW"
+                                ? "Android PGW"
+                                : "Minu Agent"}
+                            </button>
+                          ),
+                        )}
+                      </div>
 
-                {creditBorrowersError ? (
-                  <p className="mt-2 rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-200">
-                    {creditBorrowersError}
-                  </p>
-                ) : null}
+                      {cardSetupProvider === "ANDROID_PGW" ? (
+                        <label className="block">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-sky-200">
+                            Bridge URL
+                          </span>
+                          <input
+                            value={cardSetupBridgeUrl}
+                            onChange={(event) =>
+                              setCardSetupBridgeUrl(event.target.value)
+                            }
+                            placeholder={DEFAULT_ANDROID_PGW_BRIDGE_URL}
+                            className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400"
+                          />
+                        </label>
+                      ) : (
+                        <div className="space-y-2">
+                          <input
+                            value={cardSetupTerminalId}
+                            onChange={(event) =>
+                              setCardSetupTerminalId(event.target.value)
+                            }
+                            placeholder="Minu terminalId"
+                            className="h-9 w-full rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400"
+                          />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input
+                              value={cardSetupMinuUsername}
+                              onChange={(event) =>
+                                setCardSetupMinuUsername(event.target.value)
+                              }
+                              placeholder={
+                                selectedRegister?.minuAgentUsername ||
+                                "Minu username"
+                              }
+                              className="h-9 rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400"
+                            />
+                            <input
+                              value={cardSetupMinuBranchId}
+                              onChange={(event) =>
+                                setCardSetupMinuBranchId(event.target.value)
+                              }
+                              placeholder={
+                                selectedRegister?.minuAgentBranchId ||
+                                "Minu branchId"
+                              }
+                              className="h-9 rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400"
+                            />
+                          </div>
+                          <input
+                            value={cardSetupMinuPassword}
+                            onChange={(event) =>
+                              setCardSetupMinuPassword(event.target.value)
+                            }
+                            type="password"
+                            placeholder={
+                              selectedRegister?.minuAgentPasswordSet
+                                ? "Password хадгалагдсан бол хоосон үлдээж болно"
+                                : "Minu password"
+                            }
+                            className="h-9 w-full rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400"
+                          />
+                        </div>
+                      )}
 
-                <div className="mt-3 max-h-28 space-y-2 overflow-y-auto pr-1">
-                  {creditBorrowersLoading ? (
-                    <div className="flex h-20 items-center justify-center gap-2 text-xs font-bold text-slate-500">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Зээлдэгчид ачаалж байна...
+                      {cardSetupError ? (
+                        <p className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-100">
+                          {cardSetupError}
+                        </p>
+                      ) : null}
+
+                      <button
+                        type="button"
+                        onClick={() => void handleConnectCardTerminal()}
+                        disabled={cardSetupSubmitting || !selectedRegister}
+                        className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-sky-300 text-xs font-black text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500"
+                      >
+                        {cardSetupSubmitting ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <CreditCard className="h-4 w-4" />
+                        )}
+                        Terminal холбох
+                      </button>
                     </div>
-                  ) : filteredCreditBorrowers.length === 0 ? (
-                    <p className="rounded-lg border border-dashed border-slate-300 bg-white/60 px-3 py-3 text-xs font-bold leading-5 text-slate-500">
-                      Бүртгэлтэй зээлдэгч олдсонгүй.
-                    </p>
-                  ) : (
-                    filteredCreditBorrowers.map((borrower) => {
-                      const isSelected =
-                        borrower.id === selectedCreditBorrowerId;
-                      return (
-                        <button
-                          key={borrower.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedCreditBorrowerId(borrower.id);
-                            setCheckoutError("");
-                          }}
-                          className={`w-full rounded-lg border px-3 py-2 text-left transition ${
-                            isSelected
-                              ? "border-amber-300 bg-amber-300 text-slate-950"
-                              : "border-slate-200 bg-white text-slate-700 hover:border-amber-300"
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {paymentMethod === "CREDIT" ? (
+            <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/5 p-2.5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-amber-200">
+                    Бүртгэлтэй зээлдэгч
+                  </p>
+                  <p className="mt-1 text-[11px] font-semibold leading-4 text-amber-200">
+                    Бүртгэлтэй зээлдэгчээс сонгох эсвэл шинээр бүртгэнэ.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadCreditBorrowers()}
+                  disabled={creditBorrowersLoading}
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-[#122131] px-2 text-[11px] font-black text-amber-200 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <RefreshCw
+                    className={`h-3.5 w-3.5 ${
+                      creditBorrowersLoading ? "animate-spin" : ""
+                    }`}
+                  />
+                  Шинэчлэх
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setBorrowerDialogOpen(true)}
+                disabled={checkoutSubmitting}
+                aria-haspopup="dialog"
+                className="mt-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-amber-300 text-xs font-bold text-amber-200 transition hover:bg-amber-100 disabled:opacity-50"
+              >
+                <Plus aria-hidden="true" className="h-4 w-4" />
+                Зээлдэгч бүртгэх
+              </button>
+              <label className="mt-3 flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-[#122131] px-3">
+                <Search className="h-3.5 w-3.5 text-slate-500" />
+                <input
+                  value={creditSearch}
+                  onChange={(event) => setCreditSearch(event.target.value)}
+                  placeholder="Нэр, утас, ажилтан хайх..."
+                  className="h-full min-w-0 flex-1 bg-transparent text-xs font-semibold text-slate-100 outline-none placeholder:text-slate-500"
+                />
+              </label>
+
+              {creditBorrowersError ? (
+                <p className="mt-2 rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-200">
+                  {creditBorrowersError}
+                </p>
+              ) : null}
+
+              <div className="mt-3 max-h-28 space-y-2 overflow-y-auto pr-1">
+                {creditBorrowersLoading ? (
+                  <div className="flex h-20 items-center justify-center gap-2 text-xs font-bold text-slate-500">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Зээлдэгчид ачаалж байна...
+                  </div>
+                ) : filteredCreditBorrowers.length === 0 ? (
+                  <p className="rounded-lg border border-dashed border-slate-300 bg-[#122131]/60 px-3 py-3 text-xs font-bold leading-5 text-slate-500">
+                    Бүртгэлтэй зээлдэгч олдсонгүй.
+                  </p>
+                ) : (
+                  filteredCreditBorrowers.map((borrower) => {
+                    const isSelected = borrower.id === selectedCreditBorrowerId;
+                    return (
+                      <button
+                        key={borrower.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCreditBorrowerId(borrower.id);
+                          setCheckoutError("");
+                        }}
+                        className={`w-full rounded-lg border px-3 py-2 text-left transition ${
+                          isSelected
+                            ? "border-amber-300 bg-amber-300 text-slate-950"
+                            : "border-white/10 bg-[#122131] text-slate-700 hover:border-amber-300"
+                        }`}
+                      >
+                        <span className="flex items-center justify-between gap-2">
+                          <span className="truncate text-xs font-black">
+                            {borrower.borrowerName}
+                          </span>
+                          <span className="shrink-0 rounded-full bg-black/10 px-2 py-0.5 text-[10px] font-black">
+                            {borrower.targetType === "COMPANY"
+                              ? "Байгууллага"
+                              : "Хувь хүн"}
+                          </span>
+                        </span>
+                        <span
+                          className={`mt-1 block truncate text-[11px] font-semibold ${
+                            isSelected ? "text-slate-100" : "text-slate-500"
                           }`}
                         >
-                          <span className="flex items-center justify-between gap-2">
-                            <span className="truncate text-xs font-black">
-                              {borrower.borrowerName}
-                            </span>
-                            <span className="shrink-0 rounded-full bg-black/10 px-2 py-0.5 text-[10px] font-black">
-                              {borrower.targetType === "COMPANY"
-                                ? "Байгууллага"
-                                : "Хувь хүн"}
-                            </span>
-                          </span>
-                          <span
-                            className={`mt-1 block truncate text-[11px] font-semibold ${
-                              isSelected ? "text-slate-800" : "text-slate-500"
-                            }`}
-                          >
-                            {creditBorrowerSubtitle(borrower)}
-                          </span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-
-                <div className="mt-3 grid grid-cols-[90px_minmax(0,1fr)] gap-2">
-                  <label className="block">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">
-                      Хугацаа
-                    </span>
-                    <input
-                      value={creditTermMonths}
-                      onChange={(event) =>
-                        setCreditTermMonths(event.target.value)
-                      }
-                      inputMode="numeric"
-                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-amber-400"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">
-                      Тэмдэглэл
-                    </span>
-                    <input
-                      value={creditNote}
-                      onChange={(event) => setCreditNote(event.target.value)}
-                      placeholder="Заавал биш"
-                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 outline-none placeholder:text-slate-500 focus:border-amber-400"
-                    />
-                  </label>
-                </div>
-
-                <p className="mt-2 text-[11px] font-bold leading-4 text-amber-800">
-                  Төлөх дүн {formatMoney(total)} · {safeCreditTermMonths} сар ·
-                  дуусах өдөр {creditDueDateLabel}
-                </p>
+                          {creditBorrowerSubtitle(borrower)}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
               </div>
-            ) : null}
 
-            {checkoutError ? (
-              <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
-                {checkoutError}
+              <div className="mt-3 grid grid-cols-[90px_minmax(0,1fr)] gap-2">
+                <label className="block">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">
+                    Хугацаа
+                  </span>
+                  <input
+                    value={creditTermMonths}
+                    onChange={(event) =>
+                      setCreditTermMonths(event.target.value)
+                    }
+                    inputMode="numeric"
+                    className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-slate-100 outline-none focus:border-amber-400"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">
+                    Тэмдэглэл
+                  </span>
+                  <input
+                    value={creditNote}
+                    onChange={(event) => setCreditNote(event.target.value)}
+                    placeholder="Заавал биш"
+                    className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-semibold text-slate-100 outline-none placeholder:text-slate-500 focus:border-amber-400"
+                  />
+                </label>
+              </div>
+
+              <p className="mt-2 text-[11px] font-bold leading-4 text-amber-200">
+                Төлөх дүн {formatMoney(total)} · {safeCreditTermMonths} сар ·
+                дуусах өдөр {creditDueDateLabel}
               </p>
-            ) : null}
+            </div>
+          ) : null}
 
-            {selectedTicketPaid ? (
-              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                <p className="text-xs font-bold leading-5 text-emerald-800">
-                  {orderMode === "DINE_IN"
-                    ? "Төлбөр авсан ч үйлчлүүлэгч ширээн дээр сууж байгаа гэж үзнэ. Гарсны дараа ширээг чөлөөлнө."
-                    : "Төлбөр бүртгэгдэж, захиалга гал тогоо руу илгээгдсэн. Захиалгыг хүлээлгэн өгсний дараа энэ байрыг чөлөөлнө."}
+          {checkoutError ? (
+            <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
+              {checkoutError}
+            </p>
+          ) : null}
+
+          {selectedTicketPaid ? (
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+              <p className="text-xs font-bold leading-5 text-emerald-800">
+                {orderMode === "DINE_IN"
+                  ? "Төлбөр авсан ч үйлчлүүлэгч ширээн дээр сууж байгаа гэж үзнэ. Гарсны дараа ширээг чөлөөлнө."
+                  : "Төлбөр бүртгэгдэж, захиалга гал тогоо руу илгээгдсэн. Захиалгыг хүлээлгэн өгсний дараа энэ байрыг чөлөөлнө."}
+              </p>
+              <button
+                type="button"
+                onClick={() => void handleClearTable()}
+                disabled={clearSubmitting}
+                className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-emerald-300 text-sm font-black text-slate-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {clearSubmitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                Ширээ чөлөөлөх
+              </button>
+            </div>
+          ) : (
+            <div className="mt-5 border-t border-white/10 pt-4">
+              {orderMode === "DINE_IN" && hasUnsentItems ? (
+                <p className="mb-3 flex items-start gap-2 text-xs leading-5 text-slate-400">
+                  <ChefHat
+                    aria-hidden="true"
+                    className="mt-0.5 h-4 w-4 shrink-0 text-sky-300"
+                  />
+                  Төлбөр баталгаажмагц шинэ хоолнууд гал тогоо руу илгээгдэнэ.
                 </p>
-                <button
-                  type="button"
-                  onClick={() => void handleClearTable()}
-                  disabled={clearSubmitting}
-                  className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-emerald-300 text-sm font-black text-slate-950 transition hover:bg-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {clearSubmitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4" />
-                  )}
-                  Ширээ чөлөөлөх
-                </button>
-              </div>
-            ) : (
-              <div className="sticky bottom-0 z-10 -mx-1 mt-3 border-t border-slate-200 bg-[#fffdf8] px-1 pt-3 pb-1 shadow-[0_-12px_20px_rgba(255,253,248,0.96)]">
-                {selectedTicketActive ? (
-                  <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                    <p className="text-xs font-bold leading-5 text-amber-800">
-                      Энэ ширээн дээр төлбөр аваагүй ticket байна. Хэрвээ
-                      захиалгыг цуцлаад ширээг суллах бол доорх товчийг дарна.
-                      Гал тогоонд идэвхтэй ticket байвал хамт цуцлагдаж
-                      queue-ээс гарна.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void handleClearTable({ forceCancel: true })
-                      }
-                      disabled={
-                        clearSubmitting ||
-                        ticketSaving ||
-                        kitchenSubmitting ||
-                        checkoutSubmitting ||
-                        qpayPaymentActive
-                      }
-                      className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-amber-300 bg-white text-sm font-black text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {clearSubmitting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                      Захиалга цуцалж ширээ суллах
-                    </button>
-                  </div>
-                ) : null}
-
-                {orderMode === "DINE_IN" && hasUnsentItems ? (
-                  <p className="mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold leading-5 text-amber-800">
-                    Төлбөр амжилттай болсны дараа илгээгдээгүй хоолнууд гал
-                    тогоо руу автоматаар явна.
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void handleCheckout()}
+                disabled={!canCheckout}
+                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-sky-300 px-4 text-sm font-bold text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-100"
+              >
+                {checkoutSubmitting ? (
+                  <Loader2
+                    aria-hidden="true"
+                    className="h-4 w-4 animate-spin"
+                  />
+                ) : (
+                  <SelectedPaymentIcon aria-hidden="true" className="h-4 w-4" />
+                )}
+                {checkoutSubmitting
+                  ? "Төлбөр бүртгэж байна..."
+                  : selectedPayment.action}
+              </button>
+              {selectedTicketActive ? (
+                <details className="mt-4 rounded-lg border border-white/10 px-3 py-2">
+                  <summary className="cursor-pointer text-xs font-semibold text-slate-400 transition hover:text-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300">
+                    Захиалга цуцлах
+                  </summary>
+                  <p className="mt-3 text-xs leading-5 text-slate-400">
+                    Захиалга болон гал тогоонд илгээсэн хоолнууд цуцлагдаж,
+                    ширээ сулрана.
                   </p>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => void handleCheckout()}
-                  disabled={!canCheckout}
-                  className="flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-[#00c2ff] text-sm font-black text-[#003548] shadow-lg shadow-[#00c2ff]/20 transition hover:bg-[#75d1ff] disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500 disabled:shadow-none"
-                >
-                  {checkoutSubmitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <SelectedPaymentIcon className="h-4 w-4" />
-                  )}
-                  {checkoutSubmitting
-                    ? "Борлуулалт бүртгэж байна..."
-                    : selectedPayment.action}
-                </button>
-              </div>
-            )}
-                  </RestaurantPaymentDialog>
+                  <button
+                    type="button"
+                    onClick={() => void handleClearTable({ forceCancel: true })}
+                    disabled={
+                      clearSubmitting ||
+                      ticketSaving ||
+                      kitchenSubmitting ||
+                      checkoutSubmitting ||
+                      qpayPaymentActive
+                    }
+                    className="mt-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-rose-300/30 px-3 text-xs font-semibold text-rose-200 transition hover:bg-rose-300/10 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-300"
+                  >
+                    {clearSubmitting ? (
+                      <Loader2
+                        aria-hidden="true"
+                        className="h-4 w-4 animate-spin"
+                      />
+                    ) : (
+                      <Trash2 aria-hidden="true" className="h-4 w-4" />
+                    )}
+                    Захиалга цуцалж ширээ суллах
+                  </button>
+                </details>
+              ) : null}
+            </div>
+          )}
+        </RestaurantPaymentDialog>
       ) : null}
 
       {creditListOpen ? (
@@ -6152,143 +5898,6 @@ function RestaurantPosContent() {
               )}
             </div>
           </div>
-        </div>
-      ) : null}
-
-      {discountModalOpen && canManageDiscount ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
-          <form
-            onSubmit={handleSaveDiscountSchedule}
-            className="w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#242735] shadow-2xl"
-          >
-            <div className="flex items-start justify-between gap-4 border-b border-white/10 px-6 py-5">
-              <div>
-                <p className="text-xs font-black uppercase tracking-[0.2em] text-emerald-300">
-                  Owner тохиргоо
-                </p>
-                <h3 className="mt-1 text-2xl font-black text-white">
-                  Цагийн хямдрал
-                </h3>
-                <p className="mt-1 text-sm font-semibold text-slate-400">
-                  Сонгосон цагт хоолнууд автоматаар хямдарна. Уух зүйлс үндсэн
-                  үнээрээ үлдэнэ.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDiscountModalOpen(false)}
-                disabled={discountSaving}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 text-slate-400 hover:bg-white/5 hover:text-white disabled:opacity-50"
-                aria-label="Хаах"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-5 px-6 py-5">
-              <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl border border-white/10 bg-[#11131d] p-4">
-                <span>
-                  <span className="block text-sm font-black text-white">
-                    Автоматаар хэрэглэх
-                  </span>
-                  <span className="mt-1 block text-xs font-semibold text-slate-500">
-                    Унтраавал одоогийн хуваарь хадгалагдана.
-                  </span>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={discountEnabled}
-                  onChange={(event) => setDiscountEnabled(event.target.checked)}
-                  disabled={discountSaving}
-                  className="h-5 w-5 accent-emerald-400"
-                />
-              </label>
-
-              <label className="block">
-                <span className="text-sm font-bold text-slate-300">
-                  Хямдралын хувь
-                </span>
-                <div className="relative mt-2">
-                  <input
-                    type="number"
-                    min="1"
-                    max="99"
-                    step="1"
-                    value={discountPercent}
-                    onChange={(event) => setDiscountPercent(event.target.value)}
-                    disabled={discountSaving}
-                    className="h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 pr-12 text-lg font-black tabular-nums text-white outline-none focus:border-emerald-300 disabled:opacity-60"
-                  />
-                  <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 font-black text-emerald-300">
-                    %
-                  </span>
-                </div>
-              </label>
-
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="text-sm font-bold text-slate-300">
-                    Эхлэх цаг
-                  </span>
-                  <input
-                    type="time"
-                    value={discountStartTime}
-                    onChange={(event) =>
-                      setDiscountStartTime(event.target.value)
-                    }
-                    disabled={discountSaving}
-                    className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-base font-black tabular-nums text-white outline-none focus:border-emerald-300 disabled:opacity-60"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-sm font-bold text-slate-300">
-                    Дуусах цаг
-                  </span>
-                  <input
-                    type="time"
-                    value={discountEndTime}
-                    onChange={(event) => setDiscountEndTime(event.target.value)}
-                    disabled={discountSaving}
-                    className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#11131d] px-4 text-base font-black tabular-nums text-white outline-none focus:border-emerald-300 disabled:opacity-60"
-                  />
-                </label>
-              </div>
-
-              <p className="rounded-lg border border-sky-300/20 bg-sky-300/10 px-3 py-2 text-xs font-semibold leading-5 text-sky-100">
-                Улаанбаатарын цагаар өдөр бүр давтагдана. Дуусах цаг нь эхлэх
-                цагаас эрт байвал шөнө дамнасан хуваарь гэж тооцно.
-              </p>
-
-              {discountError ? (
-                <p className="rounded-lg border border-rose-300/20 bg-rose-300/10 px-3 py-2 text-sm font-bold text-rose-200">
-                  {discountError}
-                </p>
-              ) : null}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 border-t border-white/10 px-6 py-5">
-              <button
-                type="button"
-                onClick={() => setDiscountModalOpen(false)}
-                disabled={discountSaving}
-                className="h-12 rounded-lg border border-white/10 text-sm font-black text-slate-200 hover:bg-white/5 disabled:opacity-50"
-              >
-                Болих
-              </button>
-              <button
-                type="submit"
-                disabled={discountSaving}
-                className="flex h-12 items-center justify-center gap-2 rounded-lg bg-emerald-300 text-sm font-black text-slate-950 hover:bg-emerald-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-              >
-                {discountSaving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <BadgePercent className="h-4 w-4" />
-                )}
-                Хадгалах
-              </button>
-            </div>
-          </form>
         </div>
       ) : null}
 
@@ -7886,7 +7495,7 @@ function TotalLine({
     <div className="mb-2 flex items-center justify-between gap-2 text-xs">
       <span
         className={
-          strong ? "font-bold text-slate-800" : "font-semibold text-slate-500"
+          strong ? "font-bold text-slate-100" : "font-semibold text-slate-400"
         }
       >
         {label}
@@ -7894,8 +7503,8 @@ function TotalLine({
       <span
         className={
           strong
-            ? "text-sm font-bold tabular-nums text-sky-700"
-            : "font-bold tabular-nums text-slate-800"
+            ? "text-sm font-bold tabular-nums text-sky-300"
+            : "font-bold tabular-nums text-slate-100"
         }
       >
         {value}

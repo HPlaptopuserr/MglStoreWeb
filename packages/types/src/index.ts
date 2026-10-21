@@ -35,8 +35,11 @@ export * from "./domain/cash-payment";
 export * from "./domain/business-apps";
 
 export * from "./domain/store-mini-apps";
-export type { MerchantDiagnostics, MerchantDiagnosticsChannel, MerchantConfigurationEvent } from "./domain/merchant-diagnostics";
-
+export type {
+  MerchantDiagnostics,
+  MerchantDiagnosticsChannel,
+  MerchantConfigurationEvent,
+} from "./domain/merchant-diagnostics";
 
 export * from "./domain/stocktake";
 
@@ -46,3 +49,5 @@ export * from "./building";
 export * from "./workforce";
 
 export * from "./workforce-report";
+
+export * from "./domain/restaurant-line-discount";

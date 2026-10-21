@@ -1,3 +1,7 @@
+import {
+  isRestaurantLineDiscountPercent,
+  calculateRestaurantSelectedUnitDiscount,
+} from "@mgl/types";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 import {
@@ -77,6 +81,8 @@ const DEFAULT_TABLES = [
 ];
 
 type TicketLineInput = {
+  applyDiscount?: boolean;
+  discountPercent?: number;
   productId?: string;
   qty?: number;
   note?: string;
@@ -508,6 +514,8 @@ function mapTicket(ticket: TicketWithDetails) {
     price: Number(item.unitPrice),
     qty: item.qty,
     sentQty: item.sentQty,
+    applyDiscount: item.applyDiscount,
+    discountPercent: item.discountPercent,
     note: item.note || "",
     kitchenStation: item.kitchenStation,
     preparationMinutes: item.preparationMinutes,
@@ -527,7 +535,17 @@ function mapTicket(ticket: TicketWithDetails) {
     openedAt: ticket.openedAt.toISOString(),
     sentAt: ticket.sentAt?.toISOString() ?? null,
     closedAt: ticket.closedAt?.toISOString() ?? null,
-    total: items.reduce((sum, item) => sum + item.price * item.qty, 0),
+    total: items.reduce(
+      (sum, item) =>
+        sum +
+        (item.price -
+          calculateRestaurantSelectedUnitDiscount({
+            unitPrice: item.price,
+            discountPercent: item.discountPercent,
+          })) *
+          item.qty,
+      0,
+    ),
     unsentCount: items.reduce(
       (sum, item) => sum + Math.max(0, item.qty - item.sentQty),
       0,
@@ -2254,7 +2272,9 @@ router.patch("/restaurant/pos/kitchen-tickets/:id/status", async (req, res) => {
     const remainingActiveTickets = await prisma.kitchenTicket.count({
       where: {
         restaurantTicketId: updated.restaurantTicket.id,
-        status: { in: ACTIVE_KITCHEN_TICKET_STATUSES },
+        status: {
+          in: [KitchenTicketStatus.NEW, KitchenTicketStatus.PREPARING],
+        },
       },
     });
     return res.json({
@@ -2576,10 +2596,23 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
         .json({ message: access.error.message });
     }
 
+    if (
+      lines.some(
+        (line) =>
+          line.discountPercent !== undefined &&
+          !isRestaurantLineDiscountPercent(line.discountPercent),
+      )
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Хөнгөлөлт 0, 10, 20, 30, 40 хувь байна" });
+    }
     const normalizedLines = lines.map((line) => ({
       productId: String(line.productId || "").trim(),
       qty: Math.floor(Number(line.qty || 0)),
       note: normalizeNote(line.note),
+      applyDiscount: (line.discountPercent ?? 0) > 0,
+      discountPercent: line.discountPercent ?? 0,
     }));
     if (
       normalizedLines.some(
@@ -2781,10 +2814,7 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
           !isSelfService &&
           (activeShift.mode !== "RESTAURANT" ||
             !activeShift.register ||
-            !canUsePosRegisterForMode(
-              activeShift.register.mode,
-              "RESTAURANT",
-            ))
+            !canUsePosRegisterForMode(activeShift.register.mode, "RESTAURANT"))
         ) {
           throw Object.assign(
             new Error(
@@ -2878,6 +2908,8 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
               unitPrice: product.price,
               qty: line.qty,
               note: line.note,
+              applyDiscount: line.applyDiscount,
+              discountPercent: line.discountPercent,
               kitchenStation: product.kitchenStation,
               preparationMinutes: product.preparationMinutes,
             },
@@ -2885,6 +2917,8 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
               productName: product.name,
               qty: line.qty,
               note: line.note,
+              applyDiscount: line.applyDiscount,
+              discountPercent: line.discountPercent,
               kitchenStation: product.kitchenStation,
               preparationMinutes: product.preparationMinutes,
             },

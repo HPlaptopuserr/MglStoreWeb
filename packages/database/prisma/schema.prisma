@@ -3178,6 +3178,8 @@ model RestaurantTicketItem {
   unitPrice          Decimal             @db.Decimal(18, 2)
   qty                Int
   sentQty            Int                 @default(0)
+  applyDiscount      Boolean             @default(false)
+  discountPercent    Int                 @default(0)
   note               String?
   kitchenStation     String?
   preparationMinutes Int?

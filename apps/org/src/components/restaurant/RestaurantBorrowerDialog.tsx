@@ -125,7 +125,7 @@ export function RestaurantBorrowerDialog({
         className="space-y-4"
         aria-busy={saving}
       >
-        <p className="text-xs leading-5 text-slate-500">
+        <p className="text-xs leading-5 text-slate-400">
           Нэр, утас заавал бөглөнө. Бүртгэсний дараа зээлийн төлбөрт сонгох
           боломжтой.
         </p>
@@ -133,7 +133,7 @@ export function RestaurantBorrowerDialog({
           {fields.map((field) => (
             <label
               key={field.name}
-              className="flex flex-col gap-1.5 text-xs font-semibold text-slate-600"
+              className="flex flex-col gap-1.5 text-xs font-semibold text-slate-300"
             >
               <span>
                 {field.label}
@@ -145,7 +145,7 @@ export function RestaurantBorrowerDialog({
                 required={"required" in field && field.required}
                 maxLength={field.maxLength}
                 autoComplete={field.autoComplete}
-                className="h-11 min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-900 outline-none transition focus:border-sky-300 disabled:opacity-60"
+                className="h-11 min-w-0 rounded-lg border border-white/15 bg-[#122131] px-3 text-sm text-white outline-none transition focus:border-sky-300 disabled:opacity-60"
               />
             </label>
           ))}

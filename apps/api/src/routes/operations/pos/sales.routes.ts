@@ -1,3 +1,4 @@
+import { calculateRestaurantSelectedUnitDiscount } from "@mgl/types";
 import {
   calculateCafeRegularCustomerUnitDiscount,
   normalizeCafeRegularCustomerPhone,
@@ -75,11 +76,6 @@ import {
   getRequiredSaleRegisterMode,
 } from "./pos-register-mode";
 import { calculateTakeawayPackagingFee } from "./takeaway-packaging";
-import {
-  calculateRestaurantDiscountAmount,
-  isRestaurantDiscountActive,
-  isRestaurantDiscountEligibleProduct,
-} from "./restaurant-discount";
 import {
   EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
   SELF_SERVICE_TAKEAWAY_PACKAGING_SKU,
@@ -902,45 +898,23 @@ router.post("/pos/sales", async (req, res) => {
     }
 
     if (restaurantTicketId && !isSelfServiceSale) {
-      const pricingTime = new Date();
-      const [pricingTicket, discountSchedule] = await Promise.all([
-        prisma.restaurantTicket.findFirst({
-          where: {
-            id: restaurantTicketId,
-            organizationId: idempotencyOrganizationId,
+      const pricingTicket = await prisma.restaurantTicket.findFirst({
+        where: {
+          id: restaurantTicketId,
+          organizationId: idempotencyOrganizationId,
+        },
+        select: {
+          items: {
+            select: { productId: true, unitPrice: true, discountPercent: true },
           },
-          select: {
-            items: {
-              select: {
-                productId: true,
-                unitPrice: true,
-                product: {
-                  select: {
-                    isRestaurantMenuItem: true,
-                    menuCategory: true,
-                    kitchenStation: true,
-                  },
-                },
-              },
-            },
-          },
-        }),
-        prisma.restaurantDiscountSchedule.findUnique({
-          where: { organizationId: idempotencyOrganizationId },
-        }),
-      ]);
+        },
+      });
       if (!pricingTicket) {
         return res
           .status(404)
           .json({ message: "Рестораны захиалга олдсонгүй" });
       }
 
-      const activePercent = isRestaurantDiscountActive(
-        discountSchedule,
-        pricingTime,
-      )
-        ? discountSchedule!.percent
-        : 0;
       const ticketItemsByProductId = new Map(
         pricingTicket.items.map((item) => [item.productId, item]),
       );
@@ -949,21 +923,13 @@ router.post("/pos/sales", async (req, res) => {
         if (!ticketItem) return line;
 
         const unitPrice = Number(ticketItem.unitPrice);
-        const customerDiscount = regularCustomer
-          ? calculateCafeRegularCustomerUnitDiscount(
-              unitPrice,
-              regularCustomer.discountPercent,
-            )
-          : 0;
-        const scheduledDiscount =
-          activePercent > 0 &&
-          isRestaurantDiscountEligibleProduct(ticketItem.product)
-            ? calculateRestaurantDiscountAmount(unitPrice, activePercent)
-            : 0;
         return {
           ...line,
           unitPrice,
-          discountAmount: Math.max(customerDiscount, scheduledDiscount),
+          discountAmount: calculateRestaurantSelectedUnitDiscount({
+            unitPrice,
+            discountPercent: ticketItem.discountPercent,
+          }),
         };
       });
     }
@@ -1190,14 +1156,10 @@ router.post("/pos/sales", async (req, res) => {
       if (primaryCredit)
         creditWorkDetails = parseCreditWorkDetails(primaryCredit);
     } catch (error) {
-      return res
-        .status(400)
-        .json({
-          message:
-            error instanceof Error
-              ? error.message
-              : "Ажлын мэдээлэл буруу байна",
-        });
+      return res.status(400).json({
+        message:
+          error instanceof Error ? error.message : "Ажлын мэдээлэл буруу байна",
+      });
     }
 
     const creditTermMonths = Math.max(
@@ -1289,9 +1251,7 @@ router.post("/pos/sales", async (req, res) => {
               "Sale branchId нь register branch-тай зөрүүтэй байна",
             );
           }
-          if (
-            !canUsePosRegisterForMode(register.mode, requiredRegisterMode)
-          ) {
+          if (!canUsePosRegisterForMode(register.mode, requiredRegisterMode)) {
             throw toApiError(
               409,
               `Энэ нь ${register.mode} төрлийн касс байна. ${requiredRegisterMode} борлуулалт бүртгэх боломжгүй.`,

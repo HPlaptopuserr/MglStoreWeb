@@ -136,7 +136,7 @@ const stationLabels: Record<string, string> = {
 };
 
 const isActiveStatus = (status: KitchenTicketStatus) =>
-  status === "NEW" || status === "PREPARING" || status === "READY";
+  status === "NEW" || status === "PREPARING";
 
 const getElapsedMinutes = (sentAt: string, now: number) => {
   const sent = new Date(sentAt).getTime();
@@ -590,6 +590,7 @@ export function KitchenDisplayScreen() {
 
   const handleStatusChange = async (ticket: RestaurantKitchenTicket) => {
     if (!isActiveStatus(ticket.status)) return;
+    const nextStatus = ticket.status === "NEW" ? "PREPARING" : "READY";
     if (demoMode) {
       const hasActiveSibling = tickets.some(
         (item) =>
@@ -597,8 +598,15 @@ export function KitchenDisplayScreen() {
           item.restaurantTicket.id === ticket.restaurantTicket.id &&
           isActiveStatus(item.status),
       );
-      setTickets((current) => current.filter((item) => item.id !== ticket.id));
-      if (!hasActiveSibling) announceReadyOrder(ticket);
+      setTickets((current) =>
+        nextStatus === "READY"
+          ? current.filter((item) => item.id !== ticket.id)
+          : current.map((item) =>
+              item.id === ticket.id ? { ...item, status: nextStatus } : item,
+            ),
+      );
+      if (nextStatus === "READY" && !hasActiveSibling)
+        announceReadyOrder(ticket);
       return;
     }
     if (!selectedBranchId) return;
@@ -608,9 +616,13 @@ export function KitchenDisplayScreen() {
       const updated = await updateRestaurantKitchenTicketStatus({
         branchId: selectedBranchId,
         kitchenTicketId: ticket.id,
-        status: "SERVED",
+        status: nextStatus,
       });
-      setTickets((current) => current.filter((item) => item.id !== ticket.id));
+      setTickets((current) =>
+        nextStatus === "READY"
+          ? current.filter((item) => item.id !== ticket.id)
+          : current.map((item) => (item.id === ticket.id ? updated : item)),
+      );
       if (updated.orderCompleted) announceReadyOrder(updated);
     } catch (updateError) {
       setError(
@@ -841,8 +853,8 @@ export function KitchenDisplayScreen() {
       <main className="min-h-0 flex-1 overflow-auto p-3 sm:p-4 lg:p-5">
         {!selectedBranchId && !demoMode ? (
           <EmptyState
-            title="Салбар олдсонгүй"
-            description="Энэ байгууллагад салбар бүртгэсний дараа гал тогооны дэлгэц ашиглана."
+            title="POS касс олдсонгүй"
+            description="Энэ байгууллагад идэвхтэй POS register тохируулсны дараа гал тогооны дэлгэц ашиглана."
             actionLabel="Демо захиалга харах"
             onAction={showDemoTickets}
           />
@@ -947,7 +959,11 @@ function KitchenTicketCard({
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
               <ReceiptText className="size-3.5" />
-              Шинэ захиалга
+              {ticket.status === "NEW"
+                ? "Шинэ захиалга"
+                : ticket.status === "PREPARING"
+                  ? "Бэлтгэж байна"
+                  : "Хоол бэлэн"}
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <h3 className="text-2xl font-black leading-none tracking-tight text-white">
@@ -1029,7 +1045,11 @@ function KitchenTicketCard({
           ) : (
             <CheckCircle2 className="size-4" />
           )}
-          {busy ? "Хааж байна..." : "Бэлэн болсон"}
+          {busy
+            ? "Хадгалж байна..."
+            : ticket.status === "NEW"
+              ? "Бэлтгэж эхлэх"
+              : "Бэлэн болсон"}
         </button>
       </div>
     </article>
