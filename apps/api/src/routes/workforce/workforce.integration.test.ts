@@ -268,12 +268,15 @@ run(
       assert.equal(response.status, 200);
       const XLSX = await import("xlsx");
       const book = XLSX.read(await response.arrayBuffer(), { type: "array" });
-      const sheet = XLSX.utils.sheet_to_json<Record<string, unknown>>(
-        book.Sheets[book.SheetNames[0]],
-      );
-      assert.equal(sheet.length, 1);
-      assert.equal(sheet[0]["Ажилласан минут"], 540);
-      assert.equal(sheet[0]["Бүртгэлтэй өдөр"], 1);
+      assert.equal(book.SheetNames[0], "Ерөнхий тайлан");
+      const sheet = book.Sheets[book.SheetNames[0]];
+      assert.equal(sheet.B4.v, worker.email);
+      assert.equal(sheet.J4.v, "09:00 - 18:00");
+      assert.equal(sheet.AF4.v, 1); // total worked days, after one day column + 7 metric groups
+      assert.equal(sheet.AG4.v, 9);
+      assert.equal(sheet.AH4.v, "-");
+      assert.equal(sheet.A5.v, "Нийт");
+      assert.match(String(response.headers.get("content-disposition")), /filename\*=UTF-8/);
     } finally {
       await prisma.attendanceRecord.deleteMany({
         where: { userId: worker.id },

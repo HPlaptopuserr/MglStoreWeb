@@ -1,10 +1,6 @@
 import { manualAttendanceRouter } from "./manual-attendance.routes";
-import {
-  filterWorkforceReportRows,
-  summarizeWorkforceReport,
-  parseWorkforceReportView,
-} from "@mgl/types";
-import { formatWorkforceInstant } from "../../services/workforce/format";
+import { filterWorkforceReportRows } from "@mgl/types";
+import { exportAttendanceWorkbook } from "../../services/workforce/export/attendance-workbook";
 import { workTasksRouter } from "./work-tasks.routes";
 import { Router, type Router as ExpressRouter } from "express";
 import { requireAuth } from "../../middleware/auth";
@@ -20,8 +16,6 @@ import { managementRouter } from "./management.routes";
 import { workforceBillingRouter } from "./billing.routes";
 import { requestsRouter } from "./requests.routes";
 import { settingsRouter, workforceAdminRouter } from "./settings.routes";
-import { workforceStatusLabels } from "@mgl/types";
-import * as XLSX from "xlsx";
 import { prisma } from "@mgl/database";
 export { workforceAdminRouter };
 export const workforceRoutes: ExpressRouter = Router();
@@ -79,7 +73,6 @@ workforceRoutes.get(
     if (!ctx.canExport)
       throw new WorkforceError(403, "Тайлан экспортлох эрх хүрэлцэхгүй");
     const data = await workforceSnapshot(req);
-    const view = parseWorkforceReportView(req.query.report);
     const rows = filterWorkforceReportRows(data.rows, {
       userId:
         typeof req.query.userId === "string" ? req.query.userId : undefined,
@@ -91,54 +84,14 @@ workforceRoutes.get(
         typeof req.query.status === "string" ? req.query.status : undefined,
       query: typeof req.query.q === "string" ? req.query.q : undefined,
     });
-    const book = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(
-      book,
-      XLSX.utils.json_to_sheet(
-        view === "summary"
-          ? summarizeWorkforceReport(rows).map((r) => ({
-              Ажилтан: r.employeeName,
-              Хэлтэс: r.department,
-              "Бүртгэлтэй өдөр": r.recordedDays,
-              "Хоцорсон өдөр": r.lateDays,
-              "Тасалсан өдөр": r.absentDays,
-              "Ажиллах минут": r.plannedMinutes,
-              "Ажилласан минут": r.workedMinutes,
-              "Хоцролт минут": r.lateMinutes,
-              "Эрт явалт минут": r.earlyMinutes,
-              "Тасалсан минут": r.absentMinutes,
-              "Батлагдсан илүү минут": r.approvedOvertimeMinutes,
-            }))
-          : rows.map((r) => ({
-              Огноо: r.date,
-              Ажилтан: r.employeeName,
-              Хэлтэс: r.department,
-              Төлөв: workforceStatusLabels[r.status],
-              Хуваарь: r.shiftName ?? "",
-              Ирсэн: formatWorkforceInstant(r.clockIn, data.policy.timeZone),
-              Явсан: formatWorkforceInstant(r.clockOut, data.policy.timeZone),
-              "Ажиллах минут": r.plannedMinutes,
-              "Ажилласан минут": r.workedMinutes,
-              "Хоцролт минут": r.lateMinutes,
-              "Эрт явалт минут": r.earlyMinutes,
-              "Тасалсан минут": r.absentMinutes,
-              "Илүү минут": r.overtimeMinutes,
-              "Батлагдсан илүү минут": r.approvedOvertimeMinutes,
-            })),
-      ),
-      "Цагийн тайлан",
-    );
-    const buffer: Buffer = XLSX.write(book, {
-      type: "buffer",
-      bookType: "xlsx",
-    });
+    const buffer = await exportAttendanceWorkbook(data, rows);
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     );
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="attendance-${view}-${data.range.from}-${data.range.to}.xlsx"`,
+      `attachment; filename="attendance-${data.range.from}-${data.range.to}.xlsx"; filename*=UTF-8''${encodeURIComponent(`Ирц-${data.range.from}-${data.range.to}.xlsx`)}`,
     );
     res.send(buffer);
   }),
