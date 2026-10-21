@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useOrg } from "@/components/org/OrgContext";
+import { canSkipSectionPin } from "@/lib/section-access";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   Eye,
@@ -52,6 +54,13 @@ export default function ProtectedSectionGate({
   accessDeniedMessage,
   onUnlock,
 }: ProtectedSectionGateProps) {
+  const { user } = useOrg();
+  const ownerAccess = canSkipSectionPin(user, organizationId, userId);
+
+  useEffect(() => {
+    if (ownerAccess) onUnlock();
+  }, [ownerAccess, onUnlock]);
+
   const pinInputRef = useRef<HTMLInputElement>(null);
   const pinVerificationInFlight = useRef(false);
   const [pinState, setPinState] = useState<PinState>("loading");
@@ -63,6 +72,7 @@ export default function ProtectedSectionGate({
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (ownerAccess) return;
     let active = true;
     setPinState("loading");
     setError("");
@@ -80,7 +90,7 @@ export default function ProtectedSectionGate({
     return () => {
       active = false;
     };
-  }, [organizationId]);
+  }, [organizationId, ownerAccess]);
 
   useEffect(() => {
     if (pinState === "configured") pinInputRef.current?.focus();
@@ -151,6 +161,8 @@ export default function ProtectedSectionGate({
       setLoading(false);
     }
   };
+
+  if (ownerAccess) return null;
 
   return (
     <div className="flex min-h-[calc(100vh-10rem)] items-center justify-center py-8">
