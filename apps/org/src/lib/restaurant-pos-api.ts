@@ -1147,6 +1147,28 @@ export async function getRestaurantMealReport(input: {
   return readApiResponse<RestaurantMealReport>(response);
 }
 
+export interface CreateRestaurantCreditCustomerInput {
+  organizationId: string;
+  targetType: "CUSTOMER";
+  borrowerName: string;
+  borrowerPhone: string;
+  borrowerEmail?: string;
+  borrowerAddress?: string;
+  workplace?: string;
+  department?: string;
+  jobTitle?: string;
+}
+
+export async function createRestaurantCreditCustomer(input: CreateRestaurantCreditCustomerInput) {
+  const response = await authFetch(`${API}/pos/credit-customers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const payload = await readApiResponse<{ customer: PosCreditBorrower }>(response);
+  return payload.customer;
+}
+
 export async function getRestaurantCreditCustomers(
   organizationId: string,
   options?: { search?: string; limit?: number },
