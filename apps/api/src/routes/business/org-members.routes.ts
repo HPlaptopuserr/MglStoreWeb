@@ -2,13 +2,20 @@ import { Router, type Router as ExpressRouter } from "express";
 import { prisma, Capability, PlatformRole } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
 import bcrypt from "bcryptjs";
-import { isPhoneNumberConflict, normalizePhoneNumber } from "../../utils/phone-number";
+import {
+  isPhoneNumberConflict,
+  normalizePhoneNumber,
+} from "../../utils/phone-number";
 import storeEmployeeRoutes from "./store-employees.routes";
 import { Permission } from "@mgl/types";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import { requireOrgPermission } from "../../services/permission.service";
 
-import { availableMemberCapabilities, blockedCapabilityGrants, getOrganizationAppFeatures } from "../../services/business-member-capabilities";
+import {
+  availableMemberCapabilities,
+  blockedCapabilityGrants,
+  getOrganizationAppFeatures,
+} from "../../services/business-member-capabilities";
 
 const router: ExpressRouter = Router();
 router.use(storeEmployeeRoutes);
@@ -19,13 +26,68 @@ router.get(
   requireOrgPermission({ from: "query" }, Permission.MANAGE_ORG_MEMBERS),
   async (req, res) => {
     try {
-      const features = await getOrganizationAppFeatures(String(req.query.organizationId));
-      if (!features) return res.status(404).json({ message: "Байгууллага олдсонгүй" });
+      const features = await getOrganizationAppFeatures(
+        String(req.query.organizationId),
+      );
+      if (!features)
+        return res.status(404).json({ message: "Байгууллага олдсонгүй" });
       res.set("Cache-Control", "no-store");
       return res.json({ capabilities: availableMemberCapabilities(features) });
     } catch (error: unknown) {
       console.error("available member capabilities error", error);
-      return res.status(500).json({ message: "Ажлын эрхүүдийг ачаалж чадсангүй" });
+      return res
+        .status(500)
+        .json({ message: "Ажлын эрхүүдийг ачаалж чадсангүй" });
+    }
+  },
+);
+
+router.get(
+  "/org/members/accounts",
+  requireAuth,
+  requireOrgPermission({ from: "query" }, Permission.MANAGE_ORG_MEMBERS),
+  async (req, res) => {
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (q.length < 3 || q.length > 100)
+      return res
+        .status(400)
+        .json({ message: "Хайх утгаа 3–100 тэмдэгтээр оруулна уу" });
+    try {
+      const users = await prisma.user.findMany({
+        where: {
+          isActive: true,
+          deletedAt: null,
+          OR: [
+            { email: { contains: q, mode: "insensitive" } },
+            { profile: { fullName: { contains: q, mode: "insensitive" } } },
+            { profile: { phoneNumber: { contains: q } } },
+          ],
+        },
+        take: 10,
+        orderBy: { id: "asc" },
+        select: {
+          id: true,
+          email: true,
+          profile: { select: { fullName: true, phoneNumber: true } },
+          organizationMemberships: {
+            where: { organizationId: String(req.query.organizationId) },
+            select: { id: true },
+          },
+        },
+      });
+      res.set("Cache-Control", "no-store");
+      return res.json(
+        users.map((account) => ({
+          id: account.id,
+          email: account.email,
+          fullName: account.profile?.fullName || account.email,
+          phone: account.profile?.phoneNumber || null,
+          isMember: account.organizationMemberships.length > 0,
+        })),
+      );
+    } catch (error: unknown) {
+      console.error("Member account search failed", error);
+      return res.status(500).json({ message: "MGL бүртгэл хайж чадсангүй" });
     }
   },
 );
@@ -175,6 +237,7 @@ router.post(
     const {
       organizationId,
       fullName,
+      userId: linkedUserId,
       email,
       phone,
       password,
@@ -184,6 +247,7 @@ router.post(
     } = req.body as {
       organizationId: string;
       fullName?: string;
+      userId?: string;
       email?: string;
       phone?: string;
       password?: string;
@@ -192,10 +256,21 @@ router.post(
       capabilities?: Capability[];
     };
 
+    if (
+      linkedUserId !== undefined &&
+      (typeof linkedUserId !== "string" || !linkedUserId.trim())
+    ) {
+      return res
+        .status(400)
+        .json({ message: "MGL бүртгэлийн утга буруу байна" });
+    }
     if (!fullName?.trim()) {
       return res.status(400).json({ message: "Нэр шаардлагатай" });
     }
-    if (!Array.isArray(capabilities) || capabilities.some((item) => !Object.values(Capability).includes(item))) {
+    if (
+      !Array.isArray(capabilities) ||
+      capabilities.some((item) => !Object.values(Capability).includes(item))
+    ) {
       return res.status(400).json({ message: "Ажлын эрхийн утга буруу байна" });
     }
     const normalizedEmail = email?.trim().toLowerCase();
@@ -213,13 +288,24 @@ router.post(
         .json({ message: "Энэ байгууллагад хандах эрхгүй" });
     }
     if (callerRole !== "OWNER" && callerRole !== "ADMIN") {
-      return res.status(403).json({ message: "Ажилтныг зөвхөн эзэмшигч эсвэл менежер нэмнэ" });
+      return res
+        .status(403)
+        .json({ message: "Ажилтныг зөвхөн эзэмшигч эсвэл менежер нэмнэ" });
     }
 
     // Determine target role — caller cannot assign equal or higher role
     let targetRole: OrgRole = "STAFF";
     if (role && VALID_ROLES.includes(role as OrgRole)) {
       targetRole = role as OrgRole;
+    }
+
+    if (
+      capabilities.includes(Capability.KITCHEN_CHEF) &&
+      (targetRole !== "STAFF" || capabilities.length !== 1)
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Тогооч нь зөвхөн гал тогооны эрхтэй ажилтан байна" });
     }
 
     if (ROLE_LEVEL[targetRole] <= ROLE_LEVEL[callerRole]) {
@@ -239,8 +325,16 @@ router.post(
       const normalizedCapabilities =
         targetRole === "VIEWER" ? [] : [...new Set(capabilities)];
       const features = await getOrganizationAppFeatures(organizationId);
-      if (!features || blockedCapabilityGrants(normalizedCapabilities, [], features).length > 0) {
-        return res.status(409).json({ message: "Admin-аас нээгээгүй аппын эрх оноох боломжгүй. Ажлын эрхийн жагсаалтаа шинэчилнэ үү." });
+      if (
+        !features ||
+        blockedCapabilityGrants(normalizedCapabilities, [], features).length > 0
+      ) {
+        return res
+          .status(409)
+          .json({
+            message:
+              "Admin-аас нээгээгүй аппын эрх оноох боломжгүй. Ажлын эрхийн жагсаалтаа шинэчилнэ үү.",
+          });
       }
 
       const currentCount = await prisma.organizationMember.count({
@@ -253,10 +347,19 @@ router.post(
       }
 
       // Check if user already exists
-      const existingUser = await prisma.user.findUnique({
-        where: { email: normalizedEmail },
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          ...(linkedUserId ? { id: linkedUserId } : { email: normalizedEmail }),
+          isActive: true,
+          deletedAt: null,
+        },
         select: { id: true },
       });
+
+      if (linkedUserId && !existingUser)
+        return res
+          .status(404)
+          .json({ message: "Сонгосон MGL бүртгэл олдсонгүй" });
 
       if (existingUser) {
         const alreadyMember = await prisma.organizationMember.findUnique({
@@ -339,7 +442,8 @@ router.post(
       console.error("add org member error", error);
       if (isPhoneNumberConflict(error)) {
         return res.status(409).json({
-          message: "Утас, имэйл эсвэл хэрэглэгчийн бүртгэл давхардсан байна. Одоо байгаа хэрэглэгчийг хайж сонгоно уу.",
+          message:
+            "Утас, имэйл эсвэл хэрэглэгчийн бүртгэл давхардсан байна. Одоо байгаа хэрэглэгчийг хайж сонгоно уу.",
         });
       }
       return res.status(500).json({ message: "Ажилтан нэмэхэд алдаа гарлаа" });
@@ -652,9 +756,33 @@ router.patch("/org/members/:memberId", requireAuth, async (req, res) => {
           message: "Ажиглагчид тусгай ажлын эрх олгох боломжгүй",
         });
       }
-      const features = await getOrganizationAppFeatures(targetMember.organizationId);
-      if (!features || blockedCapabilityGrants(capabilities as Capability[], targetMember.capabilities, features).length > 0) {
-        return res.status(409).json({ message: "Admin-аас нээгээгүй аппын эрх оноох боломжгүй. Ажлын эрхийн жагсаалтаа шинэчилнэ үү." });
+      if (
+        capabilities.includes("KITCHEN_CHEF") &&
+        (targetMember.role !== "STAFF" || capabilities.length !== 1)
+      ) {
+        return res
+          .status(400)
+          .json({
+            message: "Тогооч нь зөвхөн гал тогооны эрхтэй ажилтан байна",
+          });
+      }
+      const features = await getOrganizationAppFeatures(
+        targetMember.organizationId,
+      );
+      if (
+        !features ||
+        blockedCapabilityGrants(
+          capabilities as Capability[],
+          targetMember.capabilities,
+          features,
+        ).length > 0
+      ) {
+        return res
+          .status(409)
+          .json({
+            message:
+              "Admin-аас нээгээгүй аппын эрх оноох боломжгүй. Ажлын эрхийн жагсаалтаа шинэчилнэ үү.",
+          });
       }
     }
 

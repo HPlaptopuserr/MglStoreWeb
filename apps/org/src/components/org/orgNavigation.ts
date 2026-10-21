@@ -18,6 +18,7 @@ import {
   TimerReset,
   Users,
 } from "lucide-react";
+import { isKitchenOnlyMember } from "@mgl/types";
 import { OrgUser } from "@/lib/api";
 import { OrgFeatureState } from "@/lib/org-types";
 import { canViewWorkforceReport } from "@/lib/workforce-api";
@@ -33,6 +34,14 @@ export function getOrgNavItems(
   features: OrgFeatureState,
   user?: OrgUser | null,
 ): OrgNavItem[] {
+  if (user && isKitchenOnlyMember(user))
+    return [
+      {
+        label: "Гал тогооны дэлгэц",
+        href: "/dashboard/kitchen-display",
+        icon: ChefHat,
+      },
+    ];
   if (features.selfService) {
     const isCafe = features.selfServiceMode === "CAFE";
     const role = String(user?.role || "").toUpperCase();

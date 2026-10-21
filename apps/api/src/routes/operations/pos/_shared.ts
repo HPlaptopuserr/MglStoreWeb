@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { isKitchenOnlyMember, isKitchenRequest } from "@mgl/types";
 import { type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
 import { Capability, prisma, PaymentMethod, PosPaymentStatus } from "@mgl/database";
@@ -311,7 +312,7 @@ export const requirePosUser = async (req: Request, res: Response) => {
     res.status(401).json({ message: "Нэвтрэлт шаардлагатай" });
     return null;
   }
-  if (!canOperatePos(actor)) {
+  if (isKitchenOnlyMember(actor) ? !isKitchenRequest(req.method, req.path) : !canOperatePos(actor)) {
     res.status(403).json({ message: "POS ашиглах эрх хүрэлцэхгүй" });
     return null;
   }

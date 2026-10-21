@@ -76,7 +76,9 @@ test("picker reads current organization settings and cannot read another organiz
   response = await fetch(`${url}/available-capabilities?organizationId=store`, {
     headers,
   });
-  assert.deepEqual(await response.json(), { capabilities: ["POS_CASHIER"] });
+  assert.deepEqual(await response.json(), {
+    capabilities: ["KITCHEN_CHEF", "POS_CASHIER"],
+  });
   assert.equal(
     (
       await fetch(`${url}/available-capabilities?organizationId=other`, {
@@ -105,45 +107,90 @@ for (const role of ["OWNER", "ADMIN"]) {
   test(`${role} can add an ordinary employee from a legacy request`, async () => {
     callerRole = role;
     stub(prisma.organizationMember, "count", async () => 1);
-    stub(prisma.user, "findUnique", async () => ({ id: "employee" }));
+    stub(prisma.user, "findFirst", async () => ({ id: "employee" }));
     stub(prisma.organizationMember, "findUnique", async () => null);
-    stub(prisma, "$transaction", async (run: (tx: object) => Promise<unknown>) => run({
-      profile: { upsert: async ({ update }: { update: Record<string, unknown> }) => {
-        assert.deepEqual(update, {}, "joining must preserve the existing profile and phone");
-        return {};
-      } },
-      organizationMember: { create: async ({ data }: { data: { role: string; organizationId: string; capabilities: string[] } }) => {
-        assert.equal(data.role, "STAFF");
-        assert.equal(data.organizationId, "store");
-        assert.deepEqual(data.capabilities, []);
-        return { id: "member" };
-      } },
-    }));
-    const response = await fetch(url, { method: "POST", headers, body: JSON.stringify({
-      organizationId: "store", fullName: "Employee", email: "employee@example.com", role: "STAFF",
-    }) });
+    stub(
+      prisma,
+      "$transaction",
+      async (run: (tx: object) => Promise<unknown>) =>
+        run({
+          profile: {
+            upsert: async ({ update }: { update: Record<string, unknown> }) => {
+              assert.deepEqual(
+                update,
+                {},
+                "joining must preserve the existing profile and phone",
+              );
+              return {};
+            },
+          },
+          organizationMember: {
+            create: async ({
+              data,
+            }: {
+              data: {
+                role: string;
+                organizationId: string;
+                capabilities: string[];
+              };
+            }) => {
+              assert.equal(data.role, "STAFF");
+              assert.equal(data.organizationId, "store");
+              assert.deepEqual(data.capabilities, []);
+              return { id: "member" };
+            },
+          },
+        }),
+    );
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        organizationId: "store",
+        fullName: "Employee",
+        email: "employee@example.com",
+        role: "STAFF",
+      }),
+    });
     assert.equal(response.status, 201);
   });
 }
 for (const targetRole of ["OWNER", "ADMIN"]) {
   test(`manager cannot assign ${targetRole}`, async () => {
     callerRole = "ADMIN";
-    const response = await fetch(url, { method: "POST", headers, body: JSON.stringify({
-      organizationId: "store", fullName: "Employee", email: "employee@example.com", role: targetRole,
-    }) });
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        organizationId: "store",
+        fullName: "Employee",
+        email: "employee@example.com",
+        role: targetRole,
+      }),
+    });
     assert.equal(response.status, 403);
   });
 }
 test("ordinary staff cannot add members", async () => {
   callerRole = "STAFF";
-  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify({
-    organizationId: "store", fullName: "Employee", email: "employee@example.com", role: "STAFF",
-  }) });
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      organizationId: "store",
+      fullName: "Employee",
+      email: "employee@example.com",
+      role: "STAFF",
+    }),
+  });
   assert.equal(response.status, 403);
 });
 test("manager capability picker respects organization app settings", async () => {
   callerRole = "ADMIN";
-  const response = await fetch(`${url}/available-capabilities?organizationId=store`, { headers });
+  const response = await fetch(
+    `${url}/available-capabilities?organizationId=store`,
+    { headers },
+  );
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { capabilities: [] });
 });
@@ -151,13 +198,147 @@ test("manager capability picker respects organization app settings", async () =>
 test("phone uniqueness conflicts return an actionable response instead of 500", async () => {
   callerRole = "ADMIN";
   stub(prisma.organizationMember, "count", async () => 1);
-  stub(prisma.user, "findUnique", async () => null);
+  stub(prisma.user, "findFirst", async () => null);
   stub(prisma, "$transaction", async () => {
-    throw Object.assign(new Error("PHONE_NUMBER_ALREADY_REGISTERED"), { code: "P2002" });
+    throw Object.assign(new Error("PHONE_NUMBER_ALREADY_REGISTERED"), {
+      code: "P2002",
+    });
   });
-  const response = await fetch(url, { method: "POST", headers, body: JSON.stringify({
-    organizationId: "store", fullName: "Employee", email: "employee@example.com", role: "STAFF", phone: "99112233",
-  }) });
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      organizationId: "store",
+      fullName: "Employee",
+      email: "employee@example.com",
+      role: "STAFF",
+      phone: "99112233",
+      password: "Test-password-123",
+    }),
+  });
   assert.equal(response.status, 409);
   assert.match((await response.json()).message, /хайж сонгоно/);
+});
+
+test("MGL account search requires a manager and limits returned identity fields", async () => {
+  let query: unknown;
+  stub(prisma.user, "findMany", async (args: unknown) => {
+    query = args;
+    return [
+      {
+        id: "registered",
+        email: "chef@example.com",
+        profile: { fullName: "Chef", phoneNumber: "99112233" },
+        organizationMemberships: [],
+      },
+    ];
+  });
+  const response = await fetch(`${url}/accounts?organizationId=store&q=9911`, {
+    headers,
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), [
+    {
+      id: "registered",
+      email: "chef@example.com",
+      fullName: "Chef",
+      phone: "99112233",
+      isMember: false,
+    },
+  ]);
+  assert.equal((query as { take: number }).take, 10);
+  assert.equal(
+    (await fetch(`${url}/accounts?organizationId=store&q=ab`, { headers }))
+      .status,
+    400,
+  );
+  assert.equal(
+    (await fetch(`${url}/accounts?organizationId=other&q=Chef`, { headers }))
+      .status,
+    403,
+  );
+  callerRole = "STAFF";
+  assert.equal(
+    (await fetch(`${url}/accounts?organizationId=store&q=Chef`, { headers }))
+      .status,
+    403,
+  );
+});
+
+test("chef cannot be assigned management or mixed capabilities", async () => {
+  for (const [role, capabilities] of [
+    ["ADMIN", ["KITCHEN_CHEF"]],
+    ["STAFF", ["KITCHEN_CHEF", "POS_CASHIER"]],
+  ]) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        organizationId: "store",
+        fullName: "Chef",
+        email: "chef@example.com",
+        role,
+        capabilities,
+      }),
+    });
+    assert.equal(response.status, 400);
+  }
+});
+
+test("linking a registered chef preserves their password and profile", async () => {
+  pos = true;
+  stub(prisma.organizationMember, "count", async () => 1);
+  stub(
+    prisma.user,
+    "findFirst",
+    async ({ where }: { where: { id: string } }) => {
+      assert.equal(where.id, "registered");
+      return { id: "registered" };
+    },
+  );
+  stub(prisma.organizationMember, "findUnique", async () => null);
+  stub(prisma, "$transaction", async (run: (tx: object) => Promise<unknown>) =>
+    run({
+      profile: {
+        upsert: async ({ update }: { update: object }) => {
+          assert.deepEqual(update, {});
+          return {};
+        },
+      },
+      organizationMember: {
+        create: async ({
+          data,
+        }: {
+          data: { userId: string; capabilities: string[] };
+        }) => {
+          assert.equal(data.userId, "registered");
+          assert.deepEqual(data.capabilities, ["KITCHEN_CHEF"]);
+          return { id: "member" };
+        },
+      },
+      user: {
+        update: async () => {
+          assert.fail("Existing credentials must never change");
+        },
+      },
+    }),
+  );
+  assert.equal(
+    (
+      await fetch(url, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          organizationId: "store",
+          userId: "registered",
+          fullName: "Chef",
+          email: "chef@example.com",
+          password: "must-not-change",
+          role: "STAFF",
+          capabilities: ["KITCHEN_CHEF"],
+        }),
+      })
+    ).status,
+    201,
+  );
 });

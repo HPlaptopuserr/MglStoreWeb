@@ -1,6 +1,7 @@
 export type MemberRole = "OWNER" | "ADMIN" | "STAFF" | "VIEWER";
 
 export type MemberCapability =
+  | "KITCHEN_CHEF"
   | "POS_CASHIER"
   | "DELIVERY_DRIVER"
   | "STOCK_MANAGER"
@@ -54,11 +55,24 @@ export const ROLE_OPTIONS: Array<{
   },
 ];
 
+export interface MglAccount {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string | null;
+  isMember: boolean;
+}
+
 export const CAPABILITY_OPTIONS: Array<{
   value: MemberCapability;
   label: string;
   description: string;
 }> = [
+  {
+    value: "KITCHEN_CHEF",
+    label: "Тогооч",
+    description: "Зөвхөн гал тогооны захиалгыг харж, төлөв өөрчилнө.",
+  },
   {
     value: "POS_CASHIER",
     label: "POS кассчин",
@@ -103,8 +117,10 @@ export function canManageMember(
 ) {
   if (member.userId === actorUserId || member.role === "OWNER") return false;
   if (actorRole === "OWNER") return true;
-  return actorRole === "ADMIN" &&
-    (member.role === "STAFF" || member.role === "VIEWER");
+  return (
+    actorRole === "ADMIN" &&
+    (member.role === "STAFF" || member.role === "VIEWER")
+  );
 }
 
 export function assignableRoles(actorRole?: string | null) {

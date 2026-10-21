@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { isKitchenOnlyMember } from "@mgl/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -267,7 +268,8 @@ const createDemoTickets = (
 };
 
 export function KitchenDisplayScreen() {
-  const { user, features } = useOrg();
+  const { user, features, logout } = useOrg();
+  const kitchenOnly = isKitchenOnlyMember(user);
   const isCafe = features.selfServiceMode === "CAFE";
   const [branches, setBranches] = useState<RestaurantKitchenBranch[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
@@ -664,13 +666,23 @@ export function KitchenDisplayScreen() {
       <header className="relative z-20 shrink-0 border-b border-white/[0.08] bg-[#15181d] px-4 py-3 lg:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <Link
-              href="/dashboard"
-              className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-400 transition hover:bg-white/[0.08] hover:text-white"
-              aria-label="Dashboard руу буцах"
-            >
-              <ArrowLeft className="size-5" />
-            </Link>
+            {kitchenOnly ? (
+              <button
+                type="button"
+                onClick={logout}
+                className="rounded-xl border border-white/10 px-3 py-2 text-sm font-bold text-slate-300 hover:bg-white/10"
+              >
+                Гарах
+              </button>
+            ) : (
+              <Link
+                href="/dashboard"
+                className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-400 transition hover:bg-white/[0.08] hover:text-white"
+                aria-label="Dashboard руу буцах"
+              >
+                <ArrowLeft className="size-5" />
+              </Link>
+            )}
             <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.07] text-slate-100">
               {isCafe ? (
                 <Coffee className="size-7" strokeWidth={2.2} />

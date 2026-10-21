@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { useOrg } from "@/components/org/OrgContext";
+import { MglAccountSearch } from "./MglAccountSearch";
 import { memberApi } from "./member-api";
 import {
   CAPABILITY_OPTIONS,
@@ -35,6 +36,7 @@ import {
   canManageMembers,
   capabilityLabel,
   roleLabel,
+  type MglAccount,
   type MemberCapability,
   type MemberRole,
   type OrganizationMember,
@@ -155,7 +157,10 @@ function Modal({
       >
         <header className="sticky top-0 z-10 flex items-start gap-4 border-b border-slate-100 bg-white/95 px-5 py-5 backdrop-blur sm:px-6">
           <div className="flex-1">
-            <h2 id="member-modal-title" className="text-xl font-black text-slate-950">
+            <h2
+              id="member-modal-title"
+              className="text-xl font-black text-slate-950"
+            >
               {title}
             </h2>
             <p className="mt-1 text-sm font-semibold leading-5 text-slate-500">
@@ -203,7 +208,9 @@ function CapabilityPicker({
     onChange(
       value.includes(capability)
         ? value.filter((item) => item !== capability)
-        : [...value, capability],
+        : capability === "KITCHEN_CHEF"
+          ? [capability]
+          : [...value.filter((item) => item !== "KITCHEN_CHEF"), capability],
     );
   };
 
@@ -219,6 +226,7 @@ function CapabilityPicker({
             type="button"
             disabled={disabled}
             onClick={() => toggle(option.value)}
+            aria-pressed={selected}
             className={`flex min-h-20 items-start gap-3 rounded-2xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50 ${
               selected
                 ? "border-indigo-300 bg-indigo-50 ring-2 ring-indigo-500/10"
@@ -263,6 +271,9 @@ function AddMemberDialog({
   onSaved: (message: string) => Promise<void>;
 }) {
   const roles = assignableRoles(actorRole);
+  const [selectedAccount, setSelectedAccount] = useState<MglAccount | null>(
+    null,
+  );
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -289,10 +300,11 @@ function AddMemberDialog({
     try {
       await memberApi.create({
         organizationId,
+        userId: selectedAccount?.id,
         fullName: fullName.trim(),
         email: email.trim().toLowerCase(),
         phone: phone.trim() || undefined,
-        password: password || undefined,
+        password: selectedAccount ? undefined : password || undefined,
         role,
         department: department.trim() || undefined,
         capabilities: role === "VIEWER" ? [] : capabilities,
@@ -313,13 +325,24 @@ function AddMemberDialog({
       <form onSubmit={submit} className="space-y-6 p-5 sm:p-6">
         {error ? <Notice kind="error">{error}</Notice> : null}
 
+        <MglAccountSearch
+          organizationId={organizationId}
+          selected={selectedAccount}
+          disabled={saving}
+          onSelect={(account) => {
+            setSelectedAccount(account);
+            setFullName(account?.fullName || "");
+            setEmail(account?.email || "");
+            setPhone(account?.phone || "");
+            setPassword("");
+          }}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Ажилтны нэр">
             <input
-              autoFocus
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
-              disabled={saving}
+              disabled={saving || Boolean(selectedAccount)}
               className={inputClass}
               placeholder="Овог нэр"
             />
@@ -339,7 +362,7 @@ function AddMemberDialog({
               autoComplete="username"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              disabled={saving}
+              disabled={saving || Boolean(selectedAccount)}
               className={inputClass}
               placeholder="employee@company.mn"
             />
@@ -349,28 +372,30 @@ function AddMemberDialog({
               inputMode="tel"
               value={phone}
               onChange={(event) => setPhone(event.target.value)}
-              disabled={saving}
+              disabled={saving || Boolean(selectedAccount)}
               className={inputClass}
               placeholder="99112233"
             />
           </Field>
-          <div className="sm:col-span-2">
-            <Field label="Шинэ login-ийн нууц үг">
-              <input
-                type="password"
-                autoComplete="new-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                disabled={saving}
-                className={inputClass}
-                placeholder="Шинэ хэрэглэгч бол 8-аас дээш тэмдэгт"
-              />
-            </Field>
-            <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">
-              Имэйл нь MGL Store-д бүртгэлтэй бол тухайн бүртгэлийг холбоно.
-              Хувийн нууц үг болон profile мэдээллийг өөрчлөхгүй.
-            </p>
-          </div>
+          {!selectedAccount && (
+            <div className="sm:col-span-2">
+              <Field label="Шинэ login-ийн нууц үг">
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  disabled={saving}
+                  className={inputClass}
+                  placeholder="Шинэ хэрэглэгч бол 8-аас дээш тэмдэгт"
+                />
+              </Field>
+              <p className="mt-2 text-xs font-semibold leading-5 text-slate-400">
+                Имэйл нь MGL Store-д бүртгэлтэй бол тухайн бүртгэлийг холбоно.
+                Хувийн нууц үг болон profile мэдээллийг өөрчлөхгүй.
+              </p>
+            </div>
+          )}
         </div>
 
         <div>
@@ -386,6 +411,10 @@ function AddMemberDialog({
                 onClick={() => {
                   setRole(option.value);
                   if (option.value === "VIEWER") setCapabilities([]);
+                  else if (option.value !== "STAFF")
+                    setCapabilities((items) =>
+                      items.filter((item) => item !== "KITCHEN_CHEF"),
+                    );
                 }}
                 className={`rounded-2xl border p-3 text-left transition ${
                   role === option.value
@@ -421,7 +450,10 @@ function AddMemberDialog({
             value={capabilities}
             options={availableCapabilities}
             disabled={saving || role === "VIEWER"}
-            onChange={setCapabilities}
+            onChange={(next) => {
+              setCapabilities(next);
+              if (next.includes("KITCHEN_CHEF")) setRole("STAFF");
+            }}
           />
         </div>
 
@@ -439,7 +471,11 @@ function AddMemberDialog({
             disabled={saving}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-black text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300"
           >
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4" />
+            )}
             {saving ? "Нэмж байна..." : "Ажилтан нэмэх"}
           </button>
         </footer>
@@ -507,7 +543,9 @@ function EditMemberDialog({
     setError("");
     try {
       await memberApi.remove(member.id);
-      await onSaved(`${member.fullName || member.email} байгууллагаас хасагдлаа.`);
+      await onSaved(
+        `${member.fullName || member.email} байгууллагаас хасагдлаа.`,
+      );
     } catch (cause) {
       setError(errorMessage(cause));
       setSaving(false);
@@ -533,6 +571,10 @@ function EditMemberDialog({
                 const nextRole = event.target.value as MemberRole;
                 setRole(nextRole);
                 if (nextRole === "VIEWER") setCapabilities([]);
+                else if (nextRole !== "STAFF")
+                  setCapabilities((items) =>
+                    items.filter((item) => item !== "KITCHEN_CHEF"),
+                  );
               }}
               className={inputClass}
             >
@@ -571,7 +613,10 @@ function EditMemberDialog({
               ...new Set([...availableCapabilities, ...member.capabilities]),
             ]}
             disabled={saving || role === "VIEWER"}
-            onChange={setCapabilities}
+            onChange={(next) => {
+              setCapabilities(next);
+              if (next.includes("KITCHEN_CHEF")) setRole("STAFF");
+            }}
           />
         </div>
 
@@ -581,8 +626,8 @@ function EditMemberDialog({
               Энэ ажилтныг байгууллагаас бүр мөсөн хасах уу?
             </p>
             <p className="mt-1 text-xs font-semibold leading-5 text-rose-600">
-              Хувийн MGL Store бүртгэл устахгүй. Зөвхөн энэ байгууллагын холбоос,
-              role болон ажлын эрхүүд хасагдана.
+              Хувийн MGL Store бүртгэл устахгүй. Зөвхөн энэ байгууллагын
+              холбоос, role болон ажлын эрхүүд хасагдана.
             </p>
             <div className="mt-3 flex gap-2">
               <button
@@ -591,7 +636,11 @@ function EditMemberDialog({
                 onClick={() => void remove()}
                 className="inline-flex h-10 items-center gap-2 rounded-xl bg-rose-600 px-4 text-xs font-black text-white hover:bg-rose-500 disabled:opacity-50"
               >
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
                 Тийм, хасах
               </button>
               <button
@@ -609,7 +658,8 @@ function EditMemberDialog({
             <div>
               <p className="text-sm font-black text-slate-800">Ажиллах төлөв</p>
               <p className="mt-1 text-xs font-semibold text-slate-500">
-                Түр хаахад login хэвээр үлдэж, байгууллагад нэвтрэх боломжгүй болно.
+                Түр хаахад login хэвээр үлдэж, байгууллагад нэвтрэх боломжгүй
+                болно.
               </p>
             </div>
             <button
@@ -622,7 +672,11 @@ function EditMemberDialog({
                   : "bg-emerald-600 text-white hover:bg-emerald-500"
               }`}
             >
-              {member.isActive ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+              {member.isActive ? (
+                <UserX className="h-4 w-4" />
+              ) : (
+                <UserCheck className="h-4 w-4" />
+              )}
               {member.isActive ? "Эрх түр хаах" : "Эрх сэргээх"}
             </button>
           </div>
@@ -654,7 +708,11 @@ function EditMemberDialog({
               disabled={saving || confirmRemove}
               className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 text-sm font-black text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Check className="h-4 w-4" />
+              )}
               {saving ? "Хадгалж байна..." : "Өөрчлөлт хадгалах"}
             </button>
           </div>
@@ -695,7 +753,8 @@ export default function MembersScreen() {
         setMembers(memberList);
         setAvailableCapabilities(capabilityList);
       } catch (cause) {
-        if (cause instanceof DOMException && cause.name === "AbortError") return;
+        if (cause instanceof DOMException && cause.name === "AbortError")
+          return;
         setError(errorMessage(cause));
       } finally {
         if (!signal?.aborted) setLoading(false);
@@ -751,10 +810,30 @@ export default function MembersScreen() {
   };
 
   const summaryCards = [
-    { label: "Нийт ажилтан", value: summary.total, icon: Users, color: "text-slate-700 bg-slate-100" },
-    { label: "Идэвхтэй", value: summary.active, icon: UserCheck, color: "text-emerald-700 bg-emerald-100" },
-    { label: "Удирдах эрхтэй", value: summary.managers, icon: ShieldCheck, color: "text-indigo-700 bg-indigo-100" },
-    { label: "Идэвхгүй", value: summary.inactive, icon: UserX, color: "text-amber-700 bg-amber-100" },
+    {
+      label: "Нийт ажилтан",
+      value: summary.total,
+      icon: Users,
+      color: "text-slate-700 bg-slate-100",
+    },
+    {
+      label: "Идэвхтэй",
+      value: summary.active,
+      icon: UserCheck,
+      color: "text-emerald-700 bg-emerald-100",
+    },
+    {
+      label: "Удирдах эрхтэй",
+      value: summary.managers,
+      icon: ShieldCheck,
+      color: "text-indigo-700 bg-indigo-100",
+    },
+    {
+      label: "Идэвхгүй",
+      value: summary.inactive,
+      icon: UserX,
+      color: "text-amber-700 bg-amber-100",
+    },
   ];
 
   return (
@@ -768,7 +847,10 @@ export default function MembersScreen() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-3">
-              <h1 id="members-title" className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
+              <h1
+                id="members-title"
+                className="text-2xl font-black tracking-tight text-slate-950 sm:text-3xl"
+              >
                 Ажилтан ба эрх
               </h1>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-black text-slate-500">
@@ -777,7 +859,8 @@ export default function MembersScreen() {
               </span>
             </div>
             <p className="mt-2 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
-              Багийн гишүүд, login төлөв, байгууллагын role болон хийх ажлын тусгай эрхийг нэг дор удирдана.
+              Багийн гишүүд, login төлөв, байгууллагын role болон хийх ажлын
+              тусгай эрхийг нэг дор удирдана.
             </p>
           </div>
           {manageable ? (
@@ -804,13 +887,22 @@ export default function MembersScreen() {
         {summaryCards.map((item) => {
           const Icon = item.icon;
           return (
-            <article key={item.label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <article
+              key={item.label}
+              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
+            >
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">{item.label}</p>
-                  <p className="mt-2 text-2xl font-black text-slate-950">{loading ? "—" : item.value}</p>
+                  <p className="text-xs font-black uppercase tracking-[0.08em] text-slate-400">
+                    {item.label}
+                  </p>
+                  <p className="mt-2 text-2xl font-black text-slate-950">
+                    {loading ? "—" : item.value}
+                  </p>
                 </div>
-                <span className={`flex h-11 w-11 items-center justify-center rounded-2xl ${item.color}`}>
+                <span
+                  className={`flex h-11 w-11 items-center justify-center rounded-2xl ${item.color}`}
+                >
                   <Icon className="h-5 w-5" />
                 </span>
               </div>
@@ -824,9 +916,12 @@ export default function MembersScreen() {
           <ShieldCheck className="h-5 w-5" />
         </span>
         <div className="flex-1">
-          <h2 className="text-sm font-black text-slate-800">Role ба ажлын эрх тусдаа</h2>
+          <h2 className="text-sm font-black text-slate-800">
+            Role ба ажлын эрх тусдаа
+          </h2>
           <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-            Role нь байгууллага дахь түвшинг, ажлын эрх нь POS, бараа, захиалга, хүргэлтийн хийх үйлдлийг тодорхойлно.
+            Role нь байгууллага дахь түвшинг, ажлын эрх нь POS, бараа, захиалга,
+            хүргэлтийн хийх үйлдлийг тодорхойлно.
           </p>
         </div>
       </aside>
@@ -854,7 +949,11 @@ export default function MembersScreen() {
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
-                {{ ALL: "Бүгд", ACTIVE: "Идэвхтэй", INACTIVE: "Идэвхгүй" }[value]}
+                {
+                  { ALL: "Бүгд", ACTIVE: "Идэвхтэй", INACTIVE: "Идэвхгүй" }[
+                    value
+                  ]
+                }
               </button>
             ))}
             <button
@@ -864,7 +963,9 @@ export default function MembersScreen() {
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 disabled:opacity-50"
               aria-label="Жагсаалт шинэчлэх"
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+              />
             </button>
           </div>
         </div>
@@ -891,7 +992,9 @@ export default function MembersScreen() {
               <UserRound className="h-7 w-7" />
             </span>
             <h3 className="mt-4 text-base font-black text-slate-800">
-              {members.length === 0 ? "Ажилтан бүртгэгдээгүй байна" : "Хайлтад тохирох ажилтан алга"}
+              {members.length === 0
+                ? "Ажилтан бүртгэгдээгүй байна"
+                : "Хайлтад тохирох ажилтан алга"}
             </h3>
             <p className="mt-1 text-sm font-semibold text-slate-500">
               {members.length === 0 && manageable
@@ -902,16 +1005,14 @@ export default function MembersScreen() {
         ) : (
           <div className="divide-y divide-slate-100">
             {filtered.map((member) => {
-              const editable = canManageMember(
-                user.orgRole,
-                user.id,
-                member,
-              );
+              const editable = canManageMember(user.orgRole, user.id, member);
               return (
                 <article
                   key={member.id}
                   className={`grid gap-4 p-4 transition sm:grid-cols-[minmax(220px,1.25fr)_minmax(150px,.7fr)_minmax(210px,1fr)_auto] sm:items-center sm:px-5 ${
-                    member.isActive ? "hover:bg-slate-50/70" : "bg-slate-50/60 opacity-75"
+                    member.isActive
+                      ? "hover:bg-slate-50/70"
+                      : "bg-slate-50/60 opacity-75"
                   }`}
                 >
                   <div className="flex min-w-0 items-center gap-3">
@@ -924,12 +1025,18 @@ export default function MembersScreen() {
                           {member.fullName || "Нэргүй хэрэглэгч"}
                         </h3>
                         {member.userId === user.id ? (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-500">Та</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-black text-slate-500">
+                            Та
+                          </span>
                         ) : null}
                       </div>
-                      <p className="mt-1 truncate text-xs font-semibold text-slate-500">{member.email}</p>
+                      <p className="mt-1 truncate text-xs font-semibold text-slate-500">
+                        {member.email}
+                      </p>
                       {member.phone ? (
-                        <p className="mt-0.5 text-xs font-semibold text-slate-400">{member.phone}</p>
+                        <p className="mt-0.5 text-xs font-semibold text-slate-400">
+                          {member.phone}
+                        </p>
                       ) : null}
                     </div>
                   </div>
@@ -973,7 +1080,9 @@ export default function MembersScreen() {
                       </button>
                     ) : (
                       <span className="text-xs font-semibold text-slate-400">
-                        {member.role === "OWNER" ? "Системийн үндсэн эрх" : "Зөвхөн харах"}
+                        {member.role === "OWNER"
+                          ? "Системийн үндсэн эрх"
+                          : "Зөвхөн харах"}
                       </span>
                     )}
                   </div>

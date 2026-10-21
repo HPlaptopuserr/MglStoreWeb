@@ -1,4 +1,5 @@
 import "./config/env";
+import { restrictKitchenMember } from "./middleware/kitchen-access";
 import { reconcileRetailPayments } from "./services/warehouse-retail.service";
 import warehouseRetailRoutes from "./routes/store/warehouse-retail.routes";
 import { processWorkforceMailQueue } from "./services/workforce/mail-worker";
@@ -152,6 +153,8 @@ app.use(
 );
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
+
+app.use(["/api", "/auth"], restrictKitchenMember);
 
 app.use("/api", partnerRequestRoutes);
 app.use("/api", associationRoutes);

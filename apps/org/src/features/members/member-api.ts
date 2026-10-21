@@ -1,5 +1,6 @@
 import { API, authFetch } from "@/lib/api";
 import type {
+  MglAccount,
   MemberCapability,
   MemberRole,
   OrganizationMember,
@@ -7,6 +8,7 @@ import type {
 
 type CreateMemberInput = {
   organizationId: string;
+  userId?: string;
   fullName: string;
   email: string;
   phone?: string;
@@ -26,9 +28,9 @@ async function memberRequest<T>(path: string, init?: RequestInit): Promise<T> {
     cache: "no-store",
     ...init,
   });
-  const body = (await response.json().catch(() => null)) as
-    | { message?: unknown }
-    | null;
+  const body = (await response.json().catch(() => null)) as {
+    message?: unknown;
+  } | null;
 
   if (!response.ok) {
     const message =
@@ -54,6 +56,7 @@ function parseMembers(value: unknown): OrganizationMember[] {
 
 function parseCapabilities(value: unknown): MemberCapability[] {
   const allowed: MemberCapability[] = [
+    "KITCHEN_CHEF",
     "POS_CASHIER",
     "DELIVERY_DRIVER",
     "STOCK_MANAGER",
@@ -73,6 +76,12 @@ function parseCapabilities(value: unknown): MemberCapability[] {
 }
 
 export const memberApi = {
+  searchAccounts(organizationId: string, q: string, signal?: AbortSignal) {
+    return memberRequest<MglAccount[]>(
+      `/accounts?${new URLSearchParams({ organizationId, q })}`,
+      { signal },
+    );
+  },
   async list(organizationId: string, signal?: AbortSignal) {
     const query = new URLSearchParams({ organizationId }).toString();
     const response = await authFetch(`${API}/org/members?${query}`, {

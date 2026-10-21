@@ -1,7 +1,8 @@
 "use client";
 
-import { ReactNode, useMemo, useState } from "react";
-import { usePathname } from "next/navigation";
+import { ReactNode, useMemo, useState, useEffect } from "react";
+import { isKitchenOnlyMember } from "@mgl/types";
+import { useRouter, usePathname } from "next/navigation";
 import { useOrgFeatures } from "@/hooks/useOrgFeatures";
 import { useOrgSession } from "@/hooks/useOrgSession";
 import { OrgProvider } from "@/components/org/OrgContext";
@@ -12,6 +13,7 @@ import { getOrgNavItems } from "@/components/org/orgNavigation";
 
 export default function OrgShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { ready, user, logout, switching, switchError, switchOrganization } =
     useOrgSession();
@@ -27,7 +29,14 @@ export default function OrgShell({ children }: { children: ReactNode }) {
     pathname.startsWith("/dashboard/kitchen-display") ||
     pathname.startsWith("/dashboard/self-service");
 
-  if (!ready || !user || featuresLoading) return <OrgShellLoading />;
+  const kitchenOnly = Boolean(user && isKitchenOnlyMember(user));
+  const blockedPage = kitchenOnly && pathname !== "/dashboard/kitchen-display";
+  useEffect(() => {
+    if (ready && blockedPage) router.replace("/dashboard/kitchen-display");
+  }, [ready, blockedPage, router]);
+
+  if (blockedPage || !ready || !user || featuresLoading)
+    return <OrgShellLoading />;
 
   if (isRestaurantWorkspace) {
     return (

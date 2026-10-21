@@ -19,6 +19,7 @@ export enum OrgRole {
 }
 
 export enum Capability {
+  KITCHEN_CHEF = "KITCHEN_CHEF",
   POS_CASHIER = "POS_CASHIER",
   DELIVERY_DRIVER = "DELIVERY_DRIVER",
   STOCK_MANAGER = "STOCK_MANAGER",
