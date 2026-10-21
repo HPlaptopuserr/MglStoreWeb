@@ -172,7 +172,8 @@ export async function workforceSnapshot(
   const employees: WorkforceEmployee[] = members.map((m) => ({
     id: m.id,
     userId: m.userId,
-    name: m.user.profile?.fullName || m.user.email || "Ажилтан",
+    name: m.workforceDisplayName || m.user.profile?.fullName || m.user.email || "Ажилтан",
+    workforceDisplayName: m.workforceDisplayName,
     email: m.user.email ?? "",
     phone: m.user.profile?.phoneNumber ?? "",
     avatarUrl: m.user.profile?.avatarUrl ?? null,

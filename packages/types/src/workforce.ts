@@ -47,6 +47,7 @@ export type WorkforceStatus =
   | "DAY_OFF"
   | "UNSCHEDULED";
 export interface WorkforceEmployee {
+  workforceDisplayName?: string | null;
   employmentEndedAt?: string | null;
   employmentEndReason?: string | null;
   id: string;

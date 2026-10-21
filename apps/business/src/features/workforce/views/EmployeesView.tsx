@@ -183,6 +183,7 @@ export function EmployeesView({
           onClose={() => setEdit(null)}
           onSubmit={async (f) => {
             await run(`employees/${edit.id}`, "PATCH", {
+              workforceDisplayName: f.get("workforceDisplayName"),
               department: f.get("department"),
               active: f.get("active") === "true",
             });
@@ -196,6 +197,10 @@ export function EmployeesView({
               {edit.employmentEndReason}
             </p>
           )}
+          <Field label="Цаг бүртгэлд харагдах нэр">
+            <input name="workforceDisplayName" defaultValue={edit.workforceDisplayName ?? ""} maxLength={150} placeholder="Үндсэн нэрийг ашиглах" />
+          </Field>
+          <p className="wf-muted">Зөвхөн энэ байгууллагын цаг бүртгэл, тайланд хэрэглэнэ. Хоосон хадгалбал хэрэглэгчийн үндсэн нэрийг харуулна.</p>
           <Field label="Алба, хэлтэс">
             <select name="department" defaultValue={edit.department}>
               <option value="">Хэлтэсгүй</option>

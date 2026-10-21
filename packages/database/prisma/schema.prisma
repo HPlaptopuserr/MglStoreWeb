@@ -740,6 +740,7 @@ model InvestorProfile {
 }
 
 model OrganizationMember {
+  workforceDisplayName String?
   id                       String                         @id @default(uuid())
   userId                   String
   organizationId           String

@@ -18,6 +18,9 @@ employeesRouter.patch(
       }),
       id = String(req.params.id),
       b = object(req.body);
+    const workforceDisplayName = "workforceDisplayName" in b
+      ? text(b.workforceDisplayName, "Цаг бүртгэлд харагдах нэр", 150, true) || null
+      : undefined;
     const department = text(b.department, "Хэлтэс", 120, true),
       active = b.active;
     if (typeof active !== "boolean")
@@ -57,6 +60,7 @@ employeesRouter.patch(
         const updated = await tx.organizationMember.update({
           where: { id },
           data: {
+            ...(workforceDisplayName !== undefined ? { workforceDisplayName } : {}),
             department: department || null,
             isActive: active,
             ...(active

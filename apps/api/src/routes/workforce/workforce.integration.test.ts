@@ -139,6 +139,29 @@ after(async () => {
   }
   await prisma.$disconnect();
 });
+run("attendance display name is organization scoped and preserves global identity", async () => {
+  const member = await prisma.organizationMember.findUniqueOrThrow({ where: { userId_organizationId: { userId: staff, organizationId: orgId } } });
+  const userBefore = await prisma.user.findUniqueOrThrow({ where: { id: staff }, include: { profile: true } });
+  const otherBefore = await prisma.organizationMember.findUnique({ where: { userId_organizationId: { userId: staff, organizationId: otherOrg } } });
+  const payload = { department: member.department ?? "", active: member.isActive, workforceDisplayName: "  Ирцийн нэр  " };
+  try {
+    assert.equal((await request(`employees/${member.id}`, staffToken, "PATCH", payload)).status, 403);
+    assert.equal((await request(`employees/${member.id}?organizationId=${otherOrg}`, adminToken, "PATCH", payload)).status, 403);
+    assert.equal((await request(`employees/${member.id}`, adminToken, "PATCH", payload)).status, 200);
+    const snapshot = await request("snapshot");
+    const employees = snapshot.data.employees as { id: string; name: string; workforceDisplayName: string | null }[];
+    assert.equal(employees.find(e => e.id === member.id)?.name, "Ирцийн нэр");
+    assert.deepEqual(await prisma.user.findUniqueOrThrow({ where: { id: staff }, include: { profile: true } }), userBefore);
+    assert.deepEqual(await prisma.organizationMember.findUnique({ where: { userId_organizationId: { userId: staff, organizationId: otherOrg } } }), otherBefore);
+    assert.equal((await request(`employees/${member.id}`, adminToken, "PATCH", { ...payload, workforceDisplayName: "x".repeat(151) })).status, 400);
+    assert.equal((await request(`employees/${member.id}`, adminToken, "PATCH", { ...payload, workforceDisplayName: "" })).status, 200);
+    const cleared = await prisma.organizationMember.findUniqueOrThrow({ where: { id: member.id } });
+    assert.equal(cleared.workforceDisplayName, null);
+  } finally {
+    await prisma.organizationMember.update({ where: { id: member.id }, data: { workforceDisplayName: member.workforceDisplayName } });
+  }
+});
+
 run(
   "manual attendance checks permissions, times, overlap, audit and summary export",
   async () => {
