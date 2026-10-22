@@ -1,4 +1,5 @@
 import "./config/env";
+import esimRoutes, { reconcileEsimPurchases } from "./routes/esim";
 import { restrictKitchenMember } from "./middleware/kitchen-access";
 import { reconcileRetailPayments } from "./services/warehouse-retail.service";
 import warehouseRetailRoutes from "./routes/store/warehouse-retail.routes";
@@ -202,6 +203,7 @@ app.use("/api", qualityRoutes);
 app.use("/api", chatRoutes);
 app.use("/api", dmRoutes);
 app.use("/api", storeCheckoutRoutes);
+app.use("/api", esimRoutes);
 app.use("/api", vendorOrderRoutes);
 app.use("/api", storeLoyaltyRoutes);
 app.use("/api", storeBranchRoutes);
@@ -298,3 +300,14 @@ const retailReconciliationTimer = setInterval(() => {
   void reconcileRetailPayments().catch((error: unknown) => { console.error("[warehouse retail] reconciliation unavailable", error); }).finally(() => { retailReconciliationRunning = false; });
 }, 60_000);
 retailReconciliationTimer.unref();
+
+// Persisted jobs and database leases make reconciliation recoverable on restart.
+let esimReconciliationRunning = false;
+const esimReconciliationTimer = setInterval(() => {
+  if (esimReconciliationRunning || process.env.ESIM_WORKER_ENABLED !== "true") return;
+  esimReconciliationRunning = true;
+  void reconcileEsimPurchases().catch(() => {
+    console.error("[esim] Reconciliation unavailable; pending jobs retained");
+  }).finally(() => { esimReconciliationRunning = false; });
+}, 15000);
+esimReconciliationTimer.unref();

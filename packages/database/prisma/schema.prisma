@@ -8,6 +8,7 @@ datasource db {
 }
 
 model User {
+  esimPurchases EsimPurchase[]
   warehouseRetailOrders WarehouseRetailOrder[]
   platformAccounts PlatformAccount[]
   createdStocktakes Stocktake[] @relation("StocktakeCreator")
@@ -4317,4 +4318,44 @@ model WarehouseRetailOrderItem {
 
   @@unique([orderId, productId])
   @@index([productId])
+}
+
+
+model EsimPurchase {
+  id                   String   @id @default(uuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  idempotencyKey       String
+  quoteHash            String   @unique
+  memberPrice          Boolean  @default(false)
+  offerId              String
+  packageId            String
+  merchantCode         String
+  title                String
+  country              String
+  dataMb               Float
+  days                 Int
+  totalMnt             Int
+  wholesaleUsdUnits    Int
+  terms                String
+  status               String   @default("CREATING_INVOICE")
+  invoiceId            String?  @unique
+  invoice              Json?
+  paymentId            String?  @unique
+  supplierOrderNo      String?  @unique
+  activationEncrypted String?
+  supplierStatus       String?
+  errorCode            String?
+  leaseToken           String?
+  leaseUntil           DateTime?
+  nextAttemptAt        DateTime @default(now())
+  attempts             Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  paidAt               DateTime?
+  fulfilledAt          DateTime?
+
+  @@unique([userId, idempotencyKey])
+  @@index([status, nextAttemptAt])
+  @@index([userId, createdAt])
 }
