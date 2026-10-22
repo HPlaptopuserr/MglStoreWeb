@@ -53,3 +53,5 @@ export * from "./workforce-report";
 export * from "./domain/restaurant-line-discount";
 
 export * from "./domain/kitchen-access";
+
+export * from "./payment-search";

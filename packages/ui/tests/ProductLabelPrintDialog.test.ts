@@ -7,9 +7,15 @@ import {
   type LabelPrintSettings,
 } from "../src/organisms/ProductLabelPrintDialog";
 
+import {
+  DEFAULT_PRINT_SETTINGS,
+  draftLabelValue,
+} from "../src/organisms/product-label-print/layout";
+
 const settings = (
   overrides: Partial<LabelPrintSettings>,
 ): LabelPrintSettings => ({
+  ...DEFAULT_PRINT_SETTINGS,
   paperPreset: "A4",
   orientation: "landscape",
   customPaperWidth: 58,
@@ -22,7 +28,9 @@ const settings = (
 });
 
 test("58 mm roll produces one exact 50 x 30 mm printable label page", () => {
-  const layout = calculatePrintLayout(settings({ paperPreset: "ROLL_58" }));
+  const layout = calculatePrintLayout(
+    settings({ paperPreset: "THERMAL", thermalWidth: 58, thermalHeight: 38 }),
+  );
 
   assert.deepEqual(
     {
@@ -47,7 +55,9 @@ test("58 mm roll produces one exact 50 x 30 mm printable label page", () => {
 test("80 mm roll derives page height from label height and margins", () => {
   const layout = calculatePrintLayout(
     settings({
-      paperPreset: "ROLL_80",
+      paperPreset: "THERMAL",
+      thermalWidth: 80,
+      thermalHeight: 50,
       labelWidth: 70,
       labelHeight: 40,
       margin: 5,
@@ -83,7 +93,12 @@ test("custom paper dimensions are used without preset scaling", () => {
 
 test("layout rejects a label wider than the selected roll's printable area", () => {
   const layout = calculatePrintLayout(
-    settings({ paperPreset: "ROLL_58", labelWidth: 50.1 }),
+    settings({
+      paperPreset: "CUSTOM",
+      customPaperWidth: 58,
+      customPaperHeight: 38,
+      labelWidth: 50.1,
+    }),
   );
 
   assert.equal(layout.fitsOnPage, false);
@@ -101,10 +116,16 @@ test("product label includes the stored wholesale price", () => {
   assert.equal(label.priceText, "25000₮");
   assert.equal(label.wholesalePriceText, "22000₮");
 
-  const markup = renderProductLabelMarkup(label);
-  assert.match(markup, /ЗАРАХ ҮНЭ:/);
-  assert.match(markup, /БӨӨНИЙ ҮНЭ:/);
-  assert.match(markup, /22000₮/);
+  const retail = renderProductLabelMarkup(draftLabelValue(label, "retail"));
+  const wholesale = renderProductLabelMarkup(
+    draftLabelValue(label, "wholesale"),
+  );
+  assert.match(retail, /ЭНГИЙН ҮНЭ:/);
+  assert.match(retail, /25000₮/);
+  assert.doesNotMatch(retail, /22000₮/);
+  assert.match(wholesale, /БӨӨНИЙ ҮНЭ:/);
+  assert.match(wholesale, /22000₮/);
+  assert.doesNotMatch(wholesale, /25000₮/);
 });
 
 test("missing wholesale price stays blank instead of printing a false zero", () => {

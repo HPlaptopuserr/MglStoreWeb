@@ -24,7 +24,10 @@ import adminSalesStoresRouter from "./admin-sales-stores.routes";
 
 import posStoreStatisticsRouter from "./pos-store-statistics.routes";
 
+import paymentSearchRouter from "./payment-search.routes";
+
 const router: RouterType = Router();
+router.use(paymentSearchRouter);
 router.use(posStoreStatisticsRouter);
 router.use(adminSalesStoresRouter);
 

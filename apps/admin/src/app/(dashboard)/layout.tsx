@@ -21,6 +21,7 @@ import {
   GraduationCap,
   ShieldCheck,
   MapPinned,
+  Search,
 } from "lucide-react";
 import { AdminSidebar, type NavItem } from "@mgl/ui";
 import { AdminMenuSearch } from "@/components/organisms/navigation/AdminMenuSearch";
@@ -29,7 +30,7 @@ import { AccountSwitcher } from "@/components/organisms/AccountSwitcher";
 import { AdminAuthProvider, useAdminAuth } from "@/lib/admin-auth";
 
 // ─── Nav item definitions with required permissions ─────────────────────
-type ProtectedNavItem = NavItem & { requires?: string[] };
+type ProtectedNavItem = NavItem & { requires?: string[]; fullAdminOnly?: boolean };
 
 const ALL_NAV_ITEMS: ProtectedNavItem[] = [
   {
@@ -45,6 +46,13 @@ const ALL_NAV_ITEMS: ProtectedNavItem[] = [
     icon: BarChart3,
     href: "/statistics",
     requires: ["VIEW_SYSTEM_DASHBOARD"],
+  },
+  {
+    id: "payments",
+    label: "Төлбөр хайх",
+    icon: Search,
+    href: "/payments",
+    fullAdminOnly: true,
   },
   {
     id: "requests",
@@ -194,7 +202,7 @@ function DashboardShell({ children }: { children: ReactNode }) {
   const filteredNavItems = useMemo(() => {
     if (isFullAdmin) return ALL_NAV_ITEMS;
     return ALL_NAV_ITEMS.filter(
-      (item) => !item.requires || hasAnyPermission(...item.requires),
+      (item) => !item.fullAdminOnly && (!item.requires || hasAnyPermission(...item.requires)),
     );
   }, [isFullAdmin, hasAnyPermission]);
 

@@ -15,6 +15,7 @@ interface SectionSource {
   requiresAny?: string[];
 }
 const aliases: Record<string, string> = {
+  "/payments": "payment transaction minu qpay төлбөр гүйлгээ хаалт захиалагч лавлах",
   "/dashboard": "dashboard home хяналт нүүр",
   "/statistics": "statistics report тайлан үзүүлэлт борлуулалт",
   "/partners": "vendor supplier түнш байгууллага нийлүүлэгч дэлгүүр",
