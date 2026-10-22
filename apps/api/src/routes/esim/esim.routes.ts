@@ -4,18 +4,22 @@ import { Router, type Request, type RequestHandler } from "express";
 import rateLimit from "express-rate-limit";
 import type { AuthPayload } from "../../middleware/auth";
 import { EsimCatalogService } from "../../services/esim/catalog-service";
-import type { PricingPolicy } from "../../services/esim/pricing";
+import {
+  isManualPricing,
+  type EsimPriceSource,
+} from "../../services/esim/member-pricing";
 import { parseQuoteInput, publicOffer } from "./esim.contracts";
 import type { EsimQuoteService } from "../../services/esim/quote-service";
 interface Dependencies {
   authenticate: RequestHandler;
   activeUser: (id: string) => Promise<boolean>;
   catalog: EsimCatalogService;
-  pricing: () => PricingPolicy;
+  marketing?: () => Promise<{ mode: string; announcement: string }>;
+  pricing: () => EsimPriceSource | Promise<EsimPriceSource>;
   quotes: () => EsimQuoteService;
   member?: (id: string) => Promise<boolean>;
-  checkoutEnabled?: () => boolean;
-  terms?: () => string;
+  checkoutEnabled?: () => boolean | Promise<boolean>;
+  terms?: () => string | Promise<string>;
   purchases?: () => EsimPurchaseService;
 }
 export function createEsimRouter(deps: Dependencies): Router {
@@ -66,12 +70,21 @@ export function createEsimRouter(deps: Dependencies): Router {
         throw new Error("No suppliers");
       const user = (req as Request & { user: AuthPayload }).user;
       const member = (await deps.member?.(user.userId)) ?? false;
-      const supplierOffers = catalog.offers.filter((offer) => offer.supplier === "esim-access");
-      let priceKind: "estimate" | "unavailable" = "estimate";
+      const supplierOffers = catalog.offers.filter(
+        (offer) => offer.supplier === "esim-access",
+      );
+      let priceKind: "estimate" | "final" | "unavailable" = "estimate";
       let offers: ReturnType<typeof publicOffer>[];
       try {
-        const policy = deps.pricing();
-        offers = supplierOffers.map((offer) => publicOffer(offer, policy, member));
+        const policy = await deps.pricing();
+        const published = isManualPricing(policy)
+          ? supplierOffers.filter((o) => policy.prices[o.id] !== undefined)
+          : supplierOffers;
+        if (published.length === 0) throw new Error("No published prices");
+        priceKind = isManualPricing(policy) ? "final" : "estimate";
+        offers = published.map((offer) =>
+          publicOffer(offer, policy, member && !isManualPricing(policy)),
+        );
       } catch {
         // Supplier metadata is useful even while retail pricing is unconfigured.
         // Never substitute a guessed price or expose supplier costs.
@@ -80,10 +93,13 @@ export function createEsimRouter(deps: Dependencies): Router {
       }
       res.json({
         country,
+        ...(await deps.marketing?.()),
         offers,
         suppliers: catalog.suppliers,
-        checkoutAvailable: priceKind === "estimate" && (deps.checkoutEnabled?.() ?? false),
-        memberEligible: member,
+        checkoutAvailable:
+          priceKind !== "unavailable" &&
+          ((await deps.checkoutEnabled?.()) ?? false),
+        memberEligible: member && priceKind === "estimate",
         priceKind,
         fetchedAt: new Date(catalog.fetchedAt).toISOString(),
       });
@@ -124,12 +140,14 @@ export function createEsimRouter(deps: Dependencies): Router {
         return;
       }
       res.json(
-        deps.quotes().issue(user.userId, offer, deps.pricing(), Date.now(), {
-          memberPrice: input.memberPrice,
-          checkoutAvailable: deps.checkoutEnabled?.() ?? false,
-          terms: deps.terms?.() ?? "",
-          country: input.country,
-        }),
+        deps
+          .quotes()
+          .issue(user.userId, offer, await deps.pricing(), Date.now(), {
+            memberPrice: input.memberPrice,
+            checkoutAvailable: (await deps.checkoutEnabled?.()) ?? false,
+            terms: (await deps.terms?.()) ?? "",
+            country: input.country,
+          }),
       );
     } catch {
       res.status(503).json({

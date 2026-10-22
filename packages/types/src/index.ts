@@ -55,3 +55,5 @@ export * from "./domain/restaurant-line-discount";
 export * from "./domain/kitchen-access";
 
 export * from "./payment-search";
+
+export * from "./domain/esim-sales";

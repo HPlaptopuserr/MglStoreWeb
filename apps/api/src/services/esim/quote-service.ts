@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type { PricingPolicy } from "./pricing";
+import { isManualPricing, type EsimPriceSource } from "./member-pricing";
 import { checkoutPrice } from "./member-pricing";
 import type { SupplierOffer } from "./offers";
 import { object } from "./supplier-http";
@@ -22,7 +22,7 @@ export class EsimQuoteService {
   issue(
     userId: string,
     offer: SupplierOffer,
-    policy: PricingPolicy,
+    policy: EsimPriceSource,
     now = Date.now(),
     options: {
       memberPrice?: boolean;
@@ -37,8 +37,11 @@ export class EsimQuoteService {
       policy,
       memberPrice,
       now,
+      offer.id,
     );
-    const expires = Math.min(now + 5 * 60000, policy.fxAt + 86400000);
+    const expires = isManualPricing(policy)
+      ? now + 5 * 60000
+      : Math.min(now + 5 * 60000, policy.fxAt + 86400000);
     if (expires <= now) throw new Error("Expired FX");
     // Supplier costs stay server-side; they are not embedded in the client token.
     const encoded = Buffer.from(

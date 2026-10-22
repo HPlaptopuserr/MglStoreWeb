@@ -1,3 +1,4 @@
+import { ESIM_SALES_SETTINGS_KEY } from "@mgl/types";
 import { readStoreMiniApps } from "../../services/store-mini-app-settings";
 import { STORE_MINI_APP_SETTINGS_KEY, STORE_MINI_APP_IDS } from "@mgl/types";
 import crypto from "crypto";
@@ -63,7 +64,7 @@ const projectPdfUpload = multer({
 const router: ExpressRouter = Router();
 // Dedicated endpoints own these keys; generic settings cannot overwrite them.
 const isDedicatedSettingKey = (key: string) =>
-  key.startsWith(QUALITY_SETTINGS_PREFIX) || key === STORE_MINI_APP_SETTINGS_KEY;
+  key.startsWith(QUALITY_SETTINGS_PREFIX) || key === STORE_MINI_APP_SETTINGS_KEY || key === ESIM_SALES_SETTINGS_KEY;
 router.use("/site-settings", (req, res, next) => {
   const key = req.path.slice(1);
   if (["PUT", "POST", "DELETE", "PATCH"].includes(req.method) &&
@@ -1563,10 +1564,10 @@ router.use(
 // GET all site settings as key-value object (public read for web/vendor)
 router.get("/site-settings", async (req, res) => {
   try {
-    const settings = await prisma.siteSetting.findMany({ where: { NOT: [{ key: { startsWith: QUALITY_SETTINGS_PREFIX } }, { key: STORE_MINI_APP_SETTINGS_KEY }] } });
+    const settings = await prisma.siteSetting.findMany({ where: { NOT: [{ key: { startsWith: QUALITY_SETTINGS_PREFIX } }, { key: STORE_MINI_APP_SETTINGS_KEY }, { key: ESIM_SALES_SETTINGS_KEY }] } });
     const obj: Record<string, string> = {};
     for (const s of settings) {
-      if (s.key === STORE_MINI_APP_SETTINGS_KEY) continue;
+      if (s.key === STORE_MINI_APP_SETTINGS_KEY || s.key === ESIM_SALES_SETTINGS_KEY) continue;
       if (Buffer.byteLength(s.value, "utf8") <= SETTING_VALUE_MAX_BYTES) {
         if (s.key === FRANCHISE_ITEMS_KEY) {
           obj[s.key] = JSON.stringify(
@@ -1633,7 +1634,7 @@ router.get(
       const settings = await prisma.siteSetting.findMany();
       const obj: Record<string, string> = {};
       for (const s of settings) {
-        if (s.key === STORE_MINI_APP_SETTINGS_KEY) continue;
+        if (s.key === STORE_MINI_APP_SETTINGS_KEY || s.key === ESIM_SALES_SETTINGS_KEY) continue;
         if (Buffer.byteLength(s.value, "utf8") <= SETTING_VALUE_MAX_BYTES) {
           obj[s.key] = s.value;
         }

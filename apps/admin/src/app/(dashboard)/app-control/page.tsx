@@ -6,6 +6,8 @@ import { StoreMiniAppVisibility } from "@/components/organisms/app-control/Store
 import { MglStoreTab } from "@/components/organisms/app-control/MglStoreTab";
 import { MglBusinessTab } from "@/components/organisms/app-control/MglBusinessTab";
 
+import { EsimSalesPanel } from "@/components/organisms/app-control/esim/EsimSalesPanel";
+
 type Tab = "mgl-store" | "mgl-business";
 
 const TABS: {
@@ -84,6 +86,7 @@ export default function AppControlPage() {
         {activeTab === "mgl-store" && (
           <>
             <StoreMiniAppVisibility />
+            <EsimSalesPanel />
             <MglStoreTab />
           </>
         )}

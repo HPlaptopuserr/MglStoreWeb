@@ -1,6 +1,6 @@
 import { checkoutPrice } from "../../services/esim/member-pricing";
 import type { SupplierOffer } from "../../services/esim/offers";
-import { type PricingPolicy } from "../../services/esim/pricing";
+import type { EsimPriceSource } from "../../services/esim/member-pricing";
 
 export interface QuoteInput {
   country: string;
@@ -34,7 +34,7 @@ export function parseQuoteInput(body: unknown): QuoteInput | null {
 /** Explicit allowlist: supplier costs must never reach the public response. */
 export function publicOffer(
   offer: SupplierOffer,
-  policy: PricingPolicy | null,
+  policy: EsimPriceSource | null,
   memberEligible = false,
 ) {
   return {
@@ -45,10 +45,25 @@ export function publicOffer(
     dataMb: offer.dataMb,
     days: offer.days,
     activation: offer.activation,
-    totalMnt: policy ? checkoutPrice(offer.wholesaleUsdUnits, policy, false) : null,
-    memberTotalMnt: memberEligible && policy
-      ? checkoutPrice(offer.wholesaleUsdUnits, policy, true)
+    totalMnt: policy
+      ? checkoutPrice(
+          offer.wholesaleUsdUnits,
+          policy,
+          false,
+          Date.now(),
+          offer.id,
+        )
       : null,
+    memberTotalMnt:
+      memberEligible && policy
+        ? checkoutPrice(
+            offer.wholesaleUsdUnits,
+            policy,
+            true,
+            Date.now(),
+            offer.id,
+          )
+        : null,
     currency: "MNT" as const,
   };
 }

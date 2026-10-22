@@ -1,5 +1,5 @@
 import "./config/env";
-import esimRoutes, { reconcileEsimPurchases } from "./routes/esim";
+import esimRoutes, { reconcileEsimPurchases, esimAdminRoutes } from "./routes/esim";
 import { restrictKitchenMember } from "./middleware/kitchen-access";
 import { reconcileRetailPayments } from "./services/warehouse-retail.service";
 import warehouseRetailRoutes from "./routes/store/warehouse-retail.routes";
@@ -204,6 +204,7 @@ app.use("/api", chatRoutes);
 app.use("/api", dmRoutes);
 app.use("/api", storeCheckoutRoutes);
 app.use("/api", esimRoutes);
+app.use("/api", esimAdminRoutes);
 app.use("/api", vendorOrderRoutes);
 app.use("/api", storeLoyaltyRoutes);
 app.use("/api", storeBranchRoutes);

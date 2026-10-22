@@ -4,7 +4,7 @@ import type { EsimPaymentInvoice } from "./minu-payment";
 import type { EsimCatalogService } from "./catalog-service";
 import { AccessRejected, type EsimFulfillment } from "./access-fulfillment";
 import type { ActivationVault } from "./activation-vault";
-import type { PricingPolicy } from "./pricing";
+import type { EsimPriceSource } from "./member-pricing";
 import { checkoutPrice } from "./member-pricing";
 import type { EsimQuoteService } from "./quote-service";
 import type { Purchase, PurchaseStore } from "./purchase-store";
@@ -28,9 +28,9 @@ export interface PurchaseDependencies {
   store: PurchaseStore;
   catalog: EsimCatalogService;
   quotes: () => EsimQuoteService;
-  pricing: () => PricingPolicy;
-  enabled: () => boolean;
-  terms: () => string;
+  pricing: () => EsimPriceSource | Promise<EsimPriceSource>;
+  enabled: () => boolean | Promise<boolean>;
+  terms: () => string | Promise<string>;
   member: (userId: string) => Promise<boolean>;
   supplier: () => EsimFulfillment;
   vault: () => ActivationVault;
@@ -62,7 +62,7 @@ export class EsimPurchaseService {
         );
       return existing;
     }
-    if (!this.deps.enabled())
+    if (!(await this.deps.enabled()))
       throw new PurchaseError(
         503,
         "ESIM_CHECKOUT_DISABLED",
@@ -84,7 +84,7 @@ export class EsimPurchaseService {
         "ESIM_MEMBERSHIP_REQUIRED",
         "Хүчинтэй гишүүнчлэл шаардлагатай.",
       );
-    if (!quote.terms || quote.terms !== this.deps.terms())
+    if (!quote.terms || quote.terms !== (await this.deps.terms()))
       throw new PurchaseError(
         409,
         "ESIM_TERMS_CHANGED",
@@ -94,15 +94,21 @@ export class EsimPurchaseService {
     const offer = catalog.offers.find(
       (offer) => offer.id === quote.offerId && offer.supplier === "esim-access",
     );
-    if (
-      !offer ||
-      checkoutPrice(
-        offer.wholesaleUsdUnits,
-        this.deps.pricing(),
-        quote.memberPrice,
-        this.now(),
-      ) !== quote.totalMnt
-    )
+    let currentPrice: number | null = null;
+    if (offer) {
+      try {
+        currentPrice = checkoutPrice(
+          offer.wholesaleUsdUnits,
+          await this.deps.pricing(),
+          quote.memberPrice,
+          this.now(),
+          offer.id,
+        );
+      } catch {
+        /* A withdrawn or unavailable price invalidates the quote. */
+      }
+    }
+    if (!offer || currentPrice !== quote.totalMnt)
       throw new PurchaseError(
         409,
         "ESIM_PRICE_CHANGED",

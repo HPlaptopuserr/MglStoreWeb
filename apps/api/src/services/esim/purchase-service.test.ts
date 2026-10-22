@@ -12,7 +12,11 @@ import {
 import { EsimCatalogService } from "./catalog-service";
 import { EsimQuoteService } from "./quote-service";
 import type { Purchase, PurchasePatch, PurchaseStore } from "./purchase-store";
-import { memberEligible, checkoutPrice } from "./member-pricing";
+import {
+  memberEligible,
+  checkoutPrice,
+  type EsimPriceSource,
+} from "./member-pricing";
 import type { PricingPolicy } from "./pricing";
 import { parsePurchaseInput } from "../../routes/esim/purchase.routes";
 
@@ -87,7 +91,8 @@ class MemoryStore implements PurchaseStore {
     return true;
   }
 }
-function fixture() {
+function fixture(useManualPricing = false) {
+  let manualPrice: number | null = 9900;
   let now = Date.now();
   let paid = false;
   let member = false;
@@ -131,6 +136,14 @@ function fixture() {
     profitMarkupBps: 3000,
     roundingMnt: 100,
   };
+  const priceSource = (): EsimPriceSource =>
+    useManualPricing
+      ? {
+          kind: "manual",
+          prices:
+            manualPrice === null ? {} : { "esim-access:CN_1_7": manualPrice },
+        }
+      : policy;
   const quotes = new EsimQuoteService("x".repeat(32));
   const vault = new ActivationVault(randomBytes(32).toString("base64"));
   const ids: string[] = [];
@@ -139,7 +152,7 @@ function fixture() {
     store,
     catalog,
     quotes: () => quotes,
-    pricing: () => policy,
+    pricing: priceSource,
     enabled: () => true,
     terms: () => "Reviewed terms",
     member: async () => member,
@@ -177,6 +190,9 @@ function fixture() {
     checkPayment: async () => paid,
   });
   return {
+    manualPrice: (price: number | null) => {
+      manualPrice = price;
+    },
     store,
     service,
     ids,
@@ -196,7 +212,7 @@ function fixture() {
     calls: () => ({ orderCalls, invoiceCalls }),
     input: async (memberPrice = false) => {
       const offer = (await catalog.list("CN")).offers[0]!;
-      const quote = quotes.issue("owner", offer, policy, now, {
+      const quote = quotes.issue("owner", offer, priceSource(), now, {
         memberPrice,
         terms: "Reviewed terms",
         checkoutAvailable: true,
@@ -316,4 +332,21 @@ test("Access adapter pins transaction, amount and profile ownership without live
     packageInfoList: [{ slug: "CN_1_7", count: 1, price: 7000 }],
   });
   await assert.rejects(adapter.profile("o1"), /ownership/);
+});
+
+test("web price changes and withdrawn prices invalidate old quotes before invoicing", async () => {
+  for (const price of [10900, null]) {
+    const f = fixture(true);
+    const input = await f.input();
+    f.manualPrice(price);
+    await assert.rejects(
+      f.service.create("owner", input),
+      (error: unknown) =>
+        error instanceof PurchaseError && error.code === "ESIM_PRICE_CHANGED",
+    );
+    assert.equal(f.calls().invoiceCalls, 0);
+  }
+  const f = fixture(true);
+  const order = await f.service.create("owner", await f.input());
+  assert.equal(order.totalMnt, 9900);
 });
