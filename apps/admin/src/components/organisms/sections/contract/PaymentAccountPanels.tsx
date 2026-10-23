@@ -1,166 +1,35 @@
 "use client";
 
-import React, { useState } from "react";
-import {
-  CheckCircle2,
-  Link as LinkIcon,
-  Loader2,
-  Plus,
-  Trash2,
-} from "lucide-react";
+import { useState } from "react";
+import { CheckCircle2, Plus, Trash2 } from "lucide-react";
 import { FALLBACK_SYSTEMQR_CATEGORIES } from "@mgl/types";
+import {
+  PaymentAccountForm,
+  AccountFeedback,
+  type AccountNotice,
+} from "./payment-account/PaymentAccountForm";
 
-export const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
+import {
+  DEFAULT_SYSTEMQR_LOCATION,
+  FALLBACK_SYSTEMQR_CITIES,
+  getBankLabel,
+  withCurrentOption,
+  type ContractPaymentAccount,
+  type SystemQrCity,
+  type SystemQrCategory,
+  type SystemQrKhoroo,
+  type SystemQrConfig,
+} from "./payment-account/payment-account.model";
+export * from "./payment-account/payment-account.model";
 
-export type ContractPaymentAccount = {
-  id: string;
-  label: string;
-  merchantName: string;
-  merchantCode: string;
-  username?: string;
-  password?: string;
-  bankCode: string;
-  accountNumber: string;
-  registerNumber: string;
-  phone: string;
-  email?: string;
-  cityId?: string;
-  districtId?: string;
-  khorooId?: string;
-  building?: string;
-  doorNo?: string;
-  firstName?: string;
-  lastName?: string;
-  corporateFlag?: string;
-  corporateName?: string;
-  gender?: string;
-  subCategoryId?: string;
-  createdAt?: string;
-  updatedAt?: string;
+type AccountSettings = {
+  isPaid?: boolean;
+  paymentAccounts?: ContractPaymentAccount[];
+  systemQr?: SystemQrConfig;
 };
-
-export type SystemQrDistrict = { code: string; name: string };
-export type SystemQrCity = {
-  code: string;
-  name: string;
-  districts?: SystemQrDistrict[];
-};
-export type SystemQrKhoroo = { code: string; name: string };
-export type SystemQrCategory = {
-  code: string;
-  name: string;
-  categoryCode?: string;
-  categoryName?: string;
-};
-
-export const DEFAULT_SYSTEMQR_LOCATION = {
-  cityId: "20",
-  districtId: "1",
-  khorooId: "",
-  building: "-",
-  doorNo: "-",
-  corporateFlag: "0",
-  gender: "M",
-  subCategoryId: "36",
-};
-
-const FALLBACK_SYSTEMQR_CITIES: SystemQrCity[] = [
-  {
-    code: "20",
-    name: "Улаанбаатар",
-    districts: [{ code: "1", name: "Сонгинохайрхан" }],
-  },
-];
-
-function withCurrentOption<T extends { code: string; name: string }>(
-  options: T[],
-  code: string,
-  fallbackName: string,
-): T[] {
-  const currentCode = String(code || "").trim();
-  if (!currentCode || options.some((option) => option.code === currentCode))
-    return options;
-  return [{ code: currentCode, name: fallbackName } as T, ...options];
-}
-
-export const BANK_OPTIONS = [
-  { value: "050000", label: "Хаан банк" },
-  { value: "150000", label: "Голомт банк" },
-  { value: "040000", label: "TDB" },
-  { value: "320000", label: "ХасБанк" },
-  { value: "340000", label: "Төрийн банк" },
-  { value: "010000", label: "Монголбанк" },
-  { value: "300000", label: "Капитрон банк" },
-  { value: "380000", label: "Богд банк" },
-  { value: "290000", label: "Үндэсний хөрөнгө оруулалтын банк" },
-];
-
-export const parseContractPaymentAccounts = (
-  raw?: string | null,
-): ContractPaymentAccount[] => {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-export const getBankLabel = (bankCode?: string) =>
-  BANK_OPTIONS.find((bank) => bank.value === bankCode)?.label ||
-  bankCode ||
-  "-";
-
-export const toSystemQrConfig = (
-  account: ContractPaymentAccount,
-  previous: any = {},
-) => ({
-  ...previous,
-  enabled: true,
-  selectedAccountId: account.id,
-  label: account.label || previous.label || "",
-  merchantName: account.merchantName,
-  merchantCode: account.merchantCode,
-  username: account.username || "",
-  password: account.password || "",
-  bankCode: account.bankCode || "050000",
-  accountNumber: account.accountNumber,
-  registerNumber: account.registerNumber,
-  phone: account.phone,
-  email: account.email || "",
-  cityId: account.cityId || previous.cityId || DEFAULT_SYSTEMQR_LOCATION.cityId,
-  districtId:
-    account.districtId ||
-    previous.districtId ||
-    DEFAULT_SYSTEMQR_LOCATION.districtId,
-  khorooId:
-    account.khorooId || previous.khorooId || DEFAULT_SYSTEMQR_LOCATION.khorooId,
-  building:
-    account.building || previous.building || DEFAULT_SYSTEMQR_LOCATION.building,
-  doorNo: account.doorNo || previous.doorNo || DEFAULT_SYSTEMQR_LOCATION.doorNo,
-  firstName: account.firstName || previous.firstName || "",
-  lastName: account.lastName || previous.lastName || "",
-  corporateFlag:
-    account.corporateFlag ||
-    previous.corporateFlag ||
-    DEFAULT_SYSTEMQR_LOCATION.corporateFlag,
-  corporateName:
-    (account.corporateFlag ||
-      previous.corporateFlag ||
-      DEFAULT_SYSTEMQR_LOCATION.corporateFlag) === "1"
-      ? account.corporateName || previous.corporateName || account.merchantName
-      : account.corporateName || previous.corporateName || "",
-  gender: account.gender || previous.gender || DEFAULT_SYSTEMQR_LOCATION.gender,
-  subCategoryId:
-    account.subCategoryId ||
-    previous.subCategoryId ||
-    DEFAULT_SYSTEMQR_LOCATION.subCategoryId,
-});
 
 type SharedAccountProps = {
-  settings: any;
-  setSettings: React.Dispatch<React.SetStateAction<any>>;
+  settings: AccountSettings;
   selectPaymentAccount: (accountId: string) => void;
 };
 
@@ -220,11 +89,14 @@ export function ContractPaymentAccountSelect({
 }
 
 type PaymentAccountsSettingsPanelProps = SharedAccountProps & {
+  onNewAccount: () => void;
   connectingMinuAccount: boolean;
   checkingMinuAccounts?: boolean;
   checkMinuSubMerchants?: () => void;
   deletePaymentAccount: (accountId: string) => void;
-  handleConnectMinuAccount: () => void;
+  handleConnectMinuAccount: () => Promise<boolean>;
+  notice?: AccountNotice | null;
+  clearNotice?: () => void;
   onSystemQrCityChange?: (cityId: string) => void;
   onSystemQrDistrictChange?: (districtId: string) => void;
   systemQrCategories?: SystemQrCategory[];
@@ -234,20 +106,19 @@ type PaymentAccountsSettingsPanelProps = SharedAccountProps & {
   khoroosError?: string;
   retryKhoroos?: () => void;
   updateSystemQr: (field: string, value: string | boolean) => void;
-  upsertCurrentPaymentAccount: (
-    overrides?: Partial<ContractPaymentAccount>,
-  ) => Promise<ContractPaymentAccount | null>;
 };
 
 export function PaymentAccountsSettingsPanel({
   settings,
-  setSettings,
+  onNewAccount,
   selectPaymentAccount,
   connectingMinuAccount,
   checkingMinuAccounts = false,
   checkMinuSubMerchants,
   deletePaymentAccount,
   handleConnectMinuAccount,
+  notice = null,
+  clearNotice,
   onSystemQrCityChange,
   onSystemQrDistrictChange,
   systemQrCategories = [],
@@ -257,14 +128,11 @@ export function PaymentAccountsSettingsPanel({
   khoroosError = "",
   retryKhoroos,
   updateSystemQr,
-  upsertCurrentPaymentAccount,
 }: PaymentAccountsSettingsPanelProps) {
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [deleteTarget, setDeleteTarget] =
     useState<ContractPaymentAccount | null>(null);
   const accounts: ContractPaymentAccount[] = settings.paymentAccounts || [];
-  const selectClass =
-    "px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white";
   const currentSubCategoryId = String(
     settings.systemQr?.subCategoryId || DEFAULT_SYSTEMQR_LOCATION.subCategoryId,
   );
@@ -274,14 +142,6 @@ export function PaymentAccountsSettingsPanel({
   const currentDistrictId = String(
     settings.systemQr?.districtId || DEFAULT_SYSTEMQR_LOCATION.districtId,
   );
-  const currentKhorooId = String(
-    settings.systemQr?.khorooId || DEFAULT_SYSTEMQR_LOCATION.khorooId,
-  );
-  const isCorporateSystemQr =
-    String(
-      settings.systemQr?.corporateFlag ||
-        DEFAULT_SYSTEMQR_LOCATION.corporateFlag,
-    ) === "1";
   const categoryOptions = withCurrentOption(
     systemQrCategories.length > 0
       ? systemQrCategories
@@ -300,7 +160,6 @@ export function PaymentAccountsSettingsPanel({
     currentDistrictId,
     `Код ${currentDistrictId}`,
   );
-  const khorooOptions = systemQrKhoroos;
 
   const handleCitySelectChange = (cityId: string) => {
     if (
@@ -341,38 +200,18 @@ export function PaymentAccountsSettingsPanel({
             Minu Dynamic QR дансны сан
           </div>
           <div className="text-sm text-neutral-500 mt-0.5">
-            Гэрээний төлбөр авах A/B/C дансаа энд бүртгээд, дараа нь "Төлбөр &
-            Хугацаа" хэсгээс сонгоно.
+            Төлбөр хүлээн авах дансуудаа холбож, үйлчилгээ бүрт ашиглах дансаа
+            сонгоно уу.
           </div>
         </div>
         <button
           type="button"
           onClick={() => {
-            setSettings((prev: any) => ({
-              ...prev,
-              systemQr: {
-                ...prev.systemQr,
-                enabled: true,
-                selectedAccountId: "",
-                label: "",
-                merchantName: "",
-                accountNumber: "",
-                bankCode: "050000",
-                registerNumber: "",
-                phone: "",
-                email: "",
-                merchantCode: "",
-                username: "",
-                password: "",
-                ...DEFAULT_SYSTEMQR_LOCATION,
-                firstName: "",
-                lastName: "",
-                corporateName: "",
-              },
-            }));
+            onNewAccount();
+            clearNotice?.();
             setShowAccountForm(true);
           }}
-          className="inline-flex items-center gap-2 rounded-lg border border-neutral-300 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 hover:bg-neutral-100"
+          className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-slate-200"
         >
           <Plus className="h-4 w-4" />
           Шинэ данс
@@ -494,342 +333,28 @@ export function PaymentAccountsSettingsPanel({
         </div>
       )}
 
+      {!showAccountForm && notice && <AccountFeedback notice={notice} />}
       {showAccountForm && (
-        <div className="rounded-xl border border-amber-200 bg-white p-4 shadow-sm">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-bold text-neutral-900">
-                Шинэ төлбөрийн данс бүртгэх
-              </p>
-              <p className="text-xs text-neutral-500">
-                Энэ form зөвхөн шинэ Minu Dynamic QR данс холбоход ашиглагдана.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowAccountForm(false)}
-              className="rounded-lg border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
-            >
-              Хаах
-            </button>
-          </div>
-          <div className="mb-4 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Шинээр холбох үед Merchant Code-г хоосон үлдээнэ. Minu амжилттай
-            бүртгэвэл код автоматаар бөглөгдөнө. Аль хэдийн Minu-ээс авсан код
-            байгаа бол merchantCode-оо оруулаад хадгалах үед Minu дээр яг таарч
-            байгаа эсэхийг шалгана. Invoice үүсгэхдээ SystemQR master тохиргоог
-            ашиглана.
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <AccountInput
-              label="Дансны сан дахь нэр"
-              value={settings.systemQr?.label || ""}
-              onChange={(value) => updateSystemQr("label", value)}
-              placeholder="Жишээ: A данс - 1 саяын гэрээ"
-            />
-            <AccountInput
-              label="Данс / мерчант нэр *"
-              value={settings.systemQr?.merchantName || ""}
-              onChange={(value) => updateSystemQr("merchantName", value)}
-              placeholder="Жишээ: MGL Store гэрээ"
-            />
-
-            <div className="flex flex-col gap-1">
-              <label className="text-xs font-medium text-neutral-500 pl-1">
-                Банк *
-              </label>
-              <select
-                value={settings.systemQr?.bankCode || "050000"}
-                onChange={(event) =>
-                  updateSystemQr("bankCode", event.target.value)
-                }
-                className={selectClass}
-              >
-                {BANK_OPTIONS.map((bank) => (
-                  <option key={bank.value} value={bank.value}>
-                    {bank.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <AccountInput
-              label="Дансны дугаар *"
-              value={settings.systemQr?.accountNumber || ""}
-              onChange={(value) => updateSystemQr("accountNumber", value)}
-            />
-            <AccountInput
-              label="Регистр *"
-              value={settings.systemQr?.registerNumber || ""}
-              onChange={(value) => updateSystemQr("registerNumber", value)}
-            />
-            <AccountInput
-              label="Утас *"
-              value={settings.systemQr?.phone || ""}
-              onChange={(value) => updateSystemQr("phone", value)}
-            />
-            <AccountInput
-              label="И-мэйл"
-              type="email"
-              value={settings.systemQr?.email || ""}
-              onChange={(value) => updateSystemQr("email", value)}
-            />
-            <AccountInput
-              label="Merchant Code / Sub-merchant code"
-              value={settings.systemQr?.merchantCode || ""}
-              onChange={(value) => updateSystemQr("merchantCode", value)}
-              placeholder="Шинэ бүртгэл хийх бол хоосон үлдээнэ"
-              description="Регистр/дансны дугаар биш. Шинэ subMerchant бүртгэх бол хоосон үлдээнэ, Minu-ээс авсан код байгаа бол шалгагдаж байж хадгалагдана."
-            />
-            <div className="md:col-span-3 mt-1 grid grid-cols-1 md:grid-cols-3 gap-3 border-t border-neutral-100 pt-3">
-              <AccountInput
-                label={
-                  isCorporateSystemQr ? "Эзэмшигчийн нэр" : "Эзэмшигчийн нэр *"
-                }
-                value={settings.systemQr?.firstName || ""}
-                onChange={(value) => updateSystemQr("firstName", value)}
-              />
-              <AccountInput
-                label={
-                  isCorporateSystemQr
-                    ? "Эзэмшигчийн овог"
-                    : "Эзэмшигчийн овог *"
-                }
-                value={settings.systemQr?.lastName || ""}
-                onChange={(value) => updateSystemQr("lastName", value)}
-              />
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-neutral-500 pl-1">
-                  Мерчант төрөл *
-                </label>
-                <select
-                  value={
-                    settings.systemQr?.corporateFlag ||
-                    DEFAULT_SYSTEMQR_LOCATION.corporateFlag
-                  }
-                  onChange={(event) =>
-                    updateSystemQr("corporateFlag", event.target.value)
-                  }
-                  className={selectClass}
-                >
-                  <option value="0">Хувь хүн</option>
-                  <option value="1">Байгууллага</option>
-                </select>
-              </div>
-
-              <AccountInput
-                label="Байгууллагын нэр"
-                value={settings.systemQr?.corporateName || ""}
-                onChange={(value) => updateSystemQr("corporateName", value)}
-              />
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-neutral-500 pl-1">
-                  Хүйс *
-                </label>
-                <select
-                  value={
-                    settings.systemQr?.gender ||
-                    DEFAULT_SYSTEMQR_LOCATION.gender
-                  }
-                  onChange={(event) =>
-                    updateSystemQr("gender", event.target.value)
-                  }
-                  className={selectClass}
-                >
-                  <option value="M">Эрэгтэй</option>
-                  <option value="F">Эмэгтэй</option>
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-neutral-500 pl-1">
-                  Үйл ажиллагааны чиглэл *
-                </label>
-                <select
-                  value={currentSubCategoryId}
-                  onChange={(event) =>
-                    updateSystemQr("subCategoryId", event.target.value)
-                  }
-                  className={selectClass}
-                >
-                  {categoryOptions.map((category) => (
-                    <option key={category.code} value={category.code}>
-                      {category.categoryName
-                        ? `${category.categoryName} - ${category.name}`
-                        : category.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-neutral-500 pl-1">
-                  Аймаг/Хот *
-                </label>
-                <select
-                  value={currentCityId}
-                  onChange={(event) =>
-                    handleCitySelectChange(event.target.value)
-                  }
-                  className={selectClass}
-                >
-                  {cityOptions.map((city) => (
-                    <option key={city.code} value={city.code}>
-                      {city.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-neutral-500 pl-1">
-                  Дүүрэг/Сум *
-                </label>
-                <select
-                  value={currentDistrictId}
-                  onChange={(event) =>
-                    handleDistrictSelectChange(event.target.value)
-                  }
-                  className={selectClass}
-                >
-                  {districtOptions.map((district) => (
-                    <option key={district.code} value={district.code}>
-                      {district.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-neutral-500 pl-1">
-                  Хороо/Баг *
-                </label>
-                <select
-                  aria-label="Хороо/Баг"
-                  disabled={khoroosLoading || khorooOptions.length === 0}
-                  value={khorooOptions.some((item) => item.code === currentKhorooId) ? currentKhorooId : ""}
-                  onChange={(event) =>
-                    updateSystemQr("khorooId", event.target.value)
-                  }
-                  className={selectClass}
-                >
-                  <option value="">{khoroosLoading ? "Хорооны жагсаалт ачаалж байна…" : khorooOptions.length ? "Хороо/багаа сонгоно уу" : "Minu-ийн хорооны жагсаалт байхгүй байна"}</option>
-                  {khorooOptions.map((khoroo) => (
-                    <option key={khoroo.code} value={khoroo.code}>
-                      {khoroo.name}
-                    </option>
-                  ))}
-                </select>
-                {khoroosError && (
-                  <div role="alert" className="text-xs text-red-600">
-                    {khoroosError}{" "}
-                    {retryKhoroos && <button type="button" onClick={retryKhoroos} className="underline hover:text-red-800">Дахин ачаалах</button>}
-                  </div>
-                )}
-              </div>
-
-              <AccountInput
-                label="Байр/Хашаа *"
-                value={
-                  settings.systemQr?.building ||
-                  DEFAULT_SYSTEMQR_LOCATION.building
-                }
-                onChange={(value) => updateSystemQr("building", value)}
-              />
-              <AccountInput
-                label="Тоот *"
-                value={
-                  settings.systemQr?.doorNo || DEFAULT_SYSTEMQR_LOCATION.doorNo
-                }
-                onChange={(value) => updateSystemQr("doorNo", value)}
-              />
-            </div>
-
-            <div className="md:col-span-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleConnectMinuAccount}
-                disabled={connectingMinuAccount}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-amber-600 text-white rounded-lg text-sm font-semibold hover:bg-amber-700 disabled:opacity-50"
-              >
-                {connectingMinuAccount ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="w-4 h-4" />
-                )}
-                Minu данс холбох
-              </button>
-              {checkMinuSubMerchants && (
-                <button
-                  type="button"
-                  onClick={checkMinuSubMerchants}
-                  disabled={checkingMinuAccounts}
-                  className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-neutral-300 text-neutral-700 rounded-lg text-sm font-semibold hover:bg-neutral-100 disabled:opacity-50"
-                >
-                  {checkingMinuAccounts ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="w-4 h-4" />
-                  )}
-                  Бүртгэл шалгах
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() =>
-                  upsertCurrentPaymentAccount().then((account) => {
-                    if (!account) return;
-                    alert("Дансны санд хадгалагдлаа");
-                    setShowAccountForm(false);
-                  })
-                }
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-neutral-300 text-neutral-700 rounded-lg text-sm font-semibold hover:bg-neutral-100"
-              >
-                <LinkIcon className="w-4 h-4" />
-                Дансны санд хадгалах
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AccountInput({
-  description,
-  label,
-  onChange,
-  placeholder,
-  type = "text",
-  value,
-}: {
-  description?: string;
-  label: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  type?: string;
-  value: string;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-neutral-500 pl-1">
-        {label}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="px-3 py-2.5 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-      />
-      {description && (
-        <p className="text-[11px] leading-snug text-neutral-500 pl-1">
-          {description}
-        </p>
+        <PaymentAccountForm
+          config={settings.systemQr || {}}
+          cities={cityOptions}
+          districts={districtOptions}
+          khoroos={systemQrKhoroos}
+          categories={categoryOptions}
+          khoroosLoading={khoroosLoading}
+          khoroosError={khoroosError}
+          retryKhoroos={retryKhoroos}
+          connecting={connectingMinuAccount}
+          checking={checkingMinuAccounts}
+          notice={notice}
+          onChange={updateSystemQr}
+          onCityChange={handleCitySelectChange}
+          onDistrictChange={handleDistrictSelectChange}
+          onSubmit={handleConnectMinuAccount}
+          onCheck={checkMinuSubMerchants}
+          onClose={() => setShowAccountForm(false)}
+          onClearNotice={clearNotice}
+        />
       )}
     </div>
   );

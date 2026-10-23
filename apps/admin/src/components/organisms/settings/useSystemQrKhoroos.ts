@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { API, adminFetch } from "@/lib/api";
-import type { SystemQrKhoroo } from "../sections/contract/PaymentAccountPanels";
+import type { SystemQrKhoroo } from "../sections/contract/payment-account/payment-account.model";
 
 type CatalogState = {
   districtId: string;

@@ -1531,7 +1531,6 @@ function ContractEditorTab({
 
           <ContractPaymentAccountSelect
             settings={settings}
-            setSettings={setSettings}
             selectPaymentAccount={selectPaymentAccount}
           />
         </div>

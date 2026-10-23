@@ -22,7 +22,6 @@ import type {
   BankAccount,
   City,
   District,
-  Khoroo,
   ManualPaymentProvider,
   MerchantMessage,
   MerchantSettingsChannel,
@@ -35,6 +34,8 @@ import { MerchantSettingsMessage, Field } from "./_merchant-settings/shared";
 import { MinuTerminalMerchantCard } from "./_merchant-settings/MinuTerminalMerchantCard";
 import { ConnectedMerchantStatusCard } from "./_merchant-settings/ConnectedMerchantStatusCard";
 import { SystemQrCredentialRecoveryCard } from "./_merchant-settings/SystemQrCredentialRecoveryCard";
+import { MerchantLocationFields } from "./_merchant-settings/MerchantLocationFields";
+import { useMerchantKhoroos } from "./_merchant-settings/useMerchantKhoroos";
 import { useMerchantBankAccounts } from "./_merchant-settings/useMerchantBankAccounts";
 import { BankAccountsEditor } from "./_merchant-settings/BankAccountsEditor";
 import { SearchableSelect } from "./_merchant-settings/SearchableSelect";
@@ -104,7 +105,7 @@ export function MerchantSettingsSection({
   // City / district
   const [cities, setCities] = useState<City[]>([]);
   const [districts, setDistricts] = useState<District[]>([]);
-  const [khoroos, setKhoroos] = useState<Khoroo[]>([]);
+  const { khoroos, khoroosLoading, khoroosError, retryKhoroos } = useMerchantKhoroos(district);
   const [systemQrCategories, setSystemQrCategories] = useState<
     SystemQrCategory[]
   >(() => [...FALLBACK_SYSTEMQR_CATEGORIES]);
@@ -141,8 +142,6 @@ export function MerchantSettingsSection({
   }, [city]);
 
   useEffect(() => {
-    if (district) loadKhoroos(district);
-    else setKhoroos([]);
     setKhorooId("");
   }, [district]);
 
@@ -255,18 +254,6 @@ export function MerchantSettingsSection({
     setDistricts([]);
   };
 
-  const loadKhoroos = async (districtCode: string) => {
-    try {
-      const res = await authFetch(
-        `${API}/vendor/merchant/systemqr/khoroo/${districtCode}`,
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setKhoroos(data.khoroos || []);
-      }
-    } catch {}
-  };
-
   const loadSystemQrCategories = async () => {
     try {
       const res = await authFetch(`${API}/vendor/merchant/systemqr/categories`);
@@ -314,6 +301,10 @@ export function MerchantSettingsSection({
         type: "error",
         text: "Бүх шаардлагатай талбарыг бөглөнө үү",
       });
+      return;
+    }
+    if (!cities.some((item) => item.code === city) || !districts.some((item) => item.code === district) || !khoroos.some((item) => item.code === khorooId) || khoroosLoading) {
+      setMessage({ type: "error", text: "Minu-ийн жагсаалтаас хот, дүүрэг, хороо / багаа дахин сонгоно уу." });
       return;
     }
     if (merchantType === "company" && !companyName) {
@@ -785,7 +776,10 @@ export function MerchantSettingsSection({
     }
     if (registrationStep === 2) {
       return Boolean(
-        city && district && khorooId && building.trim() && doorNo.trim(),
+        cities.some((item) => item.code === city) &&
+        districts.some((item) => item.code === district) &&
+        khoroos.some((item) => item.code === khorooId) &&
+        !khoroosLoading && building.trim() && doorNo.trim(),
       );
     }
     return bankAccounts.some((account, index) =>
@@ -1088,97 +1082,14 @@ export function MerchantSettingsSection({
 
                     {registrationStep === 2 && (
                       <>
-                        {/* City */}
-                        <Field label="Аймаг/Хот *">
-                          {cities.length > 0 ? (
-                            <div className="relative">
-                              <select
-                                value={city}
-                                onChange={(e) => setCity(e.target.value)}
-                                className={inputCls + " appearance-none pr-8"}
-                              >
-                                <option value="">Сонгоно уу</option>
-                                {cities.map((c) => (
-                                  <option key={c.code} value={c.code}>
-                                    {c.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                            </div>
-                          ) : (
-                            <input
-                              type="text"
-                              value={city}
-                              onChange={(e) => setCity(e.target.value)}
-                              placeholder={
-                                citiesLoading
-                                  ? "Ачаалж байна..."
-                                  : "11000 (Улаанбаатар)"
-                              }
-                              disabled={citiesLoading}
-                              className={inputCls}
-                            />
-                          )}
-                        </Field>
-
-                        {/* District */}
-                        <Field label="Дүүрэг/Сум *">
-                          {districts.length > 0 ? (
-                            <div className="relative">
-                              <select
-                                value={district}
-                                onChange={(e) => setDistrict(e.target.value)}
-                                className={inputCls + " appearance-none pr-8"}
-                              >
-                                <option value="">Сонгоно уу</option>
-                                {districts.map((d) => (
-                                  <option key={d.code} value={d.code}>
-                                    {d.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                            </div>
-                          ) : (
-                            <input
-                              type="text"
-                              value={district}
-                              onChange={(e) => setDistrict(e.target.value)}
-                              placeholder="12000 (Хан-Уул)"
-                              className={inputCls}
-                            />
-                          )}
-                        </Field>
-
-                        {/* Khoroo */}
-                        <Field label="Хороо/Баг *">
-                          {khoroos.length > 0 ? (
-                            <div className="relative">
-                              <select
-                                value={khorooId}
-                                onChange={(e) => setKhorooId(e.target.value)}
-                                className={inputCls + " appearance-none pr-8"}
-                              >
-                                <option value="">Сонгоно уу</option>
-                                {khoroos.map((item) => (
-                                  <option key={item.code} value={item.code}>
-                                    {item.name}
-                                  </option>
-                                ))}
-                              </select>
-                              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-                            </div>
-                          ) : (
-                            <input
-                              type="text"
-                              value={khorooId}
-                              onChange={(e) => setKhorooId(e.target.value)}
-                              placeholder="15782385"
-                              className={inputCls}
-                            />
-                          )}
-                        </Field>
+                        <MerchantLocationFields
+                          city={city} district={district} khorooId={khorooId}
+                          cities={cities} districts={districts} khoroos={khoroos}
+                          citiesLoading={citiesLoading} khoroosLoading={khoroosLoading} khoroosError={khoroosError}
+                          onCityChange={(value) => { setCity(value); setDistrict(""); setKhorooId(""); }}
+                          onDistrictChange={(value) => { setDistrict(value); setKhorooId(""); }}
+                          onKhorooChange={setKhorooId} onRetryCities={loadCities} onRetryKhoroos={retryKhoroos}
+                        />
 
                         {/* Address */}
                         <div className="grid grid-cols-2 gap-3">

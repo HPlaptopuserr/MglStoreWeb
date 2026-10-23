@@ -13,8 +13,10 @@ import {
   type ContractPaymentAccount,
   type SystemQrCategory,
   type SystemQrCity,
+  type SystemQrConfig,
 } from "../sections/contract/PaymentAccountPanels";
 
+import type { AccountNotice } from "../sections/contract/payment-account/PaymentAccountForm";
 import { useSystemQrKhoroos } from "./useSystemQrKhoroos";
 
 const PRO_UPGRADE_PAYMENT_ACCOUNT_KEY = "pro-upgrade-payment-account";
@@ -53,15 +55,23 @@ const defaultSystemQr = {
 const MANUAL_SYSTEMQR_CODE_ERROR =
   'Merchant Code/Sub-merchant code-г гараар хадгалахын өмнө Minu дээр шалгагдсан байх ёстой. Регистр эсвэл дансны дугаар оруулахгүй. Шинээр бүртгэх бол энэ талбарыг хоосон үлдээгээд "Minu данс холбох" дарна уу.';
 
+type PaymentAccountSettings = {
+  paymentAccounts: ContractPaymentAccount[];
+  systemQr: SystemQrConfig;
+};
+type MinuSubMerchant = Pick<ContractPaymentAccount, "merchantName" | "merchantCode" | "username" | "password">;
+
 type PaymentAccountUpsertOptions = {
   trustedMerchantCode?: boolean;
 };
 
 export function ContractPaymentAccountsSettings({ accountsOnly = false }: { accountsOnly?: boolean } = {}) {
-  const [settings, setSettings] = useState<any>({
+  const [settings, setSettings] = useState<PaymentAccountSettings>({
     paymentAccounts: [] as ContractPaymentAccount[],
     systemQr: defaultSystemQr,
   });
+  const [notice, setNotice] = useState<AccountNotice | null>(null);
+  const notify = (message: string, tone: AccountNotice["tone"] = "error") => setNotice({ message, tone });
   const [connectingMinuAccount, setConnectingMinuAccount] = useState(false);
   const [checkingMinuAccounts, setCheckingMinuAccounts] = useState(false);
   const [upgradePaymentAccountId, setUpgradePaymentAccountId] = useState("");
@@ -92,7 +102,7 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
               ),
           ),
         );
-        setSettings((prev: any) => ({
+        setSettings((prev) => ({
           ...prev,
           paymentAccounts,
         }));
@@ -112,7 +122,7 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
         const categories = Array.isArray(categoryData.categories) ? categoryData.categories : [];
         setSystemQrCities(Array.isArray(cityData.cities) ? cityData.cities : []);
         setSystemQrCategories(categories);
-        setSettings((prev: any) => {
+        setSettings((prev) => {
           const current = String(prev.systemQr?.subCategoryId || DEFAULT_SYSTEMQR_LOCATION.subCategoryId);
           if (categories.length === 0 || categories.some((item: SystemQrCategory) => item.code === current)) return prev;
           const fallback = categories.find((item: SystemQrCategory) => item.code === DEFAULT_SYSTEMQR_LOCATION.subCategoryId) || categories[0];
@@ -140,7 +150,7 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
   useEffect(() => {
     if (systemQrCities.length === 0) return;
 
-    setSettings((prev: any) => {
+    setSettings((prev) => {
       const current = prev.systemQr || {};
       const rawCityId = current.cityId === "11000" ? DEFAULT_SYSTEMQR_LOCATION.cityId : current.cityId;
       const city = systemQrCities.find((item) => item.code === rawCityId)
@@ -211,7 +221,7 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
       setUpgradeAccountSaved(true);
     } catch (error) {
       console.error("save Pro Upgrade payment account error", error);
-      alert(
+      notify(
         error instanceof Error
           ? error.message
           : "Pro Upgrade төлбөрийн данс хадгалахад алдаа гарлаа",
@@ -222,7 +232,7 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
   };
 
   const updateSystemQr = (field: string, value: string | boolean) => {
-    setSettings((prev: any) => ({
+    setSettings((prev) => ({
       ...prev,
       systemQr: {
         ...prev.systemQr,
@@ -235,7 +245,7 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
     const city = systemQrCities.find((item) => item.code === cityId);
     const districtId = city?.districts?.[0]?.code || "";
 
-    setSettings((prev: any) => ({
+    setSettings((prev) => ({
       ...prev,
       systemQr: {
         ...prev.systemQr,
@@ -247,7 +257,7 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
   };
 
   const handleSystemQrDistrictChange = (districtId: string) => {
-    setSettings((prev: any) => ({
+    setSettings((prev) => ({
       ...prev,
       systemQr: {
         ...prev.systemQr,
@@ -264,7 +274,7 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
       return;
     }
 
-    setSettings((prev: any) => ({
+    setSettings((prev) => ({
       ...prev,
       systemQr: toSystemQrConfig(account, prev.systemQr),
     }));
@@ -279,7 +289,7 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
     if (!data.success || data.fallback) return null;
 
     const rows = Array.isArray(data.subMerchants) ? data.subMerchants : [];
-    return rows.find((item: any) =>
+    return rows.find((item: MinuSubMerchant) =>
       String(item.merchantCode || "").trim().toLowerCase() === expectedCode
     ) || null;
   };
@@ -292,15 +302,15 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
     let nextMerchantName = String(overrides.merchantName || config.merchantName || "").trim();
     let nextMerchantCode = String(overrides.merchantCode || config.merchantCode || "").trim();
     if (!nextMerchantName || !nextMerchantCode) {
-      alert("Дансны санд хадгалахын тулд мерчант нэр болон merchant code шаардлагатай");
+      notify("Дансны санд хадгалахын тулд мерчант нэр болон merchant code шаардлагатай");
       return null;
     }
 
-    let verifiedSubMerchant: any = null;
+    let verifiedSubMerchant: MinuSubMerchant | null = null;
     if (!options.trustedMerchantCode) {
       verifiedSubMerchant = await findExactMinuSubMerchant(nextMerchantCode).catch(() => null);
       if (!verifiedSubMerchant?.merchantCode) {
-        alert(MANUAL_SYSTEMQR_CODE_ERROR);
+        notify(MANUAL_SYSTEMQR_CODE_ERROR);
         return null;
       }
 
@@ -319,9 +329,9 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
       username: String(overrides.username || verifiedSubMerchant?.username || config.username || nextMerchantCode).trim(),
       password: String(overrides.password || verifiedSubMerchant?.password || config.password || "").trim(),
       bankCode: String(overrides.bankCode || config.bankCode || "050000").trim(),
-      accountNumber: String(overrides.accountNumber || config.accountNumber).trim(),
-      registerNumber: String(overrides.registerNumber || config.registerNumber).trim(),
-      phone: String(overrides.phone || config.phone).trim(),
+      accountNumber: String(overrides.accountNumber || config.accountNumber || "").trim(),
+      registerNumber: String(overrides.registerNumber || config.registerNumber || "").trim(),
+      phone: String(overrides.phone || config.phone || "").trim(),
       email: String(overrides.email || config.email || "").trim(),
       cityId: String(overrides.cityId || config.cityId || DEFAULT_SYSTEMQR_LOCATION.cityId).trim(),
       districtId: String(overrides.districtId || config.districtId || DEFAULT_SYSTEMQR_LOCATION.districtId).trim(),
@@ -348,7 +358,7 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
       : [...currentAccounts, account];
 
     await persistPaymentAccounts(nextAccounts);
-    setSettings((prev: any) => ({
+    setSettings((prev) => ({
       ...prev,
       paymentAccounts: nextAccounts,
       systemQr: toSystemQrConfig(account, prev.systemQr),
@@ -369,7 +379,7 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
         setUpgradePaymentAccountId("");
         setUpgradeAccountSaved(false);
       }
-      setSettings((prev: any) => ({
+      setSettings((prev) => ({
         ...prev,
         paymentAccounts: nextAccounts,
         systemQr: prev.systemQr?.selectedAccountId === accountId
@@ -397,11 +407,11 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
       }));
     } catch (error) {
       console.error("delete payment account error", error);
-      alert("Данс устгахад алдаа гарлаа");
+      notify("Данс устгахад алдаа гарлаа");
     }
   };
 
-  const withSystemQrDefaults = (config: any) => ({
+  const withSystemQrDefaults = (config: SystemQrConfig) => ({
     ...config,
     cityId: String(config.cityId || DEFAULT_SYSTEMQR_LOCATION.cityId).trim(),
     districtId: String(config.districtId || DEFAULT_SYSTEMQR_LOCATION.districtId).trim(),
@@ -413,43 +423,53 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
     subCategoryId: String(config.subCategoryId || DEFAULT_SYSTEMQR_LOCATION.subCategoryId).trim(),
   });
 
-  const handleConnectMinuAccount = async () => {
+  const handleConnectMinuAccount = async (): Promise<boolean> => {
+    setNotice(null);
     const config = withSystemQrDefaults(settings.systemQr || {});
     const isCorporateMerchant = String(config.corporateFlag || DEFAULT_SYSTEMQR_LOCATION.corporateFlag).trim() === "1";
     if (config.merchantName && config.merchantCode) {
       setConnectingMinuAccount(true);
       try {
         const account = await upsertCurrentPaymentAccount();
-        if (account) alert("Minu merchant code дансны санд хадгалагдлаа.");
+        if (account) notify("Minu merchant code дансны санд хадгалагдлаа.", "success");
+        return Boolean(account);
+      } catch (error) {
+        notify(error instanceof Error ? error.message : "Данс хадгалж чадсангүй. Дахин оролдоно уу.");
+        return false;
       } finally {
         setConnectingMinuAccount(false);
       }
-      return;
     }
 
     if (config.merchantName && !config.merchantCode) {
+      let matchedExisting = false;
       setConnectingMinuAccount(true);
       try {
         const res = await adminFetch(`${API}/contracts/minu-dynamic-qr/sub-merchants?query=${encodeURIComponent(config.merchantName)}`);
         const data = await res.json();
         const existing = Array.isArray(data.subMerchants)
-          ? data.subMerchants.find((item: any) =>
-              String(item.merchantName || "").trim().toLowerCase() === config.merchantName.toLowerCase()
-              || String(item.merchantCode || "").trim().toLowerCase() === config.merchantName.toLowerCase()
+          ? data.subMerchants.find((item: MinuSubMerchant) =>
+              String(item.merchantName || "").trim().toLowerCase() === String(config.merchantName || "").toLowerCase()
+              || String(item.merchantCode || "").trim().toLowerCase() === String(config.merchantName || "").toLowerCase()
             )
           : null;
         if (data.success && !data.fallback && existing?.merchantCode) {
-          await upsertCurrentPaymentAccount({
+          matchedExisting = true;
+          const account = await upsertCurrentPaymentAccount({
             merchantName: existing.merchantName || config.merchantName,
             merchantCode: existing.merchantCode,
             username: existing.username || existing.merchantCode,
             password: existing.password || "",
           }, { trustedMerchantCode: true });
-          alert("Minu дээр бүртгэлтэй merchant code-г авч хадгаллаа.");
-          return;
+          notify("Minu дээр бүртгэлтэй merchant code-г авч хадгаллаа.", "success");
+          return Boolean(account);
         }
-      } catch {
-        // Continue to full registration validation below.
+      } catch (error) {
+        if (matchedExisting) {
+          notify(error instanceof Error ? error.message : "Данс хадгалж чадсангүй.");
+          return false;
+        }
+        // A failed read-only lookup does not prevent a new registration.
       } finally {
         setConnectingMinuAccount(false);
       }
@@ -469,13 +489,13 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
       (!isCorporateMerchant && (!config.firstName || !config.lastName)) ||
       !config.subCategoryId
     ) {
-      alert("Minu данс холбохын тулд мерчант, данс, регистр, утас, эзэмшигч, хаяг, үйл ажиллагааны чиглэлээ бүрэн бөглөнө үү");
-      return;
+      notify("Minu данс холбохын тулд мерчант, данс, регистр, утас, эзэмшигч, хаяг, үйл ажиллагааны чиглэлээ бүрэн бөглөнө үү");
+      return false;
     }
 
     if (!systemQrKhoroos.some((item) => item.code === config.khorooId)) {
-      alert("Minu-ийн сонгосон дүүргийн жагсаалтаас хороо/багаа сонгоно уу. Жагсаалт ирээгүй бол хуудсаа дахин ачаална уу.");
-      return;
+      notify("Minu-ийн сонгосон дүүргийн жагсаалтаас хороо/багаа сонгоно уу. Жагсаалт ирээгүй бол хуудсаа дахин ачаална уу.");
+      return false;
     }
 
     setConnectingMinuAccount(true);
@@ -486,28 +506,31 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
       });
       const data = await res.json();
       if (!data.success) {
-        alert(data.error || "Minu Dynamic QR данс холбох үед алдаа гарлаа");
-        return;
+        notify(data.error || "Minu Dynamic QR данс холбох үед алдаа гарлаа");
+        return false;
       }
 
-      await upsertCurrentPaymentAccount({
+      const account = await upsertCurrentPaymentAccount({
         merchantCode: data.merchantCode,
         username: data.username || data.merchantCode,
         password: data.password || "",
       }, { trustedMerchantCode: true });
-      alert("Minu Dynamic QR данс холбогдлоо. Одоо гэрээний template дээр сонгож ашиглаж болно.");
+      notify("Minu Dynamic QR данс холбогдлоо. Одоо гэрээний template дээр сонгож ашиглаж болно.", "success");
+      return Boolean(account);
     } catch (error) {
       console.error("connect minu account error", error);
-      alert("Minu Dynamic QR данс холбох үед серверийн алдаа гарлаа");
+      notify("Minu Dynamic QR данс холбох үед серверийн алдаа гарлаа");
+      return false;
     } finally {
       setConnectingMinuAccount(false);
     }
   };
 
+
   const checkMinuSubMerchants = async () => {
     const query = String(settings.systemQr?.merchantName || settings.systemQr?.merchantCode || "").trim();
     if (!query) {
-      alert("Шалгахын тулд мерчант нэр эсвэл Merchant Code оруулна уу");
+      notify("Шалгахын тулд мерчант нэр эсвэл Merchant Code оруулна уу");
       return;
     }
 
@@ -516,25 +539,25 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
       const res = await adminFetch(`${API}/contracts/minu-dynamic-qr/sub-merchants?query=${encodeURIComponent(query)}`);
       const data = await res.json();
       if (!data.success) {
-        alert(data.error || "Minu бүртгэл шалгахад алдаа гарлаа");
+        notify(data.error || "Minu бүртгэл шалгахад алдаа гарлаа");
         return;
       }
 
       const rows = Array.isArray(data.subMerchants) ? data.subMerchants : [];
       if (rows.length === 0) {
-        alert(`"${query}" нэр/code-той бүртгэл олдсонгүй`);
+        notify(`"${query}" нэр/code-той бүртгэл олдсонгүй`);
         return;
       }
 
       const prefix = data.fallback
         ? "Minu шалгалт түр боломжгүй тул дансны сангаас харуулж байна:\n"
         : "";
-      alert(prefix + rows.slice(0, 5).map((item: any) =>
+      notify(prefix + rows.slice(0, 5).map((item: MinuSubMerchant) =>
         `${item.merchantName || "-"} — ${item.merchantCode || "-"}`
-      ).join("\n"));
+      ).join("\n"), "info");
     } catch (error) {
       console.error("check minu sub merchants error", error);
-      alert("Minu бүртгэл шалгахад серверийн алдаа гарлаа");
+      notify("Minu бүртгэл шалгахад серверийн алдаа гарлаа");
     } finally {
       setCheckingMinuAccounts(false);
     }
@@ -623,13 +646,15 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
 
       <PaymentAccountsSettingsPanel
         settings={settings}
-        setSettings={setSettings}
+        onNewAccount={() => setSettings((previous) => ({ ...previous, systemQr: { ...defaultSystemQr } }))}
         selectPaymentAccount={selectPaymentAccount}
         connectingMinuAccount={connectingMinuAccount}
         checkingMinuAccounts={checkingMinuAccounts}
         checkMinuSubMerchants={checkMinuSubMerchants}
         deletePaymentAccount={deletePaymentAccount}
         handleConnectMinuAccount={handleConnectMinuAccount}
+        notice={notice}
+        clearNotice={() => setNotice(null)}
         onSystemQrCityChange={handleSystemQrCityChange}
         onSystemQrDistrictChange={handleSystemQrDistrictChange}
         systemQrCategories={systemQrCategories}
@@ -639,7 +664,6 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
         khoroosError={khoroosError}
         retryKhoroos={retryKhoroos}
         updateSystemQr={updateSystemQr}
-        upsertCurrentPaymentAccount={upsertCurrentPaymentAccount}
       />
     </div>
   );
