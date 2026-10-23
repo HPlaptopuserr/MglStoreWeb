@@ -27,6 +27,7 @@ beforeEach(() => {
   stub(prisma.organization, 'findMany', async () => [{ id: 'public-org' }]);
   stub(prisma.warehouseInventory, 'count', async () => 1);
   stub(prisma.warehouseStockRequestItem, 'findMany', async () => []);
+  stub(prisma.warehouseRetailOrderItem, 'findMany', async () => []);
 });
 test('guests can browse only published Hypermarket stock with no employee permission', async () => {
   stub(prisma.warehouseInventory, 'findMany', async ({ where, select }: { where: { warehouseId: string; product: { managedByWarehouseId: string; organizationId: { in: string[] }; isActive: boolean } }; select: { product: { select: Record<string, unknown> } } }) => {

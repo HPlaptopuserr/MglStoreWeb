@@ -20,6 +20,7 @@ const products = Array.from({ length: 494 }, (_, index) => ({
   description: null,
   sku: `SKU-${index}`,
   barcode: null,
+  barcodeAliases: [],
   classificationCode: "6331000",
   taxProductCode: null,
   marketplacePriority: 0,
