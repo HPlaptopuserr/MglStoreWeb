@@ -53,10 +53,10 @@ export function useCurrentShift(registerId?: string) {
     try {
       const context = registerId
         ? await posRequest<RegisterShiftContext>(
-            `/pos/shifts/register-current?registerId=${encodeURIComponent(registerId)}`,
+            `/pos/shifts/register-current?registerId=${encodeURIComponent(registerId)}&mode=RETAIL`,
           )
         : {
-            shift: await posRequest<PosShift | null>("/pos/shifts/current"),
+            shift: await posRequest<PosShift | null>("/pos/shifts/current?mode=RETAIL"),
             blockingShift: null,
           };
       if (version !== requestVersion.current) return null;

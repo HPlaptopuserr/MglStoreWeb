@@ -1,4 +1,4 @@
-import { CashDrawerEventType, PosSaleStatus, type Prisma } from "@mgl/database";
+import { CashDrawerEventType, PosSaleStatus, PosPaymentStatus, PosQPayStatus, type Prisma } from "@mgl/database";
 import type { ShiftSaleAccountingInput } from "./shift-accounting";
 
 type ShiftAccountingClient = Pick<
@@ -33,11 +33,11 @@ export async function loadShiftAccountingSales(
   const [cardAttempts, qpayInvoices] = receiptNumbers.length
     ? await Promise.all([
         client.cardPaymentAttempt.findMany({
-          where: { saleReference: { in: receiptNumbers } },
+          where: { saleReference: { in: receiptNumbers }, status: PosPaymentStatus.APPROVED },
           select: { saleReference: true, amount: true },
         }),
         client.qPayInvoice.findMany({
-          where: { saleReference: { in: receiptNumbers } },
+          where: { saleReference: { in: receiptNumbers }, status: PosQPayStatus.PAID },
           select: { saleReference: true, amount: true },
         }),
       ])

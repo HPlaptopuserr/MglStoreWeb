@@ -55,7 +55,7 @@ const PosCartLineRow = memo(function PosCartLineRow({
       </div>
 
       <div className={styles.details}>
-        <p className="break-words text-sm font-black leading-tight text-slate-950">
+        <p className="line-clamp-2 break-words text-xs font-bold leading-tight text-slate-950" title={line.name}>
           {line.name}
         </p>
         <p className="mt-0.5 break-words text-[10px] font-bold text-slate-500">
@@ -90,7 +90,7 @@ const PosCartLineRow = memo(function PosCartLineRow({
             ) : null}
           </select>
         ) : null}
-        <p className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-700 ring-1 ring-emerald-100">
+        <p className="mt-0.5 inline-flex rounded bg-emerald-50 px-1 text-[9px] font-bold leading-4 text-emerald-700">
           {taxLabel}
         </p>
       </div>
@@ -101,7 +101,7 @@ const PosCartLineRow = memo(function PosCartLineRow({
         <button
           type="button"
           onClick={() => onSetQty(line.productId, line.qty - quantityStep)}
-          className="flex h-full w-7 shrink-0 items-center justify-center text-slate-700 transition hover:bg-white"
+          className="flex h-full w-7 items-center justify-center text-slate-700 transition hover:bg-white"
           aria-label="Тоо бууруулах"
         >
           <Minus size={14} />
@@ -112,20 +112,20 @@ const PosCartLineRow = memo(function PosCartLineRow({
           max={line.stockQty}
           step={line.measureUnit === "kg" ? POS_WEIGHT_STEP_KG : 1}
           value={line.qty}
+          aria-label={`${line.name} тоо хэмжээ`}
           onChange={(event) => {
             const parsed = Number(event.target.value);
             if (Number.isFinite(parsed) && parsed >= minimumQty) {
               onSetQty(line.productId, parsed);
             }
           }}
-          className="h-full min-w-0 flex-1 border-x border-slate-200 bg-white px-1 text-center text-sm font-black tabular-nums text-slate-950 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          aria-label="Тоо хэмжээ"
+          className="h-full w-9 border-x border-slate-200 bg-white text-center text-sm font-black text-slate-950 outline-none"
         />
         <button
           type="button"
           onClick={() => onSetQty(line.productId, line.qty + quantityStep)}
           disabled={line.qty >= line.stockQty}
-          className="flex h-full w-7 shrink-0 items-center justify-center text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-full w-7 items-center justify-center text-slate-700 transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
           aria-label="Тоо нэмэх"
         >
           <Plus size={14} />
@@ -133,12 +133,10 @@ const PosCartLineRow = memo(function PosCartLineRow({
       </div>
 
       <div
-        className={`${styles.amount} rounded-lg bg-slate-950 px-2.5 py-1.5 text-right`}
+        className={`${styles.amount} rounded-md bg-slate-950 px-2 py-1.5 text-right`}
+        aria-label={`Мөрийн дүн ${money(lineTotal)}`}
       >
-        <p className="text-[8px] font-black uppercase tracking-[0.16em] text-slate-400">
-          Мөрийн дүн
-        </p>
-        <p className="text-base font-black leading-tight tabular-nums text-white">
+        <p className="text-sm font-black leading-tight tabular-nums text-white">
           {money(lineTotal)}
         </p>
       </div>

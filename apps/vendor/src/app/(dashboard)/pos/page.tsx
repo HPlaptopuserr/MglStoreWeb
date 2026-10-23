@@ -1,16 +1,38 @@
 "use client";
+import type { CustomerDisplayPayload, CustomerDisplaySuccessDetails } from "@/features/pos/types/customer-display.types";
 import type { PosProduct } from "@/features/pos/types/pos.types";
 import { RestockProductDialog } from "@/features/pos/components/RestockProductDialog";
 import { printReceipt as printSaleReceipt } from "@/features/pos/utils/print-receipt";
 import { ReceiptPrintNotice } from "@/features/pos/components/ReceiptPrintNotice";
 import { reconcilePaymentEntry } from "@/features/pos/utils/reconcile-payment-entry";
+import { canClearCheckoutAfterCancelFailure } from "@/features/pos/utils/qpay-cancel-policy";
 import { cancelQPayInvoice } from "@/features/pos/api/qpay";
 
 import { normalizeCashPayment, summarizeCashPayments, type CashPaymentDetails } from "@mgl/types";
 import { VendorNavigationActions } from "@/features/session/VendorNavigationActions";
+import { assertRetailCheckoutContext } from "@/features/pos/utils/retail-register-policy";
+import { fetchOrgRegisters } from "@/features/pos/api/register";
+import { receiptAction } from "@/features/pos/utils/receipt-flow";
+import { ReceiptBuyerChoice } from "@/features/pos/components/ReceiptBuyerChoice";
+import { canAutoCompletePayment } from "@/features/pos/utils/auto-complete-payment";
+import { useEventCallback } from "@/features/pos/hooks/useEventCallback";
+import dynamic from "next/dynamic";
+import type { PosCheckoutProps } from "@/features/pos/components/PosCheckoutView";
+
+function CheckoutLoading() {
+  return <div role="status" className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-sm"><p className="rounded-xl bg-white px-6 py-4 text-sm font-semibold text-slate-700 shadow-xl">Төлбөрийн цонх ачаалж байна…</p></div>;
+}
+const PosCheckoutView = dynamic<PosCheckoutProps>(() => import("@/features/pos/components/PosCheckoutView").then((module) => module.PosCheckoutView), { ssr: false, loading: CheckoutLoading });
+import { paymentMethodForKey } from "@/features/pos/constants/payment-methods";
 import registerLayout from "@/features/pos/components/PosRegisterLayout.module.css";
 import { PosProductList } from "@/features/pos/components/PosProductList";
 import { CurrentShiftHistory } from "@/features/pos/components/CurrentShiftHistory";
+import { PosDialog } from "@/features/pos/components/PosDialog";
+import { PosSettingsMenu } from "@/features/pos/components/PosSettingsMenu";
+import { CustomerDisplayDialog } from "@/features/pos/components/CustomerDisplayDialog";
+import { ShiftOpeningForm } from "@/features/pos/components/ShiftOpeningForm";
+import { PosSettingsDialog } from "@/features/pos/components/PosSettingsDialog";
+import { CashBalanceBadge } from "@/features/pos/components/CashBalanceBadge";
 import { CashDrawerPanel } from "@/features/pos/components/CashDrawerPanel";
 import { ShiftHistoryPanel } from "@/features/pos/components/ShiftHistoryPanel";
 import { formatMoney, formatDateTime } from "@/features/pos/utils/pos-display-format";
@@ -41,7 +63,6 @@ import {
   ScanLine,
   ScanBarcode,
   AlertTriangle,
-  Banknote,
   CheckCircle2,
   Filter,
   HandCoins,
@@ -58,7 +79,6 @@ import {
 import {
   PosCartPanel,
   PosPaymentPanel,
-  PosCheckoutView,
   type CheckoutPaymentEntry,
   type CheckoutLoyaltyState,
   type CheckoutLoyaltyRedeemSession,
@@ -104,7 +124,6 @@ import {
   type CashDrawerEventType,
   type CashDrawerSummary,
   type PosShiftHistoryItem,
-  CUSTOMER_DISPLAY_THEME_OPTIONS,
   CUSTOMER_DISPLAY_THEME_STORAGE_KEY,
   type CustomerDisplayThemeId,
   isCustomerDisplayThemeId,
@@ -114,11 +133,9 @@ import {
   loadQPayCheckoutRecovery,
   saveQPayCheckoutRecovery,
 } from "@/features/pos/utils/qpay-checkout-recovery";
-import { canClearCheckoutAfterCancelFailure } from "@/features/pos/utils/qpay-cancel-policy";
 import { printThermalDocument } from "@/features/pos/utils/print-thermal-document";
 import { API, authFetch } from "@/lib/api";
 import { RegisterShiftConflict } from "@/features/pos/components/RegisterShiftConflict";
-import { CatalogSyncStatus } from "@/features/pos/components/CatalogSyncStatus";
 import {
   isFeatureEnabled,
   MULTI_PRICE_SALES_FEATURE_KEY,
@@ -140,21 +157,9 @@ type QPayModalPayload = {
   expiresAt: string;
 };
 
-type CustomerDisplaySuccess = {
-  text: string;
-  amount: number;
-  ts: number;
-};
 
-type CustomerDisplayPayload = {
-  lines: CartLine[];
-  totals: CartTotals;
-  displayTheme: CustomerDisplayThemeId;
-  qpayModal: QPayModalPayload | null;
-  loyaltyRedeemSession: CheckoutLoyaltyRedeemSession | null;
-  customerSuccess: CustomerDisplaySuccess | null;
-  ts: number;
-};
+
+
 
 type PendingEbarimtSale = {
   receipt: PosReceipt;
@@ -550,8 +555,11 @@ export default function PosDemoPage() {
     text: "",
   });
   const [cashChangeReceipt, setCashChangeReceipt] = useState<PosReceipt | null>(null);
-  const [customerDisplaySuccess, setCustomerDisplaySuccess] = useState<CustomerDisplaySuccess | null>(null);
+  const [customerDisplaySuccess, setCustomerDisplaySuccess] = useState<CustomerDisplaySuccessDetails | null>(null);
   const [registerConfig, setRegisterConfig] = useState<RegisterConfig | null>(null);
+  const [registerConnectionError, setRegisterConnectionError] = useState("");
+  const checkoutStartingRef = useRef(false);
+  const [checkoutStarting, setCheckoutStarting] = useState(false);
   const [registerDiscoveryDoneFor, setRegisterDiscoveryDoneFor] = useState("");
   const effectiveEbarimtEnabled = EBARIMT_ENABLED && Boolean(registerConfig?.ebarimtEnabled);
   const ebarimtStatusText = !EBARIMT_ENABLED
@@ -560,6 +568,7 @@ export default function PosDemoPage() {
       ? "eBarimt идэвхтэй. Төлбөрийн дараа QR гарна."
       : "Энэ касс дээр eBarimt унтраалттай.";
   const [showPosSettings, setShowPosSettings] = useState(false);
+  const [showCustomerDisplaySettings, setShowCustomerDisplaySettings] = useState(false);
   const [showSetupPanel, setShowSetupPanel] = useState(false);
   // self-registration form
   const [setupTab, setSetupTab] = useState<"new" | "existing">("new");
@@ -580,11 +589,14 @@ export default function PosDemoPage() {
   const [drawerSummary, setDrawerSummary] = useState<CashDrawerSummary | null>(null);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [drawerError, setDrawerError] = useState("");
-  const [drawerEventType, setDrawerEventType] = useState<CashDrawerEventType>("PAID_IN");
+  const [drawerEventType, setDrawerEventType] = useState<CashDrawerEventType>("PAID_OUT");
   const [drawerEventAmount, setDrawerEventAmount] = useState("");
   const [drawerEventNote, setDrawerEventNote] = useState("");
   const [drawerEventSubmitting, setDrawerEventSubmitting] = useState(false);
+  const drawerSubmittingRef = useRef(false);
+  const drawerAttemptRef = useRef<{ signature: string; requestId: string } | null>(null);
   const [pendingEbarimtSale, setPendingEbarimtSale] = useState<PendingEbarimtSale | null>(null);
+  const [companyReceipt, setCompanyReceipt] = useState(false);
   const [ebarimtBuyerMode, setEbarimtBuyerMode] = useState<"B2C" | "B2B">("B2C");
   const [ebarimtCompanyRegNo, setEbarimtCompanyRegNo] = useState("");
   const [ebarimtCompanyTin, setEbarimtCompanyTin] = useState("");
@@ -758,6 +770,8 @@ export default function PosDemoPage() {
     showShiftPanel ||
     showShiftHistoryPanel ||
     showCashDrawerPanel ||
+    showPosSettings ||
+    showCustomerDisplaySettings ||
     successOverlay.visible ||
     isCardProcessing ||
     Boolean(pendingEbarimtSale);
@@ -789,15 +803,7 @@ export default function PosDemoPage() {
   const expectedCashPreview = drawerSummary?.expectedCash ?? 0;
   const closingDifferencePreview = roundMoney(closingCashPreview - expectedCashPreview);
 
-  const handleReceiptVoided = useCallback(
-    (message: string) => {
-      reloadProducts();
-      reloadReceiptHistory();
-      setScanStatus("success");
-      setScanMessage(message);
-    },
-    [reloadProducts, reloadReceiptHistory],
-  );
+
 
   useEffect(() => {
     if (!posEnabled) {
@@ -876,8 +882,10 @@ export default function PosDemoPage() {
     }
     setSuccessOverlay({ visible: true, text });
     setCustomerDisplaySuccess({
-      text: cash ? `${text} · Хариулт: ${cash.changeAmount.toLocaleString("mn-MN")} ₮` : text,
-      amount: totals.grandTotal,
+      text,
+      amount: receipt?.grandTotal ?? totals.grandTotal,
+      cash,
+      saleCompleted: Boolean(receipt),
       ts: Date.now(),
     });
     console.info(`[POS] ${text}`);
@@ -926,7 +934,7 @@ export default function PosDemoPage() {
     }
     if (!EBARIMT_ENABLED) {
       setScanStatus("not-found");
-      setScanMessage("NEXT_PUBLIC_EBARIMT_ENABLED=false байна. Production дээр true болгоно уу.");
+      setScanMessage("eBarimt үйлчилгээ одоогоор идэвхгүй байна. Админтай холбогдож идэвхжүүлнэ үү.");
       return;
     }
     if (!registerConfig.ebarimtEnabled) {
@@ -1184,6 +1192,17 @@ export default function PosDemoPage() {
     }
   }, [shift?.id]);
 
+  const handleReceiptVoided = useCallback(
+    (message: string) => {
+      reloadProducts();
+      reloadReceiptHistory();
+      void refreshCashDrawerSummary();
+      setScanStatus("success");
+      setScanMessage(message);
+    },
+    [reloadProducts, reloadReceiptHistory, refreshCashDrawerSummary],
+  );
+
   const printPlainReport = (title: string, lines: string[]) => {
     if (typeof window === "undefined") return;
     printThermalDocument({
@@ -1262,17 +1281,24 @@ export default function PosDemoPage() {
   };
 
   const handleCreateDrawerEvent = async (type: CashDrawerEventType = drawerEventType) => {
-    if (!shift?.id) return;
+    if (!shift?.id || drawerSubmittingRef.current) return;
+    drawerSubmittingRef.current = true;
+    const signature = JSON.stringify([shift.id, type, drawerEventAmount, drawerEventNote]);
+    if (drawerAttemptRef.current?.signature !== signature) {
+      drawerAttemptRef.current = { signature, requestId: crypto.randomUUID() };
+    }
     setDrawerEventSubmitting(true);
     setDrawerError("");
     try {
       const result = await createCashDrawerEvent({
         shiftId: shift.id,
+        requestId: drawerAttemptRef.current.requestId,
         type,
         amount: type === "OPEN_DRAWER" ? 0 : Number(drawerEventAmount) || 0,
         note: type === "OPEN_DRAWER" ? drawerEventNote || "Борлуулалтгүй шургуулга нээсэн" : drawerEventNote,
       });
       setDrawerSummary(result.summary);
+      drawerAttemptRef.current = null;
       setDrawerEventAmount("");
       setDrawerEventNote("");
       setScanStatus("success");
@@ -1286,11 +1312,13 @@ export default function PosDemoPage() {
       if (type === "OPEN_DRAWER") {
         await triggerCashDrawerKick();
       }
-    } catch (error: any) {
-      setDrawerError(error?.message || "Кассын шургуулгын хөдөлгөөн бүртгэхэд алдаа гарлаа");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Кассын шургуулгын хөдөлгөөн бүртгэхэд алдаа гарлаа";
+      setDrawerError(message);
       setScanStatus("not-found");
-      setScanMessage(error?.message || "Кассын шургуулгын хөдөлгөөн бүртгэхэд алдаа гарлаа");
+      setScanMessage(message);
     } finally {
+      drawerSubmittingRef.current = false;
       setDrawerEventSubmitting(false);
     }
   };
@@ -1308,7 +1336,7 @@ export default function PosDemoPage() {
 
     let cancelled = false;
     setRegisterConfig((current) =>
-      current?.organizationId === organizationId ? current : null,
+      current?.organizationId === organizationId && current.mode === "RETAIL" ? current : null,
     );
 
     const registerId =
@@ -1324,12 +1352,14 @@ export default function PosDemoPage() {
         if (cancelled) return;
         localStorage.setItem(registerStorageKey, config.id);
         localStorage.removeItem(POS_REGISTER_ID_KEY);
+        setRegisterConnectionError("");
         setRegisterConfig(config);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         if (cancelled) return;
         localStorage.removeItem(registerStorageKey);
         localStorage.removeItem(POS_REGISTER_ID_KEY);
+        setRegisterConnectionError(error instanceof Error ? error.message : "Кассын тохиргоо авч чадсангүй.");
         setRegisterConfig(null);
       });
 
@@ -1347,20 +1377,18 @@ export default function PosDemoPage() {
     if (!token) return;
 
     let cancelled = false;
-    fetch(`${API}/pos/registers/mine?mode=RETAIL`, {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then((r) => (r.ok ? r.json() : []))
+    fetchOrgRegisters()
       .then((list: RegisterConfig[]) => {
         if (cancelled) return;
         const ownRegisters = Array.isArray(list)
-          ? list.filter((register) => register.organizationId === organizationId)
+          ? list.filter((register) => register.organizationId === organizationId && register.mode === "RETAIL")
           : [];
         if (ownRegisters.length === 0) return;
         if (ownRegisters.length === 1) {
           // Only one register — auto-connect
           localStorage.setItem(registerStorageKey, ownRegisters[0].id);
           localStorage.removeItem(POS_REGISTER_ID_KEY);
+          setRegisterConnectionError("");
           setRegisterConfig(ownRegisters[0]);
         } else {
           // Multiple registers — let vendor choose
@@ -1441,6 +1469,7 @@ export default function PosDemoPage() {
         }
         localStorage.setItem(registerStorageKey, cfg.id);
         localStorage.removeItem(POS_REGISTER_ID_KEY);
+        setRegisterConnectionError("");
         setRegisterConfig(cfg);
         setShowSetupPanel(false);
         setSetupExistingId("");
@@ -1904,7 +1933,7 @@ export default function PosDemoPage() {
       setListMode("credits");
       setScanStatus("success");
       setScanMessage(`${repaymentLabel} төлөлт амжилттай бүртгэгдлээ.`);
-      showSuccessOverlay("Зээлийн төлөлт амжилттай");
+      showSuccessOverlay("Зээлийн төлөлт амжилттай", repaymentReceipt);
       setScanMessage(repaymentMessage);
       setReceiptHistory((items) => [repaymentReceipt, ...items.filter((item) => item.id !== repaymentReceipt.id)]);
       setSelectedReceiptId(repaymentReceipt.id);
@@ -2030,6 +2059,7 @@ export default function PosDemoPage() {
 
   const completePaidSale = (finalReceipt: PosReceipt, finalMessage: string, isCreditSale: boolean) => {
     setPendingEbarimtSale(null);
+    setCompanyReceipt(false);
     setQpayModal(null);
     setPaymentEntries([]);
     setLoyalty(initialLoyaltyState);
@@ -2160,6 +2190,16 @@ export default function PosDemoPage() {
 
   const handleCreateDemoSale = async () => {
     if (state.cart.length === 0) return;
+    if (registerConfig && shift) {
+      try { assertRetailCheckoutContext(registerConfig, shift, organizationId); }
+      catch (error: unknown) {
+        setScanStatus("not-found");
+        const message = error instanceof Error ? error.message : "Касс болон ээлжээ шалгана уу.";
+        setScanMessage(`${message} Борлуулалт бүртгэгдээгүй. Төлбөр авсан бол дахин авахгүйгээр кассын тохиргоогоо шалгана уу.`);
+        return;
+      }
+    }
+
 
     if (selectedCreditRepayment) {
       await finalizeCreditRepayment();
@@ -2274,7 +2314,8 @@ export default function PosDemoPage() {
             : ` M Point +${receipt.loyalty.earnedPoints.toLocaleString("mn-MN")} орлоо.`
           : "";
 
-      if (effectiveEbarimtEnabled && !isCreditSale) {
+      const receiptFlow = receiptAction({ enabled: effectiveEbarimtEnabled, creditSale: isCreditSale, companyReceipt });
+      if (receiptFlow === "ASK_COMPANY") {
         setAutoCheckoutActive(false);
         setPendingEbarimtSale({
           receipt,
@@ -2282,7 +2323,7 @@ export default function PosDemoPage() {
           loyaltyMessage,
           isCreditSale,
         });
-        setEbarimtBuyerMode("B2C");
+        setEbarimtBuyerMode("B2B");
         setEbarimtCompanyRegNo("");
         setEbarimtCompanyTin("");
         setEbarimtBuyerError("");
@@ -2293,7 +2334,7 @@ export default function PosDemoPage() {
         return;
       }
 
-      if (effectiveEbarimtEnabled && !isCreditSale) {
+      if (receiptFlow === "ISSUE_PERSONAL") {
         try {
           setScanStatus("idle");
           setScanMessage("eBarimt баримт үүсгэж байна...");
@@ -2327,28 +2368,7 @@ export default function PosDemoPage() {
         finalMessage = `Төлбөр амжилттай.${loyaltyMessage}`;
       }
 
-      setQpayModal(null);
-      setPaymentEntries([]);
-      setLoyalty(initialLoyaltyState);
-      setLoyaltyRedeemSession(null);
-      setAutoCheckoutActive(false);
-      clientSaleIdRef.current = null;
-      dispatch({ type: "clear-cart" });
-      setView("register");
-      setScanStatus("success");
-      setScanMessage(finalMessage);
-      showSuccessOverlay("Төлбөр амжилттай", finalReceipt);
-
-      setReceiptHistory((items) => [finalReceipt, ...items.filter((item) => item.id !== finalReceipt.id)]);
-      setSelectedReceiptId(finalReceipt.id);
-      reloadProducts();
-      reloadReceiptHistory();
-      void reloadCreditSales();
-      if (isCreditSale) {
-        void reloadCreditBorrowers();
-      }
-      void refreshCashDrawerSummary();
-      printReceipt(finalReceipt);
+      completePaidSale(finalReceipt, finalMessage, isCreditSale);
     } catch (e: any) {
       const message = e?.message || "Гүйлгээ батлах үед алдаа гарлаа.";
       const status = Number(e?.status || 0);
@@ -2523,20 +2543,12 @@ export default function PosDemoPage() {
               : item,
           ),
         );
-        const requiresManualQPayFinalize = paymentEntries.some(
-          (item) => item.method === "QR" && item.status === "confirmed",
-        );
-        setAutoCheckoutActive(!requiresManualQPayFinalize);
+        const completesBalance = canAutoCompletePayment({ status: "confirmed", amount: safeAmount, remaining, loyaltyReady });
+        setAutoCheckoutActive(completesBalance);
         clearProgressTicker();
         setScanStatus("success");
-        setScanMessage(
-          requiresManualQPayFinalize
-            ? "Төлбөрүүд хүлээн авлаа. “Гүйлгээ батлах” товчийг дарна уу."
-            : "Картын төлбөр амжилттай баталгаажлаа",
-        );
-        showSuccessOverlay(
-          requiresManualQPayFinalize ? "Төлбөрүүд хүлээн авлаа" : "Карт төлбөр амжилттай",
-        );
+        setScanMessage(completesBalance ? "Картын төлбөр баталгаажлаа. Борлуулалтыг бүртгэж байна…" : "Картын хэсэгчилсэн төлбөр хүлээн авлаа. Үлдэгдэл төлбөрөө сонгоно уу.");
+        showSuccessOverlay("Картын төлбөр хүлээн авлаа");
       } catch (error: any) {
         if (isCardRunCancelled()) return;
         clearProgressTicker();
@@ -2647,7 +2659,7 @@ export default function PosDemoPage() {
             item.id === id ? { ...item, status: "confirmed", invoiceId: invoice.invoiceId } : item,
           ),
         );
-        setAutoCheckoutActive(false);
+        setAutoCheckoutActive(canAutoCompletePayment({ status: "confirmed", amount: invoice.amount, remaining, loyaltyReady }));
 
         if (qpayModal?.invoiceId === id) {
           setQpayModal(null);
@@ -2655,7 +2667,7 @@ export default function PosDemoPage() {
 
         clearProgressTicker();
         setScanStatus("success");
-        setScanMessage("QR төлбөр хүлээн авлаа. “Гүйлгээ батлах” товчийг дарна уу.");
+        setScanMessage("QR төлбөр баталгаажлаа. Борлуулалтыг бүртгэж байна…");
         showSuccessOverlay("QR төлбөр хүлээн авлаа");
       } catch {
         setScanStatus("not-found");
@@ -2933,38 +2945,74 @@ export default function PosDemoPage() {
     }
   };
 
-  const startAutoCheckoutFlow = async () => {
-    if (qpayCreatingRef.current || paymentEntries.some(item => item.method === "QR" && item.invoiceId)) {
-      setView("checkout");
-      return;
-    }
-    if (state.cart.length === 0) return;
-    if (!registerConfig?.branchId) {
+  const openCheckout = async (method: PaymentMethod = "CASH") => {
+    if (state.cart.length === 0 || saleLoading || isCardProcessing || autoFinalizingRef.current) return;
+    if (!registerConfig?.branchId || registerConfig.isActive === false) {
       setScanStatus("not-found");
-      setScanMessage(
-        "Төлбөр авахын тулд POS кассаа register/салбартай холбоно уу.",
-      );
-      setSetupError("");
+      setScanMessage("Төлбөр авахын тулд идэвхтэй POS кассаа сонгоно уу.");
       setShowSetupPanel(true);
       return;
     }
-
+    if (!shiftReady || !shift?.id || shiftRegisterMismatch) {
+      setScanStatus("not-found");
+      setScanMessage("Төлбөр эхлүүлэхийн өмнө кассын ээлжээ нээж шалгана уу.");
+      setShowShiftPanel(true);
+      return;
+    }
+    if (selectedCreditRepayment && method === "CREDIT") {
+      setScanStatus("not-found");
+      setScanMessage("Зээлийн төлөлтийг дахин зээлээр хийх боломжгүй.");
+      return;
+    }
+    if (qpayCreatingRef.current || paymentEntries.length > 0) {
+      if (!qpayCreatingRef.current && !paymentEntries.some((entry) => entry.status === "pending")) {
+        handlePaymentMethodChange(method);
+      }
+      setView("checkout");
+      return;
+    }
+    if (checkoutStartingRef.current) return;
+    checkoutStartingRef.current = true;
+    setCheckoutStarting(true);
+    try {
+      const latest = await fetchRegisterConfig(registerConfig.id);
+      assertRetailCheckoutContext(latest, shift, organizationId);
+      setRegisterConfig(latest);
+      setRegisterConnectionError("");
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Кассын тохиргоог шалгаж чадсангүй. Төлбөр эхлүүлээгүй.";
+      setRegisterConnectionError(message);
+      setScanStatus("not-found");
+      setScanMessage(message);
+      return;
+    } finally {
+      checkoutStartingRef.current = false;
+      setCheckoutStarting(false);
+    }
+    setPaymentMethod(method);
     setQpayModal(null);
     setLoyaltyRedeemSession(null);
     setCustomerDisplaySuccess(null);
     setPaymentEntries([]);
-    setLoyalty((prev) => ({
-      ...initialLoyaltyState,
-      phone: prev.phone,
-      mode: prev.mode === "REDEEM" ? "EARN" : prev.mode,
-    }));
+    setLoyalty((previous) => ({ ...initialLoyaltyState, phone: previous.phone, mode: "NONE" }));
     setCashChangeReceipt(null);
     setView("checkout");
-
     setAutoCheckoutActive(false);
     setScanStatus("idle");
-    setScanMessage("M Point сонголтоо шалгаад төлбөрөө нэмнэ үү.");
+    setScanMessage("");
   };
+
+  const startPaymentFromKeyboard = useEventCallback((event: KeyboardEvent) => {
+    if (!posEnabled || event.ctrlKey || event.metaKey || event.altKey || overlayOpen || salesHistoryOpen || view !== "register") return;
+    const method = paymentMethodForKey(event.key) ?? (event.key === "F12" ? "CASH" : undefined);
+    if (!method || document.querySelector('[role="dialog"], dialog[open]')) return;
+    event.preventDefault();
+    void openCheckout(method);
+  });
+  useEffect(() => {
+    window.addEventListener("keydown", startPaymentFromKeyboard);
+    return () => window.removeEventListener("keydown", startPaymentFromKeyboard);
+  }, [startPaymentFromKeyboard]);
 
   useEffect(() => {
     if (!autoCheckoutActive) return;
@@ -3022,14 +3070,14 @@ export default function PosDemoPage() {
               setPaymentEntries((prev) =>
                 prev.map((item) => (item.invoiceId === invoiceId ? { ...item, status: "confirmed" } : item)),
               );
-              setAutoCheckoutActive(false);
+              setAutoCheckoutActive(canAutoCompletePayment({ status: "confirmed", amount: status.amount, remaining, loyaltyReady }));
 
               if (qpayModal?.invoiceId === invoiceId) {
                 setQpayModal(null);
               }
               clearProgressTicker();
               setScanStatus("success");
-              setScanMessage("QR төлбөр хүлээн авлаа. “Гүйлгээ батлах” товчийг дарна уу.");
+              setScanMessage("QR төлбөр баталгаажлаа. Борлуулалтыг бүртгэж байна…");
               showSuccessOverlay("QR төлбөр хүлээн авлаа");
             }
 
@@ -3067,7 +3115,7 @@ export default function PosDemoPage() {
       window.removeEventListener("focus", resume);
       document.removeEventListener("visibilitychange", resume);
     };
-  }, [paymentEntries, qpayModal?.invoiceId, qpayCreating]);
+  }, [paymentEntries, qpayModal?.invoiceId, qpayCreating, remaining, loyaltyReady]);
 
   useEffect(() => {
     if (!loyaltyRedeemSession?.id || loyaltyRedeemSession.status !== "PENDING") return;
@@ -3099,6 +3147,12 @@ export default function PosDemoPage() {
       lines: state.cart,
       totals,
       displayTheme: customerDisplayTheme,
+      registerName: registerConfig?.name,
+      branchName: registerConfig?.branch.name,
+      cashierName: shift?.cashierName,
+      loyaltyPoints: loyalty.found && loyalty.mode !== "NONE"
+        ? Math.max(0, Math.floor(Math.max(0, totals.grandTotal - appliedLoyaltyRedeem) * loyalty.earnRate))
+        : null,
       qpayModal,
       loyaltyRedeemSession,
       customerSuccess: customerDisplaySuccess,
@@ -3114,6 +3168,13 @@ export default function PosDemoPage() {
     qpayModal,
     loyaltyRedeemSession,
     customerDisplaySuccess,
+    registerConfig?.name,
+    registerConfig?.branch.name,
+    shift?.cashierName,
+    loyalty.found,
+    loyalty.mode,
+    loyalty.earnRate,
+    appliedLoyaltyRedeem,
   ]);
 
   const openCustomerDisplay = () => {
@@ -3296,6 +3357,11 @@ export default function PosDemoPage() {
       )}
     <div className={`${registerLayout.shell} hidden bg-slate-50 md:block`}>
       <div className={registerLayout.frame}>
+      {registerConnectionError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <p className="font-semibold">{registerConnectionError}</p>
+        {paymentEntries.some((entry) => entry.status === "confirmed") && <p className="mt-1">Төлбөр аль хэдийн авсан бол дахин авахгүй. Бүртгэгдсэн төлбөрийг хадгалж байна.</p>}
+        <button type="button" onClick={() => { setShowSetupPanel(true); setSetupTab("existing"); }} className="mt-2 rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-bold hover:bg-amber-100">Дэлгүүрийн касс сонгох</button>
+      </div>}
       {/* ── Register setup banner ────────────────────────────────── */}
       {!registerConfig && !showSetupPanel && !showRegisterPicker && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-center gap-3">
@@ -3339,7 +3405,7 @@ export default function PosDemoPage() {
                 key={reg.id}
                 type="button"
                 onClick={() => {
-                  if (reg.organizationId !== organizationId) return;
+                  if (reg.organizationId !== organizationId || reg.mode !== "RETAIL") return;
                   localStorage.setItem(registerStorageKey, reg.id);
                   localStorage.removeItem(POS_REGISTER_ID_KEY);
                   setRegisterConfig(reg);
@@ -3550,21 +3616,13 @@ export default function PosDemoPage() {
 
       {/* ── Shift open/close panel ─────────────────────────────── */}
       {showShiftPanel && registerConfig?.isActive && (
-        <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto overscroll-contain bg-slate-950/35 p-4 backdrop-blur-sm sm:p-6">
-          <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-teal-200 bg-white shadow-2xl sm:max-h-[calc(100vh-3rem)]">
-            <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-3">
-              <p className="text-sm font-bold text-slate-800">
-                {shift ? "Ээлж хаах" : blockingShift ? "Нээлттэй ээлжийг шийдвэрлэх" : "Ээлж нээх"}
-              </p>
-              <button
-                type="button"
-                onClick={() => setShowShiftPanel(false)}
-                className="text-slate-400 hover:text-slate-600"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-5 py-4">
+        <PosDialog
+          title={shift ? "Ээлж хаах" : blockingShift ? "Нээлттэй ээлжийг шийдвэрлэх" : "Ээлж нээх"}
+          description={shift ? "Бэлэн мөнгөө тоолж, ээлжийн тооцоог баталгаажуулна." : "Борлуулалт эхлүүлэхийн өмнө кассын эхлэх үлдэгдлээ бүртгэнэ."}
+          busy={shiftLoading}
+          wide={Boolean(shift || blockingShift)}
+          onClose={() => setShowShiftPanel(false)}
+        >
               {!shift && blockingShift ? (
                 <RegisterShiftConflict
                   key={blockingShift.id}
@@ -3582,48 +3640,32 @@ export default function PosDemoPage() {
                   }}
                 />
               ) : !shift ? (
-                <>
-                  <p className="text-xs text-slate-500">Эхлэх мөнгийг оруулна уу.</p>
-                  {shiftError && <p role="alert" className="text-sm text-rose-700">{shiftError}</p>}
-                  {!shiftReady && <button type="button" disabled={shiftLoading} onClick={() => void loadShift()} className="min-h-11 rounded-lg border px-3 text-sm">{shiftLoading ? "Ээлж шалгаж байна…" : "Ээлж дахин шалгах"}</button>}
-                  <div className="flex gap-2">
-                    <input
-                      type="number"
-                      min="0"
-                      value={openingCashInput}
-                      onChange={(e) => setOpeningCashInput(e.target.value)}
-                      placeholder="Эхлэх мөнгө ₮"
-                      className="flex-1 h-9 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
-                    />
-                    <button
-                      type="button"
-                      disabled={shiftLoading || !shiftReady}
-                      onClick={async () => {
-                        if (!registerConfig?.branchId) return;
-                        try {
-                          await openShift(
-                            registerConfig.branchId,
-                            Number(openingCashInput) || 0,
-                            registerConfig.id,
-                          );
-                          setShowShiftPanel(false);
-                          setShowShiftHistoryPanel(false);
-                          setSalesHistoryOpen(false);
-                          setView("register");
-                          setOpeningCashInput("");
-                          setScanMessage("Ээлж нээгдлээ. Борлуулалтаа эхлүүлнэ үү.");
-                          setScanStatus("success");
-                        } catch (e: any) {
-                          setScanMessage(e?.message || "Ээлж нээхэд алдаа гарлаа");
-                          setScanStatus("not-found");
-                        }
-                      }}
-                      className="h-9 px-4 rounded-xl bg-teal-600 text-white text-sm font-semibold hover:bg-teal-700 disabled:opacity-50"
-                    >
-                      {shiftLoading ? <Loader2 size={14} className="animate-spin" /> : "Нээх"}
-                    </button>
-                  </div>
-                </>
+                <ShiftOpeningForm
+                  value={openingCashInput}
+                  onChange={setOpeningCashInput}
+                  busy={shiftLoading}
+                  ready={shiftReady}
+                  error={shiftError ?? ""}
+                  registerName={registerConfig.name}
+                  onRefresh={() => { void loadShift(); }}
+                  onSubmit={async () => {
+                    if (!registerConfig.branchId) return;
+                    try {
+                      await openShift(registerConfig.branchId, Number(openingCashInput), registerConfig.id);
+                      setShowShiftPanel(false);
+                      setShowPosSettings(false);
+                      setShowShiftHistoryPanel(false);
+                      setSalesHistoryOpen(false);
+                      setView("register");
+                      setOpeningCashInput("");
+                      setScanMessage("Ээлж нээгдлээ. Борлуулалтаа эхлүүлнэ үү.");
+                      setScanStatus("success");
+                    } catch (error: unknown) {
+                      setScanMessage(error instanceof Error ? error.message : "Ээлж нээхэд алдаа гарлаа");
+                      setScanStatus("not-found");
+                    }
+                  }}
+                />
               ) : (
                 <>
                   <p className="text-xs text-slate-500">Хаах үеийн бэлэн мөнгийг оруулна уу.</p>
@@ -3740,6 +3782,7 @@ export default function PosDemoPage() {
                           );
                           reloadShiftHistory();
                           setShowShiftPanel(false);
+                          setShowPosSettings(false);
                           setShowCashDrawerPanel(false);
                           setShowShiftHistoryPanel(true);
                           setClosingCashInput("");
@@ -3759,12 +3802,11 @@ export default function PosDemoPage() {
                   </div>
                 </>
               )}
-            </div>
-          </div>
-        </div>
+        </PosDialog>
       )}
 
       {showCashDrawerPanel && registerConfig?.isActive && <CashDrawerPanel
+        onClose={() => setShowCashDrawerPanel(false)}
         shift={shift}
         drawerLoading={drawerLoading}
         drawerEventSubmitting={drawerEventSubmitting}
@@ -3835,7 +3877,7 @@ export default function PosDemoPage() {
           onMarkQPayPaid={markQPayPaid}
           onRemovePayment={removePaymentEntry}
           onResetPayments={resetPaymentEntries}
-          onFinalize={handleCreateDemoSale}
+          onFinalize={() => { if (!saleLoading && !autoFinalizingRef.current) setAutoCheckoutActive(true); }}
           onFinalizeCash={async (amount, cash) => {
             if (saleLoading || autoFinalizingRef.current || hasPendingPayment || amount !== remaining || remaining <= 0) return;
             if (!loyaltyReady) throw new Error("M Point мэдээллээ гүйцээх эсвэл ашиглахгүй сонголтыг сонгоно уу.");
@@ -3923,24 +3965,27 @@ export default function PosDemoPage() {
               {tab.label}
             </button>
           ))}
-          <button
-            type="button"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50"
-            aria-label="Нэмэх"
-          >
-            +
-          </button>
+
         </div>
 
         <div className="flex min-w-0 items-center gap-2">
           <VendorNavigationActions />
+          <CashBalanceBadge
+            balance={drawerSummary?.shift.id === shift?.id ? drawerSummary?.expectedCash ?? null : null}
+            hasShift={Boolean(shift?.id)}
+            loading={drawerLoading}
+            error={drawerError}
+            onRefresh={() => { void refreshCashDrawerSummary(); }}
+          />
           <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-600">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
             Онлайн
           </span>
           <button
             type="button"
-            onClick={() => setShowPosSettings((value) => !value)}
+            onClick={() => setShowPosSettings(true)}
+            aria-haspopup="dialog"
+            aria-expanded={showPosSettings}
             className={`flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-bold transition-colors ${
               showPosSettings
                 ? "bg-slate-900 text-white"
@@ -3954,123 +3999,31 @@ export default function PosDemoPage() {
       </div>
 
       {showPosSettings && (
-        <div className="grid shrink-0 grid-cols-2 gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm shadow-sm xl:grid-cols-6">
-          <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Салбар</p>
-            <p className="truncate font-black text-slate-900">{registerConfig?.branch.name ?? "Салбар"}</p>
-          </div>
-          <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Касс</p>
-            <p className="truncate font-black text-slate-900">{registerConfig?.name ?? "POS"}</p>
-            <div className="mt-1 flex flex-wrap gap-1">
-              {registerConfig?.cardEnabled && (
-                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                  Карт
-                </span>
-              )}
-              {registerConfig?.effectiveQpayEnabled && (
-                <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">
-                  QR төлбөр
-                </span>
-              )}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={openCustomerDisplay}
-            className={`rounded-lg px-3 py-2 text-left font-black transition-colors ${
-              displayOpened ? "bg-amber-100 text-amber-800" : "bg-slate-50 text-slate-700 hover:bg-slate-100"
-            }`}
-          >
-            <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">Хэрэглэгчийн дэлгэц</span>
-            {displayOpened ? "Нээлттэй" : "Нээх"}
-          </button>
-          <button
-            type="button"
-            onClick={() => void checkEbarimtConnection()}
-            disabled={checkingEbarimt || !registerConfig?.id}
-            className={`rounded-lg px-3 py-2 text-left font-black transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              effectiveEbarimtEnabled ? "bg-indigo-50 text-indigo-700 hover:bg-indigo-100" : "bg-slate-50 text-slate-500 hover:bg-slate-100"
-            }`}
-          >
-            <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">eBarimt</span>
-            {checkingEbarimt ? "Шалгаж байна..." : effectiveEbarimtEnabled ? "Холболт шалгах" : "Унтраалттай"}
-          </button>
-          <div className="rounded-lg bg-slate-50 px-3 py-2">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-              Дэлгэцийн өнгө
-            </p>
-            <div className="mt-2 flex items-center gap-1.5">
-              {CUSTOMER_DISPLAY_THEME_OPTIONS.map((option) => {
-                const selected = customerDisplayTheme === option.id;
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => updateCustomerDisplayTheme(option.id)}
-                    title={option.label}
-                    aria-label={`Хэрэглэгчийн дэлгэцийн өнгө: ${option.label}`}
-                    className={`h-7 w-7 rounded-full border-2 transition ${
-                      selected
-                        ? "border-slate-950 ring-2 ring-slate-300"
-                        : "border-white hover:scale-105"
-                    }`}
-                    style={{
-                      backgroundColor: option.swatch,
-                      boxShadow:
-                        option.id === "white"
-                          ? "inset 0 0 0 1px #cbd5e1"
-                          : undefined,
-                    }}
-                  />
-                );
-              })}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              setShowCashDrawerPanel((value) => !value);
-              setShowShiftHistoryPanel(false);
+        <PosSettingsDialog onClose={() => setShowPosSettings(false)}>
+          <PosSettingsMenu
+            branchName={registerConfig?.branch.name ?? "Салбар"}
+            registerName={registerConfig?.name ?? "POS"}
+            displayOpened={displayOpened}
+            shiftLabel={shift ? `Нээлттэй · ${formatDateTime(shift.openedAt)}` : blockingShift ? `Өөр кассчны ээлж · ${blockingShift.cashierName}` : "Ээлж нээж, эхлэх мөнгө бүртгэх"}
+            ebarimtEnabled={effectiveEbarimtEnabled}
+            checkingEbarimt={checkingEbarimt}
+            disabled={!registerConfig?.isActive || saleLoading || isCardProcessing}
+            onDrawer={() => {
+              setDrawerEventType("PAID_OUT");
+              setShowCashDrawerPanel(true);
               if (shift?.id) void refreshCashDrawerSummary();
             }}
-            className={`rounded-lg px-3 py-2 text-left font-black transition-colors ${
-              showCashDrawerPanel ? "bg-emerald-100 text-emerald-800" : "bg-slate-50 text-slate-700 hover:bg-slate-100"
-            }`}
-          >
-            <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">Шургуулга</span>
-            {drawerSummary ? formatMoney(drawerSummary.expectedCash) : shift ? "Нээлттэй" : "Ээлж хэрэгтэй"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowCashDrawerPanel(false);
+            onDisplay={() => setShowCustomerDisplaySettings(true)}
+            onShift={() => {
               setShowShiftHistoryPanel(false);
-              setShowShiftPanel((value) => !value);
-              if (!showShiftPanel) void loadShift();
+              setShowShiftPanel(true);
+              void loadShift();
+              if (shift?.id) void refreshCashDrawerSummary();
             }}
-            className={`rounded-lg px-3 py-2 text-left font-black transition-colors ${
-              shift ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
-            }`}
-          >
-            <span className="block text-[10px] font-bold uppercase tracking-wide opacity-70">Ээлж</span>
-            {shift ? (
-              <>
-                <span className="block">Нээлттэй</span>
-                <span className="mt-0.5 block text-[11px] font-semibold opacity-80">
-                  {formatDateTime(shift.openedAt)} нээгдсэн
-                </span>
-              </>
-            ) : blockingShift ? (
-              <><span className="block">Өөр кассчны ээлж</span><span className="mt-0.5 block text-[11px] font-semibold">{blockingShift.cashierName}</span></>
-            ) : (
-              shiftLoading ? "Шалгаж байна…" : !shiftReady ? "Төлөв шалгах" : "Нээх хэрэгтэй"
-            )}
-          </button>
-        </div>
-      )}
+            onCheckEbarimt={() => { void checkEbarimtConnection(); }}
+          />
 
-      {showPosSettings && scanMessage && (
+      {scanMessage && (
         <div
           className={`shrink-0 rounded-xl border px-3 py-2 text-sm shadow-sm ${
             scanStatus === "success"
@@ -4083,6 +4036,19 @@ export default function PosDemoPage() {
           <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">POS status</p>
           <p className="mt-0.5 whitespace-pre-wrap break-words font-semibold text-slate-900">{scanMessage}</p>
         </div>
+      )}
+
+        </PosSettingsDialog>
+      )}
+
+      {showCustomerDisplaySettings && (
+        <CustomerDisplayDialog
+          theme={customerDisplayTheme}
+          opened={displayOpened}
+          onThemeChange={updateCustomerDisplayTheme}
+          onOpenDisplay={openCustomerDisplay}
+          onClose={() => setShowCustomerDisplaySettings(false)}
+        />
       )}
 
       {salesHistoryOpen && <CurrentShiftHistory receipts={receiptHistory} selectedReceipt={receiptForPreview} register={registerConfig} loading={receiptHistoryLoading} error={receiptHistoryError} onSelect={setSelectedReceiptId} onRefresh={reloadReceiptHistory} onVoided={handleReceiptVoided} onClose={() => setSalesHistoryOpen(false)} />}
@@ -4320,7 +4286,6 @@ export default function PosDemoPage() {
               </div>
             </div>
 
-            {listMode === "products" && <div className="mb-2"><CatalogSyncStatus count={products.length} {...productCatalog} /></div>}
 
             {listMode === "products" && (
             <div className="mb-2 flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1.5">
@@ -4578,6 +4543,7 @@ export default function PosDemoPage() {
               </div>
             )}
 
+            {effectiveEbarimtEnabled && <ReceiptBuyerChoice company={companyReceipt} onChange={setCompanyReceipt} disabled={saleLoading || hasPendingPayment || paymentEntries.length > 0} />}
             <details className="shrink-0 rounded-xl border border-slate-200 bg-white shadow-sm">
               <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-blue-600">eBarimt · {ebarimtStatusText}</summary>
               <div className="max-h-44 overflow-y-auto p-2.5">
@@ -4643,14 +4609,10 @@ export default function PosDemoPage() {
             </details>
 
             <PosPaymentPanel
-              totals={totals}
-              paymentMethod={paymentMethod}
-              onChangeMethod={handlePaymentMethodChange}
-              onSubmit={() => {
-                void startAutoCheckoutFlow();
-              }}
+              onStartPayment={(method) => { void openCheckout(method); }}
               disabled={
                 state.cart.length === 0 ||
+                checkoutStarting ||
                 saleLoading ||
                 creditRepaymentSubmitting ||
                 isCardProcessing ||

@@ -70,3 +70,9 @@ test("shift summary and expected drawer cash use payment-level amounts", () => {
     165_000,
   );
 });
+
+test("malformed stored payment rows do not prevent cash reconciliation", () => {
+  assert.deepEqual(resolveSalePayments({
+    grandTotal: 500, paymentMethod: "CASH", paymentBreakdown: [null, false, "invalid", { method: "CASH", amount: 500 }],
+  }), [{ method: "CASH", amount: 500 }]);
+});

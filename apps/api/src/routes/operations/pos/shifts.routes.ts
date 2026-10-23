@@ -71,6 +71,8 @@ import {
 
 import { canClosePosShift, requiresShiftCloseReason } from "./shift-access";
 
+import { parseCashDrawerMovement, recordCashDrawerMovement } from "./cash-drawer-movement";
+
 const router: ExpressRouter = Router();
 
 const isAdminActor = (actor: AuthUser) =>
@@ -151,7 +153,7 @@ const parseCashCountInput = (value: unknown) => {
   return { counts, total };
 };
 
-const mapCashDrawerEvent = (event: any) => ({
+const mapCashDrawerEvent = (event: Prisma.PosCashDrawerEventGetPayload<Record<string, never>>) => ({
   id: event.id,
   organizationId: event.organizationId,
   branchId: event.branchId,
@@ -164,7 +166,7 @@ const mapCashDrawerEvent = (event: any) => ({
   createdAt: event.createdAt.toISOString(),
 });
 
-async function buildCashDrawerSummary(shift: any) {
+async function buildCashDrawerSummary(shift: ShiftWithRelations) {
   const [salesByShift, events] = await Promise.all([
     loadShiftAccountingSales(prisma, [shift.id]),
     prisma.posCashDrawerEvent.findMany({
@@ -659,10 +661,15 @@ router.get("/pos/shifts/register-current", async (req, res) => {
     if (!register || !canAccessPosOrganization(actor, register.organizationId)) {
       return res.status(403).json({ message: "Энэ кассын ээлжийг харах эрхгүй." });
     }
+    const requestedMode = req.query.mode === undefined ? register.mode : normalizePosRegisterMode(req.query.mode);
+    if (!requestedMode) return res.status(400).json({ message: "Кассын төрөл буруу байна." });
+    if (!canUsePosRegisterForMode(register.mode, requestedMode)) {
+      return res.status(409).json({ code: "POS_REGISTER_MODE_MISMATCH", message: "Дэлгүүрийн касс болон ээлжээ сонгоно уу. Сонгосон кассын төрөл энэ POS-той тохирохгүй байна." });
+    }
     const shifts = await prisma.posShift.findMany({
       where: {
         organizationId: register.organizationId,
-        mode: register.mode,
+        mode: requestedMode,
         status: ShiftStatus.OPEN,
         AND: [
           { OR: [{ cashierId: actor.id }, { registerId }] },
@@ -788,71 +795,16 @@ router.post("/pos/shifts/drawer-events", async (req, res) => {
     const actor = await requirePosUser(req, res);
     if (!actor) return;
 
-    const shiftId = String(req.body.shiftId || "").trim();
-    const typeRaw = String(req.body.type || "")
-      .trim()
-      .toUpperCase();
-    const note =
-      String(req.body.note || "")
-        .trim()
-        .slice(0, 500) || null;
-    const type =
-      typeRaw === CashDrawerEventType.PAID_IN ||
-      typeRaw === CashDrawerEventType.PAID_OUT ||
-      typeRaw === CashDrawerEventType.OPEN_DRAWER
-        ? (typeRaw as CashDrawerEventType)
-        : null;
-    const amount =
-      type === CashDrawerEventType.OPEN_DRAWER ? 0 : Number(req.body.amount);
-
-    if (!shiftId) {
-      return res.status(400).json({ message: "Ээлжийн ID шаардлагатай" });
-    }
-    if (!type) {
-      return res.status(400).json({ message: "Хөдөлгөөний төрөл буруу байна" });
-    }
-    if (
-      !Number.isFinite(amount) ||
-      amount < 0 ||
-      (type !== CashDrawerEventType.OPEN_DRAWER && amount <= 0)
-    ) {
-      return res.status(400).json({ message: "Дүн 0-оос их байх ёстой" });
-    }
-
-    const shift = await prisma.posShift.findUnique({
-      where: { id: shiftId },
+    const movement = parseCashDrawerMovement(req.body);
+    const event = await prisma.$transaction((tx) =>
+      recordCashDrawerMovement(tx, actor, movement),
+    );
+    const shift = await prisma.posShift.findUniqueOrThrow({
+      where: { id: event.shiftId },
       include: {
         cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
         branch: { select: { id: true, name: true } },
         register: { select: { id: true, name: true } },
-      },
-    });
-    if (!shift) {
-      return res.status(404).json({ message: "Ээлж олдсонгүй" });
-    }
-    if (shift.status !== ShiftStatus.OPEN) {
-      return res
-        .status(409)
-        .json({
-          message: "Хаагдсан ээлж дээр шургуулгын хөдөлгөөн хийх боломжгүй",
-        });
-    }
-    if (!canAccessPosOrganization(actor, shift.organizationId)) {
-      return res
-        .status(403)
-        .json({ message: "Энэ шургуулга дээр хөдөлгөөн хийх эрхгүй" });
-    }
-
-    const event = await prisma.posCashDrawerEvent.create({
-      data: {
-        organizationId: shift.organizationId,
-        branchId: shift.branchId,
-        registerId: shift.registerId,
-        shiftId: shift.id,
-        cashierId: actor.id,
-        type,
-        amount,
-        note,
       },
     });
 
@@ -861,6 +813,10 @@ router.post("/pos/shifts/drawer-events", async (req, res) => {
       summary: await buildCashDrawerSummary(shift),
     });
   } catch (error) {
+    const known = error as ApiError;
+    if (known?.status && known?.message) {
+      return res.status(known.status).json({ message: known.message });
+    }
     console.error("create cash drawer event error", error);
     return res
       .status(500)

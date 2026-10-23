@@ -21,6 +21,7 @@ const shift = {
   registerId: "register",
   branchId: "branch",
   status: "OPEN",
+  mode: "RETAIL",
   openingCash: 1000,
   closingCash: null,
   expectedCash: null,
@@ -92,6 +93,7 @@ beforeEach(() => {
     branchId: "branch",
     isActive: true,
     activationStatus: "APPROVED",
+    mode: "RETAIL",
   }));
   stub(prisma.branch, "findUnique", async () => ({
     id: "branch",
@@ -132,6 +134,7 @@ test("register context identifies the previous cashier without adopting their sh
     (query.mock.calls[0]?.arguments[0] as Prisma.PosShiftFindManyArgs).where,
     {
       organizationId: "store",
+      mode: "RETAIL",
       status: "OPEN",
       AND: [
         { OR: [{ cashierId: "owner" }, { registerId: "register" }] },
@@ -294,7 +297,6 @@ test("self-service opens an internal shift without adopting the occupied registe
     body: JSON.stringify({
       source: "SELF_SERVICE",
       branchId: "branch",
-      registerId: "register",
       openingCash: 0,
     }),
   });
@@ -306,6 +308,7 @@ test("self-service opens an internal shift without adopting the occupied registe
       branchId: "branch",
       registerId: null,
       status: "OPEN",
+      mode: "SELF_SERVICE",
       note: SELF_SERVICE_SHIFT_NOTE,
     },
   );
@@ -318,6 +321,7 @@ test("self-service opens an internal shift without adopting the occupied registe
       cashierId: "owner",
       openingCash: 0,
       note: SELF_SERVICE_SHIFT_NOTE,
+      mode: "SELF_SERVICE",
       status: "OPEN",
     },
   );
@@ -355,8 +359,9 @@ test("closed shifts and unsettled restaurant tickets remain protected", async ()
     (await close({ shiftId: shift.id, closingCash: 0, note: "Reason" })).status,
     409,
   );
-  stub(prisma.posShift, "findUnique", async () => shift);
-  stub(prisma.restaurantTicket, "count", async () => 1);
+  stub(prisma.posShift, "findUnique", async () => ({ ...shift, mode: "RESTAURANT" }));
+  stub(prisma.restaurantTicket, "updateMany", async () => ({ count: 0 }));
+  stub(prisma.restaurantTicket, "findMany", async () => [{ ticketNo: "ticket", status: "OPEN", table: null }]);
   assert.equal(
     (await close({ shiftId: shift.id, closingCash: 0, note: "Reason" })).status,
     409,
@@ -415,4 +420,151 @@ test("disabled mobile POS still permits closing an existing own shift", async ()
     method: "POST", headers, body: JSON.stringify({ shiftId: shift.id, closingCash: 1000 }),
   });
   assert.equal(response.status, 200);
+});
+
+
+const drawerRequestId = "718f58d9-f3dd-4dde-883c-fd33f3e819af";
+const postMovement = (body: Record<string, unknown>) => fetch(`${base}/drawer-events`, {
+  method: "POST", headers, body: JSON.stringify({ shiftId: shift.id, ...body }),
+});
+const drawerEvent = {
+  id: drawerRequestId, organizationId: "store", branchId: "branch", registerId: "register",
+  shiftId: shift.id, cashierId: "owner", type: "PAID_OUT", amount: 250,
+  note: "Нийлүүлэгч — бараа авсан", createdAt: new Date(),
+};
+function stubDrawerResponse() {
+  stub(prisma.posShift, "findUniqueOrThrow", async () => shift);
+  stub(prisma.posCashDrawerEvent, "findUnique", async () => null);
+}
+
+test("cash drawer expense records the actor and reduces expected cash without changing sales", async () => {
+  stubDrawerResponse();
+  let saved = false;
+  const calls: string[] = [];
+  stub(prisma, "$queryRaw", async () => { calls.push("lock"); return []; });
+  stub(prisma.posShift, "findUnique", async () => { calls.push("shift"); return shift; });
+  stub(prisma.posSale, "findMany", async () => [{
+    shiftId: shift.id, receiptNo: "sale", grandTotal: 500, paymentMethod: "MIXED",
+    paymentBreakdown: [{ method: "CASH", amount: 200 }, { method: "CARD", amount: 300 }],
+  }]);
+  stub(prisma.cardPaymentAttempt, "findMany", async () => []);
+  stub(prisma.qPayInvoice, "findMany", async () => []);
+  stub(prisma.posCashDrawerEvent, "findMany", async () => saved ? [drawerEvent] : []);
+  const create = stub(prisma.posCashDrawerEvent, "create", async () => { saved = true; return drawerEvent; });
+  const response = await postMovement({ type: "PAID_OUT", amount: 250, note: drawerEvent.note, requestId: drawerRequestId });
+  assert.equal(response.status, 201);
+  const data = await response.json();
+  assert.equal(data.summary.cashSales, 200);
+  assert.equal(data.summary.paidOut, 250);
+  assert.equal(data.summary.expectedCash, 950);
+  assert.equal(data.event.cashierId, "owner");
+  assert.deepEqual(calls.slice(0, 2), ["lock", "shift"]);
+  const args = create.mock.calls[0]?.arguments[0] as Prisma.PosCashDrawerEventCreateArgs;
+  assert.equal(args.data.id, drawerRequestId);
+  assert.equal(args.data.organizationId, "store");
+});
+
+test("cash drawer rejects missing expense purposes, invalid precision, and invalid request IDs", async () => {
+  const create = stub(prisma.posCashDrawerEvent, "create", async () => drawerEvent);
+  for (const body of [
+    { type: "PAID_OUT", amount: 100, note: "  " },
+    { type: "PAID_OUT", amount: 0, note: "Purchase" },
+    { type: "PAID_OUT", amount: -100, note: "Purchase" },
+    { type: "PAID_OUT", amount: 0.001, note: "Purchase" },
+    { type: "PAID_OUT", amount: 100.001, note: "Purchase" },
+    { type: "PAID_OUT", amount: "100", note: "Purchase" },
+    { type: "PAID_OUT", amount: 100, note: "x".repeat(501) },
+    { type: "PAID_OUT", amount: 100, note: "Purchase", requestId: "invalid" },
+    { type: "UNKNOWN", amount: 100 },
+  ]) assert.equal((await postMovement(body)).status, 400, JSON.stringify(body));
+  assert.equal(create.mock.callCount(), 0);
+});
+
+test("cash drawer prevents withdrawals exceeding cash and allows withdrawing the exact balance", async () => {
+  stubDrawerResponse();
+  const create = stub(prisma.posCashDrawerEvent, "create", async () => ({ ...drawerEvent, amount: 1000 }));
+  assert.equal((await postMovement({ type: "PAID_OUT", amount: 1000.01, note: "Purchase" })).status, 409);
+  assert.equal(create.mock.callCount(), 0);
+  assert.equal((await postMovement({ type: "PAID_OUT", amount: 1000, note: "Purchase" })).status, 201);
+});
+
+test("cash drawer rechecks a closed shift under the row lock", async () => {
+  let locked = false;
+  stub(prisma, "$queryRaw", async () => { locked = true; return []; });
+  stub(prisma.posShift, "findUnique", async () => ({ ...shift, status: locked ? "CLOSED" : "OPEN" }));
+  const create = stub(prisma.posCashDrawerEvent, "create", async () => drawerEvent);
+  assert.equal((await postMovement({ type: "PAID_OUT", amount: 100, note: "Purchase" })).status, 409);
+  assert.equal(create.mock.callCount(), 0);
+});
+
+test("cash drawer denies other stores and other cashiers while allowing the cashier's own shift", async () => {
+  stubDrawerResponse();
+  const create = stub(prisma.posCashDrawerEvent, "create", async () => drawerEvent);
+  stub(prisma.posShift, "findUnique", async () => ({ ...shift, organizationId: "other-store" }));
+  assert.equal((await postMovement({ type: "PAID_OUT", amount: 100, note: "Purchase" })).status, 403);
+  stub(prisma.posShift, "findUnique", async () => shift);
+  stub(prisma.organizationMember, "findFirst", async () => ({ organizationId: "store", role: "STAFF", capabilities: ["POS_CASHIER"] }));
+  assert.equal((await postMovement({ type: "PAID_OUT", amount: 100, note: "Purchase" })).status, 403);
+  assert.equal(create.mock.callCount(), 0);
+  stub(prisma.posShift, "findUnique", async () => ({ ...shift, cashierId: "owner" }));
+  assert.equal((await postMovement({ type: "PAID_OUT", amount: 100, note: "Purchase" })).status, 201);
+});
+
+test("cash drawer retries reuse the recorded expense even after closure and reject a changed payload", async () => {
+  stubDrawerResponse();
+  stub(prisma.posCashDrawerEvent, "findUnique", async () => drawerEvent);
+  stub(prisma.posShift, "findUnique", async () => ({ ...shift, status: "CLOSED" }));
+  const create = stub(prisma.posCashDrawerEvent, "create", async () => drawerEvent);
+  const body = { type: "PAID_OUT", amount: 250, note: drawerEvent.note, requestId: drawerRequestId };
+  assert.equal((await postMovement(body)).status, 201);
+  assert.equal((await postMovement({ ...body, amount: 300 })).status, 409);
+  assert.equal(create.mock.callCount(), 0);
+});
+
+test("cash drawer paid-in and opening the drawer retain existing behavior", async () => {
+  stubDrawerResponse();
+  const create = stub(prisma.posCashDrawerEvent, "create", async () => ({ ...drawerEvent, type: "PAID_IN" }));
+  assert.equal((await postMovement({ type: "PAID_IN", amount: 100 })).status, 201);
+  assert.equal((await postMovement({ type: "OPEN_DRAWER" })).status, 201);
+  assert.equal((create.mock.calls[1]?.arguments[0] as Prisma.PosCashDrawerEventCreateArgs).data.amount, 0);
+});
+
+test("cash drawer expenses flow into closing cash and variance", async () => {
+  stub(prisma.posCashDrawerEvent, "findMany", async () => [drawerEvent]);
+  const update = stub(prisma.posShift, "update", async () => ({ ...shift, status: "CLOSED", closingCash: 750, expectedCash: 750, cashDifference: 0 }));
+  stub(prisma.auditLog, "create", async () => ({ id: "audit" }));
+  const response = await close({ shiftId: shift.id, closingCash: 750, note: "Тооцоо нийлсэн" });
+  assert.equal(response.status, 200);
+  const args = update.mock.calls[0]?.arguments[0] as Prisma.PosShiftUpdateArgs;
+  assert.equal(args.data.expectedCash, 750);
+  assert.equal(args.data.cashDifference, 0);
+});
+
+test("cash drawer legacy mixed accounting queries only successful card and QR payments", async () => {
+  stub(prisma.posSale, "findMany", async () => [{
+    shiftId: shift.id, receiptNo: "legacy-sale", grandTotal: 1000,
+    paymentMethod: "MIXED", paymentBreakdown: null,
+  }]);
+  const card = stub(prisma.cardPaymentAttempt, "findMany", async () => [{ saleReference: "legacy-sale", amount: 300 }]);
+  const qr = stub(prisma.qPayInvoice, "findMany", async () => [{ saleReference: "legacy-sale", amount: 200 }]);
+  const response = await fetch(`${base}/${shift.id}/drawer`, { headers });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).cashSales, 500);
+  assert.equal((card.mock.calls[0]?.arguments[0] as Prisma.CardPaymentAttemptFindManyArgs).where?.status, "APPROVED");
+  assert.equal((qr.mock.calls[0]?.arguments[0] as Prisma.QPayInvoiceFindManyArgs).where?.status, "PAID");
+});
+
+test("retail shift context rejects a restaurant register before loading shifts", async () => {
+  stub(prisma.posRegister, "findUnique", async () => ({ id: "restaurant", organizationId: "store", mode: "RESTAURANT" }));
+  const shifts = stub(prisma.posShift, "findMany", async () => []);
+  const response = await fetch(`${base}/register-current?registerId=restaurant&mode=RETAIL`, { headers });
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).code, "POS_REGISTER_MODE_MISMATCH");
+  assert.equal(shifts.mock.callCount(), 0);
+});
+test("explicit retail shift context keeps the mode filter", async () => {
+  const shifts = stub(prisma.posShift, "findMany", async () => []);
+  const response = await fetch(`${base}/register-current?registerId=register&mode=RETAIL`, { headers });
+  assert.equal(response.status, 200);
+  assert.equal((shifts.mock.calls[0]?.arguments[0] as Prisma.PosShiftFindManyArgs).where?.mode, "RETAIL");
 });

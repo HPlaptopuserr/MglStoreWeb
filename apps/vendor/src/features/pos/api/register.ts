@@ -1,3 +1,4 @@
+import { assertRetailRegister } from "../utils/retail-register-policy";
 import { posRequest } from "./_pos-client";
 import { authFetch, API } from "@/lib/api";
 import type { RegisterConfig } from "@mgl/types";
@@ -13,18 +14,27 @@ export function getPosRegisterIdKey(organizationId: string) {
   return scope ? `${POS_REGISTER_ID_KEY}:${scope}` : POS_REGISTER_ID_KEY;
 }
 
-export function fetchRegisterConfig(registerId: string): Promise<RegisterConfig> {
-  return posRequest<RegisterConfig>(
+export async function fetchRegisterConfig(
+  registerId: string,
+): Promise<RegisterConfig> {
+  const register = await posRequest<RegisterConfig>(
     `/pos/register-config?registerId=${encodeURIComponent(registerId)}&mode=RETAIL`,
   );
+  assertRetailRegister(register);
+  return register;
 }
 
-export function fetchOrgRegisters(): Promise<RegisterConfig[]> {
-  return posRequest<RegisterConfig[]>("/pos/registers/mine?mode=RETAIL");
+export async function fetchOrgRegisters(): Promise<RegisterConfig[]> {
+  const registers = await posRequest<RegisterConfig[]>(
+    "/pos/registers/mine?mode=RETAIL",
+  );
+  return registers.filter((register) => register.mode === "RETAIL");
 }
 
 export async function fetchBranches(organizationId: string): Promise<Branch[]> {
-  const r = await authFetch(`${API}/admin/branches?organizationId=${encodeURIComponent(organizationId)}`);
+  const r = await authFetch(
+    `${API}/admin/branches?organizationId=${encodeURIComponent(organizationId)}`,
+  );
   return r.ok ? r.json() : [];
 }
 

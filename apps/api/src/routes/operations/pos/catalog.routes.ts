@@ -66,6 +66,8 @@ import {
   toPosStoredStockQuantity,
 } from "@mgl/types";
 
+import { parseCashDrawerMovement, recordCashDrawerMovement } from "./cash-drawer-movement";
+
 const router: ExpressRouter = Router();
 const RESTAURANT_MENU_AVAILABLE_QTY = 999_999;
 
@@ -1314,29 +1316,12 @@ router.post("/pos/credit-sales/pay-bulk", async (req, res) => {
         }
 
         if (paymentMethod === PaymentMethod.CASH && shiftId) {
-          const shift = await tx.posShift.findUnique({
-            where: { id: shiftId },
-          });
-          if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
-          if (shift.status !== ShiftStatus.OPEN)
-            throw toApiError(
-              409,
-              "Хаагдсан ээлж дээр бэлэн төлөлт бүртгэх боломжгүй",
-            );
-          if (shift.organizationId !== organizationId)
-            throw toApiError(400, "Ээлж байгууллага зөрүүтэй байна");
-          await tx.posCashDrawerEvent.create({
-            data: {
-              organizationId: shift.organizationId,
-              branchId: shift.branchId,
-              registerId: shift.registerId,
-              shiftId: shift.id,
-              cashierId: actor.id,
-              type: CashDrawerEventType.PAID_IN,
-              amount: paidAmount,
-              note: paymentNote || `Bulk credit payment ${creditSaleIds[0]}`,
-            },
-          });
+          await recordCashDrawerMovement(tx, actor, parseCashDrawerMovement({
+            shiftId,
+            type: CashDrawerEventType.PAID_IN,
+            amount: paidAmount,
+            note: paymentNote || `Bulk credit payment ${creditSaleIds[0]}`,
+          }), organizationId);
         }
 
         return Promise.all(
@@ -1568,29 +1553,12 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
         }
 
         if (paymentMethod === PaymentMethod.CASH && shiftId) {
-          const shift = await tx.posShift.findUnique({
-            where: { id: shiftId },
-          });
-          if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
-          if (shift.status !== ShiftStatus.OPEN)
-            throw toApiError(
-              409,
-              "Хаагдсан ээлж дээр бэлэн төлөлт бүртгэх боломжгүй",
-            );
-          if (shift.organizationId !== creditSale.organizationId)
-            throw toApiError(400, "Ээлж байгууллага зөрүүтэй байна");
-          await tx.posCashDrawerEvent.create({
-            data: {
-              organizationId: shift.organizationId,
-              branchId: shift.branchId,
-              registerId: shift.registerId,
-              shiftId: shift.id,
-              cashierId: actor.id,
-              type: CashDrawerEventType.PAID_IN,
-              amount: paidAmount,
-              note: paymentNote || `Credit payment ${creditSale.id}`,
-            },
-          });
+          await recordCashDrawerMovement(tx, actor, parseCashDrawerMovement({
+            shiftId,
+            type: CashDrawerEventType.PAID_IN,
+            amount: paidAmount,
+            note: paymentNote || `Credit payment ${creditSale.id}`,
+          }), creditSale.organizationId);
         }
 
         return tx.posCreditSale.update({
