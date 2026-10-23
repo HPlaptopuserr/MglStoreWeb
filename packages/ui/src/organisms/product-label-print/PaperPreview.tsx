@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { buildLabelDocument } from "./document";
+import { PreviewDocument } from "./PreviewDocument";
 import {
   calculatePrintJob,
   type LabelPrintSettings,
@@ -48,7 +49,10 @@ export function PaperPreview({
   useEffect(() => {
     if (!container.current) return;
     const observer = new ResizeObserver((entries) => {
-      if (entries[0]) setContainerWidth(entries[0].contentRect.width);
+      const entry = entries[0];
+      if (!entry) return;
+      const width = Math.floor(entry.contentRect.width);
+      setContainerWidth((current) => (current === width ? current : width));
     });
     observer.observe(container.current);
     return () => observer.disconnect();
@@ -71,7 +75,7 @@ export function PaperPreview({
             ` · ${settings.orientation === "portrait" ? "Босоо" : "Хэвтээ"}`}
         </p>
       </header>
-      <div className="min-h-0 flex-1 overflow-auto p-4">
+      <div className="min-h-0 flex-1 overflow-auto p-4 [scrollbar-gutter:stable]">
         <div ref={container} className="w-full">
           {layout.fitsOnPage ? (
             <>
@@ -82,22 +86,16 @@ export function PaperPreview({
                 className="relative mx-auto overflow-hidden bg-white shadow-lg ring-1 ring-slate-300"
                 style={{ width: widthPx * scale, height: heightPx * scale }}
               >
-                <iframe
+                <PreviewDocument
                   title={
                     layout.thermal
                       ? "Бүх шошгоны цуваа рулон"
                       : `Хэвлэх хуудас ${currentPage + 1}`
                   }
-                  srcDoc={html}
-                  sandbox=""
-                  tabIndex={-1}
-                  className="pointer-events-none absolute left-0 top-0 border-0"
-                  style={{
-                    width: widthPx,
-                    height: heightPx,
-                    transform: `scale(${scale})`,
-                    transformOrigin: "top left",
-                  }}
+                  html={html}
+                  width={widthPx}
+                  height={heightPx}
+                  scale={scale}
                 />
                 {!layout.thermal && (
                   <div

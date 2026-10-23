@@ -1,5 +1,5 @@
 import type { LabelPrintLayout, ProductLabelValue } from "./layout";
-import { escapeHtml } from "./html";
+import { escapeHtml, formatPriceMarkup } from "./html";
 
 /** Physical units keep the roll preview and the printed price tag identical. */
 export function thermalLabelCss(layout: LabelPrintLayout): string {
@@ -20,7 +20,7 @@ export function thermalLabelCss(layout: LabelPrintLayout): string {
     .thermal-price-row { display: flex; align-items: baseline; justify-content: space-between; gap: 2mm; min-height: ${9 * scale}mm; padding-bottom: ${1.3 * scale}mm; border-bottom: 0.2mm solid #111; }
     .thermal-price-caption { font-size: ${2.2 * scale}mm; font-weight: 600; }
     .thermal-price { font-size: ${7.4 * scale}mm; font-weight: 800; line-height: 1; letter-spacing: -${0.2 * scale}mm; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .thermal-currency { font-size: 0.58em; margin-left: 0.12em; font-weight: 600; }
+    .price-currency { font-size: 0.58em; margin-left: 0.12em; font-weight: 600; }
     .thermal-code { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: ${1.1 * scale}mm; min-height: ${12.5 * scale}mm; padding: 0 ${0.8 * scale}mm; }
     .thermal-code .barcode-svg { width: 100%; height: ${8.5 * scale}mm; display: block; }
     .thermal-code .barcode-text, .thermal-code .code-value { max-width: 100%; font-size: ${2.3 * scale}mm; line-height: 1; font-weight: 500; letter-spacing: ${0.13 * scale}mm; }
@@ -38,15 +38,4 @@ export function renderThermalLabel(
     <div class="thermal-price-row"><span class="thermal-price-caption">${escapeHtml(label.priceCaption ?? "Үнэ")}</span><strong class="thermal-price">${formatPriceMarkup(label.priceText || "—")}</strong></div>
     <div class="thermal-code">${barcode}</div>
   </article>`;
-}
-
-function formatPriceMarkup(value: string): string {
-  const match = value.trim().match(/^(\d+(?:\.\d{1,2})?)\s*₮$/);
-  if (!match) return escapeHtml(value);
-  const amount = Number(match[1]);
-  if (!Number.isFinite(amount)) return escapeHtml(value);
-  const formatted = new Intl.NumberFormat("mn-MN", {
-    maximumFractionDigits: 2,
-  }).format(amount);
-  return `${escapeHtml(formatted)}<span class="thermal-currency">₮</span>`;
 }

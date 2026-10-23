@@ -1,4 +1,6 @@
-import { escapeHtml } from "./html";
+import { escapeHtml, formatPriceMarkup } from "./html";
+import { sheetLabelCss } from "./sheet-label";
+import { printLabelWindow } from "./print-window";
 import { renderThermalLabel, thermalLabelCss } from "./thermal-label";
 import {
   calculatePrintJob,
@@ -135,11 +137,6 @@ export function buildLabelDocument(
   const pageMarkup = layout.thermal
     ? `<section class="thermal-roll">${labels.map((label) => `<div class="roll-item">${renderThermalLabel(label, MGL_LABEL_LOGO_SVG, renderBarcodeMarkup(label.code))}</div>`).join("")}</section>`
     : chunkLabels(labels, layout.labelsPerPage).map(renderPrintPage).join("");
-  const labelScale = Math.min(
-    1.5,
-    layout.labelWidth / 144.5,
-    layout.labelHeight / 67.3,
-  );
   return `
     <!doctype html><html lang="mn">
       <head>
@@ -174,139 +171,7 @@ export function buildLabelDocument(
             page-break-after: always;
           }
           .sheet:last-child { break-after: auto; page-break-after: auto; }
-          .label {
-            width: ${layout.labelWidth}mm;
-            height: ${layout.labelHeight}mm;
-            min-width: 0;
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            border: 0.18mm solid #c9d1dc;
-            background: #ffffff;
-            print-color-adjust: exact;
-            -webkit-print-color-adjust: exact;
-          }
-          .brand {
-            height: ${13.5 * labelScale}mm;
-            display: flex;
-            align-items: center;
-            padding: 0 ${6 * labelScale}mm;
-            background: #002b52;
-            background-color: #002b52;
-            box-shadow: inset 0 0 0 1000px #002b52;
-            print-color-adjust: exact;
-            -webkit-print-color-adjust: exact;
-          }
-          .logo {
-            display: block;
-            width: ${31 * labelScale}mm;
-            height: auto;
-            print-color-adjust: exact;
-            -webkit-print-color-adjust: exact;
-          }
-          .logo svg {
-            display: block;
-            width: ${31 * labelScale}mm;
-            height: auto;
-            print-color-adjust: exact;
-            -webkit-print-color-adjust: exact;
-          }
-          .body {
-            display: flex;
-            min-height: 0;
-            flex: 1;
-            flex-direction: column;
-            padding: ${1.5 * labelScale}mm ${2.8 * labelScale}mm ${2.4 * labelScale}mm;
-            color: #002b52;
-          }
-          .field-title {
-            font-family: Georgia, "Times New Roman", serif;
-            font-size: ${5 * labelScale}mm;
-            font-weight: 900;
-            line-height: 1;
-            letter-spacing: ${0.18 * labelScale}mm;
-          }
-          .name-box,
-          .small-box {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: ${1.35 * labelScale}mm solid #002b52;
-            border-radius: ${3 * labelScale}mm;
-            color: #1a1a1a;
-            overflow: hidden;
-          }
-          .name-box {
-            height: ${9.5 * labelScale}mm;
-            margin-top: ${1.1 * labelScale}mm;
-            padding: 0 ${2 * labelScale}mm;
-          }
-          .name-value {
-            max-width: 100%;
-            overflow: hidden;
-            text-align: center;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            font-size: ${4.6 * labelScale}mm;
-            font-weight: 900;
-            line-height: 1;
-          }
-          .split-title {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: ${6 * labelScale}mm;
-            margin-top: ${1.5 * labelScale}mm;
-          }
-          .small-boxes {
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-            gap: ${6 * labelScale}mm;
-            margin-top: ${1.1 * labelScale}mm;
-          }
-          .small-box {
-            height: ${14.5 * labelScale}mm;
-            padding: 0 ${2 * labelScale}mm;
-          }
-          .barcode-box {
-            flex-direction: column;
-            gap: ${0.9 * labelScale}mm;
-          }
-          .barcode-svg {
-            display: block;
-            width: 100%;
-            height: ${7.3 * labelScale}mm;
-          }
-          .barcode-svg rect {
-            fill: #111111;
-          }
-          .barcode-text {
-            display: block;
-            max-width: 100%;
-            overflow: hidden;
-            color: #111111;
-            font-size: ${3.1 * labelScale}mm;
-            font-weight: 900;
-            line-height: 1;
-            text-align: center;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-          .code-value,
-          .price-value {
-            max-width: 100%;
-            overflow: hidden;
-            text-align: center;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            font-weight: 900;
-            line-height: 1;
-          }
-          .code-value { font-size: ${3.6 * labelScale}mm; }
-          .price-value { font-size: ${4.6 * labelScale}mm; }
-          .label.empty .name-value,
-          .label.empty .code-value,
-          .label.empty .price-value { color: transparent; }
+          ${sheetLabelCss(layout)}
           @media screen {
             body { width: ${layout.paperWidth}mm; }
             .sheet { margin: ${settings.margin}mm; }
@@ -324,7 +189,13 @@ export function buildLabelDocument(
               print-color-adjust: exact !important;
               -webkit-print-color-adjust: exact !important;
             }
-            .barcode-svg rect { fill: #111111 !important; }
+            .name-value, .price-value, .barcode-text, .code-value,
+            .thermal-name, .thermal-price, .thermal-price-caption {
+              color: #000 !important;
+              -webkit-text-fill-color: #000 !important;
+            }
+            .barcode-svg { visibility: visible !important; overflow: visible; }
+            .barcode-svg rect { fill: #000 !important; }
           }
           ${
             layout.thermal
@@ -365,16 +236,10 @@ export function printProductLabels(
   popup.document.write(html);
   popup.document.close();
   popup.addEventListener("afterprint", () => popup.close(), { once: true });
-  void popup.document.fonts.ready
-    .then(() => {
-      if (popup.closed) return;
-      popup.focus();
-      popup.print();
-    })
-    .catch(() => {
-      popup.close();
-      onError("Хэвлэх цонхыг нээхэд алдаа гарлаа. Дахин оролдоно уу.");
-    });
+  void printLabelWindow(popup).catch(() => {
+    popup.close();
+    onError("Хэвлэх цонхыг нээхэд алдаа гарлаа. Дахин оролдоно уу.");
+  });
   return null;
 }
 
@@ -403,7 +268,7 @@ function renderPrintLabel(label: ProductLabelValue | null) {
         </div>
         <div class="small-boxes">
           <div class="small-box barcode-box">${renderBarcodeMarkup(label?.code ?? "")}</div>
-          <div class="small-box"><span class="price-value">${escapeHtml(label?.priceText || "—")}</span></div>
+          <div class="small-box"><span class="price-value">${formatPriceMarkup(label?.priceText || "—")}</span></div>
         </div>
       </div>
     </article>
@@ -422,7 +287,7 @@ function renderBarcodeMarkup(value: string) {
   const rects = barcode.bars
     .map(
       (bar) =>
-        `<rect x="${bar.x}" y="0" width="${bar.width}" height="50"></rect>`,
+        `<rect x="${bar.x}" y="0" width="${bar.width}" height="50" fill="#000000"></rect>`,
     )
     .join("");
 
