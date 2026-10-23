@@ -478,10 +478,15 @@ export const Header = () => {
                   <UsersRound size={15} aria-hidden="true" />
                   2003
                 </Link>
+
                 <Link href="/shared-store" aria-current={pathname.startsWith("/shared-store") ? "page" : undefined}
                   className="inline-flex items-center gap-2 self-center whitespace-nowrap rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-bold text-orange-800 transition-colors hover:border-orange-300 hover:bg-orange-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-orange-600">
                   <Store size={15} aria-hidden="true" />Дундын дэлгүүр
                 </Link>
+                <Link href="/mgl-club" title="MGL CLUB — Бизнесийн хамтын нийгэмлэг" className="inline-flex items-center gap-2 self-center whitespace-nowrap rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-bold text-teal-900 transition-colors hover:border-teal-300 hover:bg-teal-100 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-teal-600">
+                  <UsersRound size={15} aria-hidden="true" />MGL CLUB
+                </Link>
+
               </div>
             </div>
           </div>
@@ -575,8 +580,12 @@ export const Header = () => {
               <ChevronRight size={20} aria-hidden="true" />
             </Link>
 
+
             <Link href="/shared-store" onClick={closeMobile} className="mt-3 flex min-h-20 items-center gap-4 rounded-2xl border border-orange-200 bg-orange-50 p-4 text-orange-950 transition hover:bg-orange-100 focus-visible:ring-2 focus-visible:ring-orange-600">
               <Store size={24} aria-hidden="true" /><span className="flex-1"><span className="block text-sm font-bold">Дундын дэлгүүр</span><span className="mt-1 block text-xs text-orange-800">Бэлэн бараа · Агуулахаас шууд</span></span><ChevronRight size={20} aria-hidden="true" />
+            </Link>
+            <Link href="/mgl-club" onClick={closeMobile} className="mt-3 flex min-h-20 items-center gap-4 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-teal-950 transition hover:bg-teal-100 focus-visible:ring-2 focus-visible:ring-teal-600">
+              <UsersRound size={24} aria-hidden="true" /><span className="flex-1"><span className="block text-sm font-bold">MGL CLUB</span><span className="mt-1 block text-xs text-teal-800">Бизнесээ таниул · Хамтрагчаа ол</span></span><ChevronRight size={20} aria-hidden="true" />
             </Link>
 
             <div className="mt-5">

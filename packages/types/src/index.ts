@@ -57,3 +57,5 @@ export * from "./domain/kitchen-access";
 export * from "./payment-search";
 
 export * from "./domain/esim-sales";
+
+export * from "./domain/mgl-club";

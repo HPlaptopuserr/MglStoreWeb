@@ -1,0 +1,741 @@
+.section {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 64px 32px;
+}
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  margin-bottom: 32px;
+}
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #397557;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 1.5px;
+  margin: 0 0 14px;
+}
+.heading h2 {
+  color: #123e2c;
+  font-size: clamp(26px, 3vw, 38px);
+  line-height: 1.25;
+  letter-spacing: -1px;
+  font-weight: 800;
+  margin: 0 0 14px;
+}
+.heading > div > p:last-child {
+  max-width: 700px;
+  margin: 0;
+  color: #597065;
+  font-size: 14px;
+  line-height: 1.9;
+}
+.download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 10px;
+  min-height: 48px;
+  padding: 12px 20px;
+  border: 1px solid #c6dbcf;
+  border-radius: 12px;
+  background: #fff;
+  color: #174e36;
+  font-size: 13px;
+  font-weight: 700;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+}
+.download:hover {
+  background: #e5f2ea;
+  border-color: #7faa91;
+}
+/* The PDF stays inside a physical television, with its controls below the stand. */
+.viewer {
+  --tv-ink: #e6edf5;
+  position: relative;
+  isolation: isolate;
+  border: 1px solid #dfe6e6;
+  border-radius: 28px;
+  background: radial-gradient(
+    ellipse at 50% 30%,
+    #d6e7f8 0%,
+    #eaf0f4 42%,
+    #f6f7f5 74%
+  );
+  padding: 26px 34px 18px;
+  box-shadow:
+    0 24px 80px #183b3021,
+    inset 0 1px 0 #ffffff;
+  color: #182b3a;
+}
+.viewer::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 20%;
+  left: 18%;
+  right: 18%;
+  height: 48%;
+  border-radius: 50%;
+  background: #7ca9dc24;
+  filter: blur(55px);
+  pointer-events: none;
+}
+.viewerHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+.channel {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  flex-shrink: 0;
+}
+.channel > span {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  background: #fff9;
+  border: 1px solid #fff;
+  border-radius: 12px;
+  color: #35526b;
+}
+.channel strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 1.1px;
+  color: #284051;
+}
+.channel small {
+  display: block;
+  margin-top: 4px;
+  color: #62788b;
+  font-size: 8px;
+  font-weight: 650;
+  letter-spacing: 1.8px;
+}
+.pageSelector {
+  display: flex;
+  align-items: center;
+  position: relative;
+  max-width: 430px;
+  width: 45%;
+}
+.pageSelector label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.pageSelector select {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  appearance: none;
+  border: 1px solid #cddae3;
+  border-radius: 11px;
+  background: #ffffffb3;
+  color: #486174;
+  font-size: 12px;
+  padding: 11px 34px 11px 14px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.pageSelector > svg {
+  position: absolute;
+  right: 12px;
+  pointer-events: none;
+  color: #647e92;
+}
+.tvScene {
+  position: relative;
+  width: 100%;
+  margin-inline: auto;
+  padding-bottom: clamp(25px, 3.4vw, 46px);
+}
+.tvScene::after {
+  content: "";
+  position: absolute;
+  bottom: 1px;
+  left: 5%;
+  width: 90%;
+  height: 20px;
+  background: #172b4445;
+  filter: blur(13px);
+  border-radius: 50%;
+  z-index: -1;
+}
+.television {
+  position: relative;
+  padding: clamp(5px, 0.75vw, 11px);
+  padding-bottom: 0;
+  border: 1px solid #52606c;
+  border-radius: clamp(12px, 1.7vw, 24px);
+  background: linear-gradient(
+    135deg,
+    #47515b 0%,
+    #11161c 12%,
+    #242a32 45%,
+    #0b0e13 100%
+  );
+  box-shadow:
+    0 0 0 1px #172330,
+    0 4px 0 #090d13,
+    0 18px 34px #0b1e3b35,
+    inset 0 1px 1px #c2cfdb85;
+  z-index: 1;
+}
+.screen {
+  position: relative;
+  aspect-ratio: 2400/1351;
+  overflow: hidden;
+  background: #08162b;
+  border: 1px solid #060a10;
+  border-radius: clamp(6px, 1vw, 13px);
+  box-shadow:
+    0 0 0 1px #02050a,
+    inset 0 0 12px #000;
+}
+.screen > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.screenImage {
+  opacity: 1;
+  animation: screen-in 0.25s ease-out;
+}
+.imagePending {
+  opacity: 0;
+}
+.chin {
+  position: relative;
+  height: clamp(17px, 2.1vw, 29px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chin > span {
+  color: #b2bcc6;
+  font-size: clamp(6px, 0.64vw, 9px);
+  font-weight: 550;
+  letter-spacing: 3px;
+}
+.chin b {
+  font-weight: 800;
+  color: #d4dce4;
+}
+.chin > i {
+  position: absolute;
+  right: 3%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #b9eabf;
+  box-shadow: 0 0 7px #88eda4;
+}
+.tvStand {
+  position: absolute;
+  inset: auto 0 0;
+  height: clamp(25px, 3.4vw, 46px);
+  pointer-events: none;
+}
+.tvStand > i {
+  position: absolute;
+  top: -3px;
+  height: 100%;
+  width: 9%;
+  background: linear-gradient(90deg, #111822, #3a4552 45%, #131b24);
+  clip-path: polygon(49% 0, 74% 0, 100% 100%, 0 100%);
+  border-radius: 0 0 4px 4px;
+}
+.tvStand > i:first-child {
+  left: 16%;
+  transform: skewX(-17deg);
+}
+.tvStand > i:last-child {
+  right: 16%;
+  transform: skewX(17deg) scaleX(-1);
+}
+.loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: #a0b2c7;
+  font-size: 12px;
+}
+.loading > span {
+  width: 25px;
+  height: 25px;
+  border: 2px solid #ffffff1c;
+  border-top-color: #b4d1ed;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+.failure {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+  color: #c0cedb;
+  font-size: 14px;
+}
+.failure p {
+  margin: 0;
+}
+.failure :is(a, button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #d0e2f7;
+}
+.failure a {
+  text-decoration: underline;
+}
+.failure button {
+  background: #233751;
+  border: 1px solid #49617a;
+  padding: 9px 14px;
+  border-radius: 9px;
+}
+.remoteArea {
+  text-align: center;
+  margin: 24px auto 20px;
+}
+.remote {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  border-radius: 18px;
+  background: linear-gradient(155deg, #293441, #111a25);
+  border: 1px solid #435263;
+  padding: 8px;
+  box-shadow:
+    0 8px 18px #1d304b25,
+    inset 0 1px 0 #ffffff20;
+  color: var(--tv-ink);
+}
+.remote button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  gap: 8px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid #ffffff13;
+  border-radius: 11px;
+  color: #dbe4ef;
+  background: #ffffff08;
+  font-size: 12px;
+  font-weight: 650;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s;
+}
+.remote button:hover:not(:disabled) {
+  background: #ffffff1c;
+  box-shadow: 0 0 0 1px #ffffff1a;
+}
+.remote button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-width: 82px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: #a1b2c6;
+}
+.counter strong {
+  color: #f2f6fa;
+  font-size: 16px;
+  font-weight: 750;
+}
+.counter > span {
+  color: #667a90;
+}
+.remoteDivider {
+  height: 23px;
+  width: 1px;
+  background: #ffffff1f;
+  margin-inline: 4px;
+}
+.remote .expandButton {
+  color: #e3f9e9;
+  background: #37634d;
+  border-color: #527b65;
+  padding-inline: 16px;
+}
+.remote .expandButton:hover {
+  background: #477f61;
+}
+.caption {
+  max-width: 800px;
+  margin: 15px auto 0;
+  min-height: 20px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #547084;
+}
+.progressTrack {
+  height: 3px;
+  max-width: 240px;
+  margin: 0 auto;
+  overflow: hidden;
+  background: #d7e1e6;
+  border-radius: 10px;
+}
+.progressTrack > span {
+  display: block;
+  height: 100%;
+  background: #73968c;
+  border-radius: 10px;
+  transition: width 0.25s;
+}
+.keyboardHint {
+  margin: 12px 0 0;
+  text-align: center;
+  color: #60798b;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.contents {
+  border-top: 1px solid #cfdae2;
+  padding-top: 22px;
+  margin-top: 24px;
+}
+.contents[hidden] {
+  display: none;
+}
+.contents > p {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 1.4px;
+  margin: 0 0 14px;
+  color: #4b6578;
+}
+.contents > p > span {
+  color: #657d8d;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.contents ol {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  padding: 0;
+  margin: 0;
+}
+.contents button {
+  display: flex;
+  width: 100%;
+  gap: 12px;
+  align-items: baseline;
+  text-align: left;
+  min-height: 44px;
+  padding: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #536c7e;
+}
+.contents button > span {
+  font-variant-numeric: tabular-nums;
+  color: #6b879a;
+  font-weight: 750;
+}
+.contents button:hover,
+.contents button[aria-current="page"] {
+  background: #ffffffb3;
+  border-color: #c5d8d0;
+  color: #174e36;
+}
+.sourceNote {
+  font-size: 11px;
+  line-height: 1.9;
+  color: #697c70;
+  margin: 20px 2px 0;
+  text-align: center;
+}
+/* In presentation mode, the complete television and remote fit the display. */
+.viewer.expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: 100vw;
+  height: 100dvh;
+  border: 0;
+  border-radius: 0;
+  padding: 16px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    #263d59,
+    #101b2a 68%,
+    #090f19
+  );
+  color: #d7e2ee;
+  overflow: auto;
+}
+.expanded::before {
+  display: none;
+}
+.expanded .viewerHeader {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 1440px;
+  margin-bottom: 16px;
+}
+.expanded .channel strong {
+  color: #e6edf4;
+}
+.expanded .channel small {
+  color: #91a7be;
+}
+.expanded .channel > span {
+  background: #ffffff0b;
+  border-color: #ffffff1f;
+  color: #a9c2d9;
+}
+.expanded .pageSelector select {
+  background: #182b40;
+  border-color: #384c63;
+  color: #c3d1df;
+}
+.expanded .tvScene {
+  width: min(100%, calc((100dvh - 310px) * 1.7765));
+  flex-shrink: 0;
+  padding-bottom: 28px;
+}
+.expanded .television {
+  border-radius: 16px;
+  padding: 7px 7px 0;
+}
+.expanded .chin {
+  height: 20px;
+}
+.expanded .tvStand {
+  height: 28px;
+}
+.expanded .remoteArea {
+  margin: 14px auto 8px;
+  flex-shrink: 0;
+}
+.expanded .caption {
+  color: #a1b6c9;
+  max-width: 90vw;
+  margin-top: 10px;
+}
+.expanded .progressTrack {
+  width: 180px;
+  flex-shrink: 0;
+  background: #33475c;
+}
+.expanded .keyboardHint {
+  color: #94abc1;
+  font-size: 10px;
+  flex-shrink: 0;
+  margin-top: 8px;
+}
+@keyframes screen-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 767px) {
+  .section {
+    padding: 36px 16px;
+  }
+  .heading {
+    display: block;
+    margin-bottom: 24px;
+  }
+  .heading > div > p:last-child {
+    font-size: 13px;
+  }
+  .download {
+    margin-top: 20px;
+    font-size: 12px;
+  }
+  .viewer {
+    padding: 18px 12px 16px;
+    border-radius: 20px;
+  }
+  .viewerHeader {
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .channel {
+    gap: 8px;
+  }
+  .channel > span {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+  }
+  .channel strong {
+    font-size: 10px;
+    letter-spacing: 0.7px;
+  }
+  .channel small {
+    font-size: 6px;
+    letter-spacing: 0.6px;
+  }
+  .pageSelector {
+    width: 43%;
+  }
+  .pageSelector select {
+    font-size: 11px;
+    min-height: 40px;
+    padding-left: 10px;
+  }
+  .remoteArea {
+    margin-top: 20px;
+    margin-bottom: 16px;
+  }
+  .remote {
+    gap: 4px;
+    padding: 6px;
+    border-radius: 15px;
+  }
+  .remote button {
+    min-width: 40px;
+    min-height: 44px;
+    padding: 9px;
+  }
+  .counter {
+    min-width: 59px;
+    gap: 6px;
+    font-size: 11px;
+  }
+  .counter strong {
+    font-size: 14px;
+  }
+  .remote .expandButton {
+    padding-inline: 12px;
+  }
+  .expandButton span {
+    display: none;
+  }
+  .remoteDivider {
+    margin-inline: 2px;
+  }
+  .caption {
+    font-size: 11px;
+    min-height: 38px;
+    margin-top: 13px;
+  }
+  .contents ol {
+    grid-template-columns: 1fr;
+  }
+  .contents button {
+    font-size: 11px;
+    padding: 10px;
+  }
+  .failure {
+    font-size: 11px;
+    gap: 6px;
+  }
+  .failure > svg {
+    width: 20px;
+    height: 20px;
+  }
+  .failure button {
+    padding: 7px;
+  }
+  .loading {
+    font-size: 10px;
+    gap: 10px;
+  }
+  .viewer.expanded {
+    padding: 14px 10px;
+  }
+  .expanded .viewerHeader {
+    margin-bottom: 20px;
+  }
+  .expanded .tvScene {
+    width: min(100%, calc((100dvh - 310px) * 1.7765));
+  }
+}
+@media (max-height: 550px) and (orientation: landscape) {
+  .expanded .viewerHeader {
+    display: none;
+  }
+  .expanded .tvScene {
+    width: min(100%, calc((100dvh - 170px) * 1.7765));
+    padding-bottom: 12px;
+  }
+  .expanded .tvStand {
+    height: 12px;
+  }
+  .expanded .chin {
+    height: 14px;
+  }
+  .expanded .remoteArea {
+    margin: 8px auto 0;
+  }
+  .expanded .caption,
+  .expanded .progressTrack,
+  .expanded .keyboardHint {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .screenImage,
+  .loading > span {
+    animation: none;
+  }
+  .download,
+  .remote button,
+  .progressTrack > span {
+    transition: none;
+  }
+}
