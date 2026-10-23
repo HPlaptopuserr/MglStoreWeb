@@ -190,12 +190,23 @@ async function fetchSystemQrJsonWithTokenRetry<T extends { status?: unknown; mes
   return readSystemQrJson<T>(await request(freshToken));
 }
 
+export class SystemQrLocationValidationError extends Error {}
+
 export async function registerSystemQrSubMerchant(
   params: SystemQrRegisterSubMerchantParams,
   username?: string,
   password?: string,
 ): Promise<SystemQrSubMerchantResult> {
   const { qrpayBaseUrl } = systemQrEnv();
+  const cities = await getSystemQrCityList(username, password);
+  const city = cities.find((item) => item.code === params.cityId);
+  if (!city?.districts.some((item) => item.code === params.districtId)) {
+    throw new SystemQrLocationValidationError("Minu-ийн жагсаалтаас хот, дүүргээ дахин сонгоно уу.");
+  }
+  const khoroos = await getSystemQrKhorooList(params.districtId, username, password);
+  if (!khoroos.some((item) => item.code === params.khorooId)) {
+    throw new SystemQrLocationValidationError("Хорооны ID Minu-ийн сонгосон дүүргийн жагсаалтад байхгүй байна. Хороо/багаа дахин сонгоно уу.");
+  }
 
   const data = await fetchSystemQrJsonWithTokenRetry<{
     status?: string;
@@ -331,20 +342,22 @@ export async function listSystemQrSubMerchants(
   }));
 }
 
-export async function getSystemQrCityList() {
+export async function getSystemQrCityList(username?: string, password?: string) {
   const { qrpayBaseUrl } = systemQrEnv();
-  const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: any[] | null }>(
+  const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: Array<{ cityId?: string | number; cityName?: string; districtList?: Array<{ districtId?: string | number; districtName?: string }> }> | null }>(
     (token) => paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/city`, {
       headers: { Authorization: `Bearer ${token}` },
-    }),
+    }), username, password,
   );
-  if (data.status !== "000" || !Array.isArray(data.entity)) return [];
+  if (data.status !== "000" || !Array.isArray(data.entity)) {
+    throw new Error("Minu хаягийн жагсаалт авч чадсангүй. Дахин оролдоно уу.");
+  }
 
   return data.entity.map((city) => ({
     code: String(city.cityId || ""),
     name: String(city.cityName || ""),
     districts: Array.isArray(city.districtList)
-      ? city.districtList.map((district: any) => ({
+      ? city.districtList.map((district) => ({
           code: String(district.districtId || ""),
           name: String(district.districtName || ""),
         }))
@@ -352,15 +365,17 @@ export async function getSystemQrCityList() {
   }));
 }
 
-export async function getSystemQrKhorooList(districtId: string) {
+export async function getSystemQrKhorooList(districtId: string, username?: string, password?: string) {
   const { qrpayBaseUrl } = systemQrEnv();
-  const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: any[] | null }>(
+  const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: Array<{ khorooId?: string | number; khorooName?: string }> | null }>(
     (token) => paymentProviderFetch(
       `${qrpayBaseUrl}/qrMerchant/khoroo?districtId=${encodeURIComponent(districtId)}`,
       { headers: { Authorization: `Bearer ${token}` } },
-    ),
+    ), username, password,
   );
-  if (data.status !== "000" || !Array.isArray(data.entity)) return [];
+  if (data.status !== "000" || !Array.isArray(data.entity)) {
+    throw new Error("Minu хаягийн жагсаалт авч чадсангүй. Дахин оролдоно уу.");
+  }
 
   return data.entity.map((khoroo) => ({
     code: String(khoroo.khorooId || ""),

@@ -10,6 +10,7 @@ import { prisma } from "@mgl/database";
 import { isAdminRole } from "@mgl/types";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import {
+  SystemQrLocationValidationError,
   createSystemQrInvoice,
   checkSystemQrPayment,
   listSystemQrSubMerchants,
@@ -32,6 +33,9 @@ const requiredMinuBankFields = [
   "bankCode",
   "registerNumber",
   "phone",
+  "cityId",
+  "districtId",
+  "khorooId",
 ] as const;
 
 const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
@@ -698,7 +702,7 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
         bankCode: String(body.bankCode).trim(),
         cityId: requestedCityId === "11000" ? "20" : requestedCityId,
         districtId: requestedDistrictId === "110400" ? "1" : requestedDistrictId,
-        khorooId: String(body.khorooId || "15782385").trim(),
+        khorooId: String(body.khorooId || "").trim(),
         building: String(body.building || "-").trim(),
         doorNo: String(body.doorNo || "-").trim(),
         phone: String(body.phone).trim(),
@@ -758,7 +762,9 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
       }
     }
     const isMinuRegisterValidationError = /subMerchant register failed \(001\)/i.test(errorMessage);
-    const status = isSystemQrAuthError(errorMessage)
+    const status = error instanceof SystemQrLocationValidationError
+      ? 422
+      : isSystemQrAuthError(errorMessage)
       ? 400
       : isSystemQrNetworkError(errorMessage)
       ? 503

@@ -56,7 +56,7 @@ export type SystemQrCategory = {
 export const DEFAULT_SYSTEMQR_LOCATION = {
   cityId: "20",
   districtId: "1",
-  khorooId: "15782385",
+  khorooId: "",
   building: "-",
   doorNo: "-",
   corporateFlag: "0",
@@ -71,11 +71,6 @@ const FALLBACK_SYSTEMQR_CITIES: SystemQrCity[] = [
     districts: [{ code: "1", name: "Сонгинохайрхан" }],
   },
 ];
-
-const FALLBACK_SYSTEMQR_KHOROOS_BY_DISTRICT: Record<string, SystemQrKhoroo[]> =
-  {
-    "1": [{ code: "15782385", name: "1-р хороо" }],
-  };
 
 function withCurrentOption<T extends { code: string; name: string }>(
   options: T[],
@@ -235,6 +230,9 @@ type PaymentAccountsSettingsPanelProps = SharedAccountProps & {
   systemQrCategories?: SystemQrCategory[];
   systemQrCities?: SystemQrCity[];
   systemQrKhoroos?: SystemQrKhoroo[];
+  khoroosLoading?: boolean;
+  khoroosError?: string;
+  retryKhoroos?: () => void;
   updateSystemQr: (field: string, value: string | boolean) => void;
   upsertCurrentPaymentAccount: (
     overrides?: Partial<ContractPaymentAccount>,
@@ -255,6 +253,9 @@ export function PaymentAccountsSettingsPanel({
   systemQrCategories = [],
   systemQrCities = [],
   systemQrKhoroos = [],
+  khoroosLoading = false,
+  khoroosError = "",
+  retryKhoroos,
   updateSystemQr,
   upsertCurrentPaymentAccount,
 }: PaymentAccountsSettingsPanelProps) {
@@ -299,13 +300,7 @@ export function PaymentAccountsSettingsPanel({
     currentDistrictId,
     `Код ${currentDistrictId}`,
   );
-  const khorooOptions = withCurrentOption(
-    systemQrKhoroos.length > 0
-      ? systemQrKhoroos
-      : FALLBACK_SYSTEMQR_KHOROOS_BY_DISTRICT[currentDistrictId] || [],
-    currentKhorooId,
-    `Код ${currentKhorooId}`,
-  );
+  const khorooOptions = systemQrKhoroos;
 
   const handleCitySelectChange = (cityId: string) => {
     if (
@@ -713,18 +708,27 @@ export function PaymentAccountsSettingsPanel({
                   Хороо/Баг *
                 </label>
                 <select
-                  value={currentKhorooId}
+                  aria-label="Хороо/Баг"
+                  disabled={khoroosLoading || khorooOptions.length === 0}
+                  value={khorooOptions.some((item) => item.code === currentKhorooId) ? currentKhorooId : ""}
                   onChange={(event) =>
                     updateSystemQr("khorooId", event.target.value)
                   }
                   className={selectClass}
                 >
+                  <option value="">{khoroosLoading ? "Хорооны жагсаалт ачаалж байна…" : khorooOptions.length ? "Хороо/багаа сонгоно уу" : "Minu-ийн хорооны жагсаалт байхгүй байна"}</option>
                   {khorooOptions.map((khoroo) => (
                     <option key={khoroo.code} value={khoroo.code}>
                       {khoroo.name}
                     </option>
                   ))}
                 </select>
+                {khoroosError && (
+                  <div role="alert" className="text-xs text-red-600">
+                    {khoroosError}{" "}
+                    {retryKhoroos && <button type="button" onClick={retryKhoroos} className="underline hover:text-red-800">Дахин ачаалах</button>}
+                  </div>
+                )}
               </div>
 
               <AccountInput

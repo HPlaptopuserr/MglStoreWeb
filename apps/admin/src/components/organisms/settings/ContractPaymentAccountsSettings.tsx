@@ -13,8 +13,9 @@ import {
   type ContractPaymentAccount,
   type SystemQrCategory,
   type SystemQrCity,
-  type SystemQrKhoroo,
 } from "../sections/contract/PaymentAccountPanels";
+
+import { useSystemQrKhoroos } from "./useSystemQrKhoroos";
 
 const PRO_UPGRADE_PAYMENT_ACCOUNT_KEY = "pro-upgrade-payment-account";
 
@@ -67,7 +68,9 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
   const [savingUpgradeAccount, setSavingUpgradeAccount] = useState(false);
   const [upgradeAccountSaved, setUpgradeAccountSaved] = useState(false);
   const [systemQrCities, setSystemQrCities] = useState<SystemQrCity[]>([]);
-  const [systemQrKhoroos, setSystemQrKhoroos] = useState<SystemQrKhoroo[]>([]);
+  const { khoroos: systemQrKhoroos, loading: khoroosLoading, error: khoroosError, retry: retryKhoroos } = useSystemQrKhoroos(
+    String(settings.systemQr?.districtId || DEFAULT_SYSTEMQR_LOCATION.districtId).trim(),
+  );
   const [systemQrCategories, setSystemQrCategories] = useState<SystemQrCategory[]>([]);
 
   useEffect(() => {
@@ -135,25 +138,6 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
   }, []);
 
   useEffect(() => {
-    const districtId = String(settings.systemQr?.districtId || DEFAULT_SYSTEMQR_LOCATION.districtId).trim();
-    if (!districtId) return;
-
-    let cancelled = false;
-    adminFetch(`${API}/vendor/merchant/systemqr/khoroo/${encodeURIComponent(districtId)}`)
-      .then((res) => (res.ok ? res.json() : { khoroos: [] }))
-      .then((data) => {
-        if (!cancelled) setSystemQrKhoroos(Array.isArray(data.khoroos) ? data.khoroos : []);
-      })
-      .catch(() => {
-        if (!cancelled) setSystemQrKhoroos([]);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [settings.systemQr?.districtId]);
-
-  useEffect(() => {
     if (systemQrCities.length === 0) return;
 
     setSettings((prev: any) => {
@@ -181,23 +165,6 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
       };
     });
   }, [systemQrCities]);
-
-  useEffect(() => {
-    if (systemQrKhoroos.length === 0) return;
-
-    setSettings((prev: any) => {
-      const current = prev.systemQr || {};
-      if (systemQrKhoroos.some((item) => item.code === current.khorooId)) return prev;
-
-      return {
-        ...prev,
-        systemQr: {
-          ...current,
-          khorooId: systemQrKhoroos[0].code,
-        },
-      };
-    });
-  }, [systemQrKhoroos]);
 
   const persistPaymentAccounts = async (accounts: ContractPaymentAccount[]) => {
     const res = await adminFetch(`${API}/site-settings/${CONTRACT_PAYMENT_ACCOUNTS_KEY}`, {
@@ -506,6 +473,11 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
       return;
     }
 
+    if (!systemQrKhoroos.some((item) => item.code === config.khorooId)) {
+      alert("Minu-ийн сонгосон дүүргийн жагсаалтаас хороо/багаа сонгоно уу. Жагсаалт ирээгүй бол хуудсаа дахин ачаална уу.");
+      return;
+    }
+
     setConnectingMinuAccount(true);
     try {
       const res = await adminFetch(`${API}/contracts/minu-dynamic-qr/register`, {
@@ -663,6 +635,9 @@ export function ContractPaymentAccountsSettings({ accountsOnly = false }: { acco
         systemQrCategories={systemQrCategories}
         systemQrCities={systemQrCities}
         systemQrKhoroos={systemQrKhoroos}
+        khoroosLoading={khoroosLoading}
+        khoroosError={khoroosError}
+        retryKhoroos={retryKhoroos}
         updateSystemQr={updateSystemQr}
         upsertCurrentPaymentAccount={upsertCurrentPaymentAccount}
       />
