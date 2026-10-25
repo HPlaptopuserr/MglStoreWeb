@@ -27,6 +27,7 @@ export function useMerchantKhoroos(districtId: string) {
       try {
         const response = await authFetch(
           `${API}/vendor/merchant/systemqr/khoroo/${encodeURIComponent(districtId)}`,
+          { cache: "no-store" },
         );
         if (!response.ok)
           throw new Error("Minu-ийн хорооны жагсаалт авч чадсангүй.");

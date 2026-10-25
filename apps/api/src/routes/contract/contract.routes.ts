@@ -8,6 +8,10 @@ import {
 import { requireAuth } from "../../middleware/auth";
 import { prisma } from "@mgl/database";
 import { isAdminRole } from "@mgl/types";
+import {
+  isSystemQrRegistration001,
+  SYSTEMQR_REGISTRATION_001_MESSAGE,
+} from "../../services/systemqr-registration-error";
 import { createQPayInvoice, checkQPayPayment } from "../../services/qpay";
 import {
   SystemQrLocationValidationError,
@@ -761,7 +765,7 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
         }
       }
     }
-    const isMinuRegisterValidationError = /subMerchant register failed \(001\)/i.test(errorMessage);
+    const isMinuRegisterValidationError = isSystemQrRegistration001(error);
     const status = error instanceof SystemQrLocationValidationError
       ? 422
       : isSystemQrAuthError(errorMessage)
@@ -776,7 +780,7 @@ router.post("/contracts/minu-dynamic-qr/register", requireAuth, async (req, res)
       : isSystemQrNetworkError(errorMessage)
       ? "Minu Dynamic QR данс шинээр холбох үед Minu API руу холбогдохгүй байна. API сервер api.minu.mn:443 рүү гарах эрхтэй эсэх, системийн VPN/proxy/whitelist-аа шалгана уу. Merchant Code байгаа бол шууд дансны санд хадгалаад ашиглаж болно."
       : isMinuRegisterValidationError
-      ? `${errorMessage}. Энэ нь манай серверийн алдаа биш, Minu SystemQR бүртгэл дээрх validation/general system response байна. merchantName давхардсан бол Minu ихэвчлэн 0077 буцаадаг. Minu-аас bankCode/accountNumber/registerNumber/phone/corporateName талбарууд prod дээр таарч байгаа эсэхийг шалгуулна уу.`
+      ? SYSTEMQR_REGISTRATION_001_MESSAGE
       : errorMessage;
     return res.status(status).json({
       success: false,

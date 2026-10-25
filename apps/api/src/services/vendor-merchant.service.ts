@@ -14,11 +14,16 @@ import {
   type QPayRegisterPersonParams,
 } from "./qpay";
 import {
+  SystemQrLocationValidationError,
   registerSystemQrSubMerchant,
   resetSystemQrSubMerchantPassword,
   validateSystemQrCredentials,
   type SystemQrRegisterSubMerchantParams,
 } from "./systemqr";
+import {
+  isSystemQrRegistration001,
+  SYSTEMQR_REGISTRATION_001_MESSAGE,
+} from "./systemqr-registration-error";
 import {
   decodeSystemQrMerchantAuth,
   encodeSystemQrMerchantAuth,
@@ -30,6 +35,8 @@ export type ConnectMerchantResult = {
   message: string;
   merchantId?: string;
   alreadyRegistered?: boolean;
+  code?: "INVALID_LOCATION" | "PROVIDER_REGISTRATION_FAILED";
+  upstreamStatus?: string;
 };
 
 export type GetMerchantConfigResult = {
@@ -834,9 +841,20 @@ export async function registerVendorWithSystemQr(
       username: result.username,
       raw: result.raw,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("registerVendorWithSystemQr error", error);
-    const message = String(error?.message || "");
+    if (error instanceof SystemQrLocationValidationError) {
+      return { success: false, code: "INVALID_LOCATION", message: error.message };
+    }
+    if (isSystemQrRegistration001(error)) {
+      return {
+        success: false,
+        code: "PROVIDER_REGISTRATION_FAILED",
+        upstreamStatus: "001",
+        message: SYSTEMQR_REGISTRATION_001_MESSAGE,
+      };
+    }
+    const message = error instanceof Error ? error.message : "";
     if (/P2002|Unique constraint/i.test(message)) {
       return {
         success: false,

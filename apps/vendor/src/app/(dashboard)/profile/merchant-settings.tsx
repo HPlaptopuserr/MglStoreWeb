@@ -225,7 +225,7 @@ export function MerchantSettingsSection({
   const loadCities = async () => {
     setCitiesLoading(true);
     try {
-      const res = await authFetch(`${API}/vendor/merchant/systemqr/cities`);
+      const res = await authFetch(`${API}/vendor/merchant/systemqr/cities`, { cache: "no-store" });
       const data = await res.json();
       if (res.ok) {
         setCities(data.cities || []);
@@ -395,6 +395,11 @@ export function MerchantSettingsSection({
           text: data.message,
         });
       } else {
+        if (data.code === "INVALID_LOCATION") {
+          setKhorooId("");
+          retryKhoroos();
+          setRegistrationStep(2);
+        }
         setMessage({
           type: "error",
           text: data.message || "Бүртгэхэд алдаа гарлаа",
