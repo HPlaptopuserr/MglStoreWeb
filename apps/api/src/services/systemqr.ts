@@ -237,7 +237,7 @@ export async function registerSystemQrSubMerchant(
       lastName: params.lastName,
       corporateFlag: params.corporateFlag,
       corporateName: params.corporateName || null,
-      registerNumber: params.registerNumber,
+      registerNumber: params.registerNumber.trim().toUpperCase(),
       gender: params.gender,
       subCategoryId: params.subCategoryId,
     }),
