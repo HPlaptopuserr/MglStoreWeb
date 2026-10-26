@@ -14,7 +14,7 @@ function isBankAccount(value: unknown): value is BankAccount {
     && "is_default" in value && typeof value.is_default === "boolean";
 }
 
-export function useMerchantBankAccounts(query: string) {
+export function useMerchantBankAccounts(query: string, enabled = true) {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [state, setState] = useState<BankAccountsLoadState>("loading");
   const [canEdit, setCanEdit] = useState(false);
@@ -24,6 +24,10 @@ export function useMerchantBankAccounts(query: string) {
     setState("loading");
     setAccounts([]);
     setCanEdit(false);
+    if (!enabled) {
+      setState("ready");
+      return;
+    }
     try {
       const response = await authFetch(`${API}/vendor/merchant/bank-accounts${query}`);
       if (id !== requestId.current) return;
@@ -40,7 +44,7 @@ export function useMerchantBankAccounts(query: string) {
     } catch {
       if (id === requestId.current) setState("error");
     }
-  }, [query]);
+  }, [query, enabled]);
   useEffect(() => {
     void load();
     return () => { requestId.current += 1; };

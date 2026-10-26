@@ -180,7 +180,7 @@ export function MerchantSettingsSection({
     state: bankAccountsState,
     canEdit: canEditBankAccounts,
     load: loadBankAccounts,
-  } = useMerchantBankAccounts(orgQuery);
+  } = useMerchantBankAccounts(orgQuery, mode === "qpay");
 
   useEffect(() => {
     setEditingBankAccounts(false);
@@ -734,7 +734,6 @@ export function MerchantSettingsSection({
   const renderMinuSection = () => (
     <MinuTerminalMerchantCard
       status={minuStatus}
-      bankAccounts={savedBankAccounts}
       username={minuUsername}
       password={minuPassword}
       branchId={minuBranchId}
