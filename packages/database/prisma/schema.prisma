@@ -1571,6 +1571,7 @@ model ProductRequestImage {
 }
 
 model ProductImage {
+  visualSearchEmbedding VisualSearchEmbedding?
   id        String  @id @default(uuid())
   productId String
   url       String
@@ -1579,6 +1580,25 @@ model ProductImage {
 
   @@index([productId])
   @@index([productId, sortOrder])
+}
+
+/// Derived search data survives deploys. A lease coordinates API replicas.
+model VisualSearchEmbedding {
+  imageId          String @id
+  productId        String
+  sourceHash       String
+  embeddingVersion String
+  contentHash      String?
+  vector           Json?
+  indexedAt        DateTime?
+  leaseToken       String?
+  leaseUntil       DateTime?
+  retryAt          DateTime?
+  attempts         Int @default(0)
+  updatedAt        DateTime @default(now()) @updatedAt
+  image            ProductImage @relation(fields: [imageId], references: [id], onDelete: Cascade)
+
+  @@index([embeddingVersion, updatedAt])
 }
 
 model ProductSupplierDocument {

@@ -2,10 +2,18 @@ import { stat } from "node:fs/promises";
 import { indexPath, readIndex, type VisualIndex } from "./visual-search-index";
 import { warmVisualEncoder } from "./visual-search-encoder";
 import { VisualSearchError } from "./visual-search-errors";
+import { persistentVisualSearchEnabled } from "./visual-search-config";
+import { VisualIndexCache } from "./visual-search-cache";
+import { loadPersistentVisualIndex, visualStoreRevision } from "./visual-search-store";
+
+const persistentIndex = new VisualIndexCache({
+  revision: visualStoreRevision, load: loadPersistentVisualIndex, now: Date.now,
+});
 
 let cached: { signature: string; index: VisualIndex } | undefined;
 export async function currentVisualIndex(): Promise<VisualIndex> {
   try {
+    if (persistentVisualSearchEnabled()) return await persistentIndex.get();
     const file = await stat(indexPath());
     const signature = `${indexPath()}:${file.ino}:${file.mtimeMs}:${file.size}`;
     if (cached?.signature !== signature)

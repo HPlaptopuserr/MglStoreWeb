@@ -13,6 +13,7 @@ import warehouseTransfersRoutes from "./routes/operations/warehouse-transfers.ro
 import miniAppAdminRoutes from "./routes/store/mini-app-admin.routes";
 import miniAppCatalogRoutes from "./routes/store/mini-app-catalog.routes";
 import visualSearchRoutes from "./routes/catalog/visual-search.routes";
+import { startVisualSearchWorker } from "./services/visual-search/visual-search-worker";
 
 import express from "express";
 import multer from "multer";
@@ -286,6 +287,7 @@ const port = process.env.PORT || 4000;
 
 app.listen(Number(port), "0.0.0.0", () => {
   console.log(`[api] Application is running on: http://0.0.0.0:${port}`);
+  startVisualSearchWorker();
 });
 
 const checkoutExpirationTimer = setInterval(() => {

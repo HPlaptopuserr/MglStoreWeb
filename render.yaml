@@ -208,6 +208,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: VISUAL_SEARCH_ENABLED
+        value: "true"
       - key: DATABASE_URL
         sync: false
       - key: CORS_ORIGIN

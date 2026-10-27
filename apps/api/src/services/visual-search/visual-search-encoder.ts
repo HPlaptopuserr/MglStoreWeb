@@ -9,6 +9,7 @@ import {
 
 import { VisualSearchError } from "./visual-search-errors";
 import { VisualSearchQueue } from "./visual-search-queue";
+import { persistentVisualSearchEnabled } from "./visual-search-config";
 export { VisualSearchError } from "./visual-search-errors";
 
 /** Decode before inference; remove EXIF/GPS, bound decompression and preserve the whole object. */
@@ -54,7 +55,9 @@ export async function prepareSearchImage(bytes: Buffer): Promise<Buffer> {
 async function createEncoder(download: boolean) {
   const { env, pipeline, RawImage } = await import("@huggingface/transformers");
   env.cacheDir = path.join(cacheDirectory(), "models");
-  env.allowRemoteModels = download;
+  // Only pinned model weights may be downloaded after a cold start. Catalog
+  // vectors live in Postgres and are never rebuilt to satisfy a search request.
+  env.allowRemoteModels = download || persistentVisualSearchEnabled();
   if (env.backends.onnx.wasm) env.backends.onnx.wasm.numThreads = 2;
   const extractor = await pipeline("image-feature-extraction", MODEL_ID, {
     dtype: "q8",
