@@ -2948,7 +2948,13 @@ enum ChatMessageSender {
 // ─────────────────────────────────────────────────────────────────────────
 // Direct Messaging (Messenger-like peer-to-peer chat)
 // ─────────────────────────────────────────────────────────────────────────
+enum ChatApp {
+  BUSINESS
+  STORE
+}
+
 model Conversation {
+  app ChatApp @default(BUSINESS)
   id           String                    @id @default(cuid())
   type         ConversationType          @default(DIRECT)
   name         String?
@@ -2959,6 +2965,7 @@ model Conversation {
   messages     DirectMessage[]
 
   @@index([updatedAt])
+  @@index([app, updatedAt])
 }
 
 model ConversationParticipant {
@@ -2994,6 +3001,7 @@ model DirectMessage {
 }
 
 model PushToken {
+  app ChatApp @default(BUSINESS)
   id        String   @id @default(cuid())
   userId    String
   token     String   @unique

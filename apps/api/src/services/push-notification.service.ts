@@ -1,8 +1,9 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getMessaging } from "firebase-admin/messaging";
-import { prisma } from "@mgl/database";
+import { prisma, type ChatApp } from "@mgl/database";
 
 type ChatPush = {
+  app: ChatApp;
   senderId: string;
   senderName: string;
   conversationId: string;
@@ -57,7 +58,10 @@ export async function sendChatPush(input: ChatPush): Promise<void> {
   if (recipients.length === 0) return;
 
   const registrations = await prisma.pushToken.findMany({
-    where: { userId: { in: recipients.map((item) => item.userId) } },
+    where: {
+      app: input.app,
+      userId: { in: recipients.map((item) => item.userId) },
+    },
     select: { token: true },
   });
   if (registrations.length === 0) return;
@@ -80,6 +84,7 @@ export async function sendChatPush(input: ChatPush): Promise<void> {
     notification: { title, body },
     data: {
       type: input.isCall ? "incoming_call" : "chat_message",
+      app: input.app,
       conversationId: input.conversationId,
       conversationName: input.conversationName,
       messageId: input.messageId,

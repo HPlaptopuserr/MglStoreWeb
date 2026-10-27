@@ -15,11 +15,14 @@ export async function shareReelToChat(
     const conversation = await tx.conversation.findUnique({
       where: { id: conversationId },
       select: {
+        app: true,
         type: true,
         name: true,
         participants: { select: { userId: true, status: true } },
       },
     });
+    if (conversation?.app !== "STORE")
+      throw new ReelSocialError(404, "Чат олдсонгүй");
     assertChatShareAccess(userId, conversation);
     const reel = await publicReel(reelId, tx);
     const link = `https://mgl-api.onrender.com/api/reels/${encodeURIComponent(reelId)}`;
@@ -68,6 +71,7 @@ export async function shareReelToChat(
       })
       .then((user) =>
         sendChatPush({
+          app: "STORE",
           senderId: userId,
           senderName: user?.profile?.fullName || "Хэрэглэгч",
           conversationId,

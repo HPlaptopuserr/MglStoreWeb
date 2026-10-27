@@ -58,6 +58,7 @@ function fakeDatabase({
     },
     conversation: {
       findUnique: async () => ({
+        app: "STORE",
         type: "DIRECT",
         name: null,
         participants: [

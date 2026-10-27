@@ -61,6 +61,7 @@ import {
   attendanceRoutes,
   chatRoutes,
   dmRoutes,
+  createDmRouter,
   storeCheckoutRoutes,
   vendorOrderRoutes,
   storeLoyaltyRoutes,
@@ -204,6 +205,7 @@ app.use("/api", salesRepresentativeRoutes);
 app.use("/api", qualityRoutes);
 app.use("/api", chatRoutes);
 app.use("/api", dmRoutes);
+app.use("/api/store", createDmRouter("STORE"));
 app.use("/api", storeCheckoutRoutes);
 app.use("/api", esimRoutes);
 app.use("/api", esimAdminRoutes);
