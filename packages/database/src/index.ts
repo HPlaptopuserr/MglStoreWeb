@@ -1,6 +1,7 @@
 export { prisma } from "./client";
 export { Prisma } from "@prisma/client";
 export {
+  ChatApp,
   PlatformRole,
   OrgRole,
   OrgType,
