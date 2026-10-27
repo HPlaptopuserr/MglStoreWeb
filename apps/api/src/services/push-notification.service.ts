@@ -1,4 +1,3 @@
-import { sendStoreCallPush } from "./call-push.service";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getMessaging } from "firebase-admin/messaging";
 import { prisma, type ChatApp } from "@mgl/database";
@@ -46,7 +45,7 @@ function initializeFirebase(): boolean {
 }
 
 export async function sendChatPush(input: ChatPush): Promise<void> {
-  const firebaseReady = initializeFirebase();
+  if (!initializeFirebase()) return;
 
   const recipients = await prisma.conversationParticipant.findMany({
     where: {
@@ -61,23 +60,12 @@ export async function sendChatPush(input: ChatPush): Promise<void> {
   const registrations = await prisma.pushToken.findMany({
     where: {
       app: input.app,
+      platform: { notIn: ["ios_voip", "ios_voip_sandbox"] },
       userId: { in: recipients.map((item) => item.userId) },
-      ...(!input.isCall
-        ? { platform: { notIn: ["ios_voip", "ios_voip_sandbox"] } }
-        : {}),
     },
-    select: { token: true, platform: true, userId: true },
+    select: { token: true },
   });
   if (registrations.length === 0) return;
-  if (input.app === "STORE" && input.isCall) {
-    await sendStoreCallPush(
-      input,
-      registrations,
-      firebaseReady ? getMessaging() : undefined,
-    );
-    return;
-  }
-  if (!firebaseReady) return;
 
   const title = input.isCall
     ? `${input.senderName} залгаж байна`
@@ -93,9 +81,7 @@ export async function sendChatPush(input: ChatPush): Promise<void> {
           : input.content;
 
   const response = await getMessaging().sendEachForMulticast({
-    tokens: registrations
-      .filter((item) => !item.platform.startsWith("ios_voip"))
-      .map((item) => item.token),
+    tokens: registrations.map((item) => item.token),
     notification: { title, body },
     data: {
       type: input.isCall ? "incoming_call" : "chat_message",
@@ -133,10 +119,7 @@ export async function sendPushToUsers(input: UserPush): Promise<number> {
   if (!initializeFirebase() || input.userIds.length === 0) return 0;
 
   const registrations = await prisma.pushToken.findMany({
-    where: {
-      userId: { in: Array.from(new Set(input.userIds)) },
-      platform: { notIn: ["ios_voip", "ios_voip_sandbox"] },
-    },
+    where: { userId: { in: Array.from(new Set(input.userIds)) }, platform: { notIn: ["ios_voip", "ios_voip_sandbox"] } },
     select: { token: true },
   });
   if (registrations.length === 0) return 0;

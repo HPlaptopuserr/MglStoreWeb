@@ -1,4 +1,3 @@
-import { verifyCallAction } from "../../services/call-push.service";
 import {
   Router,
   type Router as ExpressRouter,
@@ -76,12 +75,7 @@ export function createDmRouter(
       const callSignal = readCallSignal(input.content);
       // WebRTC answer/ICE/hangup packets are internal transport messages. Only
       // the initial offer should produce a user-visible incoming call alert.
-      if (
-        callSignal.isSignal &&
-        callSignal.type !== "offer" &&
-        !(app === "STORE" && callSignal.type === "end")
-      )
-        return;
+      if (callSignal.isSignal && callSignal.type !== "offer") return;
 
       const [sender, conversation] = await Promise.all([
         prisma.user.findUnique({
@@ -103,72 +97,12 @@ export function createDmRouter(
           conversation?.type === "GROUP" && conversation.name
             ? conversation.name
             : senderName,
-        isCall: callSignal.type === "offer" || callSignal.type === "end",
+        isCall: callSignal.type === "offer",
       });
     } catch (error) {
       console.error("dm push notification error", error);
     }
   }
-
-  if (app === "STORE")
-    router.post("/dm/calls/action", async (req, res) => {
-      const body = req.body as {
-        token?: unknown;
-        callId?: unknown;
-        conversationId?: unknown;
-        action?: unknown;
-      };
-      if (
-        typeof body.token !== "string" ||
-        body.token.length > 4096 ||
-        body.action !== "end"
-      )
-        return res.sendStatus(400);
-      const claims = verifyCallAction(body.token);
-      if (
-        !claims ||
-        claims.callId !== body.callId ||
-        claims.conversationId !== body.conversationId
-      )
-        return res.sendStatus(403);
-      const participant = await prisma.conversationParticipant.findFirst({
-        where: {
-          userId: claims.userId,
-          conversationId: claims.conversationId,
-          status: "ACCEPTED",
-          conversation: { app: "STORE" },
-        },
-        select: { id: true },
-      });
-      if (!participant) return res.sendStatus(403);
-      const content =
-        CALL_SIGNAL_PREFIX +
-        Buffer.from(
-          JSON.stringify({
-            callId: claims.callId,
-            type: "end",
-            payload: { reason: "cancelled" },
-          }),
-        ).toString("base64url");
-      const existing = await prisma.directMessage.findFirst({
-        where: {
-          conversationId: claims.conversationId,
-          senderId: claims.userId,
-          content,
-        },
-        select: { id: true },
-      });
-      if (!existing)
-        await prisma.directMessage.create({
-          data: {
-            conversationId: claims.conversationId,
-            senderId: claims.userId,
-            type: "TEXT",
-            content,
-          },
-        });
-      return res.sendStatus(204);
-    });
 
   router.post("/dm/push-token", authenticate, async (req, res) => {
     const user = (req as Request & { user: AuthPayload }).user;
