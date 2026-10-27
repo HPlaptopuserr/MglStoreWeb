@@ -1,7 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { PasswordInput } from "@/components/forms/PasswordInput";
+import { PasswordInput } from "@/shared/ui/forms/PasswordInput";
 import { useRouter } from "next/navigation";
 import { Clock3, ArrowRight } from "lucide-react";
 import "../workforce.css";
@@ -83,6 +83,7 @@ export function WorkforceLogin() {
             {pending ? "Нэвтэрч байна…" : "Нэвтрэх"}
             <ArrowRight size={17} />
           </button>
+          <Link href="/account/password?context=workforce">Нууц үгээ мартсан уу?</Link>
           <Link href="/">Танилцуулга руу буцах</Link>
         </form>
       </div>

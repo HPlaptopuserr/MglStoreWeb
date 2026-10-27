@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
-import { buildingToken, buildingApiBase } from "@/lib/server/building-session";
-import { ManagementShell } from "@/components/building/manage/ManagementShell";
+import { buildingToken, buildingApiBase } from "@/features/building/server/building-session";
+import { ManagementShell } from "@/features/building/management/ManagementShell";
 export default async function ManageLayout({
   children,
 }: {
@@ -10,7 +10,7 @@ export default async function ManageLayout({
   const token = await buildingToken();
   if (!token) redirect("/building/login");
   const response = await fetch(
-    `${buildingApiBase}/api/building/admin/projects`,
+    `${buildingApiBase}/api/building/admin/organization`,
     {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",

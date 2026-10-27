@@ -1,6 +1,6 @@
 "use client";
-import type { WorkforceController } from "../useWorkforce";
-import type { WorkTaskReport } from "../work-tasks";
+import type { WorkforceController } from "../hooks/useWorkforce";
+import type { WorkTaskReport } from "../model/work-tasks";
 import { EmployeeSelect, Field, FormDialog, stamp } from "./shared";
 export function WorkPlanDialog({
   controller,

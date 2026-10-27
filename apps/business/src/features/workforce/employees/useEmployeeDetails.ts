@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { WorkforceEmployeeDetails } from "@mgl/types";
-import { useWorkforceResource } from "../useWorkforceResource";
+import { useWorkforceResource } from "../hooks/useWorkforceResource";
 export function useEmployeeDetails(
   employeeId: string,
   organizationId: string | undefined,

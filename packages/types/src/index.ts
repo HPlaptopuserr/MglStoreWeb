@@ -61,3 +61,5 @@ export * from "./domain/esim-sales";
 export * from "./domain/mgl-club";
 
 export * from "./workforce-payroll";
+
+export * from "./building-purchase";

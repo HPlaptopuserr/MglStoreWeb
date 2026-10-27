@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Bell, Plus } from "lucide-react";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import {
   Empty,
   EmployeeSelect,

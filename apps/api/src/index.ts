@@ -1,3 +1,4 @@
+import buildingRoutes from "./routes/building";
 import "./config/env";
 import esimRoutes, { reconcileEsimPurchases, esimAdminRoutes } from "./routes/esim";
 import { restrictKitchenMember } from "./middleware/kitchen-access";
@@ -157,6 +158,7 @@ app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
 app.use(["/api", "/auth"], restrictKitchenMember);
 
+app.use("/api/building", buildingRoutes);
 app.use("/api", partnerRequestRoutes);
 app.use("/api", associationRoutes);
 app.use("/api", businessDashboardRoutes);

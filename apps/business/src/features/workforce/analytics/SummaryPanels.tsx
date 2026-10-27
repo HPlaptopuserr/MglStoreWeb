@@ -1,7 +1,9 @@
 "use client";
+import { useCurrentTime } from "@/shared/hooks/useCurrentTime";
 import type { WorkforceSnapshot } from "@mgl/types";
 import { Panel, Stats } from "../components/shared";
 export function EmployeeAnalytics({ data }: { data: WorkforceSnapshot }) {
+  const now = useCurrentTime();
   const departments = [
     ...new Set(
       data.employees
@@ -15,8 +17,8 @@ export function EmployeeAnalytics({ data }: { data: WorkforceSnapshot }) {
       e.joinedAt.slice(0, 10) <= data.range.to,
   ).length;
   const years = data.employees
-    .filter((e) => e.active)
-    .map((e) => (Date.now() - +new Date(e.joinedAt)) / (365.25 * 86400000));
+    .filter((e) => e.active && now !== null)
+    .map((e) => ((now ?? 0) - +new Date(e.joinedAt)) / (365.25 * 86400000));
   return (
     <>
       <Stats

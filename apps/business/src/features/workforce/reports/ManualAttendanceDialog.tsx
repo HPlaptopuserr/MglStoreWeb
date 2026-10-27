@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { FormDialog, Field, EmployeeSelect } from "../components/shared";
 export interface ManualAttendanceSelection {
   userId?: string;

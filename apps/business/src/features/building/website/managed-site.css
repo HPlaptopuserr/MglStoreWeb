@@ -1,0 +1,247 @@
+.managed-about {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 9%;
+}
+.managed-about h2 {
+  margin-bottom: 20px;
+}
+.managed-about p,
+.managed-payment > p:last-child {
+  white-space: pre-line;
+  line-height: 1.9;
+  font-size: 14px;
+  color: #677b71;
+}
+.managed-about dl > div {
+  padding: 17px 0;
+  border-bottom: 1px solid #dfe4d7;
+  display: grid;
+  gap: 10px;
+}
+.managed-about dt {
+  color: #819078;
+  font-size: 11px;
+}
+.managed-about dd {
+  font-size: 14px;
+}
+.managed-amenities {
+  padding-top: 0;
+}
+.managed-amenities > div {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+}
+.managed-amenities article {
+  padding: 24px;
+  background: #edf0e7;
+  border: 1px solid #dfe4d7;
+}
+.managed-amenities article > span {
+  color: #a78951;
+  font-size: 26px;
+  font-family: Georgia, serif;
+}
+.managed-amenities h3 {
+  font-size: 18px;
+  margin: 18px 0;
+}
+.managed-amenities p {
+  line-height: 1.9;
+  font-size: 12px;
+  color: #677b71;
+}
+.managed-gallery > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-top: 28px;
+}
+.managed-gallery figure > div {
+  position: relative;
+  height: 360px;
+  background: #e7ebdf;
+}
+.managed-gallery img {
+  object-fit: cover;
+}
+.managed-gallery figcaption {
+  font-size: 12px;
+  color: #677b71;
+  padding-top: 12px;
+}
+.managed-blocks {
+  display: grid;
+  gap: 22px;
+  margin-top: 35px;
+}
+.managed-blocks article {
+  padding: 24px;
+  border: 1px solid #ffffff20;
+  background: #ffffff04;
+}
+.managed-blocks h3 {
+  font-size: 23px;
+}
+.managed-blocks article > p {
+  font-size: 12px;
+  color: #a4b7ad;
+  margin: 12px 0 22px;
+}
+.managed-blocks article > div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.managed-blocks a {
+  padding: 16px;
+  border: 1px solid #496559;
+  display: grid;
+  gap: 10px;
+  position: relative;
+  background: #ffffff03;
+}
+.managed-blocks a:hover {
+  background: #d8b77922;
+  border-color: #d8b779;
+}
+.managed-blocks a > span {
+  font-size: 10px;
+  color: #9bbaa8;
+}
+.managed-blocks a > svg {
+  position: absolute;
+  right: 12px;
+  top: 16px;
+  color: #d8b779;
+}
+.managed-payment > p:last-child {
+  margin-top: 28px;
+}
+.managed-contact {
+  display: flex;
+  justify-content: center;
+  gap: 25px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 25px;
+}
+.managed-contact > p {
+  font-size: 12px;
+  color: #6c7a6a;
+}
+.managed-viewer-empty {
+  padding: 70px 30px;
+  text-align: center;
+  border: 1px dashed #63747b;
+  color: #91a6b1;
+  line-height: 1.9;
+  font-size: 13px;
+}
+.managed-unit-details {
+  padding: 24px;
+}
+.managed-unit-details dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 0;
+  border-bottom: 1px solid #e4e9dd;
+}
+.managed-unit-details dt {
+  color: #6b7a68;
+}
+.managed-unit-details dd {
+  font-weight: 650;
+}
+.viewer-status.hold,
+.viewer-status.contract {
+  color: #e0b867;
+}
+.viewer-status.cancelled {
+  color: #94a0b2;
+}
+.plan-unit.hold .plan-status-overlay,
+.plan-unit.contract .plan-status-overlay {
+  fill: #e8ae4955;
+}
+.plan-unit.cancelled .plan-status-overlay {
+  fill: #77839166;
+}
+@media (max-width: 760px) {
+  .managed-about {
+    grid-template-columns: 1fr;
+    gap: 30px;
+  }
+  .managed-amenities > div,
+  .managed-gallery > div {
+    grid-template-columns: 1fr;
+  }
+  .managed-blocks article > div {
+    grid-template-columns: 1fr 1fr;
+  }
+  .managed-gallery figure > div {
+    height: 280px;
+  }
+  .managed-blocks article {
+    padding: 16px;
+  }
+  .managed-blocks a {
+    padding: 12px;
+    font-size: 12px;
+  }
+  .managed-blocks a > svg {
+    right: 6px;
+    top: 12px;
+  }
+}
+
+/* Managed projects use the same public presentation as the building homepage. */
+.managed-public-site .managed-amenities article {
+  background: #edf5f5;
+  border-color: #d9e7e8;
+  border-radius: 16px;
+}
+.managed-public-site .managed-amenities article > span {
+  color: #33838b;
+  font-family: inherit;
+}
+.managed-public-site .residence-final-cta {
+  background: #e4f3f2;
+  color: var(--euro-navy);
+}
+.managed-public-site .residence-footer {
+  background: var(--euro-navy);
+  color: #c8dbdf;
+}
+
+/* The landing page contains only its header and hero; details have their own route. */
+.managed-project-landing {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+.managed-project-landing > main {
+  display: flex;
+  flex: 1;
+}
+.managed-public-site a:focus-visible {
+  outline: 2px solid var(--euro-teal);
+  outline-offset: 5px;
+}
+.project-details-heading {
+  padding-top: 40px;
+  padding-bottom: 32px;
+}
+.project-details-heading > a {
+  display: inline-flex;
+  margin-bottom: 28px;
+}
+.project-details-heading h1 {
+  margin: 0;
+  font-size: clamp(32px, 5vw, 56px);
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}

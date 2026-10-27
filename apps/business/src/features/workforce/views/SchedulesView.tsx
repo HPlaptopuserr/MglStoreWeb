@@ -6,7 +6,7 @@ import {
 import { useState } from "react";
 import { CalendarDays, Copy, Plus } from "lucide-react";
 import type { WorkforceAssignment } from "@mgl/types";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { Avatar, Empty, FormDialog, Panel } from "../components/shared";
 const weekdays = [
   "Ням",
@@ -26,7 +26,7 @@ export function SchedulesView({
 }: {
   controller: WorkforceController;
 }) {
-  const { data, run, setToast, range } = controller;
+  const { data, run, setToast } = controller;
   const [shiftForm, setShiftForm] = useState(false),
     [assign, setAssign] = useState(false),
     [copy, setCopy] = useState<WorkforceAssignment | null>(null),

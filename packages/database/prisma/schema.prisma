@@ -8,6 +8,8 @@ datasource db {
 }
 
 model User {
+  buildingPurchaseContracts BarilgaPurchaseContract[]
+  buildingReservations BarilgaReservation[]
   esimPurchases EsimPurchase[]
   warehouseRetailOrders WarehouseRetailOrder[]
   platformAccounts PlatformAccount[]
@@ -405,6 +407,8 @@ model BusinessCategory {
 }
 
 model Organization {
+  businessBuildingEnabled Boolean @default(false)
+  buildingProjects BarilgaProject[]
   catalogWarehouse Warehouse? @relation("WarehouseCatalogOwner")
   stocktakes Stocktake[]
 
@@ -4384,4 +4388,286 @@ model WorkforceEmployeeProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   member OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+
+model BarilgaProject {
+  id             String             @id @default(uuid())
+  organizationId String
+  title          String
+  slug           String             @unique
+  description    String?
+  district       String?
+  khoroo         String?
+  address        String?
+  lat            Float?
+  lng            Float?
+  totalAreaM2    Decimal?           @db.Decimal(12, 2)
+  constructionStatus BuildingConstructionStatus @default(PLANNED)
+  status         BuildingProjectStatus      @default(DRAFT)
+  verification   BuildingVerificationStatus @default(PENDING)
+  coverImageUrl  String?
+  planImageUrls  String[]           @default([])
+  documents      Json?
+  startsAt       DateTime?
+  completesAt    DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  deletedAt      DateTime?
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inquiries      BarilgaInquiry[]
+  blocks         BarilgaBlock[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([constructionStatus])
+  @@index([verification])
+  @@index([district])
+  @@index([khoroo])
+}
+
+
+model BarilgaBlock {
+  id        String        @id @default(uuid())
+  projectId String
+  name      String
+  sortOrder Int           @default(0)
+  minPaymentPercent Decimal @default(10) @db.Decimal(5, 2)
+  maxPaymentPercent Decimal @default(70) @db.Decimal(5, 2)
+  project   BarilgaProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  floors    BarilgaFloor[]
+  paymentTiers BarilgaPaymentTier[]
+
+  @@index([projectId])
+}
+
+
+model BarilgaPaymentTier {
+  id          String       @id @default(uuid())
+  blockId     String
+  minPercent  Decimal      @db.Decimal(5, 2)
+  maxPercent  Decimal      @db.Decimal(5, 2)
+  pricePerM2  Decimal      @db.Decimal(18, 2)
+  label       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  block       BarilgaBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@index([blockId])
+}
+
+
+model BarilgaFloor {
+  id      String        @id @default(uuid())
+  blockId String
+  number  Int
+  block   BarilgaBlock  @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  units   BarilgaUnit[]
+
+  @@unique([blockId, number])
+  @@index([blockId])
+}
+
+
+model BarilgaUnit {
+  id              String                @id @default(uuid())
+  floorId         String
+  unitNo          String
+  typeLabel       String?
+  rooms           Int?
+  areaM2          Decimal?              @db.Decimal(10, 2)
+  priceTotal      Decimal?              @db.Decimal(18, 2)
+  pricePerM2      Decimal?              @db.Decimal(18, 2)
+  planImageUrl    String?
+  status          BuildingUnitStatus            @default(AVAILABLE)
+  lockVersion     Int                   @default(0)
+  published       Boolean               @default(false)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  floor           BarilgaFloor          @relation(fields: [floorId], references: [id], onDelete: Cascade)
+  purchaseContracts BarilgaPurchaseContract[]
+  reservations    BarilgaReservation[]
+
+  @@unique([floorId, unitNo])
+  @@index([status])
+  @@index([published])
+}
+
+
+model BarilgaReservation {
+  id             String            @id @default(uuid())
+  unitId         String
+  reservedById   String
+  customerName   String?
+  customerPhone  String?
+  reminderPhones String[]          @default([])
+  paymentOption  String            @default("PERCENT_RANGE")
+  downPaymentPercent Decimal?       @db.Decimal(5, 2)
+  agreedPricePerM2 Decimal?         @db.Decimal(18, 2)
+  agreedPriceTotal Decimal?         @db.Decimal(18, 2)
+  status         BuildingReservationStatus @default(ACTIVE)
+  expiresAt      DateTime?
+  note           String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  unit           BarilgaUnit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  reservedBy     User              @relation(fields: [reservedById], references: [id])
+  payments       BarilgaPayment[]
+  paymentSchedule BarilgaPaymentSchedule[]
+
+  @@index([unitId])
+  @@index([reservedById])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+
+model BarilgaPayment {
+  id             String                 @id @default(uuid())
+  reservationId  String
+  kind           BarilgaPaymentKind     @default(DOWN_PAYMENT)
+  provider       BarilgaPaymentProvider @default(MINU_POS)
+  status         BarilgaPaymentStatus   @default(PENDING)
+  amount         Decimal                @db.Decimal(18, 2)
+  invoiceNumber  String                 @unique
+  qrText         String?
+  qrImage        String?
+  deepLinks      Json?
+  providerRef    String?
+  rawPayload     Json?
+  paidAt         DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  reservation    BarilgaReservation     @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@index([reservationId])
+  @@index([status])
+  @@index([provider])
+}
+
+
+model BarilgaPaymentSchedule {
+  id             String                 @id @default(uuid())
+  reservationId  String
+  dueDate        DateTime
+  amount         Decimal                @db.Decimal(18, 2)
+  status         BarilgaScheduleStatus  @default(PENDING)
+  paidAt         DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  reservation    BarilgaReservation     @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@index([reservationId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+
+enum BuildingProjectStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  SOLD_OUT
+  ARCHIVED
+}
+
+
+enum BuildingConstructionStatus {
+  PLANNED
+  UNDER_CONSTRUCTION
+  COMPLETED
+  HANDED_OVER
+}
+
+
+enum BuildingVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+
+enum BuildingUnitStatus {
+  AVAILABLE
+  RESERVED
+  CONTRACT_PENDING
+  SOLD
+  HOLD
+  CANCELLED
+}
+
+
+enum BuildingReservationStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  CONVERTED
+}
+
+
+enum BarilgaPaymentKind {
+  DOWN_PAYMENT
+  MONTHLY
+  FULL_PAYMENT
+}
+
+
+enum BarilgaPaymentProvider {
+  MINU_POS
+}
+
+
+enum BarilgaPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
+
+enum BarilgaScheduleStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+
+model BarilgaPurchaseContract {
+  id String @id @default(uuid())
+  unitId String
+  buyerId String
+  createdById String
+  requestKey String @unique
+  snapshot Json
+  status String @default("PENDING")
+  sellerAcceptedAt DateTime?
+  sellerAcceptedById String?
+  buyerAcceptedAt DateTime?
+  reservationId String? @unique
+  createdAt DateTime @default(now())
+  unit BarilgaUnit @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  buyer User @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  @@index([buyerId, status])
+  @@index([unitId, status])
+}
+
+
+model BarilgaInquiry {
+  id          String @id
+  projectId   String
+  unitId      String
+  blockName   String
+  floorNumber Int
+  unitNo      String
+  unitLabel   String
+  name        String
+  phone       String
+  question    String
+  createdAt   DateTime @default(now())
+  project     BarilgaProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
 }

@@ -1,5 +1,5 @@
-import { BusinessLivePage } from "@/components/BusinessLivePage";
-import { getBusinessSiteStatus } from "@/lib/business-status";
+import { BusinessLivePage } from "@/features/business-intro/BusinessLivePage";
+import { getBusinessSiteStatus } from "@/features/business-intro/server/business-status";
 
 export default async function BusinessPage() {
   const status = await getBusinessSiteStatus();

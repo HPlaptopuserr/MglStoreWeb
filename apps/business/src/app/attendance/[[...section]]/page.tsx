@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { workforceToken } from "@/lib/server/workforce-session";
+import { workforceToken } from "@/features/workforce/server/workforce-session";
 import { WorkforceApp } from "@/features/workforce/WorkforceApp";
 import {
   sections,
   type WorkforceSection,
-} from "@/features/workforce/navigation";
+} from "@/features/workforce/model/navigation";
 export const metadata: Metadata = {
   title: "Цаг удирдлага",
   robots: { index: false, follow: false },

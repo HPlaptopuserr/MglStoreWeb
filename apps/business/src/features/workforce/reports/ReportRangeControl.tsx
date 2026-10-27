@@ -1,5 +1,5 @@
 import { reportPeriodRange } from "./report-period";
-import type { WorkforceRange } from "../useWorkforce";
+import type { WorkforceRange } from "../hooks/useWorkforce";
 interface ReportRangeControlProps {
   range: WorkforceRange;
   today: string;

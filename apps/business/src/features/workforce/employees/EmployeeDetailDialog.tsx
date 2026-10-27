@@ -4,7 +4,7 @@ import { useId, useState } from "react";
 import { EmployeeContactActions } from "./EmployeeContactActions";
 import { EmployeeProfileTabs, type EmployeeTab } from "./EmployeeProfileTabs";
 import type { WorkforceEmployee } from "@mgl/types";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { WorkforceDialog } from "../components/WorkforceDialog";
 import { EmployeePayrollDetails } from "./EmployeePayrollDetails";
 import { EmployeeIdentity } from "./EmployeeIdentity";

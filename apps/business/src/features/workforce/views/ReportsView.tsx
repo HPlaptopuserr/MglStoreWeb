@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { Panel, Empty } from "../components/shared";
 import { ReportFilters } from "../reports/ReportFilters";
 import { ReportStats } from "../reports/ReportStats";

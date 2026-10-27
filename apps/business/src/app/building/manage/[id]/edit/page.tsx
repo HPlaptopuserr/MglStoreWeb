@@ -1,4 +1,4 @@
-import { ProjectEdit } from "@/components/building/manage/ProjectEdit";
+import { ProjectEdit } from "@/features/building/management/ProjectEdit";
 export default async function Page({
   params,
 }: {

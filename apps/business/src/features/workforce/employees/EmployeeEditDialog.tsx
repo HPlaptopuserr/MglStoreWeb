@@ -2,7 +2,7 @@
 import { ShieldCheck } from "lucide-react";
 import { payrollAccountError } from "@mgl/types";
 import type { WorkforceEmployee } from "@mgl/types";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { useEmployeeDetails } from "./useEmployeeDetails";
 import { Field, FormDialog } from "../components/shared";
 import { DepartmentInput } from "./DepartmentInput";

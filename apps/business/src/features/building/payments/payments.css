@@ -1,0 +1,305 @@
+.building-payments-workspace {
+  max-width: 1600px;
+  margin: auto;
+  color: #152c43;
+}
+.payment-workspace-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.payment-workspace-heading h1 {
+  font-size: clamp(23px, 2.4vw, 30px);
+  font-weight: 700;
+  margin: 7px 0;
+}
+.payment-workspace-heading > div > p {
+  color: #5141cc;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+}
+.payment-workspace-heading span,
+.payment-report-card header p {
+  font-size: 12px;
+  color: #71829a;
+}
+.building-payments-workspace button,
+.building-payments-workspace select {
+  font: inherit;
+}
+.payment-workspace-heading > button,
+.payment-report-empty button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid #dee5f1;
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.payment-report-filters {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  background: #fff;
+  padding: 16px;
+  border: 1px solid #e3e9f4;
+  border-radius: 12px;
+  margin-bottom: 20px;
+}
+.payment-report-filters label {
+  display: grid;
+  gap: 6px;
+  font-size: 11px;
+  color: #65788f;
+  min-width: 130px;
+}
+.payment-report-filters label:first-child {
+  min-width: min(280px, 100%);
+}
+.payment-report-filters select {
+  padding: 9px 12px;
+  border: 1px solid #dae2ef;
+  border-radius: 7px;
+  background: #fafbfe;
+  color: #263e56;
+  font-size: 13px;
+}
+.payment-month-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.payment-month-metrics article {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #fff;
+  padding: 22px;
+  border: 1px solid #e1e8f4;
+  border-radius: 14px;
+}
+.payment-month-metrics span {
+  font-size: 12px;
+  color: #687b94;
+}
+.payment-month-metrics strong {
+  font-size: clamp(20px, 2.2vw, 32px);
+  font-weight: 750;
+  color: #4634b5;
+  overflow-wrap: anywhere;
+}
+.payment-month-metrics small {
+  font-size: 10px;
+  color: #8594a8;
+  margin-top: auto;
+}
+.payment-month-metrics .payment-metric-income {
+  background: #0c6959;
+  border-color: #0c6959;
+}
+.payment-metric-income strong {
+  color: #fff;
+}
+.payment-metric-income span,
+.payment-metric-income small {
+  color: #d2eee6;
+}
+.payment-report-card {
+  padding: 24px;
+  border: 1px solid #e2e8f2;
+  border-radius: 14px;
+  margin-bottom: 22px;
+  background: #fff;
+}
+.payment-report-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 20px;
+}
+.payment-report-card h2 {
+  font-size: 17px;
+  font-weight: 650;
+  margin-bottom: 6px;
+}
+.payment-chart-legend {
+  display: flex;
+  gap: 16px;
+  flex-shrink: 0;
+}
+.payment-chart-legend span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #667d92;
+  font-size: 11px;
+}
+.payment-chart-legend i {
+  width: 9px;
+  height: 9px;
+  background: #b4a9f0;
+  border-radius: 3px;
+}
+.payment-chart-legend span:last-child i {
+  background: #299c82;
+}
+.payment-month-chart {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(45px, 1fr));
+  gap: 7px;
+  overflow-x: auto;
+  padding: 5px 0;
+}
+.payment-month-chart button {
+  padding: 8px 5px;
+  background: #fafbfe;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 10px;
+  color: #6c8197;
+}
+.payment-month-chart button[aria-pressed="true"] {
+  background: #f0edff;
+  border-color: #9c8ce4;
+  color: #4937b5;
+}
+.payment-chart-bars {
+  display: flex;
+  align-items: end;
+  justify-content: center;
+  gap: 5px;
+  height: 180px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #dfe6f0;
+}
+.payment-chart-bars i {
+  width: min(22px, 35%);
+  background: #b4a9f0;
+  border-radius: 4px 4px 0 0;
+}
+.payment-chart-bars i:last-child {
+  background: #299c82;
+}
+.payment-table-scroll {
+  overflow-x: auto;
+}
+.payment-table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.payment-table-scroll th,
+.payment-table-scroll td {
+  text-align: right;
+  padding: 13px 14px;
+  border-bottom: 1px solid #edf0f7;
+}
+.payment-table-scroll th:first-child {
+  text-align: left;
+}
+.payment-table-scroll thead {
+  color: #6c7c96;
+  font-size: 11px;
+  background: #f4f6fd;
+}
+.payment-table-scroll tbody th {
+  font-weight: 500;
+}
+.payment-table-scroll button {
+  cursor: pointer;
+  color: inherit;
+  background: none;
+  padding: 4px 0;
+}
+.payment-table-scroll .is-selected {
+  background: #f2efff;
+}
+.payment-table-scroll tfoot {
+  font-weight: 700;
+  background: #f4f6fb;
+}
+.payment-received {
+  color: #13745c;
+  font-weight: 650;
+}
+.payment-report-empty {
+  padding: 32px;
+  text-align: center;
+  color: #72859c;
+  background: #fff;
+  border: 1px dashed #d9e2ee;
+  border-radius: 12px;
+  margin: 16px 0;
+  font-size: 13px;
+}
+.payment-report-empty h2 {
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+.payment-report-warning {
+  padding: 12px 16px;
+  border: 1px solid #f0d6a3;
+  background: #fff9e9;
+  color: #8f671d;
+  border-radius: 9px;
+  font-size: 12px;
+  line-height: 1.8;
+  margin-bottom: 20px;
+}
+.payment-report-note {
+  font-size: 11px;
+  color: #7b8ba3;
+  line-height: 1.9;
+  padding: 0 4px 20px;
+}
+.building-payments-workspace :focus-visible {
+  outline: 2px solid #7660da;
+  outline-offset: 3px;
+}
+.building-payments-workspace button:hover {
+  border-color: #a293da;
+}
+.building-payments-workspace button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+@media (max-width: 1100px) {
+  .payment-month-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .payment-workspace-heading {
+    align-items: start;
+  }
+  .payment-report-card {
+    padding: 16px;
+  }
+  .payment-report-card > header {
+    align-items: start;
+    flex-direction: column;
+  }
+  .payment-month-metrics {
+    gap: 10px;
+  }
+  .payment-month-metrics article {
+    padding: 14px;
+    gap: 12px;
+  }
+  .payment-month-metrics strong {
+    font-size: 19px;
+  }
+  .payment-report-filters label {
+    flex: 1;
+  }
+}

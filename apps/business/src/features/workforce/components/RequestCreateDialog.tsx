@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { workforceRequestLabels, type TimeRequestKind } from "@mgl/types";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { EmployeeSelect, Field, FormDialog, stamp } from "./shared";
 export function RequestCreateDialog({
   controller,

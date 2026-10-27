@@ -1,0 +1,238 @@
+.purchase-flow,
+.purchase-contracts {
+  color: #192b41;
+  font-size: 13px;
+  padding: 20px;
+}
+.purchase-flow input,
+.purchase-flow select,
+.purchase-flow textarea,
+.purchase-filters input,
+.purchase-filters select {
+  border: 1px solid #dce2ee;
+  border-radius: 8px;
+  padding: 10px;
+  font: inherit;
+  background: #fff;
+  color: #192b41;
+  width: 100%;
+  min-width: 0;
+}
+.purchase-flow label,
+.purchase-filters label {
+  display: grid;
+  gap: 7px;
+  margin: 10px 0;
+}
+.purchase-flow button,
+.purchase-contracts > header a {
+  border: 1px solid #dddff2;
+  background: #4338ca;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+.purchase-flow button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.purchase-flow button:hover:not(:disabled) {
+  background: #3025a5;
+}
+.purchase-flow :focus-visible {
+  outline: 2px solid #7265ee;
+  outline-offset: 3px;
+}
+.purchase-steps {
+  display: flex;
+  list-style: none;
+  gap: 12px;
+  padding: 0;
+  margin-bottom: 24px;
+}
+.purchase-steps li {
+  padding: 8px 12px;
+  background: #f1f3fa;
+  border-radius: 8px;
+  color: #617087;
+}
+.purchase-steps li[aria-current] {
+  background: #e9e5ff;
+  color: #4338ca;
+  font-weight: 700;
+}
+.purchase-fields {
+  display: grid;
+  gap: 8px;
+}
+.purchase-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+.purchase-graph {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  overflow: auto;
+  padding: 20px 0 10px;
+  border-bottom: 1px solid #e6eaf5;
+}
+.purchase-graph > div {
+  min-width: 55px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.purchase-graph span {
+  display: block;
+  background: #6861dc;
+  border-radius: 5px 5px 0 0;
+  width: 30px;
+}
+.purchase-graph small {
+  font-size: 10px;
+  color: #62718a;
+}
+.purchase-schedule-table {
+  overflow: auto;
+  margin-top: 16px;
+}
+.purchase-schedule table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 520px;
+}
+.purchase-schedule th,
+.purchase-schedule td {
+  text-align: left;
+  padding: 8px;
+  border-bottom: 1px solid #edf0f7;
+}
+.purchase-schedule th {
+  font-size: 11px;
+  color: #617087;
+}
+.purchase-document dl > div {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  border-bottom: 1px solid #e6eaf5;
+  padding: 12px 0;
+  gap: 16px;
+}
+.purchase-document dd {
+  margin: 0;
+}
+.purchase-document dt {
+  color: #64748b;
+}
+.purchase-terms {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+}
+.purchase-note {
+  font-size: 11px;
+  color: #64748b;
+}
+.purchase-flow .purchase-consent {
+  display: flex;
+  align-items: start;
+  gap: 12px;
+  padding: 16px;
+  background: #f0f3ff;
+  border-radius: 8px;
+}
+.purchase-consent input {
+  width: 18px;
+  flex-shrink: 0;
+}
+.purchase-approvals {
+  background: #eff6f2;
+  padding: 12px;
+  margin: 16px 0;
+  border-radius: 10px;
+}
+.purchase-contracts > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.purchase-contract-list {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+}
+.purchase-contract-list > button {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  text-align: left;
+  background: #fff;
+  border: 1px solid #e4e8f2;
+  border-radius: 10px;
+  padding: 20px;
+  cursor: pointer;
+  color: #192b41;
+}
+.purchase-contract-list > button:hover {
+  background: #f2f0ff;
+}
+.purchase-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  font-size: 12px;
+  margin: 12px 0;
+}
+@media (max-width: 700px) {
+  .purchase-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+  .purchase-contract-list > button {
+    flex-wrap: wrap;
+  }
+  .purchase-document dl > div {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+  .purchase-steps {
+    flex-wrap: wrap;
+  }
+  .purchase-flow {
+    padding: 12px;
+  }
+}
+@media print {
+  body:has(.purchase-document) * {
+    visibility: hidden;
+  }
+  body .purchase-document,
+  body .purchase-document * {
+    visibility: visible;
+  }
+  .building-dialog:has(.purchase-document) {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    box-shadow: none;
+    border: 0;
+  }
+  .purchase-document {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+  .purchase-graph {
+    break-inside: avoid;
+  }
+}

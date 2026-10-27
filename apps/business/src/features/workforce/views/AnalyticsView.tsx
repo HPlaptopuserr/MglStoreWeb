@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { AttendanceInsights } from "../analytics/AttendanceInsights";
 import {
   EmployeeAnalytics,

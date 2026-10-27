@@ -1,4 +1,4 @@
-import { PlanEditor } from "@/components/building/plans/PlanEditor";
+import { PlanEditor } from "@/features/building/plans/PlanEditor";
 export default async function ProjectPlansPage({
   params,
 }: {

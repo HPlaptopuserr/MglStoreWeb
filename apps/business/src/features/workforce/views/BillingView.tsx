@@ -1,9 +1,12 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import Image from "next/image";
+import { useWorkforceResource } from "../hooks/useWorkforceResource";
+import { useCurrentTime } from "@/shared/hooks/useCurrentTime";
 import { Mail, MapPinned, Plus, RefreshCw } from "lucide-react";
-import type { WorkforceController } from "../useWorkforce";
-import type { WorkforceSection } from "../navigation";
+import type { WorkforceController } from "../hooks/useWorkforce";
+import type { WorkforceSection } from "../model/navigation";
 import {
   Empty,
   Field,
@@ -12,34 +15,8 @@ import {
   Stats,
   money,
 } from "../components/shared";
-interface BillingData {
-  catalog: {
-    code: string;
-    name: string;
-    description: string;
-    price: number | null;
-  }[];
-  orders: {
-    id: string;
-    kind: string;
-    addonCode: string | null;
-    seats: number;
-    amount: number;
-    state: string;
-    createdAt: string;
-    paidAt: string | null;
-  }[];
-  paymentConfigured: boolean;
-}
-interface Invoice {
-  orderId: string;
-  amount: number;
-  invoice: {
-    qr_text?: string;
-    qr_image?: string;
-    urls?: { name: string; description: string; link: string }[];
-  };
-}
+import type { BillingData, Invoice } from "../model/billing";
+
 export function BillingView({
   controller,
   section,
@@ -48,41 +25,28 @@ export function BillingView({
   section?: WorkforceSection;
 }) {
   const { data, run, setToast } = controller;
-  const [billing, setBilling] = useState<BillingData | null>(null),
-    [error, setError] = useState(""),
-    [order, setOrder] = useState<string | null>(null),
+  const [order, setOrder] = useState<string | null>(null),
     [invoice, setInvoice] = useState<Invoice | null>(null),
     [seats, setSeats] = useState(1),
     [checking, setChecking] = useState(false),
     [revision, setRevision] = useState(0);
-  useEffect(() => {
-    if (!data) return;
-    const controller = new AbortController();
-    void fetch(
-      `/api/workforce/billing?organizationId=${data.organization.id}`,
-      { signal: controller.signal },
-    )
-      .then(async (r) => {
-        const b = (await r.json()) as BillingData & { message?: string };
-        if (!r.ok) throw new Error(b.message ?? "Мэдээлэл ачаалж чадсангүй");
-        setBilling(b);
-        setError("");
-      })
-      .catch((e) => {
-        if (!controller.signal.aborted)
-          setError(e instanceof Error ? e.message : "Алдаа");
-      });
-    return () => controller.abort();
-  }, [data?.organization.id, revision]);
+  const now = useCurrentTime();
+  const query = new URLSearchParams({
+    organizationId: data?.organization.id ?? "",
+  });
+  const { data: billing, error } = useWorkforceResource<BillingData>(
+    data ? `billing?${query}` : null,
+    null,
+    revision,
+  );
   if (!data) return null;
-  const days = data.subscription.expiresAt
-    ? Math.max(
-        0,
-        Math.ceil(
-          (+new Date(data.subscription.expiresAt) - Date.now()) / 86400000,
-        ),
-      )
-    : 0;
+  const days =
+    data.subscription.expiresAt && now !== null
+      ? Math.max(
+          0,
+          Math.ceil((+new Date(data.subscription.expiresAt) - now) / 86400000),
+        )
+      : 0;
   const amount =
     data.subscription.seatUnitPrice && days
       ? Math.ceil((seats * data.subscription.seatUnitPrice * days) / 30)
@@ -338,7 +302,7 @@ export function BillingView({
         >
           <h3>Төлөх дүн: {money(invoice.amount)}</h3>
           {invoice.invoice.qr_image && (
-            <img
+            <Image
               className="wf-qr-image"
               src={`data:image/png;base64,${invoice.invoice.qr_image}`}
               alt="QPay төлбөрийн QR"

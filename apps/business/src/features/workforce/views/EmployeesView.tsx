@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { Plus, Search, UserRound } from "lucide-react";
 import type { WorkforceEmployee } from "@mgl/types";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { Empty, Field, FormDialog, Panel, Stats } from "../components/shared";
 import { EmployeeStatus } from "../employees/EmployeeStatus";
 import { EmployeeAvatar } from "../employees/EmployeeAvatar";

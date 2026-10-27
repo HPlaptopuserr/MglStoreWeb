@@ -1,4 +1,5 @@
 import {
+  emptyUnitContent,
   parseUnitContent,
   type BuildingUnitContent,
 } from "./building-unit-content";
@@ -6,6 +7,8 @@ export {
   emptyUnitContent,
   parseUnitContent,
   regionBindingKey,
+  unitRoomCount,
+  type UnitRoomInterior,
   type BuildingUnitContent,
 } from "./building-unit-content";
 import { parseBuildingFacade, type BuildingFacade } from "./building-facade";
@@ -119,7 +122,17 @@ export function parseInventoryTemplates(value: unknown): InventoryTemplate[] {
     };
   });
 }
+export interface PlanRegionDetails {
+  typeLabel: string;
+  rooms: number | null;
+  areaM2: number | null;
+  content: Pick<
+    BuildingUnitContent,
+    "layout2d" | "layout3d" | "gallery" | "description" | "roomInteriors"
+  >;
+}
 export interface BuildingWebsiteRecord {
+  planRegionDetails?: Record<string, PlanRegionDetails>;
   unitBindings?: Record<string, string>;
   unitContent?: Record<string, BuildingUnitContent>;
   pricePerM2?: number;
@@ -267,7 +280,42 @@ export function readWebsiteRecord(documents: unknown): BuildingWebsiteRecord {
       parseUnitContent(content),
     ]),
   );
+  const planRegionDetails: Record<string, PlanRegionDetails> = {};
+  for (const [key, raw] of Object.entries(
+    record(value.planRegionDetails ?? {}),
+  )) {
+    if (!/^[a-zA-Z0-9-]+:[a-zA-Z0-9-]+:[a-zA-Z0-9-]+$/.test(key)) continue;
+    const item = record(raw);
+    const rooms = item.rooms === null ? null : Number(item.rooms);
+    const areaM2 = item.areaM2 === null ? null : Number(item.areaM2);
+    if (
+      (rooms !== null &&
+        (!Number.isInteger(rooms) || rooms < 1 || rooms > 20)) ||
+      (areaM2 !== null &&
+        (!Number.isFinite(areaM2) || areaM2 <= 0 || areaM2 > 100000))
+    )
+      throw new Error("Планын бүсийн мэдээлэл буруу байна.");
+    const parsed = parseUnitContent({
+      ...emptyUnitContent(),
+      ...record(item.content),
+    });
+    planRegionDetails[key] = {
+      typeLabel: text(item.typeLabel, "Байрны нэр", 100),
+      rooms,
+      areaM2,
+      content: {
+        ...(parsed.roomInteriors
+          ? { roomInteriors: parsed.roomInteriors }
+          : {}),
+        layout2d: parsed.layout2d,
+        layout3d: parsed.layout3d,
+        gallery: parsed.gallery,
+        description: parsed.description,
+      },
+    };
+  }
   return {
+    planRegionDetails,
     unitBindings,
     unitContent,
     inventoryTemplatesByBlock: value.inventoryTemplatesByBlock

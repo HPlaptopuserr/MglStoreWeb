@@ -1,9 +1,9 @@
 "use client";
 import { useState } from "react";
 import { FileSpreadsheet, Plus } from "lucide-react";
-import type { WorkforceController } from "../useWorkforce";
-import { useWorkTasks } from "../useWorkTasks";
-import { workTaskStatusLabels, type WorkTaskReport } from "../work-tasks";
+import type { WorkforceController } from "../hooks/useWorkforce";
+import { useWorkTasks } from "../hooks/useWorkTasks";
+import { workTaskStatusLabels, type WorkTaskReport } from "../model/work-tasks";
 import { Empty, Panel, Loading, stamp } from "../components/shared";
 import {
   WorkPlanDialog,

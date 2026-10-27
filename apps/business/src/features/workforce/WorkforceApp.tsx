@@ -13,8 +13,8 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
-import { sections, type WorkforceSection } from "./navigation";
-import { useWorkforce } from "./useWorkforce";
+import { sections, type WorkforceSection } from "./model/navigation";
+import { useWorkforce } from "./hooks/useWorkforce";
 import { Loading, Empty } from "./components/shared";
 import { OverviewView } from "./views/OverviewView";
 import { WorkReportsView } from "./views/WorkReportsView";
@@ -141,6 +141,7 @@ export function WorkforceApp({ section }: { section: WorkforceSection }) {
             ))}
         </nav>
         <div className="wf-sidebar-foot">
+          <Link href="/account/password?context=workforce&mode=change">Нууц үг солих</Link>
           <Link href="/">MGL Business танилцуулга ↗</Link>
           <button onClick={() => void logout()}>
             <LogOut size={16} /> Гарах

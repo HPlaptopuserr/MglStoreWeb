@@ -1,7 +1,8 @@
 "use client";
+import { useCurrentTime } from "@/shared/hooks/useCurrentTime";
 import { useState } from "react";
 import { KeyRound, Plus } from "lucide-react";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { Empty, Field, FormDialog, Panel } from "../components/shared";
 const scopes = [
   ["attendance:read", "Ирцийн мэдээлэл унших"],
@@ -15,6 +16,7 @@ export function IntegrationsView({
   controller: WorkforceController;
 }) {
   const { data, run, setToast } = controller;
+  const now = useCurrentTime();
   const [create, setCreate] = useState(false),
     [secret, setSecret] = useState(""),
     [revoke, setRevoke] = useState("");
@@ -101,9 +103,11 @@ export function IntegrationsView({
                     <td>
                       {t.revokedAt
                         ? "Цуцалсан"
-                        : +new Date(t.expiresAt) < Date.now()
-                          ? "Дууссан"
-                          : "Идэвхтэй"}
+                        : now === null
+                          ? "—"
+                          : +new Date(t.expiresAt) < now
+                            ? "Дууссан"
+                            : "Идэвхтэй"}
                     </td>
                     <td>
                       {!t.revokedAt && data.session.canManage && (

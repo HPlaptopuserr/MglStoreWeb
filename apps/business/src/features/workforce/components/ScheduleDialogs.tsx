@@ -1,6 +1,6 @@
 "use client";
 import type { WorkforceAssignment } from "@mgl/types";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { EmployeeSelect, Field, FormDialog } from "./shared";
 const weekdays = [
   "Ням",

@@ -1,4 +1,4 @@
-import { BuildingLogin } from "@/components/building/manage/BuildingLogin";
+import { BuildingLogin } from "@/features/building/management/BuildingLogin";
 export default function LoginPage() {
   return <BuildingLogin />;
 }

@@ -1,4 +1,4 @@
-import { WebsiteManager } from "@/components/building/content/WebsiteManager";
+import { WebsiteManager } from "@/features/building/website/WebsiteManager";
 export default async function WebsitePage({
   params,
 }: {

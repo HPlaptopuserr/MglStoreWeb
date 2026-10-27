@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { GitBranch, List, Plus, ShieldCheck, UserPlus } from "lucide-react";
 import type { WorkforceDepartment } from "@mgl/types";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { OrganizationTree } from "../components/OrganizationTree";
 import {
   EmployeeSelect,

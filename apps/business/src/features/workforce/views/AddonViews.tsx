@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useWorkforceResource } from "../hooks/useWorkforceResource";
 import { Mail, MapPin, Plus } from "lucide-react";
-import type { WorkforceSection } from "../navigation";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceSection } from "../model/navigation";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import {
   Empty,
   Loading,
@@ -12,6 +13,8 @@ import {
   Panel,
   time,
 } from "../components/shared";
+import type { TrackingData, MailData } from "../model/addon";
+
 const deliveryLabels: Record<string, string> = {
   PENDING: "Хүлээгдэж буй",
   SENDING: "Илгээж байна",
@@ -19,33 +22,6 @@ const deliveryLabels: Record<string, string> = {
   FAILED: "Амжилтгүй",
   UNCERTAIN: "Шалгах шаардлагатай",
 };
-interface TrackingData {
-  points: {
-    id: string;
-    userId: string;
-    lat: number;
-    lng: number;
-    accuracy: number;
-    capturedAt: string;
-  }[];
-  preferences: { userId: string; updatedAt: string }[];
-  retentionDays: number;
-}
-interface MailData {
-  configured: boolean;
-  campaigns: {
-    id: string;
-    title: string;
-    content: string;
-    createdAt: string;
-    deliveries: {
-      state: string;
-      email: string;
-      sentAt: string | null;
-      lastError: string | null;
-    }[];
-  }[];
-}
 export function AddonViews({
   controller,
   section,
@@ -54,43 +30,26 @@ export function AddonViews({
   section?: WorkforceSection;
 }) {
   const { data, run, setToast } = controller;
-  const [tracking, setTracking] = useState<TrackingData | null>(null),
-    [mail, setMail] = useState<MailData | null>(null),
-    [error, setError] = useState(""),
-    [create, setCreate] = useState(false),
+  const [create, setCreate] = useState(false),
     [userId, setUserId] = useState(""),
-    [revision, setRevision] = useState(0),
-    [loading, setLoading] = useState(true);
+    [revision, setRevision] = useState(0);
   const isTracking = section === "tracking";
-  useEffect(() => {
-    if (!data) return;
-    const abort = new AbortController();
-    setError("");
-    setLoading(true);
-    if (isTracking) setTracking(null);
-    else setMail(null);
-    void fetch(
-      `/api/workforce/${isTracking ? "tracking" : "mail"}?organizationId=${data.organization.id}`,
-      { signal: abort.signal },
-    )
-      .then(async (response) => {
-        const payload = (await response.json()) as TrackingData &
-          MailData & { message?: string };
-        if (!response.ok)
-          throw new Error(payload.message ?? "Мэдээлэл ачаалж чадсангүй");
-        if (abort.signal.aborted) return;
-        if (isTracking) setTracking(payload);
-        else setMail(payload);
-      })
-      .catch((e) => {
-        if (!abort.signal.aborted)
-          setError(e instanceof Error ? e.message : "Холболтын алдаа");
-      })
-      .finally(() => {
-        if (!abort.signal.aborted) setLoading(false);
-      });
-    return () => abort.abort();
-  }, [data, isTracking, revision]);
+  const query = new URLSearchParams({
+    organizationId: data?.organization.id ?? "",
+  });
+  const trackingResource = useWorkforceResource<TrackingData>(
+    data && isTracking ? `tracking?${query}` : null,
+    data,
+    revision,
+  );
+  const mailResource = useWorkforceResource<MailData>(
+    data && !isTracking ? `mail?${query}` : null,
+    data,
+    revision,
+  );
+  const { data: tracking } = trackingResource;
+  const { data: mail } = mailResource;
+  const { loading, error } = isTracking ? trackingResource : mailResource;
   if (!data) return null;
   if (loading) return <Loading />;
   if (error)

@@ -1,7 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { workforceRequestLabels } from "@mgl/types";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { Field, Panel } from "../components/shared";
 export function SettingsView({
   controller,

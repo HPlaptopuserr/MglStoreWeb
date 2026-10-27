@@ -1,8 +1,22 @@
+export interface UnitRoomInterior {
+  name: string;
+  description: string;
+  image: string;
+}
+/** Registered room counts take priority; legacy labels may explicitly contain the count. */
+export function unitRoomCount(
+  rooms: number | null | undefined,
+  label: string,
+): number | null {
+  const count = rooms ?? Number(label.match(/(\d+)\s*өрөө/i)?.[1]);
+  return Number.isInteger(count) && count >= 1 && count <= 20 ? count : null;
+}
 export interface BuildingUnitContent {
   description: string;
   layout2d: string;
   layout3d: string;
   gallery: string[];
+  roomInteriors?: UnitRoomInterior[];
   paymentTerms: string;
   useProjectPrice: boolean;
 }
@@ -48,7 +62,33 @@ export function parseUnitContent(value: unknown): BuildingUnitContent {
   const gallery = raw.gallery ?? [];
   if (!Array.isArray(gallery) || gallery.length > 8)
     throw new Error("8 хүртэл нэмэлт зураг оруулна.");
+  const roomInteriors = raw.roomInteriors;
+  if (
+    roomInteriors !== undefined &&
+    (!Array.isArray(roomInteriors) || roomInteriors.length > 20)
+  )
+    throw new Error("20 хүртэл өрөөний мэдээлэл оруулна.");
+  const parsedRooms = (roomInteriors as unknown[] | undefined)?.map(
+    (value): UnitRoomInterior => {
+      if (!value || typeof value !== "object" || Array.isArray(value))
+        throw new Error("Өрөөний мэдээлэл буруу байна.");
+      const room = value as Record<string, unknown>;
+      if (
+        typeof room.name !== "string" ||
+        room.name.length > 100 ||
+        typeof room.description !== "string" ||
+        room.description.length > 1000
+      )
+        throw new Error("Өрөөний нэр, тайлбарын хэмжээ буруу байна.");
+      return {
+        name: room.name.trim(),
+        description: room.description.trim(),
+        image: image(room.image ?? ""),
+      };
+    },
+  );
   return {
+    ...(parsedRooms ? { roomInteriors: parsedRooms } : {}),
     description: readText("description", 5000),
     paymentTerms: readText("paymentTerms", 3000),
     layout2d: image(raw.layout2d ?? ""),

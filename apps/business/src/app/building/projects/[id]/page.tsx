@@ -1,7 +1,7 @@
-import { EuroPlazaLanding } from "@/components/building/euro-plaza/EuroPlazaLanding";
+import { EuroPlazaLanding } from "@/features/building/euro-plaza/EuroPlazaLanding";
 import { notFound } from "next/navigation";
-import { getWebsiteProject } from "@/lib/server/building-website";
-import { WebsiteProjectView } from "@/components/building/content/WebsiteProjectView";
+import { getWebsiteProject } from "@/features/building/server/building-website";
+import { WebsiteProjectView } from "@/features/building/website/WebsiteProjectView";
 export default async function ProjectPage({
   params,
   searchParams,

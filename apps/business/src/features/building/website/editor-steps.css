@@ -1,0 +1,222 @@
+.editor-workflow {
+  margin: 16px 0;
+}
+.editor-workflow ol {
+  list-style: none;
+  padding: 6px;
+  margin: 0;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  border: 1px solid #e3e7f2;
+  background: white;
+  border-radius: 12px;
+}
+.editor-workflow li {
+  flex: 1;
+  min-width: 125px;
+}
+.editor-workflow button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #718096;
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+}
+.editor-workflow button span {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #f0f2f7;
+}
+.editor-workflow button:hover {
+  background: #f7f7fc;
+}
+.editor-workflow button[aria-current] {
+  background: #efedff;
+  color: #4938c8;
+}
+.editor-workflow button[aria-current] span {
+  background: #5540d5;
+  color: white;
+}
+.editor-workflow button:focus-visible {
+  outline: 3px solid #b1a6f4;
+  outline-offset: -2px;
+}
+.editor-step-intro {
+  padding: 18px 4px 0;
+}
+.editor-step-intro small {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #7669bd;
+  font-weight: 700;
+}
+.editor-step-intro h2 {
+  font-size: 18px;
+  margin: 6px 0;
+}
+.editor-step-intro p {
+  font-size: 12px;
+  color: #7a879b;
+  margin: 0;
+}
+.editor-step-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e4e7f0;
+  border-radius: 12px;
+  background: white;
+  margin-top: 16px;
+}
+.editor-step-actions small {
+  color: #7b8496;
+  font-size: 11px;
+}
+.editor-step-actions > div {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.website-manager [hidden] {
+  display: none !important;
+}
+
+/* Keep the working canvas above the fold, rather than stacking headings. */
+.plan-studio-block-select {
+  display: flex;
+  align-items: center;
+  margin: 0 0 10px;
+}
+.plan-studio-block-select label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #738098;
+  font-size: 12px;
+}
+.plan-studio-block-select select {
+  width: 220px;
+  padding: 8px 12px;
+  border: 1px solid #dfe4ef;
+  border-radius: 8px;
+  background: white;
+  color: #27364b;
+}
+.plan-studio-workspace .editor-step-intro {
+  display: none;
+}
+.plan-studio-workspace .editor-workflow {
+  margin: 0 0 12px;
+}
+.facade-workspace {
+  border: 1px solid #e2e7f0;
+  border-radius: 12px;
+  background: #fff;
+  padding: 16px;
+}
+.facade-workspace-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.facade-workspace-toolbar strong {
+  font-size: 14px;
+}
+.facade-workspace-toolbar span {
+  margin-left: 12px;
+  color: #8491a3;
+  font-size: 11px;
+}
+.facade-workspace-toolbar button {
+  font-size: 11px;
+  padding: 8px 12px;
+}
+.facade-default-layout {
+  display: grid;
+  grid-template-columns: 230px minmax(0, 1fr);
+  gap: 20px;
+}
+.facade-default-help {
+  padding: 16px 0;
+}
+.facade-default-help h3 {
+  font-size: 16px;
+  margin: 12px 0 8px;
+}
+.facade-default-help p {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #7b889c;
+}
+.facade-default-help label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  margin: 24px 0;
+}
+.facade-default-help select {
+  border: 1px solid #dfe4ef;
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+.facade-ready {
+  background: #eaf6ef;
+  color: #257459;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+.facade-default-layout .default-facade-preview {
+  max-height: 420px;
+}
+.facade-default-layout .tower-elevation {
+  max-height: none;
+}
+.plan-studio-workspace .editor-step-actions {
+  margin-top: 10px;
+  padding: 12px;
+}
+.website-manager > .management-heading {
+  margin-bottom: 16px;
+}
+.website-manager > .management-heading h1 {
+  font-size: 24px;
+  margin: 4px 0;
+}
+.website-manager > .management-heading .building-eyebrow {
+  display: none;
+}
+@media (max-width: 700px) {
+  .facade-default-layout {
+    grid-template-columns: 1fr;
+  }
+  .facade-default-help {
+    padding: 0;
+  }
+  .facade-default-help label {
+    margin: 12px 0;
+  }
+  .facade-workspace-toolbar {
+    flex-wrap: wrap;
+  }
+}

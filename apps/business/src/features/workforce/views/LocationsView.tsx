@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { MapPin, Plus, Search } from "lucide-react";
 import type { WorkforceZone } from "@mgl/types";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { Empty } from "../components/shared";
 import { LocationDialog } from "../locations/LocationDialog";
 export function LocationsView({

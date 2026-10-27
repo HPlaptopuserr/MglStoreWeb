@@ -3,7 +3,7 @@ import { RequestCreateDialog } from "../components/RequestCreateDialog";
 import { useState } from "react";
 import { Check, Plus, X } from "lucide-react";
 import { workforceRequestLabels, type WorkforceRequest } from "@mgl/types";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import {
   Avatar,
   Empty,

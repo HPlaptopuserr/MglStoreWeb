@@ -183,6 +183,8 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: BUSINESS_PASSWORD_SECRET
+        generateValue: true
       - key: NEXT_PUBLIC_API_URL
         sync: false
 

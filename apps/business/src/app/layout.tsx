@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
-import { BusinessLoading } from "@/components/BusinessLoading";
+import { BusinessLoading } from "@/app/_components/BusinessLoading";
 import "./globals.css";
 
 const SITE_URL = "https://mglbusiness.mn";

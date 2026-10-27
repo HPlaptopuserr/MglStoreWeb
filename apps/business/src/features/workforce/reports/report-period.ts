@@ -1,4 +1,4 @@
-import type { WorkforceRange } from "../useWorkforce";
+import type { WorkforceRange } from "../hooks/useWorkforce";
 export type ReportPeriod = "month" | "week" | "today";
 export function reportPeriodRange(
   period: ReportPeriod,

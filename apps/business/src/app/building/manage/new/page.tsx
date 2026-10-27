@@ -1,4 +1,4 @@
-import { ProjectCreateForm } from "@/components/building/manage/ProjectCreateForm";
+import { ProjectCreateForm } from "@/features/building/management/ProjectCreateForm";
 export default function NewProjectPage() {
   return <ProjectCreateForm />;
 }

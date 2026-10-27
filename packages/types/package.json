@@ -16,6 +16,14 @@
     "./building-website": {
       "types": "./dist/building-website.d.ts",
       "default": "./dist/building-website.js"
+    },
+    "./building-inquiry": {
+      "types": "./dist/building-inquiry.d.ts",
+      "default": "./dist/building-inquiry.js"
+    },
+    "./building-payments": {
+      "types": "./dist/building-payments.d.ts",
+      "default": "./dist/building-payments.js"
     }
   },
   "scripts": {

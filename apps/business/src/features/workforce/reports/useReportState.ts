@@ -7,7 +7,7 @@ import {
   summarizeWorkforceReport,
   parseWorkforceReportView,
 } from "@mgl/types";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import { emptyReportFilters, type ReportFilterState } from "./ReportFilters";
 export function useReportState({ data, range, setRange }: WorkforceController) {
   const search = useSearchParams(),

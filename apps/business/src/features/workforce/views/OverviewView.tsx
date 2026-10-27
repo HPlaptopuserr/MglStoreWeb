@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowUpRight, Bell, Clock3, List, MapPin, Send } from "lucide-react";
 import { workforceRequestLabels } from "@mgl/types";
-import type { WorkforceController } from "../useWorkforce";
+import type { WorkforceController } from "../hooks/useWorkforce";
 import {
   Avatar,
   Empty,
