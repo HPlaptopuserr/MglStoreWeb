@@ -3,14 +3,11 @@ import { useState } from "react";
 import { Plus, Search, UserRound } from "lucide-react";
 import type { WorkforceEmployee } from "@mgl/types";
 import type { WorkforceController } from "../useWorkforce";
-import {
-  Avatar,
-  Empty,
-  Field,
-  FormDialog,
-  Panel,
-  Stats,
-} from "../components/shared";
+import { Empty, Field, FormDialog, Panel, Stats } from "../components/shared";
+import { EmployeeStatus } from "../employees/EmployeeStatus";
+import { EmployeeAvatar } from "../employees/EmployeeAvatar";
+import { EmployeeDetailDialog } from "../employees/EmployeeDetailDialog";
+import { EmployeeEditDialog } from "../employees/EmployeeEditDialog";
 export function EmployeesView({
   controller,
 }: {
@@ -20,14 +17,19 @@ export function EmployeesView({
   const [query, setQuery] = useState(""),
     [department, setDepartment] = useState(""),
     [active, setActive] = useState("active"),
+    [selectedId, setSelectedId] = useState<string | null>(null),
+    [editPayroll, setEditPayroll] = useState(false),
     [edit, setEdit] = useState<WorkforceEmployee | null>(null),
     [add, setAdd] = useState(false),
     [offboard, setOffboard] = useState<WorkforceEmployee | null>(null);
   if (!data) return null;
+  const selected = data.employees.find(
+    (employee) => employee.id === selectedId,
+  );
   const rows = data.employees.filter(
     (e) =>
       (!query ||
-        `${e.name} ${e.phone} ${e.email}`
+        `${e.name} ${e.phone} ${e.email} ${e.jobTitle ?? ""} ${e.employeeCode ?? ""}`
           .toLowerCase()
           .includes(query.toLowerCase())) &&
       (!department || e.department === department) &&
@@ -118,11 +120,29 @@ export function EmployeesView({
               </thead>
               <tbody>
                 {rows.map((e) => (
-                  <tr key={e.id}>
+                  <tr
+                    key={e.id}
+                    className="wf-employee-row"
+                    onClick={() => setSelectedId(e.id)}
+                  >
                     <td>
                       <div className="wf-employee-cell">
-                        <Avatar name={e.name} />
-                        <strong>{e.name}</strong>
+                        <EmployeeAvatar name={e.name} src={e.avatarUrl} />
+                        <div>
+                          <button
+                            type="button"
+                            className="wf-employee-name"
+                            aria-haspopup="dialog"
+                            aria-label={`${e.name} · Дэлгэрэнгүй харах`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedId(e.id);
+                            }}
+                          >
+                            {e.name}
+                          </button>
+                          {e.jobTitle && <small>{e.jobTitle}</small>}
+                        </div>
                       </div>
                     </td>
                     <td>
@@ -136,23 +156,25 @@ export function EmployeesView({
                     </td>
                     <td>{e.joinedAt.slice(0, 10)}</td>
                     <td>
-                      <span
-                        className={`wf-badge ${e.active ? "wf-request-approved" : ""}`}
-                      >
-                        {e.employmentEndedAt
-                          ? "Ажлаас гарсан"
-                          : e.active
-                            ? "Идэвхтэй"
-                            : "Идэвхгүй"}
-                      </span>
+                      <EmployeeStatus employee={e} />
                       {e.employmentEndedAt && (
                         <small>{e.employmentEndedAt}</small>
                       )}
                     </td>
                     <td>
                       {data.session.canManage && (
-                        <div className="wf-actions">
-                          <button onClick={() => setEdit(e)}>Засах</button>
+                        <div
+                          className="wf-actions"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <button
+                            onClick={() => {
+                              setEditPayroll(false);
+                              setEdit(e);
+                            }}
+                          >
+                            Засах
+                          </button>
                           {e.active &&
                             e.role !== "OWNER" &&
                             e.userId !== data.session.userId &&
@@ -177,48 +199,27 @@ export function EmployeesView({
           <Empty />
         )}
       </Panel>
-      {edit && (
-        <FormDialog
-          title={`${edit.name} · Ажилтны тохиргоо`}
-          onClose={() => setEdit(null)}
-          onSubmit={async (f) => {
-            await run(`employees/${edit.id}`, "PATCH", {
-              workforceDisplayName: f.get("workforceDisplayName"),
-              department: f.get("department"),
-              active: f.get("active") === "true",
-            });
-            setToast("Ажилтны мэдээлэл шинэчлэгдлээ");
+      {selected && (
+        <EmployeeDetailDialog
+          key={`${data.organization.id}-${selected.id}`}
+          employee={selected}
+          controller={controller}
+          onClose={() => setSelectedId(null)}
+          onEdit={(section) => {
+            setEditPayroll(section === "payroll");
+            setSelectedId(null);
+            setEdit(selected);
           }}
-        >
-          {edit.employmentEndedAt && (
-            <p className="wf-muted">
-              Ажлаас гарсан: {edit.employmentEndedAt}
-              <br />
-              {edit.employmentEndReason}
-            </p>
-          )}
-          <Field label="Цаг бүртгэлд харагдах нэр">
-            <input name="workforceDisplayName" defaultValue={edit.workforceDisplayName ?? ""} maxLength={150} placeholder="Үндсэн нэрийг ашиглах" />
-          </Field>
-          <p className="wf-muted">Зөвхөн энэ байгууллагын цаг бүртгэл, тайланд хэрэглэнэ. Хоосон хадгалбал хэрэглэгчийн үндсэн нэрийг харуулна.</p>
-          <Field label="Алба, хэлтэс">
-            <select name="department" defaultValue={edit.department}>
-              <option value="">Хэлтэсгүй</option>
-              {data.departments.map((d) => (
-                <option key={d.id}>{d.name}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Төлөв">
-            <select name="active" defaultValue={String(edit.active)}>
-              <option value="true">Идэвхтэй</option>
-              <option value="false">Идэвхгүй</option>
-            </select>
-          </Field>
-          <p className="wf-muted">
-            Role болон нэмэлт эрхийг байгууллагын App Control-оос удирдана.
-          </p>
-        </FormDialog>
+        />
+      )}
+      {edit && (
+        <EmployeeEditDialog
+          key={`${data.organization.id}-${edit.id}`}
+          employee={edit}
+          focusPayroll={editPayroll}
+          controller={controller}
+          onClose={() => setEdit(null)}
+        />
       )}
       {add && (
         <FormDialog

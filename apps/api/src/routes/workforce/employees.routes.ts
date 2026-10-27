@@ -8,7 +8,41 @@ import {
 import { daysBetween, wallNow } from "../../services/workforce/calculation";
 import { object, text, strings } from "../../services/workforce/validation";
 import { endpoint, audit, assertMembers } from "./http";
+import {
+  employeeAuditSnapshot,
+  normalizeDepartmentName,
+  parseEmployeeProfile,
+  serializeEmployeeProfile,
+} from "../../services/workforce/employee-profile";
 export const employeesRouter: ExpressRouter = Router();
+employeesRouter.get(
+  "/employees/:id",
+  endpoint(async (req, res) => {
+    const ctx = await workforceAccess(req, {
+      manage: true,
+      feature: "employees",
+    });
+    const member = await prisma.organizationMember.findFirst({
+      where: {
+        id: String(req.params.id),
+        organizationId: ctx.organizationId,
+        deletedAt: null,
+      },
+      include: { workforceProfile: true, user: { include: { profile: true } } },
+    });
+    if (!member) throw new WorkforceError(404, "Ажилтан олдсонгүй");
+    const account = {
+      fullName: member.user.profile?.fullName ?? "",
+      email: member.user.email,
+      phone: member.user.profile?.phoneNumber ?? "",
+    };
+    res.setHeader("Cache-Control", "no-store");
+    res.json({
+      profile: serializeEmployeeProfile(member.workforceProfile, account),
+      account,
+    });
+  }),
+);
 employeesRouter.patch(
   "/employees/:id",
   endpoint(async (req, res) => {
@@ -18,17 +52,26 @@ employeesRouter.patch(
       }),
       id = String(req.params.id),
       b = object(req.body);
-    const workforceDisplayName = "workforceDisplayName" in b
-      ? text(b.workforceDisplayName, "Цаг бүртгэлд харагдах нэр", 150, true) || null
-      : undefined;
-    const department = text(b.department, "Хэлтэс", 120, true),
+    const workforceDisplayName =
+      "workforceDisplayName" in b
+        ? text(
+            b.workforceDisplayName,
+            "Цаг бүртгэлд харагдах нэр",
+            150,
+            true,
+          ) || null
+        : undefined;
+    const department = normalizeDepartmentName(b.department),
       active = b.active;
     if (typeof active !== "boolean")
       throw new WorkforceError(400, "Идэвхийн төлөв буруу");
+    const profile =
+      "profile" in b ? parseEmployeeProfile(b.profile) : undefined;
     await prisma.$transaction(
       async (tx) => {
         const member = await tx.organizationMember.findFirst({
           where: { id, organizationId: ctx.organizationId, deletedAt: null },
+          include: { workforceProfile: true },
         });
         if (!member) throw new WorkforceError(404, "Ажилтан олдсонгүй");
         if (
@@ -39,13 +82,38 @@ employeesRouter.patch(
             400,
             "Эзэмшигч болон өөрийгөө идэвхгүй болгохгүй",
           );
-        if (
-          department &&
-          !(await tx.workforceDepartment.findFirst({
-            where: { organizationId: ctx.organizationId, name: department },
-          }))
-        )
-          throw new WorkforceError(400, "Хэлтэс олдсонгүй");
+        let departmentName: string | null = null;
+        if (department) {
+          const existing = await tx.workforceDepartment.findFirst({
+            where: {
+              organizationId: ctx.organizationId,
+              name: { equals: department, mode: "insensitive" },
+            },
+          });
+          const saved =
+            existing ??
+            (await tx.workforceDepartment.upsert({
+              where: {
+                organizationId_name: {
+                  organizationId: ctx.organizationId,
+                  name: department,
+                },
+              },
+              create: { organizationId: ctx.organizationId, name: department },
+              update: {},
+            }));
+          departmentName = saved.name;
+          if (!existing)
+            await audit(
+              tx,
+              ctx.organizationId,
+              ctx.user.userId,
+              "DEPARTMENT_CREATED",
+              saved.id,
+              null,
+              saved,
+            );
+        }
         if (active && !member.isActive) {
           const count = await tx.organizationMember.count({
             where: {
@@ -57,11 +125,20 @@ employeesRouter.patch(
           if (count >= ctx.member.organization.maxMembers)
             throw new WorkforceError(409, "Ажилтны лимит дүүрсэн");
         }
+        if (profile) {
+          await tx.workforceEmployeeProfile.upsert({
+            where: { memberId: id },
+            create: { memberId: id, ...profile },
+            update: profile,
+          });
+        }
         const updated = await tx.organizationMember.update({
           where: { id },
           data: {
-            ...(workforceDisplayName !== undefined ? { workforceDisplayName } : {}),
-            department: department || null,
+            ...(workforceDisplayName !== undefined
+              ? { workforceDisplayName }
+              : {}),
+            department: departmentName,
             isActive: active,
             ...(active
               ? {
@@ -71,6 +148,7 @@ employeesRouter.patch(
                 }
               : {}),
           },
+          include: { workforceProfile: true },
         });
         await audit(
           tx,
@@ -78,8 +156,8 @@ employeesRouter.patch(
           ctx.user.userId,
           "EMPLOYEE_UPDATED",
           id,
-          member,
-          updated,
+          employeeAuditSnapshot(member),
+          employeeAuditSnapshot(updated),
         );
       },
       { isolationLevel: "Serializable" },

@@ -1,15 +1,9 @@
 "use client";
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
-import { Inbox, X } from "lucide-react";
+import { useState, type FormEvent, type ReactNode } from "react";
+import { Inbox } from "lucide-react";
 import type { WorkforceEmployee, WorkforceStatus } from "@mgl/types";
 import { workforceStatusLabels } from "@mgl/types";
+import { WorkforceDialog } from "./WorkforceDialog";
 export function minutes(value: number) {
   return `${Math.floor(value / 60)}ц ${Math.round(value % 60)}м`;
 }
@@ -167,6 +161,7 @@ export function FormDialog({
   onSubmit,
   submitLabel = "Хадгалах",
   submitDisabled = false,
+  className = "",
 }: {
   title: string;
   children: ReactNode;
@@ -174,18 +169,10 @@ export function FormDialog({
   onSubmit: (form: FormData) => Promise<void>;
   submitLabel?: string;
   submitDisabled?: boolean;
+  className?: string;
 }) {
-  const titleId = useId();
-  const dialog = useRef<HTMLDialogElement>(null),
-    [pending, setPending] = useState(false),
-    [error, setError] = useState("");
-  useEffect(() => {
-    const node = dialog.current;
-    node?.showModal();
-    return () => {
-      node?.close();
-    };
-  }, []);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (pending || submitDisabled) return;
@@ -202,47 +189,35 @@ export function FormDialog({
     }
   }
   return (
-    <dialog
-      ref={dialog}
-      className="wf-dialog wf"
-      aria-labelledby={titleId}
-      onCancel={(event) => {
-        event.preventDefault();
-        if (!pending) onClose();
-      }}
-    >
-      <form onSubmit={submit}>
-        <header>
-          <h2 id={titleId}>{title}</h2>
-          <button
-            type="button"
-            aria-label="Хаах"
-            disabled={pending}
-            onClick={onClose}
-          >
-            <X size={20} />
-          </button>
-        </header>
-        <div className="wf-dialog-body">
-          {error && (
-            <p role="alert" className="wf-error">
-              {error}
-            </p>
-          )}
-          {children}
-        </div>
-        <footer>
+    <WorkforceDialog
+      title={title}
+      onClose={onClose}
+      onSubmit={submit}
+      busy={pending}
+      className={className}
+      footer={
+        <>
           <button type="button" disabled={pending} onClick={onClose}>
             Болих
           </button>
           <button className="wf-primary" disabled={pending || submitDisabled}>
             {pending ? "Хадгалж байна…" : submitLabel}
           </button>
-        </footer>
-      </form>
-    </dialog>
+        </>
+      }
+    >
+      {error && (
+        <p role="alert" className="wf-error">
+          {error}
+        </p>
+      )}
+      <fieldset className="wf-dialog-fields" disabled={pending}>
+        {children}
+      </fieldset>
+    </WorkforceDialog>
   );
 }
+
 export function Loading() {
   return (
     <div role="status" aria-label="Ачаалж байна" className="wf-loading">

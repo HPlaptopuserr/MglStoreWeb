@@ -1,3 +1,4 @@
+import type { WorkforcePayrollAccount } from "./workforce-payroll";
 export const workforceFeatures = [
   "dashboard",
   "reports",
@@ -47,6 +48,8 @@ export type WorkforceStatus =
   | "DAY_OFF"
   | "UNSCHEDULED";
 export interface WorkforceEmployee {
+  jobTitle?: string;
+  employeeCode?: string;
   workforceDisplayName?: string | null;
   employmentEndedAt?: string | null;
   employmentEndReason?: string | null;
@@ -61,6 +64,27 @@ export interface WorkforceEmployee {
   active: boolean;
   joinedAt: string;
   capabilities: string[];
+}
+/** Organization-owned personnel record. Login credentials remain on the user account. */
+export interface WorkforceEmployeeProfile extends WorkforcePayrollAccount {
+  fullName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  registerNumber: string;
+  birthDate: string;
+  gender: "" | "MALE" | "FEMALE" | "OTHER";
+  address: string;
+  employeeCode: string;
+  jobTitle: string;
+  hiredAt: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  notes: string;
+}
+export interface WorkforceEmployeeDetails {
+  profile: WorkforceEmployeeProfile;
+  account: { fullName: string; email: string; phone: string };
 }
 export interface WorkforceDepartment {
   id: string;

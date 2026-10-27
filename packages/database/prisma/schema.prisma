@@ -741,6 +741,7 @@ model InvestorProfile {
 }
 
 model OrganizationMember {
+  workforceProfile WorkforceEmployeeProfile?
   workforceDisplayName String?
   id                       String                         @id @default(uuid())
   userId                   String
@@ -4358,4 +4359,29 @@ model EsimPurchase {
   @@unique([userId, idempotencyKey])
   @@index([status, nextAttemptAt])
   @@index([userId, createdAt])
+}
+
+// Personnel details belong to an organization membership, not the shared login account.
+model WorkforceEmployeeProfile {
+  payrollBankName String?
+  payrollAccountNumber String?
+  payrollAccountHolder String?
+  memberId String @id
+  fullName String?
+  lastName String?
+  phone String?
+  email String?
+  registerNumber String?
+  birthDate DateTime? @db.Date
+  gender String?
+  address String?
+  employeeCode String?
+  jobTitle String?
+  hiredAt DateTime? @db.Date
+  emergencyContactName String?
+  emergencyContactPhone String?
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  member OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
 }

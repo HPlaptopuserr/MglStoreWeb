@@ -70,7 +70,18 @@ export async function workforceSnapshot(
   ] = await Promise.all([
     prisma.organizationMember.findMany({
       where: { ...orgWhere, ...memberScope, deletedAt: null },
-      include: { user: { include: { profile: true } } },
+      include: {
+        user: { include: { profile: true } },
+        workforceProfile: {
+          select: {
+            fullName: true,
+            email: true,
+            phone: true,
+            jobTitle: true,
+            employeeCode: true,
+          },
+        },
+      },
       orderBy: { createdAt: "asc" },
       take: 1001,
     }),
@@ -172,10 +183,17 @@ export async function workforceSnapshot(
   const employees: WorkforceEmployee[] = members.map((m) => ({
     id: m.id,
     userId: m.userId,
-    name: m.workforceDisplayName || m.user.profile?.fullName || m.user.email || "Ажилтан",
+    name:
+      m.workforceDisplayName ||
+      m.workforceProfile?.fullName ||
+      m.user.profile?.fullName ||
+      m.user.email ||
+      "Ажилтан",
     workforceDisplayName: m.workforceDisplayName,
-    email: m.user.email ?? "",
-    phone: m.user.profile?.phoneNumber ?? "",
+    jobTitle: m.workforceProfile?.jobTitle ?? "",
+    employeeCode: m.workforceProfile?.employeeCode ?? "",
+    email: m.workforceProfile?.email ?? m.user.email ?? "",
+    phone: m.workforceProfile?.phone ?? m.user.profile?.phoneNumber ?? "",
     avatarUrl: m.user.profile?.avatarUrl ?? null,
     role: m.role,
     department: m.department ?? "",

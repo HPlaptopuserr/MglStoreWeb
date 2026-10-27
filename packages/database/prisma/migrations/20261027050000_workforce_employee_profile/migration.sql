@@ -1,0 +1,21 @@
+CREATE TABLE "WorkforceEmployeeProfile" (
+    "memberId" TEXT NOT NULL,
+    "fullName" TEXT,
+    "lastName" TEXT,
+    "phone" TEXT,
+    "email" TEXT,
+    "registerNumber" TEXT,
+    "birthDate" DATE,
+    "gender" TEXT,
+    "address" TEXT,
+    "employeeCode" TEXT,
+    "jobTitle" TEXT,
+    "hiredAt" DATE,
+    "emergencyContactName" TEXT,
+    "emergencyContactPhone" TEXT,
+    "notes" TEXT,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+    CONSTRAINT "WorkforceEmployeeProfile_pkey" PRIMARY KEY ("memberId"),
+    CONSTRAINT "WorkforceEmployeeProfile_memberId_fkey" FOREIGN KEY ("memberId") REFERENCES "OrganizationMember"("id") ON DELETE CASCADE ON UPDATE CASCADE
+);
