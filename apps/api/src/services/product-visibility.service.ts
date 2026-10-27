@@ -27,6 +27,14 @@ export const MINI_APP_PRODUCT_STATE_FILTER = {
   price: PUBLIC_PRODUCT_STATE_FILTER.price,
 } as const;
 
+/** Shared warehouses also display inventory awaiting a sale price.
+ * Checkout continues to use MINI_APP_PRODUCT_STATE_FILTER.
+ */
+export const SHARED_STORE_CATALOG_STATE_FILTER = {
+  ...MINI_APP_PRODUCT_STATE_FILTER,
+  price: { gte: 0 },
+} as const;
+
 interface PublicProductState {
   isActive: boolean;
   deletedAt: Date | null;

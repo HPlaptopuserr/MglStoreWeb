@@ -15,6 +15,8 @@ import {
   areWebProductsGloballyEnabled,
   getWebProductsEnabledOrganizationIds,
   MINI_APP_PRODUCT_STATE_FILTER,
+  PUBLIC_PRODUCT_STATE_FILTER,
+  SHARED_STORE_CATALOG_STATE_FILTER,
 } from "../../services/product-visibility.service";
 import { productImageOrderBy } from "../../lib/product-images";
 import { onlineProductStock } from "../../services/store-product-stock";
@@ -113,7 +115,9 @@ router.get(
         .filter(Boolean)
         .slice(0, 60);
       const where: Prisma.ProductWhereInput = {
-        ...MINI_APP_PRODUCT_STATE_FILTER,
+        ...(id === "shared-store"
+          ? SHARED_STORE_CATALOG_STATE_FILTER
+          : MINI_APP_PRODUCT_STATE_FILTER),
         ...(requestedIds.length ? { id: { in: requestedIds } } : {}),
         ...(id === "shared-store"
           ? {
@@ -246,7 +250,8 @@ router.get(
             orderable:
               id === "shared-store"
                 ? Boolean(product.managedByWarehouse?.paymentAccountId) &&
-                  product.organization == null
+                  product.organization == null &&
+                  Number(product.price) >= PUBLIC_PRODUCT_STATE_FILTER.price.gte
                 : product.organization != null,
             stock: fromPosStoredStockQuantity(
               Math.max(

@@ -291,7 +291,8 @@ test("unassigned warehouse goods remain visible but cannot be ordered before sel
   assert.equal(body.products[0].orderable, false);
 });
 
-test("mini app catalogs include products without images while preserving publication and price rules", async () => {
+test("mini app catalogs include products without images and separate display from sale pricing", async () => {
+  let expectedMinimum = 100;
   stub(
     prisma.product,
     "findMany",
@@ -299,7 +300,7 @@ test("mini app catalogs include products without images while preserving publica
       assert.equal(where.images, undefined);
       assert.equal(where.isActive, true);
       assert.equal(where.deletedAt, null);
-      assert.deepEqual(where.price, { gte: 100 });
+      assert.deepEqual(where.price, { gte: expectedMinimum });
       return [
         {
           id: "no-photo",
@@ -316,6 +317,7 @@ test("mini app catalogs include products without images while preserving publica
     },
   );
   for (const id of ["store-owners", "shared-store"]) {
+    expectedMinimum = id === "shared-store" ? 0 : 100;
     const response = await fetch(`${base}/store/mini-apps/${id}/products`);
     const body = (await response.json()) as {
       products: Array<{ images: unknown[] }>;
@@ -360,4 +362,69 @@ test("warehouse Minu account enables retail ordering without changing product ow
   assert.equal(body.products[0].organization, null);
   assert.equal(body.products[0].warehouse.id, "warehouse-one");
   assert.equal(JSON.stringify(body).includes("private-account-id"), false);
+});
+
+test("shared catalog includes all 69 published inventory items but blocks placeholder-price ordering", async () => {
+  const products = Array.from({ length: 69 }, (_, index) => ({
+    id: `inventory-${index}`,
+    name: `Warehouse product ${index}`,
+    price: index < 36 ? 1 : 4500,
+    unit: "pcs",
+    organization: null,
+    managedByWarehouseId: "warehouse-one",
+    managedByWarehouse: {
+      id: "warehouse-one",
+      name: "Warehouse",
+      paymentAccountId: "merchant",
+    },
+    warehouseInventories: [{ warehouseId: "warehouse-one", quantity: 2 }],
+    stock: 2,
+    images: [],
+  }));
+  stub(
+    prisma.product,
+    "count",
+    async ({ where }: { where: Record<string, unknown> }) => {
+      assert.deepEqual(where.price, { gte: 0 });
+      return products.length;
+    },
+  );
+  stub(
+    prisma.product,
+    "findMany",
+    async ({
+      where,
+      skip,
+      take,
+    }: {
+      where: Record<string, unknown>;
+      skip: number;
+      take: number;
+    }) => {
+      assert.deepEqual(where.price, { gte: 0 });
+      return products.slice(skip, skip + take);
+    },
+  );
+  const received: Array<{ id: string; orderable: boolean; price: number }> = [];
+  for (const offset of [0, 40]) {
+    const response = await fetch(
+      `${base}/store/mini-apps/shared-store/products?limit=40&offset=${offset}`,
+    );
+    const body = (await response.json()) as {
+      total: number;
+      hasMore: boolean;
+      products: typeof received;
+    };
+    assert.equal(response.status, 200);
+    assert.equal(body.total, 69);
+    assert.equal(body.hasMore, offset === 0);
+    received.push(...body.products);
+  }
+  assert.equal(new Set(received.map((product) => product.id)).size, 69);
+  assert.equal(received.filter((product) => !product.orderable).length, 36);
+  assert.ok(
+    received
+      .filter((product) => product.price >= 100)
+      .every((product) => product.orderable),
+  );
 });
