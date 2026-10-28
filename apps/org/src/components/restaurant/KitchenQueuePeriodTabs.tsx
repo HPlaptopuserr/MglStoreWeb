@@ -14,17 +14,17 @@ export function KitchenQueuePeriodTabs({
   onChange,
 }: KitchenQueuePeriodTabsProps) {
   const periods = [
-    { value: "today", label: "Өнөөдрийн захиалга", count: todayCount },
+    { value: "today", label: "Өнөөдөр", count: todayCount },
     {
       value: "previous",
-      label: "Өмнөх өдрийн дуусаагүй",
+      label: "Өмнөх өдрийн",
       count: previousCount,
     },
   ] as const;
 
   return (
     <div
-      className="mt-3 flex flex-wrap gap-2"
+      className="flex flex-wrap gap-2"
       role="group"
       aria-label="Захиалгын өдөр"
     >

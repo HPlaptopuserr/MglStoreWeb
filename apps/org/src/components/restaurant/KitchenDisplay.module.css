@@ -1,0 +1,226 @@
+.board {
+  columns: 1;
+  column-gap: 16px;
+}
+.ticket {
+  display: inline-block;
+  width: 100%;
+  margin: 0 0 16px;
+  break-inside: avoid;
+  overflow: hidden;
+  border: 1px solid #30343d;
+  border-radius: 16px;
+  background: #1a1e25;
+  box-shadow: 0 4px 16px #00000014;
+  vertical-align: top;
+}
+.ticketHeader {
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid #ffffff0d;
+}
+.ticketTopLine,
+.ticketIdentity,
+.ticketFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.newStatus,
+.preparingStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 650;
+  color: #b7c0cf;
+}
+.newStatus > span,
+.preparingStatus > span {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #aab5c5;
+}
+.preparingStatus {
+  color: #95c8ff;
+}
+.preparingStatus > span {
+  background: #79baff;
+}
+.elapsedTime,
+.overdueTime {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 7px;
+  border-radius: 7px;
+  color: #c5ceda;
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.overdueTime {
+  background: #fbbf2412;
+  color: #f8ce7c;
+}
+.ticketIdentity {
+  margin-top: 12px;
+  align-items: baseline;
+}
+.ticketIdentity h2 {
+  margin: 0;
+  color: #f5f7fa;
+  font-size: 32px;
+  line-height: 1.05;
+  font-weight: 750;
+  letter-spacing: -1px;
+  font-variant-numeric: tabular-nums;
+}
+.numberPrefix {
+  margin-right: 3px;
+  font-size: 22px;
+  color: #788599;
+  font-weight: 500;
+}
+.orderMode {
+  flex-shrink: 0;
+  color: #a3adbb;
+  font-size: 12px;
+  font-weight: 550;
+}
+.tableLabel {
+  margin-top: 8px;
+  color: #a3adbb;
+  font-size: 12px;
+}
+.items {
+  list-style: none;
+  margin: 0;
+  padding: 2px 18px;
+}
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 0;
+}
+.item + .item {
+  border-top: 1px solid #ffffff0a;
+}
+.quantity {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 32px;
+  min-height: 28px;
+  padding: 2px 5px;
+  flex-shrink: 0;
+  border-radius: 7px;
+  color: #e8edf4;
+  background: #ffffff0a;
+  font-size: 15px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+.quantityTimes {
+  color: #8995a6;
+  font-size: 11px;
+}
+.itemContent {
+  min-width: 0;
+  padding-top: 2px;
+}
+.itemName {
+  margin: 0;
+  color: #e5eaf1;
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.itemNote {
+  margin: 7px 0 0;
+  padding: 7px 9px;
+  border-left: 2px solid #e9bb70;
+  border-radius: 0 5px 5px 0;
+  background: #e9bb700a;
+  color: #edce9a;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.ticketFooter {
+  padding: 12px;
+  border-top: 1px solid #ffffff0d;
+}
+.itemCount {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: 4px;
+  color: #9ba6b6;
+  font-size: 11px;
+}
+.startButton,
+.completeButton {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #6fe4bc45;
+  border-radius: 9px;
+  padding: 10px 13px;
+  color: #b2f1da;
+  background: #6fe4bc10;
+  font-size: 12px;
+  font-weight: 700;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.startButton:hover {
+  background: #6fe4bc22;
+  border-color: #6fe4bc88;
+}
+.completeButton {
+  color: #0d3025;
+  background: #9de7cb;
+  border-color: #9de7cb;
+}
+.completeButton:hover {
+  background: #baf1dd;
+}
+.startButton:focus-visible,
+.completeButton:focus-visible {
+  outline: 2px solid #c4f5e3;
+  outline-offset: 3px;
+}
+.startButton:disabled,
+.completeButton:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+@media (min-width: 720px) {
+  .board {
+    columns: 2;
+  }
+}
+@media (min-width: 1120px) {
+  .board {
+    columns: 3;
+  }
+}
+@media (min-width: 1600px) {
+  .board {
+    columns: 4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .startButton,
+  .completeButton {
+    transition: none;
+  }
+}

@@ -11,16 +11,13 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  CheckCircle2,
   ChefHat,
-  Clock3,
   Coffee,
   Expand,
   Flame,
   GlassWater,
   Loader2,
   Radio,
-  ReceiptText,
   RefreshCw,
   Salad,
   Volume2,
@@ -35,9 +32,14 @@ import {
   type RestaurantKitchenTicket,
 } from "@/lib/restaurant-pos-api";
 import { KitchenQueuePeriodTabs } from "./KitchenQueuePeriodTabs";
+import {
+  KitchenTicketCard,
+  type KitchenStationFilter,
+} from "./KitchenTicketCard";
+import styles from "./KitchenDisplay.module.css";
 import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
 
-type StationFilter = "ALL" | "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR";
+type StationFilter = KitchenStationFilter;
 
 const BRANCH_STORAGE_KEY = "org_restaurant_kds_branch_id";
 const SPEAKER_STORAGE_KEY = "org_restaurant_kds_speaker_enabled";
@@ -127,31 +129,6 @@ const stationOptions: Array<{
   { value: "COLD_KITCHEN", label: "Хүйтэн", icon: Salad },
   { value: "BAR", label: "Бар", icon: GlassWater },
 ];
-
-const orderModeLabels = {
-  DINE_IN: "Энд хэрэглэх",
-  TO_GO: "Авч явах",
-  DELIVERY: "Хүргэлт",
-} as const;
-
-const stationLabels: Record<string, string> = {
-  HOT_KITCHEN: "Халуун гал тогоо",
-  COLD_KITCHEN: "Хүйтэн гал тогоо",
-  BAR: "Бар",
-  MIXED: "Олон хэсгийн захиалга",
-};
-
-const getElapsedMinutes = (sentAt: string, now: number) => {
-  const sent = new Date(sentAt).getTime();
-  if (!Number.isFinite(sent)) return 0;
-  return Math.max(0, Math.floor((now - sent) / 60_000));
-};
-
-const getTicketStation = (ticket: RestaurantKitchenTicket) =>
-  new Set(ticket.items.map((item) => item.kitchenStation).filter(Boolean))
-    .size > 1
-    ? "MIXED"
-    : ticket.items[0]?.kitchenStation || "HOT_KITCHEN";
 
 export function KitchenDisplayScreen() {
   const { user, features, logout } = useOrg();
@@ -491,7 +468,7 @@ export function KitchenDisplayScreen() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#101216] px-6 text-slate-200">
+      <div className="flex h-screen items-center justify-center bg-[#11151b] px-6 text-slate-200">
         <div className="text-center">
           <div className="mx-auto flex size-20 items-center justify-center rounded-3xl border border-white/10 bg-white/[0.06] text-slate-100">
             {isCafe ? (
@@ -513,8 +490,8 @@ export function KitchenDisplayScreen() {
   }
 
   return (
-    <div className="flex h-screen min-h-0 flex-col bg-[#101216] text-slate-100">
-      <header className="relative z-20 shrink-0 border-b border-white/[0.08] bg-[#15181d] px-4 py-3 lg:px-5">
+    <div className="flex h-screen min-h-0 flex-col bg-[#11151b] text-slate-100">
+      <header className="relative z-20 shrink-0 border-b border-white/[0.08] bg-[#171b22] px-4 py-3 lg:px-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             {kitchenOnly ? (
@@ -534,16 +511,16 @@ export function KitchenDisplayScreen() {
                 <ArrowLeft className="size-5" />
               </Link>
             )}
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.07] text-slate-100">
+            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.07] text-slate-100">
               {isCafe ? (
-                <Coffee className="size-7" strokeWidth={2.2} />
+                <Coffee className="size-6" strokeWidth={2.2} />
               ) : (
-                <ChefHat className="size-7" strokeWidth={2.2} />
+                <ChefHat className="size-6" strokeWidth={2.2} />
               )}
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h1 className="truncate text-lg font-black tracking-tight sm:text-xl">
+                <h1 className="truncate text-base font-bold tracking-tight sm:text-lg">
                   {isCafe ? "Бариста дэлгэц" : "Гал тогооны дэлгэц"}
                 </h1>
                 <span className="hidden items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 sm:inline-flex">
@@ -633,12 +610,6 @@ export function KitchenDisplayScreen() {
           </div>
         </div>
 
-        <KitchenQueuePeriodTabs
-          value={queuePeriod}
-          todayCount={queues.today.length}
-          previousCount={queues.previous.length}
-          onChange={setQueuePeriod}
-        />
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] pt-3">
           <div className="flex max-w-full gap-2 overflow-x-auto pb-0.5">
             {stationOptions.map((station) => {
@@ -669,13 +640,12 @@ export function KitchenDisplayScreen() {
             })}
           </div>
 
-          <div className="flex h-10 items-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 text-xs font-black text-slate-300">
-            <ReceiptText className="size-4 text-slate-400" />
-            Орж ирсэн захиалга
-            <strong className="rounded-md bg-white/[0.09] px-2 py-0.5 text-sm tabular-nums text-white">
-              {visibleTickets.length}
-            </strong>
-          </div>
+          <KitchenQueuePeriodTabs
+            value={queuePeriod}
+            todayCount={queues.today.length}
+            previousCount={queues.previous.length}
+            onChange={setQueuePeriod}
+          />
         </div>
 
         {error ? (
@@ -692,7 +662,7 @@ export function KitchenDisplayScreen() {
         ) : null}
       </header>
 
-      <main className="min-h-0 flex-1 overflow-auto p-3 sm:p-4 lg:p-5">
+      <main className="min-h-0 flex-1 overflow-auto p-4 lg:p-5">
         {queuePeriod === "previous" && activeTickets.length > 0 ? (
           <p className="mb-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-200">
             Эдгээр захиалга өмнөх өдрөөс дуусаагүй төлөвтэй үлдсэн байна. Бодит
@@ -720,7 +690,7 @@ export function KitchenDisplayScreen() {
             }
           />
         ) : (
-          <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <div className={styles.board}>
             {[...visibleTickets]
               .sort(
                 (first, second) =>
@@ -741,166 +711,6 @@ export function KitchenDisplayScreen() {
         )}
       </main>
     </div>
-  );
-}
-
-function KitchenTicketCard({
-  ticket,
-  now,
-  stationFilter,
-  busy,
-  onAdvance,
-}: {
-  ticket: RestaurantKitchenTicket;
-  now: number;
-  stationFilter: StationFilter;
-  busy: boolean;
-  onAdvance: () => void;
-}) {
-  if (!isKitchenQueueStatus(ticket.status)) return null;
-
-  const elapsedMinutes = getElapsedMinutes(ticket.sentAt, now);
-  const preparationMinutes = Math.max(
-    0,
-    ...ticket.items.map((item) => item.preparationMinutes || 0),
-  );
-  const overdue =
-    preparationMinutes > 0 && elapsedMinutes >= preparationMinutes;
-  const nearingDeadline =
-    !overdue &&
-    preparationMinutes > 0 &&
-    elapsedMinutes >= preparationMinutes * 0.7;
-  const progress =
-    preparationMinutes > 0
-      ? Math.min(100, (elapsedMinutes / preparationMinutes) * 100)
-      : 0;
-  const visibleItems =
-    stationFilter === "ALL"
-      ? ticket.items
-      : ticket.items.filter((item) => item.kitchenStation === stationFilter);
-  const station =
-    stationFilter === "ALL" ? getTicketStation(ticket) : stationFilter;
-  const orderMode = ticket.restaurantTicket.orderMode;
-  const displayOrderNumber = formatRestaurantOrderNumber(
-    ticket.restaurantTicket.ticketNo,
-    ticket.restaurantTicket.id,
-  );
-
-  return (
-    <article
-      className={`group relative overflow-hidden rounded-2xl border bg-[#191c21] shadow-sm shadow-black/20 transition ${
-        overdue
-          ? "border-rose-400/70"
-          : nearingDeadline
-            ? "border-white/20"
-            : "border-white/[0.09]"
-      }`}
-    >
-      <span
-        className={`absolute inset-x-0 top-0 h-1 ${
-          overdue ? "bg-rose-400" : "bg-slate-500"
-        }`}
-      />
-
-      <div className="border-b border-white/[0.08] px-4 pb-3.5 pt-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5 text-[11px] font-black uppercase tracking-[0.12em] text-slate-500">
-              <ReceiptText className="size-3.5" />
-              {ticket.status === "NEW"
-                ? "Шинэ захиалга"
-                : ticket.status === "PREPARING"
-                  ? "Бэлтгэж байна"
-                  : "Хоол бэлэн"}
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <h3 className="text-2xl font-black leading-none tracking-tight text-white">
-                Захиалга №{displayOrderNumber}
-              </h3>
-              <span className="rounded-lg border border-white/10 bg-white/[0.05] px-2 py-1 text-[10px] font-black uppercase tracking-[0.08em] text-slate-300">
-                {orderModeLabels[orderMode]}
-              </span>
-            </div>
-          </div>
-          <div
-            className={`flex shrink-0 items-center gap-1.5 rounded-xl border px-2.5 py-2 text-sm font-black tabular-nums ${
-              overdue
-                ? "border-rose-300/40 bg-rose-400 text-white"
-                : nearingDeadline
-                  ? "border-white/15 bg-white/10 text-white"
-                  : "border-white/[0.08] bg-black/20 text-slate-200"
-            }`}
-          >
-            <Clock3 className="size-4" />
-            {elapsedMinutes} мин
-          </div>
-        </div>
-
-        {preparationMinutes > 0 ? (
-          <div className="mt-3">
-            <div className="mb-1.5 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
-              <span>{stationLabels[station] || "Гал тогоо"}</span>
-              <span>Зорилт {preparationMinutes} мин</span>
-            </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-black/30">
-              <div
-                className={`h-full rounded-full transition-[width] duration-500 ${
-                  overdue ? "bg-rose-400" : "bg-slate-300"
-                }`}
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-        ) : (
-          <p className="mt-3 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
-            {stationLabels[station] || "Гал тогоо"}
-          </p>
-        )}
-      </div>
-
-      <div className="px-4 py-1">
-        <div className="divide-y divide-white/[0.07]">
-          {visibleItems.map((item) => (
-            <div key={item.id} className="flex gap-3 py-3">
-              <span className="flex h-8 min-w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.09] px-2 text-sm font-black text-white">
-                ×{item.qty}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-[15px] font-black leading-6 text-white">
-                  {item.name}
-                </p>
-                {item.note ? (
-                  <p className="mt-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 text-xs font-bold leading-5 text-slate-300">
-                    <span className="mr-1 text-slate-400">АНХААР:</span>
-                    {item.note}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="border-t border-white/[0.08] bg-black/10 p-3">
-        <button
-          type="button"
-          onClick={onAdvance}
-          disabled={busy}
-          className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-200 text-sm font-black text-emerald-950 transition hover:bg-emerald-100 active:scale-[0.99] disabled:cursor-wait disabled:opacity-60"
-        >
-          {busy ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <CheckCircle2 className="size-4" />
-          )}
-          {busy
-            ? "Хадгалж байна..."
-            : ticket.status === "NEW"
-              ? "Бэлтгэж эхлэх"
-              : "Бэлэн болсон"}
-        </button>
-      </div>
-    </article>
   );
 }
 
