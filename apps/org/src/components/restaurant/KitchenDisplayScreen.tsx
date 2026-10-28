@@ -1,7 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { isKitchenOnlyMember, isKitchenQueueStatus } from "@mgl/types";
+import {
+  isKitchenOnlyMember,
+  isKitchenQueueStatus,
+  partitionKitchenQueue,
+  KITCHEN_TIME_ZONE,
+  type KitchenQueuePeriod,
+} from "@mgl/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -28,6 +34,7 @@ import {
   type RestaurantKitchenBranch,
   type RestaurantKitchenTicket,
 } from "@/lib/restaurant-pos-api";
+import { KitchenQueuePeriodTabs } from "./KitchenQueuePeriodTabs";
 import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
 
 type StationFilter = "ALL" | "HOT_KITCHEN" | "COLD_KITCHEN" | "BAR";
@@ -153,6 +160,7 @@ export function KitchenDisplayScreen() {
   const [branches, setBranches] = useState<RestaurantKitchenBranch[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [tickets, setTickets] = useState<RestaurantKitchenTicket[]>([]);
+  const [queuePeriod, setQueuePeriod] = useState<KitchenQueuePeriod>("today");
   const [stationFilter, setStationFilter] = useState<StationFilter>("ALL");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -332,24 +340,24 @@ export function KitchenDisplayScreen() {
     return () => window.clearInterval(clockTimer);
   }, []);
 
+  const queues = useMemo(
+    () => partitionKitchenQueue(tickets, now),
+    [tickets, now],
+  );
+  const activeTickets = queues[queuePeriod];
   const visibleTickets = useMemo(
     () =>
-      tickets.filter(
+      activeTickets.filter(
         (ticket) =>
-          isKitchenQueueStatus(ticket.status) &&
-          (stationFilter === "ALL" ||
-            ticket.items.some((item) => item.kitchenStation === stationFilter)),
+          stationFilter === "ALL" ||
+          ticket.items.some((item) => item.kitchenStation === stationFilter),
       ),
-    [stationFilter, tickets],
-  );
-
-  const activeTickets = useMemo(
-    () => tickets.filter((ticket) => isKitchenQueueStatus(ticket.status)),
-    [tickets],
+    [activeTickets, stationFilter],
   );
   const clockLabel = useMemo(
     () =>
       new Intl.DateTimeFormat("mn-MN", {
+        timeZone: KITCHEN_TIME_ZONE,
         hour: "2-digit",
         minute: "2-digit",
         hour12: false,
@@ -359,6 +367,7 @@ export function KitchenDisplayScreen() {
   const dateLabel = useMemo(
     () =>
       new Intl.DateTimeFormat("mn-MN", {
+        timeZone: KITCHEN_TIME_ZONE,
         month: "short",
         day: "numeric",
         weekday: "short",
@@ -561,7 +570,10 @@ export function KitchenDisplayScreen() {
             {branches.length > 1 ? (
               <select
                 value={selectedBranchId}
-                onChange={(event) => setSelectedBranchId(event.target.value)}
+                onChange={(event) => {
+                  setSelectedBranchId(event.target.value);
+                  setQueuePeriod("today");
+                }}
                 className="h-11 max-w-48 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm font-bold text-white outline-none transition focus:border-white/30"
                 aria-label="Салбар сонгох"
               >
@@ -616,13 +628,17 @@ export function KitchenDisplayScreen() {
               <RefreshCw
                 className={`size-4 ${refreshing ? "animate-spin" : ""}`}
               />
-              <span className="hidden sm:inline">
-                Шинэчлэх
-              </span>
+              <span className="hidden sm:inline">Шинэчлэх</span>
             </button>
           </div>
         </div>
 
+        <KitchenQueuePeriodTabs
+          value={queuePeriod}
+          todayCount={queues.today.length}
+          previousCount={queues.previous.length}
+          onChange={setQueuePeriod}
+        />
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] pt-3">
           <div className="flex max-w-full gap-2 overflow-x-auto pb-0.5">
             {stationOptions.map((station) => {
@@ -677,6 +693,12 @@ export function KitchenDisplayScreen() {
       </header>
 
       <main className="min-h-0 flex-1 overflow-auto p-3 sm:p-4 lg:p-5">
+        {queuePeriod === "previous" && activeTickets.length > 0 ? (
+          <p className="mb-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-200">
+            Эдгээр захиалга өмнөх өдрөөс дуусаагүй төлөвтэй үлдсэн байна. Бодит
+            гүйцэтгэлийг шалгаж төлөвийг шинэчилнэ үү.
+          </p>
+        ) : null}
         {!selectedBranchId ? (
           <EmptyState
             title="Салбар олдсонгүй"
@@ -684,8 +706,18 @@ export function KitchenDisplayScreen() {
           />
         ) : visibleTickets.length === 0 ? (
           <EmptyState
-            title="Одоогоор захиалга алга"
-            description="Шинэ захиалга орж ирмэгц энэ дэлгэц дээр автоматаар харагдана."
+            title={
+              queuePeriod === "today"
+                ? "Өнөөдрийн захиалга алга"
+                : "Өмнөх өдрийн дуусаагүй захиалга алга"
+            }
+            description={
+              stationFilter !== "ALL"
+                ? "Сонгосон хэсэгт захиалга алга. Бусад хэсгийг шалгахын тулд Бүх хэсэг сонгоно уу."
+                : queuePeriod === "today"
+                  ? "Шинэ захиалга орж ирмэгц энэ дэлгэц дээр автоматаар харагдана."
+                  : "Өмнөх өдрийн дуусаагүй захиалга энд тусдаа харагдана."
+            }
           />
         ) : (
           <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
