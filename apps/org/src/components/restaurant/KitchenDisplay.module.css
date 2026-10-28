@@ -1,11 +1,14 @@
 .board {
-  columns: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: 1px;
   column-gap: 16px;
+  align-items: start;
 }
 .ticket {
-  display: inline-block;
+  display: block;
   width: 100%;
-  margin: 0 0 16px;
+  margin: 0;
   break-inside: avoid;
   overflow: hidden;
   border: 1px solid #30343d;
@@ -205,17 +208,17 @@
 }
 @media (min-width: 720px) {
   .board {
-    columns: 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 @media (min-width: 1120px) {
   .board {
-    columns: 3;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 @media (min-width: 1600px) {
   .board {
-    columns: 4;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -223,4 +226,8 @@
   .completeButton {
     transition: none;
   }
+}
+
+.boardItem {
+  min-width: 0;
 }

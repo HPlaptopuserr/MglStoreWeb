@@ -36,7 +36,7 @@ import {
   KitchenTicketCard,
   type KitchenStationFilter,
 } from "./KitchenTicketCard";
-import styles from "./KitchenDisplay.module.css";
+import { KitchenTicketBoard } from "./KitchenTicketBoard";
 import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
 
 type StationFilter = KitchenStationFilter;
@@ -690,7 +690,7 @@ export function KitchenDisplayScreen() {
             }
           />
         ) : (
-          <div className={styles.board}>
+          <KitchenTicketBoard>
             {[...visibleTickets]
               .sort(
                 (first, second) =>
@@ -707,7 +707,7 @@ export function KitchenDisplayScreen() {
                   onAdvance={() => void handleStatusChange(ticket)}
                 />
               ))}
-          </div>
+          </KitchenTicketBoard>
         )}
       </main>
     </div>
