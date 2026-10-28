@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { isKitchenOnlyMember } from "@mgl/types";
+import { isKitchenOnlyMember, isKitchenQueueStatus } from "@mgl/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -11,7 +11,6 @@ import {
   Coffee,
   Expand,
   Flame,
-  FlaskConical,
   GlassWater,
   Loader2,
   Radio,
@@ -26,7 +25,6 @@ import {
   getRestaurantKitchenBranches,
   getRestaurantKitchenTickets,
   updateRestaurantKitchenTicketStatus,
-  type KitchenTicketStatus,
   type RestaurantKitchenBranch,
   type RestaurantKitchenTicket,
 } from "@/lib/restaurant-pos-api";
@@ -136,9 +134,6 @@ const stationLabels: Record<string, string> = {
   MIXED: "Олон хэсгийн захиалга",
 };
 
-const isActiveStatus = (status: KitchenTicketStatus) =>
-  status === "NEW" || status === "PREPARING";
-
 const getElapsedMinutes = (sentAt: string, now: number) => {
   const sent = new Date(sentAt).getTime();
   if (!Number.isFinite(sent)) return 0;
@@ -150,122 +145,6 @@ const getTicketStation = (ticket: RestaurantKitchenTicket) =>
     .size > 1
     ? "MIXED"
     : ticket.items[0]?.kitchenStation || "HOT_KITCHEN";
-
-const createDemoTickets = (
-  currentTime: number,
-  branchId: string,
-): RestaurantKitchenTicket[] => {
-  const sentAt = (minutesAgo: number) =>
-    new Date(currentTime - minutesAgo * 60_000).toISOString();
-
-  return [
-    {
-      id: "demo-ticket-1",
-      kitchenTicketNo: "KDS-1042",
-      organizationId: "demo-organization",
-      branchId,
-      status: "NEW",
-      sentAt: sentAt(4),
-      startedAt: null,
-      readyAt: null,
-      servedAt: null,
-      restaurantTicket: {
-        id: "demo-order-1",
-        ticketNo: "R-1042",
-        orderMode: "DINE_IN",
-        status: "KITCHEN",
-        table: null,
-      },
-      items: [
-        {
-          id: "demo-item-1",
-          productId: "demo-product-burger",
-          name: "Үхрийн махан бургер",
-          qty: 2,
-          note: "Сонгиногүй",
-          kitchenStation: "HOT_KITCHEN",
-          preparationMinutes: 15,
-        },
-        {
-          id: "demo-item-2",
-          productId: "demo-product-fries",
-          name: "Шарсан төмс",
-          qty: 1,
-          note: "",
-          kitchenStation: "HOT_KITCHEN",
-          preparationMinutes: 8,
-        },
-      ],
-    },
-    {
-      id: "demo-ticket-2",
-      kitchenTicketNo: "KDS-1043",
-      organizationId: "demo-organization",
-      branchId,
-      status: "NEW",
-      sentAt: sentAt(9),
-      startedAt: null,
-      readyAt: null,
-      servedAt: null,
-      restaurantTicket: {
-        id: "demo-order-2",
-        ticketNo: "R-1043",
-        orderMode: "TO_GO",
-        status: "KITCHEN",
-        table: null,
-      },
-      items: [
-        {
-          id: "demo-item-3",
-          productId: "demo-product-pasta",
-          name: "Карбонара паста",
-          qty: 1,
-          note: "Соус тусад нь",
-          kitchenStation: "HOT_KITCHEN",
-          preparationMinutes: 12,
-        },
-        {
-          id: "demo-item-4",
-          productId: "demo-product-salad",
-          name: "Ногоон салат",
-          qty: 1,
-          note: "",
-          kitchenStation: "COLD_KITCHEN",
-          preparationMinutes: 7,
-        },
-      ],
-    },
-    {
-      id: "demo-ticket-3",
-      kitchenTicketNo: "KDS-1044",
-      organizationId: "demo-organization",
-      branchId,
-      status: "NEW",
-      sentAt: sentAt(18),
-      startedAt: null,
-      readyAt: null,
-      servedAt: null,
-      restaurantTicket: {
-        id: "demo-order-3",
-        ticketNo: "R-1044",
-        orderMode: "DINE_IN",
-        status: "KITCHEN",
-        table: null,
-      },
-      items: [
-        {
-          id: "demo-item-5",
-          productId: "demo-product-pizza",
-          name: "Пепперони пицца",
-          qty: 1,
-          note: "Нэмэлт бяслагтай",
-          kitchenStation: "HOT_KITCHEN",
-          preparationMinutes: 15,
-        },
-      ],
-    },
-  ];
-};
 
 export function KitchenDisplayScreen() {
   const { user, features, logout } = useOrg();
@@ -280,7 +159,6 @@ export function KitchenDisplayScreen() {
   const [error, setError] = useState("");
   const [busyTicketId, setBusyTicketId] = useState("");
   const [now, setNow] = useState(() => Date.now());
-  const [demoMode, setDemoMode] = useState(false);
   const [speakerEnabled, setSpeakerEnabled] = useState(true);
   const audioContextRef = useRef<AudioContext | null>(null);
   const ticketSnapshotRef = useRef<{
@@ -370,7 +248,6 @@ export function KitchenDisplayScreen() {
 
   const loadTickets = useCallback(
     async (options?: { silent?: boolean }) => {
-      if (demoMode) return;
       if (!selectedBranchId) {
         setTickets([]);
         return;
@@ -400,7 +277,7 @@ export function KitchenDisplayScreen() {
         if (!options?.silent) setRefreshing(false);
       }
     },
-    [demoMode, playNewOrderChime, selectedBranchId],
+    [playNewOrderChime, selectedBranchId],
   );
 
   useEffect(() => {
@@ -459,7 +336,7 @@ export function KitchenDisplayScreen() {
     () =>
       tickets.filter(
         (ticket) =>
-          isActiveStatus(ticket.status) &&
+          isKitchenQueueStatus(ticket.status) &&
           (stationFilter === "ALL" ||
             ticket.items.some((item) => item.kitchenStation === stationFilter)),
       ),
@@ -467,7 +344,7 @@ export function KitchenDisplayScreen() {
   );
 
   const activeTickets = useMemo(
-    () => tickets.filter((ticket) => isActiveStatus(ticket.status)),
+    () => tickets.filter((ticket) => isKitchenQueueStatus(ticket.status)),
     [tickets],
   );
   const clockLabel = useMemo(
@@ -506,23 +383,6 @@ export function KitchenDisplayScreen() {
     } catch {
       setError("Бүтэн дэлгэцийн горим нээж чадсангүй.");
     }
-  };
-
-  const showDemoTickets = () => {
-    const currentTime = Date.now();
-    setDemoMode(true);
-    setStationFilter("ALL");
-    setNow(currentTime);
-    setError("");
-    setTickets(
-      createDemoTickets(currentTime, selectedBranchId || "demo-branch"),
-    );
-    void playNewOrderChime();
-  };
-
-  const closeDemoMode = () => {
-    setDemoMode(false);
-    setTickets([]);
   };
 
   const speakMessage = useCallback((message: string, repetitions = 1) => {
@@ -591,26 +451,8 @@ export function KitchenDisplayScreen() {
   };
 
   const handleStatusChange = async (ticket: RestaurantKitchenTicket) => {
-    if (!isActiveStatus(ticket.status)) return;
+    if (!isKitchenQueueStatus(ticket.status)) return;
     const nextStatus = ticket.status === "NEW" ? "PREPARING" : "READY";
-    if (demoMode) {
-      const hasActiveSibling = tickets.some(
-        (item) =>
-          item.id !== ticket.id &&
-          item.restaurantTicket.id === ticket.restaurantTicket.id &&
-          isActiveStatus(item.status),
-      );
-      setTickets((current) =>
-        nextStatus === "READY"
-          ? current.filter((item) => item.id !== ticket.id)
-          : current.map((item) =>
-              item.id === ticket.id ? { ...item, status: nextStatus } : item,
-            ),
-      );
-      if (nextStatus === "READY" && !hasActiveSibling)
-        announceReadyOrder(ticket);
-      return;
-    }
     if (!selectedBranchId) return;
     setBusyTicketId(ticket.id);
     setError("");
@@ -695,26 +537,14 @@ export function KitchenDisplayScreen() {
                 <h1 className="truncate text-lg font-black tracking-tight sm:text-xl">
                   {isCafe ? "Бариста дэлгэц" : "Гал тогооны дэлгэц"}
                 </h1>
-                <span
-                  className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] sm:inline-flex ${
-                    demoMode
-                      ? "border-white/15 bg-white/[0.08] text-slate-200"
-                      : "border-white/10 bg-white/[0.04] text-slate-400"
-                  }`}
-                >
-                  {demoMode ? (
-                    <FlaskConical className="size-3" />
-                  ) : (
-                    <Radio className="size-3" />
-                  )}
-                  {demoMode ? "Demo" : "Live"}
+                <span className="hidden items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 sm:inline-flex">
+                  <Radio className="size-3" />
+                  Live
                 </span>
               </div>
               <p className="truncate text-xs font-semibold text-slate-500">
                 {user.organizationName || (isCafe ? "Кофе шоп" : "Ресторан")} ·{" "}
-                {demoMode
-                  ? "Демо салбар"
-                  : selectedBranch?.name || "Салбар сонгоно уу"}
+                {selectedBranch?.name || "Салбар сонгоно уу"}
               </p>
             </div>
           </div>
@@ -728,7 +558,7 @@ export function KitchenDisplayScreen() {
                 {dateLabel}
               </p>
             </div>
-            {branches.length > 1 && !demoMode ? (
+            {branches.length > 1 ? (
               <select
                 value={selectedBranchId}
                 onChange={(event) => setSelectedBranchId(event.target.value)}
@@ -771,20 +601,6 @@ export function KitchenDisplayScreen() {
             </button>
             <button
               type="button"
-              onClick={demoMode ? closeDemoMode : showDemoTickets}
-              className={`flex h-11 items-center gap-2 rounded-xl border px-3.5 text-sm font-black transition ${
-                demoMode
-                  ? "border-white/20 bg-white/10 text-white hover:bg-white/[0.14]"
-                  : "border-white/10 bg-white/[0.04] text-slate-400 hover:bg-white/[0.08] hover:text-white"
-              }`}
-            >
-              <FlaskConical className="size-4" />
-              <span className="hidden lg:inline">
-                {demoMode ? "Демо хаах" : "Демо харах"}
-              </span>
-            </button>
-            <button
-              type="button"
               onClick={() => void requestFullscreen()}
               className="flex size-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-400 transition hover:bg-white/[0.08] hover:text-white"
               aria-label="Бүтэн дэлгэц"
@@ -793,17 +609,15 @@ export function KitchenDisplayScreen() {
             </button>
             <button
               type="button"
-              onClick={() =>
-                demoMode ? showDemoTickets() : void loadTickets()
-              }
-              disabled={(!selectedBranchId && !demoMode) || refreshing}
+              onClick={() => void loadTickets()}
+              disabled={!selectedBranchId || refreshing}
               className="flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3.5 text-sm font-black text-slate-300 transition hover:bg-white/[0.08] hover:text-white disabled:opacity-50"
             >
               <RefreshCw
                 className={`size-4 ${refreshing ? "animate-spin" : ""}`}
               />
               <span className="hidden sm:inline">
-                {demoMode ? "Дахин эхлэх" : "Шинэчлэх"}
+                Шинэчлэх
               </span>
             </button>
           </div>
@@ -863,25 +677,15 @@ export function KitchenDisplayScreen() {
       </header>
 
       <main className="min-h-0 flex-1 overflow-auto p-3 sm:p-4 lg:p-5">
-        {!selectedBranchId && !demoMode ? (
+        {!selectedBranchId ? (
           <EmptyState
-            title="POS касс олдсонгүй"
-            description="Энэ байгууллагад идэвхтэй POS register тохируулсны дараа гал тогооны дэлгэц ашиглана."
-            actionLabel="Демо захиалга харах"
-            onAction={showDemoTickets}
+            title="Салбар олдсонгүй"
+            description="Байгууллагын салбарыг тохируулсны дараа гал тогооны дэлгэц ашиглана."
           />
         ) : visibleTickets.length === 0 ? (
           <EmptyState
-            title={
-              demoMode ? "Демо захиалга дууслаа" : "Одоогоор захиалга алга"
-            }
-            description={
-              demoMode
-                ? "Демо захиалгуудыг дахин гаргаж дизайн болон товчийг туршина уу."
-                : "Шинэ захиалга орж ирмэгц энэ дэлгэц дээр автоматаар харагдана."
-            }
-            actionLabel={demoMode ? "Дахин эхлэх" : "Демо захиалга харах"}
-            onAction={showDemoTickets}
+            title="Одоогоор захиалга алга"
+            description="Шинэ захиалга орж ирмэгц энэ дэлгэц дээр автоматаар харагдана."
           />
         ) : (
           <div className="grid items-start gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -921,7 +725,7 @@ function KitchenTicketCard({
   busy: boolean;
   onAdvance: () => void;
 }) {
-  if (!isActiveStatus(ticket.status)) return null;
+  if (!isKitchenQueueStatus(ticket.status)) return null;
 
   const elapsedMinutes = getElapsedMinutes(ticket.sentAt, now);
   const preparationMinutes = Math.max(
@@ -1071,13 +875,9 @@ function KitchenTicketCard({
 function EmptyState({
   title,
   description,
-  actionLabel,
-  onAction,
 }: {
   title: string;
   description: string;
-  actionLabel?: string;
-  onAction?: () => void;
 }) {
   return (
     <div className="flex h-full min-h-72 items-center justify-center">
@@ -1085,16 +885,6 @@ function EmptyState({
         <ChefHat className="mx-auto size-12 text-slate-600" />
         <h2 className="mt-4 text-xl font-black">{title}</h2>
         <p className="mt-2 text-sm leading-6 text-slate-400">{description}</p>
-        {actionLabel && onAction ? (
-          <button
-            type="button"
-            onClick={onAction}
-            className="mt-5 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 text-sm font-black text-slate-950 transition hover:bg-white"
-          >
-            <FlaskConical className="size-4" />
-            {actionLabel}
-          </button>
-        ) : null}
       </div>
     </div>
   );

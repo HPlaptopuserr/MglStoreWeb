@@ -1,4 +1,5 @@
 import {
+  KITCHEN_QUEUE_STATUSES,
   isRestaurantLineDiscountPercent,
   calculateRestaurantSelectedUnitDiscount,
 } from "@mgl/types";
@@ -2106,10 +2107,10 @@ router.get("/restaurant/pos/kitchen-tickets", async (req, res) => {
       where: {
         branchId,
         organizationId: access.branch.organizationId,
-        status: { in: ACTIVE_KITCHEN_TICKET_STATUSES },
+        // Completed tickets are history; return every unfinished kitchen order.
+        status: { in: [...KITCHEN_QUEUE_STATUSES] },
       },
       orderBy: [{ sentAt: "asc" }, { kitchenTicketNo: "asc" }],
-      take: 100,
       include: kitchenTicketInclude,
     });
 
@@ -2272,9 +2273,7 @@ router.patch("/restaurant/pos/kitchen-tickets/:id/status", async (req, res) => {
     const remainingActiveTickets = await prisma.kitchenTicket.count({
       where: {
         restaurantTicketId: updated.restaurantTicket.id,
-        status: {
-          in: [KitchenTicketStatus.NEW, KitchenTicketStatus.PREPARING],
-        },
+        status: { in: [...KITCHEN_QUEUE_STATUSES] },
       },
     });
     return res.json({
