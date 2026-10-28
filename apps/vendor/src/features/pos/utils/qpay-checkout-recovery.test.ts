@@ -42,6 +42,10 @@ test("pending QR references survive reload and remain organization scoped", () =
     recovery.paymentEntries = [{ id: "qr", method: "QR", status: "confirmed", amount: 100, invoiceId: "invoice-1" }];
     saveQPayCheckoutRecovery("org-1", recovery);
     assert.equal(loadQPayCheckoutRecovery("org-1")?.paymentEntries[0].invoiceId, "invoice-1");
+    recovery.paymentEntries = [{ id: "card", method: "CARD", status: "confirmed", amount: 39140, attemptId: "paid-attempt", transactionId: "123456789012" }];
+    saveQPayCheckoutRecovery("org-1", recovery);
+    assert.equal(loadQPayCheckoutRecovery("org-1")?.paymentEntries[0].attemptId, "paid-attempt", "verified card references must survive refresh without recharging");
+    assert.equal(loadQPayCheckoutRecovery("org-2"), null);
   } finally {
     if (previous) Object.defineProperty(globalThis, "window", previous);
     else Reflect.deleteProperty(globalThis, "window");

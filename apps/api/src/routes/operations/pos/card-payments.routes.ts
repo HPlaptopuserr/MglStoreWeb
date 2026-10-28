@@ -1,3 +1,4 @@
+import { getMinuAgentContextForRegister } from "../../../services/minu-register-context";
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus, CardTerminalRequestStatus } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
@@ -140,35 +141,6 @@ const toCardAttemptResponse = (attempt: CardAttemptResponseSource) => ({
   createdAt: attempt.createdAt.toISOString(),
   updatedAt: attempt.updatedAt.toISOString(),
 });
-
-async function getMinuAgentContextForRegister(registerId: string | null): Promise<MinuAgentContext | null> {
-  if (!registerId) return null;
-
-  const register = await prisma.posRegister.findUnique({
-    where: { id: registerId },
-    select: {
-      organization: {
-        select: {
-          minuAgentEnabled: true,
-          minuAgentUsername: true,
-          minuAgentPassword: true,
-          minuAgentBranchId: true,
-        },
-      },
-    },
-  });
-
-  const org = register?.organization;
-  if (!org?.minuAgentEnabled || !org.minuAgentUsername || !org.minuAgentPassword || !org.minuAgentBranchId) {
-    return null;
-  }
-
-  return {
-    username: org.minuAgentUsername,
-    password: org.minuAgentPassword,
-    branchId: org.minuAgentBranchId,
-  };
-}
 
 router.post("/pos/payments/card/authorize", async (req, res) => {
   const actor = await requirePosUser(req, res);

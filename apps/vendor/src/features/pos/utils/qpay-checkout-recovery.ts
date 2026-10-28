@@ -37,10 +37,11 @@ const isPaymentEntry = (value: unknown): value is CheckoutPaymentEntry => {
   );
 };
 
-const hasQPayInvoice = (entries: CheckoutPaymentEntry[]) =>
+const hasRecoverablePayment = (entries: CheckoutPaymentEntry[]) =>
   entries.some(
     (entry) =>
-      entry.method === "QR" && typeof entry.invoiceId === "string" && entry.invoiceId.length > 0,
+      (entry.method === "QR" && typeof entry.invoiceId === "string" && entry.invoiceId.length > 0) ||
+      (entry.method === "CARD" && entry.status === "confirmed" && typeof entry.attemptId === "string" && entry.attemptId.length > 0),
   );
 
 export function loadQPayCheckoutRecovery(
@@ -64,7 +65,7 @@ export function loadQPayCheckoutRecovery(
     if (
       typeof parsed.clientSaleId !== "string" ||
       !parsed.clientSaleId ||
-      !hasQPayInvoice(paymentEntries) ||
+      !hasRecoverablePayment(paymentEntries) ||
       !Number.isFinite(updatedAt) ||
       !parsed.loyalty
     ) {
@@ -102,7 +103,7 @@ export function saveQPayCheckoutRecovery(
   recovery: Omit<QPayCheckoutRecovery, "updatedAt">,
 ) {
   if (typeof window === "undefined" || !organizationId.trim()) return;
-  if (!hasQPayInvoice(recovery.paymentEntries)) {
+  if (!hasRecoverablePayment(recovery.paymentEntries)) {
     clearQPayCheckoutRecovery(organizationId);
     return;
   }

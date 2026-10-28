@@ -1814,13 +1814,22 @@ router.post("/pos/sales", async (req, res) => {
           const attemptId = String(
             cardLine.attemptId || cardLine.transactionId || "",
           ).trim();
-          await tx.cardPaymentAttempt.update({
-            where: { id: attemptId },
+          const claimed = await tx.cardPaymentAttempt.updateMany({
+            where: {
+              id: attemptId,
+              organizationId: effectiveOrganizationId,
+              status: PosPaymentStatus.APPROVED,
+              saleReference: null,
+              consumedAt: null,
+            },
             data: {
               saleReference: receiptNo,
               consumedAt: new Date(),
             },
           });
+          if (claimed.count !== 1) {
+            throw toApiError(409, "Картын төлбөр аль хэдийн ашиглагдсан байна. Борлуулалтын түүхээ шалгана уу.");
+          }
         }
 
         for (const qpayLine of qpayLines) {

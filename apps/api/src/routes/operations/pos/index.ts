@@ -1,6 +1,7 @@
 import quickRestockRoutes from "./quick-restock.routes";
 import { Router, type Router as ExpressRouter } from "express";
 import cardPaymentsRoutes from "./card-payments.routes";
+import cardRecoveryRoutes from "./card-recovery.routes";
 import qpayRoutes from "./qpay.routes";
 import salesRoutes from "./sales.routes";
 import shiftsRoutes from "./shifts.routes";
@@ -21,6 +22,7 @@ const router: ExpressRouter = Router();
 router.use(stocktakesRoutes);
 router.use(quickRestockRoutes);
 router.use(creditCustomersRoutes);
+router.use(cardRecoveryRoutes);
 router.use(cardPaymentsRoutes);
 router.use(qpayRoutes);
 router.use(salesRoutes);

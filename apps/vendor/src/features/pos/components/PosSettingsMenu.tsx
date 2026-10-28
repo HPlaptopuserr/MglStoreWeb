@@ -2,6 +2,7 @@
 import {
   ArrowUpRight,
   Clock3,
+  CreditCard,
   Monitor,
   ReceiptText,
   Wallet,
@@ -55,6 +56,8 @@ interface Props {
   onDisplay: () => void;
   onShift: () => void;
   onCheckEbarimt: () => void;
+  onRecoverCard: () => void;
+  recoveryDisabled: boolean;
 }
 export function PosSettingsMenu(props: Props) {
   return (
@@ -99,6 +102,13 @@ export function PosSettingsMenu(props: Props) {
           title="Ээлж"
           description={props.shiftLabel}
           onClick={props.onShift}
+        />
+        <SettingsAction
+          icon={CreditCard}
+          title="Өмнө төлөгдсөн картын гүйлгээтэй холбох"
+          description="Minu-с төлбөрийг шалгаж, сагсны борлуулалтыг нөхөн бүртгэх"
+          onClick={props.onRecoverCard}
+          disabled={props.disabled || props.recoveryDisabled}
         />
       </section>
       <section

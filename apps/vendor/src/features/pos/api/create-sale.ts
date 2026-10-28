@@ -56,11 +56,11 @@ export function createSale(payload: SalePayload): Promise<PosReceipt> {
     method: "POST",
     body: safePayload,
   }).catch((error) => {
-    // Local dev/demo fallback: backend may not expose /pos/sales yet.
+    // Never show a mock receipt for money already accepted by a bank.
     if (
       error instanceof PosApiError &&
       error.status === 404 &&
-      !safeBreakdown?.some((line) => line.cash)
+      !safeBreakdown?.some((line) => line.cash || line.attemptId || line.invoiceId)
     ) {
       return buildMockReceipt(safePayload);
     }

@@ -1,4 +1,5 @@
 "use client";
+import type { VerifiedCardRecovery } from "@mgl/types";
 import type { CustomerDisplayPayload, CustomerDisplaySuccessDetails } from "@/features/pos/types/customer-display.types";
 import type { PosProduct } from "@/features/pos/types/pos.types";
 import { RestockProductDialog } from "@/features/pos/components/RestockProductDialog";
@@ -31,6 +32,7 @@ import { PosDialog } from "@/features/pos/components/PosDialog";
 import { PosSettingsMenu } from "@/features/pos/components/PosSettingsMenu";
 import { CustomerDisplayDialog } from "@/features/pos/components/CustomerDisplayDialog";
 import { ShiftOpeningForm } from "@/features/pos/components/ShiftOpeningForm";
+const CardPaymentRecoveryDialog = dynamic(() => import("@/features/pos/components/CardPaymentRecoveryDialog").then((module) => module.CardPaymentRecoveryDialog), { ssr: false, loading: CheckoutLoading });
 import { PosSettingsDialog } from "@/features/pos/components/PosSettingsDialog";
 import { CashBalanceBadge } from "@/features/pos/components/CashBalanceBadge";
 import { CashDrawerPanel } from "@/features/pos/components/CashDrawerPanel";
@@ -568,6 +570,7 @@ export default function PosDemoPage() {
       ? "eBarimt идэвхтэй. Төлбөрийн дараа QR гарна."
       : "Энэ касс дээр eBarimt унтраалттай.";
   const [showPosSettings, setShowPosSettings] = useState(false);
+  const [showCardRecovery, setShowCardRecovery] = useState(false);
   const [showCustomerDisplaySettings, setShowCustomerDisplaySettings] = useState(false);
   const [showSetupPanel, setShowSetupPanel] = useState(false);
   // self-registration form
@@ -658,7 +661,9 @@ export default function PosDemoPage() {
       setScanMessage(
         qpayPaid
           ? "QR төлбөр хүлээн авсан. “Гүйлгээ батлах” товчийг дарна уу."
-          : "Өмнөх QR төлбөрийг сэргээж, төлөвийг шалгаж байна...",
+          : recovery.paymentEntries.some((entry) => entry.method === "CARD" && entry.status === "confirmed")
+            ? "Өмнөх картын төлбөрийг сэргээв. Бараа, дүнгээ хянаж “Гүйлгээ батлах” товчийг дарна уу. Дахин мөнгө татахгүй."
+            : "Өмнөх QR төлбөрийг сэргээж, төлөвийг шалгаж байна...",
       );
     }
     setCheckoutRecoveryScope(organizationId);
@@ -676,7 +681,7 @@ export default function PosDemoPage() {
   useEffect(() => {
     if (!organizationId || checkoutRecoveryScope !== organizationId) return;
 
-    if (!paymentEntries.some((entry) => entry.method === "QR" && entry.invoiceId)) {
+    if (!paymentEntries.some((entry) => (entry.method === "QR" && entry.invoiceId) || (entry.method === "CARD" && entry.status === "confirmed" && entry.attemptId))) {
       clearQPayCheckoutRecovery(organizationId);
       if (autoFinalizeRetryTimerRef.current !== null) {
         window.clearTimeout(autoFinalizeRetryTimerRef.current);
@@ -771,6 +776,7 @@ export default function PosDemoPage() {
     showShiftHistoryPanel ||
     showCashDrawerPanel ||
     showPosSettings ||
+    showCardRecovery ||
     showCustomerDisplaySettings ||
     successOverlay.visible ||
     isCardProcessing ||
@@ -1695,8 +1701,29 @@ export default function PosDemoPage() {
 
   const selectedByCode = productCatalog.findProduct?.(lastScannedCode) ?? null;
 
+  const attachRecoveredCard = (payment: VerifiedCardRecovery) => {
+    if (!registerConfig || !shift || selectedCreditRepayment || paymentEntries.length > 0 || !state.cart.length || Math.round(payment.amount * 100) !== Math.round(totals.grandTotal * 100)) {
+      throw new Error("Сагс эсвэл төлбөр өөрчлөгдсөн байна. Бараа, төлбөрөө дахин шалгана уу.");
+    }
+    assertRetailCheckoutContext(registerConfig, shift, organizationId);
+    clientSaleIdRef.current = `card-recovery-${payment.attemptId}`;
+    const entries: CheckoutPaymentEntry[] = [{ id: `recovery-${payment.attemptId}`, method: "CARD", status: "confirmed", amount: payment.amount, attemptId: payment.attemptId, transactionId: payment.transactionId }];
+    saveQPayCheckoutRecovery(organizationId, { clientSaleId: clientSaleIdRef.current, paymentEntries: entries, qpayModal: null, loyalty: initialLoyaltyState, loyaltyRedeemSession: null });
+    setPaymentEntries(entries);
+    setLoyalty(initialLoyaltyState);
+    setLoyaltyRedeemSession(null);
+    setPaymentMethod("CARD");
+    setQpayModal(null);
+    setAutoCheckoutActive(false);
+    setShowCardRecovery(false);
+    setView("checkout");
+    setScanStatus("success");
+    setScanMessage("Minu өмнөх төлбөрийг баталлаа. Бараа, дүнгээ хянаж “Гүйлгээ батлах” дарна уу. Дахин мөнгө татахгүй.");
+  };
+
+
   const blockQPayCartMutation = () => {
-    if (!qpayCreatingRef.current && !paymentEntries.some(item => item.method === "QR" && item.invoiceId)) return false;
+    if (!showCardRecovery && !qpayCreatingRef.current && !paymentEntries.some(item => (item.method === "QR" && item.invoiceId) || (item.method === "CARD" && item.status === "confirmed" && item.attemptId))) return false;
     setScanStatus("not-found");
     setScanMessage("Төлбөртэй сагсыг өөрчлөх боломжгүй. Төлбөрийн төлөвөө шалгаж, борлуулалтаа дуусгана уу.");
     return true;
@@ -2525,7 +2552,7 @@ export default function PosDemoPage() {
           setScanMessage(
             approvedAttempt.message ||
               (approvedAttempt.status === "PENDING"
-                ? "Терминалын төлбөр баталгаажаагүй байна. Дахин оролдоно уу."
+                ? "Төлбөрийн төлөв тодорхойгүй байна. Дахин карт уншуулахгүйгээр кассын “Тохиргоо → Өмнө төлөгдсөн картын гүйлгээтэй холбох” үйлдлээр Minu-с шалгана уу."
                 : "Картын төлбөр цуцлагдлаа"),
           );
           return;
@@ -2680,7 +2707,7 @@ export default function PosDemoPage() {
   const removePaymentEntry = async (id: string) => {
     const target = paymentEntries.find(item => item.id === id);
     if (!target || paymentRemovalRef.current.has(id)) return;
-    if (target.method === "QR" && target.status === "confirmed") {
+    if ((target.method === "QR" || target.method === "CARD") && target.status === "confirmed") {
       setScanStatus("not-found");
       setScanMessage("Банкны төлбөрийг шууд устгах боломжгүй. Төлбөрийн төлөвийг тулгаж шалгана уу.");
       return;
@@ -2701,9 +2728,9 @@ export default function PosDemoPage() {
   };
 
   const resetPaymentEntries = () => {
-    if (qpayCreatingRef.current || paymentEntries.some(item => item.method === "QR" && item.invoiceId)) {
+    if (qpayCreatingRef.current || paymentEntries.some(item => (item.method === "QR" && item.invoiceId) || (item.method === "CARD" && item.status === "confirmed" && item.attemptId))) {
       setScanStatus("not-found");
-      setScanMessage("QR төлбөрийн төлөв шийдэгдээгүй үед төлбөрүүдийг цэвэрлэх боломжгүй.");
+      setScanMessage("Банкны төлбөртэй тул төлбөрүүдийг цэвэрлэх боломжгүй. Борлуулалтаа дуусгана уу.");
       return;
     }
     if (cardPaymentRunRef.current) {
@@ -3998,6 +4025,10 @@ export default function PosDemoPage() {
         </div>
       </div>
 
+      {showCardRecovery && registerConfig && (
+        <CardPaymentRecoveryDialog registerId={registerConfig.id} amount={totals.grandTotal} onVerified={attachRecoveredCard} onClose={() => setShowCardRecovery(false)} />
+      )}
+
       {showPosSettings && (
         <PosSettingsDialog onClose={() => setShowPosSettings(false)}>
           <PosSettingsMenu
@@ -4021,6 +4052,11 @@ export default function PosDemoPage() {
               if (shift?.id) void refreshCashDrawerSummary();
             }}
             onCheckEbarimt={() => { void checkEbarimtConnection(); }}
+            onRecoverCard={() => {
+              setShowPosSettings(false);
+              setShowCardRecovery(true);
+            }}
+            recoveryDisabled={!registerConfig?.isActive || !shift?.id || !shiftReady || shiftRegisterMismatch || Boolean(selectedCreditRepayment) || paymentEntries.length > 0 || !state.cart.length || totals.grandTotal <= 0 || checkoutStarting || creditRepaymentSubmitting || autoFinalizing}
           />
 
       {scanMessage && (
