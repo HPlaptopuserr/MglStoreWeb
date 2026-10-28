@@ -5,6 +5,7 @@ import { useState } from "react";
 import { ExternalLink, ImageOff, RotateCcw } from "lucide-react";
 import {
   CLUB_PRESENTATION_PDF,
+  CLUB_PRESENTATION_VERSION,
   clubPresentationPages,
 } from "./club-presentation";
 import styles from "./club-presentation.module.css";
@@ -49,7 +50,7 @@ function TelevisionScreen({ page }: { page: number }) {
         <Image
           key={attempt}
           className={loaded ? styles.screenImage : styles.imagePending}
-          src={`/mgl-club/slides/page-${String(page + 1).padStart(2, "0")}.webp${attempt ? `?retry=${attempt}` : ""}`}
+          src={`/mgl-club/slides/page-${String(page + 1).padStart(2, "0")}.webp?v=${CLUB_PRESENTATION_VERSION}${attempt ? `&retry=${attempt}` : ""}`}
           alt={`${page + 1}-р хуудас: ${title}`}
           width={2400}
           height={1351}
