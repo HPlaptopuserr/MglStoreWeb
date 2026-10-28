@@ -61,8 +61,8 @@ export function CheckoutQPayPanel({
       {pendingId && (
         <>
           <p className="text-xs leading-5 text-slate-500">
-            Банк төлбөрийг баталгаажуулмагц борлуулалт дуусна. Төлсөн бол дахин
-            төлөхгүй хүлээнэ үү.
+            Банк баталгаажуулмагц энэ төлбөр үлдэгдлээс хасагдана. Үлдэгдэлтэй
+            бол дараагийн хэсгээ төлнө. Төлсөн бол дахин төлөхгүй хүлээнэ үү.
           </p>
           <div className="flex justify-center gap-2">
             <button

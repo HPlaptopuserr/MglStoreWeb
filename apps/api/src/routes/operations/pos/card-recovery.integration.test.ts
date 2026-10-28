@@ -414,6 +414,148 @@ test(
           assert.equal(await sales(), 2);
         },
       );
+      await t.test(
+        "10000 mixed sale uses 5000 card, 2000 QR and 3000 cash, waits for bank confirmation and deducts stock once",
+        async () => {
+          await prisma.product.update({ where: { id: product.id }, data: { price: 10000 } });
+          const card = await prisma.cardPaymentAttempt.create({
+            data: {
+              organizationId: organization.id,
+              registerId: register.id,
+              terminalId: "TEST-TERMINAL",
+              amount: 5000,
+              status: "APPROVED",
+              transactionId: "test-split-card",
+            },
+          });
+          const qr = await prisma.qPayInvoice.create({
+            data: {
+              organizationId: organization.id,
+              registerId: register.id,
+              amount: 2000,
+              qrText: "test-split-qr",
+              expiresAt: new Date(Date.now() + 60000),
+              status: "PENDING",
+            },
+          });
+          const splitBody = {
+            ...saleBody,
+            clientSaleId: "split-payment-10000",
+            paymentMethod: "MIXED",
+            lines: [
+              {
+                productId: product.id,
+                qty: 1,
+                unitPrice: 10000,
+                discountAmount: 0,
+                taxRate: 0,
+              },
+            ],
+            paymentBreakdown: [
+              { method: "CARD", amount: 5000, attemptId: card.id },
+              { method: "QR", amount: 2000, invoiceId: qr.id },
+              {
+                method: "CASH",
+                amount: 3000,
+                cash: { receivedAmount: 3000, changeAmount: 0 },
+              },
+            ],
+          };
+          const submit = (body: unknown = splitBody) =>
+            fetch(`${base}/pos/sales`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify(body),
+            });
+          const pending = await submit();
+          assert.equal(pending.status, 409, await pending.text());
+          assert.equal(await stock(), 6);
+          assert.equal(
+            (
+              await prisma.cardPaymentAttempt.findUniqueOrThrow({
+                where: { id: card.id },
+              })
+            ).consumedAt,
+            null,
+          );
+          await prisma.qPayInvoice.update({
+            where: { id: qr.id },
+            data: {
+              status: "PAID",
+              paymentId: "test-split-qr-paid",
+              paidAt: new Date(),
+            },
+          });
+          for (const amount of [2000, 4000]) {
+            const incomplete = await submit({
+              ...splitBody,
+              paymentBreakdown: splitBody.paymentBreakdown.map((entry) =>
+                entry.method === "CASH"
+                  ? {
+                      ...entry,
+                      amount,
+                      cash: { receivedAmount: amount, changeAmount: 0 },
+                    }
+                  : entry,
+              ),
+            });
+            assert.equal(incomplete.status, 400, await incomplete.text());
+            assert.equal(await stock(), 6);
+          }
+          const completed = await submit();
+          const text = await completed.text();
+          assert.equal(completed.status, 201, text);
+          const receipt = JSON.parse(text) as {
+            receiptNo: string;
+            paymentMethod: string;
+            grandTotal: number;
+            paymentBreakdown: Array<{
+              method: string;
+              amount: number;
+              cash?: { receivedAmount: number; changeAmount: number };
+            }>;
+          };
+          assert.equal(receipt.paymentMethod, "MIXED");
+          assert.equal(receipt.grandTotal, 10000);
+          assert.deepEqual(
+            receipt.paymentBreakdown.map((entry) => [
+              entry.method,
+              entry.amount,
+            ]),
+            [
+              ["CARD", 5000],
+              ["QPAY", 2000],
+              ["CASH", 3000],
+            ],
+          );
+          assert.deepEqual(receipt.paymentBreakdown[2].cash, {
+            receivedAmount: 3000,
+            changeAmount: 0,
+          });
+          assert.equal(await stock(), 5);
+          assert.equal(await sales(), 3);
+          assert.equal(
+            (
+              await prisma.qPayInvoice.findUniqueOrThrow({
+                where: { id: qr.id },
+              })
+            ).saleReference,
+            receipt.receiptNo,
+          );
+          assert.equal(
+            (
+              await prisma.cardPaymentAttempt.findUniqueOrThrow({
+                where: { id: card.id },
+              })
+            ).saleReference,
+            receipt.receiptNo,
+          );
+          const retry = await submit();
+          assert.equal(retry.status, 200, await retry.text());
+          assert.equal(await stock(), 5);
+          assert.equal(await sales(), 3);
+        },
+      );
       assert.ok(providerCalls.length > 0);
       assert.ok(
         providerCalls.every(

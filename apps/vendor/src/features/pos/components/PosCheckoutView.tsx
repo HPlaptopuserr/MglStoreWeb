@@ -1,9 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import type { PaymentFeedback } from "../types/payment-status.types";
+import { SplitPaymentPlanner } from "./SplitPaymentPlanner";
+import { CheckoutPaymentNotice } from "./CheckoutPaymentNotice";
+import { CheckoutPaymentAmount } from "./CheckoutPaymentAmount";
+import { CheckoutPaymentLedger } from "./CheckoutPaymentLedger";
+import { checkoutPaymentAmount } from "../utils/checkout-payment-amount";
 import {
   ChevronRight,
-  CheckCircle2,
   X,
   Banknote,
   CreditCard,
@@ -22,6 +27,7 @@ import { CheckoutQPayPanel } from "./CheckoutQPayPanel";
 import { CheckoutLoyaltyPanel } from "./CheckoutLoyaltyPanel";
 import {
   PAYMENT_SHORTCUTS,
+  PAYMENT_METHODS,
   paymentMethodForKey,
 } from "../constants/payment-methods";
 import { CreditPaymentDialog } from "./CreditPaymentDialog";
@@ -70,6 +76,9 @@ export type PosCheckoutProps = {
   onClearLoyaltyRedeemSession: () => void;
   creditBorrowers?: PosCreditBorrower[];
   cashTenderEnabled?: boolean;
+  splitPayment?: boolean;
+  paymentFeedback?: PaymentFeedback;
+  onCheckCard?: (id: string) => void;
 };
 
 export type CheckoutPaymentEntry = {
@@ -120,12 +129,7 @@ export type CheckoutLoyaltyRedeemSession = {
   confirmedAt?: string | null;
 };
 
-const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
-  { value: "CASH", label: "Бэлэн" },
-  { value: "CARD", label: "Карт" },
-  { value: "QR", label: "QPay" },
-  { value: "CREDIT", label: "Зээл" },
-];
+const PAYMENT_OPTIONS = PAYMENT_METHODS;
 
 export function PosCheckoutView({
   lines,
@@ -159,6 +163,9 @@ export function PosCheckoutView({
   onClearLoyaltyRedeemSession,
   creditBorrowers = [],
   cashTenderEnabled = true,
+  splitPayment = false,
+  paymentFeedback = {},
+  onCheckCard,
 }: PosCheckoutProps) {
   const [enteredAmount, setEnteredAmount] = useState("");
   const [loyaltyPanelOpen, setLoyaltyPanelOpen] = useState(false);
@@ -168,23 +175,20 @@ export function PosCheckoutView({
 
   const isCashTender = cashTenderEnabled && paymentMethod === "CASH";
   const cashPayment = useCashPayment(enteredAmount, remaining);
-  const parsedAmount = parseFloat(enteredAmount.replace(/,/g, "")) || 0;
+  const amountPreview = checkoutPaymentAmount(enteredAmount, remaining);
+  const hasPendingPayment = paymentEntries.some((entry) => entry.status === "pending");
+  const paymentBusy = Boolean(disabled || cashPayment.submitting || hasPendingPayment);
   const pendingTotal = paymentEntries
     .filter((item) => item.status === "pending")
     .reduce((sum, item) => sum + item.amount, 0);
-  const hasConfirmedQPay = paymentEntries.some(
-    (item) => item.method === "QR" && item.status === "confirmed",
+  const confirmedTotal = paymentEntries.filter((entry) => entry.status === "confirmed").reduce((sum, entry) => sum + Math.round(entry.amount * 100), 0) / 100;
+  const hasConfirmedBankPayment = paymentEntries.some(
+    (item) => (item.method === "QR" || item.method === "CARD") && item.status === "confirmed",
   );
   const hasPendingQPay = paymentEntries.some(
     (item) => item.method === "QR" && item.status === "pending",
   );
-  const hasCustomAmount = parsedAmount > 0;
-  const paymentAmount = isCashTender
-    ? (cashPayment.preview?.amount ?? 0)
-    : hasCustomAmount
-      ? Math.min(parsedAmount, Math.max(0, remaining))
-      : Math.max(0, remaining);
-  const previewRemaining = Math.max(0, remaining - paymentAmount);
+  const paymentAmount = isCashTender ? (cashPayment.preview?.amount ?? 0) : amountPreview.amount;
   const maxRedeemPoints = Math.max(
     0,
     Math.min(loyalty.balance, totals.grandTotal),
@@ -230,6 +234,7 @@ export function PosCheckoutView({
   };
 
   const runPaymentAction = (amount: number) => {
+    if (paymentBusy || amount <= 0 || (!isCashTender && amountPreview.error)) return;
     if (isCashTender) {
       const preview = cashPayment.preview;
       if (!preview || disabled) return;
@@ -289,9 +294,8 @@ export function PosCheckoutView({
       onKeyDown={(event) => {
         const method = paymentMethodForKey(event.key);
         if (
-          method &&
-          !disabled &&
-          !paymentEntries.some((entry) => entry.status === "pending")
+          method && !splitPayment &&
+          !paymentBusy
         ) {
           event.preventDefault();
           onChangeMethod(method);
@@ -313,7 +317,7 @@ export function PosCheckoutView({
           </div>
           <span className="text-slate-400">•</span>
           <span className="text-xs text-slate-600 max-[760px]:text-[10px]">
-            Төлбөр тооцоо {transactionId}
+            {splitPayment ? "Хэсэгчилсэн төлбөр" : "Төлбөр тооцоо"} {transactionId}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -345,6 +349,13 @@ export function PosCheckoutView({
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* ── Left: payment selector + numpad ── */}
         <div className="flex min-h-0 w-[360px] shrink-0 flex-col gap-2 overflow-y-auto overscroll-contain border-r border-slate-300 p-3 min-[1600px]:w-[400px] min-[1600px]:p-4">
+          {splitPayment ? (
+            <SplitPaymentPlanner remaining={remaining} entries={paymentEntries} disabled={Boolean(disabled)} feedback={paymentFeedback} onCheckCard={onCheckCard} onCheckQr={onMarkQPayPaid} onPay={async (method, amount, cash) => {
+              onChangeMethod(method);
+              if (method === "QR") await onRequestQPay(amount);
+              else await onAddPayment(method, amount, undefined, cash);
+            }} />
+          ) : <>
           {/* Payment method tabs */}
           <div className="shrink-0">
             <p className="sr-only">Төлбөрийн хэлбэр</p>
@@ -363,11 +374,7 @@ export function PosCheckoutView({
                   <button
                     key={opt.value}
                     type="button"
-                    disabled={
-                      disabled ||
-                      cashPayment.submitting ||
-                      paymentEntries.some((entry) => entry.status === "pending")
-                    }
+                    disabled={paymentBusy}
                     aria-keyshortcuts={PAYMENT_SHORTCUTS[opt.value]}
                     aria-pressed={isActive}
                     onClick={() => {
@@ -398,39 +405,11 @@ export function PosCheckoutView({
               enteredAmount={enteredAmount}
               cash={cashPayment.preview?.cash}
               error={cashPayment.error}
-              disabled={disabled || cashPayment.submitting}
+              disabled={paymentBusy}
               onChange={setEnteredAmount}
             />
           ) : (
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-600 mb-2">
-                Төлөх дүн
-              </p>
-              <div
-                className={`rounded-xl border px-4 py-3 transition max-[1500px]:px-3 max-[1500px]:py-2 [@media(max-height:850px)]:py-2 ${
-                  hasCustomAmount
-                    ? "border-amber-500/70 bg-blue-600/10"
-                    : "border-slate-300 bg-white"
-                }`}
-              >
-                <div className="flex items-baseline justify-end gap-1">
-                  <span className="text-base font-bold text-slate-600">₮</span>
-                  <span className="text-3xl font-black tabular-nums text-slate-950 max-[1500px]:text-2xl max-[1180px]:text-xl">
-                    {paymentAmount.toLocaleString()}
-                  </span>
-                </div>
-                <p className="mt-1 text-right text-[10px] font-bold uppercase tracking-widest text-slate-600">
-                  {hasCustomAmount ? "Хэсэгчилсэн төлөлт" : "Үлдэгдэл бүтнээр"}
-                </p>
-              </div>
-              <p className="mt-2 text-xs text-slate-600 max-[1280px]:text-[11px]">
-                Үлдэгдэл: ₮{remaining.toLocaleString()} • Төлсний дараа: ₮
-                {previewRemaining.toLocaleString()}
-              </p>
-              <p className="mt-1 text-[11px] font-semibold text-slate-600 max-[1280px]:text-[10px]">
-                Хэсэгчлэн төлөх үед доорх товчлуураар дүнгээ өөрчилнө.
-              </p>
-            </div>
+            <CheckoutPaymentAmount value={enteredAmount} remaining={remaining} preview={amountPreview} disabled={paymentBusy} onChange={setEnteredAmount} />
           )}
 
           {
@@ -439,7 +418,7 @@ export function PosCheckoutView({
               onClick={() => {
                 setLoyaltyPanelOpen(true);
               }}
-              disabled={disabled || cashPayment.submitting}
+              disabled={paymentBusy || paymentEntries.some((entry) => entry.status === "confirmed")}
               className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-700 hover:bg-slate-100"
             >
               M Point ашиглах (заавал биш)
@@ -455,7 +434,7 @@ export function PosCheckoutView({
                 disabled={
                   disabled ||
                   cashPayment.submitting ||
-                  remaining <= 0 ||
+                  remaining <= 0 || hasPendingPayment || (!isCashTender && Boolean(amountPreview.error)) ||
                   (isCashTender && !cashPayment.preview)
                 }
                 className="rounded-xl bg-blue-600 px-3 py-3 text-xs font-black text-white hover:bg-blue-500 disabled:opacity-40 max-[1500px]:py-2.5 max-[1180px]:text-[11px] [@media(max-height:850px)]:py-2"
@@ -465,7 +444,7 @@ export function PosCheckoutView({
                   : isCashTender
                     ? "Хэсэгчилсэн төлбөр нэмэх"
                     : paymentMethod === "QR"
-                      ? `QPay ₮${paymentAmount.toLocaleString()}`
+                      ? `QR ₮${paymentAmount.toLocaleString()}`
                       : `${PAYMENT_OPTIONS.find((item) => item.value === paymentMethod)?.label || "Төлбөр"} ₮${paymentAmount.toLocaleString()}`}
               </button>
             )}
@@ -474,7 +453,7 @@ export function PosCheckoutView({
                 type="button"
                 onClick={() => void onResetPayments()}
                 disabled={
-                  disabled || paymentEntries.length === 0 || hasConfirmedQPay
+                  paymentBusy || paymentEntries.length === 0 || hasConfirmedBankPayment
                 }
                 className="rounded-xl border border-slate-300 px-3 py-3 text-xs font-bold text-slate-700 hover:border-blue-500 disabled:opacity-40 max-[1500px]:py-2.5 max-[1180px]:text-[11px] [@media(max-height:850px)]:py-2"
               >
@@ -485,7 +464,7 @@ export function PosCheckoutView({
 
           <PaymentKeypad
             tone="light"
-            disabled={disabled || cashPayment.submitting}
+            disabled={paymentBusy}
             onKey={handleNumpad}
             onAmount={setEnteredAmount}
           />
@@ -494,19 +473,21 @@ export function PosCheckoutView({
               role="status"
               className="shrink-0 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800"
             >
-              Хүлээгдэж буй QPay: ₮{pendingTotal.toLocaleString()}
+              Хүлээгдэж буй төлбөр: ₮{pendingTotal.toLocaleString()}
             </p>
           )}
+          </>}
+
         </div>
 
         {/* ── Right: order summary ── */}
-        <div className="flex flex-1 flex-col gap-4 overflow-hidden p-6 max-[1500px]:gap-3 max-[1500px]:p-4 max-[1180px]:gap-2.5 max-[1180px]:p-3 [@media(max-height:850px)]:gap-2.5 [@media(max-height:850px)]:p-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-6 max-[1500px]:gap-3 max-[1500px]:p-4 max-[1180px]:gap-2.5 max-[1180px]:p-3 [@media(max-height:850px)]:gap-2.5 [@media(max-height:850px)]:p-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-slate-600 shrink-0">
             Захиалгын жагсаалт
           </p>
 
           {/* Scrollable item list */}
-          <div className="flex-1 overflow-y-auto overscroll-contain space-y-2 pr-1">
+          <div className="min-h-20 flex-1 overflow-y-auto overscroll-contain space-y-2 pr-1">
             {lines.map((line) => (
               <div
                 key={line.productId}
@@ -578,107 +559,9 @@ export function PosCheckoutView({
             </div>
           )}
 
-          {hasConfirmedQPay && (
-            <div className="rounded-2xl border border-emerald-400/40 bg-emerald-400/10 p-4">
-              <div className="flex items-start gap-3">
-                <CheckCircle2
-                  className="mt-0.5 shrink-0 text-emerald-700"
-                  size={20}
-                />
-                <div>
-                  <p className="text-sm font-black text-emerald-800">
-                    QPay төлбөр хүлээн авлаа
-                  </p>
-                  <p className="mt-1 text-xs font-semibold leading-5 text-emerald-800">
-                    {remaining <= 0
-                      ? "Борлуулалтыг дуусгахын тулд “Гүйлгээ батлах” товчийг дарна уу."
-                      : `Үлдэгдэл ₮${remaining.toLocaleString()} төлбөрөө гүйцээгээд “Гүйлгээ батлах” товчийг дарна уу.`}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+          {confirmedTotal > 0 && <CheckoutPaymentNotice paid={confirmedTotal} remaining={remaining} />}
 
-          <div className="max-h-44 space-y-2 overflow-y-auto rounded-2xl border border-slate-300 bg-white/70 p-4 max-[1500px]:max-h-32 max-[1500px]:p-3">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-600">
-              Төлбөрийн мөрүүд
-            </p>
-            {paymentEntries.length === 0 ? (
-              <p className="text-xs text-slate-600">
-                Одоогоор төлбөр нэмээгүй байна.
-              </p>
-            ) : (
-              paymentEntries.map((entry) => (
-                <div
-                  key={entry.id}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-slate-700">
-                      {entry.method === "CREDIT" && entry.credit
-                        ? `Зээл • ${entry.credit.borrowerName}${entry.credit.employeeName ? ` • ${entry.credit.employeeName}` : ""} • ₮${entry.amount.toLocaleString()}`
-                        : `${entry.method} • ₮${entry.amount.toLocaleString()}`}
-                    </p>
-                    {entry.cash && (
-                      <p className="text-xs text-emerald-700">
-                        Авсан:{" "}
-                        {entry.cash.receivedAmount.toLocaleString("mn-MN")} ₮ ·
-                        Хариулт:{" "}
-                        {entry.cash.changeAmount.toLocaleString("mn-MN")} ₮
-                      </p>
-                    )}
-                    <div className="flex items-center gap-2">
-                      {entry.status === "pending" && entry.method === "QR" ? (
-                        <button
-                          type="button"
-                          onClick={() => onMarkQPayPaid(entry.id)}
-                          className="rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-500"
-                        >
-                          Төлөв шалгах
-                        </button>
-                      ) : entry.status === "pending" ? (
-                        <span className="text-[10px] font-bold text-blue-600">
-                          Хүлээгдэж байна
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-bold text-emerald-700">
-                          Баталгаажсан
-                        </span>
-                      )}
-                      {!(
-                        entry.method === "QR" && entry.status === "confirmed"
-                      ) && (
-                        <button
-                          type="button"
-                          onClick={() => void onRemovePayment(entry.id)}
-                          className="rounded-md border border-slate-300 px-2 py-1 text-[10px] font-bold text-slate-600 hover:border-blue-500"
-                        >
-                          {entry.method === "QR" ? "QR цуцлах" : "Устгах"}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {entry.invoiceId && (
-                    <p className="mt-1 break-all text-[10px] text-slate-600">
-                      Төлбөрийн лавлах: {entry.invoiceId}
-                    </p>
-                  )}
-                  {entry.transactionId && (
-                    <p className="mt-1 text-[10px] text-slate-600">
-                      Txn: {entry.transactionId}
-                    </p>
-                  )}
-                  {entry.credit && (
-                    <p className="mt-1 text-[10px] text-slate-600">
-                      Хүү: ₮{entry.credit.totalInterest.toLocaleString()} •
-                      Нийт: ₮{entry.credit.totalDue.toLocaleString()} •{" "}
-                      {entry.credit.termMonths} сар
-                    </p>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
+          <CheckoutPaymentLedger entries={paymentEntries} remaining={remaining} disabled={disabled} onCheckQr={onMarkQPayPaid} onCheckCard={onCheckCard} feedback={paymentFeedback} onRemove={onRemovePayment} />
 
           {/* Totals card */}
           <div className="shrink-0 space-y-2.5 rounded-2xl border border-slate-300 bg-white px-6 py-5 max-[1500px]:space-y-2 max-[1500px]:px-4 max-[1500px]:py-4 [@media(max-height:850px)]:py-3">
@@ -732,7 +615,7 @@ export function PosCheckoutView({
                   return;
                 }
                 const preview = cashPayment.preview;
-                if (!isCashTender || !preview || preview.amount < remaining)
+                if (splitPayment || !isCashTender || !preview || preview.amount < remaining)
                   return;
                 void cashPayment.submit(() =>
                   onFinalizeCash(preview.amount, preview.cash),
@@ -743,7 +626,7 @@ export function PosCheckoutView({
                 cashPayment.submitting ||
                 (!canFinalize &&
                   !(
-                    isCashTender &&
+                    !splitPayment && isCashTender &&
                     cashPayment.preview &&
                     cashPayment.preview.amount >= remaining &&
                     remaining > 0 &&
@@ -758,7 +641,7 @@ export function PosCheckoutView({
             <button
               type="button"
               onClick={onBack}
-              disabled={hasConfirmedQPay}
+              disabled={hasConfirmedBankPayment}
               className="w-full rounded-xl border border-slate-300 px-6 py-3 text-sm font-semibold text-slate-600 transition-colors hover:border-blue-500 hover:text-slate-800 disabled:cursor-not-allowed disabled:opacity-40 max-[1500px]:py-2.5 max-[1500px]:text-xs [@media(max-height:850px)]:py-2"
             >
               ← Кассанд буцах

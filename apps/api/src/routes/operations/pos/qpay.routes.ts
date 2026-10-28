@@ -1,3 +1,4 @@
+import { canSimulateLocalPosPayment } from "../../../services/local-pos-payment-simulation";
 import { usesOrganizationMerchant } from "../../../services/pos-merchant-scope";
 import { isPaymentRequestId, matchesPaymentRequest } from "../../../services/payment-request-identity";
 import { canReleaseCheckoutAfterCancelFailure } from "../../../services/pos-qpay-cancel-policy";
@@ -299,6 +300,32 @@ router.post(["/pos/payments/qpay/invoice", "/pos/payments/systemqr/invoice"], as
           qrText: existing.qrText, qrImage: typeof payload.qrImage === "string" ? payload.qrImage : "",
           expiresAt: existing.expiresAt.toISOString(), createdAt: existing.createdAt.toISOString() });
       }
+    }
+
+    if (canSimulateLocalPosPayment({
+      enabled: allowPosSimulation,
+      localDev: process.env.MGL_LOCAL_DEV === "true",
+      environment: runtimeEnv,
+      databaseUrl: process.env.DATABASE_URL,
+      hostname: req.hostname,
+      remoteAddress: req.socket.remoteAddress,
+      registerId,
+    })) {
+      const localInvoice = await prisma.qPayInvoice.create({ data: {
+        ...(requestId ? { id: requestId } : {}),
+        organizationId: effectiveOrganizationId,
+        registerId,
+        initiatedById: actor.id,
+        amount,
+        qrText: "LOCAL-TEST-PAYMENT",
+        status: PosQPayStatus.PAID,
+        paidAt: new Date(),
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+        paymentId: `local-sim-${requestId || crypto.randomUUID()}`,
+        webhookPayload: { provider: "LOCAL_SIMULATION", simulated: true, message: "Local test payment; no bank request" },
+      } });
+      return res.json({ invoiceId: localInvoice.id, amount: Number(localInvoice.amount), status: localInvoice.status,
+        qrText: "", qrImage: "", expiresAt: localInvoice.expiresAt.toISOString(), createdAt: localInvoice.createdAt.toISOString(), simulated: true });
     }
 
     const requiresSystemQr = req.path === "/pos/payments/systemqr/invoice" || req.body?.provider === "SYSTEMQR";

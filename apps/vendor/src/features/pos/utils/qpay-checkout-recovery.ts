@@ -4,6 +4,7 @@ import type {
   CheckoutPaymentEntry,
 } from "../components/PosCheckoutView";
 
+// Preserve the existing storage key so unresolved QR and split payments survive upgrades.
 const STORAGE_PREFIX = "mglstore.pos.qpay-checkout.v1";
 
 export type QPayCheckoutRecovery = {
@@ -37,12 +38,11 @@ const isPaymentEntry = (value: unknown): value is CheckoutPaymentEntry => {
   );
 };
 
-const hasRecoverablePayment = (entries: CheckoutPaymentEntry[]) =>
-  entries.some(
-    (entry) =>
-      (entry.method === "QR" && typeof entry.invoiceId === "string" && entry.invoiceId.length > 0) ||
-      (entry.method === "CARD" && entry.status === "confirmed" && typeof entry.attemptId === "string" && entry.attemptId.length > 0),
-  );
+export const hasCheckoutPaymentEvidence = (entries: CheckoutPaymentEntry[]) =>
+  entries.some((entry) => entry.status === "confirmed" ||
+    (entry.method === "QR" && Boolean(entry.invoiceId)) ||
+    (entry.method === "CARD" && Boolean(entry.attemptId)));
+
 
 export function loadQPayCheckoutRecovery(
   organizationId: string,
@@ -65,7 +65,7 @@ export function loadQPayCheckoutRecovery(
     if (
       typeof parsed.clientSaleId !== "string" ||
       !parsed.clientSaleId ||
-      !hasRecoverablePayment(paymentEntries) ||
+      !hasCheckoutPaymentEvidence(paymentEntries) ||
       !Number.isFinite(updatedAt) ||
       !parsed.loyalty
     ) {
@@ -103,7 +103,7 @@ export function saveQPayCheckoutRecovery(
   recovery: Omit<QPayCheckoutRecovery, "updatedAt">,
 ) {
   if (typeof window === "undefined" || !organizationId.trim()) return;
-  if (!hasRecoverablePayment(recovery.paymentEntries)) {
+  if (!hasCheckoutPaymentEvidence(recovery.paymentEntries)) {
     clearQPayCheckoutRecovery(organizationId);
     return;
   }
