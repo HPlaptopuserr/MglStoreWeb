@@ -4,9 +4,10 @@ import { formatMoney } from "../utils/pos-display-format";
 interface Props {
   paid: number;
   remaining: number;
+  blocker?: string | null;
 }
 
-export function CheckoutPaymentNotice({ paid, remaining }: Props) {
+export function CheckoutPaymentNotice({ paid, remaining, blocker }: Props) {
   const partial = remaining > 0;
   const Icon = partial ? Info : CheckCircle2;
   return (
@@ -26,9 +27,9 @@ export function CheckoutPaymentNotice({ paid, remaining }: Props) {
           Төлсөн {formatMoney(paid)} · Үлдэгдэл {formatMoney(remaining)}
         </p>
         <p className="mt-1 text-xs leading-5">
-          {partial
+          {blocker || (partial
             ? "Нийт төлбөр дуусаагүй байна. Үлдсэн хэсгээ төлнө үү."
-            : "Борлуулалт, баримтаа үүсгэхийн тулд «Гүйлгээ батлах» дарна уу. Борлуулалт бүртгэгдсэний дараа касс руу буцна."}
+            : "Борлуулалт, баримтаа үүсгэхийн тулд «Гүйлгээ батлах» дарна уу. Борлуулалт бүртгэгдсэний дараа касс руу буцна.")}
         </p>
       </div>
     </section>

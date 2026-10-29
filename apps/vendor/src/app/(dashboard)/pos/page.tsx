@@ -17,6 +17,7 @@ import { assertRetailCheckoutContext } from "@/features/pos/utils/retail-registe
 import { fetchOrgRegisters } from "@/features/pos/api/register";
 import { receiptAction } from "@/features/pos/utils/receipt-flow";
 import { ReceiptBuyerChoice } from "@/features/pos/components/ReceiptBuyerChoice";
+import { checkoutFinalizationBlocker } from "@/features/pos/utils/checkout-finalization";
 import { canAutoCompletePayment } from "@/features/pos/utils/auto-complete-payment";
 import { useEventCallback } from "@/features/pos/hooks/useEventCallback";
 import { usePendingCardPayments } from "@/features/pos/hooks/usePendingCardPayments";
@@ -1713,6 +1714,18 @@ export default function PosDemoPage() {
           (loyaltyRedeemSession?.status === "CONFIRMED" &&
             loyaltyRedeemSession.requestedPoints === Math.floor(loyalty.redeemPoints || 0)))));
 
+  const finalizationBlocker = checkoutFinalizationBlocker({
+    registerReady: Boolean(registerConfig?.branchId),
+    shiftLoading,
+    shiftError,
+    hasShift: Boolean(shift?.id),
+    shiftRegisterMismatch,
+    loyaltyReady,
+    hasPendingPayment,
+    confirmedPaid,
+    payableTotal,
+  });
+
   const canFinalizeSale =
     state.cart.length > 0 &&
     (paymentEntries.length > 0 || payableTotal <= 0) &&
@@ -3158,8 +3171,15 @@ export default function PosDemoPage() {
   useEffect(() => {
     if (!autoCheckoutActive) return;
     if (view !== "checkout") return;
-    if (!shift?.id || !registerConfig?.branchId || shiftRegisterMismatch) return;
-    if (!canFinalizeSale || saleLoading || autoFinalizing || autoFinalizingRef.current) return;
+    // Queued completion is not an in-flight sale. Release it when a prerequisite
+    // fails so it cannot permanently disable checkout controls.
+    if (saleLoading || autoFinalizing || autoFinalizingRef.current || isCardProcessing || qpayCreating || creditRepaymentSubmitting || shiftLoading) return;
+    if (finalizationBlocker || !canFinalizeSale) {
+      setAutoCheckoutActive(false);
+      setScanStatus("not-found");
+      setScanMessage(finalizationBlocker || "Төлбөрийн дүн, задаргааг шалгаад гүйлгээг дахин батална уу.");
+      return;
+    }
 
     autoFinalizingRef.current = true;
     setAutoFinalizing(true);
@@ -3171,6 +3191,11 @@ export default function PosDemoPage() {
   }, [
     autoCheckoutActive,
     view,
+    finalizationBlocker,
+    isCardProcessing,
+    qpayCreating,
+    creditRepaymentSubmitting,
+    shiftLoading,
     canFinalizeSale,
     saleLoading,
     autoFinalizing,
@@ -4030,6 +4055,7 @@ export default function PosDemoPage() {
             await addPaymentEntry("CASH", amount, undefined, cash);
             setAutoCheckoutActive(true);
           }}
+          finalizationBlocker={finalizationBlocker}
           canFinalize={canFinalizeSale}
           onBack={() => {
             clearProgressTicker();
@@ -4037,7 +4063,7 @@ export default function PosDemoPage() {
             setView("register");
           }}
           onCancelCheckout={cancelCheckoutAndClearCart}
-          disabled={qpayCreating || saleLoading || autoCheckoutActive || autoFinalizing || creditRepaymentSubmitting || state.cart.length === 0 || isCardProcessing}
+          disabled={qpayCreating || saleLoading || autoFinalizing || creditRepaymentSubmitting || state.cart.length === 0 || isCardProcessing}
         />
       )}
 

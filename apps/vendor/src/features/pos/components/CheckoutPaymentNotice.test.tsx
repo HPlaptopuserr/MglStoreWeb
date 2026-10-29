@@ -21,3 +21,12 @@ test("a full payment still requires a recorded sale before returning to the regi
   assert.ok(html.includes("Гүйлгээ батлах"));
   assert.ok(html.includes("Борлуулалт бүртгэгдсэний дараа касс руу буцна"));
 });
+
+test("a paid checkout shows the blocker instead of telling the cashier to press a disabled button", () => {
+  const html = renderToStaticMarkup(
+    <CheckoutPaymentNotice paid={7500} remaining={0} blocker="M Point мэдээллээ гүйцээнэ үү." />,
+  );
+  assert.ok(html.includes("Төлбөр бүрэн бүртгэгдлээ"));
+  assert.ok(html.includes("M Point мэдээллээ гүйцээнэ үү."));
+  assert.ok(!html.includes("«Гүйлгээ батлах» дарна уу"));
+});

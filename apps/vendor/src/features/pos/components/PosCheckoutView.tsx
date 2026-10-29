@@ -63,6 +63,7 @@ export type PosCheckoutProps = {
     cash: CashPaymentDetails,
   ) => void | Promise<void>;
   canFinalize: boolean;
+  finalizationBlocker?: string | null;
   onBack: () => void;
   onCancelCheckout: () => void | Promise<void>;
   disabled?: boolean;
@@ -150,6 +151,7 @@ export function PosCheckoutView({
   onFinalize,
   onFinalizeCash,
   canFinalize,
+  finalizationBlocker,
   onBack,
   onCancelCheckout,
   disabled,
@@ -542,7 +544,7 @@ export function PosCheckoutView({
             onCancel={() => void handleCancelCheckout()}
           />}
 
-          {confirmedTotal > 0 && <CheckoutPaymentNotice paid={confirmedTotal} remaining={remaining} />}
+          {confirmedTotal > 0 && <CheckoutPaymentNotice paid={confirmedTotal} remaining={remaining} blocker={finalizationBlocker} />}
 
           <CheckoutPaymentLedger entries={paymentEntries} remaining={remaining} disabled={disabled} onCheckQr={onMarkQPayPaid} onCheckCard={onCheckCard} feedback={paymentFeedback} onRemove={onRemovePayment} />
 
