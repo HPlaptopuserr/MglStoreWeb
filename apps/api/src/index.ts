@@ -1,3 +1,4 @@
+import { reconcilePendingMinuCards } from "./services/minu-card-reconciliation";
 import warehouseViewerRoutes from "./routes/operations/warehouse-viewer.routes";
 import buildingRoutes from "./routes/building";
 import "./config/env";
@@ -320,3 +321,13 @@ const esimReconciliationTimer = setInterval(() => {
   }).finally(() => { esimReconciliationRunning = false; });
 }, 15000);
 esimReconciliationTimer.unref();
+
+let minuCardReconciliationRunning = false;
+const minuCardReconciliationTimer = setInterval(() => {
+  if (minuCardReconciliationRunning) return;
+  minuCardReconciliationRunning = true;
+  void reconcilePendingMinuCards().catch((error: unknown) => {
+    console.error("[pos card] Minu reconciliation unavailable", error);
+  }).finally(() => { minuCardReconciliationRunning = false; });
+}, 15_000);
+minuCardReconciliationTimer.unref();

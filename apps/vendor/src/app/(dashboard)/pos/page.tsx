@@ -1,5 +1,5 @@
 "use client";
-import { cardPaymentOutcome } from "@/features/pos/utils/card-payment-outcome";
+import { cardPaymentOutcome, cardRequestFailureIsDefinitive } from "@/features/pos/utils/card-payment-outcome";
 import type { PaymentFeedback } from "@/features/pos/types/payment-status.types";
 import type { VerifiedCardRecovery } from "@mgl/types";
 import type { CustomerDisplayPayload, CustomerDisplaySuccessDetails } from "@/features/pos/types/customer-display.types";
@@ -19,6 +19,7 @@ import { receiptAction } from "@/features/pos/utils/receipt-flow";
 import { ReceiptBuyerChoice } from "@/features/pos/components/ReceiptBuyerChoice";
 import { canAutoCompletePayment } from "@/features/pos/utils/auto-complete-payment";
 import { useEventCallback } from "@/features/pos/hooks/useEventCallback";
+import { usePendingCardPayments } from "@/features/pos/hooks/usePendingCardPayments";
 import dynamic from "next/dynamic";
 import type { PosCheckoutProps } from "@/features/pos/components/PosCheckoutView";
 
@@ -572,6 +573,8 @@ export default function PosDemoPage() {
   const [checkoutStarting, setCheckoutStarting] = useState(false);
   const [registerDiscoveryDoneFor, setRegisterDiscoveryDoneFor] = useState("");
   const effectiveEbarimtEnabled = EBARIMT_ENABLED && Boolean(registerConfig?.ebarimtEnabled);
+  const hasUnresolvedMinuPayment = getEffectiveCardProvider(registerConfig) === "MINU_AGENT" &&
+    paymentEntries.some(entry => entry.method === "CARD" && entry.status === "pending" && entry.attemptId);
   const ebarimtStatusText = !EBARIMT_ENABLED
     ? "eBarimt систем идэвхгүй байна."
     : registerConfig?.ebarimtEnabled
@@ -629,6 +632,7 @@ export default function PosDemoPage() {
   const successOverlayTimerRef = useRef<number | null>(null);
   const customerDisplaySuccessTimerRef = useRef<number | null>(null);
   const cardPaymentRunRef = useRef<CardPaymentRun | null>(null);
+  const restoredCardAutoFinalizeRef = useRef(false);
   const ebarimtSendDataInFlightRef = useRef(false);
 
   const posEnabled = posAccess === "enabled";
@@ -664,16 +668,17 @@ export default function PosDemoPage() {
       const qpayPaid = recovery.paymentEntries.some(
         (entry) => entry.method === "QR" && entry.status === "confirmed",
       );
+      restoredCardAutoFinalizeRef.current = recovery.paymentEntries.some(entry => entry.method === "CARD" && entry.status === "confirmed");
       setAutoCheckoutActive(false);
       setScanStatus(qpayPaid ? "success" : "idle");
       setScanMessage(
         qpayPaid
           ? "QR төлбөр хүлээн авсан. “Гүйлгээ батлах” товчийг дарна уу."
           : recovery.paymentEntries.some((entry) => entry.method === "CARD" && entry.status === "confirmed")
-            ? "Өмнөх картын төлбөрийг сэргээв. Бараа, дүнгээ хянаж “Гүйлгээ батлах” товчийг дарна уу. Дахин мөнгө татахгүй."
+            ? "Өмнөх картын төлбөрийг сэргээв. Бараа, дүнгээ хянаж байна. Дахин мөнгө татахгүй."
             : recovery.paymentEntries.some((entry) => entry.status === "confirmed")
               ? "Өмнөх төлбөрийн задаргааг сэргээв. Үлдэгдлээ төлөөд борлуулалтаа дуусгана уу."
-              : "Өмнөх QR төлбөрийг сэргээж, төлөвийг шалгаж байна...",
+              : "Өмнөх төлбөрийг сэргээж, төлөвийг автоматаар шалгаж байна...",
       );
     }
     setCheckoutRecoveryScope(organizationId);
@@ -864,6 +869,15 @@ export default function PosDemoPage() {
 
     activeRun.cancelled = true;
     activeRun.abortController.abort();
+    if (activeRun.provider === "MINU_AGENT") {
+      // Closing the waiting overlay does not cancel a charge at Minu.
+      clearProgressTicker();
+      cardPaymentRunRef.current = null;
+      setIsCardProcessing(false);
+      setScanStatus("idle");
+      setScanMessage("Minu төлбөрийн төлөвийг автоматаар шалгаж байна. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү.");
+      return;
+    }
     setIsCancellingCard(true);
     try {
       if (activeRun.provider === "PUSH_ECR" && activeRun.terminalId) {
@@ -1711,6 +1725,12 @@ export default function PosDemoPage() {
 
   const selectedByCode = productCatalog.findProduct?.(lastScannedCode) ?? null;
 
+  useEffect(() => {
+    if (!restoredCardAutoFinalizeRef.current || !canFinalizeSale || getEffectiveCardProvider(registerConfig) !== "MINU_AGENT") return;
+    restoredCardAutoFinalizeRef.current = false;
+    setAutoCheckoutActive(true);
+  }, [canFinalizeSale, registerConfig]);
+
   const attachRecoveredCard = (payment: VerifiedCardRecovery) => {
     if (!registerConfig || !shift || selectedCreditRepayment || paymentEntries.length > 0 || !state.cart.length || Math.round(payment.amount * 100) !== Math.round(totals.grandTotal * 100)) {
       throw new Error("Сагс эсвэл төлбөр өөрчлөгдсөн байна. Бараа, төлбөрөө дахин шалгана уу.");
@@ -2412,7 +2432,7 @@ export default function PosDemoPage() {
       const message = e?.message || "Гүйлгээ батлах үед алдаа гарлаа.";
       const status = Number(e?.status || 0);
       const shouldRetry =
-        confirmedPayments.some((payment) => payment.method === "QR") &&
+        confirmedPayments.some((payment) => payment.method === "QR" || (payment.method === "CARD" && getEffectiveCardProvider(registerConfig) === "MINU_AGENT")) &&
         (status === 0 || status === 408 || status === 429 || status >= 500) &&
         autoFinalizeRetryCountRef.current < 3;
 
@@ -2426,7 +2446,7 @@ export default function PosDemoPage() {
         autoFinalizeRetryTimerRef.current = window.setTimeout(() => {
           autoFinalizeRetryTimerRef.current = null;
           setScanStatus("idle");
-          setScanMessage(`QR төлбөрийн борлуулалтыг дахин баталгаажуулж байна (${retryNumber}/3)...`);
+          setScanMessage(`Төлбөрийн борлуулалтыг дахин баталгаажуулж байна (${retryNumber}/3)...`);
           setAutoCheckoutActive(true);
         }, retryDelay);
       }
@@ -2478,6 +2498,7 @@ export default function PosDemoPage() {
       startProgressTicker("Карт уншуулна уу");
       const isCardRunCancelled = () => cardRun.cancelled || cardPaymentRunRef.current !== cardRun;
       let createdAttemptId: string | undefined;
+      let authorizationAccepted = false;
 
       try {
         const freshRegisterConfig = registerConfig?.id
@@ -2505,7 +2526,14 @@ export default function PosDemoPage() {
           effectiveCardProvider !== "MINU_AGENT" &&
           effectiveCardProvider !== "PUSH_ECR";
 
+        // Persist Minu's request identity before dispatch so a lost response cannot
+        // lose the payment or require another charge.
+        if (effectiveCardProvider === "MINU_AGENT") {
+          createdAttemptId = crypto.randomUUID();
+          setPaymentEntries(previous => previous.map(entry => entry.id === pendingId ? { ...entry, attemptId: createdAttemptId } : entry));
+        }
         const attempt = await createCardAttempt({
+          attemptId: createdAttemptId,
           amount: safeAmount,
           terminalId,
           bridgeUrl: shouldSendBridgeUrl ? freshRegisterConfig.terminalBridgeUrl! : undefined,
@@ -2513,6 +2541,7 @@ export default function PosDemoPage() {
           organizationId,
           clientBridge: useClientBridge,
         });
+        authorizationAccepted = true;
 
         if (isCardRunCancelled()) return;
 
@@ -2564,13 +2593,13 @@ export default function PosDemoPage() {
           clearProgressTicker();
           const uncertain = cardPaymentOutcome(approvedAttempt.status, approvedAttempt.message) === "pending";
           if (!uncertain) setPaymentEntries((prev) => prev.filter((item) => item.id !== pendingId));
-          setPaymentFeedback(previous => ({ ...previous, CARD: { kind: uncertain ? "unknown" : "failed", message: uncertain ? "Банкны төлөв батлагдаагүй байна. “Төлөв шалгах” дарна уу. Дахин карт уншуулахгүй." : approvedAttempt.message || "Картын төлбөр амжилтгүй боллоо." } }));
+          setPaymentFeedback(previous => ({ ...previous, CARD: { kind: uncertain ? "unknown" : "failed", message: uncertain ? "Банкны төлөвийг автоматаар шалгаж байна. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү." : approvedAttempt.message || "Картын төлбөр амжилтгүй боллоо." } }));
           setAutoCheckoutActive(false);
           setScanStatus("not-found");
           setScanMessage(
             approvedAttempt.message ||
               (approvedAttempt.status === "PENDING"
-                ? "Төлбөрийн төлөв тодорхойгүй байна. Дахин карт уншуулахгүйгээр кассын “Тохиргоо → Өмнө төлөгдсөн картын гүйлгээтэй холбох” үйлдлээр Minu-с шалгана уу."
+                ? "Төлбөрийн төлөвийг автоматаар шалгаж байна. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү."
                 : "Картын төлбөр цуцлагдлаа"),
           );
           return;
@@ -2588,7 +2617,7 @@ export default function PosDemoPage() {
               : item,
           ),
         );
-        const completesBalance = canAutoCompletePayment({ status: "confirmed", amount: safeAmount, remaining, loyaltyReady });
+        const completesBalance = canAutoCompletePayment({ status: "confirmed", amount: safeAmount, remaining, loyaltyReady: effectiveCardProvider === "MINU_AGENT" || loyaltyReady });
         setAutoCheckoutActive(completesBalance);
         clearProgressTicker();
         setScanStatus("success");
@@ -2598,7 +2627,7 @@ export default function PosDemoPage() {
         if (isCardRunCancelled()) return;
         clearProgressTicker();
         const status = error && typeof error === "object" && "status" in error ? Number(error.status) : 0;
-        const knownFailure = !createdAttemptId && [400, 401, 403, 404, 422].includes(status);
+        const knownFailure = cardRequestFailureIsDefinitive({ hasAttemptId: Boolean(createdAttemptId), authorizationAccepted, httpStatus: status });
         const message = error instanceof Error ? error.message : "Картын терминалын холболтын алдаа гарлаа";
         if (knownFailure) setPaymentEntries((prev) => prev.filter((item) => item.id !== pendingId));
         setPaymentFeedback(previous => ({ ...previous, CARD: { kind: knownFailure ? "failed" : "unknown", message: knownFailure ? message : `${message} Төлбөрийн төлөв тодорхойгүй тул дахин карт уншуулахгүй. Төлөвөө шалгана уу.` } }));
@@ -2733,35 +2762,50 @@ export default function PosDemoPage() {
     })();
   };
 
-  const checkCardPayment = async (id: string) => {
+  const checkCardPayment = async (id: string, signal?: AbortSignal): Promise<boolean> => {
     const entry = paymentEntries.find(item => item.id === id && item.method === "CARD" && item.status === "pending");
-    if (!entry?.attemptId || cardStatusChecksRef.current.has(id)) return;
+    if (!entry?.attemptId) return true;
+    if (cardStatusChecksRef.current.has(id)) return false;
     cardStatusChecksRef.current.add(id);
     clearPaymentFeedback("CARD");
     try {
-      const attempt = await getCardAttemptStatus(entry.attemptId);
+      const attempt = await getCardAttemptStatus(entry.attemptId, signal);
+      if (signal?.aborted) return false;
       const outcome = cardPaymentOutcome(attempt.status, attempt.message);
       if (outcome === "confirmed") {
         clearPaymentFeedback("CARD");
         setPaymentEntries(previous => previous.map(item => item.id === id ? { ...item, status: "confirmed", transactionId: attempt.transactionId } : item));
-        setAutoCheckoutActive(canAutoCompletePayment({ status: "confirmed", amount: entry.amount, remaining, loyaltyReady }));
+        setAutoCheckoutActive(canAutoCompletePayment({ status: "confirmed", amount: entry.amount, remaining, loyaltyReady: getEffectiveCardProvider(registerConfig) === "MINU_AGENT" || loyaltyReady }));
         setScanStatus("success");
-        setScanMessage("Картын хэсэг амжилттай баталгаажлаа. Төлсөн дүн, үлдэгдлээ шалгана уу.");
+        setScanMessage(entry.amount === remaining ? "Картын төлбөр баталгаажлаа. Борлуулалтыг бүртгэж байна…" : "Картын хэсэгчилсэн төлбөр баталгаажлаа. Үлдэгдлээ төлнө үү.");
       } else if (outcome === "failed") {
         setPaymentEntries(previous => previous.filter(item => item.id !== id));
         setPaymentFeedback(previous => ({ ...previous, CARD: { kind: "failed", message: attempt.message || "Картын төлбөр амжилтгүй." } }));
       } else {
-        setPaymentFeedback(previous => ({ ...previous, CARD: { kind: "unknown", message: "Банк төлбөрийн эцсийн төлөвийг батлаагүй байна. Дахин карт уншуулахгүй, төлөвөө дахин шалгана уу." } }));
+        setPaymentFeedback(previous => ({ ...previous, CARD: { kind: "unknown", message: "Банкны төлөвийг автоматаар шалгаж байна. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү." } }));
       }
+      return outcome !== "pending";
     } catch {
-      setPaymentFeedback(previous => ({ ...previous, CARD: { kind: "unknown", message: "Картын төлөв авч чадсангүй. Дахин төлөхгүй, төлөвөө шалгана уу." } }));
+      if (!signal?.aborted) {
+        setPaymentFeedback(previous => ({ ...previous, CARD: { kind: "unknown", message: "Холболт сэргэхэд картын төлөвийг автоматаар дахин шалгана. Төлсөн бол дахин төлөхгүй." } }));
+      }
+      return false;
     } finally { cardStatusChecksRef.current.delete(id); }
   };
+
+  usePendingCardPayments(paymentEntries,
+    !isCardProcessing && getEffectiveCardProvider(registerConfig) === "MINU_AGENT",
+    checkCardPayment,
+  );
 
   const paymentRemovalRef = useRef(new Set<string>());
   const removePaymentEntry = async (id: string) => {
     const target = paymentEntries.find(item => item.id === id);
     if (!target || paymentRemovalRef.current.has(id)) return;
+    if (getEffectiveCardProvider(registerConfig) === "MINU_AGENT" && target.method === "CARD" && target.status === "pending" && target.attemptId) {
+      setScanMessage("Minu төлбөрийг шалгаж байгаа тул устгах боломжгүй. Төлөв батлагдахад борлуулалт автоматаар үргэлжилнэ.");
+      return;
+    }
     if ((target.method === "QR" || target.method === "CARD") && target.status === "confirmed") {
       setScanStatus("not-found");
       setScanMessage("Банкны төлбөрийг шууд устгах боломжгүй. Төлбөрийн төлөвийг тулгаж шалгана уу.");
@@ -2783,6 +2827,10 @@ export default function PosDemoPage() {
   };
 
   const resetPaymentEntries = () => {
+    if (hasUnresolvedMinuPayment) {
+      setScanMessage("Minu төлбөрийн төлөвийг автоматаар шалгаж байна. Төлбөртэй сагсыг цэвэрлэх боломжгүй.");
+      return;
+    }
     if (qpayCreatingRef.current || paymentEntries.some(item => (item.method === "QR" && item.invoiceId) || (item.method === "CARD" && item.status === "confirmed" && item.attemptId))) {
       setScanStatus("not-found");
       setScanMessage("Банкны төлбөртэй тул төлбөрүүдийг цэвэрлэх боломжгүй. Борлуулалтаа дуусгана уу.");
@@ -2804,6 +2852,11 @@ export default function PosDemoPage() {
   };
 
   const cancelCheckoutAndClearCart = async () => {
+    if (hasUnresolvedMinuPayment) {
+      setScanStatus("idle");
+      setScanMessage("Minu төлбөрийн төлөвийг автоматаар шалгаж байна. Төлбөр батлагдаагүй байхад сагсыг цуцлах боломжгүй.");
+      return;
+    }
     if (qpayCreatingRef.current) {
       setScanStatus("not-found");
       setScanMessage(
@@ -4011,7 +4064,7 @@ export default function PosDemoPage() {
               className="mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
             >
               {isCancellingCard ? <Loader2 size={14} className="animate-spin" /> : null}
-              Цуцлах
+              {getEffectiveCardProvider(registerConfig) === "MINU_AGENT" ? "Төлөвийг ард шалгуулах" : "Цуцлах"}
             </button>
           </div>
         </div>

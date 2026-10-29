@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { PaymentFeedback } from "../types/payment-status.types";
 import { SplitPaymentPlanner } from "./SplitPaymentPlanner";
 import { CheckoutPaymentNotice } from "./CheckoutPaymentNotice";
+import { CheckoutPaymentError } from "./CheckoutPaymentError";
 import { CheckoutPaymentAmount } from "./CheckoutPaymentAmount";
 import { CheckoutPaymentLedger } from "./CheckoutPaymentLedger";
 import { checkoutPaymentAmount } from "../utils/checkout-payment-amount";
@@ -530,34 +531,16 @@ export function PosCheckoutView({
             />
           )}
 
-          {!qpayModal?.open && statusMessage && statusTone === "not-found" && (
-            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-rose-700">
-                {hasPendingQPay
-                  ? "QPay төлбөрийн анхааруулга"
-                  : paymentMethod === "CARD"
-                    ? "Картын төлбөр амжилтгүй"
-                    : paymentMethod === "QR"
-                      ? "QPay QR үүссэнгүй"
-                      : "Төлбөр амжилтгүй"}
-              </p>
-              <p className="mt-2 text-sm font-semibold text-rose-800">
-                {statusMessage}
-              </p>
-              {hasPendingQPay && (
-                <button
-                  type="button"
-                  onClick={() => void handleCancelCheckout()}
-                  disabled={disabled || cancelCheckoutLoading}
-                  className="mt-4 inline-flex items-center justify-center rounded-lg border border-rose-400/50 bg-rose-500/15 px-4 py-2 text-xs font-black text-rose-800 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {cancelCheckoutLoading
-                    ? "Цуцалж байна..."
-                    : "Гүйлгээ цуцалж, сагс цэвэрлэх"}
-                </button>
-              )}
-            </div>
-          )}
+          {!qpayModal?.open && <CheckoutPaymentError
+            method={paymentMethod}
+            message={statusMessage}
+            tone={statusTone}
+            feedback={paymentFeedback}
+            hasPendingQPay={hasPendingQPay}
+            cancelling={cancelCheckoutLoading}
+            disabled={disabled}
+            onCancel={() => void handleCancelCheckout()}
+          />}
 
           {confirmedTotal > 0 && <CheckoutPaymentNotice paid={confirmedTotal} remaining={remaining} />}
 

@@ -6,9 +6,11 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { prisma } from "@mgl/database";
 import recoveryRoutes from "./card-recovery.routes";
+import cardRoutes from "./card-payments.routes";
 import salesRoutes from "./sales.routes";
 import { JWT_SECRET } from "./_shared";
 import { cardRecoveryDayRange } from "../../../services/card-payment-recovery";
+import { reconcileMinuCardAttempt, reconcilePendingMinuCards } from "../../../services/minu-card-reconciliation";
 
 const database = new URL(process.env.DATABASE_URL || "http://disabled");
 const enabled =
@@ -51,6 +53,10 @@ test(
   async (t) => {
     let paid = false;
     let providerUnavailable = false;
+    let omitRrn = false;
+    let wrongInvoice = false;
+    let allowInvoice = false;
+    let invoiceCalls = 0;
     const providerCalls: string[] = [];
     const provider = express();
     provider.use(express.json());
@@ -58,6 +64,10 @@ test(
       providerCalls.push(req.path);
       if (req.path === "/agent/login")
         return res.json({ status: "000", entity: "test-token" });
+      if (req.path === "/agent/invoice" && allowInvoice) {
+        invoiceCalls += 1;
+        return res.json({ status: "000", message: "Successful" });
+      }
       if (req.path !== "/agent/checkTxn")
         return res
           .status(500)
@@ -67,9 +77,9 @@ test(
       return res.json({
         status: "000",
         entity: {
-          invoice: req.body.invoice,
+          invoice: wrongInvoice ? "different-invoice" : req.body.invoice,
           status: paid ? "000" : "10",
-          rrn: paid ? "123456789012" : null,
+          rrn: paid && !omitRrn ? "123456789012" : null,
           error: paid ? "false" : "true",
           message: paid ? "Гүйлгээ амжилттай" : "Үлдэгдэл хүрээгүй",
           cardNo: "DO-NOT-EXPOSE",
@@ -82,6 +92,7 @@ test(
     const app = express();
     app.use(express.json());
     app.use(recoveryRoutes);
+    app.use(cardRoutes);
     app.use(salesRoutes);
     const server = createServer(app);
     const base = await listen(server);
@@ -563,6 +574,86 @@ test(
         ),
         JSON.stringify(providerCalls),
       );
+      await t.test("normal status polling completes a late Minu approval without RRN or recovery", async () => {
+        omitRrn = true;
+        paid = false;
+        const card = await prisma.cardPaymentAttempt.create({ data: {
+          organizationId: organization.id, registerId: register.id,
+          terminalId: "TEST-TERMINAL", amount: 10000, status: "FAILED",
+          message: "Invoice response timeout",
+          providerPayload: { provider: "MINU_AGENT", invoice: "late-paid-invoice" },
+        } });
+        const status = () => fetch(`${base}/pos/payments/card/status/${card.id}`, { headers });
+        assert.equal((await status()).status, 200);
+        assert.equal((await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: card.id } })).status, "PENDING");
+        providerUnavailable = true;
+        assert.equal((await status()).status, 200);
+        assert.equal((await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: card.id } })).status, "PENDING");
+        providerUnavailable = false;
+        paid = true;
+        wrongInvoice = true;
+        await status();
+        assert.equal((await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: card.id } })).status, "PENDING");
+        wrongInvoice = false;
+        const response = await status();
+        const text = await response.text();
+        assert.ok(text.includes('"status":"APPROVED"'), text);
+        assert.ok(text.includes('"transactionId":"late-paid-invoice"'), text);
+        assert.ok(!text.includes("DO-NOT-EXPOSE"));
+        paid = false;
+        await reconcileMinuCardAttempt(card);
+        assert.equal((await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: card.id } })).status, "APPROVED", "a stale pending response cannot downgrade approval");
+        paid = true;
+        const beforeStock = await stock();
+        const beforeSales = await sales();
+        const body = { ...saleBody, clientSaleId: "automatic-card-completion",
+          lines: [{ productId: product.id, qty: 1, unitPrice: 10000, discountAmount: 0, taxRate: 0 }],
+          paymentBreakdown: [{ method: "CARD", amount: 10000, attemptId: card.id }],
+        };
+        const submit = () => fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(body) });
+        const first = await submit();
+        assert.equal(first.status, 201, await first.text());
+        const retry = await submit();
+        assert.equal(retry.status, 200, await retry.text());
+        assert.equal(await stock(), beforeStock - 1);
+        assert.equal(await sales(), beforeSales + 1);
+        const beforeChecks = providerCalls.length;
+        await status();
+        assert.equal(providerCalls.length, beforeChecks, "consumed payments never query Minu again");
+        assert.ok(providerCalls.every(path => path === "/agent/login" || path === "/agent/checkTxn"));
+      });
+      await t.test("the server reconciles the original invoice while the browser is offline without creating a sale", async () => {
+        const beforeSales = await sales();
+        const card = await prisma.cardPaymentAttempt.create({ data: {
+          organizationId: organization.id, registerId: register.id,
+          terminalId: "TEST-TERMINAL", amount: 6500, status: "PENDING",
+          updatedAt: new Date(Date.now() - 60_000),
+          providerPayload: { provider: "MINU_AGENT", invoice: "browser-offline-invoice" },
+        } });
+        await reconcilePendingMinuCards();
+        const updated = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: card.id } });
+        assert.equal(updated.status, "APPROVED");
+        assert.equal(updated.transactionId, "browser-offline-invoice");
+        assert.equal(await sales(), beforeSales);
+        assert.equal(invoiceCalls, 0, "background checks never charge the terminal");
+      });
+      await t.test("retrying a client payment identity dispatches only one Minu invoice", async () => {
+        allowInvoice = true;
+        await prisma.posRegister.update({ where: { id: register.id }, data: { cardEnabled: true, cardTerminalId: "TEST-TERMINAL" } });
+        const attemptId = crypto.randomUUID();
+        const body = { attemptId, registerId: register.id, organizationId: organization.id, terminalId: "TEST-TERMINAL", amount: 28500 };
+        const authorize = (payload: unknown = body) => fetch(`${base}/pos/payments/card/authorize`, { method: "POST", headers, body: JSON.stringify(payload) });
+        const response = await authorize();
+        assert.equal(response.status, 201, await response.text());
+        const row = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: attemptId } });
+        assert.ok(JSON.stringify(row.providerPayload).includes("MGL-"), "invoice identity exists before the provider responds");
+        const retry = await authorize();
+        assert.equal(retry.status, 200, await retry.text());
+        assert.equal((await authorize({ ...body, amount: 28501 })).status, 409);
+        const result = await fetch(`${base}/pos/payments/card/status/${attemptId}`, { headers });
+        assert.equal(result.status, 200);
+        assert.equal(invoiceCalls, 1);
+      });
     } finally {
       if (previousMinuUrl === undefined) delete process.env.MINU_AGENT_BASE_URL;
       else process.env.MINU_AGENT_BASE_URL = previousMinuUrl;

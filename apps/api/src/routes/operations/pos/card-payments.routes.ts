@@ -1,4 +1,6 @@
-import { getMinuAgentContextForRegister } from "../../../services/minu-register-context";
+import { randomUUID } from "node:crypto";
+import { reconcileMinuCardAttempt } from "../../../services/minu-card-reconciliation";
+import { isPaymentRequestId, matchesPaymentRequest } from "../../../services/payment-request-identity";
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus, CardTerminalRequestStatus } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
@@ -8,7 +10,6 @@ import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
 import {
-  checkMinuAgentTransaction,
   createMinuAgentInvoice,
   describeMinuAgentInvoiceError,
   isMinuAgentApiError,
@@ -152,6 +153,11 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
   const registerId: string | null = req.body?.registerId || null;
   const bodyOrganizationId: string | null = req.body?.organizationId || null;
   const clientBridge = req.body?.clientBridge === true;
+  const requestedAttemptId = String(req.body?.attemptId || "").trim();
+
+  if (requestedAttemptId && !isPaymentRequestId(requestedAttemptId)) {
+    return res.status(400).json({ message: "Картын төлбөрийн хүсэлтийн дугаар буруу байна" });
+  }
 
   if (!Number.isFinite(amount) || amount <= 0) {
     return res.status(400).json({ message: "CARD amount буруу байна" });
@@ -330,9 +336,21 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     }
 
     const manualCardAttempt = forceManualCard || (!usesLocalBridge && !isPushEcr && !isMinuAgent);
+    const attemptId = requestedAttemptId || randomUUID();
+    const minuInvoice = `MGL-${attemptId.replace(/-/g, "").slice(0, 24).toUpperCase()}`;
+    if (requestedAttemptId) {
+      const existing = await prisma.cardPaymentAttempt.findUnique({ where: { id: requestedAttemptId } });
+      if (existing) {
+        if (existing.initiatedById !== actor.id || !matchesPaymentRequest(existing, {
+          registerId, organizationId: effectiveOrganizationId, amount,
+        })) return res.status(409).json({ message: "Картын төлбөрийн хүсэлт зөрүүтэй байна" });
+        return res.json(toCardAttemptResponse(existing));
+      }
+    }
 
     const attempt = await prisma.cardPaymentAttempt.create({
       data: {
+        id: attemptId,
         registerId: registerId || null,
         organizationId: effectiveOrganizationId || null,
         initiatedById: actor?.id || null,
@@ -349,7 +367,12 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
               reason: manualCardReason,
               env: runtimeEnv,
             } as object
-          : undefined,
+          : isMinuAgent ? {
+              provider: "MINU_AGENT",
+              invoice: minuInvoice,
+              terminalId: terminalId !== "terminal-1" ? terminalId : registerCardTerminalId,
+              branchId: minuAgentContext?.branchId || null,
+            } : undefined,
       },
     });
 
@@ -477,7 +500,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
       })();
     } else if (!manualCardAttempt && isMinuAgent) {
       const effectiveTerminalId = terminalId !== "terminal-1" ? terminalId : (registerCardTerminalId || terminalId);
-      const invoice = `MGL-${attempt.id.replace(/-/g, "").slice(0, 24).toUpperCase()}`;
+      const invoice = minuInvoice;
 
       void (async () => {
         try {
@@ -493,8 +516,8 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
             purchaseType: "card",
           });
 
-          await prisma.cardPaymentAttempt.update({
-            where: { id: attempt.id },
+          await prisma.cardPaymentAttempt.updateMany({
+            where: { id: attempt.id, status: PosPaymentStatus.PENDING, consumedAt: null },
             data: {
               terminalId: effectiveTerminalId,
               message: minuResult.message || "Minu terminal руу төлбөр илгээгдлээ",
@@ -532,10 +555,11 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
             status: apiError.status || null,
             message,
           });
-          await prisma.cardPaymentAttempt.update({
-            where: { id: attempt.id },
+          await prisma.cardPaymentAttempt.updateMany({
+            where: { id: attempt.id, status: PosPaymentStatus.PENDING, consumedAt: null },
             data: {
-              status: PosPaymentStatus.FAILED,
+              // A lost invoice response does not prove the terminal did not charge.
+              status: isMinuAgentApiError(err) ? PosPaymentStatus.FAILED : PosPaymentStatus.PENDING,
               message,
               providerPayload: {
                 provider: "MINU_AGENT",
@@ -810,6 +834,7 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
   if (!actor) return;
 
   const id = String(req.params.attemptId || "");
+  res.setHeader("Cache-Control", "no-store");
   try {
     const attempt = await prisma.cardPaymentAttempt.findUnique({ where: { id } });
     if (!attempt) return res.status(404).json({ message: "Card attempt олдсонгүй" });
@@ -822,61 +847,25 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
     let providerError: string | undefined;
     let providerHasRrn: boolean | undefined;
     const payload = attempt.providerPayload as Record<string, unknown> | null;
-    if (
-      attempt.status === PosPaymentStatus.PENDING &&
-      payload?.provider === "MINU_AGENT" &&
-      typeof payload.invoice === "string"
-    ) {
+    if (payload?.provider === "MINU_AGENT") {
       try {
-        const minuAgentContext = await getMinuAgentContextForRegister(attempt.registerId);
-        if (!minuAgentContext) {
-          throw new Error("Minu Agent merchant тохиргоо олдсонгүй");
-        }
-        const minuStatus = await checkMinuAgentTransaction(minuAgentContext, payload.invoice);
-        providerApiStatus = minuStatus.apiStatus || undefined;
-        providerStatus = minuStatus.terminalStatus || undefined;
-        providerError = String(minuStatus.entity?.error ?? "").trim() || undefined;
-        providerHasRrn = Boolean(String(minuStatus.entity?.rrn ?? "").trim());
-        if (minuStatus.approved) {
-          freshAttempt = await prisma.cardPaymentAttempt.update({
-            where: { id: attempt.id },
-            data: {
-              status: PosPaymentStatus.APPROVED,
-              transactionId: minuStatus.transactionId || null,
-              traceno: minuStatus.entity?.rrn ? String(minuStatus.entity.rrn) : null,
-              message: minuStatus.message || "Minu terminal payment approved",
-              providerPayload: {
-                ...payload,
-                checkTxn: minuStatus.raw,
-              } as object,
-            },
-          });
-        } else if (minuStatus.declined) {
-          freshAttempt = await prisma.cardPaymentAttempt.update({
-            where: { id: attempt.id },
-            data: {
-              status: PosPaymentStatus.DECLINED,
-              message: minuStatus.message || `Minu terminal status: ${minuStatus.status}`,
-              providerPayload: {
-                ...payload,
-                checkTxn: minuStatus.raw,
-              } as object,
-            },
-          });
-        }
-      } catch (err) {
-        freshAttempt = await prisma.cardPaymentAttempt.update({
-          where: { id: attempt.id },
-          data: {
-            message: err instanceof Error ? err.message : "Minu status шалгахад алдаа гарлаа",
-          },
-        });
+        const reconciled = await reconcileMinuCardAttempt(attempt);
+        freshAttempt = reconciled.attempt;
+        const result = reconciled.result;
+        providerApiStatus = result?.apiStatus || undefined;
+        providerStatus = result?.terminalStatus || undefined;
+        providerError = String(result?.entity?.error ?? "").trim() || undefined;
+        providerHasRrn = result ? Boolean(String(result.entity?.rrn ?? "").trim()) : undefined;
+      } catch (error: unknown) {
+        // Another poll/worker may already have approved the payment. Read its result.
+        freshAttempt = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id } });
+        providerError = error instanceof Error ? error.message : "Minu status шалгахад алдаа гарлаа";
       }
     }
 
     const responseMessage =
       freshAttempt.status === PosPaymentStatus.PENDING && payload?.provider === "MINU_AGENT"
-        ? "Терминал дээр картаа уншуулж төлбөрөө баталгаажуулна уу."
+        ? "Minu төлбөрийн төлөвийг автоматаар шалгаж байна. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү."
         : freshAttempt.message;
 
     return res.json({
