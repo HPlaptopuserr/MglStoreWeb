@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { Eye, Loader2, RefreshCw } from "lucide-react";
 import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
@@ -51,6 +52,14 @@ export function InvestorWorkspace() {
             {scope.selectedWarehouse?.address}
           </p>
         </div>
+        {!scope.viewerOnly && (
+          <Link
+            href="/viewers"
+            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500"
+          >
+            Хэрэглэгч нэмэх
+          </Link>
+        )}
         <button
           onClick={() => setRefreshKey((key) => key + 1)}
           disabled={loading}

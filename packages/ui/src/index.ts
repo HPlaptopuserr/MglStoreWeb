@@ -9,3 +9,5 @@ export * from "./constants";
 export * from "./organisms/goods-receipt";
 
 export * from "./organisms/product-history/ProductHistory";
+
+export { WarehouseViewerManager } from "./organisms/warehouse-viewers/WarehouseViewerManager";

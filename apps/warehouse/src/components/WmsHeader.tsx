@@ -11,6 +11,8 @@ interface WmsHeaderProps {
 }
 
 const PAGE_TITLES: Record<string, string> = {
+  "/viewers": "Хэрэглэгчид · Viewer",
+  "/investor": "Хөрөнгө оруулагчийн тайлан",
   "/dashboard": "Хянах самбар",
   "/inventory": "Нөөцийн байдал",
   "/receive": "Бараа хүлээн авах",

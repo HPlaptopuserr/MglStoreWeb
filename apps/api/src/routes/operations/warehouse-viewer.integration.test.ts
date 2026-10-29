@@ -163,6 +163,81 @@ test(
         ).status,
         403,
       );
+      // A warehouse operator may manage viewers only in their own warehouse.
+      await prisma.warehouseSetupToken.create({
+        data: {
+          userId: outsider.id,
+          warehouseId: own,
+          token: `operator-${marker}`,
+          usedAt: new Date(),
+          expiresAt: new Date(),
+        },
+      });
+      assert.equal(
+        (await call(`/warehouses/${own}/viewers`, token(outsider.id))).status,
+        200,
+      );
+      assert.equal(
+        (await call(`/warehouses/${other}/viewers`, token(outsider.id))).status,
+        403,
+      );
+      assert.equal(
+        (
+          await call(
+            `/warehouses/${other}/viewers`,
+            token(outsider.id),
+            "POST",
+            { phone: "99112233" },
+          )
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await call(
+            `/warehouses/${other}/viewers/${viewer.id}`,
+            token(outsider.id),
+            "DELETE",
+          )
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await call(`/warehouses/${own}/viewers`, token(viewer.id), "POST", {
+            phone: "99112233",
+          })
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await call(
+            `/warehouses/${own}/viewers/${viewer.id}`,
+            token(viewer.id),
+            "DELETE",
+          )
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await call(
+            `/warehouses/${own}/viewers/${viewer.id}`,
+            token(outsider.id),
+            "DELETE",
+          )
+        ).status,
+        204,
+      );
+      assert.equal(
+        (
+          await call(`/warehouses/${own}/viewers`, token(outsider.id), "POST", {
+            phone: "99112233",
+          })
+        ).status,
+        201,
+      );
       const weight = await prisma.product.create({
         data: {
           managedByWarehouseId: own,

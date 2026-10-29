@@ -1,3 +1,4 @@
+import { hasWarehouseAccess } from "../../services/warehouse-access.service";
 import {
   Router,
   type Request,
@@ -5,12 +6,7 @@ import {
   type Router as ExpressRouter,
 } from "express";
 import { prisma } from "@mgl/database";
-import { Permission } from "@mgl/types";
-import {
-  requireAuth,
-  requirePlatformPermission,
-  type AuthPayload,
-} from "../../middleware/auth";
+import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import {
   WarehouseViewerError,
   parseViewerPhone,
@@ -39,13 +35,17 @@ const handle =
       });
     }
   };
-const manage = requirePlatformPermission(Permission.MANAGE_WAREHOUSES);
-async function assertManagedWarehouse(id: string) {
+async function assertManagedWarehouse(id: string, user: AuthPayload) {
   const warehouse = await prisma.warehouse.findFirst({
-    where: { id, type: "CENTRAL", deletedAt: null },
+    where: { id, type: "CENTRAL", isActive: true, deletedAt: null },
     select: { id: true },
   });
   if (!warehouse) throw new WarehouseViewerError("Дэлгүүр олдсонгүй.", 404);
+  if (!(await hasWarehouseAccess(user, id)))
+    throw new WarehouseViewerError(
+      "Энэ агуулахын хэрэглэгчийн эрхийг удирдах боломжгүй байна.",
+      403,
+    );
 }
 
 router.get(
@@ -72,10 +72,9 @@ router.get(
 router.get(
   "/warehouses/:id/viewers",
   requireAuth,
-  manage,
   handle(async (req, res) => {
     const warehouseId = String(req.params.id);
-    await assertManagedWarehouse(warehouseId);
+    await assertManagedWarehouse(warehouseId, actor(req));
     const viewers = await prisma.warehouseViewer.findMany({
       where: { warehouseId },
       orderBy: { createdAt: "desc" },
@@ -104,10 +103,9 @@ router.get(
 router.post(
   "/warehouses/:id/viewers",
   requireAuth,
-  manage,
   handle(async (req, res) => {
     const warehouseId = String(req.params.id);
-    await assertManagedWarehouse(warehouseId);
+    await assertManagedWarehouse(warehouseId, actor(req));
     const phone = parseViewerPhone(
       (req.body as { phone?: unknown } | undefined)?.phone,
     );
@@ -159,11 +157,10 @@ router.post(
 router.delete(
   "/warehouses/:id/viewers/:userId",
   requireAuth,
-  manage,
   handle(async (req, res) => {
     const warehouseId = String(req.params.id),
       userId = String(req.params.userId);
-    await assertManagedWarehouse(warehouseId);
+    await assertManagedWarehouse(warehouseId, actor(req));
     await prisma.$transaction(async (tx) => {
       const removed = await tx.warehouseViewer.deleteMany({
         where: { warehouseId, userId },

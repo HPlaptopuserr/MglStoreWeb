@@ -17,7 +17,7 @@ Customers resume payments and view status through the storefront's order history
 
 ## Warehouse investor viewers
 
-Admin → Warehouses → open the shared store → **Хөрөнгө оруулагчид · Viewer**. Add an existing active MGL Store user by their registered eight-digit phone number (`+976` accepted). No new password, operator setup token, organization membership or platform role is created. Remove a viewer from the same panel; access is checked against the database on every report request and grants/revocations are audited.
+Warehouse → **Хэрэглэгчид · Viewer** (`/viewers`), or **Хэрэглэгч нэмэх** on the investor report. The warehouse's assigned operators and platform warehouse administrators can add/revoke viewers. Viewers cannot list or manage other viewers. The same panel also remains available in Admin → Warehouses → open the shared store → **Хөрөнгө оруулагчид · Viewer**. Add an existing active MGL Store user by their registered eight-digit phone number (`+976` accepted). No new password, operator setup token, organization membership or platform role is created. Remove a viewer from the same panel; access is checked against the database on every report request and grants/revocations are audited.
 
 The user signs in to `warehouse.mglstore.mn` with their existing email/phone and password. Viewer access opens `/investor`; operational pages redirect there and existing warehouse mutation endpoints continue to require operator or platform permissions. Permissions are scoped per warehouse, including users who operate another warehouse. Existing operator/platform privileges are retained.
 

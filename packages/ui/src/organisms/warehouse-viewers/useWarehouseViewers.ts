@@ -1,20 +1,38 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import type { WarehouseViewerMember } from "@mgl/types";
-import { API, adminFetch, getApiErrorMessage } from "@/lib/api";
+export interface WarehouseViewerTransport {
+  apiBase: string;
+  request: (input: string, init?: RequestInit) => Promise<Response>;
+}
+async function getApiErrorMessage(
+  response: Response,
+  fallback: string,
+): Promise<string> {
+  const value: unknown = await response.json().catch(() => null);
+  return value &&
+    typeof value === "object" &&
+    "message" in value &&
+    typeof value.message === "string"
+    ? value.message
+    : fallback;
+}
 
-export function useWarehouseViewers(warehouseId: string) {
+export function useWarehouseViewers(
+  warehouseId: string,
+  { apiBase, request }: WarehouseViewerTransport,
+) {
   const [members, setMembers] = useState<WarehouseViewerMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const endpoint = `${API}/warehouses/${encodeURIComponent(warehouseId)}/viewers`;
+  const endpoint = `${apiBase}/warehouses/${encodeURIComponent(warehouseId)}/viewers`;
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const response = await adminFetch(endpoint);
+      const response = await request(endpoint);
       if (!response.ok)
         throw new Error(
           await getApiErrorMessage(
@@ -32,7 +50,7 @@ export function useWarehouseViewers(warehouseId: string) {
     } finally {
       setLoading(false);
     }
-  }, [endpoint]);
+  }, [endpoint, request]);
   useEffect(() => {
     void load();
   }, [load]);
@@ -42,7 +60,7 @@ export function useWarehouseViewers(warehouseId: string) {
     setError("");
     setMessage("");
     try {
-      const response = await adminFetch(
+      const response = await request(
         method === "POST"
           ? endpoint
           : `${endpoint}/${encodeURIComponent(phoneOrUserId)}`,
