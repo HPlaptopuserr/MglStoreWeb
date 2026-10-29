@@ -1,5 +1,6 @@
 "use client";
 
+import { WarehouseAccessGate } from "@/features/investor/WarehouseAccessGate";
 import ProductHistoryScope from "@/components/ProductHistoryScope";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -56,28 +57,34 @@ export default function DashboardLayout({
 
   return (
     <WarehouseScopeProvider>
-      <div className="flex min-h-screen bg-slate-50">
-        <WmsSidebar
-          warehouseName={userData.warehouseName}
-          userName={userData.name}
-          userInitials={userData.initials}
-          onSignOut={handleLogout}
-          onCollapsedChange={setSidebarCollapsed}
-        />
-        <div
-          className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ${
-            sidebarCollapsed ? "ml-[68px]" : "ml-[248px]"
-          }`}
-        >
-          <WmsHeader
+      <WarehouseAccessGate
+        viewerContent={children}
+        userName={userData.name}
+        onSignOut={handleLogout}
+      >
+        <div className="flex min-h-screen bg-slate-50">
+          <WmsSidebar
+            warehouseName={userData.warehouseName}
             userName={userData.name}
             userInitials={userData.initials}
+            onSignOut={handleLogout}
+            onCollapsedChange={setSidebarCollapsed}
           />
-          <main className="min-w-0 flex-1 p-4 sm:p-6">
-            <ProductHistoryScope>{children}</ProductHistoryScope>
-          </main>
+          <div
+            className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ${
+              sidebarCollapsed ? "ml-[68px]" : "ml-[248px]"
+            }`}
+          >
+            <WmsHeader
+              userName={userData.name}
+              userInitials={userData.initials}
+            />
+            <main className="min-w-0 flex-1 p-4 sm:p-6">
+              <ProductHistoryScope>{children}</ProductHistoryScope>
+            </main>
+          </div>
         </div>
-      </div>
+      </WarehouseAccessGate>
     </WarehouseScopeProvider>
   );
 }

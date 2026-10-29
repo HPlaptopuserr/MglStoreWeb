@@ -95,6 +95,7 @@ const WMS_NAV_GROUPS: AppSidebarGroup[] = [
     id: "analytics",
     title: "Хяналт ба тайлан",
     items: [
+      { id: "investor", label: "Хөрөнгө оруулагчийн тайлан", href: "/investor", icon: BarChart3 },
       {
         id: "reports",
         label: "Тайлан, шинжилгээ",

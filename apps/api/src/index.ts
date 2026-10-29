@@ -1,3 +1,4 @@
+import warehouseViewerRoutes from "./routes/operations/warehouse-viewer.routes";
 import buildingRoutes from "./routes/building";
 import "./config/env";
 import esimRoutes, { reconcileEsimPurchases, esimAdminRoutes } from "./routes/esim";
@@ -178,6 +179,7 @@ app.use("/api", jobPositionRoutes);
 app.use("/api", posRoutes);
 app.use("/api/mobile", posRoutes);
 app.use("/api", serviceRequestsRoutes);
+app.use("/api", warehouseViewerRoutes);
 app.use("/api", warehousesRoutes);
 app.use("/api", warehouseGoodsReceiptsRoutes);
 app.use("/api", warehouseTransfersRoutes);

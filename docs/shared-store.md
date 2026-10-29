@@ -13,3 +13,16 @@ Customers resume payments and view status through the storefront's order history
 - API, web and warehouse TypeScript checks.
 - Policy and catalog regression tests; `warehouse-retail.integration.test.ts` uses a disposable local database named `wms_test_*` and a local synthetic Minu gateway. Set `WAREHOUSE_RETAIL_INTEGRATION=1` and an isolated local `DATABASE_URL` to run it.
 - Integration covers concurrent last-stock purchases, repeated checkout/invoice/payment requests, source isolation, unpublished inventory, procurement reservations, merchant routing, inventory deduction and late payments. It does not make a real payment.
+
+
+## Warehouse investor viewers
+
+Admin → Warehouses → open the shared store → **Хөрөнгө оруулагчид · Viewer**. Add an existing active MGL Store user by their registered eight-digit phone number (`+976` accepted). No new password, operator setup token, organization membership or platform role is created. Remove a viewer from the same panel; access is checked against the database on every report request and grants/revocations are audited.
+
+The user signs in to `warehouse.mglstore.mn` with their existing email/phone and password. Viewer access opens `/investor`; operational pages redirect there and existing warehouse mutation endpoints continue to require operator or platform permissions. Permissions are scoped per warehouse, including users who operate another warehouse. Existing operator/platform privileges are retained.
+
+The report lists current owned products and warehouse quantities, inventory cost/value, fully paid retail/wholesale invoices, saved cost and gross profit. Pagination happens in the database, totals use the complete filtered set, and dates use Ulaanbaatar calendar boundaries regardless of the PostgreSQL server timezone. Customer contact details, payment credentials and private shipping addresses are excluded.
+
+Apply `20261029030000_warehouse_viewers` before the new API. It adds warehouse viewer assignments, audit actions and nullable sales cost snapshots. Checkout stores retail unit costs; wholesale invoices store their total cost when created or edited before payment. Reduced approval quantities invalidate an incompatible cost snapshot. Historical costs remain NULL rather than using today's product costs. Incomplete costs are reported explicitly; aggregate gross profit is withheld if any included invoice lacks a cost. These are gross paid-order figures, excluding partial payments, fulfillment issues and cancelled/rejected orders; operating costs, taxes and returns are not deducted.
+
+Validation: API/Admin/Warehouse production builds, warehouse ESLint, 16 focused policy/regression/integration tests against an isolated `wms_test_*` PostgreSQL database, and browser checks at mobile and desktop sizes. The viewer integration suite covers grants, duplicate grants, warehouse isolation, mutation denial, mixed operator/viewer roles, immediate revocation, disabled users, privacy, pagination, cost immutability, missing costs and Ulaanbaatar date boundaries. Run it only with `WAREHOUSE_VIEWER_INTEGRATION=1` and a disposable local `DATABASE_URL`.

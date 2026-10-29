@@ -118,6 +118,7 @@ test(
         data: {
           name: "Retail test product",
           price: 5000,
+          costPrice: 3000,
           unit: "ш",
           stock: 5,
           managedByWarehouseId: warehouse.id,
@@ -170,6 +171,7 @@ test(
       ]);
       assert.equal(first.id, repeated.id);
       assert.equal(Number(first.total), 10000);
+      assert.equal(Number(first.items[0].costPrice), 3000);
       assert.equal(
         (await reservedStock(warehouse.id, [product.id])).get(product.id),
         2,

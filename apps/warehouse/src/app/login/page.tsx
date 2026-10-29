@@ -80,8 +80,8 @@ export default function LoginPage() {
             <span className="text-blue-400">систем</span>
           </h2>
           <p className="mt-4 text-sm leading-relaxed text-slate-400">
-            Нөөцийн бүртгэл, хөдөлгөөн, тооллого зэрэг агуулахын үйл
-            ажиллагааг нэг дороос удирдана.
+            Нөөцийн бүртгэл, хөдөлгөөн, тооллого зэрэг агуулахын үйл ажиллагааг
+            нэг дороос удирдана.
           </p>
         </div>
 
@@ -117,25 +117,35 @@ export default function LoginPage() {
 
             <form onSubmit={handleLogin} className="mt-6 space-y-4">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Имэйл
+                <label
+                  htmlFor="wms-login-identifier"
+                  className="mb-1.5 block text-sm font-medium text-slate-700"
+                >
+                  Имэйл эсвэл утасны дугаар
                 </label>
                 <input
-                  type="email"
+                  id="wms-login-identifier"
+                  type="text"
+                  autoComplete="username"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="operator@warehouse.mn"
+                  placeholder="Имэйл эсвэл 8 оронтой дугаар"
                   required
                   className="h-11 w-full rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </div>
 
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
+                <label
+                  htmlFor="wms-login-password"
+                  className="mb-1.5 block text-sm font-medium text-slate-700"
+                >
                   Нууц үг
                 </label>
                 <div className="relative">
                   <input
+                    id="wms-login-password"
+                    autoComplete="current-password"
                     type={showPw ? "text" : "password"}
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -145,6 +155,9 @@ export default function LoginPage() {
                   />
                   <button
                     type="button"
+                    aria-label={
+                      showPw ? "Нууц үгийг нуух" : "Нууц үгийг харуулах"
+                    }
                     onClick={() => setShowPw(!showPw)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                   >

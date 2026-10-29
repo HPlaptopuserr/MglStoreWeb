@@ -8,6 +8,8 @@ datasource db {
 }
 
 model User {
+  warehouseViewerAccess WarehouseViewer[] @relation("WarehouseViewerUser")
+  grantedWarehouseViewerAccess WarehouseViewer[] @relation("WarehouseViewerGrantor")
   buildingPurchaseContracts BarilgaPurchaseContract[]
   buildingReservations BarilgaReservation[]
   esimPurchases EsimPurchase[]
@@ -240,6 +242,21 @@ model VendorSetupToken {
   @@index([userId])
   @@index([token])
   @@index([expiresAt])
+}
+
+/// Investor access is separate from operator setup tokens and grants no mutations.
+model WarehouseViewer {
+  id String @id @default(uuid())
+  warehouseId String
+  userId String
+  grantedById String
+  createdAt DateTime @default(now())
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  user User @relation("WarehouseViewerUser", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User @relation("WarehouseViewerGrantor", fields: [grantedById], references: [id], onDelete: Restrict)
+
+  @@unique([warehouseId, userId])
+  @@index([userId])
 }
 
 model WarehouseSetupToken {
@@ -1971,6 +1988,7 @@ enum WarehouseType {
 }
 
 model Warehouse {
+  viewers WarehouseViewer[]
   retailOrders WarehouseRetailOrder[]
   outgoingTransfers WarehouseTransfer[] @relation("TransferSource")
   incomingTransfers WarehouseTransfer[] @relation("TransferDestination")
@@ -2215,6 +2233,7 @@ model WarehouseStockRequestItem {
 }
 
 model StockRequestPayment {
+  costAmount Decimal? @db.Decimal(18, 2)
   id             String                     @id @default(uuid())
   invoiceNumber  String                     @unique
   requestId      String                     @unique
@@ -2823,6 +2842,8 @@ enum CardTerminalRequestStatus {
 }
 
 enum AuditAction {
+  WAREHOUSE_VIEWER_GRANTED
+  WAREHOUSE_VIEWER_REVOKED
   WAREHOUSE_CATALOG_LINKED
   MERCHANT_CONFIGURATION_CHANGED
   LOGIN
@@ -4331,6 +4352,7 @@ model WarehouseRetailOrder {
   warehouse Warehouse @relation(fields: [warehouseId], references: [id])
   items WarehouseRetailOrderItem[]
 
+  @@index([warehouseId, paidAt])
   @@unique([customerId, checkoutKey])
   @@index([warehouseId, status, paymentStatus])
   @@index([customerId, createdAt])
@@ -4338,6 +4360,7 @@ model WarehouseRetailOrder {
 }
 
 model WarehouseRetailOrderItem {
+  costPrice Decimal? @db.Decimal(18, 2)
   id String @id @default(uuid())
   orderId String
   productId String

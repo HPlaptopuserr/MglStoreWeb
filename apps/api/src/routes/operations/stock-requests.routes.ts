@@ -1,3 +1,4 @@
+import { stockInvoiceCost } from "../../services/warehouse-sales-cost";
 import express, {
   Router,
   type Request,
@@ -909,7 +910,7 @@ router.post(
         select: {
           productId: true,
           quantity: true,
-          product: { select: { price: true, name: true } },
+          product: { select: { price: true, name: true, costPrice: true, unit: true } },
         },
       });
       const inventoryMap = new Map(
@@ -972,6 +973,7 @@ router.post(
               requestId: stockRequest.id,
               organizationId,
               totalAmount,
+              costAmount: stockInvoiceCost(normalizedItems, (id) => inventoryMap.get(id)?.product),
               paidAmount: 0,
               status: PaymentStatus.PENDING,
               dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days due
@@ -1113,6 +1115,14 @@ router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
               data: { approvedQuantity: item.quantity },
             });
           }
+        }
+
+        // A reduced approval no longer matches the original invoice cost snapshot.
+        // Keep it unknown rather than reporting a fabricated historical profit.
+        if (items?.some((item: { productId: string; approvedQuantity: number }) =>
+          request.items.find((line) => line.productId === item.productId)?.quantity !== item.approvedQuantity
+        )) {
+          await tx.stockRequestPayment.updateMany({ where: { requestId: id }, data: { costAmount: null } });
         }
 
         // Update request status
@@ -3400,7 +3410,7 @@ router.patch(
           select: {
             productId: true,
             quantity: true,
-            product: { select: { id: true, name: true, sku: true, price: true } },
+            product: { select: { id: true, name: true, sku: true, price: true, costPrice: true, unit: true } },
           },
         });
         if (availableProducts.length !== normalizedItems.length) {
@@ -3524,7 +3534,10 @@ router.patch(
         if (dispatch.request.payment) {
           await tx.stockRequestPayment.update({
             where: { id: dispatch.request.payment.id },
-            data: { totalAmount: newTotal },
+            data: {
+              totalAmount: newTotal,
+              costAmount: stockInvoiceCost(normalizedItems, (id) => availableByProductId.get(id)?.product),
+            },
           });
         }
         await tx.auditLog.create({

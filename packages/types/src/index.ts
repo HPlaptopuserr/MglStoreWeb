@@ -67,3 +67,5 @@ export * from "./building-purchase";
 export * from "./domain/kitchen-queue";
 
 export * from "./domain/card-payment-recovery";
+
+export * from "./domain/warehouse-viewer";

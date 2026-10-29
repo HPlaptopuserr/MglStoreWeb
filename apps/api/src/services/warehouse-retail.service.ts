@@ -73,6 +73,7 @@ export async function createRetailCheckout(customerId: string, body: unknown) {
           id: true,
           name: true,
           price: true,
+          costPrice: true,
           unit: true,
           managedByWarehouseId: true,
         },
@@ -99,6 +100,7 @@ export async function createRetailCheckout(customerId: string, body: unknown) {
           quantity: line.quantity,
           storedQuantity: toPosStoredStockQuantity(line.quantity, product.unit),
           price: product.price,
+          costPrice: product.costPrice,
           subtotal: new Prisma.Decimal(product.price).mul(line.quantity),
         };
       });
