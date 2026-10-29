@@ -1,5 +1,6 @@
 "use client";
 
+import { InvestmentHeaderWallet } from "@/features/investor/InvestmentHeaderWallet";
 import { usePathname } from "next/navigation";
 import { Search } from "lucide-react";
 import { WarehouseNotificationsMenu } from "@/features/notifications/WarehouseNotificationsMenu";
@@ -37,6 +38,7 @@ export default function WmsHeader({ userName, userInitials }: WmsHeaderProps) {
 
       <div className="flex shrink-0 items-center gap-2 lg:gap-3">
         <WarehouseSwitcher />
+        <InvestmentHeaderWallet />
 
         {/* Search */}
         <div className="relative hidden xl:block">

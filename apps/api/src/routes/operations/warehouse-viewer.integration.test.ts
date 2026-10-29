@@ -238,6 +238,96 @@ test(
         ).status,
         201,
       );
+      const investmentPath = `/warehouses/${own}/viewers/${viewer.id}/investment`;
+      assert.equal(
+        (
+          await call(investmentPath, token(viewer.id), "PATCH", {
+            amount: "1000000.50",
+            version: 0,
+          })
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await call(
+            `/warehouses/${other}/viewers/${viewer.id}/investment`,
+            token(outsider.id),
+            "PATCH",
+            { amount: "1000000.50", version: 0 },
+          )
+        ).status,
+        403,
+      );
+      assert.equal(
+        (
+          await call(investmentPath, token(outsider.id), "PATCH", {
+            amount: "-1",
+            version: 0,
+          })
+        ).status,
+        400,
+      );
+      const recorded = await call(investmentPath, token(outsider.id), "PATCH", {
+        amount: "1000000.50",
+        version: 0,
+      });
+      assert.equal(recorded.status, 200);
+      assert.deepEqual(
+        await recorded
+          .json()
+          .then(({ amount, version }: { amount: string; version: number }) => ({
+            amount,
+            version,
+          })),
+        { amount: "1000000.50", version: 1 },
+      );
+      const competing = await Promise.all([
+        call(investmentPath, token(outsider.id), "PATCH", {
+          amount: "2000000.25",
+          version: 1,
+          mode: "TOP_UP",
+        }),
+        call(investmentPath, token(outsider.id), "PATCH", {
+          amount: "3000000.75",
+          version: 1,
+          mode: "TOP_UP",
+        }),
+      ]);
+      assert.deepEqual(
+        competing.map((response) => response.status).sort(),
+        [200, 409],
+      );
+      const principal = await prisma.warehouseInvestment.findUniqueOrThrow({
+        where: { warehouseId_userId: { warehouseId: own, userId: viewer.id } },
+      });
+      assert.equal(principal.version, 2);
+      assert.ok(["3000000.75", "4000001.25"].includes(principal.amount.toFixed(2)));
+      await prisma.warehouseInvestment.create({
+        data: {
+          warehouseId: own,
+          userId: outsider.id,
+          updatedById: admin.id,
+          amount: "7000000.00",
+        },
+      });
+      const knownMembers = (await (
+        await call(`/warehouses/${own}/viewers`, token(outsider.id))
+      ).json()) as Array<{
+        userId: string;
+        investmentAmount: string;
+        investmentVersion: number;
+      }>;
+      assert.equal(
+        knownMembers.find((member) => member.userId === viewer.id)
+          ?.investmentAmount,
+        principal.amount.toFixed(2),
+      );
+      assert.equal(
+        knownMembers.find((member) => member.userId === viewer.id)
+          ?.investmentVersion,
+        2,
+      );
       const weight = await prisma.product.create({
         data: {
           managedByWarehouseId: own,
@@ -344,6 +434,31 @@ test(
       const response = await call(reportPath, token(viewer.id));
       assert.equal(response.status, 200);
       const report = (await response.json()) as WarehouseInvestorReport;
+      assert.equal(report.investment.scope, "PERSONAL");
+      assert.equal(report.investment.amount, principal.amount.toFixed(2));
+      const ownWallet = await call(
+        `/warehouse-viewer/warehouses/${own}/investment`,
+        token(viewer.id),
+      );
+      assert.equal(ownWallet.status, 200);
+      assert.deepEqual(await ownWallet.json(), report.investment);
+      assert.equal(
+        (
+          await call(
+            `/warehouse-viewer/warehouses/${other}/investment`,
+            token(viewer.id),
+          )
+        ).status,
+        403,
+      );
+      const operatorReport = (await (
+        await call(reportPath, token(outsider.id))
+      ).json()) as WarehouseInvestorReport;
+      assert.equal(operatorReport.investment.scope, "WAREHOUSE");
+      assert.equal(
+        operatorReport.investment.amount,
+        principal.amount.add("7000000.00").toFixed(2),
+      );
       assert.equal(report.inventory.productCount, 22);
       assert.equal(report.inventory.stockCost, 22500);
       assert.equal(report.inventory.stockValue, 32000);
@@ -434,6 +549,35 @@ test(
       );
       assert.equal((await call(reportPath, token(viewer.id))).status, 403);
       assert.equal(
+        (
+          await prisma.warehouseInvestment.findUniqueOrThrow({
+            where: { id: principal.id },
+          })
+        ).amount.toFixed(2),
+        principal.amount.toFixed(2),
+      );
+      assert.equal(
+        (
+          await call(`/warehouses/${own}/viewers`, token(outsider.id), "POST", {
+            phone: "99112233",
+          })
+        ).status,
+        201,
+      );
+      const restored = (await (
+        await call(reportPath, token(viewer.id))
+      ).json()) as WarehouseInvestorReport;
+      assert.equal(restored.investment.amount, principal.amount.toFixed(2));
+      assert.equal(
+        await prisma.auditLog.count({
+          where: {
+            userId: outsider.id,
+            action: "WAREHOUSE_INVESTMENT_UPDATED",
+          },
+        }),
+        2,
+      );
+      assert.equal(
         await prisma.auditLog.count({
           where: { userId: admin.id, action: "WAREHOUSE_VIEWER_REVOKED" },
         }),
@@ -453,6 +597,9 @@ test(
         where: { warehouseId: { in: warehouses } },
       });
       await prisma.product.deleteMany({ where: { id: { in: products } } });
+      await prisma.warehouseInvestment.deleteMany({
+        where: { warehouseId: { in: warehouses } },
+      });
       await prisma.warehouse.deleteMany({ where: { id: { in: warehouses } } });
       if (orgId) await prisma.organization.delete({ where: { id: orgId } });
       await prisma.auditLog.deleteMany({ where: { userId: { in: users } } });

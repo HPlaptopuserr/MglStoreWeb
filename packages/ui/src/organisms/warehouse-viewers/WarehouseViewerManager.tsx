@@ -1,4 +1,7 @@
 "use client";
+import { MonthlyDividendEditor } from "./MonthlyDividendEditor";
+import { InvestmentAmountEditor } from "./InvestmentAmountEditor";
+import { InvestorBankAccountDetails } from "./InvestorBankAccountDetails";
 import { useState } from "react";
 import { Eye, Loader2, UserPlus, X } from "lucide-react";
 import {
@@ -10,10 +13,33 @@ export function WarehouseViewerManager({
   warehouseId,
   apiBase,
   request,
-}: { warehouseId: string } & WarehouseViewerTransport) {
+  onInvestmentSaved,
+}: {
+  warehouseId: string;
+  onInvestmentSaved?: () => void;
+} & WarehouseViewerTransport) {
   const state = useWarehouseViewers(warehouseId, { apiBase, request });
   const [phone, setPhone] = useState("");
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const saveInvestment = async (
+    userId: string,
+    amount: string,
+    version: number,
+  ) => {
+    const saved = await state.saveInvestment(userId, amount, version);
+    if (saved) onInvestmentSaved?.();
+    return saved;
+  };
+  const saveDividend = async (
+    userId: string,
+    amount: string,
+    version: number,
+    month: string,
+  ) => {
+    const saved = await state.saveDividend(userId, amount, version, month);
+    if (saved) onInvestmentSaved?.();
+    return saved;
+  };
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="flex items-start gap-3">
@@ -122,6 +148,25 @@ export function WarehouseViewerManager({
                   <X className="size-4" />
                 </button>
               </div>
+              <div className="mt-3">
+                <InvestorBankAccountDetails
+                  account={member.bankAccount ?? null}
+                />
+              </div>
+              {member.investmentAmount != null && (
+                <InvestmentAmountEditor
+                  key={member.investmentVersion}
+                  member={member}
+                  busy={state.busy}
+                  onSave={saveInvestment}
+                />
+              )}
+              <MonthlyDividendEditor
+                key={`${member.monthlyDividend?.month}:${member.monthlyDividend?.version}`}
+                member={member}
+                busy={state.busy}
+                onSave={saveDividend}
+              />
               {removingId === member.userId && (
                 <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
                   <p>Энэ дэлгүүрийн харах эрхийг цуцлах уу?</p>

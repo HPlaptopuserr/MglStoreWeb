@@ -96,6 +96,45 @@ export function useWarehouseViewers(
       setBusy(false);
     }
   };
+  const saveMoney = async (
+    userId: string,
+    payload: { amount: string; version: number } & (
+      | { mode: "TOP_UP" }
+      | { month: string }
+    ),
+    kind: "investment" | "dividend",
+  ) => {
+    if (busy) return false;
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const response = await request(
+        `${endpoint}/${encodeURIComponent(userId)}/${kind}`,
+        { method: "PATCH", body: JSON.stringify(payload) },
+      );
+      if (!response.ok)
+        throw new Error(
+          await getApiErrorMessage(response, "Мөнгөн дүнг хадгалж чадсангүй."),
+        );
+      await load();
+      setMessage(
+        kind === "dividend"
+          ? "Энэ сарын ногдол ашгийг хадгаллаа."
+          : "Хөрөнгө оруулалтын дүнг нэмлээ.",
+      );
+      return true;
+    } catch (reason) {
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Сервертэй холбогдож чадсангүй.",
+      );
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
   return {
     members,
     loading,
@@ -105,5 +144,13 @@ export function useWarehouseViewers(
     reload: load,
     add: (phone: string) => mutate(phone, "POST"),
     remove: (userId: string) => mutate(userId, "DELETE"),
+    saveInvestment: (userId: string, amount: string, version: number) =>
+      saveMoney(userId, { amount, version, mode: "TOP_UP" }, "investment"),
+    saveDividend: (
+      userId: string,
+      amount: string,
+      version: number,
+      month: string,
+    ) => saveMoney(userId, { amount, version, month }, "dividend"),
   };
 }

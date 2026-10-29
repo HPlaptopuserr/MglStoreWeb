@@ -1,3 +1,5 @@
+import { formatWarehouseInvestment } from "@mgl/types";
+import { parseInvestmentInput } from "./warehouse-investment.policy";
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
@@ -66,4 +68,38 @@ test("cost snapshots preserve zero, decimal precision, kg scale and unknown cost
     ),
     null,
   );
+});
+
+test("investment input rejects negative, malformed, over-precision and stale versions", () => {
+  assert.deepEqual(parseInvestmentInput({ amount: "1000000.50", version: 0 }), {
+    amount: "1000000.50",
+    version: 0,
+    mode: "SET",
+  });
+  assert.equal(parseInvestmentInput({ amount: "100", version: 0, mode: "TOP_UP" }).mode, "TOP_UP");
+  assert.throws(() => parseInvestmentInput({ amount: "0.00", version: 0, mode: "TOP_UP" }));
+  assert.throws(() => parseInvestmentInput({ amount: "1", version: 0, mode: "UNKNOWN" }));
+  for (const amount of [
+    "-1",
+    "1e6",
+    "1,000",
+    "1.001",
+    "1000000000000",
+    "",
+    "NaN",
+    1000,
+    null,
+  ])
+    assert.throws(() => parseInvestmentInput({ amount, version: 0 }));
+  for (const version of [-1, 1.5, "0", null])
+    assert.throws(() => parseInvestmentInput({ amount: "0.00", version }));
+});
+
+test("investment display preserves large decimal principal exactly", () => {
+  assert.equal(
+    formatWarehouseInvestment("999999999999.99"),
+    "999,999,999,999.99 ₮",
+  );
+  assert.equal(formatWarehouseInvestment("1000000.50"), "1,000,000.5 ₮");
+  assert.equal(formatWarehouseInvestment("0.00"), "0 ₮");
 });

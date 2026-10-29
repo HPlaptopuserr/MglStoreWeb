@@ -1,6 +1,6 @@
 "use client";
-import { WarehouseViewerManager } from "@mgl/ui";
-import { API, wmsFetch } from "@/lib/api";
+import { CirclePlus } from "lucide-react";
+import { WarehouseInvestorManager } from "./WarehouseInvestorManager";
 import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 export function WarehouseViewersWorkspace() {
   const scope = useWarehouseScope();
@@ -23,11 +23,21 @@ export function WarehouseViewersWorkspace() {
           харах эрх нэмнэ.
         </p>
       </header>
-      <WarehouseViewerManager
-        key={scope.selectedWarehouse.id}
+      <section
+        id="investment-top-up"
+        className="scroll-mt-24 rounded-2xl border border-blue-100 bg-blue-50/60 p-4 sm:p-5"
+      >
+        <h2 className="flex items-center gap-2 font-semibold text-blue-900">
+          <CirclePlus className="size-5 text-blue-600" />
+          Хөрөнгө оруулалт цэнэглэх
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Доорх хэрэглэгчийн «Цэнэглэх» товчийг дарж, нэмэх мөнгөн дүнгээ
+          оруулна уу.
+        </p>
+      </section>
+      <WarehouseInvestorManager
         warehouseId={scope.selectedWarehouse.id}
-        apiBase={API}
-        request={wmsFetch}
       />
     </div>
   );

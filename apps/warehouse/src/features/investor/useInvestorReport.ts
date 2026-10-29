@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import type { WarehouseInvestorReport } from "@mgl/types";
 import { API, wmsFetch } from "@/lib/api";
+import { INVESTMENT_UPDATED_EVENT } from "./useInvestmentSummary";
 
 export function useInvestorReport(
   warehouseId: string,
@@ -11,6 +12,12 @@ export function useInvestorReport(
   const [data, setData] = useState<WarehouseInvestorReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [paymentRefreshKey, setPaymentRefreshKey] = useState(0);
+  useEffect(() => {
+    const refresh = () => setPaymentRefreshKey((key) => key + 1);
+    window.addEventListener(INVESTMENT_UPDATED_EVENT, refresh);
+    return () => window.removeEventListener(INVESTMENT_UPDATED_EVENT, refresh);
+  }, []);
   const { from, to, productPage, salesPage } = filters;
   useEffect(() => {
     if (!warehouseId) {
@@ -54,6 +61,14 @@ export function useInvestorReport(
       }
     })();
     return () => controller.abort();
-  }, [warehouseId, from, to, productPage, salesPage, refreshKey]);
+  }, [
+    warehouseId,
+    from,
+    to,
+    productPage,
+    salesPage,
+    refreshKey,
+    paymentRefreshKey,
+  ]);
   return { data, loading, error };
 }

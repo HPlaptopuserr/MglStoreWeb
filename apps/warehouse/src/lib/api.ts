@@ -83,7 +83,11 @@ export async function wmsFetch(
   if (res.status === 401 && typeof window !== "undefined") {
     localStorage.removeItem("wms_token");
     localStorage.removeItem("wms_user");
-    window.location.replace("/login");
+    window.location.replace(
+      window.location.pathname.startsWith("/investor")
+        ? "/investor-login"
+        : "/login",
+    );
   }
   return res;
 }

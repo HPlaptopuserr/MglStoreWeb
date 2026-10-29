@@ -8,6 +8,12 @@ datasource db {
 }
 
 model User {
+  investmentTopUps WarehouseInvestmentTopUp[]
+  warehouseDividends WarehouseInvestorDividend[] @relation("WarehouseDividendOwner")
+  recordedWarehouseDividends WarehouseInvestorDividend[] @relation("WarehouseDividendRecorder")
+  warehouseInvestments WarehouseInvestment[] @relation("WarehouseInvestmentOwner")
+  recordedWarehouseInvestments WarehouseInvestment[] @relation("WarehouseInvestmentRecorder")
+
   warehouseViewerAccess WarehouseViewer[] @relation("WarehouseViewerUser")
   grantedWarehouseViewerAccess WarehouseViewer[] @relation("WarehouseViewerGrantor")
   buildingPurchaseContracts BarilgaPurchaseContract[]
@@ -1988,6 +1994,10 @@ enum WarehouseType {
 }
 
 model Warehouse {
+  investmentTopUps WarehouseInvestmentTopUp[]
+  investorDividends WarehouseInvestorDividend[]
+  investments WarehouseInvestment[]
+
   viewers WarehouseViewer[]
   retailOrders WarehouseRetailOrder[]
   outgoingTransfers WarehouseTransfer[] @relation("TransferSource")
@@ -2842,6 +2852,10 @@ enum CardTerminalRequestStatus {
 }
 
 enum AuditAction {
+  WAREHOUSE_DIVIDEND_CONFIRMED
+  WAREHOUSE_DIVIDEND_UPDATED
+  WAREHOUSE_INVESTMENT_UPDATED
+
   WAREHOUSE_VIEWER_GRANTED
   WAREHOUSE_VIEWER_REVOKED
   WAREHOUSE_CATALOG_LINKED
@@ -4721,4 +4735,95 @@ model BarilgaInquiry {
   project     BarilgaProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, createdAt])
+}
+
+
+enum WarehouseDividendChoice {
+  BANK_TRANSFER
+  REINVEST
+}
+
+
+model WarehouseDividendDecision {
+  id String @id @default(uuid())
+  dividendId String @unique
+  choice WarehouseDividendChoice
+  amount Decimal @db.Decimal(18, 2)
+  dividendVersion Int
+  phone String
+  providerSessionId String @unique
+  expiresAt DateTime
+  bankName String?
+  bankAccount String?
+  bankAccountName String?
+  confirmedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  dividend WarehouseInvestorDividend @relation(fields: [dividendId], references: [id], onDelete: Restrict)
+}
+
+
+model WarehouseInvestorDividend {
+  decision WarehouseDividendDecision?
+  id String @id @default(uuid())
+  warehouseId String
+  userId String
+  month String @db.VarChar(7)
+  amount Decimal @default(0) @db.Decimal(18, 2)
+  version Int @default(1)
+  updatedById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  user User @relation("WarehouseDividendOwner", fields: [userId], references: [id], onDelete: Restrict)
+  updatedBy User @relation("WarehouseDividendRecorder", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@unique([warehouseId, userId, month])
+  @@index([warehouseId, month])
+  @@index([userId, month])
+}
+
+
+model WarehouseInvestment {
+  id String @id @default(uuid())
+  warehouseId String
+  userId String
+  amount Decimal @default(0) @db.Decimal(18, 2)
+  version Int @default(1)
+  updatedById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  user User @relation("WarehouseInvestmentOwner", fields: [userId], references: [id], onDelete: Restrict)
+  updatedBy User @relation("WarehouseInvestmentRecorder", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@unique([warehouseId, userId])
+  @@index([userId])
+}
+
+
+model WarehouseInvestmentTopUp {
+  id String @id @default(uuid())
+  requestId String @unique
+  warehouseId String
+  userId String
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  amount Decimal @db.Decimal(14, 2)
+  method String
+  status String @default("PENDING")
+  accountId String
+  merchantCode String
+  bankName String
+  accountNumber String
+  accountHolder String
+  invoiceId String? @unique
+  qrText String?
+  paidAt DateTime?
+  confirmedById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([warehouseId, userId, createdAt])
+  @@index([warehouseId, status, method])
 }

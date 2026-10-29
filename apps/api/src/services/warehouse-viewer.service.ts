@@ -1,111 +1,13 @@
+import { assertWarehouseReportAccess } from "./warehouse-viewer-access.service";
+import { readWarehouseInvestmentSummary } from "./warehouse-investment.service";
 import { prisma, Prisma } from "@mgl/database";
 import {
   fromPosStoredStockQuantity,
   type WarehouseInvestorReport,
   type WarehouseInvestorSale,
-  type WarehouseViewerSession,
 } from "@mgl/types";
-import {
-  hasPlatformWarehouseAccess,
-  hasWarehouseAccess,
-  type WarehouseActor,
-} from "./warehouse-access.service";
-import {
-  WarehouseViewerError,
-  parseViewerReportQuery,
-} from "./warehouse-viewer.policy";
-
-export async function assertActiveWarehouseViewerActor(actor: WarehouseActor) {
-  if (
-    !actor.userId ||
-    !(await prisma.user.findFirst({
-      where: { id: actor.userId, isActive: true, deletedAt: null },
-      select: { id: true },
-    }))
-  )
-    throw new WarehouseViewerError("Нэвтрэх эрх идэвхгүй байна.", 403);
-}
-
-export async function warehouseViewerSession(actor: WarehouseActor): Promise<WarehouseViewerSession> {
-  await assertActiveWarehouseViewerActor(actor);
-  const platform = hasPlatformWarehouseAccess(actor.role);
-  const warehouses = await prisma.warehouse.findMany({
-    where: {
-      type: "CENTRAL",
-      isActive: true,
-      deletedAt: null,
-      ...(!platform
-        ? {
-            OR: [
-              {
-                setupTokens: {
-                  some: { userId: actor.userId, usedAt: { not: null } },
-                },
-              },
-              { viewers: { some: { userId: actor.userId } } },
-            ],
-          }
-        : {}),
-    },
-    select: {
-      id: true,
-      name: true,
-      address: true,
-      setupTokens: {
-        where: { userId: actor.userId, usedAt: { not: null } },
-        select: { id: true },
-        take: 1,
-      },
-      organizations: {
-        select: { organization: { select: { id: true, name: true } } },
-      },
-    },
-    orderBy: { name: "asc" },
-  });
-  return {
-    viewerOnly:
-      !platform &&
-      !warehouses.some((warehouse) => warehouse.setupTokens.length > 0),
-    warehouses: warehouses.map(
-      ({ setupTokens, organizations, ...warehouse }) => ({
-        ...warehouse,
-        accessMode: platform || setupTokens.length ? "OPERATOR" : "VIEWER",
-        organizations: organizations.map(({ organization }) => organization),
-      }),
-    ),
-  };
-}
-
-export async function assertWarehouseReportAccess(
-  actor: WarehouseActor,
-  warehouseId: string,
-) {
-  await assertActiveWarehouseViewerActor(actor);
-  const warehouse = await prisma.warehouse.findFirst({
-    where: {
-      id: warehouseId,
-      type: "CENTRAL",
-      isActive: true,
-      deletedAt: null,
-    },
-    select: { id: true, name: true, address: true },
-  });
-  if (!warehouse)
-    throw new WarehouseViewerError(
-      "Дэлгүүр олдсонгүй эсвэл хандах эрхгүй байна.",
-      403,
-    );
-  const assignment = await prisma.warehouseViewer.findUnique({
-    where: { warehouseId_userId: { warehouseId, userId: actor.userId! } },
-    select: { id: true },
-  });
-  if (!assignment && !(await hasWarehouseAccess(actor, warehouseId)))
-    throw new WarehouseViewerError(
-      "Энэ дэлгүүрийн тайланг харах эрхгүй байна.",
-      403,
-    );
-  return warehouse;
-}
+import type { WarehouseActor } from "./warehouse-access.service";
+import { parseViewerReportQuery } from "./warehouse-viewer.policy";
 
 // Each channel has its own invoice identifier. Costs are immutable snapshots;
 // NULL intentionally represents old/unknown costs, never a fabricated zero.
@@ -143,7 +45,10 @@ export async function getWarehouseInvestorReport(
   warehouseId: string,
   query: Record<string, unknown>,
 ): Promise<WarehouseInvestorReport> {
-  const warehouse = await assertWarehouseReportAccess(actor, warehouseId);
+  const { warehouse, isOperator } = await assertWarehouseReportAccess(
+    actor,
+    warehouseId,
+  );
   const { from, to, productPage, salesPage, limit } =
     parseViewerReportQuery(query);
   const productWhere: Prisma.ProductWhereInput = {
@@ -155,8 +60,8 @@ export async function getWarehouseInvestorReport(
   // A repeatable-read snapshot keeps summaries and paginated rows consistent.
   return prisma.$transaction(
     async (tx) => {
-      const [products, inventoryRows, saleSummary, history] = await Promise.all(
-        [
+      const [products, inventoryRows, saleSummary, history, investment] =
+        await Promise.all([
           tx.product.findMany({
             where: productWhere,
             orderBy: [{ name: "asc" }, { id: "asc" }],
@@ -195,9 +100,15 @@ export async function getWarehouseInvestorReport(
           >(Prisma.sql`${sales} SELECT id, number, channel, "paidAt",
         revenue::float8, cost::float8, (revenue - cost)::float8 AS "grossProfit", products
         FROM filtered ORDER BY "paidAt" DESC, id DESC LIMIT ${limit} OFFSET ${(salesPage - 1) * limit}`),
-        ],
-      );
+          readWarehouseInvestmentSummary(
+            tx,
+            warehouseId,
+            actor.userId!,
+            isOperator,
+          ),
+        ]);
       return {
+        investment,
         warehouse,
         inventory: inventoryRows[0],
         sales: saleSummary[0],

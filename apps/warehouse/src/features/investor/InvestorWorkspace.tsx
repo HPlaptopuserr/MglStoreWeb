@@ -1,14 +1,19 @@
 "use client";
-import Link from "next/link";
-import { useState } from "react";
-import { Eye, Loader2, RefreshCw } from "lucide-react";
+import { useCallback, useState } from "react";
+import { Banknote, Eye, Loader2, RefreshCw } from "lucide-react";
 import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 import { useInvestorReport } from "./useInvestorReport";
+import { InvestorReportFilters } from "./InvestorReportFilters";
+import { MonthlyDividendCard } from "./MonthlyDividendCard";
 import { InvestorMetrics } from "./InvestorMetrics";
 import { InvestorTables } from "./InvestorTables";
+import { WarehouseInvestorManager } from "./WarehouseInvestorManager";
+import { WarehouseDividendDialog } from "./WarehouseDividendDialog";
+import { InvestmentTopUpApprovals } from "./top-ups/InvestmentTopUpApprovals";
 
 export function InvestorWorkspace() {
   const scope = useWarehouseScope();
+  const [dividendDialogOpen, setDividendDialogOpen] = useState(false);
   const [filters, setFilters] = useState({
     from: "",
     to: "",
@@ -16,6 +21,7 @@ export function InvestorWorkspace() {
     salesPage: 1,
   });
   const [refreshKey, setRefreshKey] = useState(0);
+  const refreshReport = useCallback(() => setRefreshKey((key) => key + 1), []);
   const { data, loading, error } = useInvestorReport(
     scope.selectedWarehouseId,
     filters,
@@ -39,99 +45,85 @@ export function InvestorWorkspace() {
       </div>
     );
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+    <div className="space-y-4 sm:space-y-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">
             Хөрөнгө оруулагчийн тайлан
           </p>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+          <h1 className="mt-1 break-words text-2xl font-bold tracking-tight sm:text-3xl">
             {scope.selectedWarehouse?.name}
           </h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-1 text-xs text-slate-500 sm:text-sm">
             {scope.selectedWarehouse?.address}
           </p>
         </div>
         {!scope.viewerOnly && (
-          <Link
-            href="/viewers"
-            className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500"
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            onClick={() => setDividendDialogOpen(true)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-emerald-700 focus-visible:ring-2 focus-visible:ring-emerald-500"
           >
-            Хэрэглэгч нэмэх
-          </Link>
+            <Banknote className="size-4" />
+            Ногдол ашиг хуваарилах
+          </button>
         )}
         <button
           onClick={() => setRefreshKey((key) => key + 1)}
           disabled={loading}
+          aria-label="Тайлан шинэчлэх"
+          title="Тайлан шинэчлэх"
           className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm transition hover:border-blue-300 hover:text-blue-600 disabled:opacity-50"
         >
           <RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />
-          Шинэчлэх
+          <span className="hidden sm:inline">Шинэчлэх</span>
         </button>
       </div>
-      <div className="grid grid-cols-1 items-end gap-4 rounded-2xl sm:grid-cols-2 lg:grid-cols-[minmax(200px,1fr)_180px_180px_auto] border border-slate-200 bg-white p-4 shadow-sm">
-        <label className="min-w-0 text-xs font-medium text-slate-500">
-          Дэлгүүр
-          <select
-            value={scope.selectedWarehouseId}
-            onChange={(event) => {
-              scope.selectWarehouse(event.target.value);
-              setFilters((current) => ({
-                ...current,
-                productPage: 1,
-                salesPage: 1,
-              }));
-            }}
-            className="mt-2 block w-full min-w-0 rounded-lg border border-slate-200 bg-white p-2.5 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
-          >
-            {scope.warehouses.map((warehouse) => (
-              <option key={warehouse.id} value={warehouse.id}>
-                {warehouse.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        {(
-          [
-            { key: "from", label: "Эхлэх огноо" },
-            { key: "to", label: "Дуусах огноо" },
-          ] as const
-        ).map(({ key, label }) => (
-          <label
-            key={key}
-            className="min-w-0 text-xs font-medium text-slate-500"
-          >
-            {label}
-            <input
-              type="date"
-              value={filters[key]}
-              max={key === "from" ? filters.to || undefined : undefined}
-              min={key === "to" ? filters.from || undefined : undefined}
-              onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  [key]: event.target.value,
-                  salesPage: 1,
-                }))
-              }
-              className="mt-2 block w-full min-w-0 rounded-lg border border-slate-200 p-2.5 text-sm text-slate-900 focus:ring-2 focus:ring-blue-500"
-            />
-          </label>
-        ))}
-        <button
-          onClick={() =>
-            setFilters((current) => ({
-              ...current,
-              from: "",
-              to: "",
-              salesPage: 1,
-            }))
-          }
-          className="rounded-lg px-3 py-2.5 text-sm text-blue-600 transition hover:bg-blue-50"
-        >
-          Бүх хугацаа
-        </button>
-      </div>
+      {dividendDialogOpen && !scope.viewerOnly && scope.selectedWarehouse && (
+        <WarehouseDividendDialog
+          key={`dividend-dialog:${scope.selectedWarehouseId}`}
+          warehouseId={scope.selectedWarehouseId}
+          warehouseName={scope.selectedWarehouse.name}
+          onClose={() => setDividendDialogOpen(false)}
+          onSaved={refreshReport}
+        />
+      )}
+      <InvestorReportFilters
+        from={filters.from}
+        to={filters.to}
+        onDateChange={(key, value) =>
+          setFilters((current) => ({ ...current, [key]: value, salesPage: 1 }))
+        }
+        onWarehouseChange={(id) => {
+          scope.selectWarehouse(id);
+          setFilters((current) => ({
+            ...current,
+            productPage: 1,
+            salesPage: 1,
+          }));
+        }}
+        onReset={() =>
+          setFilters((current) => ({
+            ...current,
+            from: "",
+            to: "",
+            salesPage: 1,
+          }))
+        }
+      />
+      {!scope.viewerOnly && (
+        <InvestmentTopUpApprovals
+          key={`top-up-approvals:${scope.selectedWarehouseId}`}
+          warehouseId={scope.selectedWarehouseId}
+        />
+      )}
+      {!scope.viewerOnly && (
+        <WarehouseInvestorManager
+          warehouseId={scope.selectedWarehouseId}
+          onInvestmentSaved={refreshReport}
+        />
+      )}
       {loading && (
         <div
           role="status"
@@ -157,8 +149,23 @@ export function InvestorWorkspace() {
       )}
       {data && !loading && !error && (
         <>
+          {data.investment?.monthlyDividend && (
+            <MonthlyDividendCard
+              dividend={data.investment.monthlyDividend}
+              aggregate={data.investment.scope === "WAREHOUSE"}
+              warehouseId={scope.selectedWarehouseId}
+              onConfirmed={refreshReport}
+            />
+          )}
           <InvestorMetrics data={data} />
-          <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4 text-xs leading-6 text-slate-600">
+          <details className="group rounded-xl border border-blue-100 bg-blue-50/50 p-3 text-xs leading-6 text-slate-600">
+            <summary className="cursor-pointer font-medium text-blue-700 focus-visible:ring-2 focus-visible:ring-blue-500">
+              Тооцооллын тайлбар
+              {data.inventory.missingCostCount > 0 ||
+              data.sales.missingCostCount > 0
+                ? " · Өртөг дутуу мэдээлэл байна"
+                : ""}
+            </summary>
             <p>
               Нийт ашиг = борлуулалт − борлуулсан барааны хадгалсан өртөг. Үйл
               ажиллагааны зардал, татвар, буцаалт болон хэсэгчилсэн төлөлтийг
@@ -173,7 +180,7 @@ export function InvestorWorkspace() {
                 бол нийт ашгийг харуулахгүй.
               </p>
             )}
-          </div>
+          </details>
           <InvestorTables
             data={data}
             productPage={filters.productPage}

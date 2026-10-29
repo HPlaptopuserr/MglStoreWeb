@@ -1,8 +1,9 @@
 "use client";
 
+import { InvestorViewerHeader } from "./InvestorViewerHeader";
 import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Eye, LogOut, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { useWarehouseScope } from "@/features/warehouse-scope/WarehouseScopeProvider";
 
 export function WarehouseAccessGate({
@@ -24,7 +25,7 @@ export function WarehouseAccessGate({
       !scope.isLoading &&
       !scope.error &&
       scope.viewerOnly &&
-      pathname !== "/investor"
+      !["/investor", "/investor/profile"].includes(pathname)
     )
       router.replace("/investor");
   }, [scope.isLoading, scope.error, scope.viewerOnly, pathname, router]);
@@ -59,33 +60,9 @@ export function WarehouseAccessGate({
   if (!scope.viewerOnly) return children;
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 px-4 py-4 backdrop-blur sm:px-8">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="rounded-xl bg-blue-50 p-2.5 text-blue-600">
-              <Eye className="size-5" />
-            </span>
-            <div>
-              <p className="font-bold">Дундын дэлгүүр</p>
-              <p className="text-xs text-slate-500">
-                Хөрөнгө оруулагч · Зөвхөн харах эрх
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-600">{userName}</span>
-            <button
-              onClick={onSignOut}
-              aria-label="Гарах"
-              className="rounded-xl p-2.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-blue-500"
-            >
-              <LogOut className="size-5" />
-            </button>
-          </div>
-        </div>
-      </header>
+      <InvestorViewerHeader userName={userName} onSignOut={onSignOut} />
       <main className="mx-auto max-w-7xl p-4 sm:p-8">
-        {pathname === "/investor" ? (
+        {["/investor", "/investor/profile"].includes(pathname) ? (
           viewerContent
         ) : (
           <p role="status">Тайлан руу шилжиж байна…</p>

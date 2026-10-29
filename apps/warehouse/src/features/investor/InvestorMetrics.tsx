@@ -33,20 +33,24 @@ export function InvestorMetrics({ data }: { data: WarehouseInvestorReport }) {
     },
   ];
   return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
       {cards.map(({ label, value, detail, icon: Icon }) => (
         <article
           key={label}
-          className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none"
+          className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm sm:p-5 transition duration-200 hover:-translate-y-0.5 hover:shadow-md motion-reduce:transform-none"
         >
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium text-slate-500">{label}</p>
-            <Icon className="size-5 text-blue-500" />
+            <p className="text-xs font-medium leading-5 text-slate-500 sm:text-sm">
+              {label}
+            </p>
+            <Icon className="size-4 shrink-0 text-blue-500 sm:size-5" />
           </div>
-          <p className="mt-4 break-words text-2xl font-bold tracking-tight">
+          <p className="mt-3 break-words text-xl sm:text-2xl font-bold tracking-tight">
             {value}
           </p>
-          <p className="mt-2 text-xs leading-5 text-slate-500">{detail}</p>
+          <p className="mt-1.5 text-[11px] leading-5 sm:text-xs text-slate-500">
+            {detail}
+          </p>
         </article>
       ))}
     </div>
