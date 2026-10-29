@@ -124,3 +124,27 @@ test("owner and other employees retain their existing access", async () => {
   capabilities = ["POS_CASHIER"];
   assert.equal((await fetch(url + "/pos/sales", { headers })).status, 200);
 });
+
+test("a transient database disconnect retries access checks without bypassing chef restrictions", async () => {
+  let calls = 0;
+  stub(prisma.organizationMember, "findFirst", async () => {
+    if (++calls === 1) throw Object.assign(new Error("Server has closed the connection."), { code: "P1017" });
+    return { role: "STAFF", capabilities: ["KITCHEN_CHEF"], organizationId: "restaurant" };
+  });
+  assert.equal((await fetch(url + "/pos/sales", { headers })).status, 403);
+  assert.equal(calls, 2);
+});
+
+test("persistent database disconnect returns retryable 503 and never allows the protected route", async () => {
+  stub(console, "error", () => undefined);
+  let calls = 0;
+  stub(prisma.organizationMember, "findFirst", async () => {
+    calls++;
+    throw Object.assign(new Error("Server has closed the connection."), { code: "P1017" });
+  });
+  const response = await fetch(url + "/pos/sales", { headers });
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("retry-after"), "5");
+  assert.equal(calls, 2);
+  assert.equal((await response.json()).code, "SERVICE_UNAVAILABLE");
+});

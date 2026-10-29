@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { isDatabaseUnavailable } from "../lib/database-availability";
+import { retryDisconnectedRead } from "../lib/retry-disconnected-read";
 import { prisma } from "@mgl/database";
 import { isFullAdmin, isKitchenOnlyMember, isKitchenRequest } from "@mgl/types";
 
@@ -26,7 +28,7 @@ export async function restrictKitchenMember(
   if (typeof claims.role === "string" && isFullAdmin(claims.role))
     return next();
   try {
-    let membership = await prisma.organizationMember.findFirst({
+    let membership = await retryDisconnectedRead(() => prisma.organizationMember.findFirst({
       where: {
         userId: claims.userId,
         isActive: true,
@@ -36,13 +38,13 @@ export async function restrictKitchenMember(
           : { isPrimary: true }),
       },
       select: { organizationId: true, role: true, capabilities: true },
-    });
+    }));
     if (!membership && !claims.organizationId) {
-      membership = await prisma.organizationMember.findFirst({
+      membership = await retryDisconnectedRead(() => prisma.organizationMember.findFirst({
         where: { userId: claims.userId, isActive: true, deletedAt: null },
         orderBy: { createdAt: "asc" },
         select: { organizationId: true, role: true, capabilities: true },
-      });
+      }));
     }
     if (
       !membership ||
@@ -69,14 +71,14 @@ export async function restrictKitchenMember(
     const branchId: unknown =
       req.method === "GET" ? req.query.branchId : req.body?.branchId;
     if (typeof branchId === "string" && branchId) {
-      const branch = await prisma.branch.findFirst({
+      const branch = await retryDisconnectedRead(() => prisma.branch.findFirst({
         where: {
           id: branchId,
           organizationId: membership.organizationId,
           deletedAt: null,
         },
         select: { id: true },
-      });
+      }));
       if (!branch)
         return res
           .status(403)
@@ -85,6 +87,13 @@ export async function restrictKitchenMember(
     return next();
   } catch (error: unknown) {
     console.error("Kitchen access check failed", error);
+    if (isDatabaseUnavailable(error)) {
+      res.setHeader("Retry-After", "5");
+      return res.status(503).json({
+        code: "SERVICE_UNAVAILABLE",
+        message: "Серверийн өгөгдлийн сантай холбогдож чадсангүй. Түр хүлээгээд дахин оролдоно уу.",
+      });
+    }
     return res
       .status(500)
       .json({ message: "Гал тогооны эрх шалгаж чадсангүй" });
