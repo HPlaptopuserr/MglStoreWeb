@@ -36,6 +36,7 @@ export type ProductResult = {
 type ProductResultsGridProps = {
   products: ProductResult[];
   loading: boolean;
+  error?: string | null;
   hasActiveFilters: boolean;
   pricingAudience: MarketplacePricingAudience;
   searchQuery: string;
@@ -73,6 +74,7 @@ function getCatalogImageSource(url: string): {
 export function ProductResultsGrid({
   products,
   loading,
+  error,
   hasActiveFilters,
   pricingAudience,
   searchQuery,
@@ -92,6 +94,9 @@ export function ProductResultsGrid({
       </div>
     );
   }
+
+  // The parent renders the request error and retry action. An error is not an empty result.
+  if (error && products.length === 0) return null;
 
   if (products.length === 0) {
     return (

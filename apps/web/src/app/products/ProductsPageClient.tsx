@@ -570,7 +570,7 @@ function ProductsContent({
       } catch {
         if (!cancelled) {
           setProductsLoadError(
-            "Бараануудыг ачаалж чадсангүй. Интернэт холболтоо шалгаад дахин оролдоно уу.",
+            "Бараануудыг ачаалж чадсангүй. Дахин оролдоно уу.",
           );
         }
       } finally {
@@ -1168,6 +1168,7 @@ function ProductsContent({
           <ProductResultsGrid
             products={displayProducts}
             loading={productsLoading}
+            error={productsLoadError}
             hasActiveFilters={activeFilterCount > 0}
             pricingAudience={pricingAudience}
             searchQuery={searchQuery}

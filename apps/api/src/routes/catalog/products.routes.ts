@@ -1667,7 +1667,7 @@ router.get("/products", optionalAuth, async (req, res) => {
           if (scoreB !== scoreA) return scoreB - scoreA;
           return a.id.localeCompare(b.id);
         }
-        if (!search) return 0;
+        if (!search || sort === "newest") return 0;
         const priorityDiff =
           (b.marketplacePriority || 0) - (a.marketplacePriority || 0);
         if (priorityDiff !== 0) return priorityDiff;

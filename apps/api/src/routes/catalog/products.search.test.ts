@@ -208,3 +208,23 @@ test("catalog validation sends no duplicate payload, detects stock changes, and 
   const mismatched = await fetch(`${base}/pos/products?branchId=branch&organizationId=other-store`, { headers: conditional });
   assert.equal(mismatched.status, 403);
 });
+
+test("public new-product searches preserve newest order instead of reordering by relevance", async () => {
+  stub(prisma.siteSetting, "findUnique", async () => ({ value: "true" }));
+  stub(prisma.siteSetting, "findMany", async () => [{ key: "web-products-enabled-store", value: "true" }]);
+  stub(prisma.organization, "findMany", async () => [{ id: "store" }]);
+  const rows = [
+    { ...products[0], name: "Latte 2026", createdAt: new Date("2026-10-30"), images: [{ id: "photo-new", url: "https://example.com/new.jpg" }] },
+    { ...products[1], name: "Latte", createdAt: new Date("2025-01-01"), images: [{ id: "photo-old", url: "https://example.com/old.jpg" }] },
+  ];
+  stub(prisma.product, "count", async () => rows.length);
+  stub(prisma.product, "findMany", async (args: Prisma.ProductFindManyArgs) => {
+    assert.ok(Array.isArray(args.orderBy));
+    assert.deepEqual(args.orderBy[0], { createdAt: "desc" });
+    return rows;
+  });
+  const response = await fetch(`${base}/products?search=latte&sort=newest&meta=1&limit=24`);
+  assert.equal(response.status, 200);
+  const page = await response.json() as ProductPage;
+  assert.deepEqual(page.products.map((product) => product.name), ["Latte 2026", "Latte"]);
+});

@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useBusinessCategories } from "@/hooks/useBusinessCategories";
 import { isLocalAreaSlug } from "@mgl/ui";
 import { getInvestors, getPartnersPage } from "@/features/organizations/api";
@@ -27,6 +28,11 @@ function normalizeCategoryKey(value: string) {
 }
 
 export default function OrganizationsPage() {
+  return <Suspense fallback={<OrganizationsLoadingGrid />}><OrganizationsContent /></Suspense>;
+}
+
+function OrganizationsContent() {
+  const searchParams = useSearchParams();
   const [stores, setStores] = useState<OrganizationStore[]>([]);
   const [investors, setInvestors] = useState<Investor[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -47,7 +53,7 @@ export default function OrganizationsPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = searchParams;
     const location = params.get("location");
     const category = params.get("category");
     const search = params.get("search") ?? params.get("q");
@@ -58,13 +64,12 @@ export default function OrganizationsPage() {
     ) {
       setActiveLocation(location);
     }
-    if (category) setActiveFilter(category);
-    if (search) {
-      setSearchQuery(search);
-      setDebouncedSearch(search);
-    }
+    setActiveFilter(category || "all");
+    setSearchQuery(search || "");
+    setDebouncedSearch(search || "");
+    if (!location) setActiveLocation("all");
     setFiltersReady(true);
-  }, []);
+  }, [searchParams]);
 
   // Debounce search input
   useEffect(() => {

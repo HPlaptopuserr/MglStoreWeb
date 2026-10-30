@@ -61,3 +61,39 @@ test("the storefront's Mongolian transliteration is available to POS", () => {
     getProductSearchPhrases("Mgl   Cafe Latte").includes("mgl cafe latte"),
   );
 });
+
+test("expanded phrases share relation joins instead of multiplying them", () => {
+  for (const query of ["гутал", "сүү", "Mgl Cafe Latte", "6331000"]) {
+    const phrases = getProductSearchPhrases(query);
+    const clauses = buildProductSearchWhere(query);
+    const organizations = clauses.filter((clause) => clause.organization);
+    const categories = clauses.filter((clause) => clause.businessCategory);
+    assert.equal(organizations.length, 1);
+    assert.equal(categories.length, 1);
+    assert.deepEqual(organizations[0].organization, {
+      OR: phrases.map((phrase) => ({
+        name: { contains: phrase, mode: "insensitive" },
+      })),
+    });
+    assert.deepEqual(
+      clauses.find((clause) => clause.barcodeAliases)?.barcodeAliases,
+      { hasSome: phrases },
+    );
+    assert.deepEqual(categories[0].businessCategory, {
+      OR: [
+        ...phrases.flatMap((phrase) => [
+          { name: { contains: phrase, mode: "insensitive" } },
+          { slug: { contains: phrase, mode: "insensitive" } },
+        ]),
+        {
+          parent: {
+            OR: phrases.flatMap((phrase) => [
+              { name: { contains: phrase, mode: "insensitive" } },
+              { slug: { contains: phrase, mode: "insensitive" } },
+            ]),
+          },
+        },
+      ],
+    });
+  }
+});
