@@ -203,8 +203,8 @@ services:
         - pnpm-workspace.yaml
         - turbo.json
         - render.yaml
-    buildCommand: pnpm install --frozen-lockfile && pnpm exec prisma migrate deploy --schema=packages/database/prisma/schema.prisma && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/api
-    preDeployCommand: node packages/database/scripts/check-runtime-schema.cjs WarehouseInvestment WarehouseInvestorDividend WarehouseDividendDecision WarehouseInvestmentTopUp
+    buildCommand: pnpm install --frozen-lockfile && pnpm -F @mgl/database run db:generate && pnpm turbo build --filter=@mgl/api
+    preDeployCommand: node packages/database/scripts/deploy-database.cjs
     startCommand: cd apps/api && pnpm start
     envVars:
       - key: NODE_ENV

@@ -25,6 +25,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: Build database client
         run: pnpm --filter @mgl/database build
+      - name: Test database release safeguards
+        run: pnpm --filter @mgl/database test:release
       - name: Build shared types
         run: pnpm --filter @mgl/types build
       - name: Type-check critical workspaces

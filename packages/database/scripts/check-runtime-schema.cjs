@@ -21,9 +21,10 @@ function missingModelColumns(models, columns) {
   });
 }
 
-async function main(modelNames) {
-  if (!modelNames.length)
-    throw new Error("Specify the Prisma models required by this release.");
+async function checkRuntimeSchema(requestedNames = []) {
+  const modelNames = requestedNames.length
+    ? requestedNames
+    : Prisma.dmmf.datamodel.models.map((model) => model.name);
   const models = modelNames.map((name) => {
     const model = Prisma.dmmf.datamodel.models.find(
       (candidate) => candidate.name === name,
@@ -47,10 +48,10 @@ async function main(modelNames) {
 }
 
 if (require.main === module) {
-  main(process.argv.slice(2)).catch((error) => {
+  checkRuntimeSchema(process.argv.slice(2)).catch((error) => {
     console.error(error.message);
     process.exitCode = 1;
   });
 }
 
-module.exports = { missingModelColumns };
+module.exports = { missingModelColumns, checkRuntimeSchema };
