@@ -35,8 +35,8 @@ export function confirmQPayInvoice(invoiceId: string): Promise<QPayInvoice> {
   });
 }
 
-export function cancelQPayInvoice(invoiceId: string): Promise<QPayInvoice> {
+export function cancelQPayInvoice(invoiceId: string, requireProviderCancellation = false): Promise<QPayInvoice & { providerCancellationConfirmed?: boolean }> {
   return posRequest<QPayInvoice>("/pos/payments/qpay/cancel", {
-    method: "POST", body: { invoiceId }, signal: AbortSignal.timeout(90_000),
+    method: "POST", body: { invoiceId, requireProviderCancellation }, signal: AbortSignal.timeout(90_000),
   });
 }

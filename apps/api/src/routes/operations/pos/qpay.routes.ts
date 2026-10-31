@@ -503,6 +503,7 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
   if (!actor) return;
 
   const id = String(req.body?.invoiceId || "").trim();
+  const requireProviderCancellation = req.body?.requireProviderCancellation === true;
   if (!id) {
     return res.status(400).json({ message: "QPay invoiceId шаардлагатай" });
   }
@@ -561,8 +562,10 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
     const alreadyReleased = Boolean(
       payload.cancelledAt || payload.checkoutAbandonedAt,
     );
-    if (invoice.status === PosQPayStatus.EXPIRED && alreadyReleased) {
+    if (invoice.status === PosQPayStatus.EXPIRED && alreadyReleased &&
+      (!requireProviderCancellation || payload.providerCancellationConfirmed === true || Boolean(payload.cancelledAt))) {
       return res.json({
+        providerCancellationConfirmed: payload.providerCancellationConfirmed === true || Boolean(payload.cancelledAt),
         invoiceId: invoice.id,
         amount: Number(invoice.amount),
         qrText: invoice.qrText,
@@ -619,6 +622,7 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
 
         if (
           !canReleaseCheckoutAfterCancelFailure({
+            requireProviderCancellation,
             invoiceStatus: invoice.status,
             providerRecheckCompleted,
             providerPaymentConfirmed,
@@ -684,6 +688,7 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
     }
 
     return res.json({
+      providerCancellationConfirmed: !providerCancelWarning,
       invoiceId: invoice.id,
       amount: Number(invoice.amount),
       qrText: invoice.qrText,

@@ -20,6 +20,8 @@ import { ReceiptBuyerChoice } from "@/features/pos/components/ReceiptBuyerChoice
 import { checkoutFinalizationBlocker } from "@/features/pos/utils/checkout-finalization";
 import { canAutoCompletePayment } from "@/features/pos/utils/auto-complete-payment";
 import { useEventCallback } from "@/features/pos/hooks/useEventCallback";
+import { canSwitchAfterQrCancellation } from "@/features/pos/utils/payment-method-switch";
+import { usePaymentMethodSwitch } from "@/features/pos/hooks/usePaymentMethodSwitch";
 import { usePendingCardPayments } from "@/features/pos/hooks/usePendingCardPayments";
 import dynamic from "next/dynamic";
 import type { PosCheckoutProps } from "@/features/pos/components/PosCheckoutView";
@@ -181,6 +183,7 @@ type CardPaymentRun = {
   provider?: string | null;
   abortController: AbortController;
   cancelled: boolean;
+  authorizationStarted: boolean;
 };
 
 type PosListMode = "products" | "credits";
@@ -2495,6 +2498,7 @@ export default function PosDemoPage() {
         pendingId,
         abortController: new AbortController(),
         cancelled: false,
+        authorizationStarted: false,
       };
       cardPaymentRunRef.current = cardRun;
       setPaymentEntries((prev) => [
@@ -2545,6 +2549,7 @@ export default function PosDemoPage() {
           createdAttemptId = crypto.randomUUID();
           setPaymentEntries(previous => previous.map(entry => entry.id === pendingId ? { ...entry, attemptId: createdAttemptId } : entry));
         }
+        cardRun.authorizationStarted = true;
         const attempt = await createCardAttempt({
           attemptId: createdAttemptId,
           amount: safeAmount,
@@ -2806,10 +2811,6 @@ export default function PosDemoPage() {
     } finally { cardStatusChecksRef.current.delete(id); }
   };
 
-  usePendingCardPayments(paymentEntries,
-    !isCardProcessing && getEffectiveCardProvider(registerConfig) === "MINU_AGENT",
-    checkCardPayment,
-  );
 
   const paymentRemovalRef = useRef(new Set<string>());
   const removePaymentEntry = async (id: string) => {
@@ -3084,17 +3085,71 @@ export default function PosDemoPage() {
     setLoyaltyRedeemSession(null);
   };
 
-  const handlePaymentMethodChange = (method: PaymentMethod) => {
+  const applyPaymentMethod = (method: PaymentMethod) => {
     if (selectedCreditRepayment && method === "CREDIT") {
       setScanStatus("not-found");
       setScanMessage("Зээлийн төлөлтийг дахин зээлээр хийх боломжгүй.");
       return;
     }
     setPaymentMethod(method);
+    setScanStatus("idle");
+    setScanMessage("");
     if (method !== "QR") {
       setQpayModal(null);
     }
   };
+
+  const methodSwitchDisabled = qpayCreating || saleLoading || autoFinalizing || creditRepaymentSubmitting || state.cart.length === 0;
+  const methodSwitch = usePaymentMethodSwitch({
+    entries: paymentEntries,
+    remaining,
+    processing: isCardProcessing,
+    disabled: methodSwitchDisabled,
+    apply: applyPaymentMethod,
+    resolvePending: async (entry) => {
+      if (entry.method === "QR" && entry.invoiceId) {
+        const cancelled = await cancelQPayInvoice(entry.invoiceId, true);
+        if (!canSwitchAfterQrCancellation(cancelled)) {
+          throw new Error("QR цуцлалтыг банк баталгаажуулаагүй тул өөр төлбөр эхлүүлэхгүй. Төлөвөө шалгана уу.");
+        }
+        setPaymentEntries(previous => previous.filter(item => item.id !== entry.id || item.status === "confirmed"));
+        setQpayModal(current => current?.invoiceId === entry.invoiceId ? null : current);
+        clearPaymentFeedback("QR");
+        return;
+      }
+      if (entry.method === "CARD") {
+        const run = cardPaymentRunRef.current;
+        if (run?.pendingId === entry.id) {
+          if (!run.authorizationStarted) {
+            run.cancelled = true;
+            run.abortController.abort();
+            cardPaymentRunRef.current = null;
+            setIsCardProcessing(false);
+            clearProgressTicker();
+            setPaymentEntries(previous => previous.filter(item => item.id !== entry.id));
+            return;
+          }
+          if (run.provider === "MINU_AGENT") await handleCancelCardPayment();
+          else if (run.provider === "PUSH_ECR" && run.terminalId) {
+            const cancellation = await cancelPushEcr(run.terminalId);
+            if (!cancellation.succeed) throw new Error(cancellation.message || "Терминал цуцлалтыг баталгаажуулаагүй байна.");
+          }
+        }
+        await checkCardPayment(entry.id, AbortSignal.timeout(20_000));
+        return;
+      }
+      throw new Error("Өмнөх төлбөрийн лавлах үүсэж байна. Түр хүлээгээд дахин оролдоно уу.");
+    },
+  });
+  const handlePaymentMethodChange = (method: PaymentMethod) => {
+    if (method === paymentMethod && !methodSwitch.pending) return;
+    if (selectedCreditRepayment && method === "CREDIT") return;
+    void methodSwitch.request(method);
+  };
+  usePendingCardPayments(paymentEntries,
+    !isCardProcessing && (getEffectiveCardProvider(registerConfig) === "MINU_AGENT" || methodSwitch.pending),
+    checkCardPayment,
+  );
 
   const openCheckout = async (method: PaymentMethod = "CASH", splitPayment = false) => {
     if (state.cart.length === 0 || saleLoading || isCardProcessing || autoFinalizingRef.current) return;
@@ -4025,6 +4080,9 @@ export default function PosDemoPage() {
           totals={totals}
           paymentMethod={paymentMethod}
           onChangeMethod={handlePaymentMethodChange}
+          methodSwitchDisabled={methodSwitchDisabled || methodSwitch.resolving}
+          methodSwitchMessage={methodSwitch.message}
+          methodSwitchError={methodSwitch.error}
           paymentEntries={paymentEntries}
           qpayModal={qpayModal}
           statusMessage={scanMessage}
@@ -4063,7 +4121,7 @@ export default function PosDemoPage() {
             setView("register");
           }}
           onCancelCheckout={cancelCheckoutAndClearCart}
-          disabled={qpayCreating || saleLoading || autoFinalizing || creditRepaymentSubmitting || state.cart.length === 0 || isCardProcessing}
+          disabled={qpayCreating || saleLoading || autoFinalizing || creditRepaymentSubmitting || state.cart.length === 0 || isCardProcessing || methodSwitch.pending || methodSwitch.resolving}
         />
       )}
 
@@ -4086,12 +4144,21 @@ export default function PosDemoPage() {
             <button
               type="button"
               onClick={handleCancelCardPayment}
-              disabled={isCancellingCard}
+              disabled={isCancellingCard || methodSwitch.pending || methodSwitch.resolving}
               className="mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
             >
               {isCancellingCard ? <Loader2 size={14} className="animate-spin" /> : null}
               {getEffectiveCardProvider(registerConfig) === "MINU_AGENT" ? "Төлөвийг ард шалгуулах" : "Цуцлах"}
             </button>
+            <button
+              type="button"
+              onClick={() => handlePaymentMethodChange("QR")}
+              disabled={methodSwitchDisabled || methodSwitch.resolving || isCancellingCard}
+              className="mt-3 block min-h-11 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
+            >
+              QR руу шилжих
+            </button>
+            {methodSwitch.message && <p role="status" className="mt-3 text-xs leading-5 text-slate-600">{methodSwitch.message}</p>}
           </div>
         </div>
       )}
