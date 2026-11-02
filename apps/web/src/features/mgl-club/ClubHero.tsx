@@ -1,6 +1,6 @@
-import Link from "next/link";
 import {
   ArrowUpRight,
+  UsersRound,
   ArrowDown,
   Handshake,
   ShoppingBag,
@@ -21,16 +21,15 @@ export function ClubHero({ summary }: { summary: ClubSummary }) {
             Таны дараагийн хамтрагч <em>энд бий.</em>
           </h1>
           <p className={styles.lead}>
-            Бизнесээ танилцуулж, найдвартай үйлчилгээгээ санал болгоорой.
-            Хэрэгтэй бараа, бүтээгдэхүүн, туслан гүйцэтгэгчээ клубийн гишүүдээс
-            шууд олж, харилцан итгэлцлээр хамтран ажиллацгаая.
+            Хэрэгтэй үйлчилгээгээ олж, бизнесээ танилцуулж, 21 аймгийн бизнес
+            эрхлэгчидтэй холбогдоорой.
           </p>
           <div className={styles.heroActions}>
-            <Link className={styles.primary} href="/mgl-club/join">
-              Бизнесээ бүртгүүлэх <ArrowUpRight size={17} />
-            </Link>
+            <a className={styles.primary} href="#club-search">
+              <UsersRound size={17} /> Хамтрагчаа олох
+            </a>
             <a className={styles.secondary} href="#introduction">
-              Клубийн танилцуулга <ArrowDown size={17} />
+              Танилцуулга <ArrowDown size={17} />
             </a>
           </div>
           <p className={styles.heroNote}>

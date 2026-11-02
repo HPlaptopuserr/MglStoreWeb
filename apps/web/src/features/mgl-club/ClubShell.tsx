@@ -1,10 +1,10 @@
 import { ClubHeader } from "./ClubHeader";
 import { ClubFooter } from "./ClubFooter";
-import Link from "next/link";
-import { UserRound, UsersRound, Handshake, PlusCircle } from "lucide-react";
+import { headers } from "next/headers";
+import { ClubMobileNavigation } from "./ClubMobileNavigation";
 import type { ReactNode } from "react";
 import styles from "./club-design.module.css";
-export function ClubShell({
+export async function ClubShell({
   children,
   joining = false,
   total,
@@ -13,8 +13,10 @@ export function ClubShell({
   joining?: boolean;
   total?: number | null;
 }) {
+  const embedded =
+    (await headers()).get("user-agent")?.includes("MGLStoreApp/") ?? false;
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-embedded={embedded}>
       <a className={styles.skipLink} href="#club-main">
         Үндсэн агуулга руу очих
       </a>
@@ -32,26 +34,7 @@ export function ClubShell({
         {children}
       </main>
       <ClubFooter />
-      {!joining && (
-        <nav className={styles.bottomNav} aria-label="Гар утасны клубийн цэс">
-          <a href="#club-directory">
-            <UsersRound size={21} />
-            Гишүүд
-          </a>
-          <a href="#needs-hub">
-            <Handshake size={21} />
-            Хэрэгцээ
-          </a>
-          <Link href="/mgl-club/join">
-            <PlusCircle size={21} />
-            Бүртгүүлэх
-          </Link>
-          <Link href="/profile">
-            <UserRound size={21} />
-            Профайл
-          </Link>
-        </nav>
-      )}
+      {!joining && <ClubMobileNavigation />}
     </div>
   );
 }

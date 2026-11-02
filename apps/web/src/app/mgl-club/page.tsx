@@ -16,8 +16,8 @@ export default async function MglClubPage() {
   return (
     <ClubShell total={summary.total}>
       <ClubHero summary={summary} />
-      <ClubIntroduction />
       <ClubDirectory summary={summary} />
+      <ClubIntroduction />
       <ClubCommunitySections />
     </ClubShell>
   );

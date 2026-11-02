@@ -592,14 +592,19 @@
 }
 @media (max-width: 767px) {
   .section {
-    padding: 36px 16px;
+    padding: 28px 16px;
   }
   .heading {
     display: block;
     margin-bottom: 24px;
   }
+  .heading h2 {
+    font-size: 24px;
+    letter-spacing: -0.6px;
+  }
   .heading > div > p:last-child {
     font-size: 13px;
+    line-height: 1.7;
   }
   .download {
     margin-top: 20px;
