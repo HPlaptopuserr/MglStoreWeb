@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { ArrowRight, Check, LoaderCircle, ShieldCheck } from "lucide-react";
 import { API } from "@/lib/api";
@@ -60,12 +61,12 @@ export function RegistrationForm() {
           <br />
           Таны хариултыг хүлээн авлаа.
         </p>
-        <a
-          href="/"
-          className="mt-8 inline-flex items-center gap-2 font-semibold text-orange-700 hover:underline"
+        <Link
+          href="/2003"
+          className="mt-8 inline-flex items-center gap-2 font-semibold text-blue-800 hover:underline"
         >
-          MGL Store руу очих <ArrowRight size={18} />
-        </a>
+          Хүрээлэл рүү буцах <ArrowRight size={18} />
+        </Link>
       </section>
     );
 

@@ -2,7 +2,7 @@
   --ink: #213c35;
   --muted: #68756f;
   --accent: #c1e783;
-  min-height: 100vh;
+  min-height: 0;
   background:
     radial-gradient(ellipse at 0% 25%, #e9eedf88, transparent 45%), #f6f7f2;
   color: var(--ink);
@@ -727,5 +727,65 @@
   }
   .choice > span {
     font-size: 12px;
+  }
+}
+
+/* Registration shares the community shell and its mobile navigation. */
+.page {
+  --ink: #102b50;
+  --muted: #62748e;
+  --accent: #ffdf00;
+  background: #f4f7fc;
+}
+.layout {
+  padding-top: 28px;
+  gap: 44px;
+}
+.submit {
+  background: #103974;
+  color: #fff;
+}
+.intro h1 span {
+  color: #315b95;
+}
+@media (max-width: 700px) {
+  .page {
+    padding: 0 20px;
+  }
+  .layout {
+    padding-top: 24px;
+    gap: 22px;
+  }
+  .intro {
+    position: static;
+    padding: 0;
+  }
+  .year,
+  .connectionCard,
+  .introMeta {
+    display: none;
+  }
+  .intro h1 {
+    font-size: 29px;
+    line-height: 1.3;
+    margin: 14px 0;
+  }
+  .intro .description {
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .form {
+    border-radius: 22px;
+    padding: 24px 20px;
+  }
+  .eyebrow {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+  }
+  .choice strong {
+    font-size: 13px;
+  }
+  .choice > span {
+    font-size: 11px;
   }
 }
