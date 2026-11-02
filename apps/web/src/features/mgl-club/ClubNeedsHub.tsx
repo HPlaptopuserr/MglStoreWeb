@@ -9,21 +9,28 @@ import {
   SearchX,
 } from "lucide-react";
 import type { MglClubMember } from "@mgl/types";
-import { useClubDirectory } from "./useClubDirectory";
+import { useClubWorkspace } from "./ClubWorkspaceProvider";
 import { MemberDialog, type MemberView } from "./MemberDialog";
 import { NeedCard } from "./NeedCard";
 import { NeedsFilters } from "./NeedsFilters";
 import styles from "./needs.module.css";
 export function ClubNeedsHub() {
-  const [query, setQuery] = useState("");
-  const [city, setCity] = useState("");
-  const [sector, setSector] = useState("");
-  const [visible, setVisible] = useState(6);
+  const { needs: listing } = useClubWorkspace();
+  const {
+    query,
+    setQuery,
+    city,
+    setCity,
+    sector,
+    setSector,
+    visibleCount: visible,
+    setVisibleCount: setVisible,
+    directory,
+  } = listing;
   const [selected, setSelected] = useState<{
     member: MglClubMember;
     view: MemberView;
   } | null>(null);
-  const directory = useClubDirectory(query, sector, city, "needs");
   const total = directory.services.reduce(
     (sum, group) =>
       sum + (!sector || group.sector === sector ? group.count : 0),

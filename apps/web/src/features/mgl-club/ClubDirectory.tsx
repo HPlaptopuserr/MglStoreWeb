@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { UsersRound, ArrowDown, Zap, ArrowUpRight } from "lucide-react";
 import { type MglClubMember } from "@mgl/types";
-import { useClubDirectory } from "./useClubDirectory";
+import { useClubWorkspace } from "./ClubWorkspaceProvider";
 import { ProvinceFilter } from "./ProvinceFilter";
 import { MemberGrid } from "./MemberGrid";
 import { MemberDialog } from "./MemberDialog";
@@ -12,13 +12,21 @@ import { ClubNeedsHub } from "./ClubNeedsHub";
 import type { ClubSummary } from "./club-summary";
 import styles from "./club-design.module.css";
 export function ClubDirectory({ summary }: { summary: ClubSummary }) {
-  const [query, setQuery] = useState("");
-  const [sector, setSector] = useState("");
-  const [city, setCity] = useState("");
-  const [scope, setScope] = useState("services");
-  const [visibleCount, setVisibleCount] = useState(6);
+  const { members: listing } = useClubWorkspace();
+  const {
+    query,
+    setQuery,
+    sector,
+    setSector,
+    city,
+    setCity,
+    scope,
+    setScope,
+    visibleCount,
+    setVisibleCount,
+    directory,
+  } = listing;
   const [selected, setSelected] = useState<MglClubMember | null>(null);
-  const directory = useClubDirectory(query, sector, city, scope);
   const availableCount = directory.services.reduce(
     (total, group) =>
       total + (!sector || group.sector === sector ? group.count : 0),

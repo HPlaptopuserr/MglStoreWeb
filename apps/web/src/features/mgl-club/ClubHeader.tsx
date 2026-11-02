@@ -15,14 +15,14 @@ export function ClubHeader({
       <div className={styles.headerInner}>
         <ClubBrand subtitle />
         <nav className={styles.navigation} aria-label="Клубийн үндсэн цэс">
-          <a href="/mgl-club#hero">Нүүр</a>
-          <a href="/mgl-club#introduction">Танилцуулга</a>
-          <a href="/mgl-club#club-directory">
+          <Link href="/mgl-club#hero">Нүүр</Link>
+          <Link href="/mgl-club#introduction">Танилцуулга</Link>
+          <Link href="/mgl-club#club-directory">
             Гишүүд {total != null && <b>{total}</b>}
-          </a>
-          <a href="/mgl-club#needs-hub">Хэрэгцээ & Зарууд</a>
-          <a href="/mgl-club#benefits">Давуу тал</a>
-          <a href="/mgl-club#about">Клубийн дүрэм</a>
+          </Link>
+          <Link href="/mgl-club#needs-hub">Хэрэгцээ & Зарууд</Link>
+          <Link href="/mgl-club#benefits">Давуу тал</Link>
+          <Link href="/mgl-club#about">Клубийн дүрэм</Link>
         </nav>
         <div className={styles.headerActions}>
           <Link href={clubRoutes.profile} className={styles.secondary}>
@@ -38,9 +38,9 @@ export function ClubHeader({
           </Link>
         </div>
         <div className={styles.mobileActions}>
-          <a href="/mgl-club#club-search" aria-label="Үйлчилгээ хайх">
+          <Link href="/mgl-club#club-search" aria-label="Үйлчилгээ хайх">
             <Search size={21} />
-          </a>
+          </Link>
           <Link href="/mgl-club/join" aria-label="Бизнесээ бүртгүүлэх">
             <PlusCircle size={21} />
           </Link>

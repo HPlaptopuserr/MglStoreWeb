@@ -11,6 +11,7 @@ export function useClubDirectory(
   sector: string,
   city: string,
   scope = "services",
+  enabled = true,
 ) {
   const [members, setMembers] = useState<MglClubMember[]>([]);
   const [services, setServices] = useState<MglClubServiceGroup[]>([]);
@@ -61,6 +62,7 @@ export function useClubDirectory(
     [query, sector, city, scope],
   );
   useEffect(() => {
+    if (!enabled) return;
     controller.current?.abort();
     setLoading(true);
     setMembers([]);
@@ -74,7 +76,7 @@ export function useClubDirectory(
       window.clearTimeout(timer);
       controller.current?.abort();
     };
-  }, [load, retry]);
+  }, [load, retry, enabled]);
   return {
     members,
     services,

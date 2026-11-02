@@ -1,7 +1,6 @@
 import { getClubSummary } from "@/features/mgl-club/club-summary";
 import { ClubCommunitySections } from "@/features/mgl-club/ClubCommunitySections";
 import type { Metadata } from "next";
-import { ClubShell } from "@/features/mgl-club/ClubShell";
 import { ClubHero } from "@/features/mgl-club/ClubHero";
 import { ClubDirectory } from "@/features/mgl-club/ClubDirectory";
 import { ClubIntroduction } from "@/features/mgl-club/ClubIntroduction";
@@ -14,11 +13,11 @@ export const revalidate = 60;
 export default async function MglClubPage() {
   const summary = await getClubSummary();
   return (
-    <ClubShell total={summary.total}>
+    <>
       <ClubHero summary={summary} />
       <ClubDirectory summary={summary} />
       <ClubIntroduction />
       <ClubCommunitySections />
-    </ClubShell>
+    </>
   );
 }

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { ClubShell } from "@/features/mgl-club/ClubShell";
 import { ClubProfile } from "@/features/mgl-club/profile/ClubProfile";
 
 export const metadata: Metadata = {
@@ -10,9 +9,5 @@ export const metadata: Metadata = {
 };
 
 export default function ClubProfilePage() {
-  return (
-    <ClubShell>
-      <ClubProfile />
-    </ClubShell>
-  );
+  return <ClubProfile />;
 }

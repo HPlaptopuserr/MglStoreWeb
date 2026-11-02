@@ -11,6 +11,7 @@ type ClubSection = "club-directory" | "needs-hub";
 
 export function ClubMobileNavigation() {
   const pathname = usePathname();
+  const isHome = pathname === clubRoutes.home;
   const isProfile = pathname === clubRoutes.profile;
   const [active, setActive] = useState<ClubSection | null>(null);
 
@@ -45,29 +46,34 @@ export function ClubMobileNavigation() {
 
   return (
     <nav className={styles.bottomNav} aria-label="Гар утасны клубийн цэс">
-      <a
+      <Link
         href={clubRoutes.directory}
+        prefetch
         aria-current={
-          !isProfile && active === "club-directory" ? "location" : undefined
+          isHome && active === "club-directory" ? "location" : undefined
         }
         onClick={() => setActive("club-directory")}
       >
         <UsersRound size={22} aria-hidden="true" /> Гишүүд
-      </a>
-      <a
+      </Link>
+      <Link
         href={clubRoutes.needs}
-        aria-current={
-          !isProfile && active === "needs-hub" ? "location" : undefined
-        }
+        prefetch
+        aria-current={isHome && active === "needs-hub" ? "location" : undefined}
         onClick={() => setActive("needs-hub")}
       >
         <Handshake size={22} aria-hidden="true" /> Хэрэгцээ
-      </a>
-      <Link href={clubRoutes.join}>
+      </Link>
+      <Link
+        href={clubRoutes.join}
+        prefetch
+        aria-current={pathname === clubRoutes.join ? "page" : undefined}
+      >
         <PlusCircle size={22} aria-hidden="true" /> Нэгдэх
       </Link>
       <Link
         href={clubRoutes.profile}
+        prefetch
         aria-current={isProfile ? "page" : undefined}
       >
         <UserRound size={22} aria-hidden="true" /> Профайл

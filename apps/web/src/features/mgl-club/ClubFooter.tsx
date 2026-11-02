@@ -14,14 +14,14 @@ export function ClubFooter() {
         </div>
         <div>
           <h3>Хамтын сүлжээ</h3>
-          <a href="/mgl-club#club-directory">21 аймгийн гишүүд</a>
-          <a href="/mgl-club#club-directory">Улаанбаатар хот</a>
-          <a href="/mgl-club#needs-hub">Хэрэгцээ & Зарууд</a>
+          <Link href="/mgl-club#club-directory">21 аймгийн гишүүд</Link>
+          <Link href="/mgl-club#club-directory">Улаанбаатар хот</Link>
+          <Link href="/mgl-club#needs-hub">Хэрэгцээ & Зарууд</Link>
         </div>
         <div>
           <h3>Клуб & Дүрэм</h3>
-          <a href="/mgl-club#about">Гишүүнчлэлийн зарчим</a>
-          <a href="/mgl-club#benefits">Клубийн давуу тал</a>
+          <Link href="/mgl-club#about">Гишүүнчлэлийн зарчим</Link>
+          <Link href="/mgl-club#benefits">Клубийн давуу тал</Link>
           <Link href="/mgl-club/join">Бизнесээ бүртгүүлэх</Link>
         </div>
         <div>

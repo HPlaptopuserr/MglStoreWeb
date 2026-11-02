@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { parseMglClubProfile } from "@mgl/types";
 import { API } from "@/lib/api";
+import { useClubWorkspace } from "./ClubWorkspaceProvider";
 import {
   firstInvalidControl,
   readRegistrationValues,
@@ -10,6 +11,7 @@ import {
 } from "./registration-steps";
 
 export function useClubRegistration() {
+  const { members, needs } = useClubWorkspace();
   const [step, setStep] = useState(0);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -100,6 +102,8 @@ export function useClubRegistration() {
         throw new Error(message);
       }
       setComplete(true);
+      members.directory.retry();
+      needs.directory.retry();
     } catch (cause) {
       setError(
         cause instanceof TypeError
