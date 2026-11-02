@@ -1,11 +1,6 @@
 import Link from "next/link";
-import {
-  ArrowUpRight,
-  ShoppingBag,
-  Search,
-  UserRound,
-  PlusCircle,
-} from "lucide-react";
+import { ArrowUpRight, Search, UserRound, PlusCircle } from "lucide-react";
+import { clubRoutes } from "./club-routes";
 import { ClubBrand } from "./ClubBrand";
 import styles from "./club-design.module.css";
 export function ClubHeader({
@@ -30,9 +25,9 @@ export function ClubHeader({
           <a href="/mgl-club#about">Клубийн дүрэм</a>
         </nav>
         <div className={styles.headerActions}>
-          <Link href="/" className={styles.secondary}>
-            <ShoppingBag size={16} />
-            Дэлгүүр
+          <Link href={clubRoutes.profile} className={styles.secondary}>
+            <UserRound size={16} />
+            Миний клуб
           </Link>
           <Link
             href={joining ? "/mgl-club" : "/mgl-club/join"}
@@ -49,7 +44,7 @@ export function ClubHeader({
           <Link href="/mgl-club/join" aria-label="Бизнесээ бүртгүүлэх">
             <PlusCircle size={21} />
           </Link>
-          <Link href="/profile" aria-label="Миний профайл">
+          <Link href={clubRoutes.profile} aria-label="Миний клубийн профайл">
             <UserRound size={19} />
           </Link>
         </div>

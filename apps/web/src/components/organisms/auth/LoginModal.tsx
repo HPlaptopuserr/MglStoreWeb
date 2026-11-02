@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { User, Loader2, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, ShieldCheck, X } from "lucide-react";
+import { User, Loader2, Lock, Eye, EyeOff, ArrowLeft, KeyRound, CheckCircle2, ShieldCheck, X, Network } from "lucide-react";
+import authTheme from "./auth-theme.module.css";
 import { API_BASE } from "@/lib/api";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { RegisterForm } from "./RegisterForm";
@@ -33,6 +34,8 @@ export type LoginMarketingBanner = {
 };
 
 interface LoginModalProps {
+  brandName?: string;
+  appearance?: "store" | "club";
   open: boolean;
   onClose: () => void;
   onLogin: (
@@ -87,6 +90,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   isLoading,
   error,
   marketingBanner,
+  brandName = "MGL Store",
+  appearance = "store",
 }) => {
   useLockBodyScroll();
 
@@ -557,7 +562,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const displayError = localError || error;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-hidden overscroll-none p-3 sm:p-4">
+    <div className={`${appearance === "club" ? authTheme.club : ""} fixed inset-0 z-[70] flex items-center justify-center overflow-hidden overscroll-none p-3 sm:p-4`}>
       <button
         type="button"
         onClick={onClose}
@@ -788,10 +793,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <>
                 <div className="mb-4">
                   <div className="mb-3 flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 shadow-sm">
-                      <span className="text-sm font-bold text-white">{"//"}</span>
+                    <div className={`${appearance === "club" ? authTheme.brandMark : ""} flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 shadow-sm`}>
+                      {appearance === "club" ? <Network size={18} aria-hidden="true" /> : <span className="text-sm font-bold text-white">{"//"}</span>}
                     </div>
-                    <span className="text-xs font-bold uppercase tracking-widest text-slate-500">MGL Store</span>
+                    <span className="text-xs font-bold uppercase tracking-widest text-slate-500">{brandName}</span>
                   </div>
                   <h2 className="text-2xl font-black tracking-tight text-slate-950">
                     {tab === "login" ? "Нэвтрэх" : "Шинэ бүртгэл"}

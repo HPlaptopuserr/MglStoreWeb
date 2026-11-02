@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { clubRoutes } from "./club-routes";
 import { useEffect, useState } from "react";
 import { Handshake, PlusCircle, UserRound, UsersRound } from "lucide-react";
 import styles from "./club-design.module.css";
@@ -8,9 +10,12 @@ import styles from "./club-design.module.css";
 type ClubSection = "club-directory" | "needs-hub";
 
 export function ClubMobileNavigation() {
+  const pathname = usePathname();
+  const isProfile = pathname === clubRoutes.profile;
   const [active, setActive] = useState<ClubSection | null>(null);
 
   useEffect(() => {
+    if (pathname !== clubRoutes.home) return;
     const sections = ["club-directory", "needs-hub"] as const;
     const visible = new Set<ClubSection>();
     const observer = new IntersectionObserver(
@@ -36,28 +41,35 @@ export function ClubMobileNavigation() {
       if (section) observer.observe(section);
     }
     return () => observer.disconnect();
-  }, []);
+  }, [pathname]);
 
   return (
     <nav className={styles.bottomNav} aria-label="Гар утасны клубийн цэс">
       <a
-        href="#club-directory"
-        aria-current={active === "club-directory" ? "location" : undefined}
+        href={clubRoutes.directory}
+        aria-current={
+          !isProfile && active === "club-directory" ? "location" : undefined
+        }
         onClick={() => setActive("club-directory")}
       >
         <UsersRound size={22} aria-hidden="true" /> Гишүүд
       </a>
       <a
-        href="#needs-hub"
-        aria-current={active === "needs-hub" ? "location" : undefined}
+        href={clubRoutes.needs}
+        aria-current={
+          !isProfile && active === "needs-hub" ? "location" : undefined
+        }
         onClick={() => setActive("needs-hub")}
       >
         <Handshake size={22} aria-hidden="true" /> Хэрэгцээ
       </a>
-      <Link href="/mgl-club/join">
+      <Link href={clubRoutes.join}>
         <PlusCircle size={22} aria-hidden="true" /> Нэгдэх
       </Link>
-      <Link href="/profile">
+      <Link
+        href={clubRoutes.profile}
+        aria-current={isProfile ? "page" : undefined}
+      >
         <UserRound size={22} aria-hidden="true" /> Профайл
       </Link>
     </nav>

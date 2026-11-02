@@ -1661,7 +1661,7 @@
     min-height: 48px;
     border-radius: 12px;
   }
-  .bottomNav a[aria-current="location"] {
+  .bottomNav a[aria-current] {
     color: #103d2c;
     background: #e4f1e9;
     font-weight: 700;
