@@ -1,4 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
+const { projectedApprovedSkuDuplicates } = require("./approved-sku-repair.cjs");
 
 const requiredIndexes = {
   Product_warehouse_owned_sku_key: ["Product", ["managedByWarehouseId", "sku"]],
@@ -58,7 +59,16 @@ async function checkInventoryGuards({ requireIndexes = false } = {}) {
         WHERE status IN ('DRAFT', 'REVIEW')
         GROUP BY "organizationId", "warehouseId" HAVING COUNT(*) > 1
       ) duplicates`;
-    assertNoInventoryDuplicates(duplicates);
+    const projected = requireIndexes
+      ? null
+      : await projectedApprovedSkuDuplicates(client);
+    assertNoInventoryDuplicates(
+      duplicates.map((row) =>
+        projected !== null && row.check_name === "warehouse_sku_duplicates"
+          ? { ...row, duplicate_groups: projected }
+          : row,
+      ),
+    );
     if (requireIndexes) {
       const indexes = await client.$queryRaw`
         SELECT i.relname AS index_name, t.relname AS table_name,
