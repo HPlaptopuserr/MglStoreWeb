@@ -1,6 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import workspaceStyles from "./RestaurantWorkspace.module.css";
+import { RestaurantManagementMenu } from "./RestaurantManagementMenu";
+import { RestaurantMenuCard } from "./RestaurantMenuCard";
+import { RestaurantNotice } from "@/components/feedback/RestaurantNotice";
+import { RestaurantBorrowerDialog } from "./RestaurantBorrowerDialog";
+import { RestaurantEmployeeDiscount } from "./RestaurantEmployeeDiscount";
+import { RestaurantPaymentDialog } from "./RestaurantPaymentDialog";
+import { RestaurantCartItem } from "./RestaurantCartItem";
+import { RestaurantKitchenProgress } from "./RestaurantKitchenProgress";
 import { ProductImage } from "./ProductImage";
 import { TestReceiptPrintButton } from "./TestReceiptPrintButton";
 import {
@@ -26,11 +35,8 @@ import {
   ChevronDown,
   CreditCard,
   HandCoins,
-  History,
   LayoutGrid,
   Loader2,
-  Minus,
-  Monitor,
   Plus,
   Printer,
   QrCode,
@@ -46,6 +52,7 @@ import {
   X,
 } from "lucide-react";
 import { useOrg } from "@/components/org/OrgContext";
+import ProtectedSectionGate from "@/components/org/ProtectedSectionGate";
 import {
   bootstrapRestaurantDiningTables,
   cancelRestaurantTicketItem,
@@ -75,6 +82,7 @@ import {
   getRestaurantPosRegisters,
   getRestaurantSalesHistory,
   getRestaurantShiftHistory,
+  lookupCafeRegularCustomer,
   ensureRestaurantTableQrToken,
   openRestaurantPosShift,
   payRestaurantCreditSale,
@@ -84,6 +92,7 @@ import {
   submitRestaurantClientBridgeResult,
   voidRestaurantSale,
   type RestaurantDiningTable,
+  type CafeRegularCustomer,
   type RestaurantCreditSale,
   type RestaurantMenuCategory,
   type RestaurantPosQPayInvoice,
@@ -98,6 +107,7 @@ import {
   type RestaurantCustomerDisplayPayload,
   type RestaurantCustomerDisplaySuccess,
 } from "./customer-display";
+import { calculateRestaurantSelectedUnitDiscount } from "@mgl/types";
 import type {
   CardAttempt,
   CashDenominationCount,
@@ -140,11 +150,14 @@ type MenuItem = {
   price: number;
   available: number;
   taxRate: number;
+  discountEligible: boolean;
   tone: DishTone;
   imageUrl?: string;
 };
 
 type TicketLine = {
+  applyDiscount: boolean;
+  discountPercent: number;
   id: string;
   ticketItemId?: string;
   name: string;
@@ -154,6 +167,7 @@ type TicketLine = {
   note: string;
   available: number;
   taxRate: number;
+  discountEligible: boolean;
   tone: DishTone;
   imageUrl?: string;
 };
@@ -175,6 +189,7 @@ type PendingQPayCheckout = {
   orderMode: OrderMode;
   tableLabel: string;
   ebarimtBuyer: EbarimtBuyer;
+  discountProfile: CafeRegularCustomer | null;
 };
 
 type PaidReceiptContext = {
@@ -301,18 +316,11 @@ const paymentOptions = [
 }>;
 
 const moneyFormatter = new Intl.NumberFormat("mn-MN");
-const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
+const roundMoney = (value: number) =>
+  Math.round((Number(value) || 0) * 100) / 100;
 const formatMoney = (value: number) => `${moneyFormatter.format(value)}₮`;
 const CASH_DENOMINATIONS = [
-  20000,
-  10000,
-  5000,
-  1000,
-  500,
-  100,
-  50,
-  20,
-  10,
+  20000, 10000, 5000, 1000, 500, 100, 50, 20, 10,
 ] as const;
 
 const buildCashCount = (
@@ -333,7 +341,12 @@ const SHIFT_HISTORY_RANGE_OPTIONS = [
   { id: "7", label: "7 хоног", description: "Сүүлийн 7 хоног", days: 7 },
   { id: "14", label: "14 хоног", description: "Сүүлийн 14 хоног", days: 14 },
   { id: "30", label: "30 хоног", description: "Сүүлийн 30 хоног", days: 30 },
-  { id: "100", label: "100 хаалт", description: "Сүүлийн 100 хаалт", days: null },
+  {
+    id: "100",
+    label: "100 хаалт",
+    description: "Сүүлийн 100 хаалт",
+    days: null,
+  },
 ] as const;
 type ShiftHistoryRangeId = (typeof SHIFT_HISTORY_RANGE_OPTIONS)[number]["id"];
 
@@ -356,7 +369,12 @@ const SALES_HISTORY_RANGE_OPTIONS = [
   { id: "7", label: "7 хоног", description: "Сүүлийн 7 хоног", days: 7 },
   { id: "14", label: "14 хоног", description: "Сүүлийн 14 хоног", days: 14 },
   { id: "30", label: "30 хоног", description: "Сүүлийн 30 хоног", days: 30 },
-  { id: "100", label: "100 баримт", description: "Сүүлийн 100 баримт", days: null },
+  {
+    id: "100",
+    label: "100 баримт",
+    description: "Сүүлийн 100 баримт",
+    days: null,
+  },
 ] as const;
 type SalesHistoryRangeId = (typeof SALES_HISTORY_RANGE_OPTIONS)[number]["id"];
 
@@ -384,7 +402,8 @@ const LONG_RUNNING_CARD_PROVIDERS = new Set([
 const terminalNeedsWaitingOverlay = (provider?: string | null) =>
   Boolean(provider && LONG_RUNNING_CARD_PROVIDERS.has(provider));
 const getEffectiveCardProvider = (register?: RestaurantPosRegister | null) =>
-  register?.cardProviderType || (register?.minuAgentEnabled ? "MINU_AGENT" : null);
+  register?.cardProviderType ||
+  (register?.minuAgentEnabled ? "MINU_AGENT" : null);
 const cardTerminalSourceLabel = (source?: string | null) => {
   if (source === "ORG_REGISTER") return "Байгууллагын existing POS terminal";
   if (source === "CARD_TERMINAL_REQUEST") return "Батлагдсан terminal хүсэлт";
@@ -483,9 +502,13 @@ const mapTicketLines = (
       price: item.price,
       qty: item.qty,
       sentQty: item.sentQty,
+      applyDiscount: item.applyDiscount === true,
+      discountPercent: item.discountPercent ?? 0,
       note: item.note,
       available: Math.max(item.qty, menuItem?.available ?? item.qty),
       taxRate: menuItem?.taxRate ?? 0,
+      discountEligible:
+        menuItem?.discountEligible ?? item.kitchenStation !== "BAR",
       tone: menuItem?.tone ?? "sky",
       imageUrl: menuItem?.imageUrl,
     };
@@ -579,6 +602,28 @@ function printRestaurantReceipt(
 }
 
 export function RestaurantPosScreen() {
+  const { user } = useOrg();
+  const [cashRegisterUnlocked, setCashRegisterUnlocked] = useState(false);
+
+  if (!cashRegisterUnlocked) {
+    return (
+      <ProtectedSectionGate
+        organizationId={user.organizationId || ""}
+        organizationName={user.organizationName}
+        userId={user.id}
+        scope="RESTAURANT_POS"
+        allowedOrgRoles={["OWNER", "ADMIN", "STAFF"]}
+        eyebrow="Хамгаалалттай касс"
+        title="4 оронтой PIN оруулна уу"
+        description="бэлэн мөнгөний касс руу нэвтрэх хамгаалалтын PIN кодыг оруулна."
+        submitLabel="Бэлэн мөнгөний касс руу нэвтрэх"
+        footer="Кассын хуудсыг хаах эсвэл дахин ачаалахад нэвтрэх эрх дахин шаардана."
+        accessDeniedMessage="Зөвхөн байгууллагын эзэмшигч, админ эсвэл ажилтан бэлэн мөнгөний касс ашиглах эрхтэй."
+        onUnlock={() => setCashRegisterUnlocked(true)}
+      />
+    );
+  }
+
   return (
     <ProductImageFeedbackProvider>
       <RestaurantPosContent />
@@ -588,8 +633,9 @@ export function RestaurantPosScreen() {
 
 function RestaurantPosContent() {
   const { user, features } = useOrg();
-  const defaultMenuClassificationCode =
-    getRestaurantMenuClassificationCode(features.selfServiceMode);
+  const defaultMenuClassificationCode = getRestaurantMenuClassificationCode(
+    features.selfServiceMode,
+  );
   const [registers, setRegisters] = useState<RestaurantPosRegister[]>([]);
   const [selectedRegisterId, setSelectedRegisterId] = useState("");
   const [shift, setShift] = useState<PosShift | null>(null);
@@ -601,8 +647,9 @@ function RestaurantPosContent() {
   const [openingCash, setOpeningCash] = useState("0");
   const [closingCash, setClosingCash] = useState("");
   const [cashCounts, setCashCounts] = useState<Record<number, number>>({});
-  const [drawerSummary, setDrawerSummary] =
-    useState<CashDrawerSummary | null>(null);
+  const [drawerSummary, setDrawerSummary] = useState<CashDrawerSummary | null>(
+    null,
+  );
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [drawerError, setDrawerError] = useState("");
   const [shiftNote, setShiftNote] = useState("");
@@ -626,6 +673,11 @@ function RestaurantPosContent() {
     useState<EbarimtTinLookupResult | null>(null);
   const [companyLookupLoading, setCompanyLookupLoading] = useState(false);
   const [companyLookupError, setCompanyLookupError] = useState("");
+  const [employeePhone, setEmployeePhone] = useState("");
+  const [employeeDiscount, setEmployeeDiscount] =
+    useState<CafeRegularCustomer | null>(null);
+  const [employeeDiscountLoading, setEmployeeDiscountLoading] = useState(false);
+  const [employeeDiscountError, setEmployeeDiscountError] = useState("");
   const [diningTables, setDiningTables] = useState<DiningTable[]>([]);
   const [selectedTableId, setSelectedTableId] = useState("");
   const [tablesLoading, setTablesLoading] = useState(false);
@@ -646,8 +698,7 @@ function RestaurantPosContent() {
   const [catalogError, setCatalogError] = useState("");
   const [productManagerSaving, setProductManagerSaving] = useState(false);
   const [productSearch, setProductSearch] = useState("");
-  const [menuProductCategory, setMenuProductCategory] =
-    useState<string>("HOT");
+  const [menuProductCategory, setMenuProductCategory] = useState<string>("HOT");
   const [menuProductStation, setMenuProductStation] =
     useState<RestaurantKitchenStation>("HOT_KITCHEN");
   const [menuProductPreparationMinutes, setMenuProductPreparationMinutes] =
@@ -689,8 +740,7 @@ function RestaurantPosContent() {
   const [creditBorrowersLoading, setCreditBorrowersLoading] = useState(false);
   const [creditBorrowersError, setCreditBorrowersError] = useState("");
   const [creditSearch, setCreditSearch] = useState("");
-  const [selectedCreditBorrowerId, setSelectedCreditBorrowerId] =
-    useState("");
+  const [selectedCreditBorrowerId, setSelectedCreditBorrowerId] = useState("");
   const [creditTermMonths, setCreditTermMonths] = useState("1");
   const [creditNote, setCreditNote] = useState("");
   const [creditListOpen, setCreditListOpen] = useState(false);
@@ -708,14 +758,25 @@ function RestaurantPosContent() {
   const [customerDisplaySuccess, setCustomerDisplaySuccess] =
     useState<RestaurantCustomerDisplaySuccess | null>(null);
   const [notice, setNotice] = useState("");
+  const dismissNotice = useCallback(() => setNotice(""), []);
+  const [borrowerDialogOpen, setBorrowerDialogOpen] = useState(false);
+  const handleBorrowerCreated = (borrower: PosCreditBorrower) => {
+    setCreditBorrowers((current) => [borrower, ...current.filter((item) => item.id !== borrower.id)]);
+    setSelectedCreditBorrowerId(borrower.id);
+    setCreditSearch("");
+    setCreditBorrowersError("");
+    setBorrowerDialogOpen(false);
+    setNotice(`${borrower.borrowerName} зээлдэгчээр бүртгэгдлээ.`);
+  };
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<PosReceipt | null>(null);
   const [lastReceiptContext, setLastReceiptContext] =
     useState<PaidReceiptContext | null>(null);
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
   const [salesHistoryOpen, setSalesHistoryOpen] = useState(false);
-  const [salesHistory, setSalesHistory] = useState<RestaurantSalesHistoryItem[]>(
-    [],
-  );
+  const [salesHistory, setSalesHistory] = useState<
+    RestaurantSalesHistoryItem[]
+  >([]);
   const [salesHistoryTotal, setSalesHistoryTotal] = useState(0);
   const [salesHistoryLoading, setSalesHistoryLoading] = useState(false);
   const [salesHistoryError, setSalesHistoryError] = useState("");
@@ -750,40 +811,92 @@ function RestaurantPosContent() {
     [registers, selectedRegisterId],
   );
   const ebarimtReady = Boolean(selectedRegister?.ebarimtEnabled);
-  const lookupCompanyBuyer = useCallback(async (): Promise<
-    EbarimtTinLookupResult
-  > => {
-    const normalizedRegNo = companyRegNo.replace(/\D/g, "");
-    if (!/^\d{7}$/.test(normalizedRegNo)) {
-      throw new Error("Байгууллагын регистр 7 оронтой байна");
-    }
-    if (companyLookup?.regNo === normalizedRegNo) return companyLookup;
+  const lookupCompanyBuyer =
+    useCallback(async (): Promise<EbarimtTinLookupResult> => {
+      const normalizedRegNo = companyRegNo.replace(/\D/g, "");
+      if (!/^\d{7}$/.test(normalizedRegNo)) {
+        throw new Error("Байгууллагын регистр 7 оронтой байна");
+      }
+      if (companyLookup?.regNo === normalizedRegNo) return companyLookup;
 
-    const requestId = ++companyLookupRequestRef.current;
-    setCompanyLookupLoading(true);
-    setCompanyLookupError("");
-    try {
-      const result = await lookupEbarimtTin(normalizedRegNo, selectedRegister);
-      if (requestId === companyLookupRequestRef.current) {
-        setCompanyLookup(result);
+      const requestId = ++companyLookupRequestRef.current;
+      setCompanyLookupLoading(true);
+      setCompanyLookupError("");
+      try {
+        const result = await lookupEbarimtTin(
+          normalizedRegNo,
+          selectedRegister,
+        );
+        if (requestId === companyLookupRequestRef.current) {
+          setCompanyLookup(result);
+        }
+        return result;
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Байгууллагын мэдээлэл шалгаж чадсангүй";
+        if (requestId === companyLookupRequestRef.current) {
+          setCompanyLookup(null);
+          setCompanyLookupError(message);
+        }
+        throw new Error(message);
+      } finally {
+        if (requestId === companyLookupRequestRef.current) {
+          setCompanyLookupLoading(false);
+        }
       }
-      return result;
-    } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Байгууллагын мэдээлэл шалгаж чадсангүй";
-      if (requestId === companyLookupRequestRef.current) {
-        setCompanyLookup(null);
-        setCompanyLookupError(message);
+    }, [companyLookup, companyRegNo, selectedRegister]);
+
+  const resolveEmployeeDiscount = useCallback(
+    async (phone: string, syncUi = false): Promise<CafeRegularCustomer> => {
+      const normalizedPhone = phone.replace(/\D/g, "").slice(-8);
+      if (!/^\d{8}$/.test(normalizedPhone)) {
+        throw new Error("Ажилтны утасны дугаар 8 оронтой байна");
       }
-      throw new Error(message);
-    } finally {
-      if (requestId === companyLookupRequestRef.current) {
-        setCompanyLookupLoading(false);
+      if (!user.organizationId) {
+        throw new Error("Байгууллагын мэдээлэл олдсонгүй");
       }
-    }
-  }, [companyLookup, companyRegNo, selectedRegister]);
+
+      if (syncUi) {
+        setEmployeeDiscountLoading(true);
+        setEmployeeDiscountError("");
+      }
+      try {
+        const result = await lookupCafeRegularCustomer({
+          organizationId: user.organizationId,
+          phone: normalizedPhone,
+        });
+        if (!result.found || result.customer.profileType !== "EMPLOYEE") {
+          throw new Error("Ажилтны хөнгөлөлтийн бүртгэл олдсонгүй");
+        }
+        if (syncUi) {
+          setEmployeeDiscount(result.customer);
+          setEmployeePhone(result.customer.phone);
+        }
+        return result.customer;
+      } catch (error) {
+        if (syncUi) {
+          setEmployeeDiscount(null);
+          setEmployeeDiscountError(
+            error instanceof Error
+              ? error.message
+              : "Ажилтны хөнгөлөлтийг шалгаж чадсангүй",
+          );
+        }
+        throw error;
+      } finally {
+        if (syncUi) setEmployeeDiscountLoading(false);
+      }
+    },
+    [user.organizationId],
+  );
+
+  useEffect(() => {
+    setEmployeePhone("");
+    setEmployeeDiscount(null);
+    setEmployeeDiscountError("");
+  }, [selectedTableId]);
 
   useEffect(() => {
     if (!ebarimtReady || ebarimtBuyerMode !== "B2B") return;
@@ -867,8 +980,9 @@ function RestaurantPosContent() {
   );
   const selectedShiftHistoryRange = useMemo(
     () =>
-      SHIFT_HISTORY_RANGE_OPTIONS.find((item) => item.id === shiftHistoryRange) ??
-      SHIFT_HISTORY_RANGE_OPTIONS[0],
+      SHIFT_HISTORY_RANGE_OPTIONS.find(
+        (item) => item.id === shiftHistoryRange,
+      ) ?? SHIFT_HISTORY_RANGE_OPTIONS[0],
     [shiftHistoryRange],
   );
   const selectedSalesHistory = useMemo(
@@ -923,8 +1037,9 @@ function RestaurantPosContent() {
   );
   const selectedSalesHistoryRange = useMemo(
     () =>
-      SALES_HISTORY_RANGE_OPTIONS.find((item) => item.id === salesHistoryRange) ??
-      SALES_HISTORY_RANGE_OPTIONS[0],
+      SALES_HISTORY_RANGE_OPTIONS.find(
+        (item) => item.id === salesHistoryRange,
+      ) ?? SALES_HISTORY_RANGE_OPTIONS[0],
     [salesHistoryRange],
   );
 
@@ -955,7 +1070,7 @@ function RestaurantPosContent() {
         setSelectedSaleHistoryId((current) =>
           sales.some((item) => item.id === current)
             ? current
-            : sales[0]?.id ?? "",
+            : (sales[0]?.id ?? ""),
         );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -992,7 +1107,7 @@ function RestaurantPosContent() {
         setSelectedShiftHistoryId((current) =>
           shifts.some((item) => item.id === current)
             ? current
-            : shifts[0]?.id ?? "",
+            : (shifts[0]?.id ?? ""),
         );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -1064,12 +1179,29 @@ function RestaurantPosContent() {
     setSetupLoading(true);
     setSetupError("");
     try {
-      const [nextRegisters, currentShift] = await Promise.all([
+      const [registerResult, shiftResult] = await Promise.allSettled([
         getRestaurantPosRegisters(),
         getCurrentRestaurantPosShift(),
       ]);
+      if (registerResult.status === "rejected") {
+        throw registerResult.reason;
+      }
+
+      const nextRegisters = registerResult.value;
+      const currentShift =
+        shiftResult.status === "fulfilled" ? shiftResult.value : null;
       setRegisters(nextRegisters);
-      setShift(currentShift);
+      if (shiftResult.status === "fulfilled") {
+        setShift(currentShift);
+      }
+
+      if (shiftResult.status === "rejected") {
+        setSetupError(
+          shiftResult.reason instanceof Error
+            ? shiftResult.reason.message
+            : "Нээлттэй ээлжийн мэдээлэл авахад алдаа гарлаа",
+        );
+      }
 
       const savedRegisterId =
         typeof window !== "undefined"
@@ -1088,7 +1220,11 @@ function RestaurantPosContent() {
       if (nextRegister && typeof window !== "undefined") {
         window.localStorage.setItem(REGISTER_STORAGE_KEY, nextRegister.id);
       }
-      if (nextRegister && !currentShift) {
+      if (
+        nextRegister &&
+        shiftResult.status === "fulfilled" &&
+        !currentShift
+      ) {
         setShowOpenShift(true);
       }
     } catch (error) {
@@ -1105,6 +1241,25 @@ function RestaurantPosContent() {
   useEffect(() => {
     void loadPosSetup();
   }, [loadPosSetup]);
+
+  useEffect(() => {
+    if (setupLoading || registers.length > 0) return;
+
+    const refreshSetup = () => {
+      if (document.visibilityState === "visible") {
+        void loadPosSetup();
+      }
+    };
+    const refreshTimer = window.setInterval(refreshSetup, 15_000);
+
+    window.addEventListener("focus", refreshSetup);
+    window.addEventListener("online", refreshSetup);
+    return () => {
+      window.clearInterval(refreshTimer);
+      window.removeEventListener("focus", refreshSetup);
+      window.removeEventListener("online", refreshSetup);
+    };
+  }, [loadPosSetup, registers.length, setupLoading]);
 
   useEffect(() => {
     if (!showCloseShift || !shift?.id) return;
@@ -1141,7 +1296,15 @@ function RestaurantPosContent() {
         getRestaurantPosProducts(selectedRegister.branchId, {
           restaurantMenuOnly: false,
         }),
-        getRestaurantMenuCategories(selectedRegister.organizationId),
+        getRestaurantMenuCategories(selectedRegister.organizationId).catch(
+          (error) => {
+            console.warn(
+              "Restaurant menu categories could not be loaded; showing products without category filters.",
+              error,
+            );
+            return [] as RestaurantMenuCategory[];
+          },
+        ),
       ]);
       const configuredCategoryCodes = new Set(
         nextCategories.map((category) => category.code),
@@ -1161,6 +1324,10 @@ function RestaurantPosContent() {
             price: Number(product.price) || 0,
             available: Number(product.stockQty) || 0,
             taxRate: Number(product.taxRate) || 0,
+            discountEligible:
+              product.isRestaurantMenuItem &&
+              product.menuCategory !== "DRINK" &&
+              product.kitchenStation !== "BAR",
             tone: categoryTone(menuCategory),
             imageUrl: product.imageUrl || undefined,
           };
@@ -1215,9 +1382,12 @@ function RestaurantPosContent() {
     setCreditBorrowersLoading(true);
     setCreditBorrowersError("");
     try {
-      const customers = await getRestaurantCreditCustomers(user.organizationId, {
-        limit: 100,
-      });
+      const customers = await getRestaurantCreditCustomers(
+        user.organizationId,
+        {
+          limit: 100,
+        },
+      );
       setCreditBorrowers(customers);
       setSelectedCreditBorrowerId((current) =>
         customers.some((customer) => customer.id === current) ? current : "",
@@ -1399,12 +1569,23 @@ function RestaurantPosContent() {
   const availableCatalogProducts = filteredCatalogProducts.filter(
     (product) => !product.isRestaurantMenuItem,
   );
+  const getLineUnitDiscount = useCallback((line: TicketLine | MenuItem) =>
+    calculateRestaurantSelectedUnitDiscount({
+      unitPrice: line.price,
+      discountPercent: "discountPercent" in line ? line.discountPercent : 0,
+    }), []);
+
   const subtotal = ticketLines.reduce(
     (sum, line) => sum + line.price * line.qty,
     0,
   );
-  const discount = 0;
-  const total = subtotal - discount;
+  const discount = roundMoney(
+    ticketLines.reduce(
+      (sum, line) => sum + getLineUnitDiscount(line) * line.qty,
+      0,
+    ),
+  );
+  const total = roundMoney(Math.max(0, subtotal - discount));
   const selectedPayment =
     paymentOptions.find((option) => option.value === paymentMethod) ??
     paymentOptions[0];
@@ -1421,11 +1602,14 @@ function RestaurantPosContent() {
       borrower.borrowerId,
     ]
       .filter(Boolean)
-      .some((value) => String(value).toLowerCase().includes(normalizedCreditSearch));
+      .some((value) =>
+        String(value).toLowerCase().includes(normalizedCreditSearch),
+      );
   });
   const selectedCreditBorrower =
-    creditBorrowers.find((borrower) => borrower.id === selectedCreditBorrowerId) ??
-    null;
+    creditBorrowers.find(
+      (borrower) => borrower.id === selectedCreditBorrowerId,
+    ) ?? null;
   const safeCreditTermMonths = readCreditTermMonths(creditTermMonths);
   const creditDueDate = addCreditMonths(new Date(), safeCreditTermMonths);
   const creditDueDateLabel = new Intl.DateTimeFormat("mn-MN", {
@@ -1464,13 +1648,17 @@ function RestaurantPosContent() {
         existing.totalDue += Number(credit.totalDue || 0);
         existing.totalLines += credit.lines.length;
         existing.overdue = existing.overdue || credit.status === "OVERDUE";
-        if (new Date(credit.createdAt).getTime() < new Date(existing.createdAt).getTime()) {
+        if (
+          new Date(credit.createdAt).getTime() <
+          new Date(existing.createdAt).getTime()
+        ) {
           existing.createdAt = credit.createdAt;
         }
         if (
           credit.dueDate &&
           (!existing.dueDate ||
-            new Date(credit.dueDate).getTime() < new Date(existing.dueDate).getTime())
+            new Date(credit.dueDate).getTime() <
+              new Date(existing.dueDate).getTime())
         ) {
           existing.dueDate = credit.dueDate;
         }
@@ -1505,10 +1693,10 @@ function RestaurantPosContent() {
   const effectiveCardProvider = getEffectiveCardProvider(selectedRegister);
   const cardTerminalReady = Boolean(
     selectedRegister?.cardEnabled &&
-      effectiveCardProvider &&
-      (effectiveCardProvider === "ANDROID_PGW"
-        ? selectedRegister.terminalBridgeUrl
-        : selectedRegister.cardTerminalId),
+    effectiveCardProvider &&
+    (effectiveCardProvider === "ANDROID_PGW"
+      ? selectedRegister.terminalBridgeUrl
+      : selectedRegister.cardTerminalId),
   );
   const cardTerminalLabel = effectiveCardProvider
     ? effectiveCardProvider === "ANDROID_PGW"
@@ -1538,6 +1726,7 @@ function RestaurantPosContent() {
     !cardProcessing &&
     !checkoutSubmitting &&
     !qpayFinalizing &&
+    !employeeDiscountLoading &&
     !ticketSaving &&
     !kitchenSubmitting &&
     ebarimtBuyerReady &&
@@ -1614,12 +1803,12 @@ function RestaurantPosContent() {
     const displayLines = creditQPayRepayment
       ? creditQPayRepayment.credits.flatMap((credit) =>
           credit.lines.map((line) => ({
-          id: `${credit.id}:${line.id}`,
-          name: line.productName,
-          qty: line.qty,
-          sentQty: line.qty,
-          unitPrice: line.unitPrice,
-          lineTotal: line.lineTotal,
+            id: `${credit.id}:${line.id}`,
+            name: line.productName,
+            qty: line.qty,
+            sentQty: line.qty,
+            unitPrice: line.unitPrice,
+            lineTotal: line.lineTotal,
           })),
         )
       : ticketLines.map((line) => ({
@@ -1627,8 +1816,8 @@ function RestaurantPosContent() {
           name: line.name,
           qty: line.qty,
           sentQty: line.sentQty,
-          unitPrice: line.price,
-          lineTotal: line.price * line.qty,
+          unitPrice: line.price - getLineUnitDiscount(line),
+          lineTotal: (line.price - getLineUnitDiscount(line)) * line.qty,
           note: line.note.trim() || undefined,
           imageUrl: line.imageUrl,
         }));
@@ -1677,6 +1866,7 @@ function RestaurantPosContent() {
     creditQPayMessage,
     creditQPayRepayment,
     discount,
+    getLineUnitDiscount,
     notice,
     orderMode,
     paymentMethod,
@@ -1750,6 +1940,8 @@ function RestaurantPosContent() {
           productId: line.id,
           qty: line.qty,
           note: line.note,
+          applyDiscount: line.applyDiscount,
+          discountPercent: line.discountPercent,
         })),
       });
       updateTableTicket(targetTableId, ticket);
@@ -1774,7 +1966,7 @@ function RestaurantPosContent() {
       productId: line.id,
       qty: line.qty,
       unitPrice: line.price,
-      discountAmount: 0,
+      discountAmount: calculateRestaurantSelectedUnitDiscount({ unitPrice: line.price, discountPercent: line.discountPercent }),
       taxRate: line.taxRate,
     }));
 
@@ -2047,6 +2239,9 @@ function RestaurantPosContent() {
     setCompanyRegNo("");
     setCompanyLookup(null);
     setCompanyLookupError("");
+    setEmployeePhone("");
+    setEmployeeDiscount(null);
+    setEmployeeDiscountError("");
     setReceiptPreviewOpen(true);
     setCustomerDisplaySuccess({
       title: "Төлбөр амжилттай",
@@ -2073,6 +2268,7 @@ function RestaurantPosContent() {
         : `Борлуулалт амжилттай: ${finalReceipt.receiptNo}. Захиалга гал тогоо руу автоматаар илгээгдлээ.`) +
         ebarimtFailure,
     );
+    setPaymentDialogOpen(false);
     queueReceiptPrint(finalReceipt, receiptContext);
     await Promise.all([loadMenu(), loadTables()]);
   };
@@ -2101,6 +2297,7 @@ function RestaurantPosContent() {
         clientSaleId: createClientSaleId(),
         total: checkout.amount,
         qpayInvoiceId: paidInvoice.invoiceId,
+        regularCustomerPhone: checkout.discountProfile?.phone,
         note: checkout.note,
         lines: checkout.lines,
       });
@@ -2546,6 +2743,7 @@ function RestaurantPosContent() {
         branchId: selectedRegister.branchId,
         registerId: selectedRegister.id,
         openingCash: amount,
+        source: "RESTAURANT",
       });
       setShift(opened);
       setShowOpenShift(false);
@@ -2658,11 +2856,15 @@ function RestaurantPosContent() {
       updateRegisterInState(updated);
       setCardSetupMinuPassword("");
       setShowCardTerminalSetup(false);
-      setNotice(`${updated.cardProviderType || cardSetupProvider} terminal холбогдлоо.`);
+      setNotice(
+        `${updated.cardProviderType || cardSetupProvider} terminal холбогдлоо.`,
+      );
       setCardMessage("Картын terminal бэлэн боллоо.");
     } catch (error) {
       setCardSetupError(
-        error instanceof Error ? error.message : "Terminal холбох үед алдаа гарлаа",
+        error instanceof Error
+          ? error.message
+          : "Terminal холбох үед алдаа гарлаа",
       );
     } finally {
       setCardSetupSubmitting(false);
@@ -2685,7 +2887,8 @@ function RestaurantPosContent() {
     }
     cardPaymentRunRef.current = run;
 
-    const isCancelled = () => run.cancelled || cardPaymentRunRef.current !== run;
+    const isCancelled = () =>
+      run.cancelled || cardPaymentRunRef.current !== run;
     const terminalId = selectedRegister.cardTerminalId || "terminal-1";
     const useClientBridge =
       cardTerminalReady &&
@@ -2709,7 +2912,9 @@ function RestaurantPosContent() {
       const attempt = await createRestaurantCardAttempt({
         amount,
         terminalId,
-        bridgeUrl: shouldSendBridgeUrl ? selectedRegister.terminalBridgeUrl : null,
+        bridgeUrl: shouldSendBridgeUrl
+          ? selectedRegister.terminalBridgeUrl
+          : null,
         registerId: selectedRegister.id,
         organizationId: user.organizationId,
         clientBridge: useClientBridge,
@@ -2754,7 +2959,9 @@ function RestaurantPosContent() {
             break;
           }
           await new Promise((resolve) => window.setTimeout(resolve, 800));
-          approvedAttempt = await getRestaurantCardAttemptStatus(attempt.attemptId);
+          approvedAttempt = await getRestaurantCardAttemptStatus(
+            attempt.attemptId,
+          );
         }
       }
 
@@ -2787,7 +2994,9 @@ function RestaurantPosContent() {
       return;
     }
     if (paymentMethod === "CREDIT" && !selectedCreditBorrower) {
-      setCheckoutError("Зээлээр бүртгэхийн тулд бүртгэлтэй зээлдэгч сонгоно уу.");
+      setCheckoutError(
+        "Зээлээр бүртгэхийн тулд бүртгэлтэй зээлдэгч сонгоно уу.",
+      );
       return;
     }
     if (qpayPending) {
@@ -2808,12 +3017,29 @@ function RestaurantPosContent() {
         paymentMethod === "CREDIT"
           ? { type: "B2C" }
           : await resolveEbarimtBuyer();
+      const checkoutEmployeeDiscount = employeeDiscount
+        ? await resolveEmployeeDiscount(employeeDiscount.phone)
+        : null;
+      if (checkoutEmployeeDiscount) {
+        setEmployeeDiscount(checkoutEmployeeDiscount);
+        setEmployeePhone(checkoutEmployeeDiscount.phone);
+      }
+      const checkoutSaleLines = buildSaleLines(ticketLines);
+      const checkoutDiscount = roundMoney(
+        checkoutSaleLines.reduce(
+          (sum, line) => sum + line.discountAmount * line.qty,
+          0,
+        ),
+      );
+      const checkoutTotal = roundMoney(
+        Math.max(0, subtotal - checkoutDiscount),
+      );
       const savedTicket = await persistTicketLines(ticketLines);
       if (!savedTicket) {
         throw new Error("Төлбөр хийх ticket олдсонгүй.");
       }
 
-      const saleLines = buildSaleLines(ticketLines);
+      const saleLines = checkoutSaleLines;
       const saleNote = buildSaleNote(
         ticketLines,
         orderMode,
@@ -2822,27 +3048,29 @@ function RestaurantPosContent() {
 
       if (paymentMethod === "QPAY") {
         const invoice = await createRestaurantQPayInvoice({
-          amount: total,
+          amount: checkoutTotal,
           registerId: selectedRegister.id,
           organizationId: user.organizationId,
         });
         qpayFinalizedInvoiceRef.current = null;
+        setPaymentDialogOpen(false);
         setQpayCheckout({
           invoice,
           ticket: savedTicket,
-          amount: total,
+          amount: checkoutTotal,
           note: saleNote,
           lines: saleLines,
           orderMode,
           tableLabel: selectedTable.label,
           ebarimtBuyer,
+          discountProfile: checkoutEmployeeDiscount,
         });
         setQpayMessage("QPay QR уншуулж төлбөрөө төлнө үү.");
         return;
       }
 
       if (paymentMethod === "CARD") {
-        const cardAttempt = await authorizeCardPayment(total);
+        const cardAttempt = await authorizeCardPayment(checkoutTotal);
         const receipt = await createRestaurantCardSale({
           shiftId: shift.id,
           branchId: selectedRegister.branchId,
@@ -2850,7 +3078,8 @@ function RestaurantPosContent() {
           organizationId: user.organizationId,
           restaurantTicketId: savedTicket.id,
           clientSaleId: createClientSaleId(),
-          total,
+          total: checkoutTotal,
+          regularCustomerPhone: checkoutEmployeeDiscount?.phone,
           note: saleNote,
           lines: saleLines,
           cardAttemptId: cardAttempt.attemptId,
@@ -2878,10 +3107,11 @@ function RestaurantPosContent() {
           organizationId: user.organizationId,
           restaurantTicketId: savedTicket.id,
           clientSaleId: createClientSaleId(),
-          total,
+          total: checkoutTotal,
+          regularCustomerPhone: checkoutEmployeeDiscount?.phone,
           note: saleNote,
           lines: saleLines,
-          credit: buildCreditPaymentMeta(selectedCreditBorrower, total),
+          credit: buildCreditPaymentMeta(selectedCreditBorrower, checkoutTotal),
         });
         setSelectedCreditBorrowerId("");
         setCreditNote("");
@@ -2904,7 +3134,8 @@ function RestaurantPosContent() {
         organizationId: user.organizationId,
         restaurantTicketId: savedTicket.id,
         clientSaleId: createClientSaleId(),
-        total,
+        total: checkoutTotal,
+        regularCustomerPhone: checkoutEmployeeDiscount?.phone,
         note: saleNote,
         lines: saleLines,
       });
@@ -3219,9 +3450,7 @@ function RestaurantPosContent() {
         amount: dueAmount,
         note: `Restaurant bulk credit QPay repayment ${group.borrowerName}`,
       });
-      setCreditQPayMessage(
-        "QPay QR уншуулж нийт зээлийн төлбөрөө төлнө үү.",
-      );
+      setCreditQPayMessage("QPay QR уншуулж нийт зээлийн төлбөрөө төлнө үү.");
     } catch (error) {
       setCreditSalesError(
         error instanceof Error
@@ -3438,6 +3667,7 @@ function RestaurantPosContent() {
           item.id === table.id ? mapDiningTable(table) : item,
         ),
       );
+      setPaymentDialogOpen(false);
       setTicketLines([]);
       setOrderMode("DINE_IN");
       setCustomerDisplaySuccess(null);
@@ -3487,9 +3717,12 @@ function RestaurantPosContent() {
             price: item.price,
             qty: 1,
             sentQty: 0,
+            applyDiscount: false,
+            discountPercent: 0,
             note: "",
             available: item.available,
             taxRate: item.taxRate,
+            discountEligible: item.discountEligible,
             tone: item.tone,
             imageUrl: item.imageUrl,
           },
@@ -3628,28 +3861,28 @@ function RestaurantPosContent() {
   };
 
   return (
-    <section className="relative h-full overflow-hidden bg-[#051424] text-[#d4e4fa] shadow-2xl shadow-slate-950/20">
-      <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_430px] bg-[#051424] max-xl:grid-cols-1 max-xl:overflow-y-auto">
-        <main className="flex min-h-0 flex-col px-7 py-5 max-xl:min-h-[760px] max-md:px-4">
+    <section className={`${workspaceStyles.workspace} relative bg-[#051424] text-slate-100 shadow-2xl shadow-slate-950/20`}>
+      <div className={`${workspaceStyles.grid} bg-[#051424]`}>
+        <main className={workspaceStyles.catalog}>
           <header className="shrink-0 rounded-xl border border-[#273647] bg-[#010f1f] p-3 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
             <div className="flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 <Link
                   href="/dashboard"
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-[#3d484f] bg-[#122131] text-[#bcc8d1] transition hover:border-[#75d1ff]/60 hover:text-white"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#3d484f] bg-[#122131] text-[#bcc8d1] transition hover:border-[#75d1ff]/60 hover:text-white"
                   aria-label="Буцах"
                   title="Буцах"
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </Link>
-                <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#00c2ff] text-[#003548]">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#00c2ff] text-[#003548]">
                   <UtensilsCrossed className="h-6 w-6" />
                 </span>
                 <div className="min-w-0 border-l border-[#273647] pl-3">
                   <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#92d9ff]">
                     Restaurant POS
                   </p>
-                  <h2 className="truncate text-4xl font-black leading-none tracking-tight text-[#d4e4fa] max-2xl:text-3xl">
+                  <h2 className="truncate text-xl font-black leading-none tracking-tight text-[#d4e4fa]">
                     Ресторан касс
                   </h2>
                   <p className="mt-1 truncate text-xs font-semibold text-[#bcc8d1]">
@@ -3661,15 +3894,16 @@ function RestaurantPosContent() {
               </div>
 
               <div className="flex shrink-0 items-center gap-2">
-                <span
-                  className={`inline-flex h-9 items-center rounded-full px-3 text-xs font-black ${
-                    shiftMatchesRegister
-                      ? "bg-[#00c2ff]/15 text-[#92d9ff]"
-                      : "bg-amber-300/10 text-amber-200"
-                  }`}
-                >
-                  {shiftMatchesRegister ? "Ээлж нээлттэй" : "Ээлж хаалттай"}
-                </span>
+
+              <RestaurantManagementMenu
+                shiftOpen={shiftMatchesRegister}
+                qrDisabled={!selectedRegister || diningTables.length === 0}
+                onQr={() => void handleOpenQrModal()}
+                onCustomerDisplay={openCustomerDisplay}
+                onShiftHistory={() => { setShowShiftHistory(true); setShiftHistoryError(""); }}
+                onSalesHistory={() => { setSalesHistoryOpen(true); setSalesHistoryError(""); }}
+                registerControls={(closeMenu) => (
+                  <div className="flex flex-col gap-3">
                 <select
                   value={selectedRegisterId}
                   onChange={(event) => handleRegisterChange(event.target.value)}
@@ -3678,7 +3912,7 @@ function RestaurantPosContent() {
                     registers.length === 0 ||
                     Boolean(shift?.registerId)
                   }
-                  className="h-10 min-w-48 rounded-lg border border-[#3d484f] bg-[#122131] px-3 text-sm font-bold text-[#d4e4fa] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  className="h-10 w-full min-w-0 rounded-lg border border-[#3d484f] bg-[#122131] px-3 text-sm font-bold text-[#d4e4fa] outline-none disabled:cursor-not-allowed disabled:opacity-60"
                   aria-label="POS касс сонгох"
                 >
                   {registers.length === 0 ? (
@@ -3696,91 +3930,36 @@ function RestaurantPosContent() {
                     onClick={() => {
                       setSetupError("");
                       setDrawerError("");
+                      closeMenu();
                       setShowCloseShift(true);
                     }}
-                    className="h-10 shrink-0 rounded-lg border border-rose-300/50 px-4 text-sm font-black text-rose-200 transition hover:bg-rose-300 hover:text-slate-950"
+                    className="h-10 shrink-0 rounded-lg border border-rose-300/50 px-4 text-sm font-black text-rose-200 transition hover:bg-rose-300 hover:text-white"
                   >
                     Ээлж хаах
                   </button>
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setShowOpenShift(true)}
+                    onClick={() => { closeMenu(); setShowOpenShift(true); }}
                     disabled={!selectedRegister || setupLoading}
                     className="h-10 shrink-0 rounded-lg bg-[#00c2ff] px-4 text-sm font-black text-[#003548] transition hover:bg-[#75d1ff] disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
                   >
                     Ээлж нээх
                   </button>
                 )}
+                  </div>
+                )}
+              />
               </div>
             </div>
-
-            <div className="mt-3 flex w-full flex-wrap items-center gap-2 border-t border-[#273647] pt-3">
-              <button
-                type="button"
-                onClick={() => void handleOpenQrModal()}
-                disabled={!selectedRegister || diningTables.length === 0}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c] disabled:cursor-not-allowed disabled:text-slate-600"
-              >
-                <QrCode className="h-4 w-4" />
-                QR хэвлэх
-              </button>
-              <button
-                type="button"
-                onClick={openCustomerDisplay}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c]"
-              >
-                <Monitor className="h-4 w-4" />
-                Хэрэглэгчийн дэлгэц
-              </button>
-              <Link
-                href="/dashboard/kitchen-display"
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c]"
-              >
-                <ChefHat className="h-4 w-4" />
-                Гал тогоо
-              </Link>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowShiftHistory(true);
-                  setShiftHistoryError("");
-                }}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c]"
-              >
-                <History className="h-4 w-4" />
-                Хаалтын түүх
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setSalesHistoryOpen(true);
-                  setSalesHistoryError("");
-                }}
-                className="flex h-11 shrink-0 items-center gap-2 rounded-lg bg-[#273647] px-4 text-sm font-black text-[#d4e4fa] transition hover:bg-[#2c3a4c]"
-              >
-                <ReceiptText className="h-4 w-4" />
-                Борлуулалтын түүх
-              </button>
-
-              <label className="relative min-w-56 flex-1">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#75d1ff]" />
-                <input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  className="h-11 w-full rounded-lg border border-[#3d484f] bg-[#051424] pl-11 pr-4 text-sm font-semibold text-[#d4e4fa] outline-none transition placeholder:text-[#86929a] focus:border-[#00c2ff]/70"
-                  placeholder="Хоол, ундаа хайх..."
-                />
-              </label>
-            </div>
           </header>
+
+
 
           <ProductImageNotice className="mt-3" />
 
           {setupLoading ? (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-slate-300">
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-[#273647] bg-[#122131] px-4 py-3 text-sm font-bold text-slate-300">
               <Loader2 className="h-4 w-4 animate-spin" />
               POS кассын тохиргоо ачаалж байна...
             </div>
@@ -3792,7 +3971,7 @@ function RestaurantPosContent() {
               <button
                 type="button"
                 onClick={() => void loadPosSetup()}
-                className="inline-flex shrink-0 items-center gap-1.5 text-xs font-black text-white"
+                className="inline-flex shrink-0 items-center gap-1.5 text-xs font-black text-rose-200"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Дахин шалгах
@@ -3801,39 +3980,46 @@ function RestaurantPosContent() {
           ) : null}
 
           {!setupLoading && registers.length === 0 ? (
-            <div className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-100">
-              Энэ байгууллагад батлагдсан POS register алга. Admin хэсгээс
-              салбар, POS register үүсгэж идэвхжүүлсний дараа касс ажиллана.
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-amber-300/30 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-200">
+              <span>
+                Энэ байгууллагад батлагдсан POS register алга. Admin хэсгээс
+                салбар, POS register үүсгэж идэвхжүүлсний дараа касс ажиллана.
+              </span>
+              <button
+                type="button"
+                onClick={() => void loadPosSetup()}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-[#122131] px-3 py-2 text-xs font-black text-amber-200 transition hover:bg-amber-300/15"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Дахин шалгах
+              </button>
             </div>
           ) : null}
 
-          {notice ? (
-            <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-300/30 bg-emerald-300/10 px-4 py-3 text-sm font-bold text-emerald-100">
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
-              {notice}
-            </div>
-          ) : null}
 
-          <section className="mt-2 shrink-0 rounded-lg border border-[#273647] bg-[#0d1c2d] px-2 py-2">
+
+          <section className="mt-2 shrink-0 rounded-lg border border-[#273647] bg-[#122131] px-2 py-2 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#122131] text-[#92d9ff]">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-300/10 text-sky-600">
                   <LayoutGrid className="h-4 w-4" />
                 </span>
                 <div>
-                  <p className="text-xs font-black text-[#d4e4fa]">Ширээ</p>
-                  <p className="text-[10px] font-semibold text-[#86929a]">Compact map</p>
+                  <p className="text-xs font-black text-slate-100">Ширээ</p>
+                  <p className="text-[10px] font-semibold text-slate-400">
+                    Compact map
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold text-[#86929a]">
+                <span className="text-[11px] font-bold text-slate-500">
                   {activeTables} идэвхтэй · {diningTables.length} ширээ
                 </span>
                 <button
                   type="button"
                   onClick={openCreateTableModal}
                   disabled={!selectedRegister}
-                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-[#00c2ff]/40 bg-[#00c2ff]/10 px-2.5 text-[11px] font-black text-[#92d9ff] transition hover:bg-[#00c2ff] hover:text-[#003548] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-600"
+                  className="inline-flex h-7 items-center gap-1 rounded-lg border border-sky-300/40 bg-sky-300/10 px-2.5 text-[11px] font-black text-sky-200 transition hover:bg-sky-300/15 disabled:cursor-not-allowed disabled:border-[#273647] disabled:bg-[#0d1c2d] disabled:text-slate-400"
                 >
                   <Plus className="h-3 w-3" />
                   Нэмэх
@@ -3850,7 +4036,7 @@ function RestaurantPosContent() {
             ) : null}
             <div className="mt-1.5 flex gap-1.5 overflow-x-auto pb-0.5">
               {tablesLoading ? (
-                <div className="flex h-11 min-w-full items-center justify-center gap-2 text-xs font-bold text-[#86929a]">
+                <div className="flex h-11 min-w-full items-center justify-center gap-2 text-xs font-bold text-slate-500">
                   <Loader2 className="h-4 w-4 animate-spin" />
                   Ширээ ачаалж байна...
                 </div>
@@ -3864,9 +4050,7 @@ function RestaurantPosContent() {
                         : table.status
                       : table.status;
                   const displayTotal =
-                    isSelected && ticketLines.length > 0
-                      ? subtotal
-                      : table.total;
+                    isSelected && ticketLines.length > 0 ? total : table.total;
                   return (
                     <button
                       key={table.id}
@@ -3907,7 +4091,19 @@ function RestaurantPosContent() {
             </div>
           </section>
 
-          <div className="mt-4 flex shrink-0 items-center justify-between gap-4">
+            <div className="mt-2 flex shrink-0 w-full items-center gap-2">
+              <label className="relative min-w-56 flex-1">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#75d1ff]" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  className="h-9 w-full rounded-lg border border-[#3d484f] bg-[#051424] pl-11 pr-4 text-sm font-semibold text-[#d4e4fa] outline-none transition placeholder:text-[#86929a] focus:border-[#00c2ff]/70"
+                  aria-label="Хоол, ундаа хайх"
+                  placeholder="Хоол, ундаа хайх..."
+                />
+              </label>
+            </div>
+          <div className="mt-2 flex shrink-0 items-center justify-between gap-4">
             <div className="flex min-w-0 gap-7 overflow-x-auto pb-1">
               {categoryFilters.map((category) => (
                 <button
@@ -3916,8 +4112,8 @@ function RestaurantPosContent() {
                   onClick={() => setActiveCategory(category.id)}
                   className={`relative h-9 shrink-0 text-sm font-bold transition ${
                     activeCategory === category.id
-                      ? "text-[#92d9ff]"
-                      : "text-[#bcc8d1] hover:text-white"
+                      ? "text-sky-200"
+                      : "text-slate-500 hover:text-slate-100"
                   }`}
                 >
                   {category.label}
@@ -3930,16 +4126,16 @@ function RestaurantPosContent() {
 
             <button
               type="button"
-              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-white/5 bg-[#1d1d2b] px-4 text-sm font-bold text-slate-100 transition hover:bg-[#292b3b]"
+              className="inline-flex h-11 shrink-0 items-center gap-2 rounded-lg border border-[#273647] bg-[#122131] px-4 text-sm font-bold text-slate-200 shadow-sm transition hover:bg-[#0d1c2d]"
             >
               <ChevronDown className="h-4 w-4" />
               Ширээ {selectedTable.label} · {orderModeCopy[orderMode]}
             </button>
           </div>
 
-          <div className="mt-4 flex min-h-0 flex-1 flex-col">
+          <div className="mt-2 flex min-h-0 flex-1 flex-col">
             <div className="flex shrink-0 items-center justify-between gap-4">
-              <h3 className="text-xl font-bold tracking-normal text-white">
+              <h3 className="text-xl font-bold tracking-normal text-slate-100">
                 Меню сонгох
               </h3>
               <div className="flex items-center gap-3">
@@ -3950,7 +4146,7 @@ function RestaurantPosContent() {
                   type="button"
                   onClick={() => void loadMenu()}
                   disabled={menuLoading}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-white/10 px-3 text-sm font-black text-slate-200 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#273647] bg-[#122131] px-3 text-sm font-black text-slate-300 transition hover:bg-[#0d1c2d] disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label="Меню шинэчлэх"
                 >
                   <RefreshCw
@@ -3962,7 +4158,7 @@ function RestaurantPosContent() {
                   type="button"
                   onClick={openProductManager}
                   disabled={!selectedRegister}
-                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#00c2ff]/50 bg-[#00c2ff]/10 px-3 text-sm font-black text-[#92d9ff] transition hover:bg-[#00c2ff] hover:text-[#003548] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-600"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg border border-sky-300/40 bg-sky-300/10 px-3 text-sm font-black text-sky-200 transition hover:bg-sky-300/15 disabled:cursor-not-allowed disabled:border-[#273647] disabled:bg-[#0d1c2d] disabled:text-slate-400"
                 >
                   <Plus className="h-4 w-4" />
                   Хоол нэмэх
@@ -3976,18 +4172,18 @@ function RestaurantPosContent() {
               </div>
             ) : menuError ? (
               <div className="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
-                <p className="text-sm font-bold text-rose-300">{menuError}</p>
+                <p className="text-sm font-bold text-rose-600">{menuError}</p>
                 <button
                   type="button"
                   onClick={() => void loadMenu()}
-                  className="mt-3 h-9 rounded-lg border border-white/10 px-4 text-sm font-bold text-slate-200 hover:bg-white/5"
+                  className="mt-3 h-9 rounded-lg border border-[#273647] bg-[#122131] px-4 text-sm font-bold text-slate-200 hover:bg-[#0d1c2d]"
                 >
                   Дахин ачаалах
                 </button>
               </div>
             ) : filteredMenu.length === 0 ? (
-              <div className="flex min-h-0 flex-1 flex-col items-center justify-center border border-dashed border-white/10 text-center">
-                <ChefHat className="h-9 w-9 text-slate-600" />
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-[#3d484f] bg-[#122131]/60 text-center">
+                <ChefHat className="h-9 w-9 text-slate-400" />
                 <p className="mt-3 text-sm font-bold text-slate-300">
                   {query || activeCategory !== "all"
                     ? "Тохирох хоол олдсонгүй"
@@ -4005,12 +4201,15 @@ function RestaurantPosContent() {
                 ) : null}
               </div>
             ) : (
-              <div className="mt-3 grid min-h-0 flex-1 auto-rows-[184px] grid-cols-5 content-start gap-3 overflow-y-auto pr-2 2xl:grid-cols-6 max-2xl:grid-cols-4 max-lg:grid-cols-3 max-sm:grid-cols-2">
+              <div className="mt-2 grid min-h-0 flex-1 auto-rows-[124px] grid-cols-[repeat(auto-fill,minmax(150px,1fr))] content-start gap-2 overflow-y-auto pr-1">
                 {filteredMenu.map((item) => (
-                  <button
+                  <RestaurantMenuCard
                     key={item.id}
-                    type="button"
-                    onClick={() => void addItem(item)}
+                    name={item.name}
+                    price={formatMoney(item.price)}
+                    available={item.available}
+                    visual={<DishVisual tone={item.tone} size="sm" imageUrl={item.imageUrl} />}
+                    onSelect={() => void addItem(item)}
                     disabled={
                       item.available <= 0 ||
                       !selectedTable.id ||
@@ -4022,302 +4221,185 @@ function RestaurantPosContent() {
                       clearSubmitting ||
                       qpayPaymentActive
                     }
-                    className="group relative flex h-full flex-col items-center rounded-lg border border-[#273647] bg-[#122131] p-3 text-center shadow-xl shadow-black/10 transition hover:-translate-y-1 hover:border-[#75d1ff]/70 hover:bg-[#1c2b3c] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
-                  >
-                    <DishVisual
-                      tone={item.tone}
-                      size="md"
-                      imageUrl={item.imageUrl}
-                      className="mb-2"
-                    />
-                    <div className="flex min-h-0 w-full flex-1 flex-col items-center">
-                      <p className="line-clamp-2 min-h-10 w-full px-1 text-sm font-black leading-5 text-slate-100">
-                        {item.name}
-                      </p>
-                      <p className="mt-auto pt-2 text-base font-black tabular-nums text-[#92d9ff]">
-                        {formatMoney(item.price)}
-                      </p>
-                      <p className="mt-1 text-[10px] font-semibold text-[#86929a]">
-                        {item.available > 0
-                          ? `${item.available} порц боломжтой`
-                          : "Дууссан"}
-                      </p>
-                    </div>
-                    <span className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-lg border border-[#3d484f] bg-[#051424]/80 text-[#92d9ff] opacity-0 transition group-hover:opacity-100">
-                      <Plus className="h-3.5 w-3.5" />
-                    </span>
-                  </button>
+                  />
                 ))}
               </div>
             )}
           </div>
         </main>
 
-        <aside className="flex min-h-0 flex-col overflow-hidden border-l border-[#273647] bg-[#0d1c2d] px-5 py-4 max-xl:min-h-[720px] max-sm:px-3 max-sm:py-3">
-          <div className="shrink-0">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-500">
-                  {selectedTicketPaid ? "Төлсөн захиалга" : "Идэвхтэй захиалга"}
-                </p>
-                <h3 className="truncate text-xl font-bold text-white">
-                  Ширээ {selectedTable.label}
-                </h3>
-                <p className="mt-1 text-xs font-bold text-slate-500">
-                  {selectedTable.zone} · {selectedTable.seats} суудал
-                </p>
-              </div>
-              <span
-                className={`shrink-0 rounded-lg px-3 py-1 text-xs font-black ${
-                  shiftMatchesRegister
-                    ? "bg-[#00c2ff]/15 text-[#92d9ff]"
-                    : "bg-amber-300/10 text-amber-200"
-                }`}
-              >
-                {shiftMatchesRegister ? "Ээлж нээлттэй" : "Ээлж хаалттай"}
-              </span>
-            </div>
-            <div className="mt-5 grid grid-cols-3 gap-2">
-              {(["DINE_IN", "TO_GO", "DELIVERY"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => void handleOrderModeChange(mode)}
-                  disabled={
-                    ticketSaving ||
-                    kitchenSubmitting ||
-                    selectedTicketPaid ||
-                    qpayPaymentActive
-                  }
-                  className={`h-10 rounded-lg border text-sm font-bold transition ${
-                    orderMode === mode
-                      ? "border-[#00c2ff] bg-[#00c2ff] text-[#003548]"
-                      : "border-[#273647] bg-[#122131] text-[#bcc8d1] hover:bg-[#1c2b3c]"
+        <aside className={`${workspaceStyles.cart} flex flex-col overflow-hidden border-l border-[#273647] bg-[#122131] px-3 py-3`}>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <div>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold text-slate-500">
+                    {selectedTicketPaid ? "Төлсөн захиалга" : "Идэвхтэй захиалга"}
+                  </p>
+                  <h3 className="truncate text-base font-bold leading-5 text-slate-100">
+                    Ширээ {selectedTable.label}
+                  </h3>
+                  <p className="mt-0.5 text-[10px] font-medium text-slate-500">
+                    {selectedTable.zone} · {selectedTable.seats} суудал
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-bold ${
+                    shiftMatchesRegister
+                      ? "bg-[#00c2ff]/15 text-[#92d9ff]"
+                      : "bg-amber-300/10 text-amber-200"
                   }`}
                 >
-                  {orderModeCopy[mode]}
-                </button>
-              ))}
-            </div>
-
-            {orderMode === "DINE_IN" ? (
-              <button
-                type="button"
-                onClick={() => void handleSendKitchen()}
-                disabled={!canSendKitchen}
-                title={
-                  hasUnsentItems
-                    ? "Шинэ хоолнуудыг гал тогоо руу илгээх"
-                    : selectedTicketPaid
-                      ? "Төлөгдсөн ticket-ийг гал тогоо руу илгээх боломжгүй"
-                      : "Гал тогоо руу илгээх шинэ хоол байхгүй"
-                }
-                className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-[#00c2ff]/40 bg-[#00c2ff]/10 text-sm font-black text-[#92d9ff] transition hover:border-[#00c2ff] hover:bg-[#00c2ff] hover:text-[#003548] disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/5 disabled:text-slate-500"
-              >
-                {kitchenSubmitting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ChefHat className="h-4 w-4" />
-                )}
-                {kitchenSubmitting
-                  ? "Гал тогоо руу илгээж байна..."
-                  : "Гал тогоо руу илгээх"}
-                <Send className="h-4 w-4" />
-              </button>
-            ) : (
-              <div className="mt-4 rounded-lg border border-sky-300/30 bg-sky-300/10 px-3 py-2.5 text-xs font-bold leading-5 text-sky-100">
-                Төлбөр амжилттай бүртгэгдсэний дараа захиалга гал тогоо руу
-                автоматаар илгээгдэнэ.
+                  {shiftMatchesRegister ? "Ээлж нээлттэй" : "Ээлж хаалттай"}
+                </span>
               </div>
-            )}
-
-            <div className="mt-4 flex items-center justify-between gap-3 border-b border-white/10 pb-3 text-sm font-bold text-slate-200">
-              <span>Сагсны бараа</span>
-              <span className="shrink-0 rounded-full bg-white/5 px-2.5 py-1 text-[11px] font-black text-slate-400">
-                {ticketLines.length} мөр
-              </span>
-            </div>
-          </div>
-
-          <div className="min-h-[210px] flex-[1_1_260px] space-y-3 overflow-y-auto py-3 pr-1">
-            {ticketLines.length === 0 ? (
-              <div className="flex h-full min-h-40 flex-col items-center justify-center text-center">
-                <UtensilsCrossed className="h-8 w-8 text-slate-700" />
-                <p className="mt-3 text-sm font-bold text-slate-500">
-                  Менюгээс хоол сонгоно уу
-                </p>
-                {lastReceipt ? (
-                  <div className="mt-5 w-full rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-4 text-left">
-                    <p className="text-[11px] font-black uppercase tracking-wider text-emerald-300">
-                      Сүүлийн төлөгдсөн баримт
-                    </p>
-                    <div className="mt-2 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-black text-white">
-                          {lastReceipt.receiptNo}
-                        </p>
-                        <p className="mt-1 text-xs font-semibold text-emerald-100/80">
-                          Төлөгдсөн ticket active захиалгаас гарсан.
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-sm font-black tabular-nums text-white">
-                        {formatMoney(lastReceipt.grandTotal)}
-                      </span>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => printReceipt(lastReceipt)}
-                        className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-200/30 text-xs font-black text-emerald-100 hover:bg-emerald-300 hover:text-slate-950"
-                      >
-                        <Printer className="h-3.5 w-3.5" />
-                        Дахин хэвлэх
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setReceiptPreviewOpen(true)}
-                        className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-300 text-xs font-black text-slate-950 hover:bg-emerald-200"
-                      >
-                        <ReceiptText className="h-3.5 w-3.5" />
-                        Баримт харах
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              ticketLines.map((line) => {
-                const cancellingLine = cancellingLineId === line.id;
-
-                return (
-                  <article
-                    key={line.id}
-                    className="rounded-xl border border-white/10 bg-white/[0.035] p-3 shadow-sm shadow-black/10"
+              <RestaurantKitchenProgress tickets={selectedTable.currentTicket?.kitchenTickets ?? []} />
+              <div className="mt-2 grid grid-cols-3 gap-1.5">
+                {(["DINE_IN", "TO_GO", "DELIVERY"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => void handleOrderModeChange(mode)}
+                    disabled={
+                      ticketSaving ||
+                      kitchenSubmitting ||
+                      selectedTicketPaid ||
+                      qpayPaymentActive
+                    }
+                    className={`h-8 rounded-md border text-xs font-bold transition ${
+                      orderMode === mode
+                        ? "border-[#00c2ff] bg-[#00c2ff] text-[#003548]"
+                        : "border-[#273647] bg-[#0d1c2d] text-[#bcc8d1] hover:bg-[#1c2b3c]"
+                    }`}
                   >
-                    <div className="flex min-w-0 items-start gap-3">
-                      <div className="pt-0.5">
-                        <DishVisual
-                          tone={line.tone}
-                          size="sm"
-                          imageUrl={line.imageUrl}
-                        />
-                      </div>
+                    {orderModeCopy[mode]}
+                  </button>
+                ))}
+              </div>
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="line-clamp-2 text-sm font-bold leading-5 text-slate-100">
-                              {line.name}
-                            </p>
-                            <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
-                              <span>{formatMoney(line.price)}</span>
-                              {line.sentQty > 0 ? (
-                                <span className="rounded-full bg-amber-300/10 px-2 py-0.5 text-[10px] font-black text-amber-300">
-                                  Гал тогоонд {line.sentQty}ш
-                                </span>
-                              ) : null}
-                            </div>
-                          </div>
-                          <p className="shrink-0 text-right text-sm font-black tabular-nums text-white">
-                            {formatMoney(line.price * line.qty)}
+              {orderMode === "DINE_IN" ? (
+                <button
+                  type="button"
+                  onClick={() => void handleSendKitchen()}
+                  disabled={!canSendKitchen}
+                  title={
+                    hasUnsentItems
+                      ? "Шинэ хоолнуудыг гал тогоо руу илгээх"
+                      : selectedTicketPaid
+                        ? "Төлөгдсөн ticket-ийг гал тогоо руу илгээх боломжгүй"
+                        : "Гал тогоо руу илгээх шинэ хоол байхгүй"
+                  }
+                  className="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-[#00c2ff]/40 bg-[#00c2ff]/10 text-xs font-bold text-[#92d9ff] transition hover:border-[#00c2ff] hover:bg-[#00c2ff] hover:text-[#003548] disabled:cursor-not-allowed disabled:border-[#273647] disabled:bg-[#122131]/5 disabled:text-slate-500"
+                >
+                  {kitchenSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ChefHat className="h-4 w-4" />
+                  )}
+                  {kitchenSubmitting
+                    ? "Гал тогоо руу илгээж байна..."
+                    : "Гал тогоо руу илгээх"}
+                  <Send className="h-4 w-4" />
+                </button>
+              ) : (
+                <div className="mt-2 rounded-md border border-sky-300/40/30 bg-sky-300/10 px-2 py-1.5 text-[10px] font-medium leading-4 text-sky-100">
+                  Төлбөр амжилттай бүртгэгдсэний дараа захиалга гал тогоо руу
+                  автоматаар илгээгдэнэ.
+                </div>
+              )}
+
+              <div className="mt-2 flex items-center justify-between gap-2 border-b border-[#273647] pb-1.5 text-xs font-bold text-slate-200">
+                <span>Сагсны бараа</span>
+                <span className="shrink-0 rounded-full bg-[#122131]/5 px-2 py-0.5 text-[10px] font-black text-slate-500">
+                  {ticketLines.length} мөр
+                </span>
+              </div>
+            </div>
+
+            <div className="min-h-24 space-y-1.5 py-2 pr-1">
+              {ticketLines.length === 0 ? (
+                <div className="flex h-full min-h-40 flex-col items-center justify-center text-center">
+                  <UtensilsCrossed className="h-8 w-8 text-slate-200" />
+                  <p className="mt-3 text-sm font-bold text-slate-500">
+                    Менюгээс хоол сонгоно уу
+                  </p>
+                  {lastReceipt ? (
+                    <div className="mt-5 w-full rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-4 text-left">
+                      <p className="text-[11px] font-black uppercase tracking-wider text-emerald-300">
+                        Сүүлийн төлөгдсөн баримт
+                      </p>
+                      <div className="mt-2 flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-black text-slate-100">
+                            {lastReceipt.receiptNo}
+                          </p>
+                          <p className="mt-1 text-xs font-semibold text-emerald-100/80">
+                            Төлөгдсөн ticket active захиалгаас гарсан.
                           </p>
                         </div>
-
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
-                          <div className="flex h-10 w-[108px] shrink-0 items-center justify-center gap-1 overflow-hidden rounded-lg bg-[#2d3142]">
-                            <button
-                              type="button"
-                              onClick={() => void changeQty(line.id, -1)}
-                              disabled={
-                                ticketSaving ||
-                                Boolean(cancellingLineId) ||
-                                selectedTicketPaid ||
-                                qpayPaymentActive ||
-                                line.qty <= line.sentQty
-                              }
-                              className="flex h-full w-8 items-center justify-center text-slate-400 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                              aria-label={`${line.name} хасах`}
-                              title="Хасах"
-                            >
-                              <Minus className="h-3.5 w-3.5" />
-                            </button>
-                            <span className="w-7 text-center text-sm font-bold tabular-nums text-white">
-                              {line.qty}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => void changeQty(line.id, 1)}
-                              disabled={
-                                ticketSaving ||
-                                Boolean(cancellingLineId) ||
-                                selectedTicketPaid ||
-                                qpayPaymentActive
-                              }
-                              className="flex h-full w-8 items-center justify-center text-slate-400 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
-                              aria-label={`${line.name} нэмэх`}
-                              title="Нэмэх"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-
-                          <input
-                            value={line.note}
-                            onChange={(event) =>
-                              updateNote(line.id, event.target.value)
-                            }
-                            onBlur={() => void saveCurrentNotes()}
-                            disabled={
-                              selectedTicketPaid ||
-                              qpayPaymentActive ||
-                              Boolean(cancellingLineId)
-                            }
-                            placeholder="Тэмдэглэл..."
-                            className="h-10 min-w-[150px] flex-1 rounded-lg border border-white/5 bg-[#2d3142] px-3 text-xs font-semibold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400/70"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => void removeLine(line.id)}
-                            disabled={
-                              ticketSaving ||
-                              Boolean(cancellingLineId) ||
-                              selectedTicketPaid ||
-                              qpayPaymentActive
-                            }
-                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-45 ${
-                              line.sentQty > 0
-                                ? "border-amber-300/50 text-amber-200 hover:bg-amber-300 hover:text-slate-950"
-                                : "border-sky-400/70 text-sky-400 hover:bg-sky-400 hover:text-white"
-                            }`}
-                            aria-label={`${line.name} устгах`}
-                            title={
-                              line.sentQty > 0
-                                ? "Гал тогоонд явсан хоол цуцлах"
-                                : "Устгах"
-                            }
-                          >
-                            {cancellingLine ? (
-                              <Loader2 className="h-5 w-5 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-5 w-5" />
-                            )}
-                          </button>
-                        </div>
+                        <span className="shrink-0 text-sm font-black tabular-nums text-slate-100">
+                          {formatMoney(lastReceipt.grandTotal)}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => printReceipt(lastReceipt)}
+                          className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-emerald-300/30/30 text-xs font-black text-emerald-100 hover:bg-emerald-300 hover:text-white"
+                        >
+                          <Printer className="h-3.5 w-3.5" />
+                          Дахин хэвлэх
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setReceiptPreviewOpen(true)}
+                          className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-300 text-xs font-black text-white hover:bg-emerald-200"
+                        >
+                          <ReceiptText className="h-3.5 w-3.5" />
+                          Баримт харах
+                        </button>
                       </div>
                     </div>
-                  </article>
-                );
-              })
-            )}
+                  ) : null}
+                </div>
+              ) : (
+                ticketLines.map((line) => (
+                  <RestaurantCartItem
+                    key={line.id}
+                    line={{ ...line, price: line.price - getLineUnitDiscount(line) }}
+                    originalPrice={line.price}
+                    onDiscountChange={(discountPercent) => {
+                      if (ticketSaving || selectedTicketPaid || qpayPaymentActive || checkoutSubmitting || cardProcessing) return;
+                      void persistTicketLines(ticketLines.map((item) => item.id === line.id ? { ...item, discountPercent, applyDiscount: discountPercent > 0 } : item)).catch(() => null);
+                    }}
+                    ticketSaving={ticketSaving}
+                    cancellationPending={Boolean(cancellingLineId)}
+                    cancellingLine={cancellingLineId === line.id}
+                    readOnly={selectedTicketPaid || qpayPaymentActive || checkoutSubmitting || cardProcessing}
+                    formatPrice={formatMoney}
+                    onQuantityChange={(delta) => void changeQty(line.id, delta)}
+                    onNoteChange={(note) => updateNote(line.id, note)}
+                    onSaveNote={() => void saveCurrentNotes()}
+                    onRemove={() => void removeLine(line.id)}
+                  />
+                ))
+              )}
+            </div>
+
           </div>
 
-          <div className="min-h-0 max-h-[46dvh] shrink overflow-y-auto overscroll-contain border-t border-[#273647] pt-4 pr-1 max-xl:max-h-[42dvh]">
-            <TotalLine label="Discount" value={formatMoney(discount)} />
+          <div className={`${workspaceStyles.summary} min-h-0 shrink-0 overflow-y-auto overscroll-contain border-t border-[#273647] pt-2 pr-1`}>
+            <TotalLine
+              label="Сонгосон хөнгөлөлт"
+              value={
+                discount > 0 ? `-${formatMoney(discount)}` : formatMoney(0)
+              }
+            />
             <TotalLine label="Sub total" value={formatMoney(subtotal)} />
             <TotalLine label="Total" value={formatMoney(total)} strong />
 
             {ebarimtReady && paymentMethod !== "CREDIT" ? (
-              <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.035] p-3">
+              <div className="mt-3 rounded-xl border border-[#273647] bg-[#122131] p-3 shadow-sm">
                 <p className="text-[11px] font-black uppercase tracking-wider text-slate-500">
                   Ebarimt авах төрөл
                 </p>
@@ -4334,8 +4416,8 @@ function RestaurantPosContent() {
                     disabled={checkoutSubmitting || qpayPaymentActive}
                     className={`flex h-10 items-center justify-center gap-2 rounded-lg border text-xs font-black transition disabled:opacity-50 ${
                       ebarimtBuyerMode === "B2C"
-                        ? "border-emerald-300 bg-emerald-300 text-slate-950"
-                        : "border-white/10 bg-white/5 text-slate-300 hover:border-emerald-300/50"
+                        ? "border-emerald-300 bg-emerald-300 text-white"
+                        : "border-[#273647] bg-[#0d1c2d] text-slate-300 hover:border-emerald-300 hover:bg-emerald-300/10"
                     }`}
                   >
                     <UserRound className="h-4 w-4" />
@@ -4350,8 +4432,8 @@ function RestaurantPosContent() {
                     disabled={checkoutSubmitting || qpayPaymentActive}
                     className={`flex h-10 items-center justify-center gap-2 rounded-lg border text-xs font-black transition disabled:opacity-50 ${
                       ebarimtBuyerMode === "B2B"
-                        ? "border-emerald-300 bg-emerald-300 text-slate-950"
-                        : "border-white/10 bg-white/5 text-slate-300 hover:border-emerald-300/50"
+                        ? "border-emerald-300 bg-emerald-300 text-white"
+                        : "border-[#273647] bg-[#0d1c2d] text-slate-300 hover:border-emerald-300 hover:bg-emerald-300/10"
                     }`}
                   >
                     <Building2 className="h-4 w-4" />
@@ -4379,7 +4461,7 @@ function RestaurantPosContent() {
                         }}
                         disabled={checkoutSubmitting || qpayPaymentActive}
                         placeholder="Регистрийн 7 орон"
-                        className="h-10 min-w-0 flex-1 rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-white outline-none placeholder:text-slate-600 focus:border-emerald-300 disabled:opacity-50"
+                        className="h-10 min-w-0 flex-1 rounded-lg border border-[#273647] bg-[#0d1c2d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-emerald-400 focus:bg-[#122131] disabled:opacity-50"
                       />
                       <button
                         type="button"
@@ -4392,7 +4474,7 @@ function RestaurantPosContent() {
                           checkoutSubmitting ||
                           qpayPaymentActive
                         }
-                        className="flex h-10 min-w-16 items-center justify-center rounded-lg bg-white px-3 text-xs font-black text-slate-950 disabled:opacity-40"
+                        className="flex h-10 min-w-16 items-center justify-center rounded-lg bg-slate-900 px-3 text-xs font-black text-slate-100 disabled:opacity-40"
                       >
                         {companyLookupLoading ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -4405,12 +4487,13 @@ function RestaurantPosContent() {
                       <div className="mt-2 flex items-start gap-2 rounded-lg bg-emerald-300/10 px-3 py-2 text-[11px] font-bold leading-4 text-emerald-200">
                         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                         <span>
-                          {companyLookup.name || "Байгууллага"} · TIN {companyLookup.tin}
+                          {companyLookup.name || "Байгууллага"} · TIN{" "}
+                          {companyLookup.tin}
                         </span>
                       </div>
                     ) : null}
                     {companyLookupError ? (
-                      <p className="mt-2 text-[11px] font-bold leading-4 text-rose-300">
+                      <p className="mt-2 text-[11px] font-bold leading-4 text-rose-600">
                         {companyLookupError}
                       </p>
                     ) : null}
@@ -4421,14 +4504,14 @@ function RestaurantPosContent() {
 
             <div className="mt-3">
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-xs font-bold text-[#86929a]">
+                <p className="text-xs font-bold text-slate-500">
                   Төлбөрийн хэлбэр
                 </p>
                 <button
                   type="button"
                   onClick={openCreditList}
                   disabled={!user.organizationId}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300/35 bg-amber-300/10 px-2.5 text-[11px] font-black text-amber-100 transition hover:bg-amber-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.02] disabled:text-slate-600"
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-300/10 px-2.5 text-[11px] font-black text-amber-200 transition hover:bg-amber-300/15 disabled:cursor-not-allowed disabled:border-[#273647] disabled:bg-[#0d1c2d] disabled:text-slate-500"
                 >
                   <HandCoins className="h-3.5 w-3.5" />
                   Зээлийн жагсаалт
@@ -4451,6 +4534,7 @@ function RestaurantPosContent() {
                           !cardProcessing
                         ) {
                           setPaymentMethod(option.value);
+                          setPaymentDialogOpen(true);
                           setCheckoutError("");
                           if (option.value === "CREDIT") {
                             void loadCreditBorrowers();
@@ -4473,8 +4557,8 @@ function RestaurantPosContent() {
                         isActive
                           ? "border-[#92d9ff] bg-[#92d9ff] text-[#003548] shadow-lg shadow-[#00c2ff]/20"
                           : option.enabled
-                            ? "border-[#273647] bg-[#122131] text-[#bcc8d1] hover:border-[#75d1ff]/60 hover:text-white"
-                            : "cursor-not-allowed border-white/5 bg-white/[0.01] text-slate-600"
+                            ? "border-[#273647] bg-[#122131] text-slate-300 hover:border-sky-300/40 hover:bg-sky-300/10"
+                            : "cursor-not-allowed border-[#273647] bg-[#122131] text-slate-500"
                       }`}
                     >
                       <Icon className="h-4 w-4" />
@@ -4485,14 +4569,51 @@ function RestaurantPosContent() {
               </div>
             </div>
 
+          </div>
+          {selectedTicketPaid ? (
+            <button type="button" onClick={() => setPaymentDialogOpen(true)} aria-haspopup="dialog" className="mt-2 min-h-9 w-full shrink-0 rounded-lg border border-emerald-300 bg-emerald-300/10 px-3 py-2 text-xs font-bold text-emerald-200 transition-colors hover:bg-emerald-300/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-emerald-500">
+              Төлсөн захиалга · Ширээ чөлөөлөх
+            </button>
+          ) : null}
+        </aside>
+      </div>
+
+      {notice ? <RestaurantNotice message={notice} onDismiss={dismissNotice} /> : null}
+      {borrowerDialogOpen && user.organizationId ? (
+        <RestaurantBorrowerDialog organizationId={user.organizationId} onClose={() => setBorrowerDialogOpen(false)} onCreated={handleBorrowerCreated} />
+      ) : null}
+      {paymentDialogOpen ? (
+        <RestaurantPaymentDialog title={selectedTicketPaid ? "Төлсөн захиалга" : `${selectedPayment.label} төлбөр`} tableLabel={selectedTable.label} amount={formatMoney(total)} busy={checkoutSubmitting || cardProcessing || cardSetupSubmitting || clearSubmitting} onClose={() => setPaymentDialogOpen(false)}>
+          {!selectedTicketPaid ? (
+            <RestaurantEmployeeDiscount
+              customer={employeeDiscount}
+              phone={employeePhone}
+              loading={employeeDiscountLoading}
+              disabled={checkoutSubmitting || cardProcessing || qpayPaymentActive}
+              error={employeeDiscountError}
+              onPhoneChange={(phone) => {
+                setEmployeePhone(phone);
+                setEmployeeDiscount(null);
+                setEmployeeDiscountError("");
+                setCheckoutError("");
+              }}
+              onCheck={() => void resolveEmployeeDiscount(employeePhone, true).catch(() => null)}
+              onRemove={() => {
+                setEmployeeDiscount(null);
+                setEmployeePhone("");
+                setEmployeeDiscountError("");
+                setCheckoutError("");
+              }}
+            />
+          ) : null}
             {paymentMethod === "CARD" ? (
               <div className="mt-3 rounded-xl border border-sky-300/25 bg-sky-300/10 p-2.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-xs font-black text-sky-100">
+                    <p className="text-xs font-black text-sky-200">
                       Картын terminal
                     </p>
-                    <p className="mt-1 text-[11px] font-semibold leading-4 text-sky-100/70">
+                    <p className="mt-1 text-[11px] font-semibold leading-4 text-sky-200">
                       {cardTerminalReady
                         ? cardPaymentModeLabel
                         : `${cardPaymentModeLabel} Terminal холбовол төлбөр terminal руу илгээгдэнэ.`}
@@ -4510,7 +4631,7 @@ function RestaurantPosContent() {
                 </div>
 
                 {cardMessage ? (
-                  <p className="mt-2 rounded-lg border border-sky-200/20 bg-sky-200/10 px-3 py-2 text-xs font-bold leading-5 text-sky-50">
+                  <p className="mt-2 rounded-lg border border-sky-300/25 bg-[#122131] px-3 py-2 text-xs font-bold leading-5 text-sky-200">
                     {cardMessage}
                   </p>
                 ) : null}
@@ -4523,7 +4644,7 @@ function RestaurantPosContent() {
                         setShowCardTerminalSetup((current) => !current);
                         setCardSetupError("");
                       }}
-                      className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-sky-300/30 px-3 text-[11px] font-black text-sky-100 transition hover:bg-sky-300 hover:text-slate-950"
+                      className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-sky-300 bg-[#122131] px-3 text-[11px] font-black text-sky-200 transition hover:bg-sky-100"
                     >
                       <CreditCard className="h-3.5 w-3.5" />
                       {showCardTerminalSetup
@@ -4534,112 +4655,112 @@ function RestaurantPosContent() {
                     {showCardTerminalSetup ? (
                       <div className="mt-3 space-y-3">
                         <div className="grid grid-cols-2 gap-2">
-                      {(["ANDROID_PGW", "MINU_AGENT"] as const).map(
-                        (provider) => (
-                          <button
-                            key={provider}
-                            type="button"
-                            onClick={() => {
-                              setCardSetupProvider(provider);
-                              setCardSetupError("");
-                            }}
-                            className={`h-9 rounded-lg border text-xs font-black transition ${
-                              cardSetupProvider === provider
-                                ? "border-sky-300 bg-sky-300 text-slate-950"
-                                : "border-white/10 text-slate-300 hover:border-sky-300/60 hover:text-white"
-                            }`}
-                          >
-                            {provider === "ANDROID_PGW"
-                              ? "Android PGW"
-                              : "Minu Agent"}
-                          </button>
-                        ),
-                      )}
-                    </div>
-
-                    {cardSetupProvider === "ANDROID_PGW" ? (
-                      <label className="block">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-sky-100/70">
-                          Bridge URL
-                        </span>
-                        <input
-                          value={cardSetupBridgeUrl}
-                          onChange={(event) =>
-                            setCardSetupBridgeUrl(event.target.value)
-                          }
-                          placeholder={DEFAULT_ANDROID_PGW_BRIDGE_URL}
-                          className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
-                        />
-                      </label>
-                    ) : (
-                      <div className="space-y-2">
-                        <input
-                          value={cardSetupTerminalId}
-                          onChange={(event) =>
-                            setCardSetupTerminalId(event.target.value)
-                          }
-                          placeholder="Minu terminalId"
-                          className="h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
-                        />
-                        <div className="grid grid-cols-2 gap-2">
-                          <input
-                            value={cardSetupMinuUsername}
-                            onChange={(event) =>
-                              setCardSetupMinuUsername(event.target.value)
-                            }
-                            placeholder={
-                              selectedRegister?.minuAgentUsername ||
-                              "Minu username"
-                            }
-                            className="h-9 rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
-                          />
-                          <input
-                            value={cardSetupMinuBranchId}
-                            onChange={(event) =>
-                              setCardSetupMinuBranchId(event.target.value)
-                            }
-                            placeholder={
-                              selectedRegister?.minuAgentBranchId ||
-                              "Minu branchId"
-                            }
-                            className="h-9 rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
-                          />
+                          {(["ANDROID_PGW", "MINU_AGENT"] as const).map(
+                            (provider) => (
+                              <button
+                                key={provider}
+                                type="button"
+                                onClick={() => {
+                                  setCardSetupProvider(provider);
+                                  setCardSetupError("");
+                                }}
+                                className={`h-9 rounded-lg border text-xs font-black transition ${
+                                  cardSetupProvider === provider
+                                    ? "border-sky-300 bg-sky-300 text-slate-950"
+                                    : "border-white/10 bg-[#122131] text-slate-600 hover:border-sky-300 hover:text-sky-200"
+                                }`}
+                              >
+                                {provider === "ANDROID_PGW"
+                                  ? "Android PGW"
+                                  : "Minu Agent"}
+                              </button>
+                            ),
+                          )}
                         </div>
-                        <input
-                          value={cardSetupMinuPassword}
-                          onChange={(event) =>
-                            setCardSetupMinuPassword(event.target.value)
-                          }
-                          type="password"
-                          placeholder={
-                            selectedRegister?.minuAgentPasswordSet
-                              ? "Password хадгалагдсан бол хоосон үлдээж болно"
-                              : "Minu password"
-                          }
-                          className="h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-600 focus:border-sky-300/70"
-                        />
-                      </div>
-                    )}
 
-                    {cardSetupError ? (
-                      <p className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-100">
-                        {cardSetupError}
-                      </p>
-                    ) : null}
+                        {cardSetupProvider === "ANDROID_PGW" ? (
+                          <label className="block">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-sky-200">
+                              Bridge URL
+                            </span>
+                            <input
+                              value={cardSetupBridgeUrl}
+                              onChange={(event) =>
+                                setCardSetupBridgeUrl(event.target.value)
+                              }
+                              placeholder={DEFAULT_ANDROID_PGW_BRIDGE_URL}
+                              className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400"
+                            />
+                          </label>
+                        ) : (
+                          <div className="space-y-2">
+                            <input
+                              value={cardSetupTerminalId}
+                              onChange={(event) =>
+                                setCardSetupTerminalId(event.target.value)
+                              }
+                              placeholder="Minu terminalId"
+                              className="h-9 w-full rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400"
+                            />
+                            <div className="grid grid-cols-2 gap-2">
+                              <input
+                                value={cardSetupMinuUsername}
+                                onChange={(event) =>
+                                  setCardSetupMinuUsername(event.target.value)
+                                }
+                                placeholder={
+                                  selectedRegister?.minuAgentUsername ||
+                                  "Minu username"
+                                }
+                                className="h-9 rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400"
+                              />
+                              <input
+                                value={cardSetupMinuBranchId}
+                                onChange={(event) =>
+                                  setCardSetupMinuBranchId(event.target.value)
+                                }
+                                placeholder={
+                                  selectedRegister?.minuAgentBranchId ||
+                                  "Minu branchId"
+                                }
+                                className="h-9 rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400"
+                              />
+                            </div>
+                            <input
+                              value={cardSetupMinuPassword}
+                              onChange={(event) =>
+                                setCardSetupMinuPassword(event.target.value)
+                              }
+                              type="password"
+                              placeholder={
+                                selectedRegister?.minuAgentPasswordSet
+                                  ? "Password хадгалагдсан бол хоосон үлдээж болно"
+                                  : "Minu password"
+                              }
+                              className="h-9 w-full rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-slate-100 outline-none placeholder:text-slate-500 focus:border-sky-400"
+                            />
+                          </div>
+                        )}
 
-                    <button
-                      type="button"
-                      onClick={() => void handleConnectCardTerminal()}
-                      disabled={cardSetupSubmitting || !selectedRegister}
-                      className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-sky-300 text-xs font-black text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-                    >
-                      {cardSetupSubmitting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <CreditCard className="h-4 w-4" />
-                      )}
-                      Terminal холбох
-                    </button>
+                        {cardSetupError ? (
+                          <p className="rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-100">
+                            {cardSetupError}
+                          </p>
+                        ) : null}
+
+                        <button
+                          type="button"
+                          onClick={() => void handleConnectCardTerminal()}
+                          disabled={cardSetupSubmitting || !selectedRegister}
+                          className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-sky-300 text-xs font-black text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500"
+                        >
+                          {cardSetupSubmitting ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CreditCard className="h-4 w-4" />
+                          )}
+                          Terminal холбох
+                        </button>
                       </div>
                     ) : null}
                   </div>
@@ -4648,21 +4769,21 @@ function RestaurantPosContent() {
             ) : null}
 
             {paymentMethod === "CREDIT" ? (
-              <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/10 p-2.5">
+              <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/5 p-2.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs font-black text-amber-200">
                       Бүртгэлтэй зээлдэгч
                     </p>
-                    <p className="mt-1 text-[11px] font-semibold leading-4 text-amber-100/70">
-                      Vendor POS дээр бүртгэгдсэн зээлдэгчээс сонгоно.
+                    <p className="mt-1 text-[11px] font-semibold leading-4 text-amber-200">
+                      Бүртгэлтэй зээлдэгчээс сонгох эсвэл шинээр бүртгэнэ.
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => void loadCreditBorrowers()}
                     disabled={creditBorrowersLoading}
-                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-amber-200/30 px-2 text-[11px] font-black text-amber-100 transition hover:bg-amber-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-amber-300 bg-[#122131] px-2 text-[11px] font-black text-amber-200 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <RefreshCw
                       className={`h-3.5 w-3.5 ${
@@ -4673,13 +4794,16 @@ function RestaurantPosContent() {
                   </button>
                 </div>
 
-                <label className="mt-3 flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-[#11131d] px-3">
+                <button type="button" onClick={() => setBorrowerDialogOpen(true)} disabled={checkoutSubmitting} aria-haspopup="dialog" className="mt-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-amber-300 text-xs font-bold text-amber-200 transition hover:bg-amber-100 disabled:opacity-50">
+                  <Plus aria-hidden="true" className="h-4 w-4" />Зээлдэгч бүртгэх
+                </button>
+                <label className="mt-3 flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-[#122131] px-3">
                   <Search className="h-3.5 w-3.5 text-slate-500" />
                   <input
                     value={creditSearch}
                     onChange={(event) => setCreditSearch(event.target.value)}
                     placeholder="Нэр, утас, ажилтан хайх..."
-                    className="h-full min-w-0 flex-1 bg-transparent text-xs font-semibold text-slate-100 outline-none placeholder:text-slate-600"
+                    className="h-full min-w-0 flex-1 bg-transparent text-xs font-semibold text-slate-100 outline-none placeholder:text-slate-500"
                   />
                 </label>
 
@@ -4696,12 +4820,13 @@ function RestaurantPosContent() {
                       Зээлдэгчид ачаалж байна...
                     </div>
                   ) : filteredCreditBorrowers.length === 0 ? (
-                    <p className="rounded-lg border border-dashed border-white/10 px-3 py-3 text-xs font-bold leading-5 text-slate-500">
+                    <p className="rounded-lg border border-dashed border-slate-300 bg-[#122131]/60 px-3 py-3 text-xs font-bold leading-5 text-slate-500">
                       Бүртгэлтэй зээлдэгч олдсонгүй.
                     </p>
                   ) : (
                     filteredCreditBorrowers.map((borrower) => {
-                      const isSelected = borrower.id === selectedCreditBorrowerId;
+                      const isSelected =
+                        borrower.id === selectedCreditBorrowerId;
                       return (
                         <button
                           key={borrower.id}
@@ -4713,7 +4838,7 @@ function RestaurantPosContent() {
                           className={`w-full rounded-lg border px-3 py-2 text-left transition ${
                             isSelected
                               ? "border-amber-300 bg-amber-300 text-slate-950"
-                              : "border-white/10 bg-white/[0.03] text-slate-100 hover:border-amber-300/60"
+                              : "border-white/10 bg-[#122131] text-slate-700 hover:border-amber-300"
                           }`}
                         >
                           <span className="flex items-center justify-between gap-2">
@@ -4728,7 +4853,7 @@ function RestaurantPosContent() {
                           </span>
                           <span
                             className={`mt-1 block truncate text-[11px] font-semibold ${
-                              isSelected ? "text-slate-800" : "text-slate-500"
+                              isSelected ? "text-slate-100" : "text-slate-500"
                             }`}
                           >
                             {creditBorrowerSubtitle(borrower)}
@@ -4741,30 +4866,32 @@ function RestaurantPosContent() {
 
                 <div className="mt-3 grid grid-cols-[90px_minmax(0,1fr)] gap-2">
                   <label className="block">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-100/70">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">
                       Хугацаа
                     </span>
                     <input
                       value={creditTermMonths}
-                      onChange={(event) => setCreditTermMonths(event.target.value)}
+                      onChange={(event) =>
+                        setCreditTermMonths(event.target.value)
+                      }
                       inputMode="numeric"
-                      className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-bold text-slate-100 outline-none focus:border-amber-300/70"
+                      className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-bold text-slate-100 outline-none focus:border-amber-400"
                     />
                   </label>
                   <label className="block">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-100/70">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-200">
                       Тэмдэглэл
                     </span>
                     <input
                       value={creditNote}
                       onChange={(event) => setCreditNote(event.target.value)}
                       placeholder="Заавал биш"
-                      className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-xs font-semibold text-slate-100 outline-none placeholder:text-slate-600 focus:border-amber-300/70"
+                      className="mt-1 h-9 w-full rounded-lg border border-white/10 bg-[#122131] px-3 text-xs font-semibold text-slate-100 outline-none placeholder:text-slate-500 focus:border-amber-400"
                     />
                   </label>
                 </div>
 
-                <p className="mt-2 text-[11px] font-bold leading-4 text-amber-100/75">
+                <p className="mt-2 text-[11px] font-bold leading-4 text-amber-200">
                   Төлөх дүн {formatMoney(total)} · {safeCreditTermMonths} сар ·
                   дуусах өдөр {creditDueDateLabel}
                 </p>
@@ -4772,14 +4899,14 @@ function RestaurantPosContent() {
             ) : null}
 
             {checkoutError ? (
-              <p className="mt-3 rounded-lg border border-rose-300/30 bg-rose-300/10 px-3 py-2 text-xs font-bold text-rose-200">
+              <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">
                 {checkoutError}
               </p>
             ) : null}
 
             {selectedTicketPaid ? (
-              <div className="mt-3 rounded-xl border border-emerald-300/30 bg-emerald-300/10 p-3">
-                <p className="text-xs font-bold leading-5 text-emerald-100">
+              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                <p className="text-xs font-bold leading-5 text-emerald-800">
                   {orderMode === "DINE_IN"
                     ? "Төлбөр авсан ч үйлчлүүлэгч ширээн дээр сууж байгаа гэж үзнэ. Гарсны дараа ширээг чөлөөлнө."
                     : "Төлбөр бүртгэгдэж, захиалга гал тогоо руу илгээгдсэн. Захиалгыг хүлээлгэн өгсний дараа энэ байрыг чөлөөлнө."}
@@ -4799,65 +4926,31 @@ function RestaurantPosContent() {
                 </button>
               </div>
             ) : (
-              <div className="mt-3">
-                {selectedTicketActive ? (
-                  <div className="mb-3 rounded-xl border border-amber-300/30 bg-amber-300/10 p-3">
-                    <p className="text-xs font-bold leading-5 text-amber-100">
-                      Энэ ширээн дээр төлбөр аваагүй ticket байна. Хэрвээ
-                      захиалгыг цуцлаад ширээг суллах бол доорх товчийг дарна.
-                      Гал тогоонд идэвхтэй ticket байвал хамт цуцлагдаж
-                      queue-ээс гарна.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void handleClearTable({ forceCancel: true })
-                      }
-                      disabled={
-                        clearSubmitting ||
-                        ticketSaving ||
-                        kitchenSubmitting ||
-                        checkoutSubmitting ||
-                        qpayPaymentActive
-                      }
-                      className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-300/10 text-sm font-black text-amber-100 transition hover:bg-amber-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {clearSubmitting ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="h-4 w-4" />
-                      )}
-                      Захиалга цуцалж ширээ суллах
-                    </button>
-                  </div>
-                ) : null}
-
+              <div className="mt-5 border-t border-white/10 pt-4">
                 {orderMode === "DINE_IN" && hasUnsentItems ? (
-                  <p className="mb-2 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs font-bold leading-5 text-amber-100">
-                    Төлбөр амжилттай болсны дараа илгээгдээгүй хоолнууд гал
-                    тогоо руу автоматаар явна.
+                  <p className="mb-3 flex items-start gap-2 text-xs leading-5 text-slate-400">
+                    <ChefHat aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0 text-sky-300" />
+                    Төлбөр баталгаажмагц шинэ хоолнууд гал тогоо руу илгээгдэнэ.
                   </p>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => void handleCheckout()}
-                  disabled={!canCheckout}
-                  className="flex h-14 w-full items-center justify-center gap-2 rounded-lg bg-[#00c2ff] text-sm font-black text-[#003548] shadow-lg shadow-[#00c2ff]/20 transition hover:bg-[#75d1ff] disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 disabled:shadow-none"
-                >
-                  {checkoutSubmitting ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <SelectedPaymentIcon className="h-4 w-4" />
-                  )}
-                  {checkoutSubmitting
-                    ? "Борлуулалт бүртгэж байна..."
-                    : selectedPayment.action}
+                <button type="button" onClick={() => void handleCheckout()} disabled={!canCheckout} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-sky-300 px-4 text-sm font-bold text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-100">
+                  {checkoutSubmitting ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <SelectedPaymentIcon aria-hidden="true" className="h-4 w-4" />}
+                  {checkoutSubmitting ? "Төлбөр бүртгэж байна..." : selectedPayment.action}
                 </button>
+                {selectedTicketActive ? (
+                  <details className="mt-4 rounded-lg border border-white/10 px-3 py-2">
+                    <summary className="cursor-pointer text-xs font-semibold text-slate-400 transition hover:text-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300">Захиалга цуцлах</summary>
+                    <p className="mt-3 text-xs leading-5 text-slate-400">Захиалга болон гал тогоонд илгээсэн хоолнууд цуцлагдаж, ширээ сулрана.</p>
+                    <button type="button" onClick={() => void handleClearTable({ forceCancel: true })} disabled={clearSubmitting || ticketSaving || kitchenSubmitting || checkoutSubmitting || qpayPaymentActive} className="mt-3 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg border border-rose-300/30 px-3 text-xs font-semibold text-rose-200 transition hover:bg-rose-300/10 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-300">
+                      {clearSubmitting ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <Trash2 aria-hidden="true" className="h-4 w-4" />}
+                      Захиалга цуцалж ширээ суллах
+                    </button>
+                  </details>
+                ) : null}
               </div>
             )}
-          </div>
-        </aside>
-      </div>
+                  </RestaurantPaymentDialog>
+      ) : null}
 
       {creditListOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
@@ -4871,7 +4964,8 @@ function RestaurantPosContent() {
                   Зээлийн жагсаалт
                 </h3>
                 <p className="mt-2 text-sm font-semibold text-slate-400">
-                  {selectedRegister?.branch.name || "Салбар сонгогдоогүй"} дээрх төлөгдөөгүй зээлүүд.
+                  {selectedRegister?.branch.name || "Салбар сонгогдоогүй"} дээрх
+                  төлөгдөөгүй зээлүүд.
                 </p>
               </div>
               <button
@@ -4890,13 +4984,17 @@ function RestaurantPosContent() {
                   <Search className="h-4 w-4 text-slate-500" />
                   <input
                     value={creditSalesSearch}
-                    onChange={(event) => setCreditSalesSearch(event.target.value)}
+                    onChange={(event) =>
+                      setCreditSalesSearch(event.target.value)
+                    }
                     placeholder="Зээлдэгч, утас, баримт, хоолоор хайх..."
                     className="h-full min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-100 outline-none placeholder:text-slate-600"
                   />
                 </label>
                 <div className="flex h-11 items-center justify-center rounded-xl border border-amber-300/25 bg-amber-300/10 px-4 text-sm font-black text-amber-100">
-                  {filteredCreditSaleGroups.length} хүн · {filteredCreditSales.length} зээл · {formatMoney(filteredCreditSalesTotalDue)}
+                  {filteredCreditSaleGroups.length} хүн ·{" "}
+                  {filteredCreditSales.length} зээл ·{" "}
+                  {formatMoney(filteredCreditSalesTotalDue)}
                 </div>
                 <button
                   type="button"
@@ -4967,11 +5065,16 @@ function RestaurantPosContent() {
                               {group.overdue ? "Хугацаа хэтэрсэн" : "Нээлттэй"}
                             </span>
                             <span className="shrink-0 rounded-full bg-sky-300/10 px-2 py-0.5 text-[10px] font-black text-sky-100">
-                              {group.credits.length} зээл · {group.totalLines} мөр
+                              {group.credits.length} зээл · {group.totalLines}{" "}
+                              мөр
                             </span>
                           </div>
                           <p className="mt-1 truncate text-xs font-semibold text-slate-500">
-                            {[group.borrowerPhone, group.employeeName, group.borrowerId]
+                            {[
+                              group.borrowerPhone,
+                              group.employeeName,
+                              group.borrowerId,
+                            ]
                               .filter(Boolean)
                               .join(" · ")}
                           </p>
@@ -4989,7 +5092,8 @@ function RestaurantPosContent() {
                       {group.credits.length > 1 ? (
                         <div className="mt-3 grid gap-2 rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
                           <p className="text-xs font-bold text-amber-100">
-                            Энэ зээлдэгчийн {group.credits.length} зээлийг нийтээр нь төлөх
+                            Энэ зээлдэгчийн {group.credits.length} зээлийг
+                            нийтээр нь төлөх
                           </p>
                           <button
                             type="button"
@@ -5024,7 +5128,9 @@ function RestaurantPosContent() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => void handleStartCreditGroupQPay(group)}
+                            onClick={() =>
+                              void handleStartCreditGroupQPay(group)
+                            }
                             disabled={
                               creditRepaymentId !== "" ||
                               Boolean(creditQPayRepayment) ||
@@ -5061,8 +5167,12 @@ function RestaurantPosContent() {
                                     {credit.receiptNo}
                                   </p>
                                   <p className="mt-1 text-[11px] font-bold text-slate-500">
-                                    Үүссэн: {formatReceiptDate(credit.createdAt)} · Дуусах:{" "}
-                                    {credit.dueDate ? formatReceiptDate(credit.dueDate) : "-"}
+                                    Үүссэн:{" "}
+                                    {formatReceiptDate(credit.createdAt)} ·
+                                    Дуусах:{" "}
+                                    {credit.dueDate
+                                      ? formatReceiptDate(credit.dueDate)
+                                      : "-"}
                                   </p>
                                 </div>
                                 <div className="shrink-0 text-right">
@@ -5086,7 +5196,8 @@ function RestaurantPosContent() {
                                         {line.productName}
                                       </span>
                                       <span className="shrink-0 font-black tabular-nums text-white">
-                                        {line.qty}ш · {formatMoney(line.lineTotal)}
+                                        {line.qty}ш ·{" "}
+                                        {formatMoney(line.lineTotal)}
                                       </span>
                                     </div>
                                   ))
@@ -5105,7 +5216,9 @@ function RestaurantPosContent() {
                               <div className="mt-3 grid grid-cols-3 gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => void handlePayCreditCash(credit)}
+                                  onClick={() =>
+                                    void handlePayCreditCash(credit)
+                                  }
                                   disabled={
                                     payingThisCredit ||
                                     creditRepaymentId !== "" ||
@@ -5130,7 +5243,9 @@ function RestaurantPosContent() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => void handlePayCreditCard(credit)}
+                                  onClick={() =>
+                                    void handlePayCreditCard(credit)
+                                  }
                                   disabled={
                                     payingThisCredit ||
                                     creditRepaymentId !== "" ||
@@ -5156,7 +5271,9 @@ function RestaurantPosContent() {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => void handleStartCreditQPay(credit)}
+                                  onClick={() =>
+                                    void handleStartCreditQPay(credit)
+                                  }
                                   disabled={
                                     payingThisCredit ||
                                     creditRepaymentId !== "" ||
@@ -5414,9 +5531,7 @@ function RestaurantPosContent() {
                   <select
                     value={menuProductCategory}
                     onChange={(event) =>
-                      setMenuProductCategory(
-                        event.target.value,
-                      )
+                      setMenuProductCategory(event.target.value)
                     }
                     disabled={productManagerSaving}
                     className="mt-2 h-11 w-full rounded-lg border border-white/10 bg-[#11131d] px-3 text-sm font-bold text-slate-100 outline-none focus:border-sky-400/70"
@@ -5482,7 +5597,7 @@ function RestaurantPosContent() {
                       <h4 className="text-xl font-black text-white">
                         Байгаа бүтээгдэхүүнээс нэмэх
                       </h4>
-                      <p className="mt-1 text-sm font-semibold text-slate-500">
+                      <p className="mt-1 text-sm font-semibold text-slate-400">
                         Менюд ороогүй product-ийг сонгоод restaurant item
                         болгоно.
                       </p>
@@ -5574,7 +5689,7 @@ function RestaurantPosContent() {
                     <h4 className="text-xl font-black text-white">
                       Шинэ хоол үүсгэх
                     </h4>
-                    <p className="mt-1 text-sm font-semibold text-slate-500">
+                    <p className="mt-1 text-sm font-semibold text-slate-400">
                       Product catalog дээр үүсээд restaurant menu-д шууд орно.
                     </p>
                   </div>
@@ -5844,7 +5959,7 @@ function RestaurantPosContent() {
                         ? `Ширээ ${qrSelectedTable.label}`
                         : "Ширээ сонгоно уу"}
                     </h4>
-                    <p className="mt-2 text-sm font-semibold text-slate-500">
+                    <p className="mt-2 text-sm font-semibold text-slate-400">
                       Scan хийхэд энэ ширээний web menu нээгдэнэ.
                     </p>
                   </div>
@@ -6246,9 +6361,7 @@ function RestaurantPosContent() {
               <div className="grid min-h-0 gap-4 lg:grid-cols-[1fr_1.2fr]">
                 <section className="min-h-0 rounded-2xl border border-white/10 bg-[#1b1d2b]">
                   <div className="border-b border-white/10 px-4 py-3">
-                    <p className="text-sm font-black text-white">
-                      Хаалтууд
-                    </p>
+                    <p className="text-sm font-black text-white">Хаалтууд</p>
                   </div>
                   <div className="max-h-[52vh] overflow-y-auto p-2">
                     {shiftHistoryLoading ? (
@@ -6277,10 +6390,13 @@ function RestaurantPosContent() {
                               <div className="flex items-start justify-between gap-3">
                                 <div>
                                   <p className="font-black text-white">
-                                    {formatReceiptDate(item.closedAt || item.openedAt)}
+                                    {formatReceiptDate(
+                                      item.closedAt || item.openedAt,
+                                    )}
                                   </p>
                                   <p className="mt-1 text-xs font-semibold text-slate-500">
-                                    {item.registerName || "POS касс"} · {item.cashierName || "Кассчин"}
+                                    {item.registerName || "POS касс"} ·{" "}
+                                    {item.cashierName || "Кассчин"}
                                   </p>
                                 </div>
                                 <span
@@ -6320,8 +6436,9 @@ function RestaurantPosContent() {
                                 selectedShiftHistory.openedAt,
                             )}
                           </h4>
-                          <p className="mt-1 text-sm font-semibold text-slate-500">
-                            Нээсэн: {formatReceiptDate(selectedShiftHistory.openedAt)}
+                          <p className="mt-1 text-sm font-semibold text-slate-400">
+                            Нээсэн:{" "}
+                            {formatReceiptDate(selectedShiftHistory.openedAt)}
                           </p>
                         </div>
                         <span className="rounded-full bg-slate-950/40 px-3 py-1 text-xs font-black text-slate-300">
@@ -6333,8 +6450,14 @@ function RestaurantPosContent() {
                       <div className="grid gap-2 sm:grid-cols-2">
                         {[
                           ["Эхлэх мөнгө", selectedShiftHistory.openingCash],
-                          ["Тооцоолсон бэлэн", selectedShiftHistory.expectedCash],
-                          ["Тоолсон бэлэн", selectedShiftHistory.closingCash || 0],
+                          [
+                            "Тооцоолсон бэлэн",
+                            selectedShiftHistory.expectedCash,
+                          ],
+                          [
+                            "Тоолсон бэлэн",
+                            selectedShiftHistory.closingCash || 0,
+                          ],
                           ["Зөрүү", selectedShiftHistory.cashDifference || 0],
                           ["Орлого", selectedShiftHistory.paidIn],
                           ["Зарлага", selectedShiftHistory.paidOut],
@@ -6369,7 +6492,10 @@ function RestaurantPosContent() {
                         </p>
                         <div className="mt-3 grid gap-2 sm:grid-cols-2">
                           {[
-                            ["Нийт борлуулалт", selectedShiftHistory.totalSales],
+                            [
+                              "Нийт борлуулалт",
+                              selectedShiftHistory.totalSales,
+                            ],
                             ["Бэлэн", selectedShiftHistory.cashSales],
                             ["Карт", selectedShiftHistory.cardSales],
                             ["QPay", selectedShiftHistory.qpaySales],
@@ -6405,7 +6531,8 @@ function RestaurantPosContent() {
                                   className="flex items-center justify-between rounded-lg bg-slate-950/30 px-3 py-2 text-xs"
                                 >
                                   <span className="font-bold text-slate-400">
-                                    {formatMoney(item.denomination)} × {item.count}
+                                    {formatMoney(item.denomination)} ×{" "}
+                                    {item.count}
                                   </span>
                                   <span className="font-black text-white">
                                     {formatMoney(item.total)}
@@ -6532,9 +6659,7 @@ function RestaurantPosContent() {
               <div className="grid min-h-0 gap-4 lg:grid-cols-[1fr_1.2fr]">
                 <section className="min-h-0 rounded-2xl border border-white/10 bg-[#1b1d2b]">
                   <div className="border-b border-white/10 px-4 py-3">
-                    <p className="text-sm font-black text-white">
-                      Баримтууд
-                    </p>
+                    <p className="text-sm font-black text-white">Баримтууд</p>
                   </div>
                   <div className="max-h-[52vh] overflow-y-auto p-2">
                     {salesHistoryLoading ? (
@@ -6583,7 +6708,8 @@ function RestaurantPosContent() {
                               </div>
                               <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
                                 <span className="text-slate-400">
-                                  {sale.registerName || "POS касс"} · {sale.cashierName}
+                                  {sale.registerName || "POS касс"} ·{" "}
+                                  {sale.cashierName}
                                 </span>
                                 <span className="text-white">
                                   {formatMoney(sale.grandTotal)}
@@ -6608,7 +6734,7 @@ function RestaurantPosContent() {
                           <h4 className="mt-1 text-xl font-black text-white">
                             {selectedSalesHistory.receiptNo}
                           </h4>
-                          <p className="mt-1 text-sm font-semibold text-slate-500">
+                          <p className="mt-1 text-sm font-semibold text-slate-400">
                             {formatReceiptDate(selectedSalesHistory.createdAt)}
                           </p>
                         </div>
@@ -6619,7 +6745,10 @@ function RestaurantPosContent() {
                               : "bg-slate-950/40 text-slate-300"
                           }`}
                         >
-                          {paymentMethodLabel(selectedSalesHistory.paymentMethod)} ·{" "}
+                          {paymentMethodLabel(
+                            selectedSalesHistory.paymentMethod,
+                          )}{" "}
+                          ·{" "}
                           {selectedSalesHistory.status === "VOIDED"
                             ? "Цуцлагдсан"
                             : selectedSalesHistory.status}
@@ -6628,17 +6757,31 @@ function RestaurantPosContent() {
 
                       {selectedSalesHistory.status === "VOIDED" ? (
                         <div className="rounded-xl border border-rose-300/40 bg-rose-300/10 px-4 py-3 text-sm font-bold text-rose-100">
-                          Энэ баримт {selectedSalesHistory.voidedAt ? formatReceiptDate(selectedSalesHistory.voidedAt) : ""} цуцлагдсан.
-                          {selectedSalesHistory.voidReason ? ` Шалтгаан: ${selectedSalesHistory.voidReason}` : ""}
+                          Энэ баримт{" "}
+                          {selectedSalesHistory.voidedAt
+                            ? formatReceiptDate(selectedSalesHistory.voidedAt)
+                            : ""}{" "}
+                          цуцлагдсан.
+                          {selectedSalesHistory.voidReason
+                            ? ` Шалтгаан: ${selectedSalesHistory.voidReason}`
+                            : ""}
                         </div>
                       ) : null}
 
                       <div className="grid gap-2 sm:grid-cols-2">
                         {[
                           ["Салбар", selectedSalesHistory.branchName],
-                          ["Касс", selectedSalesHistory.registerName || "POS касс"],
+                          [
+                            "Касс",
+                            selectedSalesHistory.registerName || "POS касс",
+                          ],
                           ["Кассчин", selectedSalesHistory.cashierName],
-                          ["Төлбөр", paymentMethodLabel(selectedSalesHistory.paymentMethod)],
+                          [
+                            "Төлбөр",
+                            paymentMethodLabel(
+                              selectedSalesHistory.paymentMethod,
+                            ),
+                          ],
                         ].map(([label, value]) => (
                           <div
                             key={String(label)}
@@ -6669,8 +6812,8 @@ function RestaurantPosContent() {
                                   {line.productName}
                                 </p>
                                 <p className="mt-0.5 text-xs font-semibold text-slate-500">
-                                  {line.productSku || line.productId} · {line.qty} ×{" "}
-                                  {formatMoney(line.unitPrice)}
+                                  {line.productSku || line.productId} ·{" "}
+                                  {line.qty} × {formatMoney(line.unitPrice)}
                                 </p>
                               </div>
                               <span className="shrink-0 text-sm font-black text-white">
@@ -6695,7 +6838,9 @@ function RestaurantPosContent() {
                             >
                               <span
                                 className={`font-bold ${
-                                  label === "Нийт" ? "text-white" : "text-slate-400"
+                                  label === "Нийт"
+                                    ? "text-white"
+                                    : "text-slate-400"
                                 }`}
                               >
                                 {label}
@@ -6736,9 +6881,16 @@ function RestaurantPosContent() {
                           Дахин хэвлэх
                         </button>
                         <TestReceiptPrintButton
-                          receipt={mapSalesHistoryToReceipt(selectedSalesHistory)}
-                          organizationName={user.organizationName || "MGL Store Restaurant"}
-                          registerName={selectedSalesHistory.registerName || "Restaurant POS"}
+                          receipt={mapSalesHistoryToReceipt(
+                            selectedSalesHistory,
+                          )}
+                          organizationName={
+                            user.organizationName || "MGL Store Restaurant"
+                          }
+                          registerName={
+                            selectedSalesHistory.registerName ||
+                            "Restaurant POS"
+                          }
                         />
                         {selectedSalesHistory.status !== "VOIDED" ? (
                           <button
@@ -6785,8 +6937,14 @@ function RestaurantPosContent() {
                   Ээлж хаах
                 </h3>
                 <p className="mt-2 text-sm font-semibold text-slate-400">
-                  {selectedRegister?.branch.name || shift.branchName || "Салбар"} ·{" "}
-                  {selectedRegister?.label || selectedRegister?.name || shift.registerName || "POS касс"}
+                  {selectedRegister?.branch.name ||
+                    shift.branchName ||
+                    "Салбар"}{" "}
+                  ·{" "}
+                  {selectedRegister?.label ||
+                    selectedRegister?.name ||
+                    shift.registerName ||
+                    "POS касс"}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -6817,7 +6975,8 @@ function RestaurantPosContent() {
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
               {openTicketCount > 0 ? (
                 <div className="rounded-xl border border-amber-300/40 bg-amber-300/10 px-4 py-3 text-sm font-bold text-amber-100">
-                  {openTicketCount} чөлөөлөөгүй ширээний ticket байна. Ээлж хаахаас өмнө төлбөрийг дуусгаад ширээг чөлөөлнө үү.
+                  {openTicketCount} чөлөөлөөгүй ширээний ticket байна. Ээлж
+                  хаахаас өмнө төлбөрийг дуусгаад ширээг чөлөөлнө үү.
                 </div>
               ) : null}
 
@@ -6829,7 +6988,10 @@ function RestaurantPosContent() {
 
               <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
                 {[
-                  ["Эхлэх мөнгө", drawerSummary?.openingCash ?? shift.openingCash],
+                  [
+                    "Эхлэх мөнгө",
+                    drawerSummary?.openingCash ?? shift.openingCash,
+                  ],
                   ["Бэлэн борлуулалт", drawerSummary?.cashSales ?? 0],
                   ["Орлого", drawerSummary?.paidIn ?? 0],
                   ["Зарлага", drawerSummary?.paidOut ?? 0],
@@ -6868,7 +7030,8 @@ function RestaurantPosContent() {
                         Задгай мөнгө тоолох
                       </p>
                       <p className="mt-1 text-xs font-semibold text-slate-500">
-                        Дэвсгэрт бүрийн ширхэгийг оруулахад тоолсон дүн автоматаар бодогдоно.
+                        Дэвсгэрт бүрийн ширхэгийг оруулахад тоолсон дүн
+                        автоматаар бодогдоно.
                       </p>
                     </div>
                     <div className="text-right">
@@ -6930,7 +7093,9 @@ function RestaurantPosContent() {
                       type="number"
                       min="0"
                       step="100"
-                      value={hasCountedCash ? String(countedCashTotal) : closingCash}
+                      value={
+                        hasCountedCash ? String(countedCashTotal) : closingCash
+                      }
                       onChange={(event) => setClosingCash(event.target.value)}
                       disabled={hasCountedCash}
                       className="mt-2 h-12 w-full rounded-lg border border-white/10 bg-[#242735] px-4 text-lg font-black tabular-nums text-white outline-none focus:border-rose-300 disabled:cursor-not-allowed disabled:opacity-70"
@@ -6942,7 +7107,9 @@ function RestaurantPosContent() {
 
                   <div className="mt-4 rounded-xl border border-white/10 bg-slate-950/20 p-3">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="font-bold text-slate-400">Тооцоолсон</span>
+                      <span className="font-bold text-slate-400">
+                        Тооцоолсон
+                      </span>
                       <span className="font-black text-white">
                         {formatMoney(expectedCashPreview)}
                       </span>
@@ -6987,12 +7154,15 @@ function RestaurantPosContent() {
 
             <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-white/10 px-6 py-4">
               <p className="text-xs font-semibold text-slate-500">
-                Хаах үед тооцоог дахин шинэчилж, баталгаажуулсны дараа ээлж хаагдана.
+                Хаах үед тооцоог дахин шинэчилж, баталгаажуулсны дараа ээлж
+                хаагдана.
               </p>
               <button
                 type="button"
                 onClick={() => void handleCloseShift()}
-                disabled={shiftSubmitting || drawerLoading || openTicketCount > 0}
+                disabled={
+                  shiftSubmitting || drawerLoading || openTicketCount > 0
+                }
                 className="flex h-12 min-w-40 items-center justify-center gap-2 rounded-lg bg-rose-300 px-5 font-black text-slate-950 hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {shiftSubmitting || drawerLoading ? (
@@ -7033,7 +7203,9 @@ function RestaurantPosContent() {
             <div className="mt-5 rounded-xl bg-slate-50 p-4">
               {lastReceiptContext ? (
                 <div className="mb-2 flex justify-between gap-4 text-sm">
-                  <span className="font-semibold text-slate-500">Захиалга №</span>
+                  <span className="font-semibold text-slate-500">
+                    Захиалга №
+                  </span>
                   <span className="font-black">
                     {formatRestaurantOrderNumber(
                       lastReceiptContext.ticketNo,
@@ -7191,10 +7363,10 @@ function TotalLine({
   strong?: boolean;
 }) {
   return (
-    <div className="mb-4 flex items-center justify-between gap-3 text-sm">
+    <div className="mb-2 flex items-center justify-between gap-2 text-xs">
       <span
         className={
-          strong ? "font-bold text-[#d4e4fa]" : "font-semibold text-[#86929a]"
+          strong ? "font-bold text-slate-100" : "font-semibold text-slate-400"
         }
       >
         {label}
@@ -7202,8 +7374,8 @@ function TotalLine({
       <span
         className={
           strong
-            ? "text-base font-black tabular-nums text-[#92d9ff]"
-            : "font-bold tabular-nums text-[#d4e4fa]"
+            ? "text-sm font-bold tabular-nums text-sky-300"
+            : "font-bold tabular-nums text-slate-100"
         }
       >
         {value}

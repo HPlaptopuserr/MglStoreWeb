@@ -25,10 +25,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
   const hideGlobalShell =
     (pathname === "/2003" || pathname?.startsWith("/2003/")) ||
+    (pathname === "/mgl-club" || pathname?.startsWith("/mgl-club/")) ||
     isContractRoute ||
     isPaidAccessDetailRoute ||
     isReelsRoute ||
-    isOrganizationStorefrontRoute;
+    isOrganizationStorefrontRoute || pathname === "/shared-store";
   const hideGlobalFooter =
     hideGlobalShell || isProfileRoute || isCheckoutRoute;
 

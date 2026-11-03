@@ -13,7 +13,7 @@ import type { StocktakeDetail, StocktakeLineDto } from "@mgl/types";
 
 const enabled =
   process.env.STOCKTAKE_LOCAL_HTTP_TEST === "1" &&
-  /^postgresql:\/\/[^@]+@(127\.0\.0\.1|localhost):5432\//.test(
+  /^postgresql:\/\/[^@]+@(127\.0\.0\.1|localhost):(?:5432|55437)\//.test(
     process.env.DATABASE_URL || "",
   );
 

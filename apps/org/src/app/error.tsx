@@ -1,6 +1,6 @@
 "use client";
 
-import { MglSystemErrorScreen } from "@mgl/ui";
+import { MglSystemErrorScreen } from "@mgl/ui/mgl-system-error-screen";
 
 export default function Error({
   reset,

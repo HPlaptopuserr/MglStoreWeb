@@ -17,7 +17,10 @@
     "db:identity-dry-run": "node scripts/with-root-env.cjs ts-node src/scripts/identity-link-dry-run.ts",
     "db:validate": "node scripts/with-root-env.cjs prisma validate",
     "db:format": "node scripts/with-root-env.cjs prisma format",
-    "test": "node --test -r ts-node/register src/**/*.test.ts"
+    "test": "node --test -r ts-node/register src/**/*.test.ts",
+    "db:deploy": "node scripts/with-root-env.cjs node scripts/deploy-database.cjs",
+    "db:audit-migrations": "node scripts/with-root-env.cjs node scripts/migration-history.cjs",
+    "test:release": "node --test scripts/*.test.cjs"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

@@ -458,7 +458,17 @@ export default function GoodsReceiptsPage() {
           items: lines.map((line) => ({
             ...(line.product.id.startsWith("catalog:")
               ? { masterProductId: line.product.masterProductId }
-              : { productId: line.product.id }),
+              : {
+                  productId: line.product.id,
+                  productSnapshot: {
+                    name: line.product.name,
+                    barcode: line.product.barcode ?? null,
+                    unit: normalizePosMeasureUnit(line.product.unit),
+                    ...(line.product.price != null
+                      ? { price: Number(line.product.price) }
+                      : {}),
+                  },
+                }),
             quantity: toPosStoredStockQuantity(
               line.quantity,
               line.product.unit,

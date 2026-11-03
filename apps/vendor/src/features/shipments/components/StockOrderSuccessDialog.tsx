@@ -5,7 +5,7 @@ import { CheckCircle, ChevronRight, Clock } from "lucide-react";
 interface StockOrderSuccessDialogProps {
   showOrderSuccessModal: boolean;
   totalCartItems: number;
-  finishSuccessfulOrder: () => void;
+  finishSuccessfulOrder: (destination?: "browse" | "requests") => void;
 }
 
 export function StockOrderSuccessDialog({
@@ -65,11 +65,18 @@ export function StockOrderSuccessDialog({
             <button
               type="button"
               autoFocus
-              onClick={finishSuccessfulOrder}
+              onClick={() => finishSuccessfulOrder("browse")}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2"
             >
-              Захиалгын жагсаалт харах
+              Агуулахын бараа үргэлжлүүлэн үзэх
               <ChevronRight className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => finishSuccessfulOrder("requests")}
+              className="mt-2 w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-amber-500"
+            >
+              Захиалгын түүх харах
             </button>
           </div>
         </div>

@@ -6,7 +6,6 @@ interface StockRequestWorkflowNavProps {
   active: StockRequestSection;
   pendingRequestCount: number;
   outstandingPaymentCount: number;
-  isNewOrderLocked: boolean;
   onNavigate: (section: StockRequestSection) => void;
 }
 
@@ -14,17 +13,16 @@ export function StockRequestWorkflowNav({
   active,
   pendingRequestCount,
   outstandingPaymentCount,
-  isNewOrderLocked,
   onNavigate,
 }: StockRequestWorkflowNavProps) {
   const items = [
     {
       key: "new" as const,
-      label: "Шинэ захиалга",
-      description: isNewOrderLocked ? "Төлбөр хүлээгдэж байна" : "Бараа сонгох",
+      label: "Агуулахын бараа",
+      description: "Бараа үзэх, захиалах",
       icon: Package,
       count: 0,
-      warning: isNewOrderLocked,
+      warning: false,
     },
     {
       key: "requests" as const,

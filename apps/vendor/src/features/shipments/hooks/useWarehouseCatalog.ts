@@ -3,7 +3,6 @@ import type { StockRequestUser } from "@/features/shipments/types/stock-request.
 
 import { WAREHOUSE_PRODUCTS_PAGE_SIZE } from "@/features/shipments/stock-request.constants";
 import type {
-  OutstandingPaymentSummary,
   StockRequestCartItem,
   StockRequestView,
   SuggestedStockItem,
@@ -18,7 +17,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 interface UseWarehouseCatalogOptions {
   user: StockRequestUser | null;
-  outstandingPayments: OutstandingPaymentSummary | null;
   setViewMode: React.Dispatch<React.SetStateAction<StockRequestView>>;
   setCart: React.Dispatch<React.SetStateAction<StockRequestCartItem[]>>;
   warehouses: SupplyWarehouse[];
@@ -27,7 +25,6 @@ interface UseWarehouseCatalogOptions {
 
 export function useWarehouseCatalog({
   user,
-  outstandingPayments,
   setViewMode,
   setCart,
   warehouses,
@@ -119,6 +116,11 @@ export function useWarehouseCatalog({
           throw new Error(message);
         }
 
+        if (
+          controller.signal.aborted ||
+          productsRequestRef.current !== controller
+        )
+          return;
         const result = readWarehouseProductsPage(
           payload,
           page,
@@ -137,7 +139,10 @@ export function useWarehouseCatalog({
         setProductsHasMore(result.hasMore);
         return result;
       } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError")
+        if (
+          controller.signal.aborted ||
+          productsRequestRef.current !== controller
+        )
           return;
         console.error("Failed to fetch warehouse products:", error);
         if (!append) setWarehouseProducts([]);
@@ -161,11 +166,6 @@ export function useWarehouseCatalog({
     warehouse: SupplyWarehouse,
     autoItems?: SuggestedStockItem[],
   ) => {
-    if ((outstandingPayments?.count ?? 0) > 0) {
-      setViewMode("payments");
-      return;
-    }
-
     setSelectedWarehouse(warehouse);
     skipNextProductsFilterEffectRef.current = true;
     setProductsLoading(true);
@@ -265,6 +265,19 @@ export function useWarehouseCatalog({
     viewMode,
   ]);
 
+  useEffect(() => () => productsRequestRef.current?.abort(), []);
+
+  const retryProducts = () => {
+    if (!selectedWarehouse) return;
+    void loadWarehouseProducts({
+      warehouse: selectedWarehouse,
+      page: 1,
+      search: debouncedProductSearch,
+      category: selectedCategory,
+      append: false,
+    });
+  };
+
   const categories = Array.from(
     new Set(
       (Array.isArray(warehouseProducts) ? warehouseProducts : [])
@@ -313,5 +326,6 @@ export function useWarehouseCatalog({
     exitWarehouse,
     categories,
     productsLoadMoreRef,
+    retryProducts,
   };
 }

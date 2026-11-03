@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { ArrowUpRight } from "lucide-react";
 import { RegistrationIntro } from "../_components/RegistrationIntro";
 import styles from "../registration.module.css";
 import { RegistrationForm } from "../_components/RegistrationForm";
@@ -14,26 +13,10 @@ export const metadata: Metadata = {
 export default function CommunityRegistrationPage() {
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <a href="/" className={styles.brand} aria-label="MGL Store нүүр хуудас">
-          <span className={styles.brandMark}>m.</span>MGL STORE
-          <span className={styles.brandDivider} />
-          2003
-        </a>
-        <a href="/2003" className={styles.headerLink}>
-          Гишүүдийн мэдээлэл <ArrowUpRight size={16} />
-        </a>
-      </header>
       <div className={styles.layout}>
         <RegistrationIntro />
         <RegistrationForm />
       </div>
-      <footer className={styles.footer}>
-        <span>© {new Date().getFullYear()} MGL Store</span>
-        <span>
-          Монгол мөнгө Монголдоо <span aria-hidden="true">↗</span>
-        </span>
-      </footer>
     </div>
   );
 }

@@ -1,4 +1,19 @@
 import { Prisma, WarehouseType } from "@mgl/database";
+import { assertWarehouseProductsOwned, WarehouseProductOwnershipError } from "./warehouse-product-ownership";
+
+export class ProductInventoryConflictError extends Error {
+  readonly status = 409;
+}
+
+/** Acquire before product mutations when a transaction also resolves vendor stock. */
+export async function lockOrganizationInventory(
+  tx: Pick<Prisma.TransactionClient, "$queryRaw">,
+  organizationId: string | null,
+): Promise<void> {
+  if (organizationId) {
+    await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id" = ${organizationId} FOR UPDATE`;
+  }
+}
 
 /** Call inside the stock mutation transaction. The organization lock serializes
  * first-use creation across product imports, POS receipts and catalog edits. */
@@ -9,19 +24,35 @@ export async function resolveProductInventoryWarehouse(
   createdById?: string | null,
   initializeUnassignedStock = false,
 ): Promise<string | null> {
+  await lockOrganizationInventory(tx, organizationId);
+  await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${productId} FOR UPDATE`;
   const product = await tx.product.findUniqueOrThrow({
     where: { id: productId },
     select: { organizationId: true, managedByWarehouseId: true, stock: true },
   });
-  // Explicitly managed distribution products keep their admin warehouse.
-  if (product.managedByWarehouseId) return product.managedByWarehouseId;
-  if (!organizationId) return null;
   if (product.organizationId !== organizationId) {
-    throw new Error("Бараа энэ байгууллагад харьяалагдахгүй байна");
+    throw new ProductInventoryConflictError("Бараа энэ байгууллагад харьяалагдахгүй байна");
   }
-  await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id" = ${organizationId} FOR UPDATE`;
-  // Existing explicit distribution inventory remains valid. Legacy vendor
-  // registrations are normalized by the guarded maintenance command.
+  const verifyWarehouse = async (warehouseId: string) => {
+    try {
+      await assertWarehouseProductsOwned(tx, warehouseId, [productId]);
+    } catch (error) {
+      if (error instanceof WarehouseProductOwnershipError) {
+        throw new ProductInventoryConflictError(error.message);
+      }
+      throw error;
+    }
+    return warehouseId;
+  };
+  if (product.managedByWarehouseId) {
+    if (organizationId) {
+      throw new ProductInventoryConflictError("Vendor болон агуулахын барааны эзэмшил зөрсөн байна. Эхлээд бүртгэлийг тулгана уу.");
+    }
+    return verifyWarehouse(product.managedByWarehouseId);
+  }
+  if (!organizationId) return null;
+  // Legacy distribution links require an evidence-backed ownership repair;
+  // customer assignments must never route a store sale into central stock.
   const inventories = await tx.warehouseInventory.findMany({
     where: { productId },
     select: {
@@ -40,22 +71,24 @@ export async function resolveProductInventoryWarehouse(
     inventories.some(
       ({ warehouse }) =>
         !warehouse.isActive ||
+        warehouse.type !== WarehouseType.VENDOR_INTERNAL ||
         warehouse.deletedAt !== null ||
+        warehouse.organizations.length !== 1 ||
         !warehouse.organizations.some(
           (link) => link.organizationId === organizationId,
         ),
     )
   ) {
-    throw new Error(
+    throw new ProductInventoryConflictError(
       "Барааны агуулахын холбоосыг засах шаардлагатай. Админд хандана уу.",
     );
   }
   if (inventories.length > 1) {
-    throw new Error(
+    throw new ProductInventoryConflictError(
       "Бараа олон агуулахад байна. Агуулахыг тодорхой сонгоно уу.",
     );
   }
-  if (inventories[0]) return inventories[0].warehouseId;
+  if (inventories[0]) return verifyWarehouse(inventories[0].warehouseId);
   const assignment = await tx.warehouseOrganization.findFirst({
     where: {
       organizationId,
@@ -69,6 +102,7 @@ export async function resolveProductInventoryWarehouse(
     select: { warehouseId: true },
   });
   const initialize = async (warehouseId: string) => {
+    await verifyWarehouse(warehouseId);
     // POS may encounter older products whose stock was kept directly on Product.
     // Preserve that baseline before adjustStock applies the new movement.
     if (initializeUnassignedStock && product.stock !== 0) {

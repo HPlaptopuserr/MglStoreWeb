@@ -70,7 +70,11 @@ export async function addStocktakeProduct(input: {
         where: { id: input.stocktakeId, organizationId: input.organizationId },
       });
       if (!session) throw new StocktakeError("Тооллого олдсонгүй", 404);
-      await assertStocktakeScope(tx, input.organizationId, session.warehouseId);
+      const catalogWarehouseId = await assertStocktakeScope(
+        tx,
+        input.organizationId,
+        session.warehouseId,
+      );
       const include = {
         warehouse: { select: { name: true } },
         lines: { orderBy: { name: "asc" as const } },
@@ -127,6 +131,7 @@ export async function addStocktakeProduct(input: {
         data: {
           id: data.id,
           organizationId: input.organizationId,
+          managedByWarehouseId: catalogWarehouseId,
           name: data.name,
           barcode: data.barcode || null,
           unit: data.unit,

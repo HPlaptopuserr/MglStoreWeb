@@ -7,6 +7,7 @@ export {
   orgJoinRoutes,
   orgMemberRoutes,
   orgTaskRoutes,
+  orgAccessPinRoutes,
   orgGamesRoutes,
   partnerRequestRoutes,
   partnerRoutes,
@@ -34,6 +35,7 @@ export {
   stockRequestsRoutes,
   warehousesRoutes,
   warehouseGoodsReceiptsRoutes,
+  warehouseTransfersRoutes,
   deliveriesRoutes,
   deliveryPartnershipsRoutes,
 } from "./operations";
@@ -51,7 +53,7 @@ export { formRoutes } from "./forms";
 
 export { attendanceRoutes } from "./attendance";
 
-export { chatRoutes, dmRoutes } from "./chat";
+export { chatRoutes, dmRoutes, createDmRouter } from "./chat";
 
 export {
   storeCheckoutRoutes,

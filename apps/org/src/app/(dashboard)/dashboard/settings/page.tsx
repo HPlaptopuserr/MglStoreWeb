@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
 import { OrgMerchantSettings } from "@/components/org/OrgMerchantSettings";
+import { OrgAccessPinSettings } from "@/components/org/OrgAccessPinSettings";
 
 export default function SettingsPage() {
   return (
@@ -27,7 +28,8 @@ export default function SettingsPage() {
         </p>
       </div>
 
-      <div className="mt-6">
+      <div className="mt-6 space-y-5">
+        <OrgAccessPinSettings />
         <OrgMerchantSettings />
       </div>
     </section>

@@ -1,3 +1,4 @@
+import ProductHistoryScope from "@/components/ProductHistoryScope";
 import OrgShell from "@/components/OrgShell";
 
 export default function DashboardLayout({
@@ -5,5 +6,9 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <OrgShell>{children}</OrgShell>;
+  return (
+    <OrgShell>
+      <ProductHistoryScope>{children}</ProductHistoryScope>
+    </OrgShell>
+  );
 }

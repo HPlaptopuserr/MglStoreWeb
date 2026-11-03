@@ -1,0 +1,513 @@
+.unit-management-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+.unit-management-grid > button {
+  text-align: left;
+  display: grid;
+  gap: 12px;
+  background: white;
+  border: 1px solid #d9e5e1;
+  border-radius: 16px;
+  padding: 20px;
+  color: #203e39;
+  transition:
+    border-color 0.15s,
+    background-color 0.15s;
+}
+.unit-management-grid > button:hover {
+  border-color: #1d7f69;
+  background: #f6fbf8;
+}
+.unit-management-grid > button:focus-visible {
+  outline: 3px solid #157c70;
+  outline-offset: 3px;
+}
+.unit-management-grid strong {
+  font-size: 18px;
+}
+.unit-management-grid small {
+  font-size: 11px;
+  color: #71857e;
+}
+.unit-card-edit {
+  color: #157c70;
+  font-size: 12px;
+  font-weight: 650;
+}
+.unit-details-form label {
+  display: grid;
+  gap: 8px;
+  margin: 15px 0;
+}
+.unit-details-form .website-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.unit-details-form textarea {
+  width: 100%;
+}
+.unit-image-fields {
+  margin: 16px 0;
+}
+.unit-image-fields legend {
+  font-size: 18px;
+  font-weight: 700;
+}
+.unit-image-fields img {
+  max-width: 100%;
+  height: auto;
+  max-height: 220px;
+  object-fit: contain;
+  border: 1px solid #dbe6e1;
+  border-radius: 12px;
+  margin: 12px 0;
+}
+.unit-gallery-thumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.unit-gallery-thumbs > div {
+  max-width: 160px;
+}
+.unit-editor-total {
+  padding: 18px;
+  background: #edf6f2;
+  border-radius: 12px;
+}
+.unit-prepare {
+  padding: 20px;
+  background: #eef6f3;
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+@media (max-width: 600px) {
+  .unit-management-grid {
+    grid-template-columns: 1fr;
+  }
+  .unit-details-form .website-field-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .unit-management-grid > button {
+    transition: none;
+  }
+}
+
+.unit-management-card {
+  overflow: hidden;
+  border: 1px solid #d9e5e1;
+  border-radius: 18px;
+  background: #fff;
+  transition:
+    box-shadow 0.18s,
+    border-color 0.18s;
+}
+.unit-management-card:hover {
+  border-color: #9fbfb4;
+  box-shadow: 0 8px 24px #163c3210;
+}
+.unit-management-card .unit-card-image {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: #f3f7f5;
+  color: #5f7a70;
+  overflow: hidden;
+}
+.unit-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.unit-card-image > span:first-child {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+.unit-card-image .unit-card-image-kind {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: #ffffffed;
+  font-size: 11px;
+  color: #246151;
+}
+.unit-card-body {
+  display: grid;
+  gap: 10px;
+  padding: 18px;
+}
+.unit-card-body > span {
+  font-size: 13px;
+}
+.unit-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+.unit-card-actions button {
+  flex: 1;
+  min-height: 42px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.unit-management-card button:focus-visible {
+  outline: 3px solid #16836f;
+  outline-offset: -3px;
+}
+.unit-management-card button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.unit-image-placeholder {
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  border: 1px dashed #bdcfc7;
+  border-radius: 12px;
+  color: #71857e;
+  text-align: center;
+  background: #f7faf8;
+}
+.unit-image-fields .unit-image-scope {
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: #edf6f2;
+  color: #286451;
+}
+.unit-image-reuse {
+  margin: 20px 0;
+  padding: 16px;
+  border: 1px solid #d9e5e1;
+  border-radius: 14px;
+}
+.unit-image-reuse summary {
+  cursor: pointer;
+  font-weight: 650;
+  min-height: 28px;
+}
+.unit-image-reuse summary:focus-visible {
+  outline: 3px solid #16836f;
+  outline-offset: 4px;
+}
+.unit-reuse-preview {
+  margin-top: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #f6f9f7;
+}
+.unit-image-fields p {
+  line-height: 1.7;
+}
+@media (prefers-reduced-motion: reduce) {
+  .unit-management-card {
+    transition: none;
+  }
+}
+
+.unit-plan-preview {
+  overflow: hidden;
+  border: 1px solid #dce5e7;
+  border-radius: 18px;
+  background: #f7faf9;
+}
+.unit-plan-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+}
+.unit-plan-toolbar > div {
+  display: flex;
+  gap: 8px;
+}
+.unit-plan-toolbar button,
+.unit-plan-region-list button {
+  border: 1px solid #cbdcd5;
+  border-radius: 10px;
+  background: white;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+.unit-plan-toolbar button[aria-pressed="true"] {
+  background: #176b58;
+  color: white;
+}
+.unit-plan-preview > svg {
+  display: block;
+  width: 100%;
+  max-height: 75vh;
+  background: #182332;
+}
+.unit-plan-region {
+  cursor: pointer;
+  outline: none;
+}
+.unit-plan-region polygon {
+  fill: #4ecca330;
+  stroke: #7ee3bd;
+  stroke-width: 2;
+  transition:
+    fill 150ms ease,
+    stroke 150ms ease;
+}
+.unit-plan-region:hover polygon,
+.unit-plan-region:focus-visible polygon,
+.unit-plan-region[aria-pressed="true"] polygon {
+  fill: #63e5b56b;
+  stroke: #fff;
+  stroke-width: 4;
+}
+.unit-plan-region text {
+  fill: white;
+  stroke: #182332;
+  stroke-width: 3px;
+  paint-order: stroke;
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+}
+.unit-plan-region.muted {
+  opacity: 0.2;
+  cursor: default;
+}
+.unit-plan-region[aria-disabled="true"] {
+  cursor: default;
+}
+.unit-plan-region-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 16px;
+  max-height: 180px;
+  overflow: auto;
+}
+.unit-plan-region-list button:hover {
+  background: #e5f5ed;
+}
+.unit-plan-region-list button:focus-visible,
+.unit-plan-toolbar button:focus-visible {
+  outline: 3px solid #176b58;
+  outline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .unit-plan-region polygon {
+    transition: none;
+  }
+}
+
+/* Scoped to the apartment editor, including its portalled dialog. */
+.building-dialog:has(.unit-details-form) {
+  width: min(760px, calc(100vw - 32px));
+  border-radius: 22px;
+}
+.building-dialog:has(.unit-details-form) .building-dialog-header {
+  padding: 24px 28px 20px;
+}
+.building-dialog:has(.unit-details-form) .building-dialog-header h2 {
+  color: #18332f;
+  font-weight: 750;
+  font-size: 24px;
+}
+.building-dialog:has(.unit-details-form) .building-dialog-header p {
+  color: #60776f;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.building-dialog:has(.unit-details-form) .building-dialog-content {
+  padding: 20px 28px;
+  background: #f7faf9;
+}
+.unit-editor-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 5px;
+  margin-bottom: 20px;
+  border: 1px solid #e0e9e5;
+  border-radius: 13px;
+  background: #edf3f0;
+}
+.unit-editor-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 9px;
+  color: #526b63;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.unit-editor-tabs button:hover {
+  background: #e1ece6;
+}
+.unit-editor-tabs button.active {
+  background: white;
+  color: #14654f;
+  box-shadow: 0 2px 5px #163d3210;
+}
+.unit-details-form > fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.unit-editor-section {
+  padding: 22px;
+  border: 1px solid #e2eae6;
+  border-radius: 14px;
+  background: white;
+}
+.unit-section-heading {
+  margin-bottom: 20px;
+}
+.unit-section-heading h3 {
+  margin: 0 0 5px;
+  color: #213e34;
+}
+.building-dialog .unit-section-heading p {
+  margin: 0;
+  color: #667d73;
+}
+.unit-basics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.unit-details-form .unit-editor-section label {
+  margin: 0 0 18px;
+  gap: 8px;
+  color: #3c554c;
+  font-weight: 600;
+  font-size: 13px;
+}
+.unit-details-form input:not([type="checkbox"]),
+.unit-details-form textarea,
+.unit-details-form select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+  border-radius: 9px;
+  min-height: 44px;
+  font-size: 14px;
+  color: #203c32;
+  font-weight: 400;
+}
+.unit-details-form textarea {
+  resize: vertical;
+  line-height: 1.6;
+}
+.unit-details-form input::placeholder,
+.unit-details-form textarea::placeholder {
+  color: #899b93;
+  font-size: 12px;
+}
+.unit-field-hint {
+  display: block;
+  margin-top: -8px;
+  color: #71847b;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.building-dialog .unit-editor-preview {
+  margin: 16px 0 0;
+}
+.unit-editor-preview a {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #276a54;
+  font-size: 12px;
+}
+.building-dialog:has(.unit-details-form) footer {
+  align-items: center;
+  gap: 10px;
+  padding: 16px 28px;
+  background: white;
+}
+.building-dialog:has(.unit-details-form) footer button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.unit-save-status {
+  margin-right: auto;
+  color: #687b72;
+  font-size: 11px;
+}
+.unit-discard-alert {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #f2d2a5;
+  border-radius: 12px;
+  background: #fff8ed;
+}
+.unit-discard-alert button {
+  margin: 4px 12px 0 0;
+  padding: 8px;
+  text-decoration: underline;
+}
+@media (max-width: 600px) {
+  .building-dialog:has(.unit-details-form) .building-dialog-header {
+    padding: 18px;
+  }
+  .building-dialog:has(.unit-details-form) .building-dialog-content {
+    padding: 14px;
+  }
+  .unit-editor-section {
+    padding: 16px;
+  }
+  .unit-basics-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .unit-editor-tabs button {
+    font-size: 12px;
+    gap: 5px;
+  }
+  .building-dialog:has(.unit-details-form) footer {
+    padding: 14px 18px;
+    flex-wrap: wrap;
+  }
+  .unit-save-status {
+    width: 100%;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .unit-editor-tabs button {
+    transition: none;
+  }
+}

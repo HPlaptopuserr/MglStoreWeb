@@ -1,3 +1,4 @@
+import { stocktakeWarehouseFilter } from "../../../services/stocktake-scope";
 import { resolveStocktakeProduct } from "../../../services/stocktake-lookup.service";
 import {
   addStocktakeProduct,
@@ -18,6 +19,7 @@ import {
   stocktakePermissions,
 } from "../../../services/stocktake.policy";
 import {
+  inspectStocktake,
   stocktakeProductFilter,
   createStocktake,
   mutateStocktake,
@@ -53,7 +55,16 @@ function route(
       );
     } catch (error) {
       if (error instanceof StocktakeError)
-        return res.status(error.status).json({ message: error.message });
+        return res.status(error.status).json({
+          message: error.message,
+          ...(error.changedLineIds !== undefined
+            ? {
+                code: "STOCKTAKE_STOCK_CHANGED",
+                changedLineIds: error.changedLineIds,
+                addedProductCount: error.addedProductCount,
+              }
+            : {}),
+        });
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         (["P2034", "P2002"].includes(error.code) ||
@@ -88,12 +99,7 @@ router.get(
           include: { warehouse: { select: { name: true } } },
         }),
         prisma.warehouse.findMany({
-          where: {
-            type: "VENDOR_INTERNAL",
-            isActive: true,
-            deletedAt: null,
-            organizations: { some: { organizationId } },
-          },
+          where: stocktakeWarehouseFilter(organizationId),
           select: {
             id: true,
             name: true,
@@ -137,15 +143,9 @@ router.get(
 router.get(
   `${base}/:id`,
   route(async (req, res, _actor, organizationId) => {
-    const session = await prisma.stocktake.findFirst({
-      where: { id: String(req.params.id), organizationId },
-      include: {
-        warehouse: { select: { name: true } },
-        lines: { orderBy: { name: "asc" } },
-      },
-    });
-    if (!session) throw new StocktakeError("Тооллого олдсонгүй", 404);
-    return res.json(session);
+    return res.json(
+      await inspectStocktake(organizationId, String(req.params.id)),
+    );
   }),
 );
 router.post(

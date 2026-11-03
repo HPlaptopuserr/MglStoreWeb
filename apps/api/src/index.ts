@@ -1,7 +1,23 @@
+import warehouseViewerRoutes from "./routes/operations/warehouse-viewer.routes";
+import reelUploadRoutes from './routes/content/reel-uploads.routes';
+import { startReelUploadWorker } from './services/reel-upload/worker';
 import "./config/env";
+import { organizationGroupRoutes } from "./routes/organization-groups";
+import { restrictKitchenMember } from "./middleware/kitchen-access";
+import { reconcileRetailPayments } from "./services/warehouse-retail.service";
+import { reconcilePendingMinuCards } from "./services/minu-card-reconciliation";
+import { processWorkforceMailQueue } from "./services/workforce/mail-worker";
+import { workforceIntegrationRouter } from "./routes/workforce/integration.routes";
+import { workforceBillingPublicRouter } from "./routes/workforce/billing.routes";
+import { workforceRoutes, workforceAdminRouter } from "./routes/workforce";
+import productHistoryRoutes from "./routes/operations/product-history.routes";
+import esimRoutes, { reconcileEsimPurchases, esimAdminRoutes } from "./routes/esim";
+import buildingRoutes from "./routes/building";
 import miniAppAdminRoutes from "./routes/store/mini-app-admin.routes";
+import warehouseRetailRoutes from "./routes/store/warehouse-retail.routes";
 import miniAppCatalogRoutes from "./routes/store/mini-app-catalog.routes";
 import visualSearchRoutes from "./routes/catalog/visual-search.routes";
+import { startVisualSearchWorker } from "./services/visual-search/visual-search-worker";
 
 import express from "express";
 import multer from "multer";
@@ -19,6 +35,7 @@ import {
   orgJoinRoutes,
   orgMemberRoutes,
   orgTaskRoutes,
+  orgAccessPinRoutes,
   orgGamesRoutes,
   partnerRequestRoutes,
   partnerRoutes,
@@ -40,6 +57,7 @@ import {
   stockRequestsRoutes,
   warehousesRoutes,
   warehouseGoodsReceiptsRoutes,
+  warehouseTransfersRoutes,
   deliveriesRoutes,
   deliveryPartnershipsRoutes,
   dashboardRoutes,
@@ -49,6 +67,7 @@ import {
   attendanceRoutes,
   chatRoutes,
   dmRoutes,
+  createDmRouter,
   storeCheckoutRoutes,
   vendorOrderRoutes,
   storeLoyaltyRoutes,
@@ -144,13 +163,17 @@ app.use(
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ limit: "20mb", extended: true }));
 
+app.use(["/api", "/auth"], restrictKitchenMember);
+
 app.use("/api", partnerRequestRoutes);
 app.use("/api", associationRoutes);
 app.use("/api", businessDashboardRoutes);
+app.use("/api/building", buildingRoutes);
 app.use("/api", partnerRoutes);
 app.use("/api", orgJoinRoutes);
 app.use("/api", orgMemberRoutes);
 app.use("/api", orgTaskRoutes);
+app.use("/api", orgAccessPinRoutes);
 app.use("/api", orgGamesRoutes);
 app.use("/api", personalOrganizationRoutes);
 app.use("/api", businessCategoriesRoutes);
@@ -160,8 +183,11 @@ app.use("/api", jobPositionRoutes);
 app.use("/api", posRoutes);
 app.use("/api/mobile", posRoutes);
 app.use("/api", serviceRequestsRoutes);
+app.use("/api", warehouseViewerRoutes);
 app.use("/api", warehousesRoutes);
 app.use("/api", warehouseGoodsReceiptsRoutes);
+app.use("/api", warehouseTransfersRoutes);
+app.use("/api", productHistoryRoutes);
 app.use("/api", deliveriesRoutes);
 app.use("/api", deliveryPartnershipsRoutes);
 app.use("/api", stockRequestsRoutes);
@@ -172,23 +198,33 @@ app.use("/api", siteSettingsRoutes);
 app.use("/api", teamRoutes);
 app.use("/api", productsRoutes);
 app.use("/api", visualSearchRoutes);
+app.use("/api", reelUploadRoutes);
 app.use("/api", reelsRoutes);
 app.use("/api", servicePostsRoutes);
 app.use("/api", postsRoutes);
 app.use("/api", vendorContentReviewRoutes);
 app.use("/api", formRoutes);
 app.use("/api", attendanceRoutes);
+app.use("/api", workforceIntegrationRouter);
+app.use("/api", workforceBillingPublicRouter);
+app.use("/api", workforceRoutes);
+app.use("/api", organizationGroupRoutes);
+app.use("/api", workforceAdminRouter);
 app.use("/api", salesRepresentativeRoutes);
 app.use("/api", qualityRoutes);
 app.use("/api", chatRoutes);
 app.use("/api", dmRoutes);
+app.use("/api/store", createDmRouter("STORE"));
 app.use("/api", storeCheckoutRoutes);
+app.use("/api", esimRoutes);
+app.use("/api", esimAdminRoutes);
 app.use("/api", vendorOrderRoutes);
 app.use("/api", storeLoyaltyRoutes);
 app.use("/api", storeBranchRoutes);
 app.use("/api", hypermarketRoutes);
 app.use("/api", miniAppAdminRoutes);
 app.use("/api", miniAppCatalogRoutes);
+app.use("/api", warehouseRetailRoutes);
 app.use("/api", vendorMerchantRoutes);
 app.use("/api", vendorUpgradeRoutes);
 app.use("/api", vendorCardTerminalRoutes);
@@ -259,6 +295,7 @@ const port = process.env.PORT || 4000;
 
 app.listen(Number(port), "0.0.0.0", () => {
   console.log(`[api] Application is running on: http://0.0.0.0:${port}`);
+  startVisualSearchWorker();
 });
 
 const checkoutExpirationTimer = setInterval(() => {
@@ -267,3 +304,39 @@ const checkoutExpirationTimer = setInterval(() => {
   });
 }, 30_000);
 checkoutExpirationTimer.unref();
+
+// Jobs remain recoverable across restarts; database leases coordinate replicas.
+let esimReconciliationRunning = false;
+const esimReconciliationTimer = setInterval(() => {
+  if (esimReconciliationRunning || process.env.ESIM_WORKER_ENABLED !== "true") return;
+  esimReconciliationRunning = true;
+  void reconcileEsimPurchases().catch(() => {
+    console.error("[esim] Reconciliation unavailable; pending jobs retained");
+  }).finally(() => { esimReconciliationRunning = false; });
+}, 15000);
+esimReconciliationTimer.unref();
+
+const workforceMailTimer = setInterval(() => { void processWorkforceMailQueue(); }, 60_000);
+workforceMailTimer.unref();
+
+let retailReconciliationRunning = false;
+const retailReconciliationTimer = setInterval(() => {
+  if (retailReconciliationRunning) return;
+  retailReconciliationRunning = true;
+  void reconcileRetailPayments().catch((error: unknown) => {
+    console.error("[warehouse retail] reconciliation unavailable", error);
+  }).finally(() => { retailReconciliationRunning = false; });
+}, 60_000);
+retailReconciliationTimer.unref();
+
+let minuCardReconciliationRunning = false;
+const minuCardReconciliationTimer = setInterval(() => {
+  if (minuCardReconciliationRunning) return;
+  minuCardReconciliationRunning = true;
+  void reconcilePendingMinuCards().catch((error: unknown) => {
+    console.error("[pos card] Minu reconciliation unavailable", error);
+  }).finally(() => { minuCardReconciliationRunning = false; });
+}, 15_000);
+minuCardReconciliationTimer.unref();
+
+startReelUploadWorker();

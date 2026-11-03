@@ -1,5 +1,6 @@
 "use client";
 
+import { RetailOrdersPanel } from "@/features/retail-orders/RetailOrdersPanel";
 import { useState } from "react";
 import {
   Inbox,
@@ -81,12 +82,13 @@ export default function OnlineOrdersPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-4">
+      <RetailOrdersPanel warehouseId={selectedWarehouseId} />
       <header className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
           <h1 className="shrink-0 text-xl font-black tracking-tight text-slate-950">
             Онлайн захиалга
           </h1>
-          <OnlineOrderStats orders={orders} />
+          {!loading && !error && <OnlineOrderStats orders={orders} />}
         </div>
         <button
           type="button"
@@ -140,7 +142,15 @@ export default function OnlineOrdersPage() {
           role="alert"
           className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700"
         >
-          {error}
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={loading}
+            className="mt-2 rounded-lg border border-red-200 px-3 py-2 text-xs font-bold transition hover:bg-red-100 disabled:opacity-50"
+          >
+            Дахин оролдох
+          </button>
         </div>
       )}
 
@@ -148,7 +158,7 @@ export default function OnlineOrdersPage() {
         <div className="flex min-h-72 items-center justify-center rounded-2xl border border-slate-200 bg-white">
           <Loader2 size={30} className="animate-spin text-blue-600" />
         </div>
-      ) : orders.length === 0 ? (
+      ) : orders.length === 0 && !error ? (
         <div className="flex min-h-72 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
           <div className="rounded-2xl bg-slate-100 p-4 text-slate-400">
             <Inbox size={30} />

@@ -37,7 +37,9 @@ export function StocktakeSummary({
           <p className="mt-1 text-sm text-slate-500">
             {session.warehouse?.name || "Агуулахад холбоогүй дэлгүүрийн бараа"}{" "}
             · {session.kind === "FULL" ? "Бүтэн" : "Хэсэгчилсэн"} ·{" "}
-            {stocktakeStatusLabels[session.status]}
+            {session.status === "DRAFT"
+              ? "Тоо оруулах / засах"
+              : stocktakeStatusLabels[session.status]}
           </p>
         </div>
         <div className="text-sm">
@@ -48,7 +50,7 @@ export function StocktakeSummary({
             </strong>
           </p>
           <p className="mt-1 text-amber-700">
-            Зөрүүтэй <strong>{differences}</strong>
+            Тоо зөрсөн <strong>{differences} бараа</strong>
           </p>
         </div>
       </div>
@@ -58,11 +60,26 @@ export function StocktakeSummary({
         max={Math.max(total, 1)}
         className="mt-4 h-2 w-full accent-blue-600"
       />
-      <p className="mt-3 text-sm text-slate-500">
-        Тоолоогүй мөр тэг гэсэн үг биш. Зөрүү бүрт шалтгаан бичээд хяналтад
-        илгээнэ. Тоолох хугацаанд борлуулалт, орлогыг түр зогсоохыг зөвлөж
-        байна.
-      </p>
+      <div
+        role="status"
+        className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
+      >
+        <strong>
+          {session.lines.filter((line) => line.counted !== null).length} /{" "}
+          {total} барааны тоо серверт хадгалагдсан.
+        </strong>
+        {total > counted && (
+          <span className="mt-1 block">
+            {total - counted} барааны тоо дутуу байна. Хадгалагдсан барааг
+            эхнээс нь дахин тоолох шаардлагагүй.
+          </span>
+        )}
+        {dirty > 0 && (
+          <span className="mt-1 block text-amber-800">
+            {dirty} мөрийн шинэ өөрчлөлтийг хадгалах шаардлагатай.
+          </span>
+        )}
+      </div>
       {session.lines.some((line) => line.receiptRegisterId) && (
         <p className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
           Тооллогоор нэмсэн{" "}
@@ -98,24 +115,10 @@ export function StocktakeSummary({
             >
               Хяналтад илгээх
             </button>
-            <button
-              className={secondaryClass}
-              disabled={busy || Boolean(dirty)}
-              onClick={() => onAction("refresh")}
-            >
-              Өөрчлөгдсөн барааг дахин тоолох
-            </button>
           </>
         )}
         {session.status === "REVIEW" && canApprove && (
           <>
-            <button
-              className={buttonClass}
-              disabled={busy}
-              onClick={() => onAction("approve")}
-            >
-              Зөрүүг баталж үлдэгдэл шинэчлэх
-            </button>
             <button
               className={secondaryClass}
               disabled={busy}

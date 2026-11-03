@@ -29,10 +29,13 @@ beforeEach(() => {
   stub(prisma.warehouseStockRequestItem, 'findMany', async () => []);
 });
 test('guests can browse only published Hypermarket stock with no employee permission', async () => {
-  stub(prisma.warehouseInventory, 'findMany', async ({ where, select }: { where: { warehouseId: string; product: { managedByWarehouseId: string; organizationId: { in: string[] }; isActive: boolean } }; select: { product: { select: Record<string, unknown> } } }) => {
+  stub(prisma.warehouseInventory, 'findMany', async ({ where, select }: { where: { warehouseId: string; product: { managedByWarehouseId: string; AND: Array<{ OR: Array<Record<string, unknown>> }>; isActive: boolean } }; select: { product: { select: Record<string, unknown> } } }) => {
     assert.equal(where.warehouseId, 'hypermarket');
     assert.equal(where.product.managedByWarehouseId, 'hypermarket');
-    assert.deepEqual(where.product.organizationId.in, ['public-org']);
+    assert.deepEqual(where.product.AND, [{ OR: [
+      { organizationId: null },
+      { organizationId: { in: ['public-org'] }, organization: { deletedAt: null, status: 'ACTIVE' } },
+    ] }]);
     assert.equal(where.product.isActive, true);
     assert.equal(select.product.select.costPrice, undefined);
     return [{ productId: 'milk', quantity: 7, product: { id: 'milk', name: 'Milk', price: 4500, unit: 'pcs', images: [] } }];
@@ -65,4 +68,35 @@ test('Hypermarket allows missing photos but keeps inventory publication controls
   const response = await fetch(url);
   assert.equal(response.status, 200);
   assert.deepEqual((await response.json() as {products: Array<{images: unknown[]}>}).products[0].images, []);
+});
+
+test('warehouse lookup supports the verified Mongolian warehouse name', async () => {
+  stub(prisma.warehouse, 'findMany', async ({ where }: { where: { OR: unknown[]; isActive: boolean; deletedAt: null } }) => {
+    assert.deepEqual(where.OR, [
+      { name: { equals: 'Hypermarket', mode: 'insensitive' } },
+      { name: { equals: 'Хайпер Маркет', mode: 'insensitive' } },
+    ]);
+    assert.equal(where.isActive, true);
+    assert.equal(where.deletedAt, null);
+    return [{ id: 'hypermarket', name: 'Хайпер Маркет' }];
+  });
+  stub(prisma.warehouseInventory, 'findMany', async () => []);
+  assert.equal((await fetch(url)).status, 200);
+});
+
+test('published warehouse-owned products remain visible without opted-in organizations', async () => {
+  stub(prisma.organization, 'findMany', async () => []);
+  stub(prisma.warehouseInventory, 'findMany', async ({ where }: { where: { showOnWeb: boolean; product: { AND: unknown[] } } }) => {
+    assert.equal(where.showOnWeb, true);
+    assert.deepEqual(where.product.AND, [{ OR: [
+      { organizationId: null },
+      { organizationId: { in: [] }, organization: { deletedAt: null, status: 'ACTIVE' } },
+    ] }]);
+    return [{ productId: 'warehouse-owned', quantity: 4, product: { id: 'warehouse-owned', name: 'Water', price: 5000, unit: 'pcs', images: [] } }];
+  });
+  const response = await fetch(url);
+  assert.equal(response.status, 200);
+  const data = await response.json() as { products: Array<{ id: string; stock: number }> };
+  assert.equal(data.products[0].id, 'warehouse-owned');
+  assert.equal(data.products[0].stock, 4);
 });

@@ -1,0 +1,460 @@
+.masterplan-editor {
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #dde7e5;
+  border-radius: 20px;
+}
+.masterplan-editor > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.masterplan-editor h2 {
+  margin: 0 0 8px;
+}
+.masterplan-editor p,
+.masterplan-editor small {
+  color: #64776f;
+  line-height: 1.6;
+}
+.masterplan-editor-layout {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: 24px;
+}
+.masterplan-editor aside {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.masterplan-upload {
+  display: grid;
+  gap: 12px;
+  font-weight: 600;
+}
+.masterplan-upload input {
+  max-width: 100%;
+  font-size: 12px;
+}
+.masterplan-block-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 0;
+  border-bottom: 1px solid #e5eeeb;
+}
+.masterplan-block-row button {
+  border: 1px solid #d8e5df;
+  border-radius: 8px;
+  background: #f0f7f3;
+  padding: 8px;
+  color: #20634f;
+  cursor: pointer;
+}
+.project-masterplan {
+  overflow: hidden;
+  border-radius: 18px;
+  background: #0b2633;
+  align-self: start;
+}
+.masterplan-caption {
+  padding: 18px 22px;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  color: #e6fffa;
+  font-size: 13px;
+}
+.masterplan-caption span {
+  color: #9ac6c5;
+}
+.masterplan-image {
+  position: relative;
+  line-height: 0;
+}
+.masterplan-image > img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.masterplan-pin {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  min-width: 48px;
+  min-height: 48px;
+  max-width: 150px;
+  padding: 10px;
+  border: 2px solid #b0f3ed;
+  border-radius: 50px;
+  background: #60c9c9;
+  color: #073841;
+  box-shadow: 0 4px 18px #08273633;
+  cursor: pointer;
+  line-height: 1.2;
+  font-size: 12px;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+  z-index: 1;
+}
+.masterplan-pin:after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  height: 14px;
+  width: 2px;
+  background: white;
+}
+.masterplan-pin:hover,
+.masterplan-pin[aria-pressed="true"] {
+  background: #073841;
+  color: #fff;
+  box-shadow: 0 0 0 4px #ffffff50;
+  z-index: 2;
+}
+.masterplan-pin:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 4px;
+}
+.masterplan-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 20px;
+  color: #fff;
+  align-items: center;
+  font-size: 13px;
+}
+.masterplan-info a {
+  color: #87e4d3;
+  margin-left: auto;
+}
+.masterplan-empty {
+  padding: 70px 24px;
+  border: 2px dashed #bed6cf;
+  border-radius: 18px;
+  text-align: center;
+  color: #627c72;
+  background: #f1f7f5;
+}
+@media (max-width: 950px) {
+  .masterplan-editor-layout {
+    grid-template-columns: 1fr;
+  }
+  .masterplan-editor aside {
+    max-height: 320px;
+    overflow: auto;
+  }
+  .masterplan-caption {
+    flex-direction: column;
+  }
+  .masterplan-pin {
+    font-size: 10px;
+    min-width: 36px;
+    min-height: 36px;
+    padding: 6px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .masterplan-pin {
+    transition: none;
+  }
+}
+
+/* Management workspace */
+.masterplan-editor {
+  padding: 20px;
+  border-color: #e2e7f0;
+  border-radius: 14px;
+}
+.masterplan-editor > header {
+  margin-bottom: 16px;
+}
+.masterplan-editor h2 {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+}
+.masterplan-editor > header p {
+  margin: 5px 0 0;
+  font-size: 12px;
+  color: #718096;
+}
+.masterplan-save {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.masterplan-save .building-primary,
+.masterplan-dropzone .building-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 9px 14px;
+  font-size: 12px;
+}
+.masterplan-save small {
+  font-size: 11px;
+}
+.masterplan-steps {
+  list-style: none;
+  display: flex;
+  gap: 24px;
+  padding: 12px 0 16px;
+  margin: 0 0 18px;
+  border-bottom: 1px solid #edf0f6;
+}
+.masterplan-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #8793a5;
+}
+.masterplan-steps li > span {
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  background: #f1f3f8;
+  border-radius: 50%;
+  font-size: 11px;
+}
+.masterplan-steps .is-current {
+  color: #4338ca;
+  font-weight: 600;
+}
+.masterplan-steps .is-current > span {
+  background: #eceaff;
+}
+.masterplan-steps .is-done {
+  color: #16745c;
+}
+.masterplan-steps .is-done > span {
+  background: #e7f6ee;
+}
+.masterplan-editor-layout {
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 20px;
+}
+.masterplan-editor aside {
+  gap: 10px;
+  min-width: 0;
+}
+.masterplan-block-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.masterplan-block-heading h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.masterplan-block-heading > span {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: #f0efff;
+  color: #5043bd;
+}
+.masterplan-editor .masterplan-sidebar-hint {
+  font-size: 11px;
+  margin: 0 0 4px;
+  color: #7b8798;
+}
+.masterplan-block-row {
+  border: 1px solid #e6eaf2;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff;
+}
+.masterplan-block-row.is-placed {
+  border-color: #c9dcd5;
+  background: #f7fbf9;
+}
+.masterplan-block-icon {
+  color: #6963ad;
+  background: #f1effc;
+  width: 32px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  flex-shrink: 0;
+}
+.masterplan-block-row > div {
+  flex: 1;
+  min-width: 0;
+}
+.masterplan-block-row strong {
+  display: block;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.masterplan-block-row small {
+  display: block;
+  font-size: 10px;
+  color: #7a8799;
+}
+.masterplan-block-row button {
+  display: grid;
+  place-items: center;
+  padding: 8px;
+}
+.masterplan-block-row button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.masterplan-block-row button:not(:disabled):hover {
+  background: #dcf2e7;
+}
+.masterplan-manage-link {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  color: #5147b8;
+  font-size: 12px;
+  border: 1px dashed #d6d7e8;
+  border-radius: 8px;
+}
+.masterplan-workarea {
+  min-width: 0;
+  background: #f8f9fc;
+  border: 1px solid #e5e9f1;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.masterplan-workarea-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fff;
+  border-bottom: 1px solid #e5e9f1;
+  font-size: 12px;
+}
+.masterplan-workarea-heading span {
+  color: #8992a3;
+  font-size: 11px;
+}
+.masterplan-workarea footer {
+  font-size: 10px;
+  color: #7d8798;
+  padding: 12px 16px;
+  border-top: 1px solid #e5e9f1;
+}
+.masterplan-workarea .project-masterplan {
+  border-radius: 0;
+}
+.masterplan-dropzone {
+  margin: 18px;
+  min-height: 310px;
+  border: 1px dashed #cdd2e3;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  text-align: center;
+  padding: 28px;
+  background: #fff;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.masterplan-dropzone.is-dragging {
+  background: #f0efff;
+  border-color: #6354d4;
+}
+.masterplan-upload-icon {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  border-radius: 16px;
+  background: #eeecfc;
+  color: #6254c7;
+}
+.masterplan-dropzone h3 {
+  font-size: 15px;
+  margin: 0;
+  color: #26334b;
+}
+.masterplan-dropzone p {
+  font-size: 12px;
+  max-width: 340px;
+  margin: 0;
+  color: #8490a3;
+}
+.masterplan-dropzone small {
+  font-size: 10px;
+  color: #919aaa;
+}
+.masterplan-dropzone.is-compact {
+  min-height: 0;
+  margin: 12px 0 0;
+  padding: 14px;
+  gap: 8px;
+}
+.masterplan-dropzone.is-compact .masterplan-upload-icon {
+  display: none;
+}
+.masterplan-dropzone.is-compact h3 {
+  font-size: 12px;
+}
+.masterplan-dropzone.is-compact p {
+  font-size: 10px;
+}
+.masterplan-editor button:focus-visible,
+.masterplan-editor a:focus-visible {
+  outline: 3px solid #a9a1ef;
+  outline-offset: 3px;
+}
+@media (max-width: 950px) {
+  .masterplan-editor-layout {
+    grid-template-columns: 1fr;
+  }
+  .masterplan-editor aside {
+    max-height: none;
+    overflow: visible;
+  }
+  .masterplan-editor > header {
+    align-items: flex-start;
+  }
+  .masterplan-save {
+    flex-direction: column-reverse;
+    align-items: flex-end;
+    gap: 4px;
+  }
+}
+@media (max-width: 600px) {
+  .masterplan-editor {
+    padding: 12px;
+  }
+  .masterplan-steps {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .masterplan-steps li {
+    font-size: 10px;
+  }
+  .masterplan-dropzone {
+    margin: 10px;
+    padding: 18px;
+    min-height: 260px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .masterplan-dropzone {
+    transition: none;
+  }
+}

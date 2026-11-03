@@ -8,13 +8,30 @@
     ".": {
       "types": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./mgl-app-boot-loader": {
+      "types": "./src/molecules/MglAppBootLoader.tsx",
+      "default": "./src/molecules/MglAppBootLoader.tsx"
+    },
+    "./mgl-loading-screen": {
+      "types": "./src/molecules/MglLoadingScreen.tsx",
+      "default": "./src/molecules/MglLoadingScreen.tsx"
+    },
+    "./mgl-system-error-screen": {
+      "types": "./src/molecules/MglSystemErrorScreen.tsx",
+      "default": "./src/molecules/MglSystemErrorScreen.tsx"
+    },
+    "./reel-upload": {
+      "types": "./src/lib/reel-upload.ts",
+      "default": "./src/lib/reel-upload.ts"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "echo 'source mode — no compile needed'",
+    "dev": "echo 'source mode \u2014 no compile needed'",
     "lint": "eslint .",
-    "type-check": "tsc -p tsconfig.json --noEmit"
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test 'test/*.test.ts'"
   },
   "dependencies": {
     "@mgl/types": "workspace:*",

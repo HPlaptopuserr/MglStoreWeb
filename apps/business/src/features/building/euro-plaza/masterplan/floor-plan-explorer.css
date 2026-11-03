@@ -1,0 +1,73 @@
+.plan-explorer { min-height:100dvh; background:#080f20; color:#e8eef6; display:grid; grid-template-columns:290px minmax(0,1fr) 74px; grid-template-rows:68px minmax(0,1fr); font-size:13px; }
+.plan-explorer-header { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 20px; background:#0e1a2d; border-bottom:1px solid #ffffff12; }
+.plan-explorer-header h2 { margin:0; font-size:16px; }
+.plan-explorer-header h2 span { color:#9bacbf; font-weight:400; }
+.plan-explorer-header button { display:flex; align-items:center; gap:8px; border:1px solid #ffffff24; border-radius:24px; padding:9px 14px; background:#ffffff06; color:inherit; cursor:pointer; }
+.plan-explorer-sidebar { height:calc(100dvh - 68px); overflow:auto; padding:20px 14px; background:#070e1a; border-right:1px solid #ffffff12; }
+.plan-explorer-sidebar label { display:flex; align-items:center; justify-content:space-between; gap:10px; color:#9bacbf; letter-spacing:2px; }
+.plan-explorer-sidebar select { color:white; background:#142135; border:1px solid #ffffff24; padding:9px; border-radius:6px; }
+.plan-explorer-sidebar h3 { font-size:13px; letter-spacing:1px; margin-top:24px; }
+.plan-explorer-muted,.plan-render-note { color:#91a2b7; font-size:11px; line-height:1.7; }
+.plan-apartment-list { display:grid; gap:8px; margin-top:18px; }
+.plan-apartment-list button { text-align:left; padding:15px 12px; border:1px solid #ffffff14; border-radius:9px; background:#0d1726; color:#e8eef6; cursor:pointer; transition:background .15s,border-color .15s; }
+.plan-apartment-list button strong { display:flex; justify-content:space-between; gap:10px; color:#e7b66b; font-size:14px; }
+.plan-apartment-list button strong span { color:white; }
+.plan-apartment-list small { display:block; margin-top:8px; color:#91a2b7; font-size:11px; }
+.plan-apartment-list button:hover,.plan-apartment-list button.is-active { border-color:#66d6bd; background:#143329; }
+.plan-explorer-canvas { min-width:0; height:calc(100dvh - 68px); overflow:auto; display:flex; flex-direction:column; justify-content:center; padding:24px; }
+.plan-canvas-heading { display:flex; flex-direction:column; gap:10px; padding:0 10px; }
+.plan-canvas-heading span { font-size:10px; letter-spacing:3px; color:#cba567; }
+.plan-canvas-heading strong { font-size:20px; }
+.plan-interactive-image { position:relative; width:100%; margin:auto 0; }
+.plan-interactive-image img { display:block; width:100%; height:auto; }
+.plan-apartment-overlay { position:absolute; inset:0; width:100%; height:100%; }
+.plan-apartment-overlay polygon { fill:transparent; stroke:transparent; stroke-width:3; cursor:pointer; transition:fill .18s,stroke .18s; outline:none; }
+.plan-apartment-overlay polygon.is-active,.plan-apartment-overlay polygon:focus-visible { fill:#f7c87850; stroke:#f4cb84; }
+.plan-apartment-tooltip { position:absolute; transform:translate(-50%,-105%); padding:12px 16px; background:#3fba9b; color:#fff; border-radius:7px; box-shadow:0 10px 30px #0005; pointer-events:none; white-space:nowrap; display:grid; gap:5px; font-size:13px; z-index:2; }
+.plan-apartment-tooltip::after { content:""; position:absolute; bottom:-7px; left:calc(50% - 7px); border-left:7px solid transparent; border-right:7px solid transparent; border-top:7px solid #3fba9b; }
+.plan-apartment-tooltip span { font-size:11px; }
+.plan-render-note { text-align:center; }
+.plan-floor-rail { display:flex; flex-direction:column; align-items:stretch; gap:2px; height:calc(100dvh - 68px); overflow:auto; border-left:1px solid #ffffff12; padding:14px 8px; background:#070e1a; }
+.plan-floor-rail > span { font-size:9px; text-align:center; color:#91a2b7; margin-bottom:12px; }
+.plan-floor-rail button { position:relative; flex:1; min-height:30px; padding:6px; background:transparent; border:1px solid transparent; border-radius:6px; color:#91a2b7; font-weight:700; cursor:pointer; }
+.plan-floor-rail button[aria-current],.plan-floor-rail button:hover { background:#18372e; border-color:#66d6bd; color:#94ebd4; }
+.plan-floor-rail small { position:absolute; right:5px; bottom:4px; font-size:8px; }
+.plan-source-link { color:#a8dcd3; display:block; padding:18px 0; }
+.plan-commercial-info { line-height:1.8; color:#a8bacb; }
+.plan-commercial-info strong { display:block; color:white; font-size:24px; margin:8px 0 25px; }
+.plan-empty { margin:auto; text-align:center; padding:32px; border:1px dashed #ffffff30; border-radius:12px; color:#9bacbf; }
+.plan-empty strong { color:white; font-size:20px; }
+.plan-image-status { position:absolute; left:20px; top:20px; color:#9bacbf; }
+@media(max-width:760px) { .plan-explorer { grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto auto auto; } .plan-explorer-header { padding:12px; gap:8px; } .plan-explorer-header h2 { font-size:12px; } .plan-explorer-header h2 span { display:block; } .plan-explorer-header button { font-size:10px; padding:8px; } .plan-explorer-canvas { grid-row:3; height:auto; min-height:350px; padding:18px 8px; } .plan-floor-rail { grid-row:2; flex-direction:row; height:auto; padding:10px; } .plan-floor-rail > span { display:none; } .plan-floor-rail button { flex:0 0 36px; } .plan-explorer-sidebar { grid-row:4; height:auto; padding:18px; border:0; } .plan-apartment-list { grid-template-columns:repeat(2,minmax(0,1fr)); } .plan-apartment-list button strong { display:block; } .plan-apartment-list button strong span { display:block; margin-top:5px; } .plan-apartment-tooltip { font-size:11px; padding:8px; } .plan-canvas-heading strong { font-size:17px; } }
+@media(prefers-reduced-motion:reduce) { .plan-apartment-overlay polygon,.plan-apartment-list button { transition:none; } }
+.plan-source-svg { display:block; width:100%; height:auto; background:white; border-radius:8px; }
+.plan-source-svg path { fill:transparent; stroke:transparent; stroke-width:2; cursor:pointer; transition:fill .15s; }
+.plan-source-svg path.is-active, .plan-source-svg path:focus-visible { fill:#ffbd3e40; stroke:#bf7400; stroke-width:3; outline:none; }
+@media(prefers-reduced-motion:reduce) { .plan-source-svg path { transition:none; } }
+
+.plan-unit-label { display:inline-flex; align-items:center; gap:8px; }
+.plan-unit-label i { display:inline-block; width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+.plan-source-svg path.is-active, .plan-source-svg path:focus-visible { fill:var(--unit-color); fill-opacity:.4; stroke:#135f51; stroke-width:2; }
+.residential-plan { width:100%; }
+.residential-plan-toolbar { display:flex; align-items:center; gap:6px; margin:18px 0; }
+.residential-plan-toolbar button { border:1px solid #ffffff25; background:#142235; color:#acbdcf; border-radius:20px; padding:9px 16px; cursor:pointer; font:inherit; }
+.residential-plan-toolbar button[aria-pressed=true] { background:#9ee4ce; color:#113f37; border-color:#9ee4ce; }
+.residential-plan-toolbar span { color:#8dabae; font-size:10px; margin-left:auto; }
+.residential-plan-svg { display:block; width:100%; height:auto; overflow:visible; }
+.residential-plan-svg.mode-source { background:white; border-radius:12px; overflow:hidden; }
+.residential-plan-hit-regions path { fill:transparent; stroke:transparent; cursor:pointer; transition:fill .15s; }
+.residential-plan-hit-regions path.is-active,.residential-plan-hit-regions path:focus-visible { fill:#5fe4b943; stroke:#65dfb8; stroke-width:2; outline:none; }
+.residential-plan-labels rect { fill:#173f37; stroke:#bad9c8; stroke-width:1; }
+.residential-plan-labels text { fill:white; font-size:11px; font-weight:700; }
+.residential-plan-selection { display:flex; align-items:center; justify-content:space-between; gap:12px; border:1px solid #8ce2c530; background:#13282d; border-radius:10px; padding:16px 20px; margin-top:18px; }
+.residential-plan-selection strong { color:#acebd6; font-size:15px; }
+.residential-plan-selection span { color:#a6bbbf; font-size:12px; }
+@media(max-width:760px) { .residential-plan-toolbar span { display:none; } .residential-plan-selection { flex-direction:column; align-items:flex-start; } }
+@media(prefers-reduced-motion:reduce) { .residential-plan-hit-regions path { transition:none; } }
+.residential-render-tooltip rect,.residential-render-tooltip path { fill:#40b894; fill-opacity:.94; }
+.residential-render-tooltip text { fill:white; font-weight:700; font-size:13px; }
+.residential-render-tooltip .render-tooltip-detail { font-size:10px; font-weight:500; }
+.mode-3d .residential-plan-hit-regions path.is-active,.mode-3d .residential-plan-hit-regions path:focus-visible { fill:#e6bf6d42; stroke:#f3da9c; stroke-width:2; }
+.residential-plan-svg.mode-3d { overflow:hidden; border-radius:10px; }
+.plan-explorer-canvas { justify-content:flex-start; }
+.plan-canvas-heading { flex-shrink:0; }

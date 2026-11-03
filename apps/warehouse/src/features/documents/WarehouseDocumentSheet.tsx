@@ -7,7 +7,7 @@ export type WarehouseDocumentItem = {
   barcode: string | null;
   quantity: number;
   unit?: string | null;
-  unitPrice: number;
+  unitPrice: number | null;
 };
 
 export function WarehouseDocumentSheet({
@@ -104,10 +104,12 @@ export function WarehouseDocumentItemsTable({
   codeMode?: "SKU" | "BARCODE" | "BOTH";
 }) {
   const totalQuantity = items.reduce((sum, item) => sum + item.quantity, 0);
-  const totalAmount = items.reduce(
-    (sum, item) => sum + item.quantity * item.unitPrice,
-    0,
-  );
+  const totalAmount = items.some((item) => item.unitPrice === null)
+    ? null
+    : items.reduce(
+        (sum, item) => sum + item.quantity * (item.unitPrice ?? 0),
+        0,
+      );
   const codeHeading =
     codeMode === "SKU"
       ? "SKU"
@@ -118,6 +120,7 @@ export function WarehouseDocumentItemsTable({
   return (
     <div className="overflow-x-auto print:overflow-visible">
       <table className="w-full min-w-[720px] border-collapse text-sm print:min-w-0">
+        <caption className="sr-only">Паданы барааны жагсаалт</caption>
         <thead>
           <tr className="bg-slate-100">
             <th className="border border-slate-300 px-3 py-2 text-left">№</th>
@@ -156,10 +159,14 @@ export function WarehouseDocumentItemsTable({
                 {item.quantity.toLocaleString()} {item.unit || ""}
               </td>
               <td className="border border-slate-300 px-3 py-2 text-right tabular-nums">
-                ₮{item.unitPrice.toLocaleString()}
+                {item.unitPrice === null
+                  ? "Үнэ хадгалаагүй"
+                  : `₮${item.unitPrice.toLocaleString()}`}
               </td>
               <td className="border border-slate-300 px-3 py-2 text-right font-medium tabular-nums">
-                ₮{(item.quantity * item.unitPrice).toLocaleString()}
+                {item.unitPrice === null
+                  ? "—"
+                  : `₮${(item.quantity * item.unitPrice).toLocaleString()}`}
               </td>
             </tr>
           ))}
@@ -177,7 +184,9 @@ export function WarehouseDocumentItemsTable({
             </td>
             <td className="border border-slate-300 px-3 py-2" />
             <td className="border border-slate-300 px-3 py-2 text-right tabular-nums">
-              ₮{totalAmount.toLocaleString()}
+              {totalAmount === null
+                ? "Үнэ хадгалаагүй"
+                : `₮${totalAmount.toLocaleString()}`}
             </td>
           </tr>
         </tfoot>

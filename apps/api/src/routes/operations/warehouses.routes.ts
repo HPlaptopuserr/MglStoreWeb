@@ -1,3 +1,6 @@
+import manualDispatchRoutes from "./warehouse-manual-dispatch.routes";
+import { procurementWarehouseWhere } from "../../services/procurement-warehouse.service";
+import { assertWarehouseProductsOwned } from "../../services/warehouse-product-ownership";
 import { parseBarcodeAliases, mergeBarcodeAliases } from "../../services/product-barcode-aliases";
 import { Router, type Router as ExpressRouter } from "express";
 import crypto from "crypto";
@@ -44,7 +47,7 @@ import {
   addMasterProductAlias,
   resolveMasterProduct,
 } from "../../services/master-product.service";
-import { warehouseProductOwnerScope, warehouseProductReadScope } from "../../services/warehouse-product-scope";
+import { warehouseCatalogOwner, warehouseProductOwnerScope, warehouseProductReadScope } from "../../services/warehouse-product-scope";
 import { getWarehouseAdminSummary } from "../../services/warehouse-admin-summary.service";
 import {
   notifyAssignedOrderDelivery,
@@ -63,6 +66,7 @@ import {
 } from "../../services/upgrade-minu.service";
 
 const router: ExpressRouter = Router();
+router.use(manualDispatchRoutes);
 
 // The database enum keeps its historical names, while these aliases express
 // the actual ownership boundary used by the applications.
@@ -79,12 +83,8 @@ function createDeliveryCode(): string {
   return String(crypto.randomInt(100000, 999999));
 }
 
-type ManualDispatchItemInput = {
-  productId: string;
-  quantity: number;
-};
-
 type DispatchAddressSuggestion = {
+  storeName: string | null;
   address: string;
   recipientName: string | null;
   recipientPhone: string | null;
@@ -93,33 +93,10 @@ type DispatchAddressSuggestion = {
   lastUsedAt: Date;
 };
 
-class InsufficientWarehouseStockError extends Error {
-  constructor(readonly productId: string) {
-    super("Агуулахын үлдэгдэл хүрэлцэхгүй байна");
-  }
-}
-
 function cleanOptionalText(value: unknown, maxLength: number): string | null {
   if (typeof value !== "string") return null;
   const cleaned = value.trim();
   return cleaned ? cleaned.slice(0, maxLength) : null;
-}
-
-function parseCoordinate(
-  value: unknown,
-  minimum: number,
-  maximum: number,
-): number | null {
-  const parsed = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(parsed) && parsed >= minimum && parsed <= maximum
-    ? parsed
-    : null;
-}
-
-function createManualDispatchNumber(): string {
-  const timestamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
-  const random = Math.floor(1000 + Math.random() * 9000);
-  return `WD-${timestamp}-${random}`;
 }
 
 async function assertWarehouseMutationPermission(
@@ -1306,12 +1283,7 @@ router.get(
       }
 
       const warehouses = await prisma.warehouse.findMany({
-        where: {
-          type: ADMIN_MANAGED_WAREHOUSE,
-          organizations: { some: { organizationId: orgId } },
-          deletedAt: null,
-          isActive: true,
-        },
+        where: await procurementWarehouseWhere(orgId),
         select: {
           id: true,
           name: true,
@@ -1833,7 +1805,7 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
     const status = String(req.query.status ?? "all");
     const baseWhere: Prisma.WarehouseInventoryWhereInput = {
       warehouseId: id,
-      product: { deletedAt: null },
+      product: { deletedAt: null, ...warehouseProductOwnerScope(id) },
     };
     const where: Prisma.WarehouseInventoryWhereInput = {
       ...baseWhere,
@@ -2042,6 +2014,7 @@ router.post(
       }
 
       const inventory = await prisma.$transaction(async (tx) => {
+        await assertWarehouseProductsOwned(tx, id, [productId]);
         // Get old quantity for ledger diff
         const existing = await tx.warehouseInventory.findUnique({
           where: { warehouseId_productId: { warehouseId: id, productId } },
@@ -2158,6 +2131,7 @@ router.get(
           orderBy: { createdAt: "desc" },
           take: limit * 3,
           select: {
+            storeName: true,
             address: true,
             recipientName: true,
             recipientPhone: true,
@@ -2187,9 +2161,11 @@ router.get(
 
       const suggestions = new Map<string, DispatchAddressSuggestion>();
       for (const dispatch of manualDispatches) {
+        if (!dispatch.address?.trim()) continue;
         const key = dispatch.address.trim().toLocaleLowerCase("mn");
         if (!suggestions.has(key)) {
           suggestions.set(key, {
+            storeName: dispatch.storeName,
             address: dispatch.address,
             recipientName: dispatch.recipientName,
             recipientPhone: dispatch.recipientPhone,
@@ -2205,6 +2181,7 @@ router.get(
         const key = address.toLocaleLowerCase("mn");
         if (!suggestions.has(key)) {
           suggestions.set(key, {
+            storeName: request.organization.name,
             address,
             recipientName: request.organization.name,
             recipientPhone: request.deliveryPhone,
@@ -2227,152 +2204,6 @@ router.get(
       console.error("get dispatch address suggestions error", error);
       return res.status(500).json({
         message: "Өмнөх хүргэлтийн хаяг авахад алдаа гарлаа",
-      });
-    }
-  },
-);
-
-router.post(
-  "/warehouses/:warehouseId/manual-dispatches",
-  requireAuth,
-  async (req, res) => {
-    try {
-      const { warehouseId } = req.params;
-      if (!(await assertWarehouseMutationPermission(req, res, warehouseId))) {
-        return;
-      }
-
-      const actor = (req as typeof req & { user?: { userId?: string } }).user;
-      if (!actor?.userId) {
-        return res.status(401).json({ message: "Нэвтрэх шаардлагатай" });
-      }
-      const actorId = actor.userId;
-
-      const address = cleanOptionalText(req.body.address, 500);
-      const lat = parseCoordinate(req.body.lat, -90, 90);
-      const lng = parseCoordinate(req.body.lng, -180, 180);
-      const rawItems: unknown[] = Array.isArray(req.body.items)
-        ? req.body.items
-        : [];
-      const items: ManualDispatchItemInput[] = rawItems
-        .map((raw): ManualDispatchItemInput | null => {
-          if (!raw || typeof raw !== "object") return null;
-          const candidate = raw as Record<string, unknown>;
-          const productId =
-            typeof candidate.productId === "string"
-              ? candidate.productId.trim()
-              : "";
-          const quantity = Number(candidate.quantity);
-          return productId && Number.isInteger(quantity) && quantity > 0
-            ? { productId, quantity }
-            : null;
-        })
-        .filter((item): item is ManualDispatchItemInput => item !== null);
-
-      if (!address) {
-        return res.status(400).json({ message: "Хүргэх хаяг шаардлагатай" });
-      }
-      if (lat === null || lng === null) {
-        return res.status(400).json({
-          message: "Газрын зураг дээр хүргэх цэгээ тэмдэглэнэ үү",
-        });
-      }
-      if (items.length === 0 || items.length !== rawItems.length) {
-        return res.status(400).json({
-          message: "Гаргах бараа болон тоо ширхэг буруу байна",
-        });
-      }
-      if (new Set(items.map((item) => item.productId)).size !== items.length) {
-        return res.status(400).json({
-          message: "Нэг барааг давхар оруулах боломжгүй",
-        });
-      }
-
-      const dispatch = await prisma.$transaction(async (tx) => {
-        const warehouse = await tx.warehouse.findFirst({
-          where: {
-            id: warehouseId,
-            deletedAt: null,
-            isActive: true,
-            type: ADMIN_MANAGED_WAREHOUSE,
-          },
-          select: { id: true },
-        });
-        if (!warehouse) throw new Error("WAREHOUSE_NOT_FOUND");
-
-        const dispatchNumber = createManualDispatchNumber();
-        const created = await tx.warehouseManualDispatch.create({
-          data: {
-            dispatchNumber,
-            warehouseId,
-            recipientName: cleanOptionalText(req.body.recipientName, 160),
-            recipientPhone: cleanOptionalText(req.body.recipientPhone, 40),
-            address,
-            lat,
-            lng,
-            reason: cleanOptionalText(req.body.reason, 250),
-            note: cleanOptionalText(req.body.note, 1000),
-            createdById: actorId,
-            items: {
-              create: items.map((item) => ({
-                productId: item.productId,
-                quantity: item.quantity,
-              })),
-            },
-          },
-          include: {
-            items: {
-              include: {
-                product: { select: { id: true, name: true, sku: true } },
-              },
-            },
-          },
-        });
-
-        for (const item of items) {
-          const update = await tx.warehouseInventory.updateMany({
-            where: {
-              warehouseId,
-              productId: item.productId,
-              quantity: { gte: item.quantity },
-            },
-            data: { quantity: { decrement: item.quantity } },
-          });
-          if (update.count !== 1) {
-            throw new InsufficientWarehouseStockError(item.productId);
-          }
-          await tx.inventoryLedger.create({
-            data: {
-              productId: item.productId,
-              warehouseId,
-              change: -item.quantity,
-              reason: InventoryReason.MANUAL_ADJUST,
-              note: `${dispatchNumber} · ${address}`,
-              createdById: actorId,
-              referenceId: created.id,
-              referenceType: "WAREHOUSE_MANUAL_DISPATCH",
-            },
-          });
-          await syncProductStock(tx, item.productId);
-        }
-
-        return created;
-      });
-
-      return res.status(201).json(dispatch);
-    } catch (error) {
-      if (error instanceof InsufficientWarehouseStockError) {
-        return res.status(409).json({
-          message: "Нэг буюу хэд хэдэн барааны үлдэгдэл хүрэлцэхгүй байна",
-          productId: error.productId,
-        });
-      }
-      if (error instanceof Error && error.message === "WAREHOUSE_NOT_FOUND") {
-        return res.status(404).json({ message: "Агуулах олдсонгүй" });
-      }
-      console.error("create warehouse manual dispatch error", error);
-      return res.status(500).json({
-        message: "Бараа гаргалт бүртгэхэд алдаа гарлаа",
       });
     }
   },
@@ -2514,6 +2345,7 @@ router.patch(
         return res.status(404).json({ message: "Агуулахын бараа олдсонгүй" });
       }
       const inventory = await prisma.$transaction(async (tx) => {
+        await assertWarehouseProductsOwned(tx, warehouseId, [productId]);
         // Get old quantity for ledger
         const oldInv =
           quantity !== undefined
@@ -2634,6 +2466,7 @@ router.delete(
       }
 
       await prisma.$transaction(async (tx) => {
+        await assertWarehouseProductsOwned(tx, warehouseId, [productId]);
         const activeReservations = await tx.warehouseStockRequestItem.findMany({
           where: {
             productId,
@@ -3153,7 +2986,7 @@ router.get("/warehouses/:id/products", requireAuth, async (req, res) => {
     }
     const warehouse = await prisma.warehouse.findUnique({
       where: { id: warehouseId, deletedAt: null },
-      select: { organizations: { select: { organizationId: true } } },
+      select: { catalogOrganizationId: true, organizations: { select: { organizationId: true } } },
     });
     if (!warehouse) return res.status(404).json({ message: "Агуулах олдсонгүй" });
     const search = String(req.query.search ?? "").trim();
@@ -3164,7 +2997,7 @@ router.get("/warehouses/:id/products", requireAuth, async (req, res) => {
       where: {
         deletedAt: null,
         AND: [
-          warehouseProductReadScope(warehouseId, warehouse.organizations.map((link) => link.organizationId)),
+          warehouseProductReadScope(warehouseId, warehouse.organizations.map((link) => link.organizationId), warehouse.catalogOrganizationId),
           ...(exactBarcode ? [{ OR: [
             { barcode: exactBarcode },
             { barcodeAliases: { has: exactBarcode } },
@@ -3212,7 +3045,7 @@ router.get("/warehouses/:id/sku-lookup", requireAuth, async (req, res) => {
     if (!warehouse)
       return res.status(404).json({ message: "Агуулах олдсонгүй" });
 
-    const scope = warehouseProductReadScope(warehouseId, warehouse.organizations.map((link) => link.organizationId));
+    const scope = warehouseProductReadScope(warehouseId, warehouse.organizations.map((link) => link.organizationId), warehouse.catalogOrganizationId);
 
     const products = await prisma.product.findMany({
       where: {
@@ -3278,7 +3111,7 @@ router.post(
         return res.status(404).json({ message: "Агуулах олдсонгүй" });
       }
 
-      const organizationId = warehouse.organizations[0]?.organizationId ?? null;
+      const organizationId = warehouseCatalogOwner(warehouse);
       const ownerScope = warehouseProductOwnerScope(warehouseId, organizationId);
 
       // Resolve businessCategoryId from organization
@@ -3675,10 +3508,10 @@ router.post("/warehouses/:id/products/:productId/barcodes", requireAuth, async (
   try {
     const result = await prisma.$transaction(async (tx) => {
       const warehouse = await tx.warehouse.findUnique({ where: { id: warehouseId, deletedAt: null },
-        select: { organizations: { select: { organizationId: true }, take: 1 } } });
+        select: { catalogOrganizationId: true, organizations: { select: { organizationId: true }, take: 1 } } });
       if (!warehouse) throw new Error("Агуулах олдсонгүй");
-      const owner = warehouseProductOwnerScope(warehouseId, warehouse.organizations[0]?.organizationId ?? null);
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${warehouse.organizations[0]?.organizationId || warehouseId}))`;
+      const owner = warehouseProductOwnerScope(warehouseId, warehouseCatalogOwner(warehouse));
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${warehouseCatalogOwner(warehouse) || warehouseId}))`;
       const product = await tx.product.findFirst({ where: { id: req.params.productId, ...owner, deletedAt: null } });
       if (!product) throw new Error("Энэ агуулахын бараа олдсонгүй");
       const conflict = await tx.product.findFirst({ where: { ...owner, deletedAt: null, id: { not: product.id },
@@ -3736,7 +3569,7 @@ router.post("/warehouses/:id/products", requireAuth, async (req, res) => {
       return res.status(404).json({ message: "Агуулах олдсонгүй" });
     }
 
-    const organizationId = warehouse.organizations[0]?.organizationId ?? null;
+    const organizationId = warehouseCatalogOwner(warehouse);
     const ownerScope = warehouseProductOwnerScope(warehouseId, organizationId);
 
     const priceNum = parseFloat(String(price));

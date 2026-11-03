@@ -1,5 +1,6 @@
 import type { CardAttempt } from "@mgl/types";
 import type {
+  CafeRegularCustomer,
   RestaurantPosProduct,
   RestaurantPosQPayInvoice,
   RestaurantTicket,
@@ -21,6 +22,7 @@ export type SelfServicePendingCheckout = {
   total: number;
   packagingFee: number;
   lines: SelfServiceCartLine[];
+  regularCustomer?: CafeRegularCustomer | null;
   ebarimtBuyer: EbarimtBuyer;
 };
 
@@ -81,6 +83,21 @@ function isCheckoutBase(value: unknown): value is PendingCheckoutBase {
     !isObject(value.ebarimtBuyer)
   ) {
     return false;
+  }
+
+  if (value.regularCustomer != null) {
+    const customer = value.regularCustomer;
+    if (
+      !isObject(customer) ||
+      !isNonEmptyString(customer.id) ||
+      !isNonEmptyString(customer.name) ||
+      !isNonEmptyString(customer.phone) ||
+      !isFiniteNumber(customer.discountPercent) ||
+      customer.discountPercent < 0 ||
+      customer.discountPercent > 100
+    ) {
+      return false;
+    }
   }
 
   if (

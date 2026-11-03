@@ -7,6 +7,7 @@ interface ProcurementCandidate {
   soldQuantity90d: number;
   systemRequestedQuantity90d: number;
   previouslyRequestedQuantity: number;
+  warehouseOutgoingQuantity90d?: number;
 }
 
 export interface ProcurementSuggestion {
@@ -24,30 +25,25 @@ interface ProcurementAdvice {
 const fallbackAdvice = (
   candidates: ProcurementCandidate[],
 ): ProcurementAdvice => {
-  const eligible = candidates
-    .filter(
-      (candidate) =>
-        candidate.availableStock > 0 &&
-        ((candidate.reorderPoint > 0 &&
-          candidate.organizationStock < candidate.reorderPoint) ||
-          candidate.soldQuantity90d > 0 ||
-          candidate.previouslyRequestedQuantity > 0),
-    )
+  const ready = candidates.filter(candidate => candidate.availableStock > 0);
+  const personal = ready.filter(candidate => candidate.soldQuantity90d > 0 || candidate.previouslyRequestedQuantity > 0 ||
+    (candidate.reorderPoint > 0 && candidate.organizationStock < candidate.reorderPoint));
+  const eligible = (personal.length > 0 ? personal : ready)
     .sort((first, second) => {
       const score = (candidate: ProcurementCandidate) =>
         Math.max(0, candidate.reorderPoint - candidate.organizationStock) *
           1000 +
         candidate.soldQuantity90d * 10 +
         candidate.previouslyRequestedQuantity +
-        candidate.systemRequestedQuantity90d;
+        candidate.systemRequestedQuantity90d + (candidate.warehouseOutgoingQuantity90d ?? 0);
       return score(second) - score(first);
     });
 
   return {
     mode: "smart",
     summary: eligible.length
-      ? "Босго, борлуулалт, өмнөх татан авалтаар шалгагдсан барааны санал."
-      : "Одоогоор татан авах шаардлагатай бараа тодорхойлогдсонгүй.",
+      ? "Борлуулалт болон агуулахын бэлэн бараанд тулгуурласан санал."
+      : "Агуулахад бэлэн бараа одоогоор алга байна.",
     suggestions: eligible.slice(0, 10).map((candidate) => {
       const shortage = Math.max(
         0,
@@ -63,10 +59,12 @@ const fallbackAdvice = (
       );
       const reason =
         shortage > 0
-          ? `Босгоос ${shortage} ширхгээр доош орсон`
+          ? "Дэлгүүрийн нөөцийг нөхөх санал"
           : candidate.soldQuantity90d > 0
             ? `90 хоногт ${candidate.soldQuantity90d} ширхэг зарагдсан`
-            : "Өмнө татан авалт хийж байсан";
+            : (candidate.warehouseOutgoingQuantity90d ?? 0) > 0
+              ? "Агуулахын 90 хоногийн эрэлттэй бараа"
+              : candidate.previouslyRequestedQuantity > 0 ? "Өмнө татан авалт хийж байсан" : "Агуулахад бэлэн бараа";
       return {
         productId: candidate.productId,
         quantity,
@@ -120,7 +118,7 @@ export async function buildProcurementAdvice(
           {
             role: "system",
             content:
-              "Та Монгол жижиглэн дэлгүүрийн худалдан авалтын туслах. Зөвхөн өгөгдсөн бараанаас бодит хэрэгцээтэйг сонго; бүгдийг заавал сонгохгүй. Босгоос доош барааг түрүүл. quantity нь сарын эрэлтээс хэтрэхгүй бүхэл тоо байна. reason-ийг Монгол хэлээр 12 үгээс богино бич.",
+              "Та Монгол жижиглэн дэлгүүрийн худалдан авалтын туслах. Зөвхөн өгөгдсөн бараанаас бодит хэрэгцээтэйг сонго; бүгдийг заавал сонгохгүй. Босгоос доош барааг түрүүл. warehouseOutgoingQuantity90d нь сонгосон агуулахын нийт зарлага, дэлгүүрийн өөрийн эрэлт биш. Өөрийн борлуулалтын түүхгүй бол quantity=1 санал болго. quantity нь сарын эрэлтээс хэтрэхгүй бүхэл тоо байна. reason-ийг Монгол хэлээр 12 үгээс богино бич.",
           },
           {
             role: "user",

@@ -1,5 +1,7 @@
 "use client";
 
+import { uploadReel } from "@mgl/ui/reel-upload";
+
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -68,6 +70,7 @@ export default function ReelsManagerScreen() {
   const [listError, setListError] = useState("");
   const [uploadState, setUploadState] = useState<UploadState>("idle");
   const [uploadError, setUploadError] = useState("");
+  const [uploadProgress, setUploadProgress] = useState("");
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
   const [tags, setTags] = useState("");
@@ -173,28 +176,15 @@ export default function ReelsManagerScreen() {
       return;
     }
 
-    const formData = new FormData();
-    formData.set("organizationId", organizationId);
-    formData.set("title", title.trim());
-    formData.set("caption", caption.trim());
-    formData.set("tags", tags.trim());
-    if (productId) formData.set("productId", productId);
-    formData.set("video", videoFile);
-
     setUploadState("uploading");
     setUploadError("");
-
+    setUploadProgress("Видео илгээхэд бэлтгэж байна…");
     try {
-      const response = await authFetch(`${API}/reels`, {
-        method: "POST",
-        body: formData,
+      await uploadReel({ api: API, authFetch, file: videoFile, organizationId,
+        title, caption, tags, productId,
+        onProgress: progress => setUploadProgress(progress.stage === 'processing'
+          ? 'Видеог боловсруулж байна…' : `Илгээж байна · ${progress.percent}%`),
       });
-      const data = (await response.json()) as ReelItem | { message?: string };
-      if (!response.ok) {
-        throw new Error(
-          "message" in data ? data.message : "Reel upload хийхэд алдаа гарлаа",
-        );
-      }
 
       setTitle("");
       setCaption("");
@@ -244,6 +234,7 @@ export default function ReelsManagerScreen() {
           onSubmit={handleSubmit}
           className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
         >
+          <fieldset disabled={uploadState === "uploading"} className="min-w-0 space-y-4">
           <div>
             <h2 className="text-lg font-black text-slate-950">Шинэ reel</h2>
             <p className="mt-1 text-sm font-semibold text-slate-500">
@@ -311,7 +302,7 @@ export default function ReelsManagerScreen() {
               {videoFile ? videoFile.name : "Video файл сонгох"}
             </span>
             <span className="mt-1 text-xs font-semibold text-slate-500">
-              Upload limit: 250MB
+              3 мин хүртэл · 1 GB · Автоматаар шахна
             </span>
             <input
               type="file"
@@ -332,6 +323,7 @@ export default function ReelsManagerScreen() {
             </div>
           )}
 
+          {uploadState === "uploading" && <p role="status" className="text-sm font-semibold text-blue-600">{uploadProgress}</p>}
           {uploadState === "error" && (
             <div className="flex gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm font-bold text-rose-700">
               <AlertCircle className="h-4 w-4 shrink-0" />
@@ -358,6 +350,7 @@ export default function ReelsManagerScreen() {
             )}
             Reel оруулах
           </button>
+          </fieldset>
         </form>
 
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

@@ -4,7 +4,7 @@ import {
   assertNonEmptyString,
   sanitizeReceiptNote,
 } from "../utils/pos-security";
-import { PosApiError, posRequest } from "./_pos-client";
+import { posRequest } from "./_pos-client";
 
 export function createSale(payload: SalePayload): Promise<PosReceipt> {
   const shiftId = payload.shiftId?.trim() || "";
@@ -55,97 +55,5 @@ export function createSale(payload: SalePayload): Promise<PosReceipt> {
   return posRequest<PosReceipt>("/pos/sales", {
     method: "POST",
     body: safePayload,
-  }).catch((error) => {
-    // Local dev/demo fallback: backend may not expose /pos/sales yet.
-    if (
-      error instanceof PosApiError &&
-      error.status === 404 &&
-      !safeBreakdown?.some((line) => line.cash)
-    ) {
-      return buildMockReceipt(safePayload);
-    }
-    throw error;
   });
-}
-
-function buildMockReceipt(payload: SalePayload): PosReceipt {
-  const now = new Date().toISOString();
-  const lines = payload.lines.map((line) => {
-    const lineSubTotal = line.qty * line.unitPrice;
-    const lineDiscount = line.discountAmount * line.qty;
-    const taxable = Math.max(0, lineSubTotal - lineDiscount);
-    const taxRate =
-      line.taxType === "VAT_ABLE" ? Math.max(0, line.taxRate || 0) : 0;
-    const taxAmount = taxRate > 0 ? taxable * (taxRate / (100 + taxRate)) : 0;
-    return {
-      productId: line.productId,
-      name: `Product ${line.productId.slice(0, 6)}`,
-      qty: line.qty,
-      unitPrice: line.unitPrice,
-      taxAmount,
-      taxType: line.taxType,
-      taxRate,
-      cityTaxRate: line.cityTaxRate,
-      classificationCode: line.classificationCode,
-      taxProductCode: line.taxProductCode,
-      measureUnit: line.measureUnit,
-      lineTotal: taxable,
-    };
-  });
-
-  const subTotal = lines.reduce(
-    (sum, line) => sum + line.qty * line.unitPrice,
-    0,
-  );
-  const taxTotal = lines.reduce((sum, line) => sum + line.taxAmount, 0);
-  const discountTotal = payload.lines.reduce(
-    (sum, line) => sum + line.discountAmount * line.qty,
-    0,
-  );
-  const grandTotal = subTotal - discountTotal;
-
-  return {
-    id: `local-${Date.now()}`,
-    receiptNo: `RCPT-${Math.floor(Date.now() / 1000)}`,
-    branchName: payload.branchId,
-    cashierName: "Vendor Cashier",
-    paymentMethod: payload.paymentMethod,
-    paymentBreakdown: payload.paymentBreakdown?.map((item) => ({
-      method: item.method,
-      amount: item.amount,
-      transactionId: item.transactionId,
-      invoiceId: item.invoiceId,
-      credit: item.credit,
-      cash: item.cash,
-    })),
-    createdAt: now,
-    lines,
-    subTotal,
-    taxTotal,
-    discountTotal,
-    grandTotal,
-    loyalty:
-      payload.loyalty &&
-      payload.loyalty.mode !== "NONE" &&
-      payload.loyalty.phone
-        ? {
-            mode: payload.loyalty.mode,
-            phone: payload.loyalty.phone,
-            earnedPoints:
-              payload.loyalty.mode === "EARN"
-                ? Math.max(0, Math.floor(grandTotal * 0.01))
-                : 0,
-            redeemedPoints:
-              payload.loyalty.mode === "REDEEM"
-                ? Math.max(
-                    0,
-                    Math.floor(Number(payload.loyalty.redeemPoints || 0)),
-                  )
-                : 0,
-            balanceAfter: null,
-            earnRate: 0.01,
-            membershipBadge: "STANDARD",
-          }
-        : null,
-  };
 }

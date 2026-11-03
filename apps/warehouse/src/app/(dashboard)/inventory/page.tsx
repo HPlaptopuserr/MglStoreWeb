@@ -1,4 +1,5 @@
 "use client";
+import { ProductHistoryPanel } from "@mgl/ui";
 import {
   InventoryBarcodeDetails,
   InventoryExpiryDetails,
@@ -1065,6 +1066,7 @@ export default function InventoryPage() {
                   note={selectedItem.note}
                 />
 
+                <ProductHistoryPanel productId={selectedItem.product.id} />
                 <StockReservationBreakdown
                   warehouseId={selectedWarehouseId}
                   productId={selectedItem.product.id}

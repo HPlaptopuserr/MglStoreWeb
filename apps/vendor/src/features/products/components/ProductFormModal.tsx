@@ -17,7 +17,8 @@ import { BusinessCategory, FormState, Product } from "../types";
 import { CategorySelector } from "./CategorySelector";
 import { ImageUploadGrid } from "./ImageUploadGrid";
 import { ProductDataAssistantPanel } from "./ProductDataAssistantPanel";
-import { VendorSkuGenerator } from "./VendorSkuGenerator";
+import { findProductCodeConflict } from "@/lib/products/product-code-match";
+import { ProductSkuField } from "./ProductSkuField";
 import { MasterCatalogSuggestions } from "./MasterCatalogSuggestions";
 import { PreorderCurrencyPriceInput } from "./PreorderCurrencyPriceInput";
 import {
@@ -295,17 +296,11 @@ export function ProductFormModal({
       };
     });
   };
-  const duplicateProduct =
-    form.sku || form.barcode
-      ? products.find((p) => {
-          const skuMatch =
-            form.sku && p.sku?.toLowerCase() === form.sku.toLowerCase();
-          const barcodeMatch =
-            form.barcode &&
-            p.barcode?.toLowerCase() === form.barcode.toLowerCase();
-          return (skuMatch || barcodeMatch) && p.id !== editingId;
-        })
-      : undefined;
+  const codeConflict = findProductCodeConflict(form, products, editingId);
+  const duplicateProduct = codeConflict?.product;
+  const conflictingCodeLabel = codeConflict?.fields
+    .map((field) => field === "sku" ? "SKU" : "Баркод")
+    .join(" болон ");
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div className={`w-full ${needsBarcodeCheck ? "max-w-xl" : "max-w-4xl"} bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-4 duration-300 flex flex-col max-h-[90vh]`}>
@@ -872,7 +867,8 @@ export function ProductFormModal({
 
 
                   <div className="space-y-2">
-                    <VendorSkuGenerator
+                    <ProductSkuField
+                      editing={editingId !== null}
                       productName={form.name}
                       products={products}
                       value={form.sku || ""}
@@ -887,10 +883,10 @@ export function ProductFormModal({
                           />
                           <div className="flex-1">
                             <p className="text-sm font-bold text-amber-800 leading-tight">
-                              Бүртгэлтэй код олдлоо!
+                              {conflictingCodeLabel} давхцаж байна
                             </p>
                             <p className="text-xs text-amber-600 mt-0.5">
-                              Энэ SKU эсвэл Barcode{" "}
+                              {conflictingCodeLabel}{" "}
                               <span className="font-bold">
                                 {duplicateProduct.name}
                               </span>{" "}

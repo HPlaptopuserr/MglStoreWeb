@@ -1,5 +1,6 @@
 "use client";
 
+import { ProductHistoryTrigger } from "@mgl/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
@@ -809,7 +810,7 @@ export function CafeDailyStockScreen() {
                           </div>
                           <div>
                             <p className="font-black text-slate-900">
-                              {item.name}
+                              {item.name}<ProductHistoryTrigger productId={item.productId} name={item.name} />
                             </p>
                             <p className="mt-1 text-xs font-semibold text-slate-400">
                               {item.categoryName} · {item.unit}
@@ -1054,7 +1055,7 @@ export function CafeDailyStockScreen() {
                   >
                     <span className="min-w-0">
                       <span className="block truncate text-sm font-black text-slate-900">
-                        {item.name}
+                        {item.name}<ProductHistoryTrigger productId={item.productId} name={item.name} />
                       </span>
                       <span className="mt-1 block text-xs font-semibold text-slate-400">
                         {item.categoryName} · Одоогийн орлого {formatQty(item.receivedQty)} {item.unit}

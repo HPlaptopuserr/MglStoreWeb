@@ -1,3 +1,7 @@
+import {
+  UrgentExpiryProducts,
+  type UrgentExpiryProduct,
+} from "./UrgentExpiryProducts";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -110,8 +114,10 @@ function buildImprovementItems(
 
 export function DashboardImprovementPanel({
   metrics,
+  urgentProducts,
 }: {
   metrics: DashboardImprovementMetrics;
+  urgentProducts?: UrgentExpiryProduct[];
 }) {
   const items = buildImprovementItems(metrics);
 
@@ -157,6 +163,14 @@ export function DashboardImprovementPanel({
       ) : (
         <div className="grid gap-px bg-slate-100 sm:grid-cols-2">
           {items.slice(0, 4).map((item) => {
+            if (item.id === "expiry")
+              return (
+                <UrgentExpiryProducts
+                  key={item.id}
+                  count={metrics.urgentExpiryProducts}
+                  products={urgentProducts}
+                />
+              );
             const Icon = item.icon;
             return (
               <Link

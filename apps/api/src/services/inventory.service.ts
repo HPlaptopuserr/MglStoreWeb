@@ -1,3 +1,4 @@
+import { assertWarehouseProductsOwned, assertProductInventoryOwnership, assertUnassignedProductInventory } from "./warehouse-product-ownership";
 import { resolveProductInventoryWarehouse } from "./vendor-inventory-warehouse.service";
 import { prisma, InventoryReason, Prisma } from "@mgl/database";
 import type { PrismaClient } from "@prisma/client";
@@ -15,6 +16,7 @@ interface AdjustStockInput {
   change: number;
   reason: InventoryReason;
   note?: string;
+  metadata?: Prisma.InputJsonValue;
   createdById?: string | null;
   referenceId?: string;
   referenceType?: string;
@@ -160,10 +162,14 @@ export async function adjustStock(
     change,
     reason,
     note,
+    metadata,
     createdById,
     referenceId,
     referenceType,
   } = input;
+
+  if (warehouseId) await assertWarehouseProductsOwned(tx, warehouseId, [productId]);
+  else await assertUnassignedProductInventory(tx, [productId]);
 
   if (warehouseId) {
     // Update warehouse inventory (upsert to handle missing records)
@@ -224,6 +230,7 @@ export async function adjustStock(
       change,
       reason,
       note: note || null,
+      ...(metadata ? { metadata } : {}),
       createdById: createdById || null,
       referenceId: referenceId || null,
       referenceType: referenceType || null,
@@ -245,6 +252,7 @@ export async function syncProductStock(
   txOrPrisma: Tx,
   productId: string,
 ): Promise<void> {
+  await assertProductInventoryOwnership(txOrPrisma, [productId]);
   const result = await txOrPrisma.warehouseInventory.aggregate({
     where: { productId },
     _sum: { quantity: true },
@@ -268,6 +276,9 @@ export async function reconcilePhysicalStock(
     lines: { productId: string; change: number; note: string }[];
   },
 ) {
+  const productIds = input.lines.map(line => line.productId);
+  if (input.warehouseId) await assertWarehouseProductsOwned(tx, input.warehouseId, productIds);
+  else await assertUnassignedProductInventory(tx, productIds);
   const changed = input.lines.filter((line) => line.change !== 0);
   for (let offset = 0; offset < changed.length; offset += 400) {
     const batch = changed.slice(offset, offset + 400);

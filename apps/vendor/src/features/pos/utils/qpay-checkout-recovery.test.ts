@@ -42,6 +42,17 @@ test("pending QR references survive reload and remain organization scoped", () =
     recovery.paymentEntries = [{ id: "qr", method: "QR", status: "confirmed", amount: 100, invoiceId: "invoice-1" }];
     saveQPayCheckoutRecovery("org-1", recovery);
     assert.equal(loadQPayCheckoutRecovery("org-1")?.paymentEntries[0].invoiceId, "invoice-1");
+    recovery.paymentEntries = [{ id: "card", method: "CARD", status: "confirmed", amount: 39140, attemptId: "paid-attempt", transactionId: "123456789012" }];
+    saveQPayCheckoutRecovery("org-1", recovery);
+    assert.equal(loadQPayCheckoutRecovery("org-1")?.paymentEntries[0].attemptId, "paid-attempt", "verified card references must survive refresh without recharging");
+    recovery.paymentEntries = [{ id: "cash-first", method: "CASH", status: "confirmed", amount: 3000, cash: { receivedAmount: 3000, changeAmount: 0 } }];
+    saveQPayCheckoutRecovery("org-1", recovery);
+    assert.equal(loadQPayCheckoutRecovery("org-1")?.paymentEntries[0].amount, 3000, "cash-first partial payments survive reload before adding bank payments");
+
+    recovery.paymentEntries = [{ id: "pending-card", method: "CARD", status: "pending", amount: 2000, attemptId: "unresolved-bank-attempt" }];
+    saveQPayCheckoutRecovery("org-1", recovery);
+    assert.equal(loadQPayCheckoutRecovery("org-1")?.paymentEntries[0].attemptId, "unresolved-bank-attempt", "uncertain card references survive refresh for verification without a new charge");
+    assert.equal(loadQPayCheckoutRecovery("org-2"), null);
   } finally {
     if (previous) Object.defineProperty(globalThis, "window", previous);
     else Reflect.deleteProperty(globalThis, "window");

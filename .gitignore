@@ -32,6 +32,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 apps/api/uploads/site-settings/
+apps/api/uploads/building/
 apps/api/uploads/reels/
 
 # Editor

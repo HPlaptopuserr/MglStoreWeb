@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "../lib";
 import { MglCraneLoader } from "./MglLoadingScreen";
 
 type MglAppBootLoaderProps = {
   label?: string;
+  children?: ReactNode;
   minimumVisibleMs?: number;
   maxWaitMs?: number;
   criticalImageWaitMs?: number;
@@ -107,6 +108,7 @@ export function MglAppBootLoader({
   maxWaitMs = 2500,
   criticalImageWaitMs = 700,
   className,
+  children,
 }: MglAppBootLoaderProps) {
   const [visible, setVisible] = useState(true);
   const loadIdRef = useRef(0);
@@ -146,7 +148,7 @@ export function MglAppBootLoader({
       aria-live="polite"
       aria-busy="true"
     >
-      <MglCraneLoader />
+      {children ?? <MglCraneLoader />}
       <style>{`
         .mgl-app-boot-loader {
           position: fixed;

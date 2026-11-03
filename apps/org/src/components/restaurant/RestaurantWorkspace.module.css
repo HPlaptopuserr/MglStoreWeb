@@ -1,0 +1,46 @@
+/* Cash register density matches the approved 80% browser view at 100% zoom.
+   CSS zoom is supported by the older Chromium cash-register clients as well.
+   Portalled dialogs retain their own readable size. */
+.workspace {
+  height: 100%;
+  overflow: hidden;
+}
+.grid {
+  display: grid;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr) 390px;
+}
+.catalog {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding: 20px 28px;
+}
+.cart {
+  min-width: 0;
+  min-height: 0;
+}
+.summary {
+  max-height: 46vh;
+}
+@media (min-width: 768px) {
+  .workspace {
+    zoom: 0.8;
+    height: 100%;
+  }
+}
+@media (max-width: 767px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+  .catalog {
+    min-height: 640px;
+    padding: 12px;
+  }
+  .cart {
+    min-height: 640px;
+  }
+}

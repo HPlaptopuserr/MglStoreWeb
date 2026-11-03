@@ -1,6 +1,7 @@
 export { prisma } from "./client";
 export { Prisma } from "@prisma/client";
 export {
+  ChatApp,
   PlatformRole,
   OrgRole,
   OrgType,
@@ -30,6 +31,7 @@ export {
   WarehouseType,
   WarehouseGoodsReceiptStatus,
   PosActivationStatus,
+  PosRegisterMode,
   PosPaymentStatus,
   PosQPayStatus,
   ShiftStatus,
@@ -39,6 +41,8 @@ export {
   RestaurantOrderMode,
   RestaurantTicketStatus,
   KitchenTicketStatus,
+  RestaurantMealContractStatus,
+  RestaurantMealChargeStatus,
   ContractStatus,
   PaidAccessSourceType,
   MPointLedgerType,
@@ -53,3 +57,4 @@ export {
   OrganizationTaskPriority,
   OrganizationTaskStatus,
 } from "@prisma/client";
+export type { ReelUploadSession } from "@prisma/client";

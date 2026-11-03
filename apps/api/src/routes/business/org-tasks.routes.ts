@@ -1,3 +1,18 @@
+import { editTaskPlan, cancelTaskPlan } from "../../services/tasks/edit-plan";
+import {
+  createDailyPlan,
+  TaskPlanError,
+} from "../../services/tasks/daily-plan";
+import { canReadTaskEvidence } from "../../services/tasks/evidence-access";
+import {
+  createTask,
+  approveTaskAssignment,
+} from "../../services/tasks/commands";
+import {
+  taskPayloadInclude,
+  toTaskPayload,
+} from "../../services/tasks/payload";
+import { canManageOrganizationTasks } from "../../services/task-assignment-policy";
 import { canAssignTaskToRole } from "../../services/task-assignment-policy";
 import { Router, type Router as ExpressRouter } from "express";
 import multer from "multer";
@@ -12,7 +27,6 @@ import { requireAuth, type AuthPayload } from "../../middleware/auth";
 
 const router: ExpressRouter = Router();
 
-const MANAGER_ROLES = new Set(["OWNER", "ADMIN", "CEO", "MANAGER", "HR"]);
 const taskEvidenceUploadsDir = path.resolve(
   __dirname,
   "../../../uploads/task-evidence",
@@ -35,19 +49,22 @@ const taskEvidenceUpload = multer({
   },
 });
 
-router.use("/org/tasks/evidence/uploads", (req, res) => {
-  const filePath = path.join(taskEvidenceUploadsDir, path.basename(req.path));
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ message: "Зураг олдсонгүй" });
-  }
-  res.sendFile(filePath);
-});
+router.get(
+  "/org/tasks/evidence/uploads/:filename",
+  requireAuth,
+  async (req, res) => {
+    const filename = path.basename(req.params.filename);
+    if (!(await canReadTaskEvidence(getAuthUser(req).userId, filename)))
+      return res.status(403).json({ message: "Зураг харах эрхгүй байна" });
+    const filePath = path.join(taskEvidenceUploadsDir, filename);
+    if (!fs.existsSync(filePath))
+      return res.status(404).json({ message: "Зураг олдсонгүй" });
+    res.setHeader("Cache-Control", "no-store");
+    return res.sendFile(filePath);
+  },
+);
 
 type TaskListScope = "assigned" | "created" | "all";
-
-type TaskWithRelations = Awaited<
-  ReturnType<typeof findOrganizationTasks>
->[number];
 
 function getAuthUser(req: unknown): AuthPayload {
   return (req as { user: AuthPayload }).user;
@@ -99,65 +116,21 @@ function normalizeSubTaskTitles(value: unknown): string[] {
 
 async function getCallerMembership(userId: string, organizationId: string) {
   return prisma.organizationMember.findFirst({
-    where: { userId, organizationId, isActive: true, deletedAt: null },
+    where: {
+      userId,
+      organizationId,
+      isActive: true,
+      deletedAt: null,
+      user: { isActive: true, deletedAt: null },
+      organization: {
+        status: "ACTIVE",
+        deletedAt: null,
+        businessTasksEnabled: true,
+      },
+    },
     select: { role: true },
   });
 }
-
-const taskPayloadInclude = {
-  createdBy: {
-    select: {
-      id: true,
-      email: true,
-      profile: { select: { fullName: true, avatarUrl: true } },
-    },
-  },
-  assignees: {
-    orderBy: { createdAt: "asc" as const },
-    include: {
-      user: {
-        select: {
-          id: true,
-          email: true,
-          profile: {
-            select: { fullName: true, phoneNumber: true, avatarUrl: true },
-          },
-        },
-      },
-      evidenceImages: {
-        orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
-      },
-      approvalLogs: {
-        orderBy: { createdAt: "desc" as const },
-        include: {
-          approvedBy: {
-            select: {
-              id: true,
-              email: true,
-              profile: { select: { fullName: true, avatarUrl: true } },
-            },
-          },
-        },
-      },
-    },
-  },
-  subTasks: {
-    orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
-  },
-  comments: {
-    where: { deletedAt: null },
-    orderBy: { createdAt: "asc" as const },
-    include: {
-      author: {
-        select: {
-          id: true,
-          email: true,
-          profile: { select: { fullName: true, avatarUrl: true } },
-        },
-      },
-    },
-  },
-};
 
 async function findOrganizationTasks(args: {
   organizationId: string;
@@ -170,91 +143,20 @@ async function findOrganizationTasks(args: {
       organizationId: args.organizationId,
       deletedAt: null,
       ...(args.scope === "assigned" || args.status
-        ? { assignees: { some: {
-            ...(args.scope === "assigned" ? { userId: args.userId } : {}),
-            ...(args.status ? { status: args.status } : {}),
-          } } }
+        ? {
+            assignees: {
+              some: {
+                ...(args.scope === "assigned" ? { userId: args.userId } : {}),
+                ...(args.status ? { status: args.status } : {}),
+              },
+            },
+          }
         : {}),
       ...(args.scope === "created" ? { createdById: args.userId } : {}),
     },
     orderBy: [{ dueAt: "asc" }, { createdAt: "desc" }],
     include: taskPayloadInclude,
   });
-}
-
-function toTaskPayload(task: TaskWithRelations) {
-  return {
-    id: task.id,
-    organizationId: task.organizationId,
-    title: task.title,
-    description: task.description,
-    priority: task.priority,
-    dueAt: task.dueAt,
-    createdAt: task.createdAt,
-    updatedAt: task.updatedAt,
-    createdBy: {
-      id: task.createdBy.id,
-      email: task.createdBy.email,
-      fullName: task.createdBy.profile?.fullName || task.createdBy.email,
-      avatarUrl: task.createdBy.profile?.avatarUrl || null,
-    },
-    assignees: task.assignees.map((assignee) => ({
-      id: assignee.id,
-      userId: assignee.userId,
-      status: assignee.status,
-      completedAt: assignee.completedAt,
-      submittedAt: assignee.submittedAt,
-      approvedAt: assignee.approvedAt,
-      approvedById: assignee.approvedById,
-      performanceStars: assignee.performanceStars,
-      productivityPercent: assignee.productivityPercent,
-      evaluationNote: assignee.evaluationNote,
-      assignedAt: assignee.createdAt,
-      updatedAt: assignee.updatedAt,
-      fullName: assignee.user.profile?.fullName || assignee.user.email,
-      email: assignee.user.email,
-      phone: assignee.user.profile?.phoneNumber || null,
-      avatarUrl: assignee.user.profile?.avatarUrl || null,
-      evidenceImages: assignee.evidenceImages.map((image) => ({
-        id: image.id,
-        url: image.url,
-        originalName: image.originalName,
-        sortOrder: image.sortOrder,
-        createdAt: image.createdAt,
-      })),
-      approvalLogs: assignee.approvalLogs.map((log) => ({
-        id: log.id,
-        approvedById: log.approvedById,
-        approvedByName:
-          log.approvedBy.profile?.fullName || log.approvedBy.email,
-        approvedByEmail: log.approvedBy.email,
-        action: log.action,
-        note: log.note,
-        createdAt: log.createdAt,
-      })),
-    })),
-    subTasks: task.subTasks.map((subTask) => ({
-      id: subTask.id,
-      title: subTask.title,
-      isCompleted: subTask.isCompleted,
-      completedAt: subTask.completedAt,
-      sortOrder: subTask.sortOrder,
-      createdAt: subTask.createdAt,
-      updatedAt: subTask.updatedAt,
-    })),
-    comments: task.comments.map((comment) => ({
-      id: comment.id,
-      body: comment.body,
-      createdAt: comment.createdAt,
-      updatedAt: comment.updatedAt,
-      author: {
-        id: comment.author.id,
-        email: comment.author.email,
-        fullName: comment.author.profile?.fullName || comment.author.email,
-        avatarUrl: comment.author.profile?.avatarUrl || null,
-      },
-    })),
-  };
 }
 
 async function findTaskPayloadById(taskId: string) {
@@ -264,147 +166,205 @@ async function findTaskPayloadById(taskId: string) {
   });
 }
 
-router.get(
-  "/org/tasks",
-  requireAuth,
-  async (req, res) => {
-    try {
-      const user = getAuthUser(req);
-      const organizationId = String(req.query.organizationId || "");
-      const membership = await getCallerMembership(user.userId, organizationId);
-      if (!membership) {
-        return res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
-      }
-      const isManager = MANAGER_ROLES.has(membership.role);
-      const scope = parseScope(req.query.scope, isManager);
-      const status = parseTaskStatus(req.query.status);
-
-      const tasks = await findOrganizationTasks({
-        organizationId,
-        userId: user.userId,
-        scope,
-        status,
-      });
-
-      return res.json(tasks.map(toTaskPayload));
-    } catch (error) {
-      console.error("list org tasks error", error);
+router.get("/org/tasks", requireAuth, async (req, res) => {
+  try {
+    const user = getAuthUser(req);
+    const organizationId = String(req.query.organizationId || "");
+    const membership = await getCallerMembership(user.userId, organizationId);
+    if (!membership) {
       return res
-        .status(500)
-        .json({ message: "Даалгаврын жагсаалт авахад алдаа гарлаа" });
+        .status(403)
+        .json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
     }
-  },
-);
+    const isManager = canManageOrganizationTasks(membership.role);
+    const scope = parseScope(req.query.scope, isManager);
+    const status = parseTaskStatus(req.query.status);
 
-router.post(
-  "/org/tasks",
-  requireAuth,
-  async (req, res) => {
-    try {
-      const user = getAuthUser(req);
-      const body = req.body as {
-        organizationId?: string;
-        title?: string;
-        description?: string;
-        priority?: string;
-        dueAt?: string | null;
-        assigneeIds?: unknown;
-        subTasks?: unknown;
-      };
-      const organizationId = String(body.organizationId || "").trim();
-      const title = String(body.title || "").trim();
-      const membership = await getCallerMembership(user.userId, organizationId);
-      const isManager = MANAGER_ROLES.has(membership?.role || "");
-      const assigneeIds = normalizeAssigneeIds(body.assigneeIds);
-      const subTaskTitles = normalizeSubTaskTitles(body.subTasks);
-      if (!membership) {
-        return res.status(403).json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
-      }
-      const isSelfPlan = assigneeIds.length === 1 && assigneeIds[0] === user.userId;
+    const tasks = await findOrganizationTasks({
+      organizationId,
+      userId: user.userId,
+      scope,
+      status,
+    });
 
-      if (!title) {
-        return res
-          .status(400)
-          .json({ message: "Даалгаврын гарчиг шаардлагатай" });
-      }
-      if (!isManager && !isSelfPlan) {
-        return res
-          .status(403)
-          .json({ message: "Даалгавар оноох эрх хүрэлцэхгүй байна" });
-      }
-      if (assigneeIds.length === 0) {
-        return res
-          .status(400)
-          .json({ message: "Даалгавар оноох ажилтан сонгоно уу" });
-      }
-      if (!isSelfPlan && assigneeIds.includes(user.userId)) {
-        return res
-          .status(400)
-          .json({ message: "Өөртөө даалгавар оноох боломжгүй" });
-      }
+    return res.json(tasks.map(toTaskPayload));
+  } catch (error) {
+    console.error("list org tasks error", error);
+    return res
+      .status(500)
+      .json({ message: "Даалгаврын жагсаалт авахад алдаа гарлаа" });
+  }
+});
 
-      const assignees = await prisma.organizationMember.findMany({
-        where: {
-          organizationId,
-          userId: { in: assigneeIds },
-          isActive: true,
-          deletedAt: null,
-        },
-        select: { userId: true, role: true },
+export async function createOrganizationTask(
+  req: import("express").Request,
+  res: import("express").Response,
+) {
+  try {
+    const user = getAuthUser(req);
+    const body = req.body as {
+      organizationId?: string;
+      title?: string;
+      description?: string;
+      priority?: string;
+      dueAt?: string | null;
+      assigneeIds?: unknown;
+      subTasks?: unknown;
+      recurrence?: unknown;
+      plannedStartAt?: unknown;
+      planPeriod?: unknown;
+    };
+    const organizationId = String(body.organizationId || "").trim();
+    const title = String(body.title || "").trim();
+    const membership = await getCallerMembership(user.userId, organizationId);
+    const isManager = canManageOrganizationTasks(membership?.role || "");
+    const assigneeIds = normalizeAssigneeIds(body.assigneeIds);
+    const subTaskTitles = normalizeSubTaskTitles(body.subTasks);
+    if (!membership) {
+      return res
+        .status(403)
+        .json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
+    }
+    const isSelfPlan =
+      assigneeIds.length === 1 && assigneeIds[0] === user.userId;
+
+    if (!title) {
+      return res
+        .status(400)
+        .json({ message: "Даалгаврын гарчиг шаардлагатай" });
+    }
+    if (!isManager && !isSelfPlan) {
+      return res
+        .status(403)
+        .json({ message: "Даалгавар оноох эрх хүрэлцэхгүй байна" });
+    }
+    if (assigneeIds.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "Даалгавар оноох ажилтан сонгоно уу" });
+    }
+    if (!isSelfPlan && assigneeIds.includes(user.userId)) {
+      return res
+        .status(400)
+        .json({ message: "Өөртөө даалгавар оноох боломжгүй" });
+    }
+
+    const assignees = await prisma.organizationMember.findMany({
+      where: {
+        organizationId,
+        userId: { in: assigneeIds },
+        isActive: true,
+        deletedAt: null,
+      },
+      select: { userId: true, role: true },
+    });
+    const validAssigneeIds = assignees.map((item) => item.userId);
+    if (validAssigneeIds.length !== assigneeIds.length) {
+      return res
+        .status(400)
+        .json({ message: "Сонгосон ажилтан байгууллагад хамаарахгүй байна" });
+    }
+
+    if (
+      !isSelfPlan &&
+      assignees.some(
+        (member) => !canAssignTaskToRole(membership?.role || "", member.role),
+      )
+    ) {
+      return res.status(403).json({
+        message:
+          "Удирдлага ажилтанд, Owner удирдлага болон ажилтанд даалгавар онооно.",
       });
-      const validAssigneeIds = assignees.map((item) => item.userId);
-      if (validAssigneeIds.length !== assigneeIds.length) {
-        return res
-          .status(400)
-          .json({ message: "Сонгосон ажилтан байгууллагад хамаарахгүй байна" });
-      }
+    }
 
-      if (!isSelfPlan && assignees.some((member) => !canAssignTaskToRole(membership?.role || "", member.role))) {
-        return res.status(403).json({ message: "Менежер ажилтанд, Owner / CEO менежер болон ажилтанд даалгавар онооно." });
-      }
+    const dueAt = body.dueAt ? new Date(body.dueAt) : null;
+    if (!dueAt) {
+      return res.status(400).json({ message: "Дуусах хугацаа шаардлагатай" });
+    }
+    if (dueAt && Number.isNaN(dueAt.getTime())) {
+      return res.status(400).json({ message: "Дуусах огноо буруу байна" });
+    }
 
-      const dueAt = body.dueAt ? new Date(body.dueAt) : null;
-      if (!dueAt) {
-        return res.status(400).json({ message: "Дуусах хугацаа шаардлагатай" });
-      }
-      if (dueAt && Number.isNaN(dueAt.getTime())) {
-        return res.status(400).json({ message: "Дуусах огноо буруу байна" });
-      }
-
-      const task = await prisma.organizationTask.create({
-        data: {
-          organizationId,
+    if (
+      body.planPeriod != null &&
+      (typeof body.planPeriod !== "string" ||
+        !["WEEK", "MONTH", "QUARTER", "YEAR"].includes(body.planPeriod))
+    )
+      return res
+        .status(400)
+        .json({ message: "Төлөвлөгөөний хугацааны сонголт буруу байна" });
+    const plannedStartAt =
+      typeof body.plannedStartAt === "string"
+        ? new Date(body.plannedStartAt)
+        : null;
+    if (
+      (body.plannedStartAt != null &&
+        (!plannedStartAt || !Number.isFinite(+plannedStartAt))) ||
+      (plannedStartAt && plannedStartAt > dueAt) ||
+      (body.planPeriod != null && !plannedStartAt)
+    )
+      return res
+        .status(400)
+        .json({ message: "Төлөвлөгөөний эхлэх хугацааг шалгана уу" });
+    const periodFields = {
+      plannedStartAt,
+      planPeriod: typeof body.planPeriod === "string" ? body.planPeriod : null,
+    };
+    if (body.recurrence !== undefined) {
+      const plan = await createDailyPlan(
+        organizationId,
+        user.userId,
+        {
+          ...periodFields,
           title,
-          description: body.description?.trim() || null,
+          description: body.description,
           priority: parseTaskPriority(body.priority),
           dueAt,
-          createdById: user.userId,
-          assignees: {
-            create: validAssigneeIds.map((userId) => ({ userId })),
-          },
-          ...(subTaskTitles.length > 0
-            ? {
-                subTasks: {
-                  create: subTaskTitles.map((subTaskTitle, index) => ({
-                    title: subTaskTitle,
-                    sortOrder: index,
-                  })),
-                },
-              }
-            : {}),
+          assigneeIds: validAssigneeIds,
+          subTasks: subTaskTitles,
         },
-        include: taskPayloadInclude,
+        body.recurrence,
+      );
+      return res.status(plan.repeated ? 200 : 201).json({
+        tasks: plan.tasks.map(toTaskPayload),
+        repeated: plan.repeated,
       });
-
-      return res.status(201).json(toTaskPayload(task));
-    } catch (error) {
-      console.error("create org task error", error);
-      return res
-        .status(500)
-        .json({ message: "Даалгавар үүсгэхэд алдаа гарлаа" });
     }
-  },
-);
+    const task = await createTask(prisma, organizationId, user.userId, {
+      ...periodFields,
+      title,
+      description: body.description,
+      priority: parseTaskPriority(body.priority),
+      dueAt,
+      assigneeIds: validAssigneeIds,
+      subTasks: subTaskTitles,
+    });
+
+    return res.status(201).json(toTaskPayload(task));
+  } catch (error) {
+    if (error instanceof TaskPlanError)
+      return res.status(error.status).json({ message: error.message });
+    console.error("create org task error", error);
+    return res.status(500).json({ message: "Даалгавар үүсгэхэд алдаа гарлаа" });
+  }
+}
+router.post("/org/tasks", requireAuth, createOrganizationTask);
+
+router.patch("/org/tasks/:taskId/plan", requireAuth, async (req, res) => {
+  try {
+    const task = await editTaskPlan(
+      String(req.params.taskId),
+      getAuthUser(req).userId,
+      req.body,
+    );
+    return res.json(toTaskPayload(task));
+  } catch (error: unknown) {
+    if (error instanceof TaskPlanError)
+      return res.status(error.status).json({ message: error.message });
+    console.error("edit task plan error", error);
+    return res.status(500).json({ message: "Төлөвлөгөө засаж чадсангүй" });
+  }
+});
 
 router.patch("/org/tasks/:taskId/status", requireAuth, async (req, res) => {
   try {
@@ -430,9 +390,17 @@ router.patch("/org/tasks/:taskId/status", requireAuth, async (req, res) => {
 
     const assignment = await prisma.organizationTaskAssignee.findFirst({
       where: { taskId, userId: user.userId },
-      select: { id: true, status: true },
+      select: {
+        id: true,
+        status: true,
+        task: { select: { organizationId: true, deletedAt: true } },
+      },
     });
-    if (!assignment) {
+    if (
+      !assignment ||
+      assignment.task.deletedAt ||
+      !(await getCallerMembership(user.userId, assignment.task.organizationId))
+    ) {
       return res
         .status(403)
         .json({ message: "Энэ даалгавар танд оноогдоогүй байна" });
@@ -447,8 +415,8 @@ router.patch("/org/tasks/:taskId/status", requireAuth, async (req, res) => {
         .json({ message: "Энэ даалгаврын төлөвийг өөрчлөх боломжгүй" });
     }
 
-    await prisma.organizationTaskAssignee.update({
-      where: { id: assignment.id },
+    const changed = await prisma.organizationTaskAssignee.updateMany({
+      where: { id: assignment.id, status: { in: ["PENDING", "IN_PROGRESS"] } },
       data: {
         status,
         completedAt: null,
@@ -457,6 +425,10 @@ router.patch("/org/tasks/:taskId/status", requireAuth, async (req, res) => {
         approvedById: null,
       },
     });
+    if (changed.count !== 1)
+      return res
+        .status(409)
+        .json({ message: "Ажлын төлөв өөрчлөгдсөн. Шинэчилнэ үү." });
 
     const task = await prisma.organizationTask.findUnique({
       where: { id: taskId },
@@ -500,6 +472,11 @@ router.patch(
         return res.status(404).json({ message: "Даалгавар олдсонгүй" });
       }
 
+      if (!(await getCallerMembership(user.userId, task.organizationId)))
+        return res
+          .status(403)
+          .json({ message: "Энэ байгууллагад хандах эрхгүй байна" });
+
       const currentAssignee = task.assignees.find(
         (assignee) => assignee.userId === user.userId,
       );
@@ -526,13 +503,26 @@ router.patch(
         return res.status(404).json({ message: "Sub-task олдсонгүй" });
       }
 
-      await prisma.organizationTaskSubTask.update({
-        where: { id: subTaskId },
-        data: {
-          isCompleted,
-          completedAt: isCompleted ? new Date() : null,
-        },
+      const updated = await prisma.$transaction(async (tx) => {
+        const claimed = await tx.organizationTaskAssignee.updateMany({
+          where: {
+            taskId,
+            userId: user.userId,
+            status: { in: ["PENDING", "IN_PROGRESS"] },
+          },
+          data: { updatedAt: new Date() },
+        });
+        if (!claimed.count) return false;
+        await tx.organizationTaskSubTask.update({
+          where: { id: subTaskId },
+          data: { isCompleted, completedAt: isCompleted ? new Date() : null },
+        });
+        return true;
       });
+      if (!updated)
+        return res
+          .status(409)
+          .json({ message: "Ажлын төлөв өөрчлөгдсөн. Шинэчилнэ үү." });
 
       const updatedTask = await prisma.organizationTask.findUnique({
         where: { id: taskId },
@@ -556,12 +546,45 @@ router.patch(
 router.post(
   "/org/tasks/:taskId/submit-completion",
   requireAuth,
+  async (req, res, next) => {
+    try {
+      const user = getAuthUser(req);
+      const assignment = await prisma.organizationTaskAssignee.findFirst({
+        where: { taskId: req.params.taskId, userId: user.userId },
+        include: {
+          task: { select: { organizationId: true, deletedAt: true } },
+        },
+      });
+      if (
+        !assignment ||
+        assignment.task.deletedAt ||
+        !(await getCallerMembership(
+          user.userId,
+          assignment.task.organizationId,
+        ))
+      )
+        return res
+          .status(403)
+          .json({ message: "Энэ даалгаварт гүйцэтгэл илгээх эрхгүй байна" });
+      if (["DONE", "CANCELLED"].includes(assignment.status))
+        return res.status(400).json({
+          message: "Батлагдсан эсвэл цуцлагдсан ажилд зураг илгээхгүй",
+        });
+      next();
+    } catch (error: unknown) {
+      console.error("authorize task evidence error", error);
+      return res
+        .status(500)
+        .json({ message: "Гүйцэтгэл илгээх эрх шалгаж чадсангүй" });
+    }
+  },
   taskEvidenceUpload.array("images", 4),
   async (req, res) => {
+    const files = (req.files as Express.Multer.File[]) || [];
+    let keepUploads = false;
     try {
       const user = getAuthUser(req);
       const { taskId } = req.params;
-      const files = (req.files as Express.Multer.File[]) || [];
 
       if (files.length === 0) {
         return res
@@ -577,10 +600,17 @@ router.post(
       const assignment = await prisma.organizationTaskAssignee.findFirst({
         where: { taskId, userId: user.userId },
         include: {
-          task: { select: { id: true, deletedAt: true } },
+          task: { select: { id: true, organizationId: true, deletedAt: true } },
         },
       });
-      if (!assignment || assignment.task.deletedAt) {
+      if (
+        !assignment ||
+        assignment.task.deletedAt ||
+        !(await getCallerMembership(
+          user.userId,
+          assignment.task.organizationId,
+        ))
+      ) {
         return res
           .status(403)
           .json({ message: "Энэ даалгавар танд оноогдоогүй байна" });
@@ -594,7 +624,21 @@ router.post(
         });
       }
 
-      await prisma.$transaction(async (tx) => {
+      const submitted = await prisma.$transaction(async (tx) => {
+        const changed = await tx.organizationTaskAssignee.updateMany({
+          where: {
+            id: assignment.id,
+            status: { in: ["PENDING", "IN_PROGRESS", "PENDING_REVIEW"] },
+          },
+          data: {
+            status: "PENDING_REVIEW",
+            submittedAt: new Date(),
+            completedAt: null,
+            approvedAt: null,
+            approvedById: null,
+          },
+        });
+        if (changed.count !== 1) return false;
         await tx.organizationTaskEvidenceImage.deleteMany({
           where: { assigneeId: assignment.id },
         });
@@ -606,16 +650,6 @@ router.post(
             sortOrder: index,
           })),
         });
-        await tx.organizationTaskAssignee.update({
-          where: { id: assignment.id },
-          data: {
-            status: OrganizationTaskStatus.PENDING_REVIEW,
-            submittedAt: new Date(),
-            completedAt: null,
-            approvedAt: null,
-            approvedById: null,
-          },
-        });
         await tx.organizationTaskApprovalLog.create({
           data: {
             assigneeId: assignment.id,
@@ -624,8 +658,14 @@ router.post(
             note: "Зургаар баталгаажуулалт илгээсэн",
           },
         });
+        return true;
       });
+      if (!submitted)
+        return res
+          .status(409)
+          .json({ message: "Ажлын төлөв өөрчлөгдсөн. Шинэчилнэ үү." });
 
+      keepUploads = true;
       const task = await findTaskPayloadById(taskId);
       if (!task) {
         return res.status(404).json({ message: "Даалгавар олдсонгүй" });
@@ -637,11 +677,21 @@ router.post(
       return res
         .status(500)
         .json({ message: "Даалгавар дуусгах хүсэлт илгээхэд алдаа гарлаа" });
+    } finally {
+      if (!keepUploads)
+        await Promise.all(
+          files.map((file) =>
+            fs.promises.unlink(file.path).catch(() => undefined),
+          ),
+        );
     }
   },
 );
 
-router.patch("/org/tasks/:taskId/approve", requireAuth, async (req, res) => {
+export async function approveOrganizationTask(
+  req: import("express").Request,
+  res: import("express").Response,
+) {
   try {
     const user = getAuthUser(req);
     const { taskId } = req.params;
@@ -698,9 +748,13 @@ router.patch("/org/tasks/:taskId/approve", requireAuth, async (req, res) => {
       user.userId,
       assignment.task.organizationId,
     );
-    const isManager = MANAGER_ROLES.has(membership?.role || "");
+    const isManager = canManageOrganizationTasks(membership?.role || "");
     const isCreator = assignment.task.createdById === user.userId;
-    if (!isManager && !isCreator) {
+    if (
+      !membership ||
+      (!isManager && !isCreator) ||
+      assignment.userId === user.userId
+    ) {
       return res
         .status(403)
         .json({ message: "Даалгавар батлах эрх хүрэлцэхгүй байна" });
@@ -716,28 +770,17 @@ router.patch("/org/tasks/:taskId/approve", requireAuth, async (req, res) => {
         .json({ message: "Баталгаажуулах зураг байхгүй байна" });
     }
 
-    await prisma.$transaction([
-      prisma.organizationTaskAssignee.update({
-        where: { id: assignment.id },
-        data: {
-          status: OrganizationTaskStatus.DONE,
-          completedAt: new Date(),
-          approvedAt: new Date(),
-          approvedById: user.userId,
-          performanceStars,
-          productivityPercent,
-          evaluationNote: body.note?.trim() || null,
-        },
+    const approved = await prisma.$transaction((tx) =>
+      approveTaskAssignment(tx, assignment.id, user.userId, {
+        performanceStars,
+        productivityPercent,
+        note: body.note?.trim() || null,
       }),
-      prisma.organizationTaskApprovalLog.create({
-        data: {
-          assigneeId: assignment.id,
-          approvedById: user.userId,
-          action: "APPROVED",
-          note: body.note?.trim() || null,
-        },
-      }),
-    ]);
+    );
+    if (!approved)
+      return res
+        .status(409)
+        .json({ message: "Тайлан аль хэдийн шийдвэрлэгдсэн. Шинэчилнэ үү" });
 
     const task = await findTaskPayloadById(taskId);
     if (!task) {
@@ -749,7 +792,12 @@ router.patch("/org/tasks/:taskId/approve", requireAuth, async (req, res) => {
     console.error("approve org task completion error", error);
     return res.status(500).json({ message: "Даалгавар батлахад алдаа гарлаа" });
   }
-});
+}
+router.patch(
+  "/org/tasks/:taskId/approve",
+  requireAuth,
+  approveOrganizationTask,
+);
 
 router.post("/org/tasks/:taskId/comments", requireAuth, async (req, res) => {
   try {
@@ -783,7 +831,11 @@ router.post("/org/tasks/:taskId/comments", requireAuth, async (req, res) => {
       user.userId,
       task.organizationId,
     );
-    const isManager = MANAGER_ROLES.has(membership?.role || "");
+    if (!membership)
+      return res
+        .status(403)
+        .json({ message: "Байгууллагад хандах эрхгүй байна" });
+    const isManager = canManageOrganizationTasks(membership.role);
     const isCreator = task.createdById === user.userId;
     const isAssignee = task.assignees.some(
       (assignee) => assignee.userId === user.userId,
@@ -815,75 +867,16 @@ router.post("/org/tasks/:taskId/comments", requireAuth, async (req, res) => {
 
 router.patch("/org/tasks/:taskId/cancel", requireAuth, async (req, res) => {
   try {
-    const user = getAuthUser(req);
-    const { taskId } = req.params;
-    const task = await prisma.organizationTask.findFirst({
-      where: { id: taskId, deletedAt: null },
-      select: {
-        id: true,
-        organizationId: true,
-        createdById: true,
-        assignees: { select: { id: true, status: true } },
-      },
-    });
-    if (!task) {
-      return res.status(404).json({ message: "Даалгавар олдсонгүй" });
-    }
-
-    const membership = await getCallerMembership(
-      user.userId,
-      task.organizationId,
+    const task = await cancelTaskPlan(
+      String(req.params.taskId),
+      getAuthUser(req).userId,
     );
-    const isManager = MANAGER_ROLES.has(membership?.role || "");
-    const isCreator = task.createdById === user.userId;
-    if (!isManager && !isCreator) {
-      return res
-        .status(403)
-        .json({ message: "Даалгавар цуцлах эрх хүрэлцэхгүй байна" });
-    }
-
-    const cancellableAssignees = task.assignees.filter(
-      (assignee) => assignee.status !== OrganizationTaskStatus.DONE,
-    );
-    if (cancellableAssignees.length === 0) {
-      return res
-        .status(400)
-        .json({ message: "Бүх ажил батлагдсан тул цуцлах боломжгүй" });
-    }
-
-    await prisma.$transaction(async (tx) => {
-      await tx.organizationTaskAssignee.updateMany({
-        where: {
-          taskId,
-          status: { not: OrganizationTaskStatus.DONE },
-        },
-        data: {
-          status: OrganizationTaskStatus.CANCELLED,
-          completedAt: null,
-          submittedAt: null,
-          approvedAt: null,
-          approvedById: null,
-        },
-      });
-      await tx.organizationTaskApprovalLog.createMany({
-        data: cancellableAssignees.map((assignee) => ({
-          assigneeId: assignee.id,
-          approvedById: user.userId,
-          action: "CANCELLED",
-          note: "Даалгавар цуцалсан",
-        })),
-      });
-    });
-
-    const updatedTask = await findTaskPayloadById(taskId);
-    if (!updatedTask) {
-      return res.status(404).json({ message: "Даалгавар олдсонгүй" });
-    }
-
-    return res.json(toTaskPayload(updatedTask));
-  } catch (error) {
-    console.error("cancel org task error", error);
-    return res.status(500).json({ message: "Даалгавар цуцлахад алдаа гарлаа" });
+    return res.json(toTaskPayload(task));
+  } catch (error: unknown) {
+    if (error instanceof TaskPlanError)
+      return res.status(error.status).json({ message: error.message });
+    console.error("cancel task plan error", error);
+    return res.status(500).json({ message: "Ажил цуцалж чадсангүй" });
   }
 });
 
@@ -903,7 +896,7 @@ router.delete("/org/tasks/:taskId", requireAuth, async (req, res) => {
       user.userId,
       task.organizationId,
     );
-    if (!MANAGER_ROLES.has(membership?.role || "")) {
+    if (!canManageOrganizationTasks(membership?.role || "")) {
       return res.status(403).json({ message: "Даалгавар устгах эрхгүй байна" });
     }
 

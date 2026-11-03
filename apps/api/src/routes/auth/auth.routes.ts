@@ -1,9 +1,11 @@
+import { createVerifyMnSession, getVerifyMnSessionStatus, waitForVerifyMnSessionStatus } from "../../services/verify-mn.service";
 import express, {
   Router,
   type Router as ExpressRouter,
   type Request,
 } from "express";
 import crypto from "crypto";
+import { readOpenPosOrganizationIds } from "../../services/pos-activation.service";
 import fs from "fs";
 import path from "path";
 import bcrypt from "bcryptjs";
@@ -150,15 +152,6 @@ const JWT_SECRET =
         throw new Error("FATAL: JWT_SECRET not set");
       })()
     : "dev-secret-change-me");
-const VERIFY_MN_API_BASE = "https://api.verify.mn";
-const VERIFY_MN_DEV_SESSION_PREFIX = "dev_verify_mn";
-
-function isDevVerifyMnFallbackEnabled() {
-  return (
-    process.env.NODE_ENV !== "production" && !process.env.VERIFY_MN_API_KEY
-  );
-}
-
 function toIsoOrNull(value?: Date | string | null) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
@@ -264,6 +257,9 @@ async function listUserOrganizations(
     },
   });
 
+  const openPosOrganizations = await readOpenPosOrganizationIds(
+    memberships.map((membership) => membership.organization.id),
+  );
   return memberships.map((membership) => ({
     id: membership.organization.id,
     name: membership.organization.name,
@@ -276,7 +272,8 @@ async function listUserOrganizations(
     businessCategory: membership.organization.businessCategory,
     status: membership.organization.status,
     isVerified: membership.organization.isVerified,
-    businessPosEnabled: membership.organization.businessPosEnabled,
+    businessPosEnabled: membership.organization.businessPosEnabled &&
+      openPosOrganizations.has(membership.organization.id),
     businessSalesEnabled: membership.organization.businessSalesEnabled,
     businessOrdersEnabled: membership.organization.businessOrdersEnabled,
     businessInventoryEnabled: membership.organization.businessInventoryEnabled,
@@ -327,7 +324,7 @@ function toWebUserPayload(
     avatarUrl: user.profile?.avatarUrl || null,
     organizationId: orgInfo?.organizationId || null,
     organizationName: orgInfo?.organizationName || null,
-    businessPosEnabled: orgInfo?.businessPosEnabled ?? true,
+    businessPosEnabled: orgInfo?.businessPosEnabled ?? false,
     businessSalesEnabled: orgInfo?.businessSalesEnabled ?? true,
     businessOrdersEnabled: orgInfo?.businessOrdersEnabled ?? true,
     businessInventoryEnabled: orgInfo?.businessInventoryEnabled ?? true,
@@ -358,25 +355,6 @@ function toWebUserPayload(
       : null,
   };
 }
-
-type VerifyMnSessionResponse = {
-  sessionId: string;
-  phone: string;
-  shortcode: string;
-  text: string;
-  smsUri: string;
-  displayInstruction: string;
-  expiresAt: string;
-};
-
-type VerifyMnStatusResponse = {
-  sessionId: string;
-  phone: string;
-  sessionStatus: "PENDING" | "VERIFIED" | "EXPIRED";
-  callbackStatus?: "PENDING" | "SENT" | "FAILED";
-  verifiedAt?: string | null;
-  expiresAt: string;
-};
 
 type WebEmailOtpPurpose =
   | "web-email-login"
@@ -575,133 +553,6 @@ async function findAdminUserByIdentifier(identifier: string, isPhone: boolean) {
   return user && isAdminRole(user.role) ? user : null;
 }
 
-async function createVerifyMnSession(
-  phone: string,
-): Promise<VerifyMnSessionResponse> {
-  const apiKey = process.env.VERIFY_MN_API_KEY;
-  const callback =
-    process.env.VERIFY_MN_CALLBACK_URL ||
-    (process.env.API_PUBLIC_URL
-      ? `${process.env.API_PUBLIC_URL.replace(/\/$/, "")}/auth/web/verify-mn/callback`
-      : "");
-  const nonce = crypto.randomInt(100000, 999999).toString();
-
-  if (!apiKey) {
-    if (isDevVerifyMnFallbackEnabled()) {
-      const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-      const sessionId = `${VERIFY_MN_DEV_SESSION_PREFIX}:${phone}:${crypto.randomUUID()}`;
-
-      console.warn(
-        "[verify.mn dev fallback] VERIFY_MN_API_KEY missing; using local auto-verified session.",
-      );
-      return {
-        sessionId,
-        phone,
-        shortcode: "LOCAL",
-        text: nonce,
-        smsUri: `sms:${phone}?body=${encodeURIComponent(nonce)}`,
-        displayInstruction:
-          "Local development fallback. Баталгаажуулах товч дарж үргэлжлүүлнэ үү.",
-        expiresAt,
-      };
-    }
-
-    throw new Error("VERIFY_MN_API_KEY is not configured");
-  }
-
-  if (!callback) {
-    throw new Error("VERIFY_MN_CALLBACK_URL is not configured");
-  }
-
-  const res = await fetch(`${VERIFY_MN_API_BASE}/sessions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      phone,
-      text: nonce,
-      callback,
-    }),
-  });
-
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(
-      data?.message || `Verify.mn session failed with ${res.status}`,
-    );
-  }
-
-  return data as VerifyMnSessionResponse;
-}
-
-async function getVerifyMnSessionStatus(
-  sessionId: string,
-): Promise<VerifyMnStatusResponse> {
-  const apiKey = process.env.VERIFY_MN_API_KEY;
-
-  if (!apiKey) {
-    if (
-      isDevVerifyMnFallbackEnabled() &&
-      sessionId.startsWith(`${VERIFY_MN_DEV_SESSION_PREFIX}:`)
-    ) {
-      const [, phone] = sessionId.split(":");
-
-      return {
-        sessionId,
-        phone: phone || "",
-        sessionStatus: "VERIFIED",
-        callbackStatus: "SENT",
-        verifiedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-      };
-    }
-
-    throw new Error("VERIFY_MN_API_KEY is not configured");
-  }
-
-  const res = await fetch(
-    `${VERIFY_MN_API_BASE}/sessions/${encodeURIComponent(sessionId)}`,
-    {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-    },
-  );
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(
-      data?.message || `Verify.mn status failed with ${res.status}`,
-    );
-  }
-
-  return data as VerifyMnStatusResponse;
-}
-
-const VERIFY_MN_STATUS_MAX_ATTEMPTS = 4;
-const VERIFY_MN_STATUS_RETRY_DELAY_MS = 750;
-
-function wait(milliseconds: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
-}
-
-async function waitForVerifyMnSessionStatus(sessionId: string) {
-  let status = await getVerifyMnSessionStatus(sessionId);
-
-  for (
-    let attempt = 1;
-    attempt < VERIFY_MN_STATUS_MAX_ATTEMPTS &&
-    status.sessionStatus === "PENDING";
-    attempt += 1
-  ) {
-    await wait(VERIFY_MN_STATUS_RETRY_DELAY_MS);
-    status = await getVerifyMnSessionStatus(sessionId);
-  }
-
-  return status;
-}
-
 function createWebAccessToken(
   user: any,
   orgInfo?: Partial<AuthOrgContext> | null,
@@ -798,7 +649,8 @@ async function resolveLoginOrganization(
           membership.organization?.type === "VENDOR"
             ? membership.organizationId
             : null,
-        businessPosEnabled: membership.organization?.businessPosEnabled ?? true,
+        businessPosEnabled: Boolean(membership.organization?.businessPosEnabled) &&
+          (await readOpenPosOrganizationIds([membership.organizationId])).has(membership.organizationId),
         businessSalesEnabled: membership.organization?.businessSalesEnabled ?? true,
         businessOrdersEnabled:
           membership.organization?.businessOrdersEnabled ?? true,
@@ -863,7 +715,8 @@ async function resolveTokenOrganization(
           membership.organization?.type === "VENDOR"
             ? membership.organizationId
             : null,
-        businessPosEnabled: membership.organization?.businessPosEnabled ?? true,
+        businessPosEnabled: Boolean(membership.organization?.businessPosEnabled) &&
+          (await readOpenPosOrganizationIds([membership.organizationId])).has(membership.organizationId),
         businessSalesEnabled: membership.organization?.businessSalesEnabled ?? true,
         businessOrdersEnabled:
           membership.organization?.businessOrdersEnabled ?? true,
@@ -910,7 +763,7 @@ function toWebAuthResponse(
       organizationType: orgInfo?.organizationType || null,
       businessCategory: orgInfo?.businessCategory || null,
       vendorId: orgInfo?.vendorId || null,
-      businessPosEnabled: orgInfo?.businessPosEnabled ?? true,
+      businessPosEnabled: orgInfo?.businessPosEnabled ?? false,
       businessSalesEnabled: orgInfo?.businessSalesEnabled ?? true,
       businessOrdersEnabled: orgInfo?.businessOrdersEnabled ?? true,
       businessInventoryEnabled: orgInfo?.businessInventoryEnabled ?? true,
@@ -1566,7 +1419,7 @@ router.post("/login", loginAttemptLimiter, async (req, res) => {
         phone: user.profile?.phoneNumber || null,
         organizationId: orgInfo?.organizationId || null,
         organizationName: orgInfo?.organizationName || "",
-        businessPosEnabled: orgInfo?.businessPosEnabled ?? true,
+        businessPosEnabled: orgInfo?.businessPosEnabled ?? false,
         businessSalesEnabled: orgInfo?.businessSalesEnabled ?? true,
         businessOrdersEnabled: orgInfo?.businessOrdersEnabled ?? true,
         businessInventoryEnabled: orgInfo?.businessInventoryEnabled ?? true,

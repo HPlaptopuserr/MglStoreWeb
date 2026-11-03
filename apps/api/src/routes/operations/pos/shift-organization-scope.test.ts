@@ -14,10 +14,38 @@ test("current POS shift is scoped to the organization selected in the token", ()
 
 test("opening a shift only conflicts with the cashier in the current organization", () => {
   assert.deepEqual(
-    buildOpenShiftConflictScopes("cashier-1", "org-current", "register-1"),
+    buildOpenShiftConflictScopes(
+      "cashier-1",
+      "org-current",
+      "register-1",
+      "RETAIL",
+    ),
     [
-      { cashierId: "cashier-1", organizationId: "org-current" },
+      {
+        cashierId: "cashier-1",
+        organizationId: "org-current",
+        mode: "RETAIL",
+      },
       { registerId: "register-1" },
+    ],
+  );
+});
+
+test("restaurant shift conflicts are isolated from retail cashier shifts", () => {
+  assert.deepEqual(
+    buildOpenShiftConflictScopes(
+      "cashier-1",
+      "org-current",
+      "restaurant-register",
+      "RESTAURANT",
+    ),
+    [
+      {
+        cashierId: "cashier-1",
+        organizationId: "org-current",
+        mode: "RESTAURANT",
+      },
+      { registerId: "restaurant-register" },
     ],
   );
 });

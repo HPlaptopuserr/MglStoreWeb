@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useMemo, useState } from "react";
+import { Check, Plus } from "lucide-react";
 import { formatPosQuantity, type CartLine, type PosProduct } from "@mgl/types";
 
 import { useEventCallback } from "../hooks/useEventCallback";
@@ -32,23 +33,16 @@ export function PosProductList({ products, cartLines, onAdd }: Props) {
   return (
     <section
       aria-label="Барааны жагсаалт"
-      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200"
+      className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
     >
-      <div
-        aria-hidden="true"
-        className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[11px] font-bold text-slate-500"
-      >
-        <span>Бараа / SKU</span>
-        <span>Үнэ / Нөөц</span>
-      </div>
       <ul
         key={page}
-        className="min-h-0 min-w-0 flex-1 divide-y divide-slate-100 overflow-y-auto overscroll-contain"
+        className="grid min-h-0 min-w-0 flex-1 grid-cols-[repeat(auto-fill,minmax(min(100%,168px),1fr))] content-start gap-2 overflow-y-auto overscroll-contain p-0.5 [scrollbar-gutter:stable]"
       >
         {visibleProducts.map((product) => {
           const quantity = quantities.get(product.id) ?? 0;
           return (
-            <ProductRow
+            <ProductCard
               key={product.id}
               product={product}
               quantity={quantity}
@@ -87,7 +81,7 @@ export function PosProductList({ products, cartLines, onAdd }: Props) {
   );
 }
 
-const ProductRow = memo(function ProductRow({
+const ProductCard = memo(function ProductCard({
   product,
   quantity,
   onAdd,
@@ -104,39 +98,62 @@ const ProductRow = memo(function ProductRow({
         disabled={unavailable}
         onClick={() => onAdd(product)}
         aria-label={`${product.name}, ${product.price.toLocaleString("mn-MN")} төгрөг, сагсанд нэмэх`}
-        className={`grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] gap-3 px-3 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed ${quantity > 0 ? "bg-blue-50 hover:bg-blue-100" : "bg-white hover:bg-slate-50"} ${unavailable ? "text-slate-400" : "text-slate-900"}`}
+        className={`group flex h-full min-h-44 w-full min-w-0 flex-col rounded-2xl border bg-white p-3.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-600 disabled:cursor-not-allowed ${quantity > 0 ? "border-indigo-300 ring-1 ring-indigo-100" : "border-slate-200 hover:border-indigo-300"} ${unavailable ? "text-slate-500" : "text-slate-900"}`}
       >
-        <span className="min-w-0">
-          <span className="block break-words text-sm font-bold [overflow-wrap:anywhere]">
-            {product.name}
+        <span className="flex w-full items-center justify-between gap-2">
+          <span
+            className="min-w-0 truncate rounded-md bg-slate-100 px-1.5 py-1 font-mono text-[10px] font-semibold text-slate-600"
+            title={product.sku}
+          >
+            {product.sku}
           </span>
-          <span className="mt-1 block break-all font-mono text-[11px] text-slate-500">
-            SKU: {product.sku}
+          <span
+            aria-label={`Нөөц: ${formatPosQuantity(product.stockQty, product.measureUnit)}`}
+            className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold tabular-nums ${unavailable ? "border-rose-100 bg-rose-50 text-rose-600" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}
+          >
+            {unavailable
+              ? product.stockQty <= 0
+                ? "Дууссан"
+                : "Нөөц хүрсэн"
+              : product.measureUnit === "kg"
+                ? `${product.stockQty.toLocaleString("mn-MN", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} кг`
+                : formatPosQuantity(product.stockQty, product.measureUnit)}
           </span>
-          {product.barcode && product.barcode !== product.sku && (
-            <span className="mt-0.5 block break-all font-mono text-[11px] text-slate-500">
-              {product.barcode}
-            </span>
-          )}
+        </span>
+        <span className="mt-3 line-clamp-2 min-h-9 w-full break-words text-[13px] font-bold leading-[18px] [overflow-wrap:anywhere]">
+          {product.name}
+        </span>
+        <span className="mt-0.5 block w-full truncate font-mono text-[10px] font-medium tracking-wide text-slate-400">
+          {product.barcode ? `#${product.barcode}` : ""}
+        </span>
+        <span className="flex min-h-6 items-center py-1">
           {quantity > 0 && (
-            <span className="mt-1 inline-block text-[11px] font-semibold text-blue-700">
-              Сагсанд: {formatPosQuantity(quantity, product.measureUnit)}
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600">
+              <Check size={11} aria-hidden="true" />
+              <span>
+                Сагсанд: {formatPosQuantity(quantity, product.measureUnit)}
+              </span>
             </span>
           )}
         </span>
-        <span className="min-w-0 text-right tabular-nums">
-          <span className="block break-words text-sm font-bold [overflow-wrap:anywhere]">
-            ₮{product.price.toLocaleString("mn-MN")}
-            {product.measureUnit === "kg" ? "/кг" : ""}
-          </span>
-          <span className="mt-1 block break-words text-[11px] text-slate-500 [overflow-wrap:anywhere]">
-            Нөөц: {formatPosQuantity(product.stockQty, product.measureUnit)}
-          </span>
-          {unavailable && (
-            <span className="mt-1 block text-[11px]">
-              {product.stockQty <= 0 ? "Дууссан" : "Нөөц хүрсэн"}
+        <span className="mt-auto flex w-full items-end justify-between gap-2 border-t border-slate-100 pt-2.5">
+          <span className="min-w-0">
+            <span className="mb-1 block text-[10px] text-slate-400">
+              Нэгж үнэ
             </span>
-          )}
+            <span className="break-words font-mono text-base font-bold tabular-nums [overflow-wrap:anywhere]">
+              ₮{product.price.toLocaleString("mn-MN")}
+              <span className="font-sans text-[11px] font-medium text-slate-400">
+                /{product.measureUnit === "kg" ? "кг" : "ш"}
+              </span>
+            </span>
+          </span>
+          <span
+            aria-hidden="true"
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${unavailable ? "bg-slate-100 text-slate-300" : "bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white"}`}
+          >
+            <Plus size={18} strokeWidth={2.5} />
+          </span>
         </span>
       </button>
     </li>

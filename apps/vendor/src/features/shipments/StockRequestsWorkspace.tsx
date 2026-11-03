@@ -35,7 +35,6 @@ export function StockRequestsWorkspace() {
   });
   const catalog = useWarehouseCatalog({
     user: data.user,
-    outstandingPayments: data.outstandingPayments,
     warehouses: data.warehouses,
     setCart: cart.setCart,
     viewMode,
@@ -50,7 +49,6 @@ export function StockRequestsWorkspace() {
     note: cart.note,
     refreshStockRequests: data.refreshStockRequests,
     clearCart: cart.clearCart,
-    exitWarehouse: catalog.exitWarehouse,
     setViewMode,
   });
   const payments = useStockRequestPayments({
@@ -60,33 +58,45 @@ export function StockRequestsWorkspace() {
   });
 
   const outstandingPaymentCount = data.outstandingPayments?.count ?? 0;
-  const isNewOrderLocked = outstandingPaymentCount > 0;
-  // Keep the payment view selected after settling the outstanding balance.
-  if (viewMode === "warehouses" && isNewOrderLocked) {
-    setViewMode("payments");
-  }
-
   const navigateWorkflow = (section: StockRequestSection) => {
     setViewMode(
       section === "new"
-        ? isNewOrderLocked
-          ? "payments"
+        ? catalog.selectedWarehouse
+          ? "browse"
           : "warehouses"
         : section,
     );
   };
   const navigation = (
-    <StockRequestWorkflowNav
-      active={
-        viewMode === "requests" || viewMode === "payments" ? viewMode : "new"
-      }
-      pendingRequestCount={
-        data.requests.filter((request) => request.status === "PENDING").length
-      }
-      outstandingPaymentCount={outstandingPaymentCount}
-      isNewOrderLocked={isNewOrderLocked}
-      onNavigate={navigateWorkflow}
-    />
+    <>
+      {data.error && (
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+        >
+          <p>{data.error}</p>
+          {data.user && (
+            <button
+              type="button"
+              onClick={() => void data.refreshStockRequests()}
+              className="rounded-lg bg-white px-4 py-2 font-semibold ring-1 ring-red-200 hover:bg-red-100"
+            >
+              Дахин оролдох
+            </button>
+          )}
+        </div>
+      )}
+      <StockRequestWorkflowNav
+        active={
+          viewMode === "requests" || viewMode === "payments" ? viewMode : "new"
+        }
+        pendingRequestCount={
+          data.requests.filter((request) => request.status === "PENDING").length
+        }
+        outstandingPaymentCount={outstandingPaymentCount}
+        onNavigate={navigateWorkflow}
+      />
+    </>
   );
   const renderProductCard = (
     item: WarehouseInventoryItem,
@@ -130,6 +140,8 @@ export function StockRequestsWorkspace() {
     return (
       <WarehouseProductCatalog
         {...catalog}
+        navigation={navigation}
+        outstandingPayments={data.outstandingPayments}
         setViewMode={setViewMode}
         totalCartItems={cart.totalCartItems}
         user={data.user}

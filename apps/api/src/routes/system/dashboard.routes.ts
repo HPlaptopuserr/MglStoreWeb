@@ -24,7 +24,10 @@ import adminSalesStoresRouter from "./admin-sales-stores.routes";
 
 import posStoreStatisticsRouter from "./pos-store-statistics.routes";
 
+import paymentSearchRouter from "./payment-search.routes";
+
 const router: RouterType = Router();
+router.use(paymentSearchRouter);
 router.use(posStoreStatisticsRouter);
 router.use(adminSalesStoresRouter);
 
@@ -522,9 +525,10 @@ async function buildVendorExpiryInsights(organizationId: string) {
     (item) => item.riskLevel === "critical",
   ).length;
   const highCount = products.filter((item) => item.riskLevel === "high").length;
-  const urgentCount = products.filter(
-    (item) => item.daysUntilExpiry >= 0 && item.daysUntilExpiry <= 14,
-  ).length;
+  const urgentProducts = products
+    .filter((item) => item.daysUntilExpiry >= 0 && item.daysUntilExpiry <= 14)
+    .sort((a, b) => a.daysUntilExpiry - b.daysUntilExpiry || a.name.localeCompare(b.name));
+  const urgentCount = urgentProducts.length;
   const stagnantCount = products.filter(
     (item) => item.salesLast30Days === 0,
   ).length;
@@ -555,11 +559,12 @@ async function buildVendorExpiryInsights(organizationId: string) {
     criticalCount,
     highCount,
     urgentCount,
+    urgentProducts,
     stagnantCount,
     riskValue,
     highestRiskScore: products[0]?.riskScore ?? 0,
     recommendations,
-    products: products.slice(0, 5),
+    products,
   };
 }
 

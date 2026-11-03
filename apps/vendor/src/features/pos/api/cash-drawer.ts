@@ -3,7 +3,11 @@ import type {
   CashDrawerEventType,
   CashDrawerSummary,
 } from "../types/shift.types";
-import { assertNonEmptyString, sanitizeReceiptNote, toSafePositiveNumber } from "../utils/pos-security";
+import {
+  assertNonEmptyString,
+  sanitizeReceiptNote,
+  toSafePositiveNumber,
+} from "../utils/pos-security";
 import { posRequest } from "./_pos-client";
 
 type CashDrawerEventResponse = {
@@ -26,12 +30,14 @@ export function createCashDrawerEvent(payload: {
   type: CashDrawerEventType;
   amount?: number;
   note?: string;
+  requestId?: string;
 }): Promise<CashDrawerEventResponse> {
   return posRequest<CashDrawerEventResponse>("/pos/shifts/drawer-events", {
     method: "POST",
     body: {
       shiftId: assertNonEmptyString(payload.shiftId, "shiftId"),
       type: payload.type,
+      requestId: payload.requestId,
       amount:
         payload.type === "OPEN_DRAWER"
           ? 0

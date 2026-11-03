@@ -1,12 +1,7 @@
 "use client";
-import {
-  Banknote,
-  Loader2,
-  RefreshCw,
-  Printer,
-  PlusCircle,
-  MinusCircle,
-} from "lucide-react";
+import { Banknote, Loader2, RefreshCw, Printer, X } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { CashMovementForm } from "./CashMovementForm";
 import type {
   PosShift,
   CashDrawerSummary,
@@ -15,6 +10,7 @@ import type {
 import { formatMoney, formatDateTime } from "../utils/pos-display-format";
 
 interface Props {
+  onClose: () => void;
   shift: PosShift | null;
   drawerLoading: boolean;
   drawerEventSubmitting: boolean;
@@ -33,6 +29,7 @@ interface Props {
 }
 
 export function CashDrawerPanel({
+  onClose,
   shift,
   drawerLoading,
   drawerEventSubmitting,
@@ -49,20 +46,41 @@ export function CashDrawerPanel({
   setDrawerEventAmount,
   setDrawerEventNote,
 }: Props) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    dialog.current?.showModal();
+  }, []);
+  const currentSummary =
+    drawerSummary?.shift.id === shift?.id ? drawerSummary : null;
   return (
-    <div className="rounded-xl border border-emerald-200 bg-white p-3">
+    <dialog
+      ref={dialog}
+      aria-labelledby="cash-drawer-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!drawerEventSubmitting) onClose();
+      }}
+      className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-5xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 text-slate-900 shadow-2xl backdrop:bg-slate-950/45 backdrop:backdrop-blur-sm sm:p-6"
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-sm font-bold text-slate-900">Кассын шургуулга</h3>
+          <h3
+            id="cash-drawer-title"
+            className="text-lg font-bold text-slate-900"
+          >
+            Кассын бэлэн мөнгө
+          </h3>
           <p className="text-[11px] text-slate-500">
-            Орлого, зарлага, шургуулга нээх, тооллого болон тайлан
+            {shift
+              ? `${shift.branchName} · ${shift.registerName || "Касс"} · ${shift.cashierName}`
+              : "Орлого, зарлага болон үлдэгдлийн тайлан"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={refreshCashDrawerSummary}
-            disabled={!shift?.id || drawerLoading}
+            disabled={!shift?.id || drawerLoading || drawerEventSubmitting}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
           >
             {drawerLoading ? (
@@ -84,17 +102,29 @@ export function CashDrawerPanel({
           <button
             type="button"
             onClick={() => printCashDrawerReport()}
-            disabled={!drawerSummary}
+            disabled={!currentSummary || drawerLoading}
             className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
           >
             <Printer className="h-3.5 w-3.5" />
             Тайлан
           </button>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={drawerEventSubmitting}
+            aria-label="Хаах"
+            className="rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50"
+          >
+            <X size={20} />
+          </button>
         </div>
       </div>
 
       {drawerError && (
-        <div className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+        <div
+          role="alert"
+          className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700"
+        >
           {drawerError}
         </div>
       )}
@@ -106,19 +136,26 @@ export function CashDrawerPanel({
       ) : (
         <div className="mt-3 grid gap-3 xl:grid-cols-[1fr_0.9fr]">
           <div className="space-y-3">
+            {drawerLoading && (
+              <p role="status" className="text-xs text-slate-500">
+                Үлдэгдэл шинэчилж байна…
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
               {[
                 [
                   "Эхлэх мөнгө",
-                  drawerSummary?.openingCash ?? shift.openingCash,
+                  currentSummary?.openingCash ?? shift.openingCash,
                 ],
-                ["Бэлэн борлуулалт", drawerSummary?.cashSales ?? 0],
-                ["Орлого", drawerSummary?.paidIn ?? 0],
-                ["Зарлага", drawerSummary?.paidOut ?? 0],
-                ["Тооцоолсон", drawerSummary?.expectedCash ?? 0],
+                ["Бэлэн борлуулалт", currentSummary?.cashSales ?? null],
+                ["Орлого", currentSummary?.paidIn ?? null],
+                ["Зарлага", currentSummary?.paidOut ?? null],
+                ["Бэлэн үлдэгдэл", currentSummary?.expectedCash ?? null],
                 [
                   "Тоолсон",
-                  countedCashTotal || drawerSummary?.countedCash || 0,
+                  countedCashTotal > 0
+                    ? countedCashTotal
+                    : (currentSummary?.countedCash ?? null),
                 ],
               ].map(([label, value]) => (
                 <div
@@ -129,73 +166,37 @@ export function CashDrawerPanel({
                     {label}
                   </p>
                   <p className="mt-1 text-sm font-black text-slate-900">
-                    {formatMoney(Number(value))}
+                    {value === null ? "—" : formatMoney(Number(value))}
                   </p>
                 </div>
               ))}
             </div>
 
-            <div className="rounded-lg border border-slate-200 p-3">
-              <div className="mb-2 flex gap-2">
-                {(
-                  [
-                    ["PAID_IN", "Орлого", PlusCircle],
-                    ["PAID_OUT", "Зарлага", MinusCircle],
-                  ] as const
-                ).map(([type, label, Icon]) => {
-                  const selected = drawerEventType === type;
-                  return (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => setDrawerEventType(type)}
-                      className={`inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-bold ${
-                        selected
-                          ? "bg-slate-900 text-white"
-                          : "border border-slate-200 text-slate-600 hover:bg-slate-50"
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="grid gap-2 lg:grid-cols-[160px_1fr_120px]">
-                <input
-                  type="number"
-                  min="0"
-                  value={drawerEventAmount}
-                  onChange={(event) => setDrawerEventAmount(event.target.value)}
-                  placeholder="Дүн ₮"
-                  className="h-9 rounded-lg border border-slate-200 px-3 text-sm font-bold outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                />
-                <input
-                  value={drawerEventNote}
-                  onChange={(event) => setDrawerEventNote(event.target.value)}
-                  placeholder={
-                    drawerEventType === "PAID_IN"
-                      ? "Жишээ: нэмэлт задгай мөнгө"
-                      : "Жишээ: банканд тушаав"
-                  }
-                  className="h-9 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleCreateDrawerEvent()}
-                  disabled={drawerEventSubmitting || !shift?.id}
-                  className="h-9 rounded-lg bg-emerald-600 px-3 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-                >
-                  {drawerEventSubmitting ? "..." : "Бүртгэх"}
-                </button>
-              </div>
-            </div>
+            <p className="text-xs leading-5 text-slate-500">
+              Бэлэн үлдэгдэл = эхлэх мөнгө + бэлэн борлуулалт + нэмсэн бэлэн −
+              зарлага.
+            </p>
+            <CashMovementForm
+              type={drawerEventType}
+              amount={drawerEventAmount}
+              note={drawerEventNote}
+              expectedCash={currentSummary?.expectedCash ?? null}
+              disabled={drawerLoading || shift.status !== "OPEN"}
+              submitting={drawerEventSubmitting}
+              onTypeChange={setDrawerEventType}
+              onAmountChange={setDrawerEventAmount}
+              onNoteChange={setDrawerEventNote}
+              onSubmit={() => handleCreateDrawerEvent()}
+            />
           </div>
 
           <div className="max-h-[280px] overflow-y-auto overscroll-contain rounded-lg bg-slate-50 p-2">
-            {drawerSummary?.events.length ? (
+            <h4 className="mb-2 px-2 text-xs font-bold text-slate-700">
+              Ээлжийн бэлэн мөнгөний хөдөлгөөн
+            </h4>
+            {currentSummary?.events.length ? (
               <div className="space-y-1.5">
-                {drawerSummary.events.map((event) => (
+                {currentSummary.events.map((event) => (
                   <div
                     key={event.id}
                     className="flex items-start justify-between gap-2 rounded-md bg-white px-2 py-1.5 text-xs"
@@ -227,6 +228,6 @@ export function CashDrawerPanel({
           </div>
         </div>
       )}
-    </div>
+    </dialog>
   );
 }

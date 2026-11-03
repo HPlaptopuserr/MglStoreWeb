@@ -1,3 +1,4 @@
+import { vendorProductReadScope } from "../../../services/warehouse-product-scope";
 import { readCashPayment } from "@mgl/types";
 import { Router, type Router as ExpressRouter } from "express";
 import {
@@ -21,6 +22,7 @@ import {
   resolveOrgWarehouse,
 } from "../../../services/inventory.service";
 import { hasOrgMembership } from "../../../services/permission.service";
+import { WarehouseProductOwnershipError } from "../../../services/warehouse-product-ownership";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
@@ -64,6 +66,8 @@ import {
   SELF_SERVICE_TAKEAWAY_PACKAGING_SKU,
   toPosStoredStockQuantity,
 } from "@mgl/types";
+
+import { parseCashDrawerMovement, recordCashDrawerMovement } from "./cash-drawer-movement";
 
 const router: ExpressRouter = Router();
 const RESTAURANT_MENU_AVAILABLE_QTY = 999_999;
@@ -712,7 +716,9 @@ router.get("/pos/sales/history", async (req, res) => {
     const page = Math.max(1, Number(req.query.page || 1));
     const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
 
-    const where: Record<string, unknown> = { organizationId: effectiveOrgId };
+    const where: Prisma.PosSaleWhereInput = {
+      organizationId: effectiveOrgId,
+    };
     if (branchId) where.branchId = branchId;
     if (fromStr || toStr) {
       where.createdAt = {
@@ -1311,29 +1317,12 @@ router.post("/pos/credit-sales/pay-bulk", async (req, res) => {
         }
 
         if (paymentMethod === PaymentMethod.CASH && shiftId) {
-          const shift = await tx.posShift.findUnique({
-            where: { id: shiftId },
-          });
-          if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
-          if (shift.status !== ShiftStatus.OPEN)
-            throw toApiError(
-              409,
-              "Хаагдсан ээлж дээр бэлэн төлөлт бүртгэх боломжгүй",
-            );
-          if (shift.organizationId !== organizationId)
-            throw toApiError(400, "Ээлж байгууллага зөрүүтэй байна");
-          await tx.posCashDrawerEvent.create({
-            data: {
-              organizationId: shift.organizationId,
-              branchId: shift.branchId,
-              registerId: shift.registerId,
-              shiftId: shift.id,
-              cashierId: actor.id,
-              type: CashDrawerEventType.PAID_IN,
-              amount: paidAmount,
-              note: paymentNote || `Bulk credit payment ${creditSaleIds[0]}`,
-            },
-          });
+          await recordCashDrawerMovement(tx, actor, parseCashDrawerMovement({
+            shiftId,
+            type: CashDrawerEventType.PAID_IN,
+            amount: paidAmount,
+            note: paymentNote || `Bulk credit payment ${creditSaleIds[0]}`,
+          }), organizationId);
         }
 
         return Promise.all(
@@ -1565,29 +1554,12 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
         }
 
         if (paymentMethod === PaymentMethod.CASH && shiftId) {
-          const shift = await tx.posShift.findUnique({
-            where: { id: shiftId },
-          });
-          if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
-          if (shift.status !== ShiftStatus.OPEN)
-            throw toApiError(
-              409,
-              "Хаагдсан ээлж дээр бэлэн төлөлт бүртгэх боломжгүй",
-            );
-          if (shift.organizationId !== creditSale.organizationId)
-            throw toApiError(400, "Ээлж байгууллага зөрүүтэй байна");
-          await tx.posCashDrawerEvent.create({
-            data: {
-              organizationId: shift.organizationId,
-              branchId: shift.branchId,
-              registerId: shift.registerId,
-              shiftId: shift.id,
-              cashierId: actor.id,
-              type: CashDrawerEventType.PAID_IN,
-              amount: paidAmount,
-              note: paymentNote || `Credit payment ${creditSale.id}`,
-            },
-          });
+          await recordCashDrawerMovement(tx, actor, parseCashDrawerMovement({
+            shiftId,
+            type: CashDrawerEventType.PAID_IN,
+            amount: paidAmount,
+            note: paymentNote || `Credit payment ${creditSale.id}`,
+          }), creditSale.organizationId);
         }
 
         return tx.posCreditSale.update({
@@ -1774,6 +1746,20 @@ router.post("/pos/sales/:id/void", async (req, res) => {
 
     await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
+        // Serialize retries/concurrent void requests before validating status or
+        // restoring inventory and receipt lots. Use the fresh, locked sale.
+        await tx.$queryRaw`SELECT id FROM "PosSale" WHERE id=${saleId} FOR UPDATE`;
+        const sale = await tx.posSale.findUnique({
+          where: { id: saleId },
+          include: {
+            lines: true,
+            restaurantTicket: { select: { id: true, note: true } },
+          },
+        });
+        if (!sale) throw toApiError(404, "Борлуулалт олдсонгүй");
+        if (sale.status !== PosSaleStatus.COMPLETED || sale.voidedAt) {
+          throw toApiError(409, "Зөвхөн дууссан борлуулалтыг нэг удаа цуцлах боломжтой");
+        }
         const voidedAt = new Date();
 
         await tx.posSale.update({
@@ -1863,6 +1849,9 @@ router.post("/pos/sales/:id/void", async (req, res) => {
     res.status(200).json({ ok: true, message: "Буцаалт амжилттай хийгдлээ" });
   } catch (error) {
     console.error("void sale error", error);
+    if (error instanceof WarehouseProductOwnershipError) {
+      return res.status(409).json({ message: error.message });
+    }
     const maybeApiError = error as Partial<ApiError>;
     if (maybeApiError?.status && maybeApiError?.message) {
       return res

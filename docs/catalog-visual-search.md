@@ -43,35 +43,71 @@ Every response carries `Cache-Control: no-store` and a generated `X-Request-Id`.
 
 ## Encoder and concurrency
 
-- Pinned `Xenova/clip-vit-base-patch32`, revision `d15189d7028b43f1d3e65039190477f6af591c2a`, q8/512 dimensions. Model downloads are allowed only during indexing; API requests use the local cache.
+- Pinned `Xenova/clip-vit-base-patch32`, revision `d15189d7028b43f1d3e65039190477f6af591c2a`, q8/512 dimensions. Production cold starts may download the pinned model weights into a local cache. This does not read or re-embed catalog images. Offline file mode only downloads during explicit indexing.
 - The 0.70 cosine threshold remains an **uncalibrated baseline**, not confidence or exact-SKU proof.
 - At most five buffered requests and one active inference. Four waiting inferences, FIFO, maximum two-second queue wait; overflow/deadline returns 429. Waiting cancellations remove their queued work. Active native inference finishes safely; a cancelled request is discarded before further catalog work.
 - All candidates are checked in bounded database batches; the old first-1,000-ID eligibility cutoff is gone. This is exact in-memory retrieval, not a distributed ANN service. Large-catalog latency still needs measurement.
 - No shopper images are saved server-side or sent to external model providers. No photo bytes, embeddings or signed URLs are logged.
 
-## Index lifecycle
+## Production index lifecycle (2026-10-28)
 
-Snapshot schema 2 adds `contentHash` and `embeddingVersion` (model revision, quantization and preprocessing). Schema 1 and mismatched processing versions are rejected; rebuild during upgrade.
+Production defaults to `VISUAL_SEARCH_INDEX_STORE=database`. Apply migration
+`20261028002000_visual_search_embeddings` before starting this version. Vectors,
+model version, content/source hashes, leases and retry state persist in Postgres.
+No catalog indexing command belongs in Render's build or pre-deploy command.
 
-Run from `apps/api`:
+The API worker checks public catalog image metadata every 30 seconds, including
+images created by imports and every product route. It downloads and encodes only
+missing, replaced or model-incompatible images. Unchanged images are neither
+fetched nor encoded. A pass processes at most 20 images within a five-second work
+budget; large import batches drain across successive passes. Actual lag depends
+on backlog, image delivery, model cold start and concurrent shopper requests.
+Inference uses the existing bounded queue; no new paid service is provisioned.
+
+Per-image database leases coordinate replicas and expire after two minutes if a
+process dies. Completion checks the lease token and current image URL. Failures
+back off for 15 minutes, retaining completed images. Deleting a ProductImage
+cascades its vector; explicitly updating its URL invalidates the vector via a
+trigger, including a same-URL rewrite. Storage objects must use immutable unique
+names: silently overwriting object bytes without updating ProductImage cannot
+be detected by metadata polling.
+
+Snapshots reload only after a cheap revision check detects changes (15-second
+cache), or after five minutes to reconcile catalog visibility. Partial coverage
+is reported while new images await processing. Existing response-time product
+publication and image identity checks remain mandatory. Restarting or deploying
+loads saved vectors; it does not recompute them.
+
+For the one-time cutover, preserve the current `index.json` before removing the
+old build step, apply the additive migration, and import its validated entries:
 
 ```sh
-pnpm visual-search:index
+# From apps/api, while the existing file is still available:
+node dist/scripts/import-visual-index.js
 ```
 
-Each reconciliation fetches current catalog image bytes, including unchanged URLs. Unchanged content reuses embeddings; changed bytes re-encode automatically. `-- --force` re-encodes everything. Transient storage failures retry twice with bounded backoff; permanent failures do not retry. Only configured Supabase storage and `https://mglstore.mn/mgl-water/` are allowed; redirects/arbitrary hosts stay rejected.
+The import is idempotent and only imports currently public, matching image IDs
+and source hashes. It does not download images or run inference. Keep the existing
+file until readiness and a real image-query smoke test succeed. If the new worker
+is unavailable, pending images remain discoverable from the catalog on restart.
+`VISUAL_SEARCH_ENABLED=false` is still the kill switch. Rolling back to file mode
+requires a compatible saved snapshot; it must not silently trigger a rebuild.
 
-`build.lock` prevents overlapping builders. A crashed builder may leave a lock: confirm that its recorded PID is no longer running before manually removing it. A candidate covering <95% of eligible products is rejected, retaining the active snapshot. A genuinely empty catalog is a valid snapshot. Validate the complete snapshot before atomic rename; retain one compatible `index.json.previous` for rollback. The API reloads on path/inode/mtime/size changes.
+### Offline/local file snapshots
 
-A failed-image or >24-hour-old snapshot returns `partial`. This is **not** live catalog coverage: new products and mutable-URL changes wait for reconciliation. Publication and image URL/ID changes are checked at response time. Scheduled refresh, exact live coverage and update-lag telemetry are still required before broad release.
+Use `VISUAL_SEARCH_INDEX_STORE=file` for evaluation and local previews. The
+explicit `pnpm visual-search:index` command retains content-hash reconciliation,
+95% coverage protection, the filesystem lock and atomic snapshot replacement.
+It fetches the whole eligible catalog and is intentionally an operator command,
+not part of deployment. Schema 2 and model/preprocessing compatibility validation
+still apply to both storage modes.
 
 ## Local activation and deployment boundary
 
 - Install with the existing lockfile; Transformers shares the API's Sharp version. Flutter adds `camera` 0.12.1 and `photo_manager` 3.12.0. Camera audio is disabled. Native permissions cover the camera and images; no microphone, video-library or media-location access is requested.
 - `VISUAL_SEARCH_CACHE_DIR` selects a private absolute cache directory; otherwise `.cache/visual-search` under the API working directory. Configure `SUPABASE_URL` for catalog image storage.
 - `VISUAL_SEARCH_ENABLED=true` enables the feature. **Explicit `false` always disables it**, even with `MGL_LOCAL_DEV=true`. With no explicit setting, local development enables it.
-- The development index has been rebuilt to schema 2. No DB migration, remote deployment, production environment change or scheduler was created.
-- Current inference runs in the API process. Before broad production use, move it behind a private worker boundary and load immutable versioned model/index artifacts from private storage. Measure peak native RSS, cold starts, load, cancellation and index swaps.
+- Current bounded inference and reconciliation run in the API process. Measure peak native RSS, cold starts, upload backlog, search latency and concurrency before increasing traffic; a dedicated worker can be introduced when measurements justify its additional compute cost.
 - Render disks cannot be shared between services or accessed by cron jobs. Do not deploy an API and a separate Render cron assuming a common filesystem. Build/version/upload the artifact, then download/validate/swap it in the inference service.
 - Roll back with `VISUAL_SEARCH_ENABLED=false`. For index-only rollback, stop the builder, validate/copy a compatible `index.json.previous` through an atomic temporary rename, then recheck readiness. Model/preprocessing and snapshot must roll back together.
 

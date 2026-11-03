@@ -1,0 +1,165 @@
+.page {
+  max-width: 680px;
+  margin: auto;
+  padding: 28px 20px;
+  color: #102b50;
+}
+.heading {
+  margin-bottom: 24px;
+}
+.heading p {
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  font-weight: 800;
+  color: #506987;
+}
+.heading h1 {
+  font-size: 30px;
+  font-weight: 750;
+  margin: 9px 0;
+  letter-spacing: -1px;
+}
+.heading > span {
+  font-size: 14px;
+  color: #60738d;
+}
+.identity {
+  position: relative;
+  padding: 26px;
+  border: 1px solid #dfe7f2;
+  background: linear-gradient(140deg, #fff, #eef4fe);
+  border-radius: 24px;
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 22px;
+  background: #0e3672;
+  color: white;
+  font-size: 26px;
+  font-weight: 700;
+}
+.badge {
+  display: block;
+  margin-top: 20px;
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  color: #536e91;
+  font-weight: 700;
+}
+.identity h2 {
+  font-size: 23px;
+  font-weight: 700;
+  margin: 12px 0;
+  line-height: 1.4;
+}
+.identity p {
+  font-size: 14px;
+  color: #5c718b;
+  line-height: 1.8;
+}
+.primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 22px;
+  background: #103974;
+  color: #fff;
+  border-radius: 14px;
+  min-height: 50px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.primary:hover {
+  background: #1a4f99;
+}
+.details {
+  margin-top: 20px;
+  display: grid;
+  gap: 14px;
+}
+.details div {
+  display: flex;
+  gap: 15px;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  font-size: 14px;
+}
+.details dt {
+  color: #657a96;
+}
+.details dd {
+  overflow-wrap: anywhere;
+}
+.actions {
+  margin-top: 20px;
+  background: white;
+  border: 1px solid #dfe7f2;
+  border-radius: 22px;
+  overflow: hidden;
+}
+.actions a {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 20px;
+}
+.actions a + a {
+  border-top: 1px solid #e6edf7;
+}
+.actions a > span {
+  flex: 1;
+  min-width: 0;
+}
+.actions b {
+  display: block;
+  font-size: 14px;
+}
+.actions small {
+  display: block;
+  font-size: 12px;
+  color: #667c98;
+  margin-top: 7px;
+  line-height: 1.6;
+}
+.actions a:hover {
+  background: #eef4fc;
+}
+.note {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 20px 4px;
+  font-size: 12px;
+  line-height: 1.9;
+  color: #62748c;
+}
+.note svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+.signOut {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  width: 100%;
+  border: 1px solid #dce5f1;
+  border-radius: 14px;
+  color: #6b4d53;
+  background: white;
+  font-size: 13px;
+  cursor: pointer;
+}
+.skeleton {
+  height: 200px;
+  border-radius: 24px;
+  background: #e2eaf5;
+  margin-bottom: 20px;
+}

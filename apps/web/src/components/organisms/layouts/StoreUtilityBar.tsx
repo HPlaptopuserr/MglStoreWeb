@@ -15,9 +15,15 @@ const utilityLinks: readonly UtilityLink[] = [
 
 interface StoreUtilityBarProps {
   containerClassName?: string;
+  showCart?: boolean;
+  cartHref?: string;
+  ordersHref?: string;
 }
 
 export function StoreUtilityBar({
+  showCart = true,
+  cartHref = "/checkout",
+  ordersHref = "/orders",
   containerClassName = "container mx-auto px-3 sm:px-4",
 }: StoreUtilityBarProps) {
   return (
@@ -35,23 +41,31 @@ export function StoreUtilityBar({
           <span>Монгол</span>
         </div>
 
-        <nav aria-label="Хэрэглэгчийн туслах цэс" className="flex items-center gap-3 sm:gap-5">
+        <nav
+          aria-label="Хэрэглэгчийн туслах цэс"
+          className="flex items-center gap-3 sm:gap-5"
+        >
           {utilityLinks.map((item) => (
             <Link
               key={item.href}
-              href={item.href}
+              href={item.href === "/orders" ? ordersHref : item.href}
               className={`${item.hideOnSmallScreen ? "hidden sm:inline" : ""} whitespace-nowrap transition-colors hover:text-orange-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400`}
             >
               {item.label}
             </Link>
           ))}
-          <Link
-            href="/checkout"
-            className="inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-orange-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
-          >
-            <ShoppingCart className="h-3.5 w-3.5 text-orange-500" aria-hidden="true" />
-            Сагс
-          </Link>
+          {showCart && (
+            <Link
+              href={cartHref}
+              className="inline-flex items-center gap-1 whitespace-nowrap transition-colors hover:text-orange-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
+            >
+              <ShoppingCart
+                className="h-3.5 w-3.5 text-orange-500"
+                aria-hidden="true"
+              />
+              Сагс
+            </Link>
+          )}
         </nav>
       </div>
     </div>

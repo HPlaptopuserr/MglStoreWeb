@@ -1,4 +1,5 @@
 export interface DispatchDestination {
+  storeName: string;
   address: string;
   recipientName: string;
   recipientPhone: string;
@@ -7,6 +8,7 @@ export interface DispatchDestination {
 }
 
 export interface DispatchAddressSuggestion {
+  storeName?: string | null;
   address: string;
   recipientName: string | null;
   recipientPhone: string | null;

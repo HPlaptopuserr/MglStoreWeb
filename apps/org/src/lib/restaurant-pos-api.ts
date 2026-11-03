@@ -23,6 +23,7 @@ export function getRestaurantMenuClassificationCode(mode: unknown) {
 
 export type RestaurantPosRegister = {
   id: string;
+  mode: "RETAIL" | "RESTAURANT" | "SELF_SERVICE";
   name: string;
   label: string | null;
   branchId: string;
@@ -130,7 +131,27 @@ export type CafeDailyStockResponse = {
   }>;
 };
 
+export type CafeRegularCustomer = {
+  id: string;
+  profileType: "REGULAR_CUSTOMER" | "EMPLOYEE";
+  name: string;
+  phone: string;
+  normalizedPhone: string;
+  discountPercent: number;
+  isActive: boolean;
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  saleCount: number;
+};
+
+export type CafeRegularCustomerLookup =
+  | { found: false; phone: string }
+  | { found: true; customer: CafeRegularCustomer };
+
 export type RestaurantTicketLine = {
+  applyDiscount?: boolean;
+  discountPercent?: number;
   id: string;
   productId: string;
   name: string;
@@ -174,6 +195,83 @@ export type RestaurantTicket = {
   }>;
 };
 
+export type RestaurantMealContract = {
+  id: string;
+  organizationId: string;
+  customerOrganization: string;
+  customerRegisterNo: string | null;
+  startDate: string;
+  endDate: string;
+  status: "ACTIVE" | "INACTIVE";
+  activeNow: boolean;
+  pinConfigured: boolean;
+  note: string | null;
+  chargeCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RestaurantMealContractOption = {
+  id: string;
+  customerOrganization: string;
+  customerRegisterNo: string | null;
+  endDate: string;
+};
+
+export type RestaurantMealVerification = {
+  contract: {
+    id: string;
+    customerOrganization: string;
+    endDate: string;
+  };
+};
+
+export type RestaurantMealCheckoutResult = {
+  id: string;
+  ticketId: string;
+  ticketNo: string;
+  amount: number;
+  packagingFee: number;
+  orderedAt: string;
+  companyName: string;
+};
+
+export type RestaurantMealReport = {
+  from: string;
+  to: string;
+  orderCount: number;
+  total: number;
+  companies: Array<{
+    contractId: string;
+    companyName: string;
+    registerNo: string | null;
+    orderCount: number;
+    total: number;
+  }>;
+  charges: Array<{
+    id: string;
+    contractId: string;
+    companyName: string;
+    registerNo: string | null;
+    branchId: string;
+    branchName: string;
+    ticketNo: string;
+    orderMode: "DINE_IN" | "TO_GO" | "DELIVERY";
+    amount: number;
+    packagingFee: number;
+    orderedAt: string;
+    note: string | null;
+    items: Array<{
+      id: string;
+      productId: string;
+      productName: string;
+      qty: number;
+      unitPrice: number;
+      lineTotal: number;
+    }>;
+  }>;
+};
+
 export type RestaurantDiningTable = {
   id: string;
   code: string;
@@ -192,6 +290,16 @@ export type RestaurantMenuCategory = {
   name: string;
   sortOrder: number;
   productCount: number;
+};
+
+export type RestaurantDiscountSchedule = {
+  organizationId: string;
+  isEnabled: boolean;
+  percent: number;
+  startTime: string;
+  endTime: string;
+  timeZone: string;
+  isActive: boolean;
 };
 
 export type RestaurantPublicMenuProduct = {
@@ -326,6 +434,11 @@ export type KitchenTicketStatus =
   | "SERVED"
   | "CANCELLED";
 
+export type RestaurantKitchenBranch = {
+  id: string;
+  name: string;
+};
+
 export type RestaurantKitchenTicket = {
   id: string;
   kitchenTicketNo: string;
@@ -370,6 +483,7 @@ type CreateRestaurantCashSalePayload = {
   restaurantTicketId: string;
   total: number;
   packagingFee?: number;
+  regularCustomerPhone?: string;
   note: string;
   lines: Array<{
     productId: string;
@@ -457,7 +571,25 @@ async function readApiResponse<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
-export async function getRestaurantPosRegisters() {
+export async function getRestaurantPosRegisters(
+  mode: "RESTAURANT" | "SELF_SERVICE" = "RESTAURANT",
+) {
+  const response = await authFetch(`${API}/pos/registers/mine?mode=${mode}`, {
+    cache: "no-store",
+  });
+  const preferredRegisters =
+    await readApiResponse<RestaurantPosRegister[]>(response);
+  if (preferredRegisters.length > 0) return preferredRegisters;
+
+  const compatibleMode = mode === "RESTAURANT" ? "SELF_SERVICE" : "RESTAURANT";
+  const compatibleResponse = await authFetch(
+    `${API}/pos/registers/mine?mode=${compatibleMode}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantPosRegister[]>(compatibleResponse);
+}
+
+export async function getAllRestaurantPosRegisters() {
   const response = await authFetch(`${API}/pos/registers/mine`, {
     cache: "no-store",
   });
@@ -631,9 +763,12 @@ export async function chargeRestaurantClientBridge(input: {
 }
 
 export async function getCurrentRestaurantPosShift() {
-  const response = await authFetch(`${API}/pos/shifts/current`, {
-    cache: "no-store",
-  });
+  const response = await authFetch(
+    `${API}/pos/shifts/current?mode=RESTAURANT`,
+    {
+      cache: "no-store",
+    },
+  );
   return readApiResponse<PosShift | null>(response);
 }
 
@@ -641,7 +776,7 @@ export async function openRestaurantPosShift(input: {
   branchId: string;
   registerId?: string;
   openingCash: number;
-  source?: "SELF_SERVICE";
+  source?: "RESTAURANT" | "SELF_SERVICE";
 }) {
   const response = await authFetch(`${API}/pos/shifts/open`, {
     method: "POST",
@@ -688,6 +823,7 @@ export async function getRestaurantShiftHistory(
   signal?: AbortSignal,
 ) {
   const params = new URLSearchParams();
+  params.set("mode", "RESTAURANT");
   if (input.branchId) params.set("branchId", input.branchId);
   if (input.status) params.set("status", input.status);
   if (input.from) params.set("from", input.from);
@@ -776,14 +912,68 @@ export async function createCafeDailyStockReceipt(input: {
   return readApiResponse<CafeDailyStockResponse>(response);
 }
 
-export async function voidCafeDailyStockReceipt(input: {
-  receiptId: string;
-}) {
+export async function voidCafeDailyStockReceipt(input: { receiptId: string }) {
   const response = await authFetch(
     `${API}/restaurant/pos/cafe-daily-stock/receipts/${encodeURIComponent(input.receiptId)}`,
     { method: "DELETE" },
   );
   return readApiResponse<CafeDailyStockResponse>(response);
+}
+
+export async function getCafeRegularCustomers(input: {
+  organizationId: string;
+  search?: string;
+}) {
+  const params = new URLSearchParams({ organizationId: input.organizationId });
+  if (input.search?.trim()) params.set("search", input.search.trim());
+  const response = await authFetch(
+    `${API}/pos/cafe-regular-customers?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<{
+    customers: CafeRegularCustomer[];
+    total: number;
+  }>(response);
+}
+
+export async function lookupCafeRegularCustomer(input: {
+  organizationId: string;
+  phone: string;
+}) {
+  const response = await authFetch(`${API}/pos/cafe-regular-customers/lookup`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<CafeRegularCustomerLookup>(response);
+}
+
+export async function createCafeRegularCustomer(input: {
+  organizationId: string;
+  name: string;
+  phone: string;
+  discountPercent: number;
+}) {
+  const response = await authFetch(`${API}/pos/cafe-regular-customers`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<CafeRegularCustomer>(response);
+}
+
+export async function updateCafeRegularCustomer(
+  customerId: string,
+  input: Partial<
+    Pick<CafeRegularCustomer, "name" | "phone" | "discountPercent" | "isActive">
+  >,
+) {
+  const response = await authFetch(
+    `${API}/pos/cafe-regular-customers/${encodeURIComponent(customerId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
+  return readApiResponse<CafeRegularCustomer>(response);
 }
 
 export async function getRestaurantMenuCategories(organizationId: string) {
@@ -793,6 +983,29 @@ export async function getRestaurantMenuCategories(organizationId: string) {
     { cache: "no-store" },
   );
   return readApiResponse<RestaurantMenuCategory[]>(response);
+}
+
+export async function getRestaurantDiscountSchedule(organizationId: string) {
+  const params = new URLSearchParams({ organizationId });
+  const response = await authFetch(
+    `${API}/restaurant/pos/discount-schedule?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantDiscountSchedule>(response);
+}
+
+export async function updateRestaurantDiscountSchedule(input: {
+  organizationId: string;
+  isEnabled: boolean;
+  percent: number;
+  startTime: string;
+  endTime: string;
+}) {
+  const response = await authFetch(`${API}/restaurant/pos/discount-schedule`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<RestaurantDiscountSchedule>(response);
 }
 
 export async function createRestaurantMenuCategory(input: {
@@ -826,6 +1039,136 @@ export async function deleteRestaurantMenuCategory(id: string) {
     { method: "DELETE" },
   );
   return readApiResponse<{ ok: true; detachedProducts: number }>(response);
+}
+
+export async function getRestaurantMealContracts(organizationId: string) {
+  const params = new URLSearchParams({ organizationId });
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/contracts?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantMealContract[]>(response);
+}
+
+export async function getRestaurantMealContractOptions(branchId: string) {
+  const params = new URLSearchParams({ branchId });
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/options?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantMealContractOption[]>(response);
+}
+
+export async function createRestaurantMealContract(input: {
+  organizationId: string;
+  customerOrganization: string;
+  customerRegisterNo?: string;
+  startDate: string;
+  endDate: string;
+  pin: string;
+  note?: string;
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/contracts`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return readApiResponse<RestaurantMealContract>(response);
+}
+
+export async function updateRestaurantMealContract(input: {
+  id: string;
+  customerOrganization?: string;
+  customerRegisterNo?: string | null;
+  startDate?: string;
+  endDate?: string;
+  status?: "ACTIVE" | "INACTIVE";
+  pin?: string;
+  note?: string | null;
+}) {
+  const { id, ...body } = input;
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/contracts/${encodeURIComponent(id)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    },
+  );
+  return readApiResponse<RestaurantMealContract>(response);
+}
+
+export async function verifyRestaurantMealContract(input: {
+  branchId: string;
+  contractId: string;
+  pin: string;
+}) {
+  const response = await authFetch(`${API}/restaurant/contract-meals/verify`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return readApiResponse<RestaurantMealVerification>(response);
+}
+
+export async function checkoutRestaurantContractMeal(input: {
+  branchId: string;
+  shiftId: string;
+  ticketId: string;
+  clientRequestId: string;
+  contractId: string;
+  pin: string;
+  note?: string;
+}) {
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/checkout`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return readApiResponse<RestaurantMealCheckoutResult>(response);
+}
+
+export async function getRestaurantMealReport(input: {
+  organizationId: string;
+  from: string;
+  to: string;
+  contractId?: string;
+}) {
+  const params = new URLSearchParams({
+    organizationId: input.organizationId,
+    from: input.from,
+    to: input.to,
+  });
+  if (input.contractId) params.set("contractId", input.contractId);
+  const response = await authFetch(
+    `${API}/restaurant/contract-meals/report?${params.toString()}`,
+    { cache: "no-store" },
+  );
+  return readApiResponse<RestaurantMealReport>(response);
+}
+
+export interface CreateRestaurantCreditCustomerInput {
+  organizationId: string;
+  targetType: "CUSTOMER";
+  borrowerName: string;
+  borrowerPhone: string;
+  borrowerEmail?: string;
+  borrowerAddress?: string;
+  workplace?: string;
+  department?: string;
+  jobTitle?: string;
+}
+
+export async function createRestaurantCreditCustomer(input: CreateRestaurantCreditCustomerInput) {
+  const response = await authFetch(`${API}/pos/credit-customers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const payload = await readApiResponse<{ customer: PosCreditBorrower }>(response);
+  return payload.customer;
 }
 
 export async function getRestaurantCreditCustomers(
@@ -1026,7 +1369,7 @@ export async function createPublicRestaurantOrder(
   token: string,
   input: {
     note?: string;
-    lines: Array<{ productId: string; qty: number; note?: string }>;
+    lines: Array<{ productId: string; qty: number; note?: string; applyDiscount?: boolean; discountPercent?: number }>;
   },
 ) {
   const response = await fetch(
@@ -1071,7 +1414,7 @@ export async function createPublicRestaurantQPayInvoice(
   token: string,
   input: {
     note?: string;
-    lines: Array<{ productId: string; qty: number; note?: string }>;
+    lines: Array<{ productId: string; qty: number; note?: string; applyDiscount?: boolean; discountPercent?: number }>;
   },
 ) {
   const response = await fetch(
@@ -1104,7 +1447,7 @@ export async function saveRestaurantTicket(input: {
   source?: "SELF_SERVICE";
   orderMode: "DINE_IN" | "TO_GO" | "DELIVERY";
   note?: string;
-  lines: Array<{ productId: string; qty: number; note?: string }>;
+  lines: Array<{ productId: string; qty: number; note?: string; applyDiscount?: boolean; discountPercent?: number }>;
 }) {
   const response = await authFetch(`${API}/restaurant/pos/tickets`, {
     method: "POST",
@@ -1148,6 +1491,13 @@ export async function cancelRestaurantTicketItem(input: {
     },
   );
   return readApiResponse<RestaurantTicket | null>(response);
+}
+
+export async function getRestaurantKitchenBranches() {
+  const response = await authFetch(`${API}/restaurant/pos/kitchen-branches`, {
+    cache: "no-store",
+  });
+  return readApiResponse<RestaurantKitchenBranch[]>(response);
 }
 
 export async function getRestaurantKitchenTickets(branchId: string) {
@@ -1258,6 +1608,9 @@ async function createRestaurantSale(input: CreateRestaurantSalePayload) {
       loyalty: { mode: "NONE" },
       lines: input.lines,
       packagingFee: input.packagingFee || 0,
+      ...(input.regularCustomerPhone
+        ? { regularCustomerPhone: input.regularCustomerPhone }
+        : {}),
       note: input.note,
     }),
   });

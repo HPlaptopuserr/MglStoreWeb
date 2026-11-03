@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { prisma, Capability } from "@mgl/database";
-import { Permission, isFullAdmin } from "@mgl/types";
+import { Permission, isFullAdmin, isKitchenOnlyMember } from "@mgl/types";
 import type { AuthPayload } from "../middleware/auth";
 
 // ─── Role → Permission mapping ─────────────────────────────────────────
@@ -58,6 +58,7 @@ const CAPABILITY_PERMISSIONS: Record<string, Permission[]> = {
 
 export function buildPermissionSet(role: string, capabilities: string[]): Set<Permission> {
   const perms = new Set<Permission>();
+  if (isKitchenOnlyMember({ orgRole: role, capabilities })) return perms;
   for (const p of ORG_ROLE_PERMISSIONS[role] || []) perms.add(p);
   for (const cap of capabilities) {
     for (const p of CAPABILITY_PERMISSIONS[cap] || []) perms.add(p);

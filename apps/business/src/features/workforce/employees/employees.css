@@ -1,0 +1,829 @@
+.wf-employee-scope {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #566bb04d;
+  border-radius: 12px;
+  background: #687fe710;
+  color: #c7d2fe;
+}
+.wf-employee-scope > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.wf-employee-scope strong {
+  font-size: 13px;
+  line-height: 1.5;
+}
+.wf-employee-scope p {
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 7px 0 0;
+  color: #b6bfd8;
+}
+.wf-employee-fields,
+.wf-employee-section {
+  display: grid;
+  gap: 18px;
+  min-width: 0;
+}
+.wf-employee-section {
+  border-top: 1px solid #343d55;
+  padding-top: 20px;
+}
+.wf-employee-section h3 {
+  font-size: 14px;
+  margin: 0;
+  color: #e1e7fa;
+}
+.wf-employee-account {
+  display: grid;
+  gap: 7px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: #0e1424;
+  overflow-wrap: anywhere;
+}
+.wf-employee-account span {
+  font-size: 10px;
+  letter-spacing: 0.5px;
+  color: #a7b1cc;
+}
+.wf-employee-account strong {
+  font-size: 13px;
+}
+.wf-employee-account small {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #9da9c4;
+}
+.wf-department-hint {
+  color: #b2c5ff;
+}
+.wf-employee-section .wf-form-grid {
+  min-width: 0;
+}
+.wf-employee-section .wf-field {
+  min-width: 0;
+}
+.wf-employee-section input,
+.wf-employee-section select {
+  min-height: 42px;
+}
+.wf-employee-section input:hover,
+.wf-employee-section textarea:hover {
+  border-color: #7884ad;
+}
+.wf-employee-section :focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 2px;
+}
+@media (max-width: 560px) {
+  .wf-employee-section .wf-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .wf-employee-scope {
+    padding: 12px;
+    gap: 9px;
+  }
+}
+
+.wf-department-picker {
+  display: grid;
+  gap: 10px;
+}
+.wf-department-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.wf-department-suggestions button {
+  font-size: 11px;
+  padding: 6px 10px;
+  border-radius: 20px;
+  background: #657cbd12;
+  border: 1px solid #53679e66;
+  color: #c7d5ff;
+  white-space: normal;
+  text-align: left;
+  transition: background 0.15s;
+}
+.wf-department-suggestions button:hover,
+.wf-department-suggestions button[aria-pressed="true"] {
+  background: #647fea35;
+  border-color: #879eef;
+}
+.wf-department-picker > small {
+  font-size: 11px;
+  line-height: 1.6;
+}
+@media (prefers-reduced-motion: reduce) {
+  .wf-department-suggestions button {
+    transition: none;
+  }
+}
+.wf-employee-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.wf-employee-row:hover,
+.wf-employee-row:focus-within {
+  background: #8299ff0d;
+}
+.wf .wf-employee-name {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--wf-text);
+  font-weight: 700;
+  text-align: left;
+  white-space: normal;
+  line-height: 1.5;
+}
+.wf .wf-employee-name:hover {
+  background: transparent;
+  color: #b9c9ff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.wf .wf-employee-name:focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 5px;
+}
+.wf .wf-employee-avatar {
+  position: relative;
+  overflow: hidden;
+  width: 36px;
+  height: 36px;
+}
+.wf-employee-avatar img {
+  object-fit: cover;
+}
+.wf .wf-employee-avatar-large {
+  width: 96px;
+  height: 96px;
+  font-size: 32px;
+  border-radius: 24px;
+  box-shadow: 0 8px 30px #0003;
+}
+
+/* Employee popups: compact identity, quick contacts and focused information panels. */
+.wf-dialog.wf-employee-dialog {
+  width: min(860px, calc(100vw - 40px));
+  border-radius: 22px;
+  border-color: #465071;
+  background: #141a2b;
+  box-shadow: 0 32px 120px #02061499;
+  animation: wf-profile-enter 0.2s ease-out;
+}
+.wf-employee-dialog::backdrop {
+  background: #040815bf;
+  backdrop-filter: blur(8px);
+}
+.wf-employee-dialog form > header {
+  padding: 20px 26px;
+  background: #171e30;
+  border-color: #ffffff0d;
+  gap: 20px;
+}
+.wf-employee-dialog .wf-dialog-heading h2 {
+  font-size: 17px;
+  letter-spacing: -0.3px;
+  margin: 0;
+}
+.wf-employee-dialog .wf-dialog-heading p {
+  font-size: 11px;
+  color: #95a3c1;
+  margin: 5px 0 0;
+}
+.wf-employee-dialog form > header > button {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: #ffffff05;
+  border-color: #ffffff10;
+}
+.wf-employee-dialog form > header > button:hover {
+  background: #ffffff0d;
+  border-color: #8d9bbc;
+}
+.wf-employee-dialog .wf-dialog-body {
+  padding: 22px 26px;
+  gap: 16px;
+  scrollbar-gutter: stable;
+}
+.wf-employee-dialog form > footer {
+  padding: 16px 26px;
+  align-items: center;
+  background: #171e30;
+  border-color: #ffffff0d;
+  gap: 10px;
+}
+.wf-employee-dialog form > footer > button {
+  min-height: 42px;
+  border-radius: 11px;
+  padding: 10px 18px;
+}
+.wf-employee-dialog form > footer > .wf-primary {
+  background: #a1a5ff;
+  color: #11132c;
+  border-color: #a1a5ff;
+  box-shadow: 0 3px 12px #898aff14;
+}
+.wf-employee-dialog form > footer > .wf-primary:hover {
+  background: #b8baff;
+  border-color: #b8baff;
+}
+.wf-profile-footer-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: auto;
+  color: #a0aec8;
+  font-size: 11px;
+}
+.wf-employee-dialog :focus-visible {
+  outline: 2px solid #b7baff;
+  outline-offset: 3px;
+}
+.wf-employee-profile-hero {
+  position: relative;
+  display: flex;
+  gap: 22px;
+  align-items: center;
+  min-width: 0;
+  padding: 18px 22px;
+  border: 1px solid #9faeff1f;
+  border-radius: 17px;
+  background:
+    radial-gradient(ellipse at 100% 0%, #747be023, transparent 65%),
+    linear-gradient(120deg, #202942, #1a2136);
+}
+.wf-employee-profile-hero > div {
+  min-width: 0;
+}
+.wf .wf-employee-profile-hero h3 {
+  font-size: 27px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.6px;
+  margin: 6px 0;
+  overflow-wrap: anywhere;
+}
+.wf-employee-profile-hero p {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: #bdc8df;
+}
+.wf-employee-profile-hero .wf-employee-avatar-large {
+  width: 88px;
+  height: 88px;
+  border-radius: 23px;
+  border: 3px solid #cad2ff22;
+  box-shadow: 0 8px 24px #0002;
+}
+.wf-profile-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.wf-profile-code {
+  color: #acb9d3;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+}
+.wf-employee-company {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 0 3px;
+  color: #e3e9f8;
+}
+.wf-profile-company-icon {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #ffffff0d;
+  border-radius: 11px;
+  color: #b4b9f6;
+  background: #ffffff04;
+  flex-shrink: 0;
+}
+.wf-employee-company > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.wf-employee-company small {
+  font-size: 10px;
+  color: #95a3c1;
+}
+.wf-employee-company strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.wf-profile-company-divider {
+  color: #606e8e;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+.wf-profile-department {
+  font-size: 12px;
+  color: #bbc6dc;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.wf-profile-contact-actions {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 10px;
+}
+.wf-profile-contact-actions > a,
+.wf-profile-contact-actions > div {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  border-radius: 12px;
+  border: 1px solid #ffffff0b;
+  padding: 12px 14px;
+  background: #ffffff03;
+  color: #b4c1e5;
+  text-decoration: none;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.wf-profile-contact-actions > a:hover {
+  background: #a3b3ff0c;
+  border-color: #a3b3ff4d;
+}
+.wf-profile-contact-actions > a > svg,
+.wf-profile-contact-actions > div > svg {
+  flex-shrink: 0;
+}
+.wf-profile-contact-actions span {
+  flex: 1;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.wf-profile-contact-actions small {
+  font-size: 10px;
+  color: #9eacc8;
+}
+.wf-profile-contact-actions strong {
+  font-size: 12px;
+  color: #e4eafa;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wf-profile-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  border: 1px solid #ffffff0b;
+  background: #0e1423;
+  border-radius: 12px;
+  padding: 5px;
+}
+.wf-profile-tabs:has(> :only-child) {
+  grid-template-columns: 1fr;
+}
+.wf .wf-profile-tabs button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 39px;
+  padding: 9px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 12px;
+  background: transparent;
+  color: #9ba9c5;
+  white-space: normal;
+}
+.wf .wf-profile-tabs button:hover {
+  color: #e6eaff;
+  background: #ffffff05;
+}
+.wf .wf-profile-tabs button[aria-selected="true"] {
+  color: #d6d9ff;
+  background: #282e49;
+  border-color: #828bc626;
+  box-shadow: 0 2px 6px #0002;
+}
+.wf-profile-panel {
+  min-width: 0;
+  min-height: 160px;
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  padding: 4px 0;
+}
+.wf-profile-panel .wf-profile-section {
+  border: 0;
+  padding: 0;
+  gap: 13px;
+}
+.wf-profile-panel .wf-profile-section h3 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #afbdd6;
+  margin: 0;
+}
+.wf-employee-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0;
+}
+.wf-employee-detail-grid > div {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #ffffff08;
+  border-radius: 11px;
+  background: #ffffff02;
+}
+.wf-employee-detail-grid dt {
+  font-size: 10px;
+  color: #92a1bf;
+  margin-bottom: 6px;
+}
+.wf-employee-detail-grid dd {
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: #e4eafa;
+}
+.wf-employee-detail-grid dd .wf-muted {
+  font-size: 12px;
+  color: #8998b5;
+}
+.wf-employee-detail-grid a {
+  color: #becdff;
+  text-underline-offset: 3px;
+}
+.wf-employee-notes {
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #c0cbe1;
+}
+.wf-employee-detail-scope {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 10px;
+  line-height: 1.6;
+  color: #8d9bb8;
+  margin: 0;
+}
+.wf-employee-detail-scope svg {
+  flex-shrink: 0;
+}
+.wf-employee-edit-dialog .wf-employee-section {
+  padding: 20px;
+  border: 1px solid #ffffff0c;
+  border-radius: 14px;
+  background: #ffffff02;
+  gap: 16px;
+}
+.wf-employee-edit-dialog .wf-employee-section h3 {
+  font-size: 14px;
+  letter-spacing: -0.2px;
+}
+.wf-employee-edit-dialog .wf-employee-scope {
+  padding: 14px 16px;
+  border-color: #8d9eec21;
+  background: #7485e00b;
+  border-radius: 12px;
+}
+.wf-employee-edit-dialog .wf-employee-scope p {
+  font-size: 11px;
+  line-height: 1.65;
+}
+.wf-employee-edit-dialog .wf-employee-account {
+  display: block;
+  background: #0c132180;
+  padding: 12px 15px;
+  border: 1px solid #ffffff0a;
+  border-radius: 11px;
+}
+.wf-employee-account summary {
+  color: #a9b6d1;
+  cursor: pointer;
+  font-size: 11px;
+}
+.wf-employee-account[open] > :not(summary) {
+  display: block;
+  margin-top: 9px;
+}
+.wf-employee-edit-dialog .wf-field > span {
+  font-size: 11px;
+  color: #acbad3;
+}
+.wf-employee-edit-dialog .wf-field input,
+.wf-employee-edit-dialog .wf-field textarea,
+.wf-employee-edit-dialog .wf-field select {
+  background: #0e1525;
+  border: 1px solid #35405b;
+  border-radius: 9px;
+  padding: 11px 12px;
+  font-size: 13px;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+.wf-employee-edit-dialog .wf-field input:focus,
+.wf-employee-edit-dialog .wf-field textarea:focus,
+.wf-employee-edit-dialog .wf-field select:focus {
+  border-color: #a3a7ff;
+  box-shadow: 0 0 0 3px #9297fb12;
+}
+@keyframes wf-profile-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (max-width: 560px) {
+  .wf-dialog.wf-employee-dialog {
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
+    max-height: calc(100dvh - 20px);
+    border-radius: 18px;
+  }
+  .wf-employee-dialog form > header {
+    padding: 16px;
+    gap: 10px;
+  }
+  .wf-employee-dialog .wf-dialog-heading h2 {
+    font-size: 15px;
+  }
+  .wf-employee-dialog .wf-dialog-body {
+    padding: 16px;
+    gap: 14px;
+  }
+  .wf-employee-dialog form > footer {
+    padding: 12px 16px;
+  }
+  .wf-profile-footer-note {
+    display: none;
+  }
+  .wf-employee-dialog form > footer > .wf-primary {
+    flex: 1;
+    justify-content: center;
+  }
+  .wf-employee-profile-hero {
+    padding: 18px 15px;
+    gap: 14px;
+  }
+  .wf-employee-profile-hero .wf-employee-avatar-large {
+    width: 66px;
+    height: 66px;
+    border-radius: 19px;
+  }
+  .wf .wf-employee-profile-hero h3 {
+    font-size: 21px;
+  }
+  .wf-employee-profile-hero p {
+    font-size: 12px;
+  }
+  .wf-profile-contact-actions {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .wf-profile-tabs button > svg {
+    display: none;
+  }
+  .wf .wf-profile-tabs button {
+    font-size: 11px;
+    padding: 8px 4px;
+  }
+  .wf-employee-detail-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .wf-employee-company {
+    flex-wrap: wrap;
+  }
+  .wf-profile-company-divider {
+    display: none;
+  }
+  .wf-profile-department {
+    width: 100%;
+    text-align: left;
+    padding-left: 51px;
+  }
+  .wf-employee-edit-dialog .wf-employee-section {
+    padding: 16px 13px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wf-dialog.wf-employee-dialog {
+    animation: none;
+  }
+  .wf-employee-row,
+  .wf-profile-contact-actions > a,
+  .wf-employee-edit-dialog .wf-field input,
+  .wf-employee-edit-dialog .wf-field textarea,
+  .wf-employee-edit-dialog .wf-field select {
+    transition: none;
+  }
+}
+
+@media (min-width: 740px) {
+  .wf-employee-detail-dialog .wf-employee-detail-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.wf-profile-panel > .wf-profile-section:first-child > h3 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.wf-profile-tabs {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.wf-payroll-fields h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.wf-payroll-fields > p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.wf .wf-payroll-clear {
+  justify-self: start;
+  border: 0;
+  background: transparent;
+  padding: 4px 0;
+  font-size: 11px;
+  color: #c2b4de;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.wf-payroll-details {
+  border: 1px solid #8798d936;
+  border-radius: 15px;
+  background:
+    radial-gradient(ellipse at 100% 0, #737be71a, transparent 70%), #1a2236;
+  padding: 22px;
+  display: grid;
+  gap: 20px;
+}
+.wf-payroll-bank {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #b8c5ff;
+}
+.wf-payroll-bank > div {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.wf-payroll-bank small {
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: #9baaca;
+}
+.wf-payroll-bank strong {
+  font-size: 16px;
+  color: #edf1ff;
+  overflow-wrap: anywhere;
+}
+.wf-payroll-bank > span {
+  margin-left: auto;
+  font-size: 10px;
+  border: 1px solid #9baaca33;
+  padding: 5px 9px;
+  border-radius: 20px;
+  color: #c0cce2;
+}
+.wf-payroll-number {
+  border-top: 1px solid #ffffff0d;
+  padding-top: 18px;
+  display: grid;
+  gap: 8px;
+}
+.wf-payroll-number > span,
+.wf-payroll-holder > span {
+  font-size: 11px;
+  color: #a4b2ce;
+}
+.wf-payroll-number > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.wf-payroll-number strong {
+  font-family: ui-monospace, monospace;
+  font-size: 22px;
+  letter-spacing: 1px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  flex: 1;
+  color: #e1e6ff;
+}
+.wf-payroll-number button {
+  display: grid;
+  place-items: center;
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.wf-payroll-holder {
+  display: grid;
+  gap: 7px;
+}
+.wf-payroll-holder strong {
+  font-size: 14px;
+  color: #d5dff3;
+  overflow-wrap: anywhere;
+}
+.wf-payroll-empty {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  padding: 22px 14px;
+  gap: 13px;
+}
+.wf-payroll-empty > span {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border: 1px solid #8997cb33;
+  border-radius: 18px;
+  color: #b5bdf5;
+  background: #8894ec0c;
+}
+.wf .wf-payroll-empty h3 {
+  font-size: 17px;
+  margin: 0;
+}
+.wf-payroll-empty p {
+  font-size: 12px;
+  line-height: 1.7;
+  max-width: 360px;
+  color: #a8b6d1;
+  margin: 0;
+}
+.wf-payroll-empty button {
+  margin-top: 5px;
+}
+@media (max-width: 560px) {
+  .wf-profile-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wf-payroll-details {
+    padding: 17px;
+  }
+  .wf-payroll-number strong {
+    font-size: 17px;
+  }
+  .wf-payroll-bank {
+    flex-wrap: wrap;
+  }
+  .wf-payroll-bank > span {
+    margin-left: 0;
+  }
+}
+/* Keep tall detail panels in the scroll flow instead of compressing grid tracks. */
+.wf-employee-detail-dialog .wf-dialog-body {
+  display: flex;
+  flex-direction: column;
+}
+.wf-employee-detail-dialog .wf-dialog-body > * {
+  flex-shrink: 0;
+}

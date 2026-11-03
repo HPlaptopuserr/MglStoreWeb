@@ -5,3 +5,5 @@ export { default as warehousesRoutes } from "./warehouses.routes";
 export { default as warehouseGoodsReceiptsRoutes } from "./warehouse-goods-receipts.routes";
 export { default as deliveriesRoutes } from "./deliveries.routes";
 export { default as deliveryPartnershipsRoutes } from "./delivery-partnerships.routes";
+
+export { default as warehouseTransfersRoutes } from "./warehouse-transfers.routes";

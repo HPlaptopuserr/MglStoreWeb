@@ -1,8 +1,12 @@
 "use client";
+import { formatReportExpiry } from "./report-expiry";
 import { FileText, Loader2 } from "lucide-react";
 import type { ProductReportRow } from "./product-report";
 import { ProductBreakdownExport } from "./ProductBreakdownExport";
-import { calculateMarginPercent } from "./product-report";
+import {
+  calculateMarginPercent,
+  calculateProductInventoryValue,
+} from "./product-report";
 
 import { ReportPagination } from "./pagination/ReportPagination";
 import { useReportPagination } from "./pagination/useReportPagination";
@@ -64,7 +68,7 @@ export function ProductReportTable({
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-[920px] w-full text-sm">
+            <table className="min-w-[1080px] w-full text-sm">
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                 <tr>
                   <th scope="col" className="px-4 py-3">
@@ -77,7 +81,7 @@ export function ProductReportTable({
                     Ангилал
                   </th>
                   <th scope="col" className="px-4 py-3 text-right">
-                    Авсан үнэ
+                    Дундаж өртөг
                   </th>
                   <th scope="col" className="px-4 py-3 text-right">
                     Зарах үнэ
@@ -88,6 +92,9 @@ export function ProductReportTable({
                   <th scope="col" className="px-4 py-3 text-right">
                     Үлдэгдэл
                   </th>
+                  <th scope="col" className="px-4 py-3">
+                    Дуусах хугацаа
+                  </th>
                   <th scope="col" className="px-4 py-3 text-right">
                     Ашгийн хувь
                   </th>
@@ -95,6 +102,7 @@ export function ProductReportTable({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {pageProducts.map((product, index) => {
+                  const valuation = calculateProductInventoryValue(product);
                   const margin = calculateMarginPercent(product);
                   return (
                     <tr
@@ -116,9 +124,17 @@ export function ProductReportTable({
                         {product.businessCategory?.name || "Ангилалгүй"}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-700">
-                        {product.costPrice == null
+                        {valuation.averageCost == null
                           ? "—"
-                          : money(product.costPrice)}
+                          : money(valuation.averageCost)}
+                        {(valuation.inconsistentLots ||
+                          valuation.missingCostQuantity > 0) && (
+                          <span className="mt-1 block text-xs text-amber-700">
+                            {valuation.inconsistentLots
+                              ? "Үлдэгдлийн зөрүүтэй"
+                              : "Өртөг дутуу"}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-bold text-slate-900">
                         {money(product.price)}
@@ -131,6 +147,12 @@ export function ProductReportTable({
                       <td className="px-4 py-3 text-right text-slate-700">
                         {product.stock.toLocaleString("mn-MN")}{" "}
                         {product.unit === "kg" ? "кг" : "ш"}
+                      </td>
+                      <td
+                        className="whitespace-nowrap px-4 py-3 tabular-nums text-slate-700"
+                        title="Үлдэгдэлтэй барааны хамгийн ойрын дуусах хугацаа"
+                      >
+                        {formatReportExpiry(product.expiryDate)}
                       </td>
                       <td
                         className={`px-4 py-3 text-right font-bold ${margin != null && margin < 0 ? "text-red-600" : "text-emerald-600"}`}

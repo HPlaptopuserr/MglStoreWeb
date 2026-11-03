@@ -2,6 +2,7 @@
 
 import { WarehouseProductRecommendations } from "@/features/shipments/components/WarehouseProductRecommendations";
 import type {
+  OutstandingPaymentSummary,
   StockRequestCartItem,
   StockRequestUser,
   StockRequestView,
@@ -17,12 +18,13 @@ import {
   Package,
   Search,
   ShoppingCart,
-  Sparkles,
-  TrendingUp,
 } from "lucide-react";
 import type * as React from "react";
 
 interface WarehouseProductCatalogProps {
+  navigation: React.ReactNode;
+  outstandingPayments: OutstandingPaymentSummary | null;
+  retryProducts: () => void;
   selectedWarehouse: SupplyWarehouse | null;
   exitWarehouse: () => void;
   setViewMode: React.Dispatch<React.SetStateAction<StockRequestView>>;
@@ -52,6 +54,9 @@ interface WarehouseProductCatalogProps {
 }
 
 export function WarehouseProductCatalog({
+  navigation,
+  outstandingPayments,
+  retryProducts,
   selectedWarehouse,
   exitWarehouse,
   setViewMode,
@@ -75,12 +80,35 @@ export function WarehouseProductCatalog({
 }: WarehouseProductCatalogProps) {
   if (!selectedWarehouse) return null;
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen space-y-4 bg-slate-50 pb-28">
+      {navigation}
+      {(outstandingPayments?.count ?? 0) > 0 && (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+        >
+          <p>
+            Төлбөрийн үлдэгдэл:{" "}
+            <strong>
+              {outstandingPayments?.totalUnpaid.toLocaleString()}₮
+            </strong>
+            . Бараа үзэх боломжтой. Дараагийн захиалгын өмнө төлбөрөө төлнө үү.
+          </p>
+          <button
+            type="button"
+            onClick={() => setViewMode("payments")}
+            className="rounded-lg bg-white px-4 py-2 font-semibold ring-1 ring-amber-300 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600"
+          >
+            Төлбөр харах
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div className="sticky top-0 z-20 bg-white border-b border-slate-100 shadow-sm">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <button
+              aria-label="Агуулахын жагсаалт руу буцах"
               onClick={exitWarehouse}
               className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
             >
@@ -94,6 +122,7 @@ export function WarehouseProductCatalog({
             </div>
           </div>
           <button
+            aria-label={`Сагс харах, ${totalCartItems} ширхэг бараа`}
             onClick={() => setViewMode("cart")}
             className="relative rounded-xl bg-[#FFAD02] p-3 text-white shadow-lg shadow-[#FFAD02]/30"
           >
@@ -112,6 +141,7 @@ export function WarehouseProductCatalog({
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
+              aria-label="Агуулахын бараа хайх"
               placeholder="Нэр, SKU, баркодоор хайх..."
               value={productSearch}
               onChange={(e) => setProductSearch(e.target.value)}
@@ -167,7 +197,7 @@ export function WarehouseProductCatalog({
           )}
         {productsLoading ? (
           <div
-            className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"
+            className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
             aria-label="Бараа ачаалж байна"
             aria-busy="true"
           >
@@ -191,6 +221,13 @@ export function WarehouseProductCatalog({
             <p className="text-base font-semibold text-red-700">
               {productsError}
             </p>
+            <button
+              type="button"
+              onClick={retryProducts}
+              className="mt-4 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-red-700 ring-1 ring-red-200 hover:bg-red-100 focus-visible:ring-2 focus-visible:ring-red-500"
+            >
+              Дахин оролдох
+            </button>
           </div>
         ) : warehouseProducts.length === 0 ? (
           <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white py-16">
@@ -200,52 +237,36 @@ export function WarehouseProductCatalog({
             <p className="text-lg font-semibold text-slate-600">
               Бараа олдсонгүй
             </p>
+            <p className="mt-2 px-4 text-center text-sm text-slate-500">
+              Хайлтаа өөрчлөх эсвэл өөр ангилал сонгоно уу.
+            </p>
+            {(productSearch || selectedCategory) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setProductSearch("");
+                  setSelectedCategory(null);
+                }}
+                className="mt-4 rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700"
+              >
+                Шүүлтүүр цэвэрлэх
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-8">
-            {!productSearch && !selectedCategory && (
-              <div className="space-y-6">
-                {/* Шинээр нэмэгдсэн */}
-                {warehouseProducts.length > 0 && (
-                  <div>
-                    <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800">
-                      <Sparkles className="h-4 w-4 text-indigo-500" />
-                      Шинээр нэмэгдсэн
-                    </h2>
-                    <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide">
-                      {warehouseProducts
-                        .slice(-6)
-                        .reverse()
-                        .map((item) => renderProductCard(item, true))}
-                    </div>
-                  </div>
-                )}
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-slate-900">
+                {productSearch || selectedCategory
+                  ? "Хайлтын үр дүн"
+                  : "Бүх бараа"}
+              </h2>
+              <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-slate-600 ring-1 ring-slate-200">
+                {productsTotal.toLocaleString()} бараа
+              </span>
+            </div>
 
-                {/* Санал болгох бараа */}
-                {warehouseProducts.filter((i) => i.quantity <= i.minQuantity)
-                  .length > 0 && (
-                  <div>
-                    <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800">
-                      <TrendingUp className="h-4 w-4 text-emerald-500" />
-                      Санал болгох бараа
-                    </h2>
-                    <div className="flex gap-3 overflow-x-auto pb-4 scrollbar-hide">
-                      {warehouseProducts
-                        .filter((i) => i.quantity <= i.minQuantity)
-                        .slice(0, 6)
-                        .map((item) => renderProductCard(item, true))}
-                    </div>
-                  </div>
-                )}
-
-                <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-800 border-t pt-6 border-slate-100">
-                  <Package className="h-4 w-4 text-slate-400" />
-                  Бүх бараа ({productsTotal})
-                </h2>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {warehouseProducts.map((item) => renderProductCard(item, false))}
             </div>
             <div
@@ -276,6 +297,7 @@ export function WarehouseProductCatalog({
       {cart.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white p-3 shadow-lg md:left-64">
           <button
+            aria-label={`Сагс харах, ${totalCartItems} ширхэг бараа`}
             onClick={() => setViewMode("cart")}
             className="flex w-full items-center justify-between rounded-xl bg-[#FFAD02] px-4 py-2.5 text-white shadow-md shadow-[#FFAD02]/20"
           >

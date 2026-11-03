@@ -46,5 +46,12 @@ export function useStoreEmployees(organizationId: string) {
     );
   }, []);
 
-  return { employees, loading, error, reload, saveEmployee };
+  const removeEmployee = useCallback((id: string) => {
+    request.current?.abort();
+    setLoading(false);
+    setError(null);
+    setEmployees((current) => current.filter((employee) => employee.id !== id));
+  }, []);
+
+  return { employees, loading, error, reload, saveEmployee, removeEmployee };
 }

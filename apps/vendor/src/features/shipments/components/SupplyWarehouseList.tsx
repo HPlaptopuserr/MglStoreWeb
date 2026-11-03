@@ -74,7 +74,8 @@ export function SupplyWarehouseList({
               <p className="mt-1 text-sm text-red-700">
                 {outstandingPayments?.count} нэхэмжлэхийн нийт үлдэгдэл{" "}
                 {(outstandingPayments?.totalUnpaid ?? 0).toLocaleString()}₮.
-                Төлбөр бүрэн төлөгдсөний дараа шинэ захиалга шууд нээгдэнэ.
+                Бараа үзэх боломжтой. Шинэ захиалга илгээхийн өмнө төлбөрөө
+                төлнө үү.
               </p>
             </div>
           </div>
@@ -102,24 +103,20 @@ export function SupplyWarehouseList({
             <WarehouseIcon className="h-8 w-8 text-slate-300" />
           </div>
           <p className="text-lg font-semibold text-slate-600">
-            Захиалга авах төв агуулах хуваарилагдаагүй байна
+            Одоогоор идэвхтэй төв агуулах алга байна
           </p>
           <p className="mt-1 text-sm text-slate-400">
-            Төв агуулахын эрх авахын тулд админтай холбогдоно уу
+            Дахин оролдох эсвэл админтай холбогдоно уу
           </p>
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {warehouses.map((warehouse) => (
-            <div
+            <button
+              type="button"
               key={warehouse.id}
-              onClick={() => enterWarehouse(warehouse)}
-              aria-disabled={(outstandingPayments?.count ?? 0) > 0}
-              className={`group rounded-2xl border border-slate-100 bg-white p-5 transition-all ${
-                (outstandingPayments?.count ?? 0) > 0
-                  ? "cursor-not-allowed opacity-55"
-                  : "cursor-pointer hover:border-[#FFAD02]/30 hover:shadow-lg hover:shadow-[#FFAD02]/10"
-              }`}
+              onClick={() => void enterWarehouse(warehouse)}
+              className="group rounded-2xl border border-slate-200 bg-white p-5 text-left transition-all hover:border-amber-400 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
             >
               <div className="flex items-start gap-4">
                 <div className="rounded-xl bg-[#FFAD02]/10 p-3 transition-all group-hover:bg-[#FFAD02] group-hover:shadow-lg group-hover:shadow-[#FFAD02]/30">
@@ -146,7 +143,7 @@ export function SupplyWarehouseList({
                   Бараа сонгох →
                 </p>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       )}

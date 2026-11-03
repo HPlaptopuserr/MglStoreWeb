@@ -1,7 +1,10 @@
 "use client";
 
+import { WarehouseAccessGate } from "@/features/investor/WarehouseAccessGate";
+import ProductHistoryScope from "@/components/ProductHistoryScope";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { SESSION_UPDATED_EVENT } from "@/features/auth/session";
+import { usePathname, useRouter } from "next/navigation";
 import WmsSidebar from "@/components/WmsSidebar";
 import WmsHeader from "@/components/WmsHeader";
 import { WarehouseScopeProvider } from "@/features/warehouse-scope/WarehouseScopeProvider";
@@ -12,6 +15,7 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isReady, setIsReady] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [userData, setUserData] = useState({
@@ -23,11 +27,13 @@ export default function DashboardLayout({
   useEffect(() => {
     const token = localStorage.getItem("wms_token");
     if (!token) {
-      router.replace("/login");
+      router.replace(
+        pathname.startsWith("/investor") ? "/investor-login" : "/login",
+      );
       return;
     }
 
-    queueMicrotask(() => {
+    const refreshUser = () => {
       try {
         const user = JSON.parse(localStorage.getItem("wms_user") || "{}");
         setUserData({
@@ -42,39 +48,52 @@ export default function DashboardLayout({
         /* keep defaults */
       }
       setIsReady(true);
-    });
-  }, [router]);
+    };
+    queueMicrotask(refreshUser);
+    window.addEventListener(SESSION_UPDATED_EVENT, refreshUser);
+    return () => window.removeEventListener(SESSION_UPDATED_EVENT, refreshUser);
+  }, [router, pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem("wms_token");
     localStorage.removeItem("wms_user");
-    router.replace("/login");
+    router.replace(
+      pathname.startsWith("/investor") ? "/investor-login" : "/login",
+    );
   };
 
   if (!isReady) return null;
 
   return (
     <WarehouseScopeProvider>
-      <div className="flex min-h-screen bg-slate-50">
-        <WmsSidebar
-          warehouseName={userData.warehouseName}
-          userName={userData.name}
-          userInitials={userData.initials}
-          onSignOut={handleLogout}
-          onCollapsedChange={setSidebarCollapsed}
-        />
-        <div
-          className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ${
-            sidebarCollapsed ? "ml-[68px]" : "ml-[248px]"
-          }`}
-        >
-          <WmsHeader
+      <WarehouseAccessGate
+        viewerContent={children}
+        userName={userData.name}
+        onSignOut={handleLogout}
+      >
+        <div className="flex min-h-screen bg-slate-50">
+          <WmsSidebar
+            warehouseName={userData.warehouseName}
             userName={userData.name}
             userInitials={userData.initials}
+            onSignOut={handleLogout}
+            onCollapsedChange={setSidebarCollapsed}
           />
-          <main className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
+          <div
+            className={`flex min-w-0 flex-1 flex-col transition-all duration-300 ${
+              sidebarCollapsed ? "ml-[68px]" : "ml-[248px]"
+            }`}
+          >
+            <WmsHeader
+              userName={userData.name}
+              userInitials={userData.initials}
+            />
+            <main className="min-w-0 flex-1 p-4 sm:p-6">
+              <ProductHistoryScope>{children}</ProductHistoryScope>
+            </main>
+          </div>
         </div>
-      </div>
+      </WarehouseAccessGate>
     </WarehouseScopeProvider>
   );
 }

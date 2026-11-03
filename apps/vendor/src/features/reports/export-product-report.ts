@@ -1,5 +1,8 @@
+import { formatReportExpiry } from "./report-expiry";
 import {
   calculateMarginPercent,
+  calculateProductInventoryValue,
+  INVENTORY_VALUATION_DESCRIPTION,
   formatReportStock,
   calculateProductReportTotals,
   type ProductReportRow,
@@ -42,17 +45,19 @@ export function exportProductReportToPdf({
   const generatedAt = new Date().toLocaleString("mn-MN");
   const rows = products
     .map((product, index) => {
-      const costPrice =
-        product.costPrice == null ? null : Number(product.costPrice);
+      const costPrice = calculateProductInventoryValue(product).averageCost;
       const margin = calculateMarginPercent(product);
       return `<tr>
         <td>${index + 1}</td>
-        <td><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.sku || product.barcode || "Кодгүй")}</small></td>
+        <td><strong>${escapeHtml(product.name)}</strong></td>
+        <td>${escapeHtml(product.sku || "")}</td>
+        <td>${escapeHtml(product.barcode || "")}</td>
         <td>${escapeHtml(product.businessCategory?.name || "Ангилалгүй")}</td>
         <td class="number">${costPrice == null ? "-" : money(costPrice)}</td>
         <td class="number">${money(Number(product.price) || 0)}</td>
         <td class="number">${product.wholesalePrice == null ? "-" : money(Number(product.wholesalePrice))}</td>
         <td class="number">${Number(product.stock).toLocaleString("mn-MN")} ${product.unit === "kg" ? "кг" : "ш"}</td>
+        <td>${formatReportExpiry(product.expiryDate)}</td>
         <td class="number">${margin == null ? "-" : `${margin.toFixed(1)}%`}</td>
         <td>${product.isActive ? "Идэвхтэй" : "Идэвхгүй"}</td>
       </tr>`;
@@ -109,9 +114,9 @@ export function exportProductReportToPdf({
         : ""
     }
     <h2>Бүтээгдэхүүний задаргаа</h2>
-    <table><thead><tr><th style="width:3%">№</th><th style="width:21%">Бүтээгдэхүүн</th><th style="width:12%">Ангилал</th><th>Авсан үнэ</th><th>Зарах үнэ</th><th>Бөөний үнэ</th><th>Үлдэгдэл</th><th>Ашгийн хувь</th><th>Төлөв</th></tr></thead>
+    <table><thead><tr><th style="width:3%">№</th><th style="width:16%">Бүтээгдэхүүн</th><th style="width:11%">SKU код</th><th style="width:12%">Баркод</th><th style="width:10%">Ангилал</th><th>Дундаж өртөг</th><th>Зарах үнэ</th><th>Бөөний үнэ</th><th>Үлдэгдэл</th><th>Дуусах хугацаа</th><th>Ашгийн хувь</th><th>Төлөв</th></tr></thead>
       <tbody>${rows}</tbody></table>
-    <footer>Ашгийн тооцоо нь өртөг бүртгэлтэй барааны эерэг үлдэгдэл, одоогийн авсан/зарах үнэд үндэслэнэ. Өртөггүй барааг оруулаагүй. Энэ нь бодит борлуулалтын ашиг биш.</footer>
+    <footer>${escapeHtml(INVENTORY_VALUATION_DESCRIPTION)} Өртөг дутуу бараа: ${totals.missingCostCount}. Үлдэгдлийн зөрүүтэй бараа: ${totals.inconsistentLotCount}.</footer>
     <script>window.addEventListener("load", () => { window.print(); });<\/script>
   </body></html>`);
   reportWindow.document.close();
@@ -149,6 +154,8 @@ export async function exportProductReportToExcel({
     ["Нийт үлдэгдэл", formatReportStock(totals)],
     ["Өртөг бүртгэлгүй бараа", totals.missingCostCount],
     ["Сөрөг үлдэгдэлтэй бараа", totals.negativeStockCount],
+    ["Үлдэгдлийн зөрүүтэй бараа", totals.inconsistentLotCount],
+    ["Тооцооллын арга", INVENTORY_VALUATION_DESCRIPTION],
     ["Нөөцийн өртөг", Math.round(totals.inventoryCost)],
     ["Зарах үнийн дүн", Math.round(totals.inventoryRetailValue)],
     [
@@ -195,8 +202,8 @@ export function createProductReportSheet(
   products: readonly ProductReportRow[],
 ): import("xlsx").WorkSheet {
   const productRows = products.map((product, index) => {
-    const costPrice =
-      product.costPrice == null ? null : Number(product.costPrice);
+    const valuation = calculateProductInventoryValue(product);
+    const costPrice = valuation.averageCost;
     const retailPrice = Number(product.price) || 0;
     const wholesalePrice =
       product.wholesalePrice == null ? null : Number(product.wholesalePrice);
@@ -205,13 +212,18 @@ export function createProductReportSheet(
     return {
       "№": index + 1,
       Бүтээгдэхүүн: product.name,
-      "SKU / Баркод": product.sku || product.barcode || "Кодгүй",
+      "SKU код": product.sku ?? "",
+      Баркод: product.barcode ?? "",
       Ангилал: product.businessCategory?.name || "Ангилалгүй",
-      "Авсан үнэ": costPrice,
+      "Дундаж өртөг": costPrice,
+      "Нөөцийн өртөг (мэдэгдэж буй)": valuation.inventoryCost,
+      "Өртөг дутуу үлдэгдэл": valuation.missingCostQuantity,
+      "Үлдэгдлийн зөрүү": valuation.inconsistentLots ? "Тийм" : "Үгүй",
       "Зарах үнэ": retailPrice,
       "Бөөний үнэ": wholesalePrice,
       Үлдэгдэл: stock,
       Нэгж: product.unit === "kg" ? "кг" : "ш",
+      "Дуусах хугацаа": formatReportExpiry(product.expiryDate),
       "Ашгийн хувь": margin == null ? null : Number(margin.toFixed(1)),
       Төлөв: product.isActive ? "Идэвхтэй" : "Идэвхгүй",
     };
@@ -258,6 +270,7 @@ export async function exportProductBreakdownToExcel({
       ["Байгууллага", organizationName || "Байгууллага"],
       ["Шүүлтүүр", filterDescription],
       ["Нийт бараа", products.length],
+      ["Тооцооллын арга", INVENTORY_VALUATION_DESCRIPTION],
       [
         "Үүсгэсэн",
         new Date().toLocaleString("mn-MN", { timeZone: "Asia/Ulaanbaatar" }),

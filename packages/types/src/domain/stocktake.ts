@@ -29,6 +29,8 @@ export interface StocktakeSummary {
   approvedById: string | null;
 }
 export interface StocktakeDetail extends StocktakeSummary {
+  changedLineIds?: string[];
+  addedProductCount?: number;
   lines: StocktakeLineDto[];
 }
 export interface StocktakeOverview {
@@ -44,7 +46,6 @@ export interface StocktakeCountEdit {
   counted: number | null;
   note: string;
 }
-
 
 export interface StocktakeNewProduct {
   id: string;

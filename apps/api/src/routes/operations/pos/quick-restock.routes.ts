@@ -4,6 +4,8 @@ import { normalizePosMeasureUnit, fromPosStoredStockQuantity } from "@mgl/types"
 import { requirePosUser, canAccessPosOrganization } from "./_shared";
 import { adjustStock } from "../../../services/inventory.service";
 import { StocktakeError } from "../../../services/stocktake.policy";
+import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
+import { inventoryConflictResponse } from "../../../lib/inventory-conflict-errors";
 
 const router: ExpressRouter = Router();
 router.post("/pos/quick-restock", async (req, res) => {
@@ -19,7 +21,9 @@ router.post("/pos/quick-restock", async (req, res) => {
     if (!register || !canAccessPosOrganization(actor, register.organizationId))
       return res.status(403).json({ message: "Энэ кассаар орлого бүртгэх эрхгүй байна" });
     const result = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT "id" FROM "PosRegister" WHERE "id" = ${registerId} FOR UPDATE`;
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${register.organizationId}))`;
+      await lockOrganizationInventory(tx, register.organizationId);
       await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${productId} AND "organizationId" = ${register.organizationId} FOR UPDATE`;
       const product = await tx.product.findFirst({ where: { id: productId, organizationId: register.organizationId, deletedAt: null, isActive: true, supplyType: "IN_STOCK", isRestaurantMenuItem: false } });
       if (!product) throw new StocktakeError("Бараа олдсонгүй эсвэл орлого авах боломжгүй", 404);
@@ -56,6 +60,8 @@ router.post("/pos/quick-restock", async (req, res) => {
     return res.json(result);
   } catch (error) {
     if (error instanceof StocktakeError) return res.status(error.status).json({ message: error.message });
+    const conflict = inventoryConflictResponse(error);
+    if (conflict) return res.status(conflict.status).json({ message: conflict.message });
     console.error("[POS quick restock]", error);
     return res.status(500).json({ message: "Орлого бүртгэж чадсангүй. Дахин оролдоно уу." });
   }

@@ -33,6 +33,35 @@ router.get(
   },
 );
 
+router.get(
+  "/org/members/accounts",
+  requireAuth,
+  requireOrgPermission({ from: "query" }, Permission.MANAGE_ORG_MEMBERS),
+  async (req, res) => {
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (q.length < 3 || q.length > 100) return res.status(400).json({ message: "Хайх утгаа 3–100 тэмдэгтээр оруулна уу" });
+    try {
+      const users = await prisma.user.findMany({
+        where: { isActive: true, deletedAt: null, OR: [
+          { email: { contains: q, mode: "insensitive" } },
+          { profile: { fullName: { contains: q, mode: "insensitive" } } },
+          { profile: { phoneNumber: { contains: q } } },
+        ] },
+        take: 10, orderBy: { id: "asc" },
+        select: { id: true, email: true, profile: { select: { fullName: true, phoneNumber: true } },
+          organizationMemberships: { where: { organizationId: String(req.query.organizationId) }, select: { id: true } } },
+      });
+      res.set("Cache-Control", "no-store");
+      return res.json(users.map((account) => ({ id: account.id, email: account.email,
+        fullName: account.profile?.fullName || account.email, phone: account.profile?.phoneNumber || null,
+        isMember: account.organizationMemberships.length > 0 })));
+    } catch (error: unknown) {
+      console.error("Member account search failed", error);
+      return res.status(500).json({ message: "MGL бүртгэл хайж чадсангүй" });
+    }
+  },
+);
+
 const VALID_ROLES = ["OWNER", "ADMIN", "STAFF", "VIEWER"] as const;
 type OrgRole = (typeof VALID_ROLES)[number];
 
@@ -178,6 +207,7 @@ router.post(
     const {
       organizationId,
       fullName,
+      userId: linkedUserId,
       email,
       phone,
       password,
@@ -187,6 +217,7 @@ router.post(
     } = req.body as {
       organizationId: string;
       fullName?: string;
+      userId?: string;
       email?: string;
       phone?: string;
       password?: string;
@@ -195,6 +226,9 @@ router.post(
       capabilities?: Capability[];
     };
 
+    if (linkedUserId !== undefined && (typeof linkedUserId !== "string" || !linkedUserId.trim())) {
+      return res.status(400).json({ message: "MGL бүртгэлийн утга буруу байна" });
+    }
     if (!fullName?.trim()) {
       return res.status(400).json({ message: "Нэр шаардлагатай" });
     }
@@ -223,6 +257,10 @@ router.post(
     let targetRole: OrgRole = "STAFF";
     if (role && VALID_ROLES.includes(role as OrgRole)) {
       targetRole = role as OrgRole;
+    }
+
+    if (capabilities.includes(Capability.KITCHEN_CHEF) && (targetRole !== "STAFF" || capabilities.length !== 1)) {
+      return res.status(400).json({ message: "Тогооч нь зөвхөн гал тогооны эрхтэй ажилтан байна" });
     }
 
     if (ROLE_LEVEL[targetRole] <= ROLE_LEVEL[callerRole]) {
@@ -254,10 +292,12 @@ router.post(
       }
 
       // Check if user already exists
-      const existingUser = await prisma.user.findUnique({
-        where: { email: normalizedEmail },
+      const existingUser = await prisma.user.findFirst({
+        where: { ...(linkedUserId ? { id: linkedUserId } : { email: normalizedEmail }), isActive: true, deletedAt: null },
         select: { id: true },
       });
+
+      if (linkedUserId && !existingUser) return res.status(404).json({ message: "Сонгосон MGL бүртгэл олдсонгүй" });
 
       if (existingUser) {
         const alreadyMember = await prisma.organizationMember.findUnique({
@@ -272,9 +312,11 @@ router.post(
         }
       }
 
-      const passwordHash = password?.trim()
-        ? await bcrypt.hash(password.trim(), 10)
-        : await bcrypt.hash("Mgl@12345", 10);
+      const newPassword = password?.trim();
+      if (!existingUser && (!newPassword || newPassword.length < 8)) {
+        return res.status(400).json({ message: "Шинэ хэрэглэгчийн нууц үг хамгийн багадаа 8 тэмдэгт байна" });
+      }
+      const passwordHash = existingUser ? null : await bcrypt.hash(newPassword as string, 10);
 
       const result = await prisma.$transaction(
         async (tx: Prisma.TransactionClient) => {
@@ -287,7 +329,7 @@ router.post(
                   isActive: true,
                   emailVerified: true,
                   onboardingSource: "ADMIN" as any,
-                  passwordHash,
+                  passwordHash: passwordHash as string,
                 },
                 select: { id: true },
               });
@@ -315,13 +357,6 @@ router.post(
             },
           });
 
-          // If user already exists and password was provided, update it
-          if (existingUser && password?.trim()) {
-            await tx.user.update({
-              where: { id: existingUser.id },
-              data: { passwordHash },
-            });
-          }
 
           return { userId: targetUser.id, memberId: member.id };
         },
@@ -641,6 +676,9 @@ router.patch("/org/members/:memberId", requireAuth, async (req, res) => {
         return res
           .status(400)
           .json({ message: "Тусгай эрхийн утга буруу байна" });
+      }
+      if (capabilities.includes("KITCHEN_CHEF") && (targetMember.role !== "STAFF" || capabilities.length !== 1)) {
+        return res.status(400).json({ message: "Тогооч нь зөвхөн гал тогооны эрхтэй ажилтан байна" });
       }
       const features = await getOrganizationAppFeatures(targetMember.organizationId);
       if (!features || blockedCapabilityGrants(capabilities as Capability[], targetMember.capabilities, features).length > 0) {

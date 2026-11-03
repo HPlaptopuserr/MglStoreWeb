@@ -8,6 +8,8 @@ interface Props {
   cash?: CashPaymentDetails;
   error?: string;
   disabled?: boolean;
+  showExactButton?: boolean;
+  showRemaining?: boolean;
   onChange: (value: string) => void;
 }
 
@@ -18,18 +20,22 @@ export function CashPaymentPanel({
   error,
   disabled,
   onChange,
+  showExactButton = true,
+  showRemaining = true,
 }: Props) {
   return (
     <section
       aria-label="Бэлэн мөнгөний тооцоо"
-      className="shrink-0 space-y-2 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3"
+      className="shrink-0 space-y-2 rounded-2xl border border-emerald-300 bg-emerald-50/60 p-3"
     >
-      <div className="flex items-center justify-between gap-3 text-sm text-zinc-300">
-        <span>Төлөх үлдэгдэл</span>
-        <strong>{remaining.toLocaleString("mn-MN")} ₮</strong>
-      </div>
+      {showRemaining && (
+        <div className="flex items-center justify-between gap-3 text-sm text-slate-700">
+          <span>Төлөх үлдэгдэл</span>
+          <strong>{remaining.toLocaleString("mn-MN")} ₮</strong>
+        </div>
+      )}
       <div className="flex items-end gap-2">
-        <label className="block min-w-0 flex-1 text-xs font-bold text-zinc-300">
+        <label className="block min-w-0 flex-1 text-xs font-bold text-slate-700">
           Авсан мөнгө
           <input
             inputMode="decimal"
@@ -39,30 +45,32 @@ export function CashPaymentPanel({
             aria-invalid={Boolean(error)}
             aria-describedby="cash-payment-status"
             placeholder="Дүн оруулах"
-            className="mt-1 h-11 w-full rounded-xl border border-zinc-600 bg-zinc-950 px-3 text-xl font-bold text-white outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/30 disabled:opacity-50"
+            className="mt-1 h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-xl font-bold text-slate-950 placeholder:text-slate-500 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/30 disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-500"
           />
         </label>
-        <button
-          type="button"
-          disabled={disabled || remaining <= 0}
-          onClick={() => onChange(String(remaining))}
-          className="h-11 shrink-0 rounded-xl border border-zinc-600 px-3 text-xs font-bold text-zinc-200 transition hover:border-emerald-400 focus-visible:outline-2 focus-visible:outline-emerald-400 disabled:opacity-50"
-        >
-          Яг дүнгээр
-        </button>
+        {showExactButton && (
+          <button
+            type="button"
+            disabled={disabled || remaining <= 0}
+            onClick={() => onChange(String(remaining))}
+            className="h-11 shrink-0 rounded-xl border border-slate-300 px-3 text-xs font-bold bg-white text-emerald-800 transition hover:border-emerald-500 hover:bg-emerald-50 focus-visible:outline-2 focus-visible:outline-emerald-400 disabled:border-slate-300 disabled:bg-slate-100 disabled:text-slate-500"
+          >
+            Яг дүнгээр
+          </button>
+        )}
       </div>
       <div id="cash-payment-status" role="status" aria-live="polite">
         {error ? (
-          <p className="text-sm text-rose-300">{error}</p>
+          <p className="text-sm text-rose-700">{error}</p>
         ) : cash ? (
           <>
             <div className="flex items-baseline justify-between gap-2">
-              <p className="text-xs text-zinc-400">Хариулт</p>
-              <p className="text-2xl font-black tabular-nums text-emerald-300">
+              <p className="text-xs text-slate-600">Хариулт</p>
+              <p className="text-2xl font-black tabular-nums text-emerald-700">
                 {cash.changeAmount.toLocaleString("mn-MN")} ₮
               </p>
             </div>
-            <p className="mt-1 text-xs text-zinc-400">
+            <p className="mt-1 text-xs text-slate-600">
               Бэлнээр тооцох:{" "}
               {(cash.receivedAmount - cash.changeAmount).toLocaleString(
                 "mn-MN",
@@ -71,8 +79,8 @@ export function CashPaymentPanel({
             </p>
           </>
         ) : (
-          <p className="text-xs text-zinc-400">
-            Авсан мөнгөө оруулах эсвэл «Яг дүнгээр» сонгоно уу.
+          <p className="text-xs text-slate-600">
+            Авсан мөнгөө оруулбал хариултыг тооцно.
           </p>
         )}
       </div>

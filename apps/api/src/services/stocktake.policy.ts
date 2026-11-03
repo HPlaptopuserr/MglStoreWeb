@@ -4,6 +4,8 @@ export class StocktakeError extends Error {
   constructor(
     message: string,
     public readonly status = 400,
+    public readonly changedLineIds?: string[],
+    public readonly addedProductCount = 0,
   ) {
     super(message);
   }

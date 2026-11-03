@@ -1,4 +1,5 @@
 "use client";
+import { TransferInbox } from "@/features/transfers/TransferInbox";
 import {
   findReceiptProduct,
   resolveReceiptItem,
@@ -596,6 +597,16 @@ export default function ReceivePage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
+      {selectedWarehouseId && (
+        <details className="rounded-xl border bg-white p-5">
+          <summary className="cursor-pointer font-semibold text-blue-700">
+            Агуулахаас ирсэн шилжүүлэг хүлээн авах
+          </summary>
+          <div className="mt-5">
+            <TransferInbox key={selectedWarehouseId} warehouseId={selectedWarehouseId} />
+          </div>
+        </details>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

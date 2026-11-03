@@ -1,3 +1,4 @@
+import { KITCHEN_QUEUE_STATUSES, isRestaurantLineDiscountPercent, calculateRestaurantSelectedUnitDiscount } from "@mgl/types";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 import {
@@ -32,6 +33,12 @@ import {
   listRestaurantMenuCategories,
   normalizeRestaurantMenuCategoryName,
 } from "./restaurant-menu-categories";
+import {
+  mapRestaurantDiscountSchedule,
+  parseRestaurantDiscountTime,
+  RESTAURANT_DISCOUNT_TIME_ZONE,
+} from "./restaurant-discount";
+import { canUsePosRegisterForMode } from "./pos-register-mode";
 
 const router: ExpressRouter = Router();
 
@@ -71,6 +78,8 @@ const DEFAULT_TABLES = [
 ];
 
 type TicketLineInput = {
+  applyDiscount?: boolean;
+  discountPercent?: number;
   productId?: string;
   qty?: number;
   note?: string;
@@ -367,6 +376,7 @@ async function requireBranchAccess(actor: AuthUser, branchId: string) {
 async function requireRestaurantOrganizationAccess(
   actor: AuthUser,
   organizationId: string,
+  requireManagement = false,
 ) {
   const organization = await prisma.organization.findFirst({
     where: { id: organizationId, deletedAt: null, status: "ACTIVE" },
@@ -389,7 +399,67 @@ async function requireRestaurantOrganizationAccess(
       },
     } as const;
   }
+
+  if (
+    requireManagement &&
+    actor.role !== "ADMIN" &&
+    actor.role !== "SUPER_ADMIN"
+  ) {
+    const managerMembership = await prisma.organizationMember.findFirst({
+      where: {
+        userId: actor.id,
+        organizationId,
+        isActive: true,
+        deletedAt: null,
+        role: { in: ["OWNER", "ADMIN"] },
+      },
+      select: { id: true },
+    });
+    if (!managerMembership) {
+      return {
+        error: {
+          status: 403,
+          message:
+            "Зөвхөн байгууллагын эзэмшигч эсвэл админ рестораны ангилал өөрчлөх эрхтэй",
+        },
+      } as const;
+    }
+  }
+
   return { organization } as const;
+}
+
+async function requireRestaurantDiscountOwner(
+  actor: AuthUser,
+  organizationId: string,
+) {
+  const access = await requireRestaurantOrganizationAccess(
+    actor,
+    organizationId,
+  );
+  if ("error" in access && access.error) return access;
+  if (actor.role === "ADMIN" || actor.role === "SUPER_ADMIN") return access;
+
+  const ownerMembership = await prisma.organizationMember.findFirst({
+    where: {
+      userId: actor.id,
+      organizationId,
+      isActive: true,
+      deletedAt: null,
+      role: "OWNER",
+    },
+    select: { id: true },
+  });
+  if (!ownerMembership) {
+    return {
+      error: {
+        status: 403,
+        message: "Цагийн хямдралыг зөвхөн owner тохируулна",
+      },
+    } as const;
+  }
+
+  return access;
 }
 
 const ticketInclude = {
@@ -441,6 +511,8 @@ function mapTicket(ticket: TicketWithDetails) {
     price: Number(item.unitPrice),
     qty: item.qty,
     sentQty: item.sentQty,
+    applyDiscount: item.applyDiscount,
+    discountPercent: item.discountPercent,
     note: item.note || "",
     kitchenStation: item.kitchenStation,
     preparationMinutes: item.preparationMinutes,
@@ -460,7 +532,7 @@ function mapTicket(ticket: TicketWithDetails) {
     openedAt: ticket.openedAt.toISOString(),
     sentAt: ticket.sentAt?.toISOString() ?? null,
     closedAt: ticket.closedAt?.toISOString() ?? null,
-    total: items.reduce((sum, item) => sum + item.price * item.qty, 0),
+    total: items.reduce((sum, item) => sum + (item.price - calculateRestaurantSelectedUnitDiscount({ unitPrice: item.price, discountPercent: item.discountPercent })) * item.qty, 0),
     unsentCount: items.reduce(
       (sum, item) => sum + Math.max(0, item.qty - item.sentQty),
       0,
@@ -603,6 +675,8 @@ async function finalizePaidRestaurantQrInvoice(
       id: payload.shiftId,
       organizationId: payload.organizationId,
       branchId: payload.branchId,
+      mode: "RESTAURANT",
+      register: { is: { mode: "RESTAURANT" } },
     },
     select: { id: true, cashierId: true },
   });
@@ -894,7 +968,9 @@ router.get("/restaurant/menu/:token", async (req, res) => {
         where: {
           organizationId: table.organizationId,
           branchId: table.branchId,
+          mode: "RESTAURANT",
           status: ShiftStatus.OPEN,
+          register: { is: { mode: "RESTAURANT" } },
         },
         select: { id: true },
         orderBy: { openedAt: "desc" },
@@ -937,6 +1013,100 @@ router.get("/restaurant/menu/:token", async (req, res) => {
   } catch (error) {
     console.error("get public restaurant menu error", error);
     return res.status(500).json({ message: "QR menu ачаалахад алдаа гарлаа" });
+  }
+});
+
+router.get("/restaurant/pos/discount-schedule", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const organizationId = String(req.query.organizationId || "").trim();
+    if (!organizationId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+    const access = await requireRestaurantOrganizationAccess(
+      actor,
+      organizationId,
+    );
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+
+    const schedule = await prisma.restaurantDiscountSchedule.findUnique({
+      where: { organizationId },
+    });
+    return res.json(mapRestaurantDiscountSchedule(organizationId, schedule));
+  } catch (error) {
+    console.error("get restaurant discount schedule error", error);
+    return res
+      .status(500)
+      .json({ message: "Цагийн хямдралын тохиргоо авахад алдаа гарлаа" });
+  }
+});
+
+router.put("/restaurant/pos/discount-schedule", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const organizationId = String(req.body?.organizationId || "").trim();
+    const isEnabled = req.body?.isEnabled === true;
+    const percent = Number(req.body?.percent);
+    const startMinute = parseRestaurantDiscountTime(req.body?.startTime);
+    const endMinute = parseRestaurantDiscountTime(req.body?.endTime);
+    if (!organizationId) {
+      return res.status(400).json({ message: "organizationId шаардлагатай" });
+    }
+    if (!Number.isInteger(percent) || percent < 1 || percent > 99) {
+      return res
+        .status(400)
+        .json({ message: "Хямдралын хувь 1-99 хооронд байна" });
+    }
+    if (startMinute === null || endMinute === null) {
+      return res
+        .status(400)
+        .json({ message: "Эхлэх, дуусах цаг HH:mm форматтай байна" });
+    }
+    if (startMinute === endMinute) {
+      return res
+        .status(400)
+        .json({ message: "Эхлэх, дуусах цаг ялгаатай байна" });
+    }
+
+    const access = await requireRestaurantDiscountOwner(actor, organizationId);
+    if ("error" in access && access.error) {
+      return res
+        .status(access.error.status)
+        .json({ message: access.error.message });
+    }
+
+    const schedule = await prisma.restaurantDiscountSchedule.upsert({
+      where: { organizationId },
+      create: {
+        organizationId,
+        isEnabled,
+        percent,
+        startMinute,
+        endMinute,
+        timeZone: RESTAURANT_DISCOUNT_TIME_ZONE,
+      },
+      update: {
+        isEnabled,
+        percent,
+        startMinute,
+        endMinute,
+        timeZone: RESTAURANT_DISCOUNT_TIME_ZONE,
+      },
+    });
+    return res.json(mapRestaurantDiscountSchedule(organizationId, schedule));
+  } catch (error) {
+    console.error("update restaurant discount schedule error", error);
+    return res
+      .status(500)
+      .json({ message: "Цагийн хямдрал хадгалахад алдаа гарлаа" });
   }
 });
 
@@ -983,6 +1153,7 @@ router.post("/restaurant/pos/menu-categories", async (req, res) => {
     const access = await requireRestaurantOrganizationAccess(
       actor,
       organizationId,
+      true,
     );
     if ("error" in access && access.error) {
       return res
@@ -1041,6 +1212,7 @@ router.patch("/restaurant/pos/menu-categories/:id", async (req, res) => {
     const access = await requireRestaurantOrganizationAccess(
       actor,
       current.organizationId,
+      true,
     );
     if ("error" in access && access.error) {
       return res
@@ -1095,6 +1267,7 @@ router.delete("/restaurant/pos/menu-categories/:id", async (req, res) => {
     const access = await requireRestaurantOrganizationAccess(
       actor,
       current.organizationId,
+      true,
     );
     if ("error" in access && access.error) {
       return res
@@ -1167,7 +1340,9 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
       where: {
         organizationId: table.organizationId,
         branchId: table.branchId,
+        mode: "RESTAURANT",
         status: ShiftStatus.OPEN,
+        register: { is: { mode: "RESTAURANT" } },
       },
       select: {
         id: true,
@@ -1618,7 +1793,9 @@ router.post("/restaurant/menu/:token/orders", async (req, res) => {
           where: {
             organizationId: table.organizationId,
             branchId: table.branchId,
+            mode: "RESTAURANT",
             status: ShiftStatus.OPEN,
+            register: { is: { mode: "RESTAURANT" } },
           },
           select: { id: true, cashierId: true },
           orderBy: { openedAt: "desc" },
@@ -1863,6 +2040,39 @@ router.post("/restaurant/menu/:token/orders", async (req, res) => {
   }
 });
 
+router.get("/restaurant/pos/kitchen-branches", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+
+    const organizationId = actor.organizationId;
+    if (!organizationId) {
+      return res
+        .status(400)
+        .json({ message: "Байгууллагатай холбоогүй хэрэглэгч байна" });
+    }
+
+    const branches = await prisma.branch.findMany({
+      where: {
+        organizationId,
+        deletedAt: null,
+      },
+      orderBy: [{ createdAt: "asc" }, { name: "asc" }],
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    return res.json(branches);
+  } catch (error) {
+    console.error("get restaurant kitchen branches error", error);
+    return res
+      .status(500)
+      .json({ message: "Гал тогооны салбарын жагсаалт авахад алдаа гарлаа" });
+  }
+});
+
 router.get("/restaurant/pos/kitchen-tickets", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
@@ -1883,10 +2093,11 @@ router.get("/restaurant/pos/kitchen-tickets", async (req, res) => {
       where: {
         branchId,
         organizationId: access.branch.organizationId,
-        status: { in: ACTIVE_KITCHEN_TICKET_STATUSES },
+        // This is a work queue, not history. Return every unfinished ticket;
+        // completed tickets never occupy a slot or hide newer orders.
+        status: { in: [...KITCHEN_QUEUE_STATUSES] },
       },
       orderBy: [{ sentAt: "asc" }, { kitchenTicketNo: "asc" }],
-      take: 100,
       include: kitchenTicketInclude,
     });
 
@@ -2049,7 +2260,7 @@ router.patch("/restaurant/pos/kitchen-tickets/:id/status", async (req, res) => {
     const remainingActiveTickets = await prisma.kitchenTicket.count({
       where: {
         restaurantTicketId: updated.restaurantTicket.id,
-        status: { in: ACTIVE_KITCHEN_TICKET_STATUSES },
+        status: { in: [...KITCHEN_QUEUE_STATUSES] },
       },
     });
     return res.json({
@@ -2371,10 +2582,15 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
         .json({ message: access.error.message });
     }
 
+    if (lines.some((line) => line.discountPercent !== undefined && !isRestaurantLineDiscountPercent(line.discountPercent))) {
+      return res.status(400).json({ message: "Хөнгөлөлт 0, 10, 20, 30, 40 хувь байна" });
+    }
     const normalizedLines = lines.map((line) => ({
       productId: String(line.productId || "").trim(),
       qty: Math.floor(Number(line.qty || 0)),
       note: normalizeNote(line.note),
+      applyDiscount: (line.discountPercent ?? 0) > 0,
+      discountPercent: line.discountPercent ?? 0,
     }));
     if (
       normalizedLines.some(
@@ -2436,12 +2652,14 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
           where: { id: shiftId },
           select: {
             id: true,
+            mode: true,
             status: true,
             organizationId: true,
             branchId: true,
             cashierId: true,
             registerId: true,
             note: true,
+            register: { select: { mode: true } },
           },
         });
         if (!activeShift) {
@@ -2553,7 +2771,8 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
         }
         if (
           isSelfService &&
-          (activeShift.note !== SELF_SERVICE_SHIFT_NOTE ||
+          (activeShift.mode !== "SELF_SERVICE" ||
+            activeShift.note !== SELF_SERVICE_SHIFT_NOTE ||
             activeShift.registerId !== null)
         ) {
           throw Object.assign(
@@ -2563,7 +2782,25 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
         }
         if (!isSelfService && activeShift.note === SELF_SERVICE_SHIFT_NOTE) {
           throw Object.assign(
-            new Error("Self-service дотоод ээлжийг энгийн кассанд ашиглах боломжгүй"),
+            new Error(
+              "Self-service дотоод ээлжийг энгийн кассанд ашиглах боломжгүй",
+            ),
+            { status: 409 },
+          );
+        }
+        if (
+          !isSelfService &&
+          (activeShift.mode !== "RESTAURANT" ||
+            !activeShift.register ||
+            !canUsePosRegisterForMode(
+              activeShift.register.mode,
+              "RESTAURANT",
+            ))
+        ) {
+          throw Object.assign(
+            new Error(
+              "Рестораны ticket зөвхөн RESTAURANT төрлийн кассын ээлж дээр үүснэ",
+            ),
             { status: 409 },
           );
         }
@@ -2652,6 +2889,8 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
               unitPrice: product.price,
               qty: line.qty,
               note: line.note,
+              applyDiscount: line.applyDiscount,
+              discountPercent: line.discountPercent,
               kitchenStation: product.kitchenStation,
               preparationMinutes: product.preparationMinutes,
             },
@@ -2659,6 +2898,8 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
               productName: product.name,
               qty: line.qty,
               note: line.note,
+              applyDiscount: line.applyDiscount,
+              discountPercent: line.discountPercent,
               kitchenStation: product.kitchenStation,
               preparationMinutes: product.preparationMinutes,
             },

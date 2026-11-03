@@ -20,7 +20,6 @@ interface UseStockRequestSubmissionOptions {
   refreshStockRequests: () => Promise<void>;
   setViewMode: React.Dispatch<React.SetStateAction<StockRequestView>>;
   clearCart: () => void;
-  exitWarehouse: () => void;
 }
 
 export function useStockRequestSubmission({
@@ -33,7 +32,6 @@ export function useStockRequestSubmission({
   refreshStockRequests,
   setViewMode,
   clearCart,
-  exitWarehouse,
 }: UseStockRequestSubmissionOptions) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -93,12 +91,13 @@ export function useStockRequestSubmission({
     }
   };
 
-  const finishSuccessfulOrder = () => {
+  const finishSuccessfulOrder = (
+    destination: "browse" | "requests" = "browse",
+  ) => {
     setShowOrderSuccessModal(false);
     clearCart();
-    exitWarehouse();
     void refreshStockRequests();
-    setViewMode("requests");
+    setViewMode(destination);
   };
   return {
     isSubmitting,

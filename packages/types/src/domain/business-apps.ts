@@ -12,6 +12,7 @@ export const BUSINESS_CAPABILITY_OPTIONS: Record<
   string,
   { label: string; feature: BusinessAppFeatureKey }
 > = {
+  KITCHEN_CHEF: { label: "Тогооч · Зөвхөн гал тогоо", feature: "pos" },
   POS_CASHIER: { label: "POS · Касс ажиллуулах", feature: "pos" },
   SALES_REPRESENTATIVE: { label: "Худалдааны төлөөлөгч", feature: "sales" },
   DELIVERY_DRIVER: { label: "Хүргэлт хийх", feature: "delivery" },

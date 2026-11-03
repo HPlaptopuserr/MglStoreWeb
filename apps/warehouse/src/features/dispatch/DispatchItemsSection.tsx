@@ -43,7 +43,7 @@ export function DispatchItemsSection({
       <div className="border-b border-slate-100 p-5 sm:p-6">
         <div className="mb-5 flex items-start gap-3">
           <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shadow-sm shadow-blue-600/30">
-            2
+            1
           </span>
           <div>
             <h2 className="font-bold text-slate-950">Гаргах бараа сонгох</h2>

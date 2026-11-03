@@ -1,8 +1,9 @@
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getMessaging } from "firebase-admin/messaging";
-import { prisma } from "@mgl/database";
+import { prisma, type ChatApp } from "@mgl/database";
 
 type ChatPush = {
+  app: ChatApp;
   senderId: string;
   senderName: string;
   conversationId: string;
@@ -57,7 +58,11 @@ export async function sendChatPush(input: ChatPush): Promise<void> {
   if (recipients.length === 0) return;
 
   const registrations = await prisma.pushToken.findMany({
-    where: { userId: { in: recipients.map((item) => item.userId) } },
+    where: {
+      app: input.app,
+      platform: { notIn: ["ios_voip", "ios_voip_sandbox"] },
+      userId: { in: recipients.map((item) => item.userId) },
+    },
     select: { token: true },
   });
   if (registrations.length === 0) return;
@@ -80,6 +85,7 @@ export async function sendChatPush(input: ChatPush): Promise<void> {
     notification: { title, body },
     data: {
       type: input.isCall ? "incoming_call" : "chat_message",
+      app: input.app,
       conversationId: input.conversationId,
       conversationName: input.conversationName,
       messageId: input.messageId,
@@ -113,7 +119,7 @@ export async function sendPushToUsers(input: UserPush): Promise<number> {
   if (!initializeFirebase() || input.userIds.length === 0) return 0;
 
   const registrations = await prisma.pushToken.findMany({
-    where: { userId: { in: Array.from(new Set(input.userIds)) } },
+    where: { userId: { in: Array.from(new Set(input.userIds)) }, platform: { notIn: ["ios_voip", "ios_voip_sandbox"] } },
     select: { token: true },
   });
   if (registrations.length === 0) return 0;

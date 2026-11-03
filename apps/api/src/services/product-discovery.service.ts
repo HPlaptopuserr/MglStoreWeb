@@ -1,4 +1,5 @@
 import { getProductSearchPhrases } from "@mgl/types";
+import type { Prisma } from "@mgl/database";
 
 export {
   normalizeDiscoveryText,
@@ -9,37 +10,48 @@ export {
   suggestProductCategory,
 } from "@mgl/types";
 
-export function buildProductSearchWhere(search: string) {
-  return getProductSearchPhrases(search).flatMap((phrase) => [
-    { name: { contains: phrase, mode: "insensitive" as const } },
-    { description: { contains: phrase, mode: "insensitive" as const } },
-    { sku: { contains: phrase, mode: "insensitive" as const } },
-    { barcode: { contains: phrase, mode: "insensitive" as const } },
-    { barcodeAliases: { has: phrase } },
-    { classificationCode: { contains: phrase, mode: "insensitive" as const } },
-    { taxProductCode: { contains: phrase, mode: "insensitive" as const } },
+/** Group relation predicates so Prisma emits one join per relation, not per phrase. */
+export function buildProductSearchWhere(
+  search: string,
+): Prisma.ProductWhereInput[] {
+  const phrases = getProductSearchPhrases(search);
+  const contains = (phrase: string) => ({
+    contains: phrase,
+    mode: "insensitive" as const,
+  });
+
+  return [
+    ...phrases.flatMap((phrase) => [
+      { name: contains(phrase) },
+      { description: contains(phrase) },
+      { sku: contains(phrase) },
+      { barcode: contains(phrase) },
+      { classificationCode: contains(phrase) },
+      { taxProductCode: contains(phrase) },
+    ]),
+    { barcodeAliases: { hasSome: phrases } },
     {
       organization: {
-        name: { contains: phrase, mode: "insensitive" as const },
+        OR: phrases.map((phrase) => ({ name: contains(phrase) })),
       },
     },
     {
       businessCategory: {
         OR: [
-          { name: { contains: phrase, mode: "insensitive" as const } },
-          { slug: { contains: phrase, mode: "insensitive" as const } },
+          ...phrases.flatMap((phrase) => [
+            { name: contains(phrase) },
+            { slug: contains(phrase) },
+          ]),
           {
             parent: {
-              name: { contains: phrase, mode: "insensitive" as const },
-            },
-          },
-          {
-            parent: {
-              slug: { contains: phrase, mode: "insensitive" as const },
+              OR: phrases.flatMap((phrase) => [
+                { name: contains(phrase) },
+                { slug: contains(phrase) },
+              ]),
             },
           },
         ],
       },
     },
-  ]);
+  ];
 }

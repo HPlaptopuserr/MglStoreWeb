@@ -1,0 +1,287 @@
+.unit-room-interiors {
+  width: 100%;
+  margin: 18px 0;
+}
+.unit-room-interiors > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.unit-room-interiors h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 650;
+  margin: 0;
+}
+.unit-room-interiors header > span {
+  font-size: 10px;
+  color: #6b858f;
+}
+.unit-room-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.unit-room-card {
+  min-width: 0;
+  padding: 0 0 9px;
+  border: 1px solid #dce7ea;
+  border-radius: 9px;
+  overflow: hidden;
+  text-align: left;
+  background: #f8fafb;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+.unit-room-card:hover {
+  border-color: #32959b;
+  background: #edf7f7;
+}
+.unit-room-card .unit-room-image,
+.unit-room-thumb-empty {
+  width: 100%;
+  height: clamp(64px, 7vw, 100px);
+}
+.unit-room-card .unit-room-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.unit-room-thumb-empty {
+  display: grid;
+  place-items: center;
+  color: #a1bbc1;
+  background: linear-gradient(135deg, #e3eef1, #f5f8f9);
+}
+.unit-room-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 8px 9px 3px;
+  font-size: 11px;
+  font-weight: 650;
+  color: #234b58;
+}
+.unit-room-card > small {
+  display: block;
+  padding: 0 9px;
+  font-size: 9px;
+  color: #718892;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+.unit-room-image {
+  position: relative;
+}
+.unit-room-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.unit-room-loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #edf4f6;
+  color: #718892;
+  font-size: 10px;
+}
+.unit-room-image-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  min-height: 180px;
+  color: #718892;
+  font-size: 12px;
+  background: #f4f7f8;
+}
+.unit-room-card .unit-room-image-empty {
+  min-height: 0;
+  height: 100%;
+  font-size: 9px;
+  gap: 4px;
+}
+.building-dialog:has(.unit-room-preview) {
+  width: min(900px, calc(100vw - 24px));
+  max-height: calc(100svh - 32px);
+  overflow: auto;
+  padding: 0;
+  border: 1px solid #dce7ea;
+  border-radius: 16px;
+  background: #fff;
+  color: #193743;
+  box-shadow: 0 24px 100px #001c3350;
+}
+.building-dialog:has(.unit-room-preview)::backdrop {
+  background: #071d32a8;
+  backdrop-filter: blur(5px);
+}
+.building-dialog:has(.unit-room-preview) .building-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e1eaec;
+}
+.building-dialog:has(.unit-room-preview) .building-dialog-header p {
+  font-size: 10px;
+  color: #718892;
+  margin: 0 0 6px;
+}
+.building-dialog:has(.unit-room-preview) h2 {
+  font-size: 18px;
+  font-weight: 650;
+  margin: 0;
+}
+.building-dialog:has(.unit-room-preview) .building-dialog-header button {
+  padding: 8px;
+  border-radius: 8px;
+  color: #4f737d;
+  background: #edf4f6;
+  cursor: pointer;
+}
+.unit-room-preview {
+  padding: 16px 20px;
+}
+.unit-room-preview .unit-room-image {
+  height: min(55svh, 580px);
+}
+.unit-room-preview .unit-room-image-empty {
+  height: min(40svh, 320px);
+}
+.unit-room-preview > p {
+  white-space: pre-line;
+  line-height: 1.8;
+  font-size: 13px;
+  color: #5c7782;
+  margin-top: 12px;
+}
+.unit-room-preview > a {
+  display: block;
+  font-size: 12px;
+  color: #227d82;
+  margin-top: 16px;
+}
+.unit-room-preview-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid #e1eaec;
+  padding: 14px 20px;
+  font-size: 12px;
+}
+.unit-room-preview-navigation button {
+  padding: 9px 12px;
+  border: 1px solid #d7e5e8;
+  border-radius: 8px;
+  color: #227d82;
+  cursor: pointer;
+}
+.unit-room-preview-navigation button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.unit-room-fields {
+  margin-top: 24px;
+}
+.unit-room-fields > p {
+  font-size: 12px;
+  line-height: 1.7;
+  color: #627d89;
+}
+.unit-room-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+.unit-room-editor-grid > section {
+  border: 1px solid #dce7ea;
+  padding: 16px;
+  border-radius: 12px;
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+.unit-room-editor-grid h4 {
+  font-size: 14px;
+  font-weight: 650;
+}
+.unit-room-editor-grid img {
+  width: 100%;
+  height: 160px;
+  object-fit: contain;
+  background: #f2f6f7;
+}
+@media (max-width: 520px) {
+  .unit-room-editor-grid {
+    grid-template-columns: 1fr;
+  }
+  .unit-room-cards {
+    gap: 6px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .unit-room-card {
+    transition: none;
+  }
+}
+@media (max-height: 850px) and (min-width: 641px) {
+  .unit-workspace .unit-detail-copy {
+    padding: 16px;
+  }
+  .unit-workspace .unit-detail-copy h1 {
+    font-size: 28px;
+  }
+  .unit-workspace .unit-detail-spec {
+    margin: 12px 0 10px;
+    padding: 10px 0;
+  }
+  .unit-workspace .unit-detail-spec dd {
+    font-size: 26px;
+  }
+  .unit-workspace .unit-detail-spec dt {
+    margin-bottom: 5px;
+  }
+  .unit-workspace .unit-room-interiors {
+    margin: 12px 0;
+  }
+  .unit-workspace .unit-room-card .unit-room-image,
+  .unit-workspace .unit-room-thumb-empty {
+    height: 56px;
+  }
+  .unit-workspace .unit-room-card-title {
+    padding-top: 6px;
+    font-size: 10px;
+  }
+  .unit-workspace .unit-detail-pricing {
+    padding: 14px;
+    flex-shrink: 0;
+  }
+  .unit-workspace .unit-detail-pricing dd {
+    font-size: 18px;
+  }
+  .unit-workspace .unit-detail-pricing p {
+    margin-top: 8px;
+    max-height: 32px;
+  }
+  .unit-workspace .unit-contact-actions {
+    margin-top: 10px;
+  }
+  .unit-workspace .unit-detail-edit {
+    margin-top: 8px;
+  }
+}

@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -H 0.0.0.0",
     "lint": "eslint .",
-    "type-check": "tsc --noEmit"
+    "type-check": "next typegen && tsc --noEmit"
   },
   "dependencies": {
     "@mgl/types": "workspace:*",

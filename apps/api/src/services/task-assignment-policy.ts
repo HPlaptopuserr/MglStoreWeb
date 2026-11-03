@@ -1,9 +1,14 @@
-/** Assignment follows the organization hierarchy, never the platform role. */
-export function canAssignTaskToRole(callerRole: string, targetRole: string): boolean {
+/** Uses persisted OrgRole only. Group roles never confer company privileges. */
+export function canManageOrganizationTasks(role: string): boolean {
+  return ["OWNER", "ADMIN"].includes(role.trim().toUpperCase());
+}
+export function canAssignTaskToRole(
+  callerRole: string,
+  targetRole: string,
+): boolean {
   const caller = callerRole.trim().toUpperCase();
   const target = targetRole.trim().toUpperCase();
-  if (caller === "OWNER" || caller === "CEO") {
-    return ["ADMIN", "MANAGER", "HR", "STAFF"].includes(target);
-  }
-  return ["ADMIN", "MANAGER"].includes(caller) && target === "STAFF";
+  return caller === "OWNER"
+    ? ["ADMIN", "STAFF"].includes(target)
+    : caller === "ADMIN" && target === "STAFF";
 }

@@ -16,6 +16,18 @@ import {
   type CreateSaleBody, type PushEcrPurchaseResponse, toApiError, parseAuthClaims, runtimeEnv,
 } from "./_shared";
 import { validateEnabledEbarimtConfig } from "./ebarimt-config.validation";
+import {
+  canUsePosRegisterForMode,
+  normalizePosRegisterMode,
+} from "./pos-register-mode";
+import { calculateExpectedCash, summarizeShiftSales } from "./shift-accounting";
+import {
+  getCashDrawerEventTotals,
+  loadShiftAccountingSales,
+} from "./shift-accounting-data";
+import {
+  canAutoCancelTicketForRegisterModeChange,
+} from "./register-mode-change";
 
 const router: ExpressRouter = Router();
 const BRIDGE_CARD_PROVIDERS = new Set(["ANDROID_PGW", "QPOSLANE", "GANTIGO", "IDPAY"]);
@@ -195,12 +207,19 @@ router.get("/pos/register-config", async (req, res) => {
   if (!registerId) {
     return res.status(400).json({ message: "registerId шаардлагатай" });
   }
+  const requestedMode = req.query.mode;
+  const mode =
+    requestedMode === undefined ? null : normalizePosRegisterMode(requestedMode);
+  if (requestedMode !== undefined && !mode) {
+    return res.status(400).json({ message: "POS register-ийн төрөл буруу байна" });
+  }
 
   try {
     const register = await prisma.posRegister.findUnique({
       where: { id: registerId },
       select: {
         id: true,
+        mode: true,
         name: true,
         label: true,
         cardEnabled: true,
@@ -232,6 +251,11 @@ router.get("/pos/register-config", async (req, res) => {
 
     if (!register) {
       return res.status(404).json({ message: "POS олдсонгүй" });
+    }
+    if (mode && !canUsePosRegisterForMode(register.mode, mode)) {
+      return res.status(409).json({
+        message: `Энэ нь ${register.mode} төрлийн касс байна. ${mode} урсгалд ашиглах боломжгүй.`,
+      });
     }
     if (!canAccessPosOrganization(actor, register.organizationId)) {
       return res.status(403).json({ message: "Өөр байгууллагын POS config харах боломжгүй" });
@@ -384,6 +408,11 @@ router.post("/pos/registers/self-claim", async (req, res) => {
     });
 
     if (existing) {
+      if (existing.mode !== "RETAIL") {
+        return res.status(409).json({
+          message: "Энэ нэртэй restaurant/self-service касс байна. Өөр нэр сонгоно уу.",
+        });
+      }
       return res.status(200).json({ ...existing, reused: true });
     }
 
@@ -397,6 +426,7 @@ router.post("/pos/registers/self-claim", async (req, res) => {
       data: {
         organizationId,
         branchId,
+        mode: "RETAIL",
         name,
         isActive: false,
         activationStatus: PosActivationStatus.PENDING,
@@ -447,6 +477,13 @@ router.get("/pos/registers/mine", async (req, res) => {
     return res.status(400).json({ message: "Байгууллагатай холбоогүй хэрэглэгч" });
   }
 
+  const requestedMode = req.query.mode;
+  const mode =
+    requestedMode === undefined ? null : normalizePosRegisterMode(requestedMode);
+  if (requestedMode !== undefined && !mode) {
+    return res.status(400).json({ message: "POS register-ийн төрөл буруу байна" });
+  }
+
   try {
     const registers = await prisma.posRegister.findMany({
       where: {
@@ -454,10 +491,12 @@ router.get("/pos/registers/mine", async (req, res) => {
         isActive: true,
         activationStatus: PosActivationStatus.APPROVED,
         deletedAt: null,
+        ...(mode ? { mode } : {}),
       },
       orderBy: { createdAt: "asc" },
       select: {
         id: true,
+        mode: true,
         name: true,
         label: true,
         branchId: true,
@@ -852,6 +891,7 @@ router.post("/admin/pos-registers", async (req, res) => {
   const {
     organizationId,
     branchId,
+    mode,
     name,
     label,
     cardEnabled,
@@ -872,6 +912,7 @@ router.post("/admin/pos-registers", async (req, res) => {
   } = req.body as {
     organizationId?: string;
     branchId?: string;
+    mode?: string;
     name?: string;
     label?: string;
     cardEnabled?: boolean;
@@ -892,6 +933,8 @@ router.post("/admin/pos-registers", async (req, res) => {
   };
 
   const normalizedName = normalizeRegisterName(name);
+  const normalizedMode =
+    mode === undefined ? "RETAIL" : normalizePosRegisterMode(mode);
   const normalizedCardProviderType = normalizeNullableString(cardProviderType);
   const normalizedCardTerminalId = normalizeCardTerminalId(normalizedCardProviderType, cardTerminalId);
   const normalizedTerminalBridgeUrl = normalizeNullableString(terminalBridgeUrl);
@@ -904,6 +947,9 @@ router.post("/admin/pos-registers", async (req, res) => {
 
   if (!organizationId || !branchId || !normalizedName) {
     return res.status(400).json({ message: "organizationId, branchId, name шаардлагатай" });
+  }
+  if (!normalizedMode) {
+    return res.status(400).json({ message: "POS register-ийн төрөл буруу байна" });
   }
 
   // Validate terminalBridgeUrl if provided
@@ -1014,6 +1060,7 @@ router.post("/admin/pos-registers", async (req, res) => {
       data: {
         organizationId,
         branchId,
+        mode: normalizedMode,
         name: normalizedName,
         label: label ? String(label).trim() : null,
         cardEnabled: Boolean(cardEnabled),
@@ -1084,6 +1131,7 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
   if (!id) return res.status(400).json({ message: "id шаардлагатай" });
 
   const {
+    mode,
     name,
     label,
     cardEnabled,
@@ -1103,6 +1151,7 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
     minuAgentBranchId,
     isActive,
   } = req.body as {
+    mode?: string;
     name?: string;
     label?: string;
     cardEnabled?: boolean;
@@ -1125,6 +1174,11 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
 
   const normalizedInputTerminalBridgeUrl =
     terminalBridgeUrl !== undefined ? normalizeNullableString(terminalBridgeUrl) : undefined;
+  const normalizedInputMode =
+    mode !== undefined ? normalizePosRegisterMode(mode) : undefined;
+  if (mode !== undefined && !normalizedInputMode) {
+    return res.status(400).json({ message: "POS register-ийн төрөл буруу байна" });
+  }
   const normalizedInputEbarimtPosApiUrl =
     ebarimtPosApiUrl !== undefined ? normalizeUrlString(ebarimtPosApiUrl) : undefined;
   const normalizedInputEbarimtMerchantTin =
@@ -1276,32 +1330,213 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
       shouldUpdateMinuAgentConfig = hasMinuCredentialInput || org?.minuAgentEnabled !== true;
     }
 
-    const updated = await prisma.posRegister.update({
-      where: { id },
-      data: {
-        ...(name !== undefined && { name: String(name).trim() }),
-        ...(label !== undefined && { label: label ? String(label).trim() : null }),
-        cardEnabled: nextCardEnabled,
-        cardProviderType: nextCardProviderType,
-        cardTerminalId: nextCardTerminalId,
-        terminalBridgeUrl: nextTerminalBridgeUrl,
-        qpayEnabled: nextQpayEnabled,
-        qpayMerchantId: nextQpayMerchantId,
-        qpayTerminalId: nextQpayTerminalId,
-        ebarimtEnabled: nextEbarimtEnabled,
-        ...(normalizedInputEbarimtPosApiUrl !== undefined && { ebarimtPosApiUrl: normalizedInputEbarimtPosApiUrl }),
-        ...(normalizedInputEbarimtMerchantTin !== undefined && { ebarimtMerchantTin: normalizedInputEbarimtMerchantTin }),
-        ...(normalizedInputEbarimtPosNo !== undefined && { ebarimtPosNo: normalizedInputEbarimtPosNo }),
-        ...(normalizedInputEbarimtMerchantName !== undefined && { ebarimtMerchantName: normalizedInputEbarimtMerchantName }),
-        ...(isActive !== undefined && {
-          isActive: Boolean(isActive),
-          ...(Boolean(isActive) && existing.activationStatus === PosActivationStatus.PENDING && {
-            activationStatus: PosActivationStatus.APPROVED,
-          }),
-        }),
+    const {
+      updated,
+      autoClosedShiftIds,
+      autoCancelledDraftTicketIds,
+    } = await prisma.$transaction(
+      async (tx: Prisma.TransactionClient) => {
+        // Shift opening locks this same register row. Taking the lock here makes
+        // closing the old-mode shift and changing the register mode atomic.
+        await tx.$queryRaw`
+          SELECT "id"
+          FROM "PosRegister"
+          WHERE "id" = ${id}
+          FOR UPDATE
+        `;
+
+        const currentRegister = await tx.posRegister.findUnique({
+          where: { id },
+          select: { mode: true },
+        });
+        if (!currentRegister) throw toApiError(404, "POS олдсонгүй");
+
+        const autoClosedShiftIds: string[] = [];
+        const autoCancelledDraftTicketIds: string[] = [];
+        if (
+          normalizedInputMode &&
+          normalizedInputMode !== currentRegister.mode
+        ) {
+          await tx.$queryRaw`
+            SELECT "id"
+            FROM "PosShift"
+            WHERE "registerId" = ${id}
+              AND "status" = ${ShiftStatus.OPEN}::"ShiftStatus"
+            FOR UPDATE
+          `;
+
+          const openShifts = await tx.posShift.findMany({
+            where: { registerId: id, status: ShiftStatus.OPEN },
+            select: {
+              id: true,
+              organizationId: true,
+              cashierId: true,
+              openingCash: true,
+              mode: true,
+            },
+          });
+
+          if (openShifts.length > 0) {
+            const shiftIds = openShifts.map((shift) => shift.id);
+            const openDraftTickets = await tx.restaurantTicket.findMany({
+              where: {
+                shiftId: { in: shiftIds },
+                status: "OPEN",
+                posSaleId: null,
+              },
+              select: {
+                id: true,
+                status: true,
+                posSaleId: true,
+                kitchenTickets: { select: { status: true } },
+              },
+            });
+            autoCancelledDraftTicketIds.push(
+              ...openDraftTickets
+                .filter((ticket) =>
+                  canAutoCancelTicketForRegisterModeChange({
+                    status: ticket.status,
+                    posSaleId: ticket.posSaleId,
+                    kitchenTicketStatuses: ticket.kitchenTickets.map(
+                      (kitchenTicket) => kitchenTicket.status,
+                    ),
+                  }),
+                )
+                .map((ticket) => ticket.id),
+            );
+            if (autoCancelledDraftTicketIds.length > 0) {
+              await tx.restaurantTicket.updateMany({
+                where: { id: { in: autoCancelledDraftTicketIds } },
+                data: {
+                  status: "CANCELLED",
+                  closedAt: new Date(),
+                },
+              });
+            }
+
+            // Paid restaurant tickets can be released automatically. Unpaid or
+            // in-progress tickets still require an explicit resolution so an
+            // order cannot disappear during the mode change.
+            await tx.restaurantTicket.updateMany({
+              where: { shiftId: { in: shiftIds }, status: "PAID" },
+              data: { status: "CLOSED" },
+            });
+            const blockingTickets = await tx.restaurantTicket.findMany({
+              where: {
+                shiftId: { in: shiftIds },
+                status: { in: ["OPEN", "KITCHEN", "READY", "SERVED"] },
+              },
+              select: {
+                ticketNo: true,
+                status: true,
+                table: { select: { label: true } },
+              },
+              orderBy: { openedAt: "asc" },
+            });
+            if (blockingTickets.length > 0) {
+              const examples = blockingTickets
+                .slice(0, 3)
+                .map(
+                  (ticket) =>
+                    `${ticket.ticketNo} (${ticket.status}${
+                      ticket.table?.label ? ` · Ширээ ${ticket.table.label}` : ""
+                    })`,
+                )
+                .join(", ");
+              const remaining = blockingTickets.length - 3;
+              throw toApiError(
+                409,
+                `Кассын төрлийг солихоос өмнө төлбөр дуусаагүй ${blockingTickets.length} захиалгыг шийдвэрлэнэ үү: ${examples}${
+                  remaining > 0 ? ` болон өөр ${remaining}` : ""
+                }.`,
+              );
+            }
+
+            const salesByShift = await loadShiftAccountingSales(tx, shiftIds);
+            const drawerTotals = await Promise.all(
+              openShifts.map((shift) => getCashDrawerEventTotals(tx, shift.id)),
+            );
+            const closedAt = new Date();
+
+            for (const [index, shift] of openShifts.entries()) {
+              const salesSummary = summarizeShiftSales(
+                salesByShift.get(shift.id) || [],
+              );
+              const expectedCash = calculateExpectedCash({
+                openingCash: Number(shift.openingCash),
+                cashSales: salesSummary.cashSales,
+                paidIn: drawerTotals[index]?.paidIn || 0,
+                paidOut: drawerTotals[index]?.paidOut || 0,
+              });
+
+              await tx.posShift.update({
+                where: { id: shift.id },
+                data: {
+                  status: ShiftStatus.CLOSED,
+                  expectedCash,
+                  closingCash: null,
+                  cashDifference: null,
+                  closedAt,
+                },
+              });
+              await tx.auditLog.create({
+                data: {
+                  userId: actor.id,
+                  action: AuditAction.POS_REGISTER_UPDATED,
+                  ip: req.ip,
+                  meta: {
+                    event: "POS_SHIFT_AUTO_CLOSED_FOR_REGISTER_MODE_CHANGE",
+                    shiftId: shift.id,
+                    registerId: id,
+                    organizationId: shift.organizationId,
+                    cashierId: shift.cashierId,
+                    previousMode: shift.mode,
+                    nextMode: normalizedInputMode,
+                    expectedCash,
+                    closedById: actor.id,
+                  },
+                },
+              });
+              autoClosedShiftIds.push(shift.id);
+            }
+          }
+        }
+
+        const updated = await tx.posRegister.update({
+          where: { id },
+          data: {
+            ...(normalizedInputMode ? { mode: normalizedInputMode } : {}),
+            ...(name !== undefined && { name: String(name).trim() }),
+            ...(label !== undefined && { label: label ? String(label).trim() : null }),
+            cardEnabled: nextCardEnabled,
+            cardProviderType: nextCardProviderType,
+            cardTerminalId: nextCardTerminalId,
+            terminalBridgeUrl: nextTerminalBridgeUrl,
+            qpayEnabled: nextQpayEnabled,
+            qpayMerchantId: nextQpayMerchantId,
+            qpayTerminalId: nextQpayTerminalId,
+            ebarimtEnabled: nextEbarimtEnabled,
+            ...(normalizedInputEbarimtPosApiUrl !== undefined && { ebarimtPosApiUrl: normalizedInputEbarimtPosApiUrl }),
+            ...(normalizedInputEbarimtMerchantTin !== undefined && { ebarimtMerchantTin: normalizedInputEbarimtMerchantTin }),
+            ...(normalizedInputEbarimtPosNo !== undefined && { ebarimtPosNo: normalizedInputEbarimtPosNo }),
+            ...(normalizedInputEbarimtMerchantName !== undefined && { ebarimtMerchantName: normalizedInputEbarimtMerchantName }),
+            ...(isActive !== undefined && {
+              isActive: Boolean(isActive),
+              ...(Boolean(isActive) && existing.activationStatus === PosActivationStatus.PENDING && {
+                activationStatus: PosActivationStatus.APPROVED,
+              }),
+            }),
+          },
+          include: { branch: { select: { id: true, name: true } } },
+        });
+
+        return {
+          updated,
+          autoClosedShiftIds,
+          autoCancelledDraftTicketIds,
+        };
       },
-      include: { branch: { select: { id: true, name: true } } },
-    });
+    );
 
     if (nextCardEnabled && nextCardProviderType === "MINU_AGENT" && shouldUpdateMinuAgentConfig) {
       await prisma.organization.update({
@@ -1323,12 +1558,21 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
         userId: actor.id,
         action: AuditAction.POS_REGISTER_UPDATED,
         ip: req.ip,
-        meta: { registerId: id, actionType: "update" },
+        meta: {
+          registerId: id,
+          actionType: "update",
+          autoClosedShiftIds,
+          autoCancelledDraftTicketIds,
+        },
       },
     });
 
     return res.json(updated);
   } catch (error) {
+    const known = error as ApiError;
+    if (known?.status && known?.message) {
+      return res.status(known.status).json({ message: known.message });
+    }
     const maybePrisma = error as { code?: string; meta?: { target?: unknown } };
     if (maybePrisma?.code === "P2002") {
       const target = Array.isArray(maybePrisma.meta?.target)

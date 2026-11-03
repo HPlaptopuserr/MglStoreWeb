@@ -18,6 +18,7 @@ function fakeDatabase({
   hidden = false,
   existingComment = false,
   existingShare = false,
+  chatApp = "STORE",
 } = {}) {
   let writes = 0;
   let filter: unknown;
@@ -58,6 +59,7 @@ function fakeDatabase({
     },
     conversation: {
       findUnique: async () => ({
+        app: chatApp,
         type: "DIRECT",
         name: null,
         participants: [
@@ -145,6 +147,15 @@ test("private reels cannot be shared even by their owner", async () => {
   await assert.rejects(
     shareReelToChat("private", "author", "chat", "id", fake.db),
     ReelSocialError,
+  );
+  assert.equal(fake.writes, 0);
+});
+
+test("Store reels cannot be sent to a Business conversation", async () => {
+  const fake = fakeDatabase({ chatApp: "BUSINESS" });
+  await assert.rejects(
+    shareReelToChat("reel", "author", "chat", "id", fake.db),
+    (error: unknown) => error instanceof ReelSocialError && error.status === 404,
   );
   assert.equal(fake.writes, 0);
 });

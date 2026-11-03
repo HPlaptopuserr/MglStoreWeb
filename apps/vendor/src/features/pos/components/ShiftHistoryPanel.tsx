@@ -201,6 +201,8 @@ export function ShiftHistoryPanel({
               <div className="grid grid-cols-2 gap-2">
                 {[
                   ["Эхлэх мөнгө", selectedShiftHistory.openingCash],
+                  ["Нэмсэн бэлэн", selectedShiftHistory.paidIn],
+                  ["Бэлэн зарлага", selectedShiftHistory.paidOut],
                   ["Тооцоолсон бэлэн", selectedShiftHistory.expectedCash],
                   ["Хаасан мөнгө", selectedShiftHistory.closingCash || 0],
                   ["Зөрүү", selectedShiftHistory.cashDifference || 0],

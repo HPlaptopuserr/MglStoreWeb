@@ -14,6 +14,7 @@ export function useStockRequestData() {
   const [warehouses, setWarehouses] = useState<SupplyWarehouse[]>([]);
 
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [outstandingPayments, setOutstandingPayments] =
     useState<OutstandingPaymentSummary | null>(null);
@@ -23,13 +24,35 @@ export function useStockRequestData() {
   const [user, setUser] = useState<StockRequestUser | null>(null);
 
   useEffect(() => {
-    const storedUser = JSON.parse(localStorage.getItem("vendor_user") || "{}");
-    if (storedUser.id && storedUser.organizationId) {
-      setUser(storedUser);
+    try {
+      const storedUser: unknown = JSON.parse(
+        localStorage.getItem("vendor_user") || "null",
+      );
+      if (
+        typeof storedUser === "object" &&
+        storedUser !== null &&
+        "id" in storedUser &&
+        typeof storedUser.id === "string" &&
+        "organizationId" in storedUser &&
+        typeof storedUser.organizationId === "string"
+      ) {
+        setUser({
+          id: storedUser.id,
+          organizationId: storedUser.organizationId,
+        });
+      } else {
+        setError("Байгууллагын мэдээлэл олдсонгүй. Дахин нэвтэрнэ үү.");
+        setLoading(false);
+      }
+    } catch {
+      setError("Нэвтрэлтийн мэдээлэл буруу байна. Дахин нэвтэрнэ үү.");
+      setLoading(false);
     }
   }, []);
 
   const refreshStockRequests = useCallback(async () => {
+    if (!user?.organizationId) return;
+    setError(null);
     try {
       setLoading(true);
       const [requestsRes, warehousesRes, outstandingRes] = await Promise.all([
@@ -43,6 +66,11 @@ export function useStockRequestData() {
           `${API}/stock-requests/payments/unpaid/${user?.organizationId}`,
         ),
       ]);
+      if (!requestsRes.ok || !warehousesRes.ok || !outstandingRes.ok) {
+        throw new Error(
+          "Бараа таталтын мэдээлэл ачаалахад алдаа гарлаа. Дахин оролдоно уу.",
+        );
+      }
       if (requestsRes.ok) {
         const reqs = (await requestsRes.json()) || [];
         setRequests(reqs);
@@ -54,6 +82,11 @@ export function useStockRequestData() {
       }
     } catch (error) {
       console.error("Failed to fetch data:", error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Мэдээлэл ачаалах боломжгүй байна",
+      );
     } finally {
       setLoading(false);
     }
@@ -81,6 +114,7 @@ export function useStockRequestData() {
     setRequests,
     warehouses,
     loading,
+    error,
     outstandingPayments,
     filteredRequests,
     setFilteredRequests,

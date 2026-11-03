@@ -1,0 +1,117 @@
+.building-inquiry-inbox {
+  max-width: 1100px;
+  margin: auto;
+  padding: clamp(20px, 3vw, 40px);
+  color: #193743;
+}
+.building-inquiry-inbox > header > p {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #427d86;
+  font-weight: 700;
+}
+.building-inquiry-inbox h1 {
+  font-size: clamp(24px, 3vw, 32px);
+  font-weight: 700;
+  margin: 8px 0;
+}
+.building-inquiry-inbox > header > span,
+.inquiry-inbox-count {
+  font-size: 13px;
+  color: #6c8191;
+}
+.inquiry-inbox-count {
+  margin: 24px 0 12px;
+}
+.inquiry-inbox-list {
+  display: grid;
+  gap: 14px;
+}
+.inquiry-inbox-list article {
+  background: #fff;
+  padding: 22px;
+  border: 1px solid #dce5e9;
+  border-radius: 14px;
+}
+.inquiry-inbox-list article > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 16px;
+}
+.inquiry-inbox-list h2 {
+  font-size: 16px;
+  margin: 0 0 8px;
+  font-weight: 650;
+}
+.inquiry-inbox-list a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #207e83;
+}
+.inquiry-inbox-list time {
+  font-size: 11px;
+  color: #758595;
+}
+.inquiry-inbox-unit {
+  font-size: 12px;
+  padding: 12px;
+  background: #edf5f6;
+  border-radius: 6px;
+  margin: 16px 0 12px;
+}
+.inquiry-inbox-question {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.inquiry-inbox-muted {
+  font-size: 12px;
+  color: #7c8c97;
+}
+.inquiry-inbox-empty {
+  padding: 48px 20px;
+  margin-top: 24px;
+  text-align: center;
+  border: 1px dashed #cbdadf;
+  border-radius: 12px;
+  color: #69828c;
+}
+.inquiry-inbox-empty svg {
+  margin: auto;
+}
+.inquiry-inbox-empty h2 {
+  font-size: 18px;
+  margin-top: 14px;
+}
+.inquiry-inbox-empty p {
+  font-size: 13px;
+  margin: 10px 0;
+}
+.building-inquiry-inbox > nav {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: center;
+  margin-top: 20px;
+  font-size: 13px;
+}
+.building-inquiry-inbox a:hover {
+  text-decoration: underline;
+}
+.building-inquiry-inbox :focus-visible {
+  outline: 2px solid #207e83;
+  outline-offset: 3px;
+}
+@media (max-width: 520px) {
+  .inquiry-inbox-list article {
+    padding: 16px;
+  }
+  .inquiry-inbox-list article > header {
+    flex-direction: column;
+    gap: 8px;
+  }
+}

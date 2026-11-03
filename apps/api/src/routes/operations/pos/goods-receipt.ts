@@ -1,4 +1,14 @@
+import { normalizePosMeasureUnit } from "@mgl/types";
+
+export type ReceiptProductSnapshot = {
+  name: string;
+  barcode: string | null;
+  unit: string;
+  price?: number;
+};
+
 export type PosGoodsReceiptLine = {
+  productSnapshot?: ReceiptProductSnapshot;
   productId: string;
   masterProductId?: string;
   quantity: number;
@@ -80,9 +90,48 @@ export function parsePosGoodsReceiptInput(
 
     const item = rawItem as Record<string, unknown>;
     const masterProductId = cleanText(item.masterProductId, 100);
-    const productId = masterProductId ? `catalog:${masterProductId}` : cleanText(item.productId, 100);
-    if (masterProductId && item.productId) return { ok: false, message: "Барааны эх сурвалж давхар байна" };
-    if (masterProductId && item.salePrice === undefined) return { ok: false, message: "Шинэ барааны зарах үнийг оруулна уу" };
+    const productId = masterProductId
+      ? `catalog:${masterProductId}`
+      : cleanText(item.productId, 100);
+    if (masterProductId && item.productId)
+      return { ok: false, message: "Барааны эх сурвалж давхар байна" };
+    if (masterProductId && item.salePrice === undefined)
+      return { ok: false, message: "Шинэ барааны зарах үнийг оруулна уу" };
+    // Snapshot fields are recovery hints from an older browser draft, not
+    // prerequisites for receiving an existing authorized catalog product.
+    let productSnapshot: ReceiptProductSnapshot | undefined;
+    const rawSnapshot = item.productSnapshot;
+    if (
+      rawSnapshot &&
+      typeof rawSnapshot === "object" &&
+      !Array.isArray(rawSnapshot)
+    ) {
+      const snapshot = rawSnapshot as Record<string, unknown>;
+      const name =
+        typeof snapshot.name === "string" ? snapshot.name.trim() : "";
+      const rawPrice = snapshot.price;
+      const price =
+        typeof rawPrice === "number" ||
+        (typeof rawPrice === "string" && rawPrice.trim())
+          ? Number(rawPrice)
+          : undefined;
+      if (name) {
+        productSnapshot = {
+          name,
+          unit: normalizePosMeasureUnit(snapshot.unit),
+          barcode:
+            typeof snapshot.barcode === "string"
+              ? snapshot.barcode.trim() || null
+              : null,
+          ...(price !== undefined &&
+          Number.isFinite(price) &&
+          price >= 0 &&
+          price <= 1_000_000_000
+            ? { price }
+            : {}),
+        };
+      }
+    }
     const quantity = Number(item.quantity);
     const unitCost = Number(item.unitCost);
     const salePrice =
@@ -151,6 +200,7 @@ export function parsePosGoodsReceiptInput(
     }
     linesByLot.set(lotKey, {
       productId,
+      ...(productSnapshot ? { productSnapshot } : {}),
       ...(masterProductId ? { masterProductId } : {}),
       quantity: nextQuantity,
       ...(pricesByProduct.has(productId)

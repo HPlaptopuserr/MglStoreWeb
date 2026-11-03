@@ -1,446 +1,207 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useEffect, useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
+import { MapPin, X } from "lucide-react";
+import type { DispatchDestination, DispatchStore } from "./types";
+import { useDispatchDestinations } from "./useDispatchDestinations";
+import { DispatchMapSection } from "./DispatchMapSection";
 import {
-  AlertCircle,
-  Building2,
-  CheckCircle2,
-  Clock3,
-  Loader2,
-  LocateFixed,
-  MapPin,
-  Navigation,
-  Phone,
-  UserRound,
-} from "lucide-react";
-import { API, wmsFetch } from "@/lib/api";
-import type {
-  DispatchAddressSuggestion,
-  DispatchDestination,
-  DispatchStore,
-} from "./types";
-
-const DispatchLocationPicker = dynamic(
-  () =>
-    import("./DispatchLocationPicker").then(
-      (module) => module.DispatchLocationPicker,
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex min-h-72 items-center justify-center bg-slate-50 text-sm text-slate-500">
-        Газрын зураг ачаалж байна...
-      </div>
-    ),
-  },
-);
-
-interface DispatchDestinationSectionProps {
-  warehouseId: string;
-  value: DispatchDestination;
-  onChange: (value: DispatchDestination) => void;
-}
-
-interface StoreLocationResponse {
-  id?: unknown;
-  name?: unknown;
-  address?: unknown;
-  lat?: unknown;
-  lng?: unknown;
-  contactName?: unknown;
-  contactPhone?: unknown;
-  locationSource?: unknown;
-  organization?: {
-    id?: unknown;
-    name?: unknown;
-  };
-}
-
-function normalizeStore(value: StoreLocationResponse): DispatchStore | null {
-  if (
-    typeof value.id !== "string" ||
-    typeof value.name !== "string" ||
-    typeof value.lat !== "number" ||
-    !Number.isFinite(value.lat) ||
-    typeof value.lng !== "number" ||
-    !Number.isFinite(value.lng) ||
-    typeof value.organization?.id !== "string" ||
-    typeof value.organization.name !== "string"
-  ) {
-    return null;
-  }
-
-  return {
-    id: value.id,
-    name: value.name,
-    address: typeof value.address === "string" ? value.address : null,
-    lat: value.lat,
-    lng: value.lng,
-    contactName:
-      typeof value.contactName === "string" ? value.contactName : null,
-    contactPhone:
-      typeof value.contactPhone === "string" ? value.contactPhone : null,
-    locationSource:
-      value.locationSource === "SALES_VISIT" ? "SALES_VISIT" : "ADMIN_BRANCH",
-    organization: {
-      id: value.organization.id,
-      name: value.organization.name,
-    },
-  };
-}
+  DispatchRecipientFields,
+  dispatchControlClass as control,
+} from "./DispatchRecipientFields";
 
 export function DispatchDestinationSection({
   warehouseId,
   value,
   onChange,
-}: DispatchDestinationSectionProps) {
-  const [suggestions, setSuggestions] = useState<DispatchAddressSuggestion[]>(
-    [],
-  );
-  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
-  const [locating, setLocating] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [stores, setStores] = useState<DispatchStore[]>([]);
+}: {
+  warehouseId: string;
+  value: DispatchDestination;
+  onChange: Dispatch<SetStateAction<DispatchDestination>>;
+}) {
+  const state = useDispatchDestinations(warehouseId, value.address);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
-  const [loadingStores, setLoadingStores] = useState(true);
-  const [storeError, setStoreError] = useState("");
-  const selectedStore = stores.find((store) => store.id === selectedStoreId);
-
-  useEffect(() => {
-    if (value.lat === null || value.lng === null) setSelectedStoreId(null);
-  }, [value.lat, value.lng]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const loadStores = async () => {
-      setLoadingStores(true);
-      setStoreError("");
-      try {
-        const response = await wmsFetch(`${API}/warehouses/store-locations`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error("STORE_LOAD_FAILED");
-        const payload: unknown = await response.json();
-        if (
-          !payload ||
-          typeof payload !== "object" ||
-          !("stores" in payload) ||
-          !Array.isArray(payload.stores)
-        ) {
-          throw new Error("INVALID_STORE_RESPONSE");
-        }
-        setStores(
-          payload.stores
-            .map((item) => normalizeStore(item as StoreLocationResponse))
-            .filter((item): item is DispatchStore => item !== null),
-        );
-      } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError")
-          return;
-        setStores([]);
-        setStoreError("Дэлгүүрийн байршлуудыг ачаалж чадсангүй");
-      } finally {
-        if (!controller.signal.aborted) setLoadingStores(false);
-      }
-    };
-    void loadStores();
-    return () => controller.abort();
-  }, []);
-
-  useEffect(() => {
-    if (!warehouseId) {
-      setSuggestions([]);
-      return;
-    }
-
-    const controller = new AbortController();
-    const timer = window.setTimeout(async () => {
-      setLoadingSuggestions(true);
-      try {
-        const params = new URLSearchParams({ limit: "8" });
-        if (value.address.trim()) params.set("query", value.address.trim());
-        const response = await wmsFetch(
-          `${API}/warehouses/${warehouseId}/dispatch-addresses?${params}`,
-          { signal: controller.signal },
-        );
-        if (!response.ok) return;
-        const data: unknown = await response.json();
-        setSuggestions(
-          Array.isArray(data) ? (data as DispatchAddressSuggestion[]) : [],
-        );
-      } finally {
-        if (!controller.signal.aborted) setLoadingSuggestions(false);
-      }
-    }, 250);
-
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [warehouseId, value.address]);
-
-  const update = (patch: Partial<DispatchDestination>) => {
-    onChange({ ...value, ...patch });
-  };
-
-  const selectSuggestion = (suggestion: DispatchAddressSuggestion) => {
-    setSelectedStoreId(null);
-    update({
-      address: suggestion.address,
-      recipientName: suggestion.recipientName ?? value.recipientName,
-      recipientPhone: suggestion.recipientPhone ?? value.recipientPhone,
-      lat: suggestion.lat,
-      lng: suggestion.lng,
-    });
-    setShowSuggestions(false);
-  };
-
+  const [mapOpen, setMapOpen] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const update = (patch: Partial<DispatchDestination>) =>
+    onChange((current) => ({ ...current, ...patch }));
   const selectStore = (store: DispatchStore) => {
     setSelectedStoreId(store.id);
     update({
-      address:
-        store.address?.trim() || `${store.organization.name} · ${store.name}`,
-      recipientName: `${store.organization.name} · ${store.name}`,
+      storeName: `${store.organization.name} · ${store.name}`,
+      recipientName: store.contactName ?? value.recipientName,
       recipientPhone: store.contactPhone ?? value.recipientPhone,
+      address: store.address ?? "",
       lat: store.lat,
       lng: store.lng,
     });
     setShowSuggestions(false);
   };
-
-  const useCurrentLocation = () => {
-    if (!navigator.geolocation) return;
-    setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        update({
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        });
-        setLocating(false);
-      },
-      () => setLocating(false),
-      { enableHighAccuracy: true, timeout: 12_000 },
-    );
-  };
-
+  const hasPin = value.lat !== null && value.lng !== null;
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-900/[0.03]">
-      <div className="border-b border-slate-100 p-5 sm:p-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white shadow-sm shadow-blue-600/30">
-              1
-            </span>
-            <div>
-              <h2 className="font-bold text-slate-950">
-                Хүргэх байршил сонгох
-              </h2>
-              <p className="mt-0.5 text-xs leading-5 text-slate-500">
-                Дэлгүүр сонгох эсвэл газрын зураг дээр хүргэх цэгээ тэмдэглэнэ.
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={useCurrentLocation}
-            disabled={locating}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-semibold text-blue-700 transition hover:bg-blue-100 disabled:opacity-60"
-          >
-            <LocateFixed className="h-4 w-4" />
-            {locating ? "Байршил авч байна..." : "Одоогийн байршил"}
-          </button>
-        </div>
-
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Хүлээн авагч
-            </span>
-            <div className="relative">
-              <UserRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={value.recipientName}
-                onChange={(event) =>
-                  update({ recipientName: event.target.value })
-                }
-                maxLength={160}
-                placeholder="Нэр эсвэл байгууллага"
-                className="h-11 w-full rounded-lg border border-slate-300 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-          </label>
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Утас
-            </span>
-            <div className="relative">
-              <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                value={value.recipientPhone}
-                onChange={(event) =>
-                  update({ recipientPhone: event.target.value })
-                }
-                maxLength={40}
-                inputMode="tel"
-                placeholder="9911 2233"
-                className="h-11 w-full rounded-lg border border-slate-300 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-              />
-            </div>
-          </label>
-        </div>
-
-        <label className="mt-4 block">
-          <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Дэлгэрэнгүй хаяг <span className="text-red-500">*</span>
+    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="space-y-5 p-5 sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+            2
           </span>
-          <div className="relative">
-            <MapPin className="absolute left-3 top-3.5 h-4 w-4 text-slate-400" />
+          <div>
+            <h2 className="font-bold text-slate-950">
+              Хүлээн авагчийн мэдээлэл
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Дэлгүүрээ сонгох эсвэл нэр, утсыг гараар оруулна. Хаяг болон
+              газрын зургийн pin сонголттой.
+            </p>
+          </div>
+        </div>
+        <label className="block text-xs font-semibold text-slate-600">
+          Бүртгэлтэй дэлгүүрээс сонгох
+          <select
+            value={selectedStoreId ?? ""}
+            disabled={state.loadingStores}
+            onChange={(event) => {
+              const store = state.stores.find(
+                (item) => item.id === event.target.value,
+              );
+              if (store) selectStore(store);
+              else setSelectedStoreId(null);
+            }}
+            className={control}
+          >
+            <option value="">
+              {state.loadingStores
+                ? "Дэлгүүрүүд ачаалж байна…"
+                : "Бүртгэлгүй дэлгүүр / гараар оруулах"}
+            </option>
+            {state.stores.map((store) => (
+              <option key={store.id} value={store.id}>
+                {store.organization.name} · {store.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        {state.storeError && (
+          <div
+            role="alert"
+            className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800"
+          >
+            {state.storeError} · Мэдээллээ гараар оруулж болно.
+            <button
+              type="button"
+              onClick={state.reload}
+              className="ml-2 min-h-9 font-semibold underline"
+            >
+              Дахин ачаалах
+            </button>
+          </div>
+        )}
+        <DispatchRecipientFields
+          value={value}
+          update={update}
+          onManualStore={() => setSelectedStoreId(null)}
+        />
+        <div className="relative">
+          <label className="block text-xs font-semibold text-slate-600">
+            Хаяг{" "}
+            <span className="font-normal text-slate-400">· сонголттой</span>
             <input
               value={value.address}
+              maxLength={500}
               onFocus={() => setShowSuggestions(true)}
               onChange={(event) => {
                 update({ address: event.target.value });
                 setShowSuggestions(true);
               }}
-              maxLength={500}
-              autoComplete="street-address"
-              placeholder="Дүүрэг, хороо, байр, орц, тоот..."
-              className="h-11 w-full rounded-lg border border-slate-300 pl-10 pr-10 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              placeholder="Дүүрэг, хороо, байр, тоот…"
+              className={control}
             />
-            {loadingSuggestions && (
-              <Clock3 className="absolute right-3 top-3.5 h-4 w-4 animate-pulse text-blue-500" />
-            )}
-            {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-[1001] mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl">
-                <div className="border-b border-slate-100 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Өмнө ашигласан хаяг
-                </div>
-                {suggestions.map((suggestion) => (
-                  <button
-                    type="button"
-                    key={`${suggestion.address}-${suggestion.lastUsedAt}`}
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => selectSuggestion(suggestion)}
-                    className="flex w-full items-start gap-3 border-b border-slate-50 px-3 py-3 text-left transition last:border-0 hover:bg-blue-50"
-                  >
-                    <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                    <span className="min-w-0">
-                      <span className="block truncate text-sm font-medium text-slate-800">
-                        {suggestion.address}
-                      </span>
-                      <span className="mt-0.5 block text-xs text-slate-500">
-                        {[suggestion.recipientName, suggestion.recipientPhone]
-                          .filter(Boolean)
-                          .join(" · ") || "Өмнөх гаргалт"}
-                        {suggestion.lat === null &&
-                          " · Цэгийг дахин тэмдэглэнэ"}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </label>
-      </div>
-
-      <div className="border-b border-slate-100 bg-slate-50/80 px-5 py-4 sm:px-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <label
-            htmlFor="dispatch-store"
-            className="shrink-0 text-xs font-semibold text-slate-600"
-          >
-            Хүлээн авах дэлгүүр
           </label>
-          <div className="relative min-w-0 flex-1 sm:min-w-64">
-            <select
-              id="dispatch-store"
-              value={selectedStoreId ?? ""}
-              onChange={(event) => {
-                const store = stores.find(
-                  (item) => item.id === event.target.value,
-                );
-                if (store) selectStore(store);
-              }}
-              disabled={loadingStores || stores.length === 0}
-              className="h-11 w-full appearance-none rounded-xl border border-slate-300 bg-white px-3 pr-9 text-sm font-medium outline-none transition hover:border-slate-400 focus:border-blue-500 focus:ring-4 focus:ring-blue-100/70 disabled:opacity-60"
-            >
-              <option value="">
-                {loadingStores
-                  ? "Дэлгүүрүүд ачаалж байна..."
-                  : stores.length > 0
-                    ? `${stores.length} дэлгүүрээс сонгох`
-                    : "Координаттай дэлгүүр алга"}
-              </option>
-              {stores.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.organization.name} · {store.name}
-                </option>
+          {showSuggestions && state.suggestions.length > 0 && (
+            <div className="absolute inset-x-0 top-full z-20 mt-1 rounded-xl border border-slate-200 bg-white p-2 shadow-xl">
+              <p className="px-2 py-1 text-xs font-semibold text-slate-400">
+                Өмнө ашигласан хаяг
+              </p>
+              {state.suggestions.map((suggestion) => (
+                <button
+                  key={suggestion.address}
+                  type="button"
+                  onClick={() => {
+                    update({
+                      storeName: suggestion.storeName ?? value.storeName,
+                      address: suggestion.address,
+                      recipientName:
+                        suggestion.recipientName ?? value.recipientName,
+                      recipientPhone:
+                        suggestion.recipientPhone ?? value.recipientPhone,
+                      lat: suggestion.lat,
+                      lng: suggestion.lng,
+                    });
+                    setSelectedStoreId(null);
+                    setShowSuggestions(false);
+                  }}
+                  className="block min-h-11 w-full rounded-lg px-2 py-2 text-left text-sm text-slate-700 transition hover:bg-blue-50"
+                >
+                  {suggestion.address}
+                </button>
               ))}
-            </select>
-            {loadingStores && (
-              <Loader2 className="pointer-events-none absolute right-3 top-3 h-4 w-4 animate-spin text-blue-500" />
-            )}
-          </div>
-          {!loadingStores && stores.length > 0 && (
-            <span className="text-xs text-slate-500">
-              Эсвэл map дээрх улбар шар цэгийг дарна уу
-            </span>
+              <button
+                type="button"
+                onClick={() => setShowSuggestions(false)}
+                className="w-full rounded-lg p-2 text-xs text-slate-500 hover:bg-slate-50"
+              >
+                Хаах
+              </button>
+            </div>
           )}
         </div>
-        {storeError && (
-          <p
-            role="alert"
-            className="mt-2 flex items-center gap-1.5 text-xs font-medium text-red-600"
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            aria-expanded={mapOpen}
+            onClick={() => setMapOpen(!mapOpen)}
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
           >
-            <AlertCircle className="h-3.5 w-3.5" />
-            {storeError}
-          </p>
-        )}
-        {selectedStore && (
-          <div className="mt-3 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm">
-              <Building2 className="h-4 w-4" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Хүлээн авагч сонгогдлоо
-              </div>
-              <p className="mt-1 truncate text-sm font-semibold text-slate-900">
-                {selectedStore.organization.name} · {selectedStore.name}
-              </p>
-              {selectedStore.address && (
-                <p className="mt-0.5 truncate text-xs text-slate-500">
-                  {selectedStore.address}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="relative min-h-64 bg-slate-100">
-        <DispatchLocationPicker
-          lat={value.lat}
-          lng={value.lng}
-          stores={stores}
-          selectedStoreId={selectedStoreId}
-          onChange={(lat, lng) => {
-            setSelectedStoreId(null);
-            update({ lat, lng });
-          }}
-          onSelectStore={selectStore}
-        />
-        <div className="pointer-events-none absolute bottom-3 left-3 z-[500] rounded-lg bg-white/95 px-3 py-2 text-xs font-medium text-slate-700 shadow-lg backdrop-blur">
-          <Navigation className="mr-1.5 inline h-3.5 w-3.5 text-blue-600" />
-          {value.lat !== null && value.lng !== null
-            ? `${value.lat.toFixed(6)}, ${value.lng.toFixed(6)}`
-            : "Газрын зураг дээр дарж цэг сонгоно уу"}
+            <MapPin className="size-4" />
+            {mapOpen
+              ? "Газрын зураг хураах"
+              : hasPin
+                ? "Сонгосон байршил харах"
+                : "Газрын зураг дээр pin тавих"}
+          </button>
+          <span className="text-xs text-slate-500">
+            {hasPin
+              ? `${value.lat?.toFixed(5)}, ${value.lng?.toFixed(5)}`
+              : "Байршилгүйгээр падан үүсгэж болно."}
+          </span>
+          {hasPin && (
+            <button
+              type="button"
+              onClick={() => {
+                update({ lat: null, lng: null });
+                setSelectedStoreId(null);
+              }}
+              className="inline-flex min-h-10 items-center gap-1 rounded-lg px-2 text-xs text-slate-500 hover:bg-slate-100"
+            >
+              <X className="size-3.5" />
+              Pin арилгах
+            </button>
+          )}
         </div>
       </div>
+      {mapOpen && (
+        <DispatchMapSection
+          lat={value.lat}
+          lng={value.lng}
+          stores={state.stores}
+          selectedStoreId={selectedStoreId}
+          onSelectStore={selectStore}
+          onPin={(lat, lng) => {
+            update({ lat, lng });
+            setSelectedStoreId(null);
+          }}
+        />
+      )}
     </section>
   );
 }

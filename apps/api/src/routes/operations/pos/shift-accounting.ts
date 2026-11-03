@@ -40,6 +40,7 @@ export const normalizeStoredPaymentBreakdown = (value: unknown): ShiftPaymentAmo
 
   const payments: ShiftPaymentAmount[] = [];
   for (const item of value) {
+    if (!item || typeof item !== "object") continue;
     const source = item as Record<string, unknown>;
     const method = normalizeMethod(source.method);
     const amount = roundShiftMoney(Number(source.amount));

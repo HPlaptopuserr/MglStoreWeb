@@ -212,7 +212,7 @@ function ProfileNavigation({
     )}`;
     const organizationItems = [
       {
-        label: "Байгууллагын нүүр",
+        label: "Дэлгүүрийн удирдлага",
         href: organizationHref,
         icon: Building2,
       },
@@ -246,7 +246,7 @@ function ProfileNavigation({
             {organizationContext.name}
           </h2>
           <p className="mt-1 text-[11px] font-bold text-slate-400">
-            Байгууллагын удирдлага
+            Дэлгүүрийн удирдлага
           </p>
         </div>
         <nav aria-label="Байгууллагын цэс" className="mt-2 space-y-1">

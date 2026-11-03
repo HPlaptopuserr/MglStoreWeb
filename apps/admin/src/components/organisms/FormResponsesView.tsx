@@ -1,62 +1,30 @@
 "use client";
 
+import { useCallback, useMemo, useState } from "react";
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import {
-  AlignLeft,
   ArrowLeft,
-  Calendar,
-  Check,
-  CheckSquare,
-  ChevronDown,
-  Circle,
-  ClipboardList,
-  Copy,
-  Eye,
   FileDown,
   FileSpreadsheet,
-  GripVertical,
-  Hash,
-  Link2,
-  List,
-  ListPlus,
-  MoreVertical,
-  Pencil,
-  Plus,
-  Save,
-  Send,
-  Settings2,
-  ToggleLeft,
+  Loader2,
+  RefreshCw,
   Trash2,
-  Type,
-  X,
 } from "lucide-react";
-import { API, adminFetch } from "@/lib/api";
-import {
-  FIELD_TYPES,
-  escapeCSV,
-  getFormLink,
-  uid,
-  type FieldType,
-  type Form,
-  type FormField,
-  type FormResponse,
-} from "./form-builder.model";
+import { escapeCSV, type Form, type FormResponse } from "./form-builder.model";
 
 export function FormResponsesView({
   form,
   responses,
+  loading,
+  error,
+  onRefresh,
   onBack,
   onDelete,
 }: {
   form: Form;
   responses: FormResponse[];
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
   onBack: () => void;
   onDelete: (id: string) => void;
 }) {
@@ -85,8 +53,15 @@ export function FormResponsesView({
   };
 
   const deleteSelected = () => {
-    selectedRows.forEach((id) => onDelete(id));
+    responses
+      .filter((response) => selectedRows.has(response.id))
+      .forEach((response) => onDelete(response.id));
     setSelectedRows(new Set());
+  };
+
+  const refreshResponses = () => {
+    setSelectedRows(new Set());
+    onRefresh();
   };
 
   const cellValue = (resp: FormResponse, fieldId: string): string => {
@@ -135,10 +110,26 @@ export function FormResponsesView({
             {form.title} — Хариултууд
           </h3>
           <p className="text-xs text-slate-400">
-            Нийт {responses.length} хариулт
+            {loading
+              ? "Хариултуудыг ачаалж байна…"
+              : error
+                ? "Хариултуудыг ачаалж чадсангүй"
+                : `Нийт ${responses.length} хариулт`}
           </p>
         </div>
-        {selectedRows.size > 0 && (
+        <button
+          type="button"
+          onClick={refreshResponses}
+          disabled={loading}
+          className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
+        >
+          <RefreshCw
+            className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+            aria-hidden="true"
+          />
+          Шинэчлэх
+        </button>
+        {!loading && !error && selectedRows.size > 0 && (
           <button
             onClick={deleteSelected}
             className="flex items-center gap-1.5 rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700"
@@ -149,7 +140,7 @@ export function FormResponsesView({
         )}
         <button
           onClick={exportCSV}
-          disabled={responses.length === 0}
+          disabled={loading || Boolean(error) || responses.length === 0}
           className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40"
         >
           <FileDown className="h-4 w-4" />
@@ -157,8 +148,33 @@ export function FormResponsesView({
         </button>
       </div>
 
+      {loading && (
+        <div
+          role="status"
+          className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-16 text-sm text-slate-600"
+        >
+          <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+          Хариултуудыг ачаалж байна…
+        </div>
+      )}
+      {error && !loading && (
+        <div
+          role="alert"
+          className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-800"
+        >
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={refreshResponses}
+            className="mt-3 rounded-lg border border-rose-300 px-3 py-2 font-semibold transition-colors hover:bg-rose-100"
+          >
+            Дахин оролдох
+          </button>
+        </div>
+      )}
+
       {/* Empty */}
-      {responses.length === 0 && (
+      {!loading && !error && responses.length === 0 && (
         <div className="flex flex-col items-center rounded-2xl border border-dashed border-slate-300 bg-white py-16">
           <FileSpreadsheet className="mb-3 h-10 w-10 text-slate-300" />
           <p className="text-sm font-semibold text-slate-500">
@@ -171,7 +187,7 @@ export function FormResponsesView({
       )}
 
       {/* Sheet table */}
-      {responses.length > 0 && (
+      {!loading && !error && responses.length > 0 && (
         <div className="overflow-x-auto rounded-2xl border border-slate-200">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
@@ -179,6 +195,7 @@ export function FormResponsesView({
                 <th className="w-10 px-3 py-3 text-center">
                   <input
                     type="checkbox"
+                    aria-label="Бүх хариултыг сонгох"
                     checked={selectedRows.size === responses.length}
                     onChange={toggleAll}
                     className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
@@ -211,6 +228,7 @@ export function FormResponsesView({
                   <td className="px-3 py-2.5 text-center">
                     <input
                       type="checkbox"
+                      aria-label={`${i + 1}-р хариултыг сонгох`}
                       checked={selectedRows.has(resp.id)}
                       onChange={() => toggleRow(resp.id)}
                       className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
@@ -242,7 +260,7 @@ export function FormResponsesView({
       )}
 
       {/* Summary cards */}
-      {responses.length > 0 && (
+      {!loading && !error && responses.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-center">
             <p className="text-2xl font-bold text-violet-700">
@@ -259,9 +277,7 @@ export function FormResponsesView({
           <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-center">
             <p className="text-2xl font-bold text-sky-700">
               {responses.length > 0
-                ? new Date(
-                    responses[responses.length - 1].submittedAt,
-                  ).toLocaleDateString("mn-MN")
+                ? new Date(responses[0].submittedAt).toLocaleDateString("mn-MN")
                 : "—"}
             </p>
             <p className="text-xs font-medium text-sky-500">Сүүлийн хариулт</p>

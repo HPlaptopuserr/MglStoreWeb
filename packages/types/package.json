@@ -8,12 +8,29 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./building-plans": {
+      "types": "./dist/building-plans.d.ts",
+      "default": "./dist/building-plans.js"
+    },
+    "./building-website": {
+      "types": "./dist/building-website.d.ts",
+      "default": "./dist/building-website.js"
+    },
+    "./building-inquiry": {
+      "types": "./dist/building-inquiry.d.ts",
+      "default": "./dist/building-inquiry.js"
+    },
+    "./building-payments": {
+      "types": "./dist/building-payments.d.ts",
+      "default": "./dist/building-payments.js"
     }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
-    "type-check": "tsc -p tsconfig.json --noEmit"
+    "type-check": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test 'test/*.test.ts'"
   },
   "devDependencies": {
     "typescript": "^5",

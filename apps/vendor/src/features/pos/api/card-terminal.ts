@@ -4,6 +4,7 @@ import { posRequest } from "./_pos-client";
 export type { CardAttempt, CardAttemptStatus, PushEcrResult, SettlementResult } from "@mgl/types";
 
 export function createCardAttempt(payload: {
+  attemptId?: string;
   amount: number;
   terminalId?: string;
   bridgeUrl?: string;
@@ -14,6 +15,7 @@ export function createCardAttempt(payload: {
   return posRequest<CardAttempt>("/pos/payments/card/authorize", {
     method: "POST",
     body: {
+      attemptId: payload.attemptId,
       amount: payload.amount,
       terminalId: payload.terminalId || "terminal-1",
       bridgeUrl: payload.bridgeUrl || null,
@@ -151,8 +153,11 @@ export function submitClientBridgeResult(payload: {
   });
 }
 
-export function getCardAttemptStatus(attemptId: string): Promise<CardAttempt> {
-  return posRequest<CardAttempt>(`/pos/payments/card/status/${attemptId}`);
+export function getCardAttemptStatus(attemptId: string, signal?: AbortSignal): Promise<CardAttempt> {
+  const timeout = AbortSignal.timeout(40_000);
+  return posRequest<CardAttempt>(`/pos/payments/card/status/${encodeURIComponent(attemptId)}`, {
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
 }
 
 export function cancelPushEcr(terminalId: string): Promise<PushEcrResult> {

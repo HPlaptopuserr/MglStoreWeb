@@ -8,7 +8,6 @@ import {
   PosQPayStatus,
   PosActivationStatus,
   ShiftStatus,
-  PosSaleStatus,
   CashDrawerEventType,
 } from "@mgl/database";
 import type { Prisma } from "@mgl/database";
@@ -50,17 +49,29 @@ import {
   type PushEcrPurchaseResponse,
   toApiError,
 } from "./_shared";
+import { calculateExpectedCash, summarizeShiftSales } from "./shift-accounting";
 import {
-  calculateExpectedCash,
-  summarizeShiftSales,
-  type ShiftSaleAccountingInput,
-} from "./shift-accounting";
+  getCashDrawerEventTotals,
+  loadShiftAccountingSales,
+} from "./shift-accounting-data";
 import {
   buildCurrentShiftScope,
   buildOpenShiftConflictScopes,
 } from "./shift-organization-scope";
+import {
+  buildPaidRestaurantTicketsCloseScope,
+} from "./restaurant-ticket-lifecycle";
+import {
+  buildShiftModeScope,
+  canUsePosRegisterForMode,
+  getRequestedShiftMode,
+  normalizePosRegisterMode,
+  usesRestaurantTicketLifecycle,
+} from "./pos-register-mode";
 
 import { canClosePosShift, requiresShiftCloseReason } from "./shift-access";
+
+import { parseCashDrawerMovement, recordCashDrawerMovement } from "./cash-drawer-movement";
 
 const router: ExpressRouter = Router();
 
@@ -94,6 +105,7 @@ type ShiftWithRelations = Prisma.PosShiftGetPayload<{
 
 const toShiftResponse = (shift: ShiftWithRelations) => ({
   id: shift.id,
+  mode: shift.mode,
   organizationId: shift.organizationId,
   cashierId: shift.cashierId,
   cashierName: shift.cashier?.profile?.fullName || shift.cashier?.email || "Кассчин",
@@ -141,7 +153,7 @@ const parseCashCountInput = (value: unknown) => {
   return { counts, total };
 };
 
-const mapCashDrawerEvent = (event: any) => ({
+const mapCashDrawerEvent = (event: Prisma.PosCashDrawerEventGetPayload<Record<string, never>>) => ({
   id: event.id,
   organizationId: event.organizationId,
   branchId: event.branchId,
@@ -154,110 +166,7 @@ const mapCashDrawerEvent = (event: any) => ({
   createdAt: event.createdAt.toISOString(),
 });
 
-type ShiftAccountingClient = Pick<
-  Prisma.TransactionClient,
-  "posSale" | "cardPaymentAttempt" | "qPayInvoice" | "posCashDrawerEvent"
->;
-
-async function loadShiftAccountingSales(
-  client: ShiftAccountingClient,
-  shiftIds: string[],
-) {
-  const result = new Map<string, ShiftSaleAccountingInput[]>();
-  if (shiftIds.length === 0) return result;
-
-  const sales = await client.posSale.findMany({
-    where: {
-      shiftId: { in: shiftIds },
-      status: PosSaleStatus.COMPLETED,
-    },
-    select: {
-      id: true,
-      shiftId: true,
-      receiptNo: true,
-      grandTotal: true,
-      paymentMethod: true,
-      paymentBreakdown: true,
-      loyalty: { select: { redeemedPoints: true } },
-      creditSale: { select: { principalAmount: true } },
-    },
-  });
-
-  const receiptNumbers = sales.map((sale) => sale.receiptNo);
-  const [cardAttempts, qpayInvoices] = receiptNumbers.length
-    ? await Promise.all([
-        client.cardPaymentAttempt.findMany({
-          where: { saleReference: { in: receiptNumbers } },
-          select: { saleReference: true, amount: true },
-        }),
-        client.qPayInvoice.findMany({
-          where: { saleReference: { in: receiptNumbers } },
-          select: { saleReference: true, amount: true },
-        }),
-      ])
-    : [[], []];
-
-  const cardByReceipt = new Map<string, number[]>();
-  for (const attempt of cardAttempts) {
-    const key = attempt.saleReference || "";
-    cardByReceipt.set(key, [
-      ...(cardByReceipt.get(key) || []),
-      Number(attempt.amount),
-    ]);
-  }
-  const qpayByReceipt = new Map<string, number[]>();
-  for (const invoice of qpayInvoices) {
-    const key = invoice.saleReference || "";
-    qpayByReceipt.set(key, [
-      ...(qpayByReceipt.get(key) || []),
-      Number(invoice.amount),
-    ]);
-  }
-
-  for (const sale of sales) {
-    const accountingSale: ShiftSaleAccountingInput = {
-      grandTotal: Number(sale.grandTotal),
-      paymentMethod: sale.paymentMethod,
-      paymentBreakdown: sale.paymentBreakdown,
-      redeemedPoints: sale.loyalty?.redeemedPoints || 0,
-      cardPayments: cardByReceipt.get(sale.receiptNo) || [],
-      qpayPayments: qpayByReceipt.get(sale.receiptNo) || [],
-      creditAmount: Number(sale.creditSale?.principalAmount || 0),
-    };
-    result.set(sale.shiftId, [
-      ...(result.get(sale.shiftId) || []),
-      accountingSale,
-    ]);
-  }
-
-  return result;
-}
-
-async function getCashDrawerEventTotals(
-  client: Pick<Prisma.TransactionClient, "posCashDrawerEvent">,
-  shiftId: string,
-) {
-  const events = await client.posCashDrawerEvent.findMany({
-    where: { shiftId },
-    select: { type: true, amount: true },
-  });
-  return events.reduce<{ paidIn: number; paidOut: number }>(
-    (
-      summary: { paidIn: number; paidOut: number },
-      event: { type: CashDrawerEventType; amount: unknown },
-    ) => {
-      const amount = Number(event.amount);
-      if (!Number.isFinite(amount)) return summary;
-      if (event.type === CashDrawerEventType.PAID_IN) summary.paidIn += amount;
-      if (event.type === CashDrawerEventType.PAID_OUT)
-        summary.paidOut += amount;
-      return summary;
-    },
-    { paidIn: 0, paidOut: 0 },
-  );
-}
-
-async function buildCashDrawerSummary(shift: any) {
+async function buildCashDrawerSummary(shift: ShiftWithRelations) {
   const [salesByShift, events] = await Promise.all([
     loadShiftAccountingSales(prisma, [shift.id]),
     prisma.posCashDrawerEvent.findMany({
@@ -314,14 +223,18 @@ router.post("/pos/shifts/open", async (req, res) => {
 
     const branchId = String(req.body.branchId || "").trim();
     const registerId = String(req.body.registerId || "").trim() || null;
-    const isSelfService =
-      String(req.body.source || "")
-        .trim()
-        .toUpperCase() === "SELF_SERVICE";
+    const requestedMode = getRequestedShiftMode(req.body.source);
+    const isSelfService = requestedMode === "SELF_SERVICE";
     const openingCash = Number(req.body.openingCash);
 
     if (!branchId) {
       return res.status(400).json({ message: "branchId шаардлагатай" });
+    }
+    if (requestedMode === "RESTAURANT" && !registerId) {
+      return res.status(400).json({ message: "Рестораны POS register шаардлагатай" });
+    }
+    if (isSelfService && registerId) {
+      return res.status(400).json({ message: "Self-service дотоод ээлж register-гүй байна" });
     }
     if (!Number.isFinite(openingCash) || openingCash < 0) {
       return res
@@ -342,6 +255,7 @@ router.post("/pos/shifts/open", async (req, res) => {
         where: { id: registerId },
         select: {
           id: true,
+          mode: true,
           branchId: true,
           organizationId: true,
           isActive: true,
@@ -366,6 +280,11 @@ router.post("/pos/shifts/open", async (req, res) => {
         return res
           .status(403)
           .json({ message: "POS register идэвхгүй эсвэл батлагдаагүй байна" });
+      }
+      if (!canUsePosRegisterForMode(register.mode, requestedMode)) {
+        return res.status(409).json({
+          message: `Энэ нь ${register.mode} төрлийн касс байна. ${requestedMode} урсгалд ашиглах боломжгүй.`,
+        });
       }
     }
 
@@ -399,6 +318,40 @@ router.post("/pos/shifts/open", async (req, res) => {
           WHERE "id" = ${registerId}
           FOR UPDATE
         `;
+          const lockedRegister = await tx.posRegister.findUnique({
+            where: { id: registerId },
+            select: {
+              mode: true,
+              branchId: true,
+              organizationId: true,
+              isActive: true,
+              activationStatus: true,
+            },
+          });
+          if (!lockedRegister) {
+            throw toApiError(404, "POS register олдсонгүй");
+          }
+          if (
+            lockedRegister.branchId !== branchId ||
+            lockedRegister.organizationId !== branch.organizationId
+          ) {
+            throw toApiError(400, "POS register салбартай зөрүүтэй байна");
+          }
+          if (
+            !lockedRegister.isActive ||
+            lockedRegister.activationStatus !== PosActivationStatus.APPROVED
+          ) {
+            throw toApiError(
+              403,
+              "POS register идэвхгүй эсвэл батлагдаагүй байна",
+            );
+          }
+          if (!canUsePosRegisterForMode(lockedRegister.mode, requestedMode)) {
+            throw toApiError(
+              409,
+              `Энэ нь ${lockedRegister.mode} төрлийн касс байна. ${requestedMode} урсгалд ашиглах боломжгүй.`,
+            );
+          }
         }
 
         if (isSelfService) {
@@ -407,6 +360,7 @@ router.post("/pos/shifts/open", async (req, res) => {
               organizationId: branch.organizationId,
               branchId,
               registerId: null,
+              mode: "SELF_SERVICE",
               status: ShiftStatus.OPEN,
               note: SELF_SERVICE_SHIFT_NOTE,
             },
@@ -425,6 +379,7 @@ router.post("/pos/shifts/open", async (req, res) => {
               organizationId: branch.organizationId,
               branchId,
               registerId: null,
+              mode: "SELF_SERVICE",
               cashierId: actor.id,
               openingCash: 0,
               note: SELF_SERVICE_SHIFT_NOTE,
@@ -448,6 +403,7 @@ router.post("/pos/shifts/open", async (req, res) => {
                   actor.id,
                   branch.organizationId,
                   registerId,
+                  requestedMode === "RESTAURANT" ? "RESTAURANT" : "RETAIL",
                 ),
               },
               {
@@ -469,6 +425,7 @@ router.post("/pos/shifts/open", async (req, res) => {
             organizationId: branch.organizationId,
             branchId,
             registerId,
+            mode: requestedMode,
             cashierId: actor.id,
             openingCash,
             status: ShiftStatus.OPEN,
@@ -476,7 +433,7 @@ router.post("/pos/shifts/open", async (req, res) => {
           include: {
             cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
             branch: { select: { id: true, name: true } },
-            register: { select: { id: true, name: true } },
+            register: { select: { id: true, name: true, mode: true } },
           },
         });
         return { existingOpen: null, shift, reused: false };
@@ -494,8 +451,12 @@ router.post("/pos/shifts/open", async (req, res) => {
     if (!result.shift) throw new Error("Shift was not created");
     res.status(result.reused ? 200 : 201).json(toShiftResponse(result.shift));
   } catch (error) {
+    const known = error as ApiError;
+    if (known?.status && known?.message) {
+      return res.status(known.status).json({ message: known.message });
+    }
     console.error("open shift error", error);
-    res.status(500).json({ message: "Ээлж нээхэд алдаа гарлаа" });
+    return res.status(500).json({ message: "Ээлж нээхэд алдаа гарлаа" });
   }
 });
 
@@ -566,7 +527,7 @@ router.post("/pos/shifts/close", async (req, res) => {
           include: {
             cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
             branch: { select: { id: true, name: true } },
-            register: { select: { id: true, name: true } },
+            register: { select: { id: true, name: true, mode: true } },
           },
         });
         if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
@@ -574,17 +535,49 @@ router.post("/pos/shifts/close", async (req, res) => {
           throw toApiError(409, "Ээлж аль хэдийн хаагдсан");
         }
 
-        const openRestaurantTickets = await tx.restaurantTicket.count({
-          where: {
-            shiftId: shift.id,
-            status: { in: ["OPEN", "KITCHEN", "READY", "SERVED", "PAID"] },
-          },
-        });
-        if (openRestaurantTickets > 0) {
-          throw toApiError(
-            409,
-            `Энэ ээлж дээр ${openRestaurantTickets} нээлттэй эсвэл чөлөөлөөгүй рестораны ticket байна`,
-          );
+        if (
+          usesRestaurantTicketLifecycle({
+            shiftMode: shift.mode,
+          })
+        ) {
+          // Restaurant channels release paid tickets and block only on unpaid ones.
+          await tx.restaurantTicket.updateMany({
+            where: buildPaidRestaurantTicketsCloseScope(shift.id),
+            data: {
+              status: "CLOSED",
+            },
+          });
+
+          const blockingRestaurantTickets = await tx.restaurantTicket.findMany({
+            where: {
+              shiftId: shift.id,
+              status: { in: ["OPEN", "KITCHEN", "READY", "SERVED"] },
+            },
+            select: {
+              ticketNo: true,
+              status: true,
+              table: { select: { label: true } },
+            },
+            orderBy: { openedAt: "asc" },
+          });
+          if (blockingRestaurantTickets.length > 0) {
+            const examples = blockingRestaurantTickets
+              .slice(0, 3)
+              .map(
+                (ticket) =>
+                  `${ticket.ticketNo} (${ticket.status}${
+                    ticket.table?.label ? ` · Ширээ ${ticket.table.label}` : ""
+                  })`,
+              )
+              .join(", ");
+            const remaining = blockingRestaurantTickets.length - 3;
+            throw toApiError(
+              409,
+              `Энэ ээлж дээр төлбөр дуусаагүй ${blockingRestaurantTickets.length} рестораны ticket байна: ${examples}${
+                remaining > 0 ? ` болон өөр ${remaining}` : ""
+              }. Рестораны кассаас төлбөрийг дуусгах эсвэл ticket-ийг цуцална уу.`,
+            );
+          }
         }
 
         const [salesByShift, drawerTotals] = await Promise.all([
@@ -663,14 +656,20 @@ router.get("/pos/shifts/register-current", async (req, res) => {
     if (!registerId) return res.status(400).json({ message: "Кассаа сонгоно уу." });
     const register = await prisma.posRegister.findUnique({
       where: { id: registerId },
-      select: { organizationId: true },
+      select: { organizationId: true, mode: true },
     });
     if (!register || !canAccessPosOrganization(actor, register.organizationId)) {
       return res.status(403).json({ message: "Энэ кассын ээлжийг харах эрхгүй." });
     }
+    const requestedMode = req.query.mode === undefined ? register.mode : normalizePosRegisterMode(req.query.mode);
+    if (!requestedMode) return res.status(400).json({ message: "Кассын төрөл буруу байна." });
+    if (!canUsePosRegisterForMode(register.mode, requestedMode)) {
+      return res.status(409).json({ code: "POS_REGISTER_MODE_MISMATCH", message: "Дэлгүүрийн касс болон ээлжээ сонгоно уу. Сонгосон кассын төрөл энэ POS-той тохирохгүй байна." });
+    }
     const shifts = await prisma.posShift.findMany({
       where: {
         organizationId: register.organizationId,
+        mode: requestedMode,
         status: ShiftStatus.OPEN,
         AND: [
           { OR: [{ cashierId: actor.id }, { registerId }] },
@@ -712,13 +711,24 @@ router.get("/pos/shifts/current", async (req, res) => {
     const actor = await requirePosUser(req, res);
     if (!actor) return;
 
+    const requestedMode = req.query.mode;
+    const mode =
+      requestedMode === undefined
+        ? "RETAIL"
+        : normalizePosRegisterMode(requestedMode);
+    if (!mode) {
+      return res.status(400).json({ message: "POS register-ийн төрөл буруу байна" });
+    }
+
     const shift = await prisma.posShift.findFirst({
       where: {
         ...buildCurrentShiftScope(actor),
         status: ShiftStatus.OPEN,
-        OR: [
-          { note: null },
-          { note: { not: SELF_SERVICE_SHIFT_NOTE } },
+        AND: [
+          buildShiftModeScope(mode),
+          ...(mode === "SELF_SERVICE"
+            ? []
+            : [{ OR: [{ note: null }, { note: { not: SELF_SERVICE_SHIFT_NOTE } }] }]),
         ],
       },
       include: {
@@ -785,71 +795,16 @@ router.post("/pos/shifts/drawer-events", async (req, res) => {
     const actor = await requirePosUser(req, res);
     if (!actor) return;
 
-    const shiftId = String(req.body.shiftId || "").trim();
-    const typeRaw = String(req.body.type || "")
-      .trim()
-      .toUpperCase();
-    const note =
-      String(req.body.note || "")
-        .trim()
-        .slice(0, 500) || null;
-    const type =
-      typeRaw === CashDrawerEventType.PAID_IN ||
-      typeRaw === CashDrawerEventType.PAID_OUT ||
-      typeRaw === CashDrawerEventType.OPEN_DRAWER
-        ? (typeRaw as CashDrawerEventType)
-        : null;
-    const amount =
-      type === CashDrawerEventType.OPEN_DRAWER ? 0 : Number(req.body.amount);
-
-    if (!shiftId) {
-      return res.status(400).json({ message: "Ээлжийн ID шаардлагатай" });
-    }
-    if (!type) {
-      return res.status(400).json({ message: "Хөдөлгөөний төрөл буруу байна" });
-    }
-    if (
-      !Number.isFinite(amount) ||
-      amount < 0 ||
-      (type !== CashDrawerEventType.OPEN_DRAWER && amount <= 0)
-    ) {
-      return res.status(400).json({ message: "Дүн 0-оос их байх ёстой" });
-    }
-
-    const shift = await prisma.posShift.findUnique({
-      where: { id: shiftId },
+    const movement = parseCashDrawerMovement(req.body);
+    const event = await prisma.$transaction((tx) =>
+      recordCashDrawerMovement(tx, actor, movement),
+    );
+    const shift = await prisma.posShift.findUniqueOrThrow({
+      where: { id: event.shiftId },
       include: {
         cashier: { select: { id: true, email: true, profile: { select: { fullName: true } } } },
         branch: { select: { id: true, name: true } },
         register: { select: { id: true, name: true } },
-      },
-    });
-    if (!shift) {
-      return res.status(404).json({ message: "Ээлж олдсонгүй" });
-    }
-    if (shift.status !== ShiftStatus.OPEN) {
-      return res
-        .status(409)
-        .json({
-          message: "Хаагдсан ээлж дээр шургуулгын хөдөлгөөн хийх боломжгүй",
-        });
-    }
-    if (!canAccessPosOrganization(actor, shift.organizationId)) {
-      return res
-        .status(403)
-        .json({ message: "Энэ шургуулга дээр хөдөлгөөн хийх эрхгүй" });
-    }
-
-    const event = await prisma.posCashDrawerEvent.create({
-      data: {
-        organizationId: shift.organizationId,
-        branchId: shift.branchId,
-        registerId: shift.registerId,
-        shiftId: shift.id,
-        cashierId: actor.id,
-        type,
-        amount,
-        note,
       },
     });
 
@@ -858,6 +813,10 @@ router.post("/pos/shifts/drawer-events", async (req, res) => {
       summary: await buildCashDrawerSummary(shift),
     });
   } catch (error) {
+    const known = error as ApiError;
+    if (known?.status && known?.message) {
+      return res.status(known.status).json({ message: known.message });
+    }
     console.error("create cash drawer event error", error);
     return res
       .status(500)
@@ -871,6 +830,10 @@ router.get("/pos/shifts/history", async (req, res) => {
     if (!actor) return;
 
     const branchId = String(req.query.branchId || "").trim();
+    const mode = normalizePosRegisterMode(req.query.mode ?? "RETAIL");
+    if (!mode) {
+      return res.status(400).json({ message: "POS register-ийн төрөл буруу байна" });
+    }
     const statusRaw = String(req.query.status || "CLOSED")
       .trim()
       .toUpperCase();
@@ -894,9 +857,11 @@ router.get("/pos/shifts/history", async (req, res) => {
     }
 
     const where: any = {
-      OR: [
-        { note: null },
-        { note: { not: SELF_SERVICE_SHIFT_NOTE } },
+      AND: [
+        buildShiftModeScope(mode),
+        ...(mode === "SELF_SERVICE"
+          ? []
+          : [{ OR: [{ note: null }, { note: { not: SELF_SERVICE_SHIFT_NOTE } }] }]),
       ],
     };
     if (status) where.status = status as ShiftStatus;

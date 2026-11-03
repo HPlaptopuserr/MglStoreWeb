@@ -6,7 +6,7 @@ import { adjustStock, resolveOrgWarehouse } from './inventory.service';
 import { resolveProductInventoryWarehouse } from './vendor-inventory-warehouse.service';
 const enabled = process.env.VENDOR_WAREHOUSE_INTEGRATION === '1' &&
   ['localhost', '127.0.0.1'].includes(new URL(process.env.DATABASE_URL || 'http://disabled').hostname);
-test('concurrent first-use creates one internal warehouse and preserves admin management', {skip: !enabled}, async () => {
+test('vendor stock initialization preserves quantities and rejects central warehouse contamination', {skip: !enabled}, async () => {
   const key = randomUUID();
   const org = await prisma.organization.create({data:{name:key,slug:key,taxId:key}});
   const warehouseIds: string[] = [];
@@ -27,7 +27,9 @@ test('concurrent first-use creates one internal warehouse and preserves admin ma
     const central=await prisma.warehouse.create({data:{name:'Admin central',address:'Test',type:'CENTRAL'}});
     warehouseIds.push(central.id);
     await prisma.product.update({where:{id:products[0].id},data:{managedByWarehouseId:central.id}});
-    assert.equal(await prisma.$transaction(tx=>resolveProductInventoryWarehouse(tx,org.id,products[0].id)),central.id);
+    await assert.rejects(prisma.$transaction(tx=>resolveProductInventoryWarehouse(tx,org.id,products[0].id)), /эзэмшил/);
+    await assert.rejects(prisma.$transaction(tx=>adjustStock(tx,{productId:products[0].id,warehouseId:central.id,change:5,reason:'MANUAL_ADJUST'})), /эзэмшил/);
+    assert.equal(await prisma.warehouseInventory.count({where:{warehouseId:central.id,productId:products[0].id}}),0);
     await prisma.warehouseInventory.create({data:{warehouseId:central.id,productId:products[1].id,quantity:5}});
     await assert.rejects(prisma.$transaction(tx=>resolveProductInventoryWarehouse(tx,org.id,products[1].id)),/холбоос/);
     assert.equal((await prisma.warehouseInventory.findUniqueOrThrow({where:{warehouseId_productId:{warehouseId:central.id,productId:products[1].id}}})).quantity,5);

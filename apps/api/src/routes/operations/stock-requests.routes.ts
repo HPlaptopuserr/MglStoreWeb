@@ -1,3 +1,7 @@
+import { stockInvoiceCost } from "../../services/warehouse-sales-cost";
+import { selectProcurementCatalog } from "../../services/procurement-catalog-selection";
+import { readWarehouseProcurement } from "../../services/warehouse-procurement.service";
+import { canProcureFromWarehouse } from "../../services/procurement-warehouse.service";
 import express, {
   Router,
   type Request,
@@ -831,29 +835,9 @@ router.post(
           .json({ message: "Нэг бараа давхар орсон байна" });
       }
 
-      // Verify warehouse is assigned to this organization
-      const warehouseOrg = await prisma.warehouseOrganization.findUnique({
-        where: {
-          warehouseId_organizationId: {
-            warehouseId,
-            organizationId,
-          },
-        },
-        select: {
-          warehouse: {
-            select: { type: true, isActive: true, deletedAt: true },
-          },
-        },
-      });
-
-      if (
-        !warehouseOrg ||
-        warehouseOrg.warehouse.type !== WarehouseType.CENTRAL ||
-        !warehouseOrg.warehouse.isActive ||
-        warehouseOrg.warehouse.deletedAt
-      ) {
+      if (!(await canProcureFromWarehouse(organizationId, warehouseId))) {
         return res.status(403).json({
-          message: "Энэ төв агуулахаас бараа татах эрхгүй байна",
+          message: "Энэ төв агуулахаас бараа татах боломжгүй байна",
         });
       }
 
@@ -885,7 +869,7 @@ router.post(
         select: {
           productId: true,
           quantity: true,
-          product: { select: { price: true, name: true } },
+          product: { select: { price: true, name: true, costPrice: true, unit: true } },
         },
       });
       const inventoryMap = new Map(
@@ -948,6 +932,7 @@ router.post(
               requestId: stockRequest.id,
               organizationId,
               totalAmount,
+              costAmount: stockInvoiceCost(normalizedItems, (id) => inventoryMap.get(id)?.product),
               paidAmount: 0,
               status: PaymentStatus.PENDING,
               dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days due
@@ -1104,6 +1089,14 @@ router.patch("/stock-requests/:id/approve", requireAuth, async (req, res) => {
               data: { approvedQuantity: item.quantity },
             });
           }
+        }
+
+        // A reduced approval no longer matches the original invoice cost snapshot.
+        // Keep it unknown rather than reporting a fabricated historical profit.
+        if (items?.some((item: { productId: string; approvedQuantity: number }) =>
+          request.items.find((line) => line.productId === item.productId)?.quantity !== item.approvedQuantity
+        )) {
+          await tx.stockRequestPayment.updateMany({ where: { requestId: id }, data: { costAmount: null } });
         }
 
         // Update request status
@@ -1505,6 +1498,32 @@ router.get(
 );
 
 router.get(
+  "/stock-requests/warehouse/:warehouseId/procurement-recommendations",
+  requireAuth,
+  async (req, res) => {
+    const organizationId = String(req.query.organizationId || getActor(req)?.organizationId || "").trim();
+    if (!organizationId) return res.status(400).json({ message: "organizationId шаардлагатай" });
+    try {
+      if (!(await assertOrgPermission(req, res, organizationId, Permission.REQUEST_STOCK))) return;
+      const warehouseId = String(req.params.warehouseId);
+      if (!(await canProcureFromWarehouse(organizationId, warehouseId))) {
+        return res.status(403).json({ message: "Энэ агуулахаас бараа татах эрхгүй байна" });
+      }
+      const page = Number(req.query.page ?? 1);
+      if (!Number.isSafeInteger(page) || page < 1 || page > 10000) {
+        return res.status(400).json({ message: "Хуудасны дугаар буруу байна" });
+      }
+      const categoryId = typeof req.query.categoryId === "string" ? req.query.categoryId : undefined;
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(await readWarehouseProcurement(warehouseId, categoryId, page));
+    } catch (error: unknown) {
+      console.error("warehouse procurement recommendations", error);
+      return res.status(500).json({ message: "Татан авалтын санал ачаалсангүй. Дахин оролдоно уу." });
+    }
+  },
+);
+
+router.get(
   "/stock-requests/warehouse/:warehouseId/products",
   requireAuth,
   async (req, res) => {
@@ -1523,25 +1542,9 @@ router.get(
         Permission.REQUEST_STOCK,
       );
       if (!permissions) return;
-      const assignment = await prisma.warehouseOrganization.findUnique({
-        where: {
-          warehouseId_organizationId: { warehouseId, organizationId },
-        },
-        select: {
-          warehouseId: true,
-          warehouse: {
-            select: { type: true, isActive: true, deletedAt: true },
-          },
-        },
-      });
-      if (
-        !assignment ||
-        assignment.warehouse.type !== WarehouseType.CENTRAL ||
-        !assignment.warehouse.isActive ||
-        assignment.warehouse.deletedAt
-      ) {
+      if (!(await canProcureFromWarehouse(organizationId, warehouseId))) {
         return res.status(403).json({
-          message: "Энэ төв агуулахаас бараа татах эрхгүй байна",
+          message: "Энэ төв агуулахаас бараа татах боломжгүй байна",
         });
       }
 
@@ -1560,6 +1563,7 @@ router.get(
       ].slice(0, 100);
       const sort = (req.query.sort as string | undefined) || "name";
       const mode = (req.query.mode as string | undefined) || "insights";
+      const preferStoreDemand = req.query.demandSource === "storeThenWarehouse";
       const lowStockOnly = req.query.lowStock === "true";
       const page = Math.max(1, Number(req.query.page) || 1);
       const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 40));
@@ -1626,6 +1630,7 @@ router.get(
         name: true,
         sku: true,
         barcode: true,
+        unit: true,
         price: true,
         images: {
           take: 1,
@@ -1764,6 +1769,7 @@ router.get(
         systemStockRequests,
         requestHistory,
         organizationInventory,
+        warehouseOutgoing,
       ] = await Promise.all([
         prisma.orderItem.groupBy({
           by: ["productSku", "productName"],
@@ -1851,6 +1857,14 @@ router.get(
           },
           _sum: { quantity: true },
         }),
+        preferStoreDemand && (sort !== "name" || lowStockOnly)
+          ? prisma.inventoryLedger.groupBy({
+              by: ["productId"],
+              where: { warehouseId, productId: { in: productIds }, createdAt: { gte: since },
+                change: { lt: 0 }, reason: { in: ["ORDER", "TRANSFER_OUT"] } },
+              _sum: { change: true },
+            })
+          : Promise.resolve([]),
       ]);
 
       const salesByKey = new Map<string, number>();
@@ -1956,6 +1970,7 @@ router.get(
         ]),
       );
 
+      const outgoingByProduct = new Map(warehouseOutgoing.map(row => [row.productId, -(row._sum.change ?? 0)]));
       const enriched = inventory.map((item) => {
         const identity = productIdentity(item.product);
         const salesKey = item.product.sku?.trim()
@@ -1998,36 +2013,13 @@ router.get(
           systemSoldQuantity90d,
           systemRequestedQuantity90d,
           previouslyRequestedQuantity,
+          outgoingQuantity90d: fromPosStoredStockQuantity(outgoingByProduct.get(item.productId) ?? 0, item.product.unit),
           recommendationScore,
           recommendationReason,
         };
       });
 
-      let filtered = lowStockOnly
-        ? enriched.filter(
-            (item) =>
-              item.reorderPoint > 0 &&
-              item.organizationStock < item.reorderPoint,
-          )
-        : enriched;
-
-      // These options are user-facing filters, not only sort modes.
-      // `name` is the explicit "all products" option.
-      if (sort === "recommended") {
-        filtered = filtered.filter(
-          (item) => item.recommendationReason !== null,
-        );
-      } else if (sort === "topSelling") {
-        filtered = filtered.filter((item) => item.systemSoldQuantity90d > 0);
-      } else if (sort === "mostRequested") {
-        filtered = filtered.filter(
-          (item) => item.systemRequestedQuantity90d > 0,
-        );
-      } else if (sort === "previouslyOrdered") {
-        filtered = filtered.filter(
-          (item) => item.previouslyRequestedQuantity > 0,
-        );
-      }
+      const { items: filtered, source: procurementSource } = selectProcurementCatalog(enriched, sort, lowStockOnly, preferStoreDemand);
 
       filtered.sort((a, b) => {
         if (search) {
@@ -2046,8 +2038,12 @@ router.get(
           const rankDifference = rank(a) - rank(b);
           if (rankDifference !== 0) return rankDifference;
         }
+        if (procurementSource !== "store") {
+          return b.outgoingQuantity90d - a.outgoingQuantity90d || a.product.name.localeCompare(b.product.name, "mn") || a.productId.localeCompare(b.productId);
+        }
         if (sort === "topSelling") {
-          return b.systemSoldQuantity90d - a.systemSoldQuantity90d;
+          const difference = preferStoreDemand ? b.soldQuantity90d - a.soldQuantity90d : b.systemSoldQuantity90d - a.systemSoldQuantity90d;
+          return difference || a.product.name.localeCompare(b.product.name, "mn") || a.productId.localeCompare(b.productId);
         }
         if (sort === "mostRequested") {
           return b.systemRequestedQuantity90d - a.systemRequestedQuantity90d;
@@ -2103,24 +2099,9 @@ router.get(
       );
       if (!permissions) return;
 
-      const assignment = await prisma.warehouseOrganization.findUnique({
-        where: {
-          warehouseId_organizationId: { warehouseId, organizationId },
-        },
-        select: {
-          warehouse: {
-            select: { type: true, isActive: true, deletedAt: true },
-          },
-        },
-      });
-      if (
-        !assignment ||
-        assignment.warehouse.type !== WarehouseType.CENTRAL ||
-        !assignment.warehouse.isActive ||
-        assignment.warehouse.deletedAt
-      ) {
+      if (!(await canProcureFromWarehouse(organizationId, warehouseId))) {
         return res.status(403).json({
-          message: "Энэ төв агуулахаас санал авах эрхгүй байна",
+          message: "Энэ төв агуулахаас бараа татах боломжгүй байна",
         });
       }
 
@@ -3332,7 +3313,7 @@ router.patch(
         select: {
           productId: true,
           quantity: true,
-          product: { select: { id: true, name: true, sku: true, price: true } },
+          product: { select: { id: true, name: true, sku: true, price: true, costPrice: true, unit: true } },
         },
       });
       if (availableProducts.length !== normalizedItems.length) {
@@ -3461,7 +3442,7 @@ router.patch(
         if (dispatch.request.payment) {
           await tx.stockRequestPayment.update({
             where: { id: dispatch.request.payment.id },
-            data: { totalAmount: newTotal },
+            data: { totalAmount: newTotal, costAmount: stockInvoiceCost(normalizedItems, (id) => availableByProductId.get(id)?.product) },
           });
         }
         await tx.auditLog.create({

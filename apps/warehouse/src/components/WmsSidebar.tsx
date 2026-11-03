@@ -13,6 +13,7 @@ import {
   ScrollText,
   Settings,
   Truck,
+  Users,
 } from "lucide-react";
 import { AppSidebar, type AppSidebarGroup } from "@mgl/ui";
 
@@ -96,6 +97,12 @@ const WMS_NAV_GROUPS: AppSidebarGroup[] = [
     title: "Хяналт ба тайлан",
     items: [
       {
+        id: "investor",
+        label: "Хөрөнгө оруулагчийн тайлан",
+        href: "/investor",
+        icon: BarChart3,
+      },
+      {
         id: "reports",
         label: "Тайлан, шинжилгээ",
         href: "/reports",
@@ -110,6 +117,12 @@ const WMS_BOTTOM_GROUPS: AppSidebarGroup[] = [
     id: "system",
     title: "Доод цэс",
     items: [
+      {
+        id: "viewers",
+        label: "Хэрэглэгчид · Viewer",
+        href: "/viewers",
+        icon: Users,
+      },
       {
         id: "settings",
         label: "Тохиргоо",

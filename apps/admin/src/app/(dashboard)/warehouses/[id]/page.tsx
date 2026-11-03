@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ArrowLeft, Loader2, MapPin, Warehouse } from "lucide-react";
 import { API, adminFetch, getApiErrorMessage } from "@/lib/api";
+import { WarehouseViewersSection } from "@/components/warehouse/WarehouseViewersSection";
 import { ResponsibleEmployeesSection } from "@/components/warehouse/ResponsibleEmployeesSection";
 import { WarehouseInventorySummary } from "@/components/warehouse/WarehouseInventorySummary";
 import { WarehouseOperatorRegistrationModal } from "@/components/warehouse/WarehouseOperatorRegistrationModal";
@@ -152,6 +153,7 @@ export default function WarehouseDetailPage() {
         paymentAccountId={warehouse.paymentAccountId}
         onSaved={fetchWarehouse}
       />
+      <WarehouseViewersSection warehouseId={warehouse.id} />
       <ResponsibleEmployeesSection
         employees={warehouse.responsibleEmployees}
         onAdd={() => setShowOperatorModal(true)}

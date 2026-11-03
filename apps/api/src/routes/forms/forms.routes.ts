@@ -7,7 +7,10 @@ import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 import { rateLimit } from "express-rate-limit";
 import { communityFields, parseCommunityResponse } from "./community-2003";
 
+import mglClubRouter from "./mgl-club.routes";
+
 const router: ExpressRouter = Router();
+router.use(mglClubRouter);
 
 router.post("/forms/2003/responses", rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false }), async (req, res) => {
   const data = parseCommunityResponse(req.body?.data);

@@ -65,3 +65,11 @@ Pending count edits are saved automatically before registration. Registration at
 Duplicate organization barcodes (including aliases) are rejected. Refresh preserves receipt metadata. Receipt lists remain scoped to the selected POS register. This change uses the existing `20261006180000_stocktake_new_products` schema; no additional migration is needed.
 
 Local HTTP integration validation is opt-in with `STOCKTAKE_LOCAL_HTTP_TEST=1` and a localhost:5432 PostgreSQL connection. The test starts its own HTTP server on an ephemeral port and removes its fixtures. It covers direct and warehouse/kg stock, immediate receipt dates and visibility, retries, validation, approval without duplicate receipt/stock, refresh provenance, and cancellation retaining completed receipts.
+
+Approval stock conflicts return `STOCKTAKE_STOCK_CHANGED` with `changedLineIds`. The vendor list clears its search/filter and returns to the first page, placing those rows first with a recount badge. Reopening preserves the highlights; a successful refresh, approval, or cancellation clears them. Conflict highlights are scoped to the selected session and held in browser memory. Deploy the API and vendor UI together for this behavior.
+
+## Review workspace
+
+Opening a stocktake now inspects current inventory in a repeatable-read transaction. Separate review controls show quantity differences and changed snapshot rows, including zero-variance rows with newer stock timestamps. New products outside the original snapshot are reported separately. These findings are advisory; approval still validates stock inside its serializable transaction.
+
+“Шинэ мэдээллээр дахин тоолох” saves pending edits, reopens review sessions and refreshes snapshots after confirmation. Changed counts reset; unchanged counts remain. The uncounted view then provides quantity/reason entry. “Шалгасан тоог хадгалаад дуусгах” validates counts/reasons, asks for confirmation, saves pending edits, submits a draft if needed, and approves. Each successful intermediate version is retained if a later step fails. No approval bypass or database migration is introduced.

@@ -1,4 +1,6 @@
 import crypto from "crypto";
+import { readOpenPosOrganizationIds } from "../../../services/pos-activation.service";
+import { isKitchenOnlyMember, isKitchenRequest } from "@mgl/types";
 import { type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
 import { Capability, prisma, PaymentMethod, PosPaymentStatus } from "@mgl/database";
@@ -88,7 +90,7 @@ export type SalePaymentLineInput = {
 };
 
 export type CreateSaleBody = {
-  source?: "SELF_SERVICE";
+  source?: "RESTAURANT" | "SELF_SERVICE";
   shiftId?: string;
   branchId?: string;
   registerId?: string;
@@ -105,6 +107,7 @@ export type CreateSaleBody = {
   };
   lines?: SaleLineInput[];
   packagingFee?: number;
+  regularCustomerPhone?: string;
   note?: string;
 };
 
@@ -310,7 +313,7 @@ export const requirePosUser = async (req: Request, res: Response) => {
     res.status(401).json({ message: "Нэвтрэлт шаардлагатай" });
     return null;
   }
-  if (!canOperatePos(actor)) {
+  if (isKitchenOnlyMember(actor) ? !isKitchenRequest(req.method, req.path) : !canOperatePos(actor)) {
     res.status(403).json({ message: "POS ашиглах эрх хүрэлцэхгүй" });
     return null;
   }
@@ -327,6 +330,11 @@ export const requirePosUser = async (req: Request, res: Response) => {
     const closingShift = req.method === "POST" && req.path === "/pos/shifts/close";
     if (!organization?.businessPosEnabled && !closingShift) {
       res.status(403).json({ message: "App Control дээр POS · Касс идэвхгүй байна." });
+      return null;
+    }
+    if (!closingShift && actor.organizationId &&
+        !(await readOpenPosOrganizationIds([actor.organizationId])).has(actor.organizationId)) {
+      res.status(403).json({ message: "POS касс хаалттай байна. Админаас идэвхжүүлнэ үү." });
       return null;
     }
   }

@@ -1,59 +1,8 @@
 "use client";
 
-import {
-  useState,
-  useCallback,
-  useMemo,
-  useRef,
-  useEffect,
-  type ReactNode,
-} from "react";
-import {
-  Plus,
-  Trash2,
-  GripVertical,
-  Copy,
-  Eye,
-  Pencil,
-  FileSpreadsheet,
-  ChevronDown,
-  X,
-  Save,
-  FileDown,
-  Type,
-  AlignLeft,
-  List,
-  CheckSquare,
-  Circle,
-  Calendar,
-  Hash,
-  ToggleLeft,
-  ClipboardList,
-  ArrowLeft,
-  Send,
-  Settings2,
-  MoreVertical,
-  ListPlus,
-  Link2,
-  Check,
-} from "lucide-react";
-import { API, adminFetch } from "@/lib/api";
-import { detectWebBaseUrl } from "@/lib/sections/utils";
-
-// ─── Types ───────────────────────────────────────────────────────────────────
-
-import {
-  FIELD_TYPES,
-  escapeCSV,
-  getFormLink,
-  uid,
-  type FieldOption,
-  type FieldType,
-  type Form,
-  type FormField,
-  type FormResponse,
-  type View,
-} from "./form-builder.model";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { API, adminFetch, getApiErrorMessage } from "@/lib/api";
+import type { Form, FormResponse, View } from "./form-builder.model";
 import { FormBuilderView } from "./FormBuilderView";
 import { FormListView } from "./FormListView";
 import { FormPreviewView } from "./FormPreviewView";
@@ -64,6 +13,11 @@ export function FormBuilderTool() {
   const [view, setView] = useState<View>("list");
   const [activeFormId, setActiveFormId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [responsesLoading, setResponsesLoading] = useState(false);
+  const [responsesError, setResponsesError] = useState<string | null>(null);
+  const responsesRequest = useRef<AbortController | null>(null);
+
+  useEffect(() => () => responsesRequest.current?.abort(), []);
 
   const fetchForms = useCallback(async () => {
     try {
@@ -75,14 +29,39 @@ export function FormBuilderTool() {
   }, []);
 
   const fetchResponses = useCallback(async (formId: string) => {
+    responsesRequest.current?.abort();
+    const controller = new AbortController();
+    responsesRequest.current = controller;
+    setResponses([]);
+    setResponsesLoading(true);
+    setResponsesError(null);
+
     try {
-      const res = await adminFetch(`${API}/admin/forms/${formId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setResponses(data.responses || []);
+      const res = await adminFetch(`${API}/admin/forms/${formId}`, {
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        throw new Error(
+          await getApiErrorMessage(res, "Хариултуудыг авахад алдаа гарлаа"),
+        );
       }
-    } catch {
-      // ignore
+      const data: { responses: FormResponse[] } = await res.json();
+      if (!Array.isArray(data.responses)) {
+        throw new Error(
+          "Серверээс хариултын жагсаалт ирсэнгүй. Дахин оролдоно уу.",
+        );
+      }
+      if (!controller.signal.aborted) setResponses(data.responses);
+    } catch (error: unknown) {
+      if (!controller.signal.aborted) {
+        setResponsesError(
+          error instanceof Error
+            ? error.message
+            : "Хариултуудыг авахад алдаа гарлаа",
+        );
+      }
+    } finally {
+      if (!controller.signal.aborted) setResponsesLoading(false);
     }
   }, []);
 
@@ -270,7 +249,7 @@ export function FormBuilderTool() {
           onUpdate={updateForm}
           onBack={() => setView("list")}
           onPreview={() => setView("preview")}
-          onResponses={() => setView("responses")}
+          onResponses={() => openResponses(activeForm.id)}
         />
       )}
       {view === "preview" && activeForm && (
@@ -288,6 +267,9 @@ export function FormBuilderTool() {
             <FormResponsesView
               form={activeForm}
               responses={activeResponses}
+              loading={responsesLoading}
+              error={responsesError}
+              onRefresh={() => void fetchResponses(activeForm.id)}
               onBack={() => setView("builder")}
               onDelete={deleteResponse}
             />

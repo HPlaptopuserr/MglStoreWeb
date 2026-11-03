@@ -40,6 +40,7 @@ async function snapshot(
   const products = await tx.product.findMany({
     where: {
       ...stocktakeProductFilter(organizationId),
+      managedByWarehouseId: null,
       ...(warehouseId
         ? { warehouseInventories: { some: { warehouseId } } }
         : { warehouseInventories: { none: {} } }),
@@ -72,6 +73,35 @@ async function snapshot(
       ? product.warehouseInventories[0]!.updatedAt
       : product.updatedAt,
   }));
+}
+
+/** Read the session and current stock in one consistent snapshot for review. */
+export function inspectStocktake(organizationId: string, id: string) {
+  return prisma.$transaction(
+    async (tx) => {
+      const session = await tx.stocktake.findFirst({
+        where: { id, organizationId },
+        include,
+      });
+      if (!session) throw new StocktakeError("Тооллого олдсонгүй", 404);
+      if (session.status === "APPROVED" || session.status === "CANCELLED")
+        return { ...session, changedLineIds: [], addedProductCount: 0 };
+      await assertStocktakeScope(tx, organizationId, session.warehouseId);
+      const current = await snapshot(tx, organizationId, session.warehouseId);
+      const byId = new Map(current.map((line) => [line.productId, line]));
+      const previousIds = new Set(session.lines.map((line) => line.productId));
+      return {
+        ...session,
+        changedLineIds: session.lines
+          .filter((line) => stockChanged(line, byId.get(line.productId)))
+          .map((line) => line.id),
+        addedProductCount: current.filter(
+          (line) => !previousIds.has(line.productId),
+        ).length,
+      };
+    },
+    { isolationLevel: "RepeatableRead", timeout: 30000 },
+  );
 }
 
 export function createStocktake(input: {
@@ -266,6 +296,9 @@ export function mutateStocktake(input: {
           session.warehouseId,
         );
         const byId = new Map(current.map((line) => [line.productId, line]));
+        const previousIds = new Set(
+          session.lines.map((line) => line.productId),
+        );
         const changed = counted.filter((line) =>
           stockChanged(line, byId.get(line.productId)),
         );
@@ -276,6 +309,8 @@ export function mutateStocktake(input: {
           throw new StocktakeError(
             `Үлдэгдэл эсвэл барааны бүртгэл өөрчлөгдсөн (${changed.length} мөр). Засварт буцааж «Өөрчлөгдсөн барааг дахин тоолох» үйлдлийг хийнэ үү.`,
             409,
+            changed.map((line) => line.id),
+            current.filter((line) => !previousIds.has(line.productId)).length,
           );
         const reserved = session.warehouseId
           ? await reservedStock(session.warehouseId, ids, tx)

@@ -8,9 +8,25 @@ datasource db {
 }
 
 model User {
+  investmentTopUps WarehouseInvestmentTopUp[]
+  warehouseDividends WarehouseInvestorDividend[] @relation("WarehouseDividendOwner")
+  recordedWarehouseDividends WarehouseInvestorDividend[] @relation("WarehouseDividendRecorder")
+  warehouseInvestments WarehouseInvestment[] @relation("WarehouseInvestmentOwner")
+  recordedWarehouseInvestments WarehouseInvestment[] @relation("WarehouseInvestmentRecorder")
+  warehouseViewerAccess WarehouseViewer[] @relation("WarehouseViewerUser")
+  grantedWarehouseViewerAccess WarehouseViewer[] @relation("WarehouseViewerGrantor")
+  ownedOrganizationGroups OrganizationGroup[] @relation("GroupOwner")
+  organizationGroupMemberships GroupMember[]
+
+  warehouseRetailOrders WarehouseRetailOrder[]
+  buildingPurchaseContracts BarilgaPurchaseContract[]
+
+  platformAccounts PlatformAccount[]
+  esimPurchases EsimPurchase[]
   createdStocktakes Stocktake[] @relation("StocktakeCreator")
   approvedStocktakes Stocktake[] @relation("StocktakeApprover")
 
+  buildingReservations BarilgaReservation[]
   id                               String                         @id @default(uuid())
   identitySubject                  String?                        @unique
   email                            String                         @unique
@@ -89,6 +105,8 @@ model User {
   posLoyaltyTransactions           PosLoyaltyTransaction[]        @relation("PosLoyaltyCustomer")
   openedRestaurantTickets          RestaurantTicket[]             @relation("RestaurantTicketOpenedBy")
   sentKitchenTickets               KitchenTicket[]                @relation("KitchenTicketSentBy")
+  createdRestaurantMealContracts   RestaurantMealContract[]       @relation("RestaurantMealContractCreatedBy")
+  restaurantMealCharges            RestaurantMealCharge[]         @relation("RestaurantMealChargeCashier")
   contracts                        Contract[]
   productInteractions              ProductInteraction[]
   productInterestScores            ProductInterestScore[]
@@ -158,6 +176,38 @@ model DeliveryDriverProfile {
   @@index([insuranceExpiresAt])
 }
 
+// Additive staging only: existing authentication still uses User.passwordHash.
+// Possession of a platform credential does not grant organization permissions.
+enum AccountPlatform {
+  STORE
+  BUSINESS
+  VENDOR
+  WAREHOUSE
+  ORG
+  ADMIN
+}
+
+model PlatformAccount {
+  id                String          @id @default(uuid())
+  userId            String
+  platform          AccountPlatform
+  passwordHash      String?
+  credentialVersion Int             @default(1)
+  status            PlatformAccountStatus @default(STAGED)
+  migratedAt        DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform])
+}
+
+enum PlatformAccountStatus {
+  STAGED
+  ACTIVE
+  DISABLED
+}
+
 model UserSession {
   id          String    @id @default(uuid())
   userId      String
@@ -201,6 +251,83 @@ model VendorSetupToken {
   @@index([userId])
   @@index([token])
   @@index([expiresAt])
+}
+
+/// Operator-recorded monthly dividend, independent of principal and viewer access.
+enum WarehouseDividendChoice {
+  BANK_TRANSFER
+  REINVEST
+}
+
+model WarehouseDividendDecision {
+  id String @id @default(uuid())
+  dividendId String @unique
+  choice WarehouseDividendChoice
+  amount Decimal @db.Decimal(18, 2)
+  dividendVersion Int
+  phone String
+  providerSessionId String @unique
+  expiresAt DateTime
+  bankName String?
+  bankAccount String?
+  bankAccountName String?
+  confirmedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  dividend WarehouseInvestorDividend @relation(fields: [dividendId], references: [id], onDelete: Restrict)
+}
+
+model WarehouseInvestorDividend {
+  decision WarehouseDividendDecision?
+  id String @id @default(uuid())
+  warehouseId String
+  userId String
+  month String @db.VarChar(7)
+  amount Decimal @default(0) @db.Decimal(18, 2)
+  version Int @default(1)
+  updatedById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  user User @relation("WarehouseDividendOwner", fields: [userId], references: [id], onDelete: Restrict)
+  updatedBy User @relation("WarehouseDividendRecorder", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@unique([warehouseId, userId, month])
+  @@index([warehouseId, month])
+  @@index([userId, month])
+}
+
+/// Recorded invested principal is independent of revocable viewer access.
+model WarehouseInvestment {
+  id String @id @default(uuid())
+  warehouseId String
+  userId String
+  amount Decimal @default(0) @db.Decimal(18, 2)
+  version Int @default(1)
+  updatedById String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  user User @relation("WarehouseInvestmentOwner", fields: [userId], references: [id], onDelete: Restrict)
+  updatedBy User @relation("WarehouseInvestmentRecorder", fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@unique([warehouseId, userId])
+  @@index([userId])
+}
+
+/// Investor access is separate from operator setup tokens and grants no mutations.
+model WarehouseViewer {
+  id String @id @default(uuid())
+  warehouseId String
+  userId String
+  grantedById String
+  createdAt DateTime @default(now())
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  user User @relation("WarehouseViewerUser", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User @relation("WarehouseViewerGrantor", fields: [grantedById], references: [id], onDelete: Restrict)
+
+  @@unique([warehouseId, userId])
+  @@index([userId])
 }
 
 model WarehouseSetupToken {
@@ -368,8 +495,31 @@ model BusinessCategory {
 }
 
 model Organization {
+  groupCompanies GroupCompany[]
+  headedGroups OrganizationGroup[] @relation("GroupHeadCompany")
+  groupInvitations GroupCompanyInvitation[]
+
+  workforcePulses WorkforcePulse[]
+  workforceTrackingPreferences WorkforceTrackingPreference[]
+  workforceLocationPoints WorkforceLocationPoint[]
+  workforceMailCampaigns WorkforceMailCampaign[]
+
+  workforceDepartments WorkforceDepartment[]
+  workforceShifts WorkforceShift[]
+  workforceAssignments WorkforceAssignment[]
+  workforceRequests WorkforceRequest[]
+  workforcePolicy WorkforcePolicy?
+  workforceNotices WorkforceNotice[]
+  workforceTokens WorkforceApiToken[]
+  workforceAudit WorkforceAudit[]
+  workforceSubscription WorkforceSubscription?
+  workforceOrders WorkforceBillingOrder[]
+
+  catalogWarehouse Warehouse? @relation("WarehouseCatalogOwner")
   stocktakes Stocktake[]
 
+  businessBuildingEnabled Boolean @default(false)
+  buildingProjects BarilgaProject[]
   id                               String                       @id @default(uuid())
   name                             String
   nameNormalized                   String?
@@ -432,6 +582,8 @@ model Organization {
   salesRepVendorRestrictionEnabled Boolean                      @default(false)
   businessTasksEnabled             Boolean                      @default(true)
   businessDeliveryEnabled          Boolean                      @default(false)
+  accessPinHash                    String?
+  accessPinUpdatedAt               DateTime?
   ceoServiceEnabled                Boolean                      @default(false)
   ceoAdviceNotificationsEnabled    Boolean                      @default(true)
   ceoCalendarRemindersEnabled      Boolean                      @default(true)
@@ -465,12 +617,16 @@ model Organization {
   posCreditCustomers               PosCreditCustomer[]
   posCreditSales                   PosCreditSale[]
   posLoyaltyTransactions           PosLoyaltyTransaction[]
+  restaurantDiscountSchedule       RestaurantDiscountSchedule?
   cafeDailyStocks                  CafeDailyStock[]
   cafeDailyStockReceipts           CafeDailyStockReceipt[]
+  cafeRegularCustomers             CafeRegularCustomer[]
   restaurantMenuCategories         RestaurantMenuCategory[]
   restaurantTables                 RestaurantTable[]
   restaurantTickets                RestaurantTicket[]
   kitchenTickets                   KitchenTicket[]
+  restaurantMealContracts          RestaurantMealContract[]
+  restaurantMealCharges            RestaurantMealCharge[]
   contracts                        Contract[]
   productInteractions              ProductInteraction[]
   productInterestScores            ProductInterestScore[]
@@ -683,6 +839,12 @@ model InvestorProfile {
 }
 
 model OrganizationMember {
+  workforceProfile WorkforceEmployeeProfile?
+  workforceDisplayName String?
+  employmentEndedAt DateTime? @db.Date
+  employmentEndReason String?
+  employmentEndedBy String?
+
   id                       String                         @id @default(uuid())
   userId                   String
   organizationId           String
@@ -811,6 +973,20 @@ model SalesVisit {
 }
 
 model OrganizationTask {
+  plannedStartAt DateTime?
+  planPeriod String?
+
+  recurrenceKey String?
+  recurrenceDate String?
+  recurrenceThrough String?
+  recurrenceTimeZone String?
+  recurrenceFingerprint String?
+  @@unique([organizationId, createdById, recurrenceKey, recurrenceDate], map: "OrganizationTask_daily_occurrence_key")
+  sourceGroupId String?
+  clientRequestId String?
+  sourceGroup OrganizationGroup? @relation(fields: [sourceGroupId], references: [id], onDelete: Restrict)
+  @@unique([sourceGroupId, clientRequestId])
+  @@index([organizationId, deletedAt, id])
   id             String                     @id @default(uuid())
   organizationId String
   title          String
@@ -989,6 +1165,7 @@ model Branch {
   restaurantTables       RestaurantTable[]
   restaurantTickets      RestaurantTicket[]
   kitchenTickets         KitchenTicket[]
+  restaurantMealCharges  RestaurantMealCharge[]
   orderAssignments       Order[]                 @relation("OrderAssignedBranch")
   orderDispatchAttempts  OrderDispatchAttempt[]
 
@@ -1000,6 +1177,7 @@ model PosRegister {
   id                  String               @id @default(uuid())
   organizationId      String
   branchId            String
+  mode                PosRegisterMode      @default(RETAIL)
   name                String
   label               String?
   cardEnabled         Boolean              @default(false)
@@ -1036,6 +1214,7 @@ model PosRegister {
   @@unique([cardProviderType, cardTerminalId])
   @@unique([qpayMerchantId, qpayTerminalId])
   @@index([organizationId])
+  @@index([organizationId, mode])
   @@index([branchId])
   @@index([isActive])
   @@index([activationStatus])
@@ -1082,6 +1261,9 @@ model Category {
 }
 
 model Product {
+  warehouseRetailItems WarehouseRetailOrderItem[]
+  sentTransferItems WarehouseTransferItem[] @relation("TransferSourceProduct")
+  receivedTransferItems WarehouseTransferItem[] @relation("TransferTargetProduct")
   stocktakeLines StocktakeLine[]
 
   id                     String                        @id @default(uuid())
@@ -1498,6 +1680,7 @@ model ProductRequestImage {
 }
 
 model ProductImage {
+  visualSearchEmbedding VisualSearchEmbedding?
   id        String  @id @default(uuid())
   productId String
   url       String
@@ -1506,6 +1689,25 @@ model ProductImage {
 
   @@index([productId])
   @@index([productId, sortOrder])
+}
+
+/// Derived search data survives deploys. A lease coordinates API replicas.
+model VisualSearchEmbedding {
+  imageId          String @id
+  productId        String
+  sourceHash       String
+  embeddingVersion String
+  contentHash      String?
+  vector           Json?
+  indexedAt        DateTime?
+  leaseToken       String?
+  leaseUntil       DateTime?
+  retryAt          DateTime?
+  attempts         Int @default(0)
+  updatedAt        DateTime @default(now()) @updatedAt
+  image            ProductImage @relation(fields: [imageId], references: [id], onDelete: Cascade)
+
+  @@index([embeddingVersion, updatedAt])
 }
 
 model ProductSupplierDocument {
@@ -1534,6 +1736,19 @@ model Discount {
   @@index([validUntil])
 }
 
+/// Durable before-images and evidence for reversible inventory incident repairs.
+/// Keep this mapped table in the schema so schema synchronization preserves it.
+model InventoryIsolationBackup {
+  runId     String   @db.Text
+  tableName String   @db.Text
+  recordId  String   @db.Text
+  payload   Json     @db.JsonB
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+
+  @@id([runId, tableName, recordId], map: "_InventoryIsolationBackup_pkey")
+  @@map("_InventoryIsolationBackup")
+}
+
 model InventoryLedger {
   id            String          @id @default(uuid())
   productId     String
@@ -1541,6 +1756,7 @@ model InventoryLedger {
   change        Int
   reason        InventoryReason
   note          String?
+  metadata      Json?
   createdAt     DateTime        @default(now())
   createdById   String?
   referenceId   String?
@@ -1865,6 +2081,15 @@ enum WarehouseType {
 }
 
 model Warehouse {
+  investmentTopUps WarehouseInvestmentTopUp[]
+  investorDividends WarehouseInvestorDividend[]
+  investments WarehouseInvestment[]
+  viewers WarehouseViewer[]
+  retailOrders WarehouseRetailOrder[]
+  outgoingTransfers WarehouseTransfer[] @relation("TransferSource")
+  incomingTransfers WarehouseTransfer[] @relation("TransferDestination")
+  catalogOrganizationId String? @unique
+  catalogOrganization Organization? @relation("WarehouseCatalogOwner", fields: [catalogOrganizationId], references: [id], onDelete: Restrict)
   stocktakes Stocktake[]
 
   id                   String                       @id @default(uuid())
@@ -1902,6 +2127,32 @@ model Warehouse {
   @@index([isActive])
   @@index([type])
   @@index([deletedAt])
+}
+
+model WarehouseInvestmentTopUp {
+  id String @id @default(uuid())
+  requestId String @unique
+  warehouseId String
+  userId String
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  amount Decimal @db.Decimal(14, 2)
+  method String
+  status String @default("PENDING")
+  accountId String
+  merchantCode String
+  bankName String
+  accountNumber String
+  accountHolder String
+  invoiceId String? @unique
+  qrText String?
+  paidAt DateTime?
+  confirmedById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([warehouseId, userId, createdAt])
+  @@index([warehouseId, status, method])
 }
 
 model WarehouseOrganization {
@@ -2017,14 +2268,16 @@ model WarehouseGoodsReceiptAttachment {
 /// A transactional, operator-created dispatch to an arbitrary destination.
 /// Unlike StockDispatch this does not require a vendor stock request.
 model WarehouseManualDispatch {
+  requestId      String?                       @unique
+  storeName      String?
   id             String                        @id @default(uuid())
   dispatchNumber String                        @unique
   warehouseId    String
   recipientName  String?
   recipientPhone String?
-  address        String
-  lat            Float
-  lng            Float
+  address        String?
+  lat            Float?
+  lng            Float?
   reason         String?
   note           String?
   createdById    String
@@ -2040,6 +2293,9 @@ model WarehouseManualDispatch {
 }
 
 model WarehouseManualDispatchItem {
+  productName String?
+  productSku  String?
+  unitPrice   Decimal? @db.Decimal(18, 2)
   id         String                  @id @default(uuid())
   dispatchId String
   productId  String
@@ -2104,6 +2360,7 @@ model WarehouseStockRequestItem {
 }
 
 model StockRequestPayment {
+  costAmount Decimal? @db.Decimal(18, 2)
   id             String                     @id @default(uuid())
   invoiceNumber  String                     @unique
   requestId      String                     @unique
@@ -2465,10 +2722,10 @@ model AttendanceRecord {
   id             String           @id @default(uuid())
   userId         String
   organizationId String
-  zoneId         String
+  zoneId         String?
   clockIn        DateTime
-  clockInLat     Float
-  clockInLng     Float
+  clockInLat     Float?
+  clockInLng     Float?
   clockInMethod  AttendanceAuth
   clockOut       DateTime?
   clockOutLat    Float?
@@ -2481,7 +2738,7 @@ model AttendanceRecord {
   updatedAt      DateTime         @updatedAt
   organization   Organization     @relation("OrgAttendanceRecords", fields: [organizationId], references: [id])
   user           User             @relation("AttendanceRecordUser", fields: [userId], references: [id])
-  zone           AttendanceZone   @relation(fields: [zoneId], references: [id])
+  zone           AttendanceZone?  @relation(fields: [zoneId], references: [id])
 
   @@index([userId, clockIn])
   @@index([organizationId, clockIn])
@@ -2538,6 +2795,7 @@ enum ProductSupplyType {
 /// Operational capabilities assigned to organization members.
 /// Used for fine-grained permission checks beyond the structural OrgRole.
 enum Capability {
+  KITCHEN_CHEF
   // Retained for existing memberships; new cashier grants use POS_CASHIER.
   GROCERY_STORE
   POS_CASHIER
@@ -2711,6 +2969,12 @@ enum CardTerminalRequestStatus {
 }
 
 enum AuditAction {
+  WAREHOUSE_DIVIDEND_CONFIRMED
+  WAREHOUSE_DIVIDEND_UPDATED
+  WAREHOUSE_INVESTMENT_UPDATED
+  WAREHOUSE_VIEWER_GRANTED
+  WAREHOUSE_VIEWER_REVOKED
+  WAREHOUSE_CATALOG_LINKED
   MERCHANT_CONFIGURATION_CHANGED
   LOGIN
   LOGOUT
@@ -2757,6 +3021,12 @@ enum PosActivationStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum PosRegisterMode {
+  RETAIL
+  RESTAURANT
+  SELF_SERVICE
 }
 
 enum PosPaymentStatus {
@@ -2849,7 +3119,13 @@ enum ChatMessageSender {
 // ─────────────────────────────────────────────────────────────────────────
 // Direct Messaging (Messenger-like peer-to-peer chat)
 // ─────────────────────────────────────────────────────────────────────────
+enum ChatApp {
+  BUSINESS
+  STORE
+}
+
 model Conversation {
+  app          ChatApp                   @default(BUSINESS)
   id           String                    @id @default(cuid())
   type         ConversationType          @default(DIRECT)
   name         String?
@@ -2860,6 +3136,7 @@ model Conversation {
   messages     DirectMessage[]
 
   @@index([updatedAt])
+  @@index([app, updatedAt])
 }
 
 model ConversationParticipant {
@@ -2895,6 +3172,7 @@ model DirectMessage {
 }
 
 model PushToken {
+  app       ChatApp  @default(BUSINESS)
   id        String   @id @default(cuid())
   userId    String
   token     String   @unique
@@ -2970,6 +3248,21 @@ model RestaurantMenuCategory {
 
   @@unique([organizationId, code])
   @@index([organizationId, sortOrder])
+}
+
+model RestaurantDiscountSchedule {
+  id             String       @id @default(uuid())
+  organizationId String       @unique
+  isEnabled      Boolean      @default(false)
+  percent        Int          @default(20)
+  startMinute    Int          @default(540)
+  endMinute      Int          @default(1020)
+  timeZone       String       @default("Asia/Ulaanbaatar")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, isEnabled])
 }
 
 /// Coffee-shop daily preparation/intake sheet. Sales are calculated from
@@ -3053,6 +3346,7 @@ model RestaurantTicket {
   posSale        PosSale?               @relation(fields: [posSaleId], references: [id], onDelete: SetNull)
   items          RestaurantTicketItem[]
   kitchenTickets KitchenTicket[]
+  mealCharge     RestaurantMealCharge?
 
   @@index([organizationId, status])
   @@index([branchId, status])
@@ -3070,6 +3364,8 @@ model RestaurantTicketItem {
   unitPrice          Decimal             @db.Decimal(18, 2)
   qty                Int
   sentQty            Int                 @default(0)
+  applyDiscount      Boolean             @default(false)
+  discountPercent    Int                 @default(0)
   note               String?
   kitchenStation     String?
   preparationMinutes Int?
@@ -3156,11 +3452,109 @@ enum KitchenTicketStatus {
   CANCELLED
 }
 
+enum RestaurantMealContractStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RestaurantMealChargeStatus {
+  ACTIVE
+  VOIDED
+}
+
+/// A zero-interest meal-account agreement with an external organization.
+/// Payment collection stays outside MGL Store; only meal usage is recorded.
+model RestaurantMealContract {
+  id                   String                         @id @default(uuid())
+  organizationId       String
+  customerOrganization String
+  customerRegisterNo   String?
+  startDate            DateTime                       @db.Date
+  endDate              DateTime                       @db.Date
+  status               RestaurantMealContractStatus   @default(ACTIVE)
+  note                 String?
+  pinHash              String?
+  createdById          String
+  createdAt            DateTime                       @default(now())
+  updatedAt            DateTime                       @updatedAt
+  organization         Organization                   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy            User                           @relation("RestaurantMealContractCreatedBy", fields: [createdById], references: [id])
+  members              RestaurantMealContractMember[]
+  charges              RestaurantMealCharge[]
+
+  @@index([organizationId, status, startDate, endDate])
+  @@index([customerOrganization])
+  @@index([customerRegisterNo])
+  @@index([createdById])
+}
+
+model RestaurantMealContractMember {
+  id           String                 @id @default(uuid())
+  contractId   String
+  employeeCode String
+  fullName     String
+  department   String?
+  accessToken  String                 @unique
+  pinHash      String
+  dailyLimit   Decimal?               @db.Decimal(18, 2)
+  monthlyLimit Decimal?               @db.Decimal(18, 2)
+  isActive     Boolean                @default(true)
+  lastUsedAt   DateTime?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  contract     RestaurantMealContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  charges      RestaurantMealCharge[]
+
+  @@unique([contractId, employeeCode])
+  @@index([contractId, isActive])
+  @@index([fullName])
+}
+
+model RestaurantMealCharge {
+  id                   String                       @id @default(uuid())
+  organizationId       String
+  contractId           String
+  memberId             String?
+  branchId             String
+  shiftId              String
+  cashierId            String
+  restaurantTicketId   String                       @unique
+  clientRequestId      String?                      @unique
+  companyNameSnapshot  String
+  employeeCodeSnapshot String?
+  employeeNameSnapshot String?
+  amount               Decimal                      @db.Decimal(18, 2)
+  packagingFee         Decimal                      @default(0) @db.Decimal(18, 2)
+  status               RestaurantMealChargeStatus   @default(ACTIVE)
+  note                 String?
+  orderedAt            DateTime                     @default(now())
+  voidedAt             DateTime?
+  voidReason           String?
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+  organization         Organization                 @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  contract             RestaurantMealContract       @relation(fields: [contractId], references: [id])
+  member               RestaurantMealContractMember? @relation(fields: [memberId], references: [id])
+  branch               Branch                       @relation(fields: [branchId], references: [id])
+  shift                PosShift                     @relation(fields: [shiftId], references: [id])
+  cashier              User                         @relation("RestaurantMealChargeCashier", fields: [cashierId], references: [id])
+  restaurantTicket     RestaurantTicket             @relation(fields: [restaurantTicketId], references: [id])
+
+  @@index([organizationId, orderedAt])
+  @@index([contractId, orderedAt])
+  @@index([memberId, orderedAt])
+  @@index([branchId, orderedAt])
+  @@index([shiftId])
+  @@index([cashierId])
+  @@index([status, orderedAt])
+}
+
 model PosShift {
   id                String             @id @default(uuid())
   organizationId    String
   branchId          String
   registerId        String?
+  mode              PosRegisterMode    @default(RETAIL)
   cashierId         String
   status            ShiftStatus        @default(OPEN)
   openingCash       Decimal            @db.Decimal(18, 2)
@@ -3181,8 +3575,10 @@ model PosShift {
   sales             PosSale[]
   creditSales       PosCreditSale[]
   restaurantTickets RestaurantTicket[]
+  restaurantMealCharges RestaurantMealCharge[]
 
   @@index([organizationId])
+  @@index([organizationId, mode])
   @@index([branchId])
   @@index([cashierId])
   @@index([status])
@@ -3285,51 +3681,80 @@ model PosGoodsReceiptAllocation {
 
 /// Structured POS sale record.
 model PosSale {
-  id               String                 @id @default(uuid())
-  receiptNo        String                 @unique
-  organizationId   String
-  branchId         String
-  registerId       String?
-  shiftId          String
-  cashierId        String
-  status           PosSaleStatus          @default(COMPLETED)
-  paymentMethod    String
-  paymentBreakdown Json?
-  subtotal         Decimal                @db.Decimal(18, 2)
-  taxTotal         Decimal                @db.Decimal(18, 2)
-  discountTotal    Decimal                @db.Decimal(18, 2)
-  grandTotal       Decimal                @db.Decimal(18, 2)
-  note             String?
-  ebarimtStatus    String?
-  ebarimtBillId    String?
-  ebarimtReceiptId String?
-  ebarimtQrData    String?
-  ebarimtLottery   String?
-  ebarimtDate      DateTime?
-  ebarimtError     String?
-  ebarimtPayload   Json?
-  ebarimtSyncedAt  DateTime?
-  voidedAt         DateTime?
-  voidReason       String?
-  voidedById       String?
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
-  organization     Organization           @relation(fields: [organizationId], references: [id])
-  branch           Branch                 @relation(fields: [branchId], references: [id])
-  register         PosRegister?           @relation(fields: [registerId], references: [id])
-  shift            PosShift               @relation(fields: [shiftId], references: [id])
-  cashier          User                   @relation("PosSaleCashier", fields: [cashierId], references: [id])
-  lines            PosSaleLine[]
-  loyalty          PosLoyaltyTransaction?
-  creditSale       PosCreditSale?
-  restaurantTicket RestaurantTicket?
+  id                    String                 @id @default(uuid())
+  receiptNo             String                 @unique
+  organizationId        String
+  branchId              String
+  registerId            String?
+  shiftId               String
+  cashierId             String
+  cafeRegularCustomerId String?
+  status                PosSaleStatus          @default(COMPLETED)
+  paymentMethod         String
+  paymentBreakdown      Json?
+  subtotal              Decimal                @db.Decimal(18, 2)
+  taxTotal              Decimal                @db.Decimal(18, 2)
+  discountTotal         Decimal                @db.Decimal(18, 2)
+  grandTotal            Decimal                @db.Decimal(18, 2)
+  note                  String?
+  ebarimtStatus         String?
+  ebarimtBillId         String?
+  ebarimtReceiptId      String?
+  ebarimtQrData         String?
+  ebarimtLottery        String?
+  ebarimtDate           DateTime?
+  ebarimtError          String?
+  ebarimtPayload        Json?
+  ebarimtSyncedAt       DateTime?
+  voidedAt              DateTime?
+  voidReason            String?
+  voidedById            String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  organization          Organization           @relation(fields: [organizationId], references: [id])
+  branch                Branch                 @relation(fields: [branchId], references: [id])
+  register              PosRegister?           @relation(fields: [registerId], references: [id])
+  shift                 PosShift               @relation(fields: [shiftId], references: [id])
+  cashier               User                   @relation("PosSaleCashier", fields: [cashierId], references: [id])
+  cafeRegularCustomer   CafeRegularCustomer?   @relation(fields: [cafeRegularCustomerId], references: [id], onDelete: SetNull)
+  lines                 PosSaleLine[]
+  loyalty               PosLoyaltyTransaction?
+  creditSale            PosCreditSale?
+  restaurantTicket      RestaurantTicket?
 
   @@index([organizationId])
   @@index([branchId])
   @@index([shiftId])
   @@index([cashierId])
+  @@index([cafeRegularCustomerId])
   @@index([status])
   @@index([createdAt])
+}
+
+model CafeRegularCustomer {
+  id              String                 @id @default(uuid())
+  organizationId  String
+  profileType     PosDiscountProfileType @default(REGULAR_CUSTOMER)
+  name            String
+  phone           String
+  normalizedPhone String
+  discountPercent Decimal                @default(0) @db.Decimal(5, 2)
+  isActive        Boolean                @default(true)
+  lastUsedAt      DateTime?
+  createdById     String?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sales           PosSale[]
+
+  @@unique([organizationId, normalizedPhone, profileType])
+  @@index([organizationId, profileType, isActive])
+  @@index([name])
+}
+
+enum PosDiscountProfileType {
+  REGULAR_CUSTOMER
+  EMPLOYEE
 }
 
 model PosLoyaltyTransaction {
@@ -3713,6 +4138,235 @@ model TeamMember {
   @@index([order])
 }
 
+// Building module migrated from Yagodoo; uses existing MGL identities.
+model BarilgaProject {
+  id             String             @id @default(uuid())
+  organizationId String
+  title          String
+  slug           String             @unique
+  description    String?
+  district       String?
+  khoroo         String?
+  address        String?
+  lat            Float?
+  lng            Float?
+  totalAreaM2    Decimal?           @db.Decimal(12, 2)
+  constructionStatus BuildingConstructionStatus @default(PLANNED)
+  status         BuildingProjectStatus      @default(DRAFT)
+  verification   BuildingVerificationStatus @default(PENDING)
+  coverImageUrl  String?
+  planImageUrls  String[]           @default([])
+  documents      Json?
+  startsAt       DateTime?
+  completesAt    DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  deletedAt      DateTime?
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  inquiries      BarilgaInquiry[]
+  blocks         BarilgaBlock[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([constructionStatus])
+  @@index([verification])
+  @@index([district])
+  @@index([khoroo])
+}
+
+model BarilgaBlock {
+  id        String        @id @default(uuid())
+  projectId String
+  name      String
+  sortOrder Int           @default(0)
+  minPaymentPercent Decimal @default(10) @db.Decimal(5, 2)
+  maxPaymentPercent Decimal @default(70) @db.Decimal(5, 2)
+  project   BarilgaProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  floors    BarilgaFloor[]
+  paymentTiers BarilgaPaymentTier[]
+
+  @@index([projectId])
+}
+
+model BarilgaPaymentTier {
+  id          String       @id @default(uuid())
+  blockId     String
+  minPercent  Decimal      @db.Decimal(5, 2)
+  maxPercent  Decimal      @db.Decimal(5, 2)
+  pricePerM2  Decimal      @db.Decimal(18, 2)
+  label       String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  block       BarilgaBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+
+  @@index([blockId])
+}
+
+model BarilgaFloor {
+  id      String        @id @default(uuid())
+  blockId String
+  number  Int
+  block   BarilgaBlock  @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  units   BarilgaUnit[]
+
+  @@unique([blockId, number])
+  @@index([blockId])
+}
+
+model BarilgaUnit {
+  id              String                @id @default(uuid())
+  floorId         String
+  unitNo          String
+  typeLabel       String?
+  rooms           Int?
+  areaM2          Decimal?              @db.Decimal(10, 2)
+  priceTotal      Decimal?              @db.Decimal(18, 2)
+  pricePerM2      Decimal?              @db.Decimal(18, 2)
+  planImageUrl    String?
+  status          BuildingUnitStatus            @default(AVAILABLE)
+  lockVersion     Int                   @default(0)
+  published       Boolean               @default(false)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  floor           BarilgaFloor          @relation(fields: [floorId], references: [id], onDelete: Cascade)
+  purchaseContracts BarilgaPurchaseContract[]
+  reservations    BarilgaReservation[]
+
+  @@unique([floorId, unitNo])
+  @@index([status])
+  @@index([published])
+}
+
+model BarilgaReservation {
+  id             String            @id @default(uuid())
+  unitId         String
+  reservedById   String
+  customerName   String?
+  customerPhone  String?
+  reminderPhones String[]          @default([])
+  paymentOption  String            @default("PERCENT_RANGE")
+  downPaymentPercent Decimal?       @db.Decimal(5, 2)
+  agreedPricePerM2 Decimal?         @db.Decimal(18, 2)
+  agreedPriceTotal Decimal?         @db.Decimal(18, 2)
+  status         BuildingReservationStatus @default(ACTIVE)
+  expiresAt      DateTime?
+  note           String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  unit           BarilgaUnit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  reservedBy     User              @relation(fields: [reservedById], references: [id])
+  payments       BarilgaPayment[]
+  paymentSchedule BarilgaPaymentSchedule[]
+
+  @@index([unitId])
+  @@index([reservedById])
+  @@index([status])
+  @@index([expiresAt])
+}
+
+model BarilgaPayment {
+  id             String                 @id @default(uuid())
+  reservationId  String
+  kind           BarilgaPaymentKind     @default(DOWN_PAYMENT)
+  provider       BarilgaPaymentProvider @default(MINU_POS)
+  status         BarilgaPaymentStatus   @default(PENDING)
+  amount         Decimal                @db.Decimal(18, 2)
+  invoiceNumber  String                 @unique
+  qrText         String?
+  qrImage        String?
+  deepLinks      Json?
+  providerRef    String?
+  rawPayload     Json?
+  paidAt         DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  reservation    BarilgaReservation     @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@index([reservationId])
+  @@index([status])
+  @@index([provider])
+}
+
+model BarilgaPaymentSchedule {
+  id             String                 @id @default(uuid())
+  reservationId  String
+  dueDate        DateTime
+  amount         Decimal                @db.Decimal(18, 2)
+  status         BarilgaScheduleStatus  @default(PENDING)
+  paidAt         DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  reservation    BarilgaReservation     @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@index([reservationId])
+  @@index([dueDate])
+  @@index([status])
+}
+
+
+enum BuildingProjectStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  SOLD_OUT
+  ARCHIVED
+}
+
+enum BuildingConstructionStatus {
+  PLANNED
+  UNDER_CONSTRUCTION
+  COMPLETED
+  HANDED_OVER
+}
+
+enum BuildingVerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum BuildingUnitStatus {
+  AVAILABLE
+  RESERVED
+  CONTRACT_PENDING
+  SOLD
+  HOLD
+  CANCELLED
+}
+
+enum BuildingReservationStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  CONVERTED
+}
+
+enum BarilgaPaymentKind {
+  DOWN_PAYMENT
+  MONTHLY
+  FULL_PAYMENT
+}
+
+enum BarilgaPaymentProvider {
+  MINU_POS
+}
+
+enum BarilgaPaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
+enum BarilgaScheduleStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
 enum StocktakeStatus {
   DRAFT
   REVIEW
@@ -3780,4 +4434,538 @@ model PosGoodsReceiptRevision {
   receipt    PosGoodsReceipt @relation(fields: [receiptId], references: [id])
 
   @@index([receiptId, createdAt])
+}
+
+// Supplier references and encrypted activation payloads are server-owned.
+model EsimPurchase {
+  id                   String   @id @default(uuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+  idempotencyKey       String
+  quoteHash            String   @unique
+  memberPrice          Boolean  @default(false)
+  offerId              String
+  packageId            String
+  merchantCode         String
+  title                String
+  country              String
+  dataMb               Float
+  days                 Int
+  totalMnt             Int
+  wholesaleUsdUnits    Int
+  terms                String
+  status               String   @default("CREATING_INVOICE")
+  invoiceId            String?  @unique
+  invoice              Json?
+  paymentId            String?  @unique
+  supplierOrderNo      String?  @unique
+  activationEncrypted String?
+  supplierStatus       String?
+  errorCode            String?
+  leaseToken           String?
+  leaseUntil           DateTime?
+  nextAttemptAt        DateTime @default(now())
+  attempts             Int      @default(0)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  paidAt               DateTime?
+  fulfilledAt          DateTime?
+
+  @@unique([userId, idempotencyKey])
+  @@index([status, nextAttemptAt])
+  @@index([userId, createdAt])
+}
+
+
+enum WarehouseTransferStatus {
+  SENT
+  RECEIVED
+}
+
+model WarehouseTransfer {
+  id String @id
+  sourceWarehouseId String
+  destinationWarehouseId String
+  status WarehouseTransferStatus @default(SENT)
+  note String?
+  sentById String
+  receivedById String?
+  sentAt DateTime @default(now())
+  receivedAt DateTime?
+  sourceWarehouse Warehouse @relation("TransferSource", fields: [sourceWarehouseId], references: [id])
+  destinationWarehouse Warehouse @relation("TransferDestination", fields: [destinationWarehouseId], references: [id])
+  items WarehouseTransferItem[]
+  @@index([destinationWarehouseId, status, sentAt])
+  @@index([sourceWarehouseId, sentAt])
+}
+
+model WarehouseTransferItem {
+  unitCost Decimal? @db.Decimal(18, 2)
+  id String @id @default(uuid())
+  transferId String
+  sourceProductId String
+  targetProductId String?
+  name String
+  sku String?
+  barcode String?
+  quantity Int
+  salePrice Decimal? @db.Decimal(18, 2)
+  transfer WarehouseTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  sourceProduct Product @relation("TransferSourceProduct", fields: [sourceProductId], references: [id])
+  targetProduct Product? @relation("TransferTargetProduct", fields: [targetProductId], references: [id])
+  @@unique([transferId, sourceProductId])
+  @@index([sourceProductId])
+  @@index([targetProductId])
+}
+
+model WorkforceDepartment {
+  id String @id @default(uuid())
+  organizationId String
+  name String
+  parentId String?
+  managerId String?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+model WorkforceShift {
+  id String @id @default(uuid())
+  organizationId String
+  name String
+  startMinute Int
+  endMinute Int
+  breakMinutes Int @default(60)
+  weekdays Int[] @default([1,2,3,4,5])
+  color String @default("#5b8cff")
+  active Boolean @default(true)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  assignments WorkforceAssignment[]
+  @@index([organizationId])
+}
+model WorkforceAssignment {
+  id String @id @default(uuid())
+  organizationId String
+  userId String
+  shiftId String
+  from DateTime @db.Date
+  to DateTime @db.Date
+  zoneId String?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  shift WorkforceShift @relation(fields: [shiftId], references: [id])
+  @@index([organizationId, userId, from, to])
+}
+model WorkforceRequest {
+  id String @id @default(uuid())
+  organizationId String
+  userId String
+  kind String
+  state String @default("PENDING")
+  from DateTime
+  to DateTime
+  note String
+  direction String?
+  zoneId String?
+  recordId String?
+  decisionNote String?
+  decidedBy String?
+  decidedAt DateTime?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, state, createdAt])
+  @@index([organizationId, userId, from])
+}
+model WorkforcePolicy {
+  organizationId String @id
+  timeZone String @default("Asia/Ulaanbaatar")
+  lateGraceMinutes Int @default(0)
+  features Json @default("{}")
+  requestKinds String[] @default(["REMOTE", "CORRECTION", "LEAVE", "OVERTIME"])
+  approvalRequired Boolean @default(true)
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+model WorkforceNotice {
+  id String @id @default(uuid())
+  organizationId String
+  title String
+  content String
+  userIds String[]
+  readBy String[] @default([])
+  createdBy String
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, createdAt])
+}
+model WorkforceApiToken {
+  id String @id @default(uuid())
+  organizationId String
+  name String
+  prefix String
+  tokenHash String @unique
+  scopes String[]
+  expiresAt DateTime
+  revokedAt DateTime?
+  lastUsedAt DateTime?
+  createdAt DateTime @default(now())
+  createdBy String
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId])
+}
+model WorkforceAudit {
+  id String @id @default(uuid())
+  organizationId String
+  actorId String
+  action String
+  entityId String
+  before Json?
+  after Json?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, createdAt])
+}
+model WorkforceSubscription {
+  organizationId String @id
+  planName String @default("Үндсэн")
+  expiresAt DateTime?
+  seatUnitPrice Int?
+  currency String @default("MNT")
+  addons String[] @default([])
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+model WorkforceBillingOrder {
+  kind String @default("SEATS")
+  addonCode String?
+  providerPaymentId String? @unique
+  invoiceData Json?
+
+  id String @id @default(uuid())
+  organizationId String
+  seats Int
+  amount Int
+  state String @default("PENDING")
+  idempotencyKey String @unique
+  invoiceId String? @unique
+  createdAt DateTime @default(now())
+  paidAt DateTime?
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, createdAt])
+}
+
+model WorkforcePulse {
+  id String @id @default(uuid())
+  organizationId String
+  userId String
+  date DateTime @db.Date
+  score Int
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@unique([organizationId, userId, date])
+  @@index([organizationId, date])
+}
+model WorkforceTrackingPreference {
+  id String @id @default(uuid())
+  organizationId String
+  userId String
+  enabled Boolean @default(false)
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@unique([organizationId, userId])
+}
+model WorkforceLocationPoint {
+  id String @id @default(uuid())
+  organizationId String
+  userId String
+  lat Float
+  lng Float
+  accuracy Float
+  capturedAt DateTime
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  @@index([organizationId, userId, capturedAt])
+}
+model WorkforceMailCampaign {
+  id String @id @default(uuid())
+  organizationId String
+  createdBy String
+  title String
+  content String
+  idempotencyKey String @unique
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  deliveries WorkforceMailDelivery[]
+  @@index([organizationId, createdAt])
+}
+model WorkforceMailDelivery {
+  id String @id @default(uuid())
+  campaignId String
+  userId String
+  email String
+  state String @default("PENDING")
+  attempts Int @default(0)
+  sentAt DateTime?
+  lastError String?
+  updatedAt DateTime @updatedAt
+  campaign WorkforceMailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  @@unique([campaignId, userId])
+  @@index([state, updatedAt])
+}
+
+
+model BarilgaPurchaseContract {
+  id String @id @default(uuid())
+  unitId String
+  buyerId String
+  createdById String
+  requestKey String @unique
+  snapshot Json
+  status String @default("PENDING")
+  sellerAcceptedAt DateTime?
+  sellerAcceptedById String?
+  buyerAcceptedAt DateTime?
+  reservationId String? @unique
+  createdAt DateTime @default(now())
+  unit BarilgaUnit @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  buyer User @relation(fields: [buyerId], references: [id], onDelete: Restrict)
+  @@index([buyerId, status])
+  @@index([unitId, status])
+}
+
+// Customer sales belong to the warehouse and use its selected Minu account.
+// They do not change warehouse product ownership or require vendor membership.
+model WarehouseRetailOrder {
+  id String @id @default(uuid())
+  orderNumber String @unique
+  checkoutKey String
+  customerId String
+  warehouseId String
+  phone String
+  shippingAddress String
+  note String?
+  status OrderStatus @default(PENDING)
+  paymentStatus PaymentStatus @default(PENDING)
+  total Decimal @db.Decimal(18, 2)
+  invoiceId String? @unique
+  merchantCode String?
+  qrText String?
+  deepLinks Json?
+  fulfillmentIssue String?
+  expiresAt DateTime
+  paidAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  customer User @relation(fields: [customerId], references: [id])
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  items WarehouseRetailOrderItem[]
+
+  @@index([warehouseId, paidAt])
+  @@unique([customerId, checkoutKey])
+  @@index([warehouseId, status, paymentStatus])
+  @@index([customerId, createdAt])
+  @@index([paymentStatus, expiresAt])
+}
+
+model WarehouseRetailOrderItem {
+  costPrice Decimal? @db.Decimal(18, 2)
+  id String @id @default(uuid())
+  orderId String
+  productId String
+  productName String
+  quantity Int
+  storedQuantity Int
+  price Decimal @db.Decimal(18, 2)
+  subtotal Decimal @db.Decimal(18, 2)
+  order WarehouseRetailOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([orderId, productId])
+  @@index([productId])
+}
+
+model BarilgaInquiry {
+  id          String @id
+  projectId   String
+  unitId      String
+  blockName   String
+  floorNumber Int
+  unitNo      String
+  unitLabel   String
+  name        String
+  phone       String
+  question    String
+  createdAt   DateTime @default(now())
+  project     BarilgaProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+// Private source parts are staged independently of published Reels.
+model ReelUploadSession {
+  id             String         @id
+  authorId       String
+  organizationId String?
+  visibility     ReelVisibility @default(PUBLIC)
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  partSize       Int
+  partCount      Int
+  title          String?
+  caption        String?
+  productId      String?
+  tags           String[]       @default([])
+  status         String         @default("UPLOADING")
+  errorMessage   String?
+  attempts       Int            @default(0)
+  leaseUntil     DateTime?
+  leaseToken     String?
+  expiresAt      DateTime
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([authorId, createdAt])
+  @@index([status, leaseUntil, createdAt])
+  @@index([expiresAt])
+}
+
+// Group membership never confers OrganizationMember privileges.
+model OrganizationGroup {
+  tasks OrganizationTask[]
+  id String @id @default(uuid())
+  revision Int @default(0)
+  pendingOwnerId String?
+  ownershipExpiresAt DateTime?
+  name String
+  logoUrl String?
+  description String?
+  ownerId String
+  headCompanyId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  owner User @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Restrict)
+  headCompany Organization? @relation("GroupHeadCompany", fields: [headCompanyId], references: [id], onDelete: Restrict)
+  members GroupMember[]
+  companies GroupCompany[]
+  personInvitations GroupPersonInvitation[]
+  companyInvitations GroupCompanyInvitation[]
+  auditLogs GroupAuditLog[]
+  @@index([ownerId])
+}
+
+model GroupMember {
+  id String @id @default(uuid())
+  groupId String
+  userId String
+  role String
+  allCompanies Boolean @default(false)
+  permissions String[] @default([])
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  group OrganizationGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  companyAccess GroupMemberCompanyAccess[]
+  @@unique([groupId, userId])
+  @@unique([id, groupId])
+  @@index([userId, revokedAt])
+}
+
+model GroupCompany {
+  id String @id @default(uuid())
+  groupId String
+  organizationId String
+  sharedPermissions String[] @default([])
+  joinedAt DateTime @default(now())
+  disconnectedAt DateTime?
+  group OrganizationGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  memberAccess GroupMemberCompanyAccess[]
+  @@unique([groupId, organizationId])
+  @@unique([id, groupId])
+  @@index([organizationId, disconnectedAt])
+}
+
+model GroupMemberCompanyAccess {
+  id String @id @default(uuid())
+  groupId String
+  memberId String
+  companyId String
+  permissions String[] @default([])
+  member GroupMember @relation(fields: [memberId, groupId], references: [id, groupId], onDelete: Cascade)
+  company GroupCompany @relation(fields: [companyId, groupId], references: [id, groupId], onDelete: Cascade)
+  @@unique([memberId, companyId])
+}
+
+model GroupPersonInvitation {
+  id String @id @default(uuid())
+  tokenHash String @unique
+  deliveryStatus String @default("IN_APP")
+  groupId String
+  recipient String
+  recipientUserId String?
+  role String
+  allCompanies Boolean @default(false)
+  companyIds String[] @default([])
+  permissions String[] @default([])
+  status String @default("PENDING")
+  expiresAt DateTime
+  respondedAt DateTime?
+  createdById String
+  createdAt DateTime @default(now())
+  group OrganizationGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  @@index([recipient, status])
+  @@index([groupId, status])
+}
+
+model GroupCompanyInvitation {
+  id String @id @default(uuid())
+  groupId String
+  organizationId String
+  permissions String[] @default([])
+  status String @default("PENDING")
+  expiresAt DateTime
+  respondedAt DateTime?
+  createdById String
+  createdAt DateTime @default(now())
+  group OrganizationGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  @@index([organizationId, status])
+  @@index([groupId, status])
+}
+
+model GroupAuditLog {
+  id String @id @default(uuid())
+  groupId String
+  actorId String
+  action String
+  entityId String
+  details Json
+  createdAt DateTime @default(now())
+  group OrganizationGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  @@index([groupId, createdAt])
+}
+
+// Personnel details belong to an organization membership, not the shared login account.
+model WorkforceEmployeeProfile {
+  payrollBankName String?
+  payrollAccountNumber String?
+  payrollAccountHolder String?
+  memberId String @id
+  fullName String?
+  lastName String?
+  phone String?
+  email String?
+  registerNumber String?
+  birthDate DateTime? @db.Date
+  gender String?
+  address String?
+  employeeCode String?
+  jobTitle String?
+  hiredAt DateTime? @db.Date
+  emergencyContactName String?
+  emergencyContactPhone String?
+  notes String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  member OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
 }

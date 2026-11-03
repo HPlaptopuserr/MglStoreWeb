@@ -1,3 +1,8 @@
+import { readOrganizationInventorySummary } from "../../services/organization-inventory-summary";
+import { parseStockCheckInput, saveBusinessStockCheck, StockCheckError } from "../../services/business-stock-check.service";
+import { vendorProductReadScope } from "../../services/warehouse-product-scope";
+import { syncProductStock } from "../../services/inventory.service";
+import { productMutationErrorResponse } from "../../lib/product-mutation-errors";
 import { resolveProductInventoryWarehouse } from "../../services/vendor-inventory-warehouse.service";
 import { enrichMasterCatalog } from "../../services/catalog-enrichment/service";
 import { findMasterCatalogIds } from "../../services/master-catalog-search.service";
@@ -32,6 +37,7 @@ import { optionalAuth, requireAuth } from "../../middleware/auth";
 import {
   requireOrgPermission,
   assertOrgPermission,
+  resolvePermissionsForOrg,
 } from "../../services/permission.service";
 import {
   areWebProductsGloballyEnabled,
@@ -356,6 +362,11 @@ async function assertProductMutationPermission(
       product.organizationId,
       Permission.MANAGE_PRODUCTS,
     );
+  }
+
+  if (product.organizationId) {
+    res.status(409).json({ message: "Vendor болон агуулахын барааны эзэмшил зөрсөн байна. Эхлээд бүртгэлийг тулгана уу." });
+    return false;
   }
 
   const user = (
@@ -721,18 +732,6 @@ async function getImportBusinessCategoryChoices() {
     select: { id: true, name: true, slug: true, parentId: true },
   });
   return buildBusinessCategoryChoices(categories);
-}
-
-async function syncProductStock(tx: Tx, productId: string) {
-  const result = await tx.warehouseInventory.aggregate({
-    where: { productId },
-    _sum: { quantity: true },
-  });
-
-  await tx.product.update({
-    where: { id: productId },
-    data: { stock: result._sum.quantity ?? 0 },
-  });
 }
 
 async function findProductExpiryDate(
@@ -1143,10 +1142,17 @@ router.get("/products", optionalAuth, async (req, res) => {
       visitorId ||
       (req as typeof req & { user?: { userId?: string } }).user?.userId,
     );
+    const exactBarcode =
+      typeof req.query.barcode === "string" ? req.query.barcode.trim() : "";
+    const inventorySummaryRequested = isTruthyQueryValue(req.query.inventorySummary);
+    const bypassProductCache = Boolean(exactBarcode || inventorySummaryRequested);
     const productCacheKey = getProductListCacheKey(req);
-    const cachedProducts = productListCache.get(productCacheKey);
+    const cachedProducts = bypassProductCache
+      ? undefined
+      : productListCache.get(productCacheKey);
     if (cachedProducts !== undefined) {
       setProductCacheHeaders(res, isPersonalized);
+      if (bypassProductCache) res.setHeader("Cache-Control", "no-store");
       res.setHeader("X-MGL-Cache", "HIT");
       return res.json(cachedProducts);
     }
@@ -1178,6 +1184,7 @@ router.get("/products", optionalAuth, async (req, res) => {
       (canBypassAllVisibility || canBypassRequestedOrg);
 
     const where: any = {
+      ...vendorProductReadScope(),
       deletedAt: null,
       AND: [
         {
@@ -1191,6 +1198,15 @@ router.get("/products", optionalAuth, async (req, res) => {
     };
     if (!isOwnOrganizationCatalog && !includeInactive) {
       Object.assign(where, PUBLIC_PRODUCT_STATE_FILTER);
+    }
+    if (exactBarcode) {
+      where.AND.push({
+        OR: [
+          { barcode: exactBarcode },
+          { barcodeAliases: { has: exactBarcode } },
+          { sku: exactBarcode },
+        ],
+      });
     }
     if (organizationId) where.organizationId = organizationId;
     if (!organizationId && requestedOrganizationIds.length > 0) {
@@ -1451,8 +1467,9 @@ router.get("/products", optionalAuth, async (req, res) => {
                 : false,
           }
         : compactProducts;
-      productListCache.set(productCacheKey, payload);
+      if (!bypassProductCache) productListCache.set(productCacheKey, payload);
       setProductCacheHeaders(res, isPersonalized);
+      if (bypassProductCache) res.setHeader("Cache-Control", "no-store");
       res.setHeader("X-MGL-Cache", "MISS");
       return res.json(payload);
     }
@@ -1636,7 +1653,7 @@ router.get("/products", optionalAuth, async (req, res) => {
           if (scoreB !== scoreA) return scoreB - scoreA;
           return a.id.localeCompare(b.id);
         }
-        if (!search) return 0;
+        if (!search || sort === "newest") return 0;
         const priorityDiff =
           (b.marketplacePriority || 0) - (a.marketplacePriority || 0);
         if (priorityDiff !== 0) return priorityDiff;
@@ -1682,6 +1699,7 @@ router.get("/products", optionalAuth, async (req, res) => {
       ]);
       const payload = {
         products: response,
+        ...(inventorySummaryRequested && isOwnOrganizationCatalog ? { inventorySummary: await readOrganizationInventorySummary(requestedOrganizationId) } : {}),
         total: totalCount ?? response.length,
         organizationTotal: organizationTotal ?? totalCount ?? response.length,
         limit,
@@ -1691,14 +1709,16 @@ router.get("/products", optionalAuth, async (req, res) => {
             ? offset + response.length < (totalCount ?? response.length)
             : false,
       };
-      productListCache.set(productCacheKey, payload);
+      if (!bypassProductCache) productListCache.set(productCacheKey, payload);
       setProductCacheHeaders(res, isPersonalized);
+      if (bypassProductCache) res.setHeader("Cache-Control", "no-store");
       res.setHeader("X-MGL-Cache", "MISS");
       return res.json(payload);
     }
 
-    productListCache.set(productCacheKey, response);
+    if (!bypassProductCache) productListCache.set(productCacheKey, response);
     setProductCacheHeaders(res, isPersonalized);
+    if (bypassProductCache) res.setHeader("Cache-Control", "no-store");
     res.setHeader("X-MGL-Cache", "MISS");
     return res.json(response);
   } catch (error) {
@@ -2680,128 +2700,128 @@ router.post(
             ...reviewData,
           };
 
-          let product;
-          let wasUpdate = false;
-          if (normalizedSku) {
-            // Free up SKU from any soft-deleted product first
-            await prisma.product.updateMany({
-              where: {
-                organizationId,
-                sku: normalizedSku,
-                deletedAt: { not: null },
-              },
-              data: { sku: null },
-            });
-            // Check if active product with this SKU already exists
-            const existing = await prisma.product.findUnique({
-              where: {
-                organizationId_sku: { organizationId, sku: normalizedSku },
-              },
-              select: { id: true, masterProductId: true },
-            });
-            wasUpdate = !!existing;
-            const masterProduct = await resolveMasterProduct(prisma, {
-              masterProductId: existing?.masterProductId,
-              name: productData.name,
-              barcode: normalizedBarcode,
-              description: productData.description,
-              imageUrl: imageUrls[0] || null,
-            });
-            if (!masterProduct) throw new Error("MASTER_PRODUCT_NOT_FOUND");
-            await addMasterProductAlias(
-              prisma,
-              masterProduct.id,
-              productData.name,
-            );
-            // Upsert: update if SKU exists, create if not
-            product = await prisma.product.upsert({
-              where: {
-                organizationId_sku: { organizationId, sku: normalizedSku },
-              },
-              update: {
-                ...productData,
+          // Keep the existing import path for other organizations; shared catalogs
+          // commit product metadata and physical stock together for each row.
+          const saveRow = async (tx: Tx) => {
+            let product;
+            let wasUpdate = false;
+            if (normalizedSku) {
+              // Free up SKU from any soft-deleted product first
+              await tx.product.updateMany({
+                where: {
+                  organizationId,
+                  sku: normalizedSku,
+                  deletedAt: { not: null },
+                },
+                data: { sku: null },
+              });
+              // Check if active product with this SKU already exists
+              const existing = await tx.product.findUnique({
+                where: {
+                  organizationId_sku: { organizationId, sku: normalizedSku },
+                },
+                select: { id: true, masterProductId: true, managedByWarehouseId: true },
+              });
+              if (existing?.managedByWarehouseId) throw new Error("Vendor болон агуулахын барааны эзэмшил зөрсөн байна");
+              wasUpdate = !!existing;
+              const masterProduct = await resolveMasterProduct(tx, {
+                masterProductId: existing?.masterProductId,
+                name: productData.name,
                 barcode: normalizedBarcode,
-                masterProductId: masterProduct.id,
-                deletedAt: null,
-                ...(imageUrls.length > 0 && {
-                  images: {
-                    deleteMany: {},
-                    create: toOrderedProductImages(imageUrls),
-                  },
-                }),
-              },
-              create: {
-                organizationId,
-                sku: normalizedSku,
-                ...productData,
+                description: productData.description,
+                imageUrl: imageUrls[0] || null,
+              });
+              if (!masterProduct) throw new Error("MASTER_PRODUCT_NOT_FOUND");
+              await addMasterProductAlias(tx, masterProduct.id, productData.name);
+              // Upsert: update if SKU exists, create if not
+              product = await tx.product.upsert({
+                where: {
+                  organizationId_sku: { organizationId, sku: normalizedSku },
+                },
+                update: {
+                  ...productData,
+                  barcode: normalizedBarcode,
+                  masterProductId: masterProduct.id,
+                  deletedAt: null,
+                  ...(imageUrls.length > 0 && {
+                    images: {
+                      deleteMany: {},
+                      create: toOrderedProductImages(imageUrls),
+                    },
+                  }),
+                },
+                create: {
+                  organizationId,
+                  sku: normalizedSku,
+                  ...productData,
+                  barcode: normalizedBarcode,
+                  masterProductId: masterProduct.id,
+                  ...(imageUrls.length > 0 && {
+                    images: { create: toOrderedProductImages(imageUrls) },
+                  }),
+                },
+                select: {
+                  id: true,
+                  name: true,
+                  sku: true,
+                  price: true,
+                  stock: true,
+                },
+              });
+            } else {
+              const masterProduct = await resolveMasterProduct(tx, {
+                name: productData.name,
                 barcode: normalizedBarcode,
-                masterProductId: masterProduct.id,
-                ...(imageUrls.length > 0 && {
-                  images: { create: toOrderedProductImages(imageUrls) },
-                }),
-              },
-              select: {
-                id: true,
-                name: true,
-                sku: true,
-                price: true,
-                stock: true,
-              },
-            });
-          } else {
-            const masterProduct = await resolveMasterProduct(prisma, {
-              name: productData.name,
-              barcode: normalizedBarcode,
-              description: productData.description,
-              imageUrl: imageUrls[0] || null,
-            });
-            if (!masterProduct) throw new Error("MASTER_PRODUCT_NOT_FOUND");
-            await addMasterProductAlias(
-              prisma,
-              masterProduct.id,
-              productData.name,
-            );
-            product = await prisma.product.create({
-              data: {
-                organizationId,
-                sku: null,
-                ...productData,
-                barcode: normalizedBarcode,
-                masterProductId: masterProduct.id,
-                ...(imageUrls.length > 0 && {
-                  images: { create: toOrderedProductImages(imageUrls) },
-                }),
-              },
-              select: {
-                id: true,
-                name: true,
-                sku: true,
-                price: true,
-                stock: true,
-              },
-            });
-          }
+                description: productData.description,
+                imageUrl: imageUrls[0] || null,
+              });
+              if (!masterProduct) throw new Error("MASTER_PRODUCT_NOT_FOUND");
+              await addMasterProductAlias(tx, masterProduct.id, productData.name);
+              product = await tx.product.create({
+                data: {
+                  organizationId,
+                  sku: null,
+                  ...productData,
+                  barcode: normalizedBarcode,
+                  masterProductId: masterProduct.id,
+                  ...(imageUrls.length > 0 && {
+                    images: { create: toOrderedProductImages(imageUrls) },
+                  }),
+                },
+                select: {
+                  id: true,
+                  name: true,
+                  sku: true,
+                  price: true,
+                  stock: true,
+                },
+              });
+            }
 
-          await upsertVendorProductInventory(prisma, {
-            organizationId,
-            productId: product.id,
-            stock: isPreorderImport ? 0 : stockNum,
-            stockProvided: !isPreorderImport,
-            expiryDate: parsedExpiryDate,
-            expiryDateProvided: !isPreorderImport && expiryDate !== undefined,
-            createdById: actorId,
-          });
-          const syncedProduct = await prisma.product.findUnique({
-            where: { id: product.id },
-            select: {
-              id: true,
-              name: true,
-              sku: true,
-              price: true,
-              stock: true,
-            },
-          });
-          if (syncedProduct) product = syncedProduct;
+            await upsertVendorProductInventory(tx, {
+              organizationId,
+              productId: product.id,
+              stock: isPreorderImport ? 0 : stockNum,
+              stockProvided: !isPreorderImport,
+              expiryDate: parsedExpiryDate,
+              expiryDateProvided: !isPreorderImport && expiryDate !== undefined,
+              createdById: actorId,
+            });
+            const syncedProduct = await tx.product.findUnique({
+              where: { id: product.id },
+              select: {
+                id: true,
+                name: true,
+                sku: true,
+                price: true,
+                stock: true,
+              },
+            });
+            if (syncedProduct) product = syncedProduct;
+
+            return { product, wasUpdate };
+          };
+          const { product, wasUpdate } = await prisma.$transaction(saveRow);
 
           results.products.push({
             id: product.id,
@@ -4558,9 +4578,28 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     return res.json(product);
   } catch (error) {
     console.error("update product error", error);
-    return res
-      .status(500)
-      .json({ message: "Бараа засахад алдаа гарлаа", error: String(error) });
+    const failure = productMutationErrorResponse(error);
+    return res.status(failure.status).json({ message: failure.message });
+  }
+});
+
+/* Atomic count corrections; metadata/actor are written with the same inventory transaction. */
+router.patch("/products/:id/stock-check", requireAuth, async (req, res) => {
+  try {
+    const input = parseStockCheckInput(req.body);
+    const actor = (req as typeof req & { user: { userId: string; role: string; organizationId?: string | null } }).user;
+    if (actor.organizationId !== input.organizationId) return res.status(403).json({ message: "Идэвхтэй байгууллага таарахгүй байна" });
+    const { permissions } = await resolvePermissionsForOrg(actor.userId, actor.role, input.organizationId);
+    if (!permissions.has(Permission.MANAGE_STOCK) && !permissions.has(Permission.MANAGE_PRODUCTS)) return res.status(403).json({ message: "Бараа засах эрхгүй байна" });
+    const result = await prisma.$transaction(tx => saveBusinessStockCheck(tx, String(req.params.id), actor.userId, permissions, input), { timeout: 15000 });
+    if (result.changed) productListCache.clear();
+    res.setHeader("Cache-Control", "no-store");
+    return res.json(result);
+  } catch (error) {
+    if (error instanceof StockCheckError) return res.status(error.status).json({ message: error.message });
+    console.error("stock check correction failed", error);
+    const failure = productMutationErrorResponse(error);
+    return res.status(failure.status).json({ message: failure.message });
   }
 });
 

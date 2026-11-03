@@ -1,6 +1,14 @@
+import { calculateRestaurantSelectedUnitDiscount } from "@mgl/types";
+import {
+  calculateCafeRegularCustomerUnitDiscount,
+  normalizeCafeRegularCustomerPhone,
+  normalizeCashPayment,
+  buildCreditBorrowerKey,
+} from "@mgl/types";
 import { parseCreditWorkDetails } from "./credit-work-details";
-import { buildCreditBorrowerKey } from "@mgl/types";
-import { normalizeCashPayment } from "@mgl/types";
+import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
+import { assertProductInventoryOwnership } from "../../../services/warehouse-product-ownership";
+import { resolvePosDiscountProfileType } from "./discount-profile";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 import {
@@ -62,6 +70,11 @@ import {
   resolvePosCreditDueDate,
 } from "./credit-interest";
 import { resolvePosSaleLineCost } from "./pos-sale-cost";
+import { resolvePaidRestaurantTicketStatus } from "./restaurant-ticket-lifecycle";
+import {
+  canUsePosRegisterForMode,
+  getRequiredSaleRegisterMode,
+} from "./pos-register-mode";
 import { calculateTakeawayPackagingFee } from "./takeaway-packaging";
 import {
   EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE,
@@ -427,9 +440,7 @@ const readEbarimtMetadata = (payload: Prisma.JsonValue | null) => {
       ? (source.response as Record<string, Prisma.JsonValue>)
       : null;
   const responseDate =
-    response && typeof response.date === "string"
-      ? response.date.trim()
-      : null;
+    response && typeof response.date === "string" ? response.date.trim() : null;
 
   return {
     receiptType:
@@ -718,12 +729,21 @@ router.post("/pos/sales", async (req, res) => {
     const organizationId = String(body.organizationId || "").trim() || null;
     const restaurantTicketId =
       String(body.restaurantTicketId || "").trim() || null;
+    const requiredRegisterMode = getRequiredSaleRegisterMode({
+      isSelfService: isSelfServiceSale,
+      restaurantTicketId,
+    });
     const clientSaleId = String(body.clientSaleId || "").trim();
     const packagingFee = roundMoney(Number(body.packagingFee || 0));
 
     if (isSelfServiceSale && !restaurantTicketId) {
       return res.status(400).json({
         message: "Self-service борлуулалтад рестораны захиалга шаардлагатай",
+      });
+    }
+    if (restaurantTicketId && !registerId) {
+      return res.status(400).json({
+        message: "Рестораны борлуулалтад зориулалтын POS register шаардлагатай",
       });
     }
 
@@ -780,6 +800,93 @@ router.post("/pos/sales", async (req, res) => {
       return res.status(200).json(existingSale.response as object);
     }
 
+    const requestedRegularCustomerPhone = String(
+      body.regularCustomerPhone || "",
+    ).trim();
+    const regularCustomerPhone = requestedRegularCustomerPhone
+      ? normalizeCafeRegularCustomerPhone(requestedRegularCustomerPhone)
+      : null;
+    if (requestedRegularCustomerPhone && !regularCustomerPhone) {
+      return res.status(400).json({
+        message: "Хөнгөлөлтийн бүртгэлийн утасны дугаар 8 оронтой байна",
+      });
+    }
+
+    let regularCustomer: {
+      id: string;
+      name: string;
+      phone: string;
+      discountPercent: number;
+    } | null = null;
+    if (regularCustomerPhone) {
+      const discountSettings = await prisma.siteSetting.findMany({
+        where: {
+          key: {
+            in: [
+              `self-service-enabled-${idempotencyOrganizationId}`,
+              `self-service-mode-${idempotencyOrganizationId}`,
+            ],
+          },
+        },
+        select: { key: true, value: true },
+      });
+      const discountSettingValues = new Map(
+        discountSettings.map((setting) => [setting.key, setting.value]),
+      );
+      const profileType = resolvePosDiscountProfileType(
+        discountSettingValues.get(
+          `self-service-enabled-${idempotencyOrganizationId}`,
+        ),
+        discountSettingValues.get(
+          `self-service-mode-${idempotencyOrganizationId}`,
+        ),
+      );
+      if (!profileType) {
+        return res.status(403).json({
+          message: "Өөртөө үйлчлэх кассын хөнгөлөлтийн горим идэвхгүй байна",
+        });
+      }
+      const customer = await prisma.cafeRegularCustomer.findUnique({
+        where: {
+          organizationId_normalizedPhone_profileType: {
+            organizationId: idempotencyOrganizationId,
+            normalizedPhone: regularCustomerPhone,
+            profileType,
+          },
+        },
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+          discountPercent: true,
+          isActive: true,
+        },
+      });
+      if (!customer?.isActive) {
+        return res.status(409).json({
+          message: "Хөнгөлөлтийн бүртгэл идэвхгүй эсвэл олдсонгүй",
+        });
+      }
+      regularCustomer = {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        discountPercent: Number(customer.discountPercent),
+      };
+    }
+
+    let effectiveLines: SaleLineInput[] = lines.map((line) => ({
+      ...line,
+      discountAmount: regularCustomer
+        ? calculateCafeRegularCustomerUnitDiscount(
+            Number(line.unitPrice || 0),
+            regularCustomer.discountPercent,
+          )
+        : isSelfServiceSale
+          ? 0
+          : Number(line.discountAmount || 0),
+    }));
+
     if (!body.branchId) {
       return res.status(400).json({ message: "branchId шаардлагатай" });
     }
@@ -788,6 +895,36 @@ router.post("/pos/sales", async (req, res) => {
       return res
         .status(400)
         .json({ message: "Зарах барааны мөрүүд хоосон байна" });
+    }
+
+    if (restaurantTicketId && !isSelfServiceSale) {
+      const pricingTicket = await prisma.restaurantTicket.findFirst({
+        where: { id: restaurantTicketId, organizationId: idempotencyOrganizationId },
+        select: { items: { select: { productId: true, unitPrice: true, discountPercent: true } } },
+      });
+      if (!pricingTicket) {
+        return res
+          .status(404)
+          .json({ message: "Рестораны захиалга олдсонгүй" });
+      }
+
+      const ticketItemsByProductId = new Map(
+        pricingTicket.items.map((item) => [item.productId, item]),
+      );
+      effectiveLines = lines.map((line) => {
+        const ticketItem = ticketItemsByProductId.get(line.productId);
+        if (!ticketItem) return line;
+
+        const unitPrice = Number(ticketItem.unitPrice);
+        return {
+          ...line,
+          unitPrice,
+          discountAmount: calculateRestaurantSelectedUnitDiscount({
+            unitPrice,
+            discountPercent: ticketItem.discountPercent,
+          }),
+        };
+      });
     }
 
     const normalizePayment = (item: SalePaymentLineInput) => {
@@ -814,7 +951,10 @@ router.post("/pos/sales", async (req, res) => {
         : [];
     } catch (error: unknown) {
       return res.status(400).json({
-        message: error instanceof Error ? error.message : "Бэлэн төлбөрийн мэдээлэл буруу",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Бэлэн төлбөрийн мэдээлэл буруу",
       });
     }
     const persistedPaymentBreakdown = normalizedPayments.map((item) => ({
@@ -961,7 +1101,7 @@ router.post("/pos/sales", async (req, res) => {
       }
     }
 
-    const preLineTotals = lines.map((line) => {
+    const preLineTotals = effectiveLines.map((line) => {
       const qty = Number(line.qty || 0);
       const unitPrice = Number(line.unitPrice || 0);
       const discount = Number(line.discountAmount || 0) * qty;
@@ -1006,9 +1146,17 @@ router.post("/pos/sales", async (req, res) => {
     const primaryCredit = creditLines[0]?.credit || null;
     let creditWorkDetails: ReturnType<typeof parseCreditWorkDetails> = {};
     try {
-      if (primaryCredit) creditWorkDetails = parseCreditWorkDetails(primaryCredit);
+      if (primaryCredit)
+        creditWorkDetails = parseCreditWorkDetails(primaryCredit);
     } catch (error) {
-      return res.status(400).json({ message: error instanceof Error ? error.message : "Ажлын мэдээлэл буруу байна" });
+      return res
+        .status(400)
+        .json({
+          message:
+            error instanceof Error
+              ? error.message
+              : "Ажлын мэдээлэл буруу байна",
+        });
     }
 
     const creditTermMonths = Math.max(
@@ -1059,6 +1207,7 @@ router.post("/pos/sales", async (req, res) => {
           id: string;
           branchId: string;
           organizationId: string;
+          mode: "RETAIL" | "RESTAURANT" | "SELF_SERVICE";
           activationStatus: PosActivationStatus;
           isActive: boolean;
         } | null = null;
@@ -1078,6 +1227,7 @@ router.post("/pos/sales", async (req, res) => {
               id: true,
               branchId: true,
               organizationId: true,
+              mode: true,
               activationStatus: true,
               isActive: true,
             },
@@ -1096,6 +1246,14 @@ router.post("/pos/sales", async (req, res) => {
             throw toApiError(
               400,
               "Sale branchId нь register branch-тай зөрүүтэй байна",
+            );
+          }
+          if (
+            !canUsePosRegisterForMode(register.mode, requiredRegisterMode)
+          ) {
+            throw toApiError(
+              409,
+              `Энэ нь ${register.mode} төрлийн касс байна. ${requiredRegisterMode} борлуулалт бүртгэх боломжгүй.`,
             );
           }
           if (organizationId && register.organizationId !== organizationId) {
@@ -1130,6 +1288,9 @@ router.post("/pos/sales", async (req, res) => {
           }
         }
 
+        await lockOrganizationInventory(tx, effectiveOrganizationId);
+        await assertProductInventoryOwnership(tx, productIds);
+
         const resolvedShiftId = String(body.shiftId || "").trim();
         if (!resolvedShiftId) {
           throw toApiError(
@@ -1150,6 +1311,7 @@ router.post("/pos/sales", async (req, res) => {
           where: { id: resolvedShiftId },
           select: {
             id: true,
+            mode: true,
             status: true,
             organizationId: true,
             branchId: true,
@@ -1175,12 +1337,24 @@ router.post("/pos/sales", async (req, res) => {
           (activeShift.note !== SELF_SERVICE_SHIFT_NOTE ||
             activeShift.registerId !== null)
         ) {
-          throw toApiError(409, "Self-service борлуулалтын дотоод ээлж буруу байна");
+          throw toApiError(
+            409,
+            "Self-service борлуулалтын дотоод ээлж буруу байна",
+          );
         }
-        if (!isSelfServiceSale && activeShift.note === SELF_SERVICE_SHIFT_NOTE) {
+        if (
+          !isSelfServiceSale &&
+          activeShift.note === SELF_SERVICE_SHIFT_NOTE
+        ) {
           throw toApiError(
             409,
             "Self-service дотоод ээлжийг энгийн кассанд ашиглах боломжгүй",
+          );
+        }
+        if (activeShift.mode !== requiredRegisterMode) {
+          throw toApiError(
+            409,
+            `Энэ ээлж ${activeShift.mode} төрөлтэй байна. ${requiredRegisterMode} борлуулалт бүртгэх боломжгүй.`,
           );
         }
         if (
@@ -1380,8 +1554,7 @@ router.post("/pos/sales", async (req, res) => {
                 },
                 update: {
                   name: "Савны үнэ",
-                  description:
-                    "Авч явах захиалгын автомат савлагааны төлбөр",
+                  description: "Авч явах захиалгын автомат савлагааны төлбөр",
                   unit: "pcs",
                   price: packagingFee,
                   taxType: "VAT_ABLE",
@@ -1400,8 +1573,7 @@ router.post("/pos/sales", async (req, res) => {
                 create: {
                   organizationId: effectiveOrganizationId,
                   name: "Савны үнэ",
-                  description:
-                    "Авч явах захиалгын автомат савлагааны төлбөр",
+                  description: "Авч явах захиалгын автомат савлагааны төлбөр",
                   sku: SELF_SERVICE_TAKEAWAY_PACKAGING_SKU,
                   unit: "pcs",
                   price: packagingFee,
@@ -1446,7 +1618,7 @@ router.post("/pos/sales", async (req, res) => {
           : products;
         const saleLines: SaleLineInput[] = packagingProduct
           ? [
-              ...lines,
+              ...effectiveLines,
               {
                 productId: packagingProduct.id,
                 qty: 1,
@@ -1455,7 +1627,7 @@ router.post("/pos/sales", async (req, res) => {
                 taxRate: 10,
               },
             ]
-          : lines;
+          : effectiveLines;
 
         const cardLines = normalizedPayments.filter(
           (item) => item.method === PaymentMethod.CARD,
@@ -1607,10 +1779,7 @@ router.post("/pos/sales", async (req, res) => {
           if (!product) {
             throw toApiError(404, "Бараа олдсонгүй");
           }
-          if (
-            isSelfServiceSale &&
-            restaurantTicketForSale?.tableId !== null
-          ) {
+          if (isSelfServiceSale && restaurantTicketForSale?.tableId !== null) {
             throw toApiError(
               409,
               "Self-service борлуулалт ширээний захиалга дээр үүсэх боломжгүй",
@@ -1644,13 +1813,22 @@ router.post("/pos/sales", async (req, res) => {
           const attemptId = String(
             cardLine.attemptId || cardLine.transactionId || "",
           ).trim();
-          await tx.cardPaymentAttempt.update({
-            where: { id: attemptId },
+          const claimed = await tx.cardPaymentAttempt.updateMany({
+            where: {
+              id: attemptId,
+              organizationId: effectiveOrganizationId,
+              status: PosPaymentStatus.APPROVED,
+              saleReference: null,
+              consumedAt: null,
+            },
             data: {
               saleReference: receiptNo,
               consumedAt: new Date(),
             },
           });
+          if (claimed.count !== 1) {
+            throw toApiError(409, "Картын төлбөр аль хэдийн ашиглагдсан байна. Борлуулалтын түүхээ шалгана уу.");
+          }
         }
 
         for (const qpayLine of qpayLines) {
@@ -1668,7 +1846,10 @@ router.post("/pos/sales", async (req, res) => {
             },
           });
           if (claimed.count !== 1) {
-            throw toApiError(409, "QR төлбөр өөр борлуулалтад ашиглагдсан байна");
+            throw toApiError(
+              409,
+              "QR төлбөр өөр борлуулалтад ашиглагдсан байна",
+            );
           }
         }
 
@@ -1796,6 +1977,7 @@ router.post("/pos/sales", async (req, res) => {
             registerId: registerId || undefined,
             shiftId: resolvedShiftId,
             cashierId: actor.id,
+            cafeRegularCustomerId: regularCustomer?.id || undefined,
             paymentMethod: paymentMethodSummary || "CASH",
             paymentBreakdown: persistedPaymentBreakdown,
             subtotal: subTotal,
@@ -1829,6 +2011,13 @@ router.post("/pos/sales", async (req, res) => {
           },
           select: { id: true },
         });
+
+        if (regularCustomer) {
+          await tx.cafeRegularCustomer.update({
+            where: { id: regularCustomer.id },
+            data: { lastUsedAt: new Date() },
+          });
+        }
 
         if (restaurantTicketId && restaurantTicketForSale) {
           const unsentItems = restaurantTicketForSale.items
@@ -1884,7 +2073,9 @@ router.post("/pos/sales", async (req, res) => {
             where: { id: restaurantTicketId },
             data: {
               posSaleId: posSale.id,
-              status: "PAID",
+              status: resolvePaidRestaurantTicketStatus(
+                restaurantTicketForSale.tableId,
+              ),
               sentAt:
                 restaurantTicketForSale.sentAt ||
                 (unsentItems.length > 0 ? new Date() : undefined),
@@ -2246,6 +2437,14 @@ router.post("/pos/sales", async (req, res) => {
           taxTotal: Number(fullSale.taxTotal),
           discountTotal: Number(fullSale.discountTotal),
           grandTotal: Number(fullSale.grandTotal),
+          regularCustomer: regularCustomer
+            ? {
+                id: regularCustomer.id,
+                name: regularCustomer.name,
+                phone: regularCustomer.phone,
+                discountPercent: regularCustomer.discountPercent,
+              }
+            : null,
           loyalty: loyaltyResponse,
         };
 

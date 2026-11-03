@@ -14,7 +14,13 @@ router.get('/store/hypermarket/products', async (req, res) => {
     const limit = Math.max(1, Math.min(60, Number.parseInt(String(req.query.limit), 10) || 40));
     const search = String(req.query.search ?? '').trim().slice(0, 100);
     const warehouses = await prisma.warehouse.findMany({
-      where: { name: { equals: 'Hypermarket', mode: 'insensitive' }, deletedAt: null, isActive: true },
+      where: {
+        OR: [
+          { name: { equals: 'Hypermarket', mode: 'insensitive' } },
+          { name: { equals: 'Хайпер Маркет', mode: 'insensitive' } },
+        ],
+        deletedAt: null, isActive: true,
+      },
       select: { id: true, name: true }, take: 2,
     });
     if (warehouses.length !== 1) {
@@ -24,15 +30,16 @@ router.get('/store/hypermarket/products', async (req, res) => {
     const empty = { warehouse, products: [], total: 0, hasMore: false };
     if (!(await areWebProductsGloballyEnabled())) return res.json(empty);
     const organizationIds = await getWebProductsEnabledOrganizationIds();
-    if (!organizationIds.length) return res.json(empty);
     const where: Prisma.WarehouseInventoryWhereInput = {
       warehouseId: warehouse.id, quantity: { gt: 0 }, showOnWeb: true,
       AND: [{ OR: [{ expiryDate: null }, { expiryDate: { gt: new Date() } }] }],
       product: {
         ...MINI_APP_PRODUCT_STATE_FILTER,
         managedByWarehouseId: warehouse.id,
-        organizationId: { in: organizationIds },
-        organization: { deletedAt: null, status: 'ACTIVE' },
+        AND: [{ OR: [
+          { organizationId: null },
+          { organizationId: { in: organizationIds }, organization: { deletedAt: null, status: 'ACTIVE' } },
+        ] }],
         ...(search ? { OR: [
           { name: { contains: search, mode: 'insensitive' } },
           { barcode: { contains: search, mode: 'insensitive' } },

@@ -80,14 +80,7 @@ export const TEAM_ORG_DISCONNECTED_COMPANY_ID = "__none__";
 
 export const ALL_DEPARTMENTS = "Бүгд";
 
-export const CARD_GRADIENTS = [
-  "from-amber-400 via-orange-400 to-orange-500",
-  "from-violet-400 via-fuchsia-500 to-purple-600",
-  "from-emerald-400 via-teal-400 to-cyan-500",
-  "from-sky-400 via-blue-500 to-indigo-600",
-  "from-rose-400 via-pink-500 to-red-500",
-  "from-lime-400 via-green-500 to-emerald-600",
-];
+export { PROFILE_CARD_GRADIENTS as CARD_GRADIENTS } from "@/components/molecules/ProfileCardCover";
 
 export function normalizeText(value: string | null | undefined) {
   return value?.toLocaleLowerCase("mn-MN").trim() ?? "";

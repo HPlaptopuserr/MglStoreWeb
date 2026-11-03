@@ -187,6 +187,9 @@ test(
       const dispatch = await call(
         `/warehouses/${warehouse.id}/manual-dispatches`,
         {
+          storeName: "Хүлээн авах дэлгүүр",
+          recipientName: "Хүлээн авагч",
+          recipientPhone: "99112233",
           address: "Хүлээн авах хаяг",
           lat: 47.9,
           lng: 106.9,

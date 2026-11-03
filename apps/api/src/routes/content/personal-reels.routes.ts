@@ -145,6 +145,8 @@ export function createPersonalReelsRouter(
   router.get("/me/reels/capabilities", deps.authenticate, (_req, res) => {
     res.json({
       enabled: true,
+      protocol: 'private-parts-v1',
+      maxSourceBytes: 1024 * 1024 * 1024,
       maxBytes: PERSONAL_REEL_MAX_BYTES,
       maxDurationSeconds: 180,
       visibility: ["PUBLIC", "PRIVATE"],

@@ -1,4 +1,11 @@
+import {
+  recoverReceiptProducts,
+  ReceiptProductRecoveryError,
+} from "../../../services/receipt-product-recovery";
+import { vendorProductReadScope } from "../../../services/warehouse-product-scope";
 import { correctReceipt } from "../../../services/receipt-correction.service";
+import { inventoryConflictResponse } from "../../../lib/inventory-conflict-errors";
+import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
 import {
   canCorrectReceipt,
   parseReceiptCorrection,
@@ -31,7 +38,7 @@ router.get("/pos/goods-receipts", async (req, res) => {
       return res.status(400).json({ message: "POS касс сонгоно уу" });
 
     const register = await prisma.posRegister.findFirst({
-      where: { id: registerId, deletedAt: null },
+      where: { id: registerId, mode: "RETAIL", deletedAt: null },
       select: { organizationId: true },
     });
     if (!register)
@@ -181,6 +188,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
       where: { id: input.registerId },
       select: {
         id: true,
+        mode: true,
         name: true,
         organizationId: true,
         branchId: true,
@@ -191,6 +199,9 @@ router.post("/pos/goods-receipts", async (req, res) => {
     });
     if (!register || register.deletedAt) {
       return res.status(404).json({ message: "POS касс олдсонгүй" });
+    }
+    if (register.mode !== "RETAIL") {
+      return res.status(409).json({ message: "Бараа хүлээн авалтыг зөвхөн дэлгүүрийн кассаар бүртгэнэ" });
     }
     if (!register.isActive) {
       return res.status(409).json({ message: "POS касс идэвхгүй байна" });
@@ -224,8 +235,11 @@ router.post("/pos/goods-receipts", async (req, res) => {
 
     const updatedProducts = await prisma.$transaction(
       async (tx) => {
+        // Match sale lock order: receipt insertion also needs the register FK.
+        await tx.$queryRaw`SELECT "id" FROM "PosRegister" WHERE "id" = ${register.id} FOR UPDATE`;
         // Serialize new catalog adoption for this organization across concurrent receipts.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${register.organizationId}))`;
+        await lockOrganizationInventory(tx, register.organizationId);
         const resolved = new Map<string, string>();
         for (const item of input.items) {
           if (!item.masterProductId) continue;
@@ -241,6 +255,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
             const existing = await tx.product.findFirst({
               where: {
                 organizationId: register.organizationId,
+                ...vendorProductReadScope(),
                 deletedAt: null,
                 OR: [
                   { masterProductId: master.id },
@@ -248,13 +263,6 @@ router.post("/pos/goods-receipts", async (req, res) => {
                 ],
               },
             });
-            if (
-              existing &&
-              (!existing.isActive || existing.supplyType !== "IN_STOCK")
-            )
-              throw new ReceiptInputError(
-                "Бараа идэвхгүй эсвэл захиалгын төрөлтэй байна.",
-              );
             if (
               existing &&
               normalizePosMeasureUnit(existing.unit) !==
@@ -269,6 +277,15 @@ router.post("/pos/goods-receipts", async (req, res) => {
                   select: { id: true },
                 })
               : null;
+            if (
+              existing &&
+              (!existing.isActive || existing.supplyType !== "IN_STOCK")
+            ) {
+              await tx.product.update({
+                where: { id: existing.id },
+                data: { isActive: true, supplyType: "IN_STOCK" },
+              });
+            }
             const product =
               existing ??
               (await tx.product.create({
@@ -293,6 +310,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
           }
           item.productId = id;
         }
+        await recoverReceiptProducts(tx, register.organizationId, input.items);
         const productIds = Array.from(
           new Set(input.items.map((item) => item.productId)),
         );
@@ -301,6 +319,7 @@ router.post("/pos/goods-receipts", async (req, res) => {
             id: { in: productIds },
             organizationId: register.organizationId,
             isActive: true,
+            ...vendorProductReadScope(),
             deletedAt: null,
           },
           select: {
@@ -427,8 +446,13 @@ router.post("/pos/goods-receipts", async (req, res) => {
       }),
     });
   } catch (error) {
-    if (error instanceof ReceiptInputError)
+    if (
+      error instanceof ReceiptInputError ||
+      error instanceof ReceiptProductRecoveryError
+    )
       return res.status(400).json({ message: error.message });
+    const conflict = inventoryConflictResponse(error);
+    if (conflict) return res.status(conflict.status).json({ message: conflict.message });
     console.error("POS goods receipt error", error);
     return res
       .status(500)
@@ -449,6 +473,8 @@ router.patch("/pos/goods-receipts/:id", async (req, res) => {
   } catch (error) {
     if (error instanceof ReceiptCorrectionError)
       return res.status(error.status).json({ message: error.message });
+    const conflict = inventoryConflictResponse(error);
+    if (conflict) return res.status(conflict.status).json({ message: conflict.message });
     console.error("Receipt correction failed", error);
     return res.status(500).json({
       message: "Засвар хадгалагдсангүй. Баримтыг дахин нээж шалгана уу.",

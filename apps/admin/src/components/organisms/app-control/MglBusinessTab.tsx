@@ -1,5 +1,6 @@
 "use client";
 
+import { WorkforceControls } from "./WorkforceControls";
 import { useEffect, useMemo, useState } from "react";
 import {
   Building2,
@@ -340,6 +341,8 @@ export function MglBusinessTab() {
                 features={draftFeatures}
                 onToggle={toggleFeature}
               />
+
+              <WorkforceControls key={`workforce-${selectedOrg.id}`} organizationId={selectedOrg.id} />
 
               <AttendanceBehaviorControls
                 settings={draftSettings}

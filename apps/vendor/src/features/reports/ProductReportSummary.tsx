@@ -41,7 +41,7 @@ export function ProductReportSummary({
       icon: CircleDollarSign,
       tone: "bg-amber-50 text-amber-600",
       accent: "before:bg-amber-500",
-      hint: "Авсан үнээр",
+      hint: "Орлого бүрийн авсан үнээр",
     },
     {
       label: "Боломжит ашиг",
@@ -83,13 +83,17 @@ export function ProductReportSummary({
           </article>
         ))}
       </section>
-      {(totals.missingCostCount > 0 || totals.negativeStockCount > 0) && (
+      {(totals.missingCostCount > 0 ||
+        totals.negativeStockCount > 0 ||
+        totals.inconsistentLotCount > 0) && (
         <p
           role="status"
           className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900"
         >
           {totals.missingCostCount > 0 &&
-            `${totals.missingCostCount} барааны авсан үнэ бүртгэлгүй тул өртөг, ашгийн тооцоо дутуу байна. `}
+            `${totals.missingCostCount} барааны үлдэгдлийн өртөг дутуу тул өртөг, ашгийн тооцоо дутуу байна. `}
+          {totals.inconsistentLotCount > 0 &&
+            `${totals.inconsistentLotCount} барааны орлогын үлдэгдэл нийт үлдэгдлээс зөрсөн тул үнэлгээнээс хассан. `}
           {totals.negativeStockCount > 0 &&
             `${totals.negativeStockCount} бараа сөрөг үлдэгдэлтэй. Нөөцийн үнэлгээнд эерэг үлдэгдлийг тооцсон.`}
         </p>

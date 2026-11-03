@@ -1,5 +1,6 @@
 import {
   Banknote,
+  BadgePercent,
   BarChart3,
   Boxes,
   Building2,
@@ -7,6 +8,7 @@ import {
   Clapperboard,
   ClipboardList,
   Coffee,
+  Handshake,
   Megaphone,
   MonitorSmartphone,
   Package,
@@ -55,6 +57,12 @@ export function getDashboardModules(
 ) {
   if (features.selfService) {
     const isCafe = features.selfServiceMode === "CAFE";
+    const role = String(user?.role || "").toUpperCase();
+    const canManageDiscountProfiles =
+      user?.orgRole === "OWNER" ||
+      user?.orgRole === "ADMIN" ||
+      role === "ADMIN" ||
+      role === "SUPER_ADMIN";
     return [
       {
         title: "Өөртөө үйлчлэх касс",
@@ -83,6 +91,17 @@ export function getDashboardModules(
         icon: isCafe ? Coffee : ChefHat,
         enabled: true,
       },
+      ...(!isCafe
+        ? [
+            {
+              title: "Гэрээт байгууллагын хоол",
+              desc: "Гэрээт байгууллага, ажилтны QR эрх болон сарын хоолны тооцоог удирдана.",
+              href: "/dashboard/contract-meals",
+              icon: Handshake,
+              enabled: true,
+            },
+          ]
+        : []),
       {
         title: "Бүтээгдэхүүн",
         desc: isCafe
@@ -99,6 +118,21 @@ export function getDashboardModules(
               desc: "Өдрийн орлого, борлуулалт, хорогдол болон үлдэгдлийг бүтээгдэхүүн тус бүрээр хянана.",
               href: "/dashboard/daily-stock",
               icon: ClipboardList,
+              enabled: true,
+            },
+          ]
+        : []),
+      ...(canManageDiscountProfiles
+        ? [
+            {
+              title: isCafe ? "Байнгын хэрэглэгч" : "Ажилтны хөнгөлөлт",
+              desc: isCafe
+                ? "Байнгын хэрэглэгч бүртгэж, өөртөө үйлчлэх кассад үйлчлэх хямдралын хувийг тохируулна."
+                : "Ажилтны утас болон хөнгөлөлтийн хувийг бүртгэж, хоёр кассад үйлчлүүлнэ.",
+              href: isCafe
+                ? "/dashboard/regular-customers"
+                : "/dashboard/employee-discounts",
+              icon: BadgePercent,
               enabled: true,
             },
           ]

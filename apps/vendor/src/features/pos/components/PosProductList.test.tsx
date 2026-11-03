@@ -13,7 +13,7 @@ const products: PosProduct[] = Array.from({ length: 5000 }, (_, index) => ({
   isActive: true,
 }));
 
-test("a large catalog renders only 50 rows while retaining its full count", () => {
+test("a large catalog renders only 50 cards while retaining its full count", () => {
   const html = renderToStaticMarkup(
     <PosProductList
       products={products}
@@ -28,7 +28,7 @@ test("a large catalog renders only 50 rows while retaining its full count", () =
   assert.match(html, /Дууссан/);
 });
 
-test("cart stock limits remain visible after row isolation", () => {
+test("cart stock limits remain visible on product cards", () => {
   const line: CartLine = {
     productId: products[1].id,
     name: products[1].name,

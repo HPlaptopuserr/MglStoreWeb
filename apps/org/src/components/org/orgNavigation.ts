@@ -1,5 +1,6 @@
 import {
   Banknote,
+  BadgePercent,
   BarChart3,
   Boxes,
   Building2,
@@ -7,6 +8,7 @@ import {
   ClipboardList,
   Clapperboard,
   Coffee,
+  Handshake,
   MonitorSmartphone,
   UtensilsCrossed,
   LayoutDashboard,
@@ -16,6 +18,7 @@ import {
   TimerReset,
   Users,
 } from "lucide-react";
+import { isKitchenOnlyMember } from "@mgl/types";
 import { OrgUser } from "@/lib/api";
 import { OrgFeatureState } from "@/lib/org-types";
 import { canViewWorkforceReport } from "@/lib/workforce-api";
@@ -31,8 +34,22 @@ export function getOrgNavItems(
   features: OrgFeatureState,
   user?: OrgUser | null,
 ): OrgNavItem[] {
+  if (user && isKitchenOnlyMember(user))
+    return [
+      {
+        label: "Гал тогооны дэлгэц",
+        href: "/dashboard/kitchen-display",
+        icon: ChefHat,
+      },
+    ];
   if (features.selfService) {
     const isCafe = features.selfServiceMode === "CAFE";
+    const role = String(user?.role || "").toUpperCase();
+    const canManageDiscountProfiles =
+      user?.orgRole === "OWNER" ||
+      user?.orgRole === "ADMIN" ||
+      role === "ADMIN" ||
+      role === "SUPER_ADMIN";
     return [
       {
         label: "Өөртөө үйлчлэх касс",
@@ -53,6 +70,15 @@ export function getOrgNavItems(
         href: "/dashboard/kitchen-display",
         icon: isCafe ? Coffee : ChefHat,
       },
+      ...(!isCafe
+        ? [
+            {
+              label: "Гэрээт хоол",
+              href: "/dashboard/contract-meals",
+              icon: Handshake,
+            },
+          ]
+        : []),
       { label: "Бүтээгдэхүүн", href: "/dashboard/products", icon: Package },
       ...(isCafe
         ? [
@@ -60,6 +86,17 @@ export function getOrgNavItems(
               label: "Өдрийн бараа орлого",
               href: "/dashboard/daily-stock",
               icon: ClipboardList,
+            },
+          ]
+        : []),
+      ...(canManageDiscountProfiles
+        ? [
+            {
+              label: isCafe ? "Байнгын хэрэглэгч" : "Ажилтны хөнгөлөлт",
+              href: isCafe
+                ? "/dashboard/regular-customers"
+                : "/dashboard/employee-discounts",
+              icon: BadgePercent,
             },
           ]
         : []),

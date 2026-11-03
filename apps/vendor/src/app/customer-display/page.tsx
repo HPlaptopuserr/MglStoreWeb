@@ -1,100 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Image from "next/image";
+import { CustomerDisplaySuccess } from "@/features/pos/components/customer-display/CustomerDisplaySuccess";
 import { QRCodeSVG } from "qrcode.react";
 import { CheckCircle2 } from "lucide-react";
-import {
-  CUSTOMER_DISPLAY_THEME_STORAGE_KEY,
-  PosCustomerDisplay,
-  type CartLine,
-  type CartTotals,
-  type CheckoutLoyaltyRedeemSession,
-  type CustomerDisplayThemeId,
-  isCustomerDisplayThemeId,
-} from "@/features/pos";
-
-const CUSTOMER_DISPLAY_CHANNEL = "mgl-pos-customer-display";
-
-type CustomerPayload = {
-  lines: CartLine[];
-  totals: CartTotals;
-  displayTheme?: CustomerDisplayThemeId;
-  qpayModal: {
-    open: boolean;
-    invoiceId: string;
-    amount: number;
-    qrText: string;
-    qrImage: string;
-    expiresAt: string;
-  } | null;
-  loyaltyRedeemSession?: CheckoutLoyaltyRedeemSession | null;
-  customerSuccess?: {
-    text: string;
-    amount: number;
-    ts: number;
-  } | null;
-  ts: number;
-};
-
-const EMPTY_TOTALS: CartTotals = {
-  subTotal: 0,
-  taxTotal: 0,
-  discountTotal: 0,
-  grandTotal: 0,
-};
+import { PosCustomerDisplay } from "@/features/pos";
+import { useCustomerDisplayPayload } from "@/features/pos/hooks/useCustomerDisplayPayload";
 
 function formatMoney(value: number) {
   return `₮${Math.round(Number(value) || 0).toLocaleString("mn-MN")}`;
 }
 
-const customerDisplayFont = {
-  fontFamily: '"Times New Roman", Times, serif',
-};
-
 export default function CustomerDisplayPage() {
-  const [payload, setPayload] = useState<CustomerPayload>({
-    lines: [],
-    totals: EMPTY_TOTALS,
-    displayTheme: "white",
-    qpayModal: null,
-    loyaltyRedeemSession: null,
-    customerSuccess: null,
-    ts: Date.now(),
-  });
-
-  useEffect(() => {
-    const storedTheme = localStorage.getItem(
-      CUSTOMER_DISPLAY_THEME_STORAGE_KEY,
-    );
-    const fallbackTheme = isCustomerDisplayThemeId(storedTheme)
-      ? storedTheme
-      : "white";
-    const withTheme = (next: CustomerPayload): CustomerPayload => ({
-      ...next,
-      displayTheme: isCustomerDisplayThemeId(next.displayTheme)
-        ? next.displayTheme
-        : fallbackTheme,
-    });
-
-    const fromStorage = localStorage.getItem("mgl_pos_customer_payload");
-    if (fromStorage) {
-      try {
-        const parsed = JSON.parse(fromStorage) as CustomerPayload;
-        setPayload(withTheme(parsed));
-      } catch {
-        // ignore malformed payload
-      }
-    } else {
-      setPayload((current) => ({ ...current, displayTheme: fallbackTheme }));
-    }
-
-    const channel = new BroadcastChannel(CUSTOMER_DISPLAY_CHANNEL);
-    channel.onmessage = (event: MessageEvent<CustomerPayload>) => {
-      setPayload(withTheme(event.data));
-    };
-
-    return () => channel.close();
-  }, []);
+  const payload = useCustomerDisplayPayload();
 
   const qrText = payload.qpayModal?.qrText || "";
   const qrSrc = payload.qpayModal?.qrImage
@@ -102,16 +20,20 @@ export default function CustomerDisplayPage() {
     : null;
 
   return (
-    <div style={customerDisplayFont}>
+    <div className="font-sans">
       <PosCustomerDisplay
         lines={payload.lines}
         totals={payload.totals}
         theme={payload.displayTheme}
+        registerName={payload.registerName}
+        branchName={payload.branchName}
+        cashierName={payload.cashierName}
+        loyaltyPoints={payload.loyaltyPoints}
       />
 
       {payload.qpayModal?.open && (qrSrc || qrText) && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-8 backdrop-blur-md">
-          <div className="grid w-full max-w-5xl grid-cols-[minmax(0,1fr)_360px] gap-8 rounded-[2rem] border border-white/10 bg-white p-8 shadow-2xl">
+          <div className="grid max-h-[calc(100dvh-2rem)] w-full max-w-5xl overflow-y-auto grid-cols-1 md:grid-cols-[minmax(0,1fr)_340px] gap-8 rounded-[2rem] border border-white/10 bg-white p-8 shadow-2xl">
             <div className="flex flex-col justify-between rounded-3xl bg-slate-950 p-8 text-white">
               <div>
                 <p className="text-sm font-black uppercase tracking-[0.28em] text-amber-400">
@@ -139,9 +61,12 @@ export default function CustomerDisplayPage() {
             <div className="flex flex-col">
               <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5 shadow-sm">
                 {qrSrc ? (
-                  <img
+                  <Image
                     src={qrSrc}
                     alt="QPay QR"
+                    width={300}
+                    height={300}
+                    unoptimized
                     className="mx-auto h-[300px] w-[300px] rounded-2xl bg-white"
                   />
                 ) : (
@@ -196,7 +121,7 @@ export default function CustomerDisplayPage() {
 
       {!payload.qpayModal?.open && payload.loyaltyRedeemSession?.qrPayload && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/85 p-8 backdrop-blur-md">
-          <div className="grid w-full max-w-5xl grid-cols-[minmax(0,1fr)_360px] gap-8 rounded-[2rem] border border-amber-300/30 bg-white p-8 shadow-2xl">
+          <div className="grid max-h-[calc(100dvh-2rem)] w-full max-w-5xl overflow-y-auto grid-cols-1 md:grid-cols-[minmax(0,1fr)_340px] gap-8 rounded-[2rem] border border-amber-300/30 bg-white p-8 shadow-2xl">
             <div className="flex flex-col justify-between rounded-3xl bg-slate-950 p-8 text-white">
               <div>
                 <p className="text-sm font-black uppercase text-amber-400">
@@ -216,7 +141,10 @@ export default function CustomerDisplayPage() {
                   Ашиглах оноо
                 </p>
                 <p className="mt-2 break-words text-6xl font-black leading-none text-amber-400">
-                  {payload.loyaltyRedeemSession.requestedPoints.toLocaleString("mn-MN")} M
+                  {payload.loyaltyRedeemSession.requestedPoints.toLocaleString(
+                    "mn-MN",
+                  )}{" "}
+                  M
                 </p>
               </div>
             </div>
@@ -261,26 +189,7 @@ export default function CustomerDisplayPage() {
       {!payload.qpayModal?.open &&
         !payload.loyaltyRedeemSession?.qrPayload &&
         payload.customerSuccess && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-emerald-950/85 p-8 text-white backdrop-blur-md">
-          <div className="flex w-full max-w-3xl flex-col items-center rounded-[2rem] border border-emerald-300/30 bg-white p-10 text-center text-slate-950 shadow-2xl">
-            <CheckCircle2
-              className="h-28 w-28 text-emerald-500"
-              strokeWidth={2.2}
-            />
-            <p className="mt-6 text-sm font-black uppercase tracking-[0.28em] text-emerald-600">
-              Төлбөр баталгаажлаа
-            </p>
-            <h2 className="mt-3 text-5xl font-black tracking-tight text-slate-950">
-              {payload.customerSuccess.text || "Төлбөр амжилттай"}
-            </h2>
-            <p className="mt-5 break-words text-6xl font-black leading-none text-emerald-600">
-              {formatMoney(payload.customerSuccess.amount)}
-            </p>
-            <p className="mt-6 text-lg font-semibold text-slate-500">
-              Баярлалаа. Таны худалдан авалт бүртгэгдлээ.
-            </p>
-          </div>
-        </div>
+          <CustomerDisplaySuccess success={payload.customerSuccess} />
         )}
     </div>
   );

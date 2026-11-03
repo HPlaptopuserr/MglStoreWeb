@@ -11,6 +11,7 @@ import {
   CreditCard,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
+import { WarehousePaymentAccountConnector } from "@/features/payments/WarehousePaymentAccountConnector";
 
 type Warehouse = {
   id: string;
@@ -384,11 +385,11 @@ export default function SettingsPage() {
       <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-5">
         <h2 className="mb-1 flex items-center gap-2 text-sm font-bold text-slate-900">
           <CreditCard className="h-4 w-4 text-blue-600" />
-          Татан авалтын Minu төлбөрийн данс
+          Minu QR төлбөр хүлээн авах данс
         </h2>
         <p className="mb-4 text-xs leading-5 text-slate-500">
-          Эзэмшигч болон худалдааны төлөөлөгчийн QR төлбөр тухайн агуулахад
-          сонгосон Minu Dynamic QR дансанд орно.
+          Татан авалт болон хөрөнгө оруулалтын цэнэглэлтийн QR төлбөр тухайн
+          агуулахад холбосон Minu дансанд орно.
         </p>
         <div className="space-y-3">
           {warehouses.map((warehouse) => (
@@ -416,12 +417,34 @@ export default function SettingsPage() {
                   </option>
                 ))}
               </select>
+              <WarehousePaymentAccountConnector
+                warehouseId={warehouse.id}
+                warehouseName={warehouse.name}
+                onConnected={async (accountId) => {
+                  setWarehouses((current) =>
+                    current.map((item) =>
+                      item.id === warehouse.id
+                        ? { ...item, paymentAccountId: accountId }
+                        : item,
+                    ),
+                  );
+                  const response = await wmsFetch(
+                    `${API}/warehouses/payment-accounts`,
+                  );
+                  if (response.ok) {
+                    const data = (await response.json()) as {
+                      accounts: PaymentAccount[];
+                    };
+                    setPaymentAccounts(data.accounts);
+                  }
+                }}
+              />
             </div>
           ))}
           {paymentAccounts.length === 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
-              Холбосон Minu данс алга. System Admin → Төлбөрийн данс хэсэгт
-              эхлээд Minu Dynamic QR дансаа нэг удаа холбоно уу.
+              Холбосон Minu данс алга. Агуулахынхаа «QR данс холбох» товчоор
+              дансаа бүртгэнэ үү.
             </div>
           )}
         </div>

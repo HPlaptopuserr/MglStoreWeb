@@ -39,7 +39,7 @@ export function CartScrollArea({ children }: { children: ReactNode }) {
         tabIndex={0}
         className="h-full overflow-y-auto overscroll-contain bg-slate-50/70 p-2.5 pb-9 [scrollbar-gutter:stable] focus-visible:outline-2 focus-visible:outline-blue-600"
       >
-        <div ref={contentRef} className="space-y-2">
+        <div ref={contentRef} className="space-y-1">
           {children}
         </div>
       </div>

@@ -10,14 +10,6 @@ export function JoinDemo() {
       <div className={styles.demoBanner}>
         LOCAL DEMO · Зөвхөн зохиомол мэдээлэл оруулна уу.
       </div>
-      <header className={styles.header}>
-        <Link href="/2003" className={styles.logo}>
-          2003
-        </Link>
-        <Link href="/2003" className={styles.primary}>
-          ← Хүмүүсийг харах
-        </Link>
-      </header>
       <div className={styles.main}>
         <section className={styles.hero}>
           <div>
