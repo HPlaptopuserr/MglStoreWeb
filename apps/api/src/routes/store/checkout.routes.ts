@@ -1,3 +1,4 @@
+import { getStorePaymentMerchant } from "../../services/store-payment-merchant.service";
 import { assertMiniAppOrderAccess } from "../../services/store-mini-app-settings";
 import { onlineProductStock } from "../../services/store-product-stock";
 import {
@@ -140,8 +141,6 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     : {};
 
 const CONTRACT_PAYMENT_ACCOUNTS_KEY = "contract-payment-accounts";
-const STORE_PAYMENT_MERCHANT_CHANNEL: MerchantChannel = "WEB";
-const LEGACY_STORE_PAYMENT_MERCHANT_CHANNEL: MerchantChannel = "POS";
 const configuredMinimumOrderAmount = Number(
   process.env.STORE_MINIMUM_ORDER_AMOUNT || 0,
 );
@@ -424,10 +423,9 @@ async function createStorePaymentInvoice(params: {
   orderNumber: string;
   amount: number;
 }) {
-  const systemQrConfig = await getVendorSystemQrConfig(
-    params.organizationId,
-    STORE_PAYMENT_MERCHANT_CHANNEL,
-  );
+  const merchant = await getStorePaymentMerchant(params.organizationId);
+  const merchantChannel = merchant?.channel ?? "POS";
+  const systemQrConfig = merchant?.provider === "SYSTEMQR" ? merchant.config : null;
 
   if (systemQrConfig) {
     const systemQr = await createSystemQrInvoice(
@@ -450,7 +448,7 @@ async function createStorePaymentInvoice(params: {
       },
       rawPayload: {
         provider: "SYSTEMQR",
-        merchantChannel: STORE_PAYMENT_MERCHANT_CHANNEL,
+        merchantChannel,
         orderId: params.orderId,
         orderNumber: params.orderNumber,
         referenceNumber: params.orderNumber,
@@ -466,12 +464,8 @@ async function createStorePaymentInvoice(params: {
     };
   }
 
-  const merchantRes = await getVendorMerchantConfig(
-    params.organizationId,
-    STORE_PAYMENT_MERCHANT_CHANNEL,
-    { allowCentralFallback: false },
-  );
-  if (!merchantRes.success || !merchantRes.config) {
+  const qpayConfig = merchant?.provider === "QPAY" ? merchant.config : null;
+  if (!qpayConfig) {
     if (
       process.env.NODE_ENV !== "production" &&
       process.env.MGL_LOCAL_DEV === "true"
@@ -489,7 +483,7 @@ async function createStorePaymentInvoice(params: {
         },
         rawPayload: {
           provider: "LOCAL_DEV",
-          merchantChannel: STORE_PAYMENT_MERCHANT_CHANNEL,
+          merchantChannel,
           orderId: params.orderId,
           orderNumber: params.orderNumber,
           referenceNumber: params.orderNumber,
@@ -507,14 +501,14 @@ async function createStorePaymentInvoice(params: {
     orderId: params.orderId,
     orderNumber: params.orderNumber,
     amount: params.amount,
-    merchantContext: merchantRes.config,
+    merchantContext: qpayConfig,
   });
 
   return {
     data: qpayData,
     rawPayload: {
       provider: "QPAY",
-      merchantChannel: STORE_PAYMENT_MERCHANT_CHANNEL,
+      merchantChannel,
       orderId: params.orderId,
       orderNumber: params.orderNumber,
       referenceNumber: params.orderNumber,
@@ -533,17 +527,7 @@ async function hasSellerStorePaymentConfig(organizationId: string) {
   ) {
     return true;
   }
-  const systemQrConfig = await getVendorSystemQrConfig(
-    organizationId,
-    STORE_PAYMENT_MERCHANT_CHANNEL,
-  );
-  if (systemQrConfig) return true;
-  const merchantResult = await getVendorMerchantConfig(
-    organizationId,
-    STORE_PAYMENT_MERCHANT_CHANNEL,
-    { allowCentralFallback: false },
-  );
-  return Boolean(merchantResult.success && merchantResult.config);
+  return Boolean(await getStorePaymentMerchant(organizationId));
 }
 
 async function checkStorePayment(params: {
@@ -554,12 +538,11 @@ async function checkStorePayment(params: {
 }) {
   const rawPayload = asRecord(params.rawPayload);
   const provider = String(rawPayload.provider || "").toUpperCase();
-  // Invoices created before WEB/POS isolation used the POS merchant. Preserve
-  // their verification path while all newly created invoices are tagged WEB.
+  // Verify each invoice with its original channel, including existing WEB invoices.
   const merchantChannel: MerchantChannel =
     String(rawPayload.merchantChannel || "").toUpperCase() === "WEB"
-      ? STORE_PAYMENT_MERCHANT_CHANNEL
-      : LEGACY_STORE_PAYMENT_MERCHANT_CHANNEL;
+      ? "WEB"
+      : "POS";
 
   if (provider === "SYSTEMQR") {
     const resolved = await getVendorSystemQrConfig(
