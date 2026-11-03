@@ -8,6 +8,7 @@ import type { WarehouseActor } from "./warehouse-access.service";
 import { assertWarehouseViewerManagement } from "./warehouse-viewer-access.service";
 import { assertWarehouseProductsOwned } from "./warehouse-product-ownership";
 import { syncProductStock } from "./inventory.service";
+import { canReserveStock } from "./stock-reservation.service";
 import {
   ManualDispatchError,
   parseDispatchHistoryQuery,
@@ -147,6 +148,11 @@ export async function createManualDispatch(
         };
       });
       const { items: dispatchItems, ...destination } = input;
+      if (!(await canReserveStock(tx, warehouseId, dispatchItems)))
+        throw new ManualDispatchError(
+          "Захиалгад нөөцөлсөн барааг хассан боломжит үлдэгдэл хүрэлцэхгүй байна.",
+          409,
+        );
       const created = await tx.warehouseManualDispatch.create({
         data: {
           ...destination,

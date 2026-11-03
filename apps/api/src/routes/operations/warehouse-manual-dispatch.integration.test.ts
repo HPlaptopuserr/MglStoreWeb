@@ -302,6 +302,144 @@ test(
           assert.equal(filtered.total, 2);
         },
       );
+      await t.test(
+        "old Warehouse clients can dispatch using their existing address-and-pin payload",
+        async () => {
+          const response = await call(base, operator, {
+            address: "Хуучин харилцагчийн хаяг",
+            lat: 47.9,
+            lng: 106.9,
+            items: [{ productId: products[0], quantity: 1 }],
+          });
+          assert.equal(response.status, 201, await response.clone().text());
+          const result = (await response.json()) as WarehouseDispatchDocument;
+          assert.equal(result.storeName, "Хуучин харилцагчийн хаяг");
+          assert.equal(await stock(products[0]), 91);
+        },
+      );
+      await t.test(
+        "manual dispatch preserves wholesale and retail reservations under concurrent requests",
+        async () => {
+          const organization = await prisma.organization.create({
+            data: { name: marker, slug: marker, taxId: marker },
+          });
+          try {
+            const request = await prisma.warehouseStockRequest.create({
+              data: {
+                requestNumber: `RESERVED-${marker}`,
+                warehouseId: own,
+                organizationId: organization.id,
+                requestedById: operator,
+                items: { create: { productId: products[1], quantity: 90 } },
+              },
+            });
+            const order = await prisma.warehouseRetailOrder.create({
+              data: {
+                orderNumber: `RETAIL-${marker}`,
+                checkoutKey: marker,
+                customerId: viewer,
+                warehouseId: own,
+                phone: "99112233",
+                shippingAddress: "Test",
+                total: 501.25,
+                expiresAt: new Date(Date.now() + 3600000),
+                items: {
+                  create: {
+                    productId: products[1],
+                    productName: "Reserved product",
+                    quantity: 5,
+                    storedQuantity: 5,
+                    price: 100.25,
+                    subtotal: 501.25,
+                  },
+                },
+              },
+            });
+            const before = await prisma.warehouseManualDispatch.count({
+              where: { warehouseId: own },
+            });
+            const blocked = await call(base, operator, {
+              ...draft,
+              requestId: randomUUID(),
+              items: [{ productId: products[1], quantity: 6 }],
+            });
+            assert.equal(blocked.status, 409);
+            assert.equal(await stock(products[1]), 100);
+            assert.equal(
+              await prisma.warehouseManualDispatch.count({
+                where: { warehouseId: own },
+              }),
+              before,
+            );
+            const attempts = Array.from({ length: 2 }, () => ({
+              ...draft,
+              requestId: randomUUID(),
+              items: [{ productId: products[1], quantity: 4 }],
+            }));
+            const replies = await Promise.all(
+              attempts.map((input) => call(base, operator, input)),
+            );
+            assert.deepEqual(
+              replies.map((reply) => reply.status).sort(),
+              [201, 409],
+            );
+            const accepted = replies.findIndex((reply) => reply.status === 201);
+            const receipt = (await replies[
+              accepted
+            ].json()) as WarehouseDispatchDocument;
+            const retry = await call(base, operator, attempts[accepted]);
+            assert.equal(retry.status, 201);
+            assert.equal(
+              ((await retry.json()) as WarehouseDispatchDocument).id,
+              receipt.id,
+            );
+            assert.equal(await stock(products[1]), 96);
+            assert.equal(
+              await prisma.inventoryLedger.count({
+                where: { productId: products[1] },
+              }),
+              1,
+            );
+            await prisma.warehouseRetailOrder.update({
+              where: { id: order.id },
+              data: { expiresAt: new Date(Date.now() - 1000) },
+            });
+            const released = await call(base, operator, {
+              ...draft,
+              requestId: randomUUID(),
+              items: [{ productId: products[1], quantity: 6 }],
+            });
+            assert.equal(released.status, 201);
+            assert.equal(await stock(products[1]), 90);
+            assert.equal(
+              (
+                await prisma.product.findUniqueOrThrow({
+                  where: { id: products[1] },
+                })
+              ).stock,
+              90,
+            );
+            assert.equal(
+              (
+                await prisma.warehouseStockRequest.findUniqueOrThrow({
+                  where: { id: request.id },
+                })
+              ).status,
+              "PENDING",
+            );
+          } finally {
+            await prisma.warehouseRetailOrder.deleteMany({
+              where: { customerId: viewer, checkoutKey: marker },
+            });
+            await prisma.warehouseStockRequest.deleteMany({
+              where: { organizationId: organization.id },
+            });
+            await prisma.organization.delete({
+              where: { id: organization.id },
+            });
+          }
+        },
+      );
     } finally {
       server.closeAllConnections();
       await new Promise<void>((resolve, reject) =>

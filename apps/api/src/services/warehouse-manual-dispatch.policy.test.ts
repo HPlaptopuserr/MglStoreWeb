@@ -56,3 +56,29 @@ test("dispatch history validates pagination and bounds search input", () => {
   for (const page of ["0", "-1", "1.5", "100001", "oops"])
     assert.throws(() => parseDispatchHistoryQuery({ page }));
 });
+
+test("the deployed Warehouse address-and-pin payload remains valid during rollout", () => {
+  const result = parseManualDispatch({
+    address: "Хуучин харилцагчийн хаяг",
+    lat: 47.9,
+    lng: 106.9,
+    items: [{ productId: "product", quantity: 2 }],
+  });
+  assert.equal(result.storeName, result.address);
+  assert.equal(result.recipientName, null);
+  assert.equal(result.recipientPhone, null);
+  assert.equal(result.lat, 47.9);
+  assert.equal(result.lng, 106.9);
+  for (const location of [
+    {},
+    { address: "Хаяг" },
+    { address: "Хаяг", lat: 47.9 },
+  ]) {
+    assert.throws(() =>
+      parseManualDispatch({
+        ...location,
+        items: [{ productId: "product", quantity: 1 }],
+      }),
+    );
+  }
+});

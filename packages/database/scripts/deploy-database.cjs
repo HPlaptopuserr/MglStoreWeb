@@ -2,6 +2,7 @@ const { spawnSync } = require("node:child_process");
 const path = require("node:path");
 const { auditMigrationHistory } = require("./migration-history.cjs");
 const { checkRuntimeSchema } = require("./check-runtime-schema.cjs");
+const { checkInventoryGuards } = require("./check-inventory-guards.cjs");
 
 const root = path.resolve(__dirname, "../../..");
 const schema = path.join(root, "packages/database/prisma/schema.prisma");
@@ -28,12 +29,15 @@ async function releaseDatabase({
   migrate,
   assertSchema,
   assertRuntime,
+  assertInventory,
 }) {
   await audit({ allowPending: true });
+  await assertInventory({ requireIndexes: false });
   await migrate();
   await audit({ allowPending: false });
   await assertSchema();
   await assertRuntime();
+  await assertInventory({ requireIndexes: true });
 }
 
 async function main() {
@@ -51,6 +55,7 @@ async function main() {
         "--exit-code",
       ]),
     assertRuntime: () => checkRuntimeSchema([]),
+    assertInventory: checkInventoryGuards,
   });
   console.log(
     "Database release checks passed: history, migrations, schema drift and all runtime models.",

@@ -16,6 +16,8 @@ function steps(failure) {
       migrate: () => run("migrate"),
       assertSchema: () => run("schema"),
       assertRuntime: () => run("runtime"),
+      assertInventory: ({ requireIndexes }) =>
+        run(requireIndexes ? "inventory-after" : "inventory-before"),
     },
   };
 }
@@ -25,19 +27,23 @@ test("release checks history before migrations and verifies history, full schema
   await releaseDatabase(dependencies);
   assert.deepEqual(calls, [
     "history-before",
+    "inventory-before",
     "migrate",
     "history-after",
     "schema",
     "runtime",
+    "inventory-after",
   ]);
 });
 
 for (const failure of [
   "history-before",
+  "inventory-before",
   "migrate",
   "history-after",
   "schema",
   "runtime",
+  "inventory-after",
 ]) {
   test(`release stops at ${failure} failure`, async () => {
     const { calls, dependencies } = steps(failure);

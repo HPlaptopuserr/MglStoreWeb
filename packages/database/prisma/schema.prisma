@@ -4844,6 +4844,7 @@ model OrganizationGroup {
   updatedAt DateTime @updatedAt
   owner User @relation("GroupOwner", fields: [ownerId], references: [id], onDelete: Restrict)
   headCompany Organization? @relation("GroupHeadCompany", fields: [headCompanyId], references: [id], onDelete: Restrict)
+  headMembership GroupCompany? @relation("GroupHeadMembership", fields: [id, headCompanyId], references: [groupId, organizationId], onDelete: NoAction, onUpdate: NoAction, map: "OrganizationGroup_head_in_group_fkey")
   members GroupMember[]
   companies GroupCompany[]
   personInvitations GroupPersonInvitation[]
@@ -4880,6 +4881,7 @@ model GroupCompany {
   group OrganizationGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   memberAccess GroupMemberCompanyAccess[]
+  headedGroups OrganizationGroup[] @relation("GroupHeadMembership")
   @@unique([groupId, organizationId])
   @@unique([id, groupId])
   @@index([organizationId, disconnectedAt])
