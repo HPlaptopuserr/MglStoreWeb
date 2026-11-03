@@ -1,16 +1,29 @@
-import { useLocalSystemQrCatalog, localSystemQrCities, localSystemQrCategories, localSystemQrKhoroos } from "./systemqr-local-catalog";
+import {
+  useLocalSystemQrCatalog,
+  localSystemQrCities,
+  localSystemQrCategories,
+  localSystemQrKhoroos,
+} from "./systemqr-local-catalog";
 import { paymentProviderFetch } from "./payment-provider-fetch";
 import crypto from "crypto";
 
 const trimTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
 const systemQrEnv = () => {
-  const root = trimTrailingSlash(process.env.SYSTEMQR_ROOT_URL || "https://api.minu.mn");
+  const root = trimTrailingSlash(
+    process.env.SYSTEMQR_ROOT_URL || "https://api.minu.mn",
+  );
   const suffix = process.env.NODE_ENV === "production" ? "" : "-test";
   return {
-    qrpayBaseUrl: trimTrailingSlash(process.env.SYSTEMQR_BASE_URL || `${root}/qrpay${suffix}`),
-    deeplinkBaseUrl: trimTrailingSlash(process.env.SYSTEMQR_DEEPLINK_URL || `${root}/deeplink${suffix}`),
-    publicUrl: trimTrailingSlash(process.env.API_PUBLIC_URL || process.env.API_URL || ""),
+    qrpayBaseUrl: trimTrailingSlash(
+      process.env.SYSTEMQR_BASE_URL || `${root}/qrpay${suffix}`,
+    ),
+    deeplinkBaseUrl: trimTrailingSlash(
+      process.env.SYSTEMQR_DEEPLINK_URL || `${root}/deeplink${suffix}`,
+    ),
+    publicUrl: trimTrailingSlash(
+      process.env.API_PUBLIC_URL || process.env.API_URL || "",
+    ),
   };
 };
 
@@ -19,8 +32,13 @@ const isPublicCallbackUrl = (value?: string | null) => {
   try {
     const url = new URL(value);
     const host = url.hostname.toLowerCase();
-    if (host === "localhost" || host === "127.0.0.1" || host === "::1") return false;
-    if (/^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) {
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1")
+      return false;
+    if (
+      /^10\./.test(host) ||
+      /^192\.168\./.test(host) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+    ) {
       return false;
     }
     return url.protocol === "https:" || process.env.NODE_ENV !== "production";
@@ -103,14 +121,32 @@ function resolveSystemQrCredentials(username?: string, password?: string) {
   return { qrpayBaseUrl, reqUsername, reqPassword };
 }
 
-function getSystemQrTokenCacheKey(qrpayBaseUrl: string, username: string, password: string) {
-  const passwordHash = crypto.createHash("sha256").update(password).digest("hex").slice(0, 16);
+function getSystemQrTokenCacheKey(
+  qrpayBaseUrl: string,
+  username: string,
+  password: string,
+) {
+  const passwordHash = crypto
+    .createHash("sha256")
+    .update(password)
+    .digest("hex")
+    .slice(0, 16);
   return `${qrpayBaseUrl}:${username}:${passwordHash}`;
 }
 
-async function getSystemQrToken(username?: string, password?: string): Promise<string> {
-  const { qrpayBaseUrl, reqUsername, reqPassword } = resolveSystemQrCredentials(username, password);
-  const cacheKey = getSystemQrTokenCacheKey(qrpayBaseUrl, reqUsername, reqPassword);
+async function getSystemQrToken(
+  username?: string,
+  password?: string,
+): Promise<string> {
+  const { qrpayBaseUrl, reqUsername, reqPassword } = resolveSystemQrCredentials(
+    username,
+    password,
+  );
+  const cacheKey = getSystemQrTokenCacheKey(
+    qrpayBaseUrl,
+    reqUsername,
+    reqPassword,
+  );
   const cached = tokenCache.get(cacheKey);
   if (cached && Date.now() < cached.expiresAt) {
     return cached.token;
@@ -122,7 +158,7 @@ async function getSystemQrToken(username?: string, password?: string): Promise<s
     body: JSON.stringify({ username: reqUsername, password: reqPassword }),
   });
 
-  const data = await res.json() as SystemQrLoginResponse;
+  const data = (await res.json()) as SystemQrLoginResponse;
 
   if (data.status !== "000" || !data.entity) {
     throw new Error(`SystemQR Login Error: ${data.message}`);
@@ -131,7 +167,7 @@ async function getSystemQrToken(username?: string, password?: string): Promise<s
   const token = data.entity;
   // Token expires in 30 minutes, let's cache for 25 minutes
   tokenCache.set(cacheKey, { token, expiresAt: Date.now() + 25 * 60 * 1000 });
-  
+
   return token;
 }
 
@@ -148,25 +184,40 @@ export async function validateSystemQrCredentials(
 }
 
 function clearSystemQrToken(username?: string, password?: string) {
-  const { qrpayBaseUrl, reqUsername, reqPassword } = resolveSystemQrCredentials(username, password);
-  tokenCache.delete(getSystemQrTokenCacheKey(qrpayBaseUrl, reqUsername, reqPassword));
+  const { qrpayBaseUrl, reqUsername, reqPassword } = resolveSystemQrCredentials(
+    username,
+    password,
+  );
+  tokenCache.delete(
+    getSystemQrTokenCacheKey(qrpayBaseUrl, reqUsername, reqPassword),
+  );
 }
 
-const isSystemQrTokenExpiredResponse = (data: { status?: unknown; message?: unknown } | null | undefined) => {
+const isSystemQrTokenExpiredResponse = (
+  data: { status?: unknown; message?: unknown } | null | undefined,
+) => {
   const status = String(data?.status || "").trim();
   const message = String(data?.message || "").trim();
   const combined = `${status} ${message}`;
-  return /^(401|403)$/.test(status)
-    || /token|jwt|session|expire|expired|unauthorized|forbidden|нэвтрэх эрх|хандалтын эрх|эрх дууссан/i.test(combined);
+  return (
+    /^(401|403)$/.test(status) ||
+    /token|jwt|session|expire|expired|unauthorized|forbidden|нэвтрэх эрх|хандалтын эрх|эрх дууссан/i.test(
+      combined,
+    )
+  );
 };
 
-async function readSystemQrJson<T extends { status?: unknown; message?: unknown }>(res: Response): Promise<T> {
+async function readSystemQrJson<
+  T extends { status?: unknown; message?: unknown },
+>(res: Response): Promise<T> {
   const text = await res.text();
   try {
     const data = JSON.parse(text) as T;
     if (!res.ok && data && typeof data === "object") {
-      if (data.status === undefined || data.status === null) data.status = String(res.status);
-      if (data.message === undefined || data.message === null) data.message = res.statusText || text;
+      if (data.status === undefined || data.status === null)
+        data.status = String(res.status);
+      if (data.message === undefined || data.message === null)
+        data.message = res.statusText || text;
     }
     return data;
   } catch {
@@ -177,7 +228,9 @@ async function readSystemQrJson<T extends { status?: unknown; message?: unknown 
   }
 }
 
-async function fetchSystemQrJsonWithTokenRetry<T extends { status?: unknown; message?: unknown }>(
+async function fetchSystemQrJsonWithTokenRetry<
+  T extends { status?: unknown; message?: unknown },
+>(
   request: (token: string) => Promise<Response>,
   username?: string,
   password?: string,
@@ -200,16 +253,26 @@ export async function registerSystemQrSubMerchant(
 ): Promise<SystemQrSubMerchantResult> {
   const { qrpayBaseUrl } = systemQrEnv();
   if (useLocalSystemQrCatalog()) {
-    throw new SystemQrLocationValidationError("Туршилтын хаягийн жагсаалтаар Minu данс бүртгэх боломжгүй.");
+    throw new SystemQrLocationValidationError(
+      "Туршилтын хаягийн жагсаалтаар Minu данс бүртгэх боломжгүй.",
+    );
   }
   const cities = await getSystemQrCityList(username, password);
   const city = cities.find((item) => item.code === params.cityId);
   if (!city?.districts.some((item) => item.code === params.districtId)) {
-    throw new SystemQrLocationValidationError("Minu-ийн жагсаалтаас хот, дүүргээ дахин сонгоно уу.");
+    throw new SystemQrLocationValidationError(
+      "Minu-ийн жагсаалтаас хот, дүүргээ дахин сонгоно уу.",
+    );
   }
-  const khoroos = await getSystemQrKhorooList(params.districtId, username, password);
+  const khoroos = await getSystemQrKhorooList(
+    params.districtId,
+    username,
+    password,
+  );
   if (!khoroos.some((item) => item.code === params.khorooId)) {
-    throw new SystemQrLocationValidationError("Хорооны ID Minu-ийн сонгосон дүүргийн жагсаалтад байхгүй байна. Хороо/багаа дахин сонгоно уу.");
+    throw new SystemQrLocationValidationError(
+      "Хорооны ID Minu-ийн сонгосон дүүргийн жагсаалтад байхгүй байна. Хороо/багаа дахин сонгоно уу.",
+    );
   }
 
   const data = await fetchSystemQrJsonWithTokenRetry<{
@@ -220,32 +283,37 @@ export async function registerSystemQrSubMerchant(
       username?: string;
       password?: string;
     } | null;
-  }>((token) => paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/registerSubMerchant`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      merchantName: params.merchantName,
-      accountNumber: params.accountNumber,
-      bankCode: params.bankCode,
-      cityId: params.cityId,
-      districtId: params.districtId,
-      khorooId: params.khorooId,
-      building: params.building,
-      doorNo: params.doorNo,
-      phone: params.phone,
-      email: params.email || null,
-      firstName: params.firstName,
-      lastName: params.lastName,
-      corporateFlag: params.corporateFlag,
-      corporateName: params.corporateName || null,
-      registerNumber: params.registerNumber,
-      gender: params.gender,
-      subCategoryId: params.subCategoryId,
-    }),
-  }), username, password);
+  }>(
+    (token) =>
+      paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/registerSubMerchant`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          merchantName: params.merchantName,
+          accountNumber: params.accountNumber,
+          bankCode: params.bankCode,
+          cityId: params.cityId,
+          districtId: params.districtId,
+          khorooId: params.khorooId,
+          building: params.building,
+          doorNo: params.doorNo,
+          phone: params.phone,
+          email: params.email || null,
+          firstName: params.firstName,
+          lastName: params.lastName,
+          corporateFlag: params.corporateFlag,
+          corporateName: params.corporateName || null,
+          registerNumber: params.registerNumber.trim().toUpperCase(),
+          gender: params.gender,
+          subCategoryId: params.subCategoryId,
+        }),
+      }),
+    username,
+    password,
+  );
 
   if (data.status !== "000" || !data.entity?.merchantCode) {
     console.error("SystemQR registerSubMerchant failed", {
@@ -288,14 +356,19 @@ export async function resetSystemQrSubMerchantPassword(
       username?: string;
       password?: string;
     } | null;
-  }>((token) => paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/resetPassword`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ subMerchantCode }),
-  }), username, password);
+  }>(
+    (token) =>
+      paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/resetPassword`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ subMerchantCode }),
+      }),
+    username,
+    password,
+  );
 
   if (data.status !== "000" || !data.entity?.merchantCode) {
     throw new Error(
@@ -329,12 +402,19 @@ export async function listSystemQrSubMerchants(
       terminalNo?: string | null;
       createdDate?: string | null;
     }> | null;
-  }>((token) => paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/subMerchant`, {
-    headers: { Authorization: `Bearer ${token}` },
-  }), username, password);
+  }>(
+    (token) =>
+      paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/subMerchant`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    username,
+    password,
+  );
 
   if (data.status !== "000" || !Array.isArray(data.entity)) {
-    throw new Error(`Minu SystemQR subMerchant list failed (${data.status || "unknown"}): ${data.message || "list ирсэнгүй"}`);
+    throw new Error(
+      `Minu SystemQR subMerchant list failed (${data.status || "unknown"}): ${data.message || "list ирсэнгүй"}`,
+    );
   }
 
   return data.entity.map((item) => ({
@@ -346,13 +426,30 @@ export async function listSystemQrSubMerchants(
   }));
 }
 
-export async function getSystemQrCityList(username?: string, password?: string) {
+export async function getSystemQrCityList(
+  username?: string,
+  password?: string,
+) {
   if (useLocalSystemQrCatalog()) return localSystemQrCities;
   const { qrpayBaseUrl } = systemQrEnv();
-  const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: Array<{ cityId?: string | number; cityName?: string; districtList?: Array<{ districtId?: string | number; districtName?: string }> }> | null }>(
-    (token) => paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/city`, {
-      headers: { Authorization: `Bearer ${token}` },
-    }), username, password,
+  const data = await fetchSystemQrJsonWithTokenRetry<{
+    status?: string;
+    message?: string | null;
+    entity?: Array<{
+      cityId?: string | number;
+      cityName?: string;
+      districtList?: Array<{
+        districtId?: string | number;
+        districtName?: string;
+      }>;
+    }> | null;
+  }>(
+    (token) =>
+      paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/city`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    username,
+    password,
   );
   if (data.status !== "000" || !Array.isArray(data.entity)) {
     throw new Error("Minu хаягийн жагсаалт авч чадсангүй. Дахин оролдоно уу.");
@@ -370,14 +467,26 @@ export async function getSystemQrCityList(username?: string, password?: string) 
   }));
 }
 
-export async function getSystemQrKhorooList(districtId: string, username?: string, password?: string) {
-  if (useLocalSystemQrCatalog()) return districtId === "LOCAL-DISTRICT" ? localSystemQrKhoroos : [];
+export async function getSystemQrKhorooList(
+  districtId: string,
+  username?: string,
+  password?: string,
+) {
+  if (useLocalSystemQrCatalog())
+    return districtId === "LOCAL-DISTRICT" ? localSystemQrKhoroos : [];
   const { qrpayBaseUrl } = systemQrEnv();
-  const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: Array<{ khorooId?: string | number; khorooName?: string }> | null }>(
-    (token) => paymentProviderFetch(
-      `${qrpayBaseUrl}/qrMerchant/khoroo?districtId=${encodeURIComponent(districtId)}`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    ), username, password,
+  const data = await fetchSystemQrJsonWithTokenRetry<{
+    status?: string;
+    message?: string | null;
+    entity?: Array<{ khorooId?: string | number; khorooName?: string }> | null;
+  }>(
+    (token) =>
+      paymentProviderFetch(
+        `${qrpayBaseUrl}/qrMerchant/khoroo?districtId=${encodeURIComponent(districtId)}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      ),
+    username,
+    password,
   );
   if (data.status !== "000" || !Array.isArray(data.entity)) {
     throw new Error("Minu хаягийн жагсаалт авч чадсангүй. Дахин оролдоно уу.");
@@ -392,8 +501,12 @@ export async function getSystemQrKhorooList(districtId: string, username?: strin
 export async function getSystemQrCategoryList() {
   if (useLocalSystemQrCatalog()) return localSystemQrCategories;
   const { qrpayBaseUrl } = systemQrEnv();
-  const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; message?: string | null; entity?: any[] | null }>(
-    (token) => paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/category`, {
+  const data = await fetchSystemQrJsonWithTokenRetry<{
+    status?: string;
+    message?: string | null;
+    entity?: any[] | null;
+  }>((token) =>
+    paymentProviderFetch(`${qrpayBaseUrl}/qrMerchant/category`, {
       headers: { Authorization: `Bearer ${token}` },
     }),
   );
@@ -401,19 +514,30 @@ export async function getSystemQrCategoryList() {
 
   return data.entity.flatMap((category) =>
     Array.isArray(category.psSubCategoryList)
-      ? category.psSubCategoryList.map((subCategory: any) => ({
-          code: String(subCategory.subCategoryId || ""),
-          name: String(subCategory.subCategoryName || ""),
-          categoryCode: String(category.categoryId || ""),
-          categoryName: String(category.categoryName || ""),
-        })).filter((item: { code: string; categoryCode: string }) => item.code !== "1000" && item.categoryCode !== "9")
+      ? category.psSubCategoryList
+          .map((subCategory: any) => ({
+            code: String(subCategory.subCategoryId || ""),
+            name: String(subCategory.subCategoryName || ""),
+            categoryCode: String(category.categoryId || ""),
+            categoryName: String(category.categoryName || ""),
+          }))
+          .filter(
+            (item: { code: string; categoryCode: string }) =>
+              item.code !== "1000" && item.categoryCode !== "9",
+          )
       : [],
   );
 }
 
-export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams, username?: string, password?: string) {
+export async function createSystemQrInvoice(
+  params: SystemQrCreateInvoiceParams,
+  username?: string,
+  password?: string,
+) {
   const { deeplinkBaseUrl, publicUrl } = systemQrEnv();
-  const fallbackWebhook = publicUrl ? `${publicUrl}/api/pos/qpay/cb` : undefined;
+  const fallbackWebhook = publicUrl
+    ? `${publicUrl}/api/pos/qpay/cb`
+    : undefined;
   const webhook = isPublicCallbackUrl(params.webhook)
     ? params.webhook
     : isPublicCallbackUrl(fallbackWebhook)
@@ -421,19 +545,24 @@ export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams,
       : undefined;
 
   try {
-    const data = await fetchSystemQrJsonWithTokenRetry<any>((token) => paymentProviderFetch(`${deeplinkBaseUrl}/subMerchant/createInvoice`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        referenceNumber: params.referenceNumber,
-        amount: params.amount,
-        merchantCode: params.merchantCode,
-        ...(webhook ? { webhook } : {}),
-      }),
-    }), username, password);
+    const data = await fetchSystemQrJsonWithTokenRetry<any>(
+      (token) =>
+        paymentProviderFetch(`${deeplinkBaseUrl}/subMerchant/createInvoice`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            referenceNumber: params.referenceNumber,
+            amount: params.amount,
+            merchantCode: params.merchantCode,
+            ...(webhook ? { webhook } : {}),
+          }),
+        }),
+      username,
+      password,
+    );
 
     if (data.status !== "000") {
       throw new Error(
@@ -446,7 +575,9 @@ export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams,
     // Map entity to generic format used by frontend
     const entity = data.entity;
     if (!entity?.invoiceNumber || !entity?.mainQr) {
-      throw new Error("Minu SystemQR createInvoice returned an incomplete invoice");
+      throw new Error(
+        "Minu SystemQR createInvoice returned an incomplete invoice",
+      );
     }
 
     return {
@@ -468,24 +599,35 @@ export async function createSystemQrInvoice(params: SystemQrCreateInvoiceParams,
   }
 }
 
-export async function checkSystemQrPayment(params: SystemQrCheckInvoiceParams, username?: string, password?: string) {
+export async function checkSystemQrPayment(
+  params: SystemQrCheckInvoiceParams,
+  username?: string,
+  password?: string,
+) {
   const { deeplinkBaseUrl } = systemQrEnv();
 
   try {
-    const data = await fetchSystemQrJsonWithTokenRetry<any>((token) => paymentProviderFetch(`${deeplinkBaseUrl}/subMerchant/checkInvoice`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        merchantCode: params.merchantCode,
-        invoiceNumber: params.invoiceNumber,
-      }),
-    }), username, password);
+    const data = await fetchSystemQrJsonWithTokenRetry<any>(
+      (token) =>
+        paymentProviderFetch(`${deeplinkBaseUrl}/subMerchant/checkInvoice`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            merchantCode: params.merchantCode,
+            invoiceNumber: params.invoiceNumber,
+          }),
+        }),
+      username,
+      password,
+    );
 
     if (data.status !== "000") {
-      throw new Error("SystemQR төлбөрийн төлөв шалгах хүсэлт амжилтгүй боллоо");
+      throw new Error(
+        "SystemQR төлбөрийн төлөв шалгах хүсэлт амжилтгүй боллоо",
+      );
     }
 
     // According to docs, entity.status = null (pending), "000" (success), "00x" (failed)
@@ -493,7 +635,7 @@ export async function checkSystemQrPayment(params: SystemQrCheckInvoiceParams, u
     if (data.status === "000" && entity?.status === "000") {
       return { paid: true };
     }
-    
+
     return { paid: false };
   } catch (error: any) {
     console.error("SystemQR checkInvoice error:", error.message);

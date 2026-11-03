@@ -21,6 +21,7 @@ import { parseWarehouseGoodsReceiptInput } from "../../services/warehouse-goods-
 import { approvedStockRequestQuantity } from "../../services/stock-reservation.service";
 import { getSupabase, PRODUCT_IMAGES_BUCKET } from "../../lib/supabase";
 import { parseWarehouseDateRange } from "../../services/warehouse-date-range";
+import { assertWarehouseProductsOwned, WarehouseProductOwnershipError } from "../../services/warehouse-product-ownership";
 
 const router: ExpressRouter = Router();
 const receiptUploadsDir = path.resolve(
@@ -138,6 +139,7 @@ async function confirmReceipt(
   if (receipt.status !== WarehouseGoodsReceiptStatus.DRAFT)
     throw new Error("RECEIPT_NOT_DRAFT");
 
+  await assertWarehouseProductsOwned(tx, receipt.warehouseId, receipt.items.map(item => item.productId));
   for (const item of receipt.items) {
     await adjustStock(tx, {
       productId: item.productId,
@@ -351,6 +353,7 @@ router.post("/warehouse-goods-receipts", requireAuth, async (req, res) => {
         .json({ message: "Нэг буюу хэд хэдэн бараа олдсонгүй" });
 
     const created = await prisma.$transaction(async (tx) => {
+      await assertWarehouseProductsOwned(tx, input.warehouseId, productIds);
       const receipt = await tx.warehouseGoodsReceipt.create({
         data: {
           receiptNumber: createReceiptNumber(),
@@ -373,6 +376,8 @@ router.post("/warehouse-goods-receipts", requireAuth, async (req, res) => {
     });
     return res.status(201).json(created);
   } catch (error) {
+    if (error instanceof WarehouseProductOwnershipError)
+      return res.status(409).json({ message: error.message });
     if (
       error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2002"
@@ -407,6 +412,8 @@ router.patch(
       );
       return res.json(confirmed);
     } catch (error) {
+      if (error instanceof WarehouseProductOwnershipError)
+        return res.status(409).json({ message: error.message });
       if (error instanceof Error && error.message === "RECEIPT_NOT_DRAFT")
         return res
           .status(409)
@@ -520,6 +527,8 @@ router.patch(
         return res
           .status(409)
           .json({ message: "Падаан аль хэдийн цуцлагдсан" });
+      if (error instanceof WarehouseProductOwnershipError)
+        return res.status(409).json({ message: error.message });
       console.error("cancel warehouse goods receipt error", error);
       return res
         .status(500)

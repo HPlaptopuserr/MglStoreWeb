@@ -174,7 +174,7 @@ export default function GoodsReceiptsPage() {
         includeExpiredInventory: "1",
       });
       const [registerResponse, productResponse] = await Promise.all([
-        authFetch(`${API}/pos/registers/mine`, { cache: "no-store" }),
+        authFetch(`${API}/pos/registers/mine?mode=RETAIL`, { cache: "no-store" }),
         authFetch(`${API}/products?${productParams.toString()}`, {
           cache: "no-store",
         }),

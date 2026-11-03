@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Send,
   ShieldCheck,
+  UserMinus,
   UserRound,
   X,
 } from "lucide-react";
@@ -232,6 +233,50 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
       onMembersUpdated(data.members ?? []);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Role солиход алдаа гарлаа");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const revokeLoginAccess = async (member: VendorLoginMember) => {
+    const displayName = member.fullName || member.email || "Энэ хэрэглэгч";
+    if (
+      !confirm(
+        `${displayName}-ийн энэ байгууллагад нэвтрэх эрхийг хасах уу? Хувийн account нь устахгүй.`,
+      )
+    ) {
+      return;
+    }
+
+    const key = `revoke:${member.userId}`;
+    setBusyAction(key);
+    try {
+      const res = await adminFetch(
+        `${API}/partners/${partner.id}/members/${member.userId}`,
+        { method: "DELETE" },
+      );
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.message || "Нэвтрэх эрх хасахад алдаа гарлаа");
+      }
+
+      onMembersUpdated(data?.members ?? []);
+      setTempPasswords((prev) => {
+        const next = { ...prev };
+        delete next[member.userId];
+        return next;
+      });
+      setInviteLinks((prev) => {
+        const next = { ...prev };
+        delete next[member.userId];
+        return next;
+      });
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Нэвтрэх эрх хасахад алдаа гарлаа",
+      );
     } finally {
       setBusyAction(null);
     }
@@ -646,7 +691,7 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
                       </div>
                     </div>
 
-                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
                       <label className="grid min-w-0 gap-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                         <span className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
                           Page role
@@ -692,6 +737,28 @@ export function VendorLoginAccountsCard({ partner, onMembersUpdated }: Props) {
                       >
                         {busyAction === `owner:${member.userId}` ? <Loader2 size={14} className="animate-spin" /> : <Crown size={14} />}
                         Owner болгох
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => revokeLoginAccess(member)}
+                        disabled={
+                          member.role === "OWNER" ||
+                          Boolean(member.isPrimary) ||
+                          busyAction === `revoke:${member.userId}`
+                        }
+                        title={
+                          member.role === "OWNER" || member.isPrimary
+                            ? "Owner-ийн эрхийг хасахын өмнө өөр хэрэглэгчийг Owner болгоно уу"
+                            : "Энэ байгууллагын login эрхийг хасах"
+                        }
+                        className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2.5 text-xs font-black text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {busyAction === `revoke:${member.userId}` ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <UserMinus size={14} />
+                        )}
+                        Эрх хасах
                       </button>
                     </div>
                   </div>

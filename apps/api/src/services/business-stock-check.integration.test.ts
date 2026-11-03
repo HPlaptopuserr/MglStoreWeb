@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { randomUUID } from "node:crypto";
 import jwt from "jsonwebtoken";
+import express from "express";
+import { once } from "node:events";
+import productsRouter from "../routes/catalog/products.routes";
+import productHistoryRouter from "../routes/operations/product-history.routes";
 import { prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
 import { saveBusinessStockCheck } from "./business-stock-check.service";
@@ -11,7 +15,8 @@ const database = process.env.DATABASE_URL
 const enabled =
   process.env.BUSINESS_STOCK_CHECK_INTEGRATION === "1" &&
   !!database &&
-  ["localhost", "127.0.0.1"].includes(database.hostname);
+  ["localhost", "127.0.0.1"].includes(database.hostname) &&
+  database.pathname.startsWith("/wms_test_");
 
 test(
   "mobile corrections are scoped, atomic and visible with the real actor in web history",
@@ -93,8 +98,16 @@ test(
         process.env.JWT_SECRET || "dev-secret-change-me",
         { expiresIn: "5m" },
       );
+    const app = express();
+    app.use(express.json());
+    app.use("/api", productsRouter, productHistoryRouter);
+    const server = app.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const base = `http://127.0.0.1:${address.port}`;
     const request = (userId: string, body: object, id = product.id) =>
-      fetch(`http://127.0.0.1:4000/api/products/${id}/stock-check`, {
+      fetch(`${base}/api/products/${id}/stock-check`, {
         method: "PATCH",
         headers: {
           authorization: `Bearer ${token(userId)}`,
@@ -118,7 +131,7 @@ test(
       });
       assert.equal(saved.status, 200, await saved.text());
       const historyResponse = await fetch(
-        `http://127.0.0.1:4000/api/product-history/${product.id}`,
+        `${base}/api/product-history/${product.id}`,
         { headers: { authorization: `Bearer ${token(owner.id)}` } },
       );
       assert.equal(historyResponse.status, 200);
@@ -265,6 +278,10 @@ test(
       assert.equal(logs[1].change, 0);
       assert.equal(logs[2].createdById, worker.id);
     } finally {
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
       const links = await prisma.warehouseOrganization.findMany({
         where: { organizationId: org.id },
         select: { warehouseId: true },

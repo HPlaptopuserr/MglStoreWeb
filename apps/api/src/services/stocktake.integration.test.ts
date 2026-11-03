@@ -11,7 +11,9 @@ import { createStocktake, mutateStocktake } from "./stocktake.service";
 const databaseUrl = process.env.DATABASE_URL ?? "";
 const enabled =
   process.env.STOCKTAKE_INTEGRATION === "1" &&
-  /^postgresql:\/\/[^@]+@127\.0\.0\.1:55437\//.test(databaseUrl);
+  (/^postgresql:\/\/[^@]+@127\.0\.0\.1:55437\//.test(databaseUrl) ||
+    (process.env.STOCKTAKE_TEST_DATABASE_URL === databaseUrl &&
+      /^postgresql:\/\/[^@]+@127\.0\.0\.1:5432\/wms_test_/.test(databaseUrl)));
 test(
   "stocktaking transactions, isolation, stale-stock conflict and approval retry",
   { skip: !enabled },
@@ -130,7 +132,7 @@ test(
       assert.equal((await createStocktake(input)).id, session.id);
       assert.deepEqual(
         new Set(session.lines.map((line) => line.productId)),
-        new Set([product.id, untouched.id]),
+        new Set([product.id]),
       );
       await assert.rejects(
         createStocktake({ ...input, id: randomUUID() }),
@@ -342,7 +344,7 @@ test(
         title: "9,000 item full count",
         kind: "FULL",
       });
-      assert.equal(bulk.lines.length, 9002);
+      assert.equal(bulk.lines.length, 9001);
       const edits = bulk.lines.map((line) => ({
         id: line.id,
         counted: 1,
@@ -370,7 +372,7 @@ test(
       });
       assert.equal(
         await prisma.inventoryLedger.count({ where: { referenceId: bulk.id } }),
-        9002,
+        9001,
       );
       assert.equal(
         await prisma.product.count({
@@ -380,10 +382,10 @@ test(
             stock: 1,
           },
         }),
-        9002,
+        9001,
       );
       context.diagnostic(
-        `9,002-line create/save/submit/approve completed in ${Math.round(performance.now() - started)} ms on disposable local PostgreSQL`,
+        `9,001-line create/save/submit/approve completed in ${Math.round(performance.now() - started)} ms on disposable local PostgreSQL`,
       );
     } finally {
       await new Promise<void>((resolve, reject) =>

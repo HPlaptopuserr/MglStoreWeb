@@ -1,12 +1,25 @@
+import { lockOrganizationInventory } from "../../services/vendor-inventory-warehouse.service";
+import {
+  assertProductInventoryOwnership,
+  WarehouseProductOwnershipError,
+} from "../../services/warehouse-product-ownership";
 import { readOrganizationInventorySummary } from "../../services/organization-inventory-summary";
-import { parseStockCheckInput, saveBusinessStockCheck, StockCheckError } from "../../services/business-stock-check.service";
+import {
+  parseStockCheckInput,
+  saveBusinessStockCheck,
+  StockCheckError,
+} from "../../services/business-stock-check.service";
 import { vendorProductReadScope } from "../../services/warehouse-product-scope";
 import { syncProductStock } from "../../services/inventory.service";
 import { productMutationErrorResponse } from "../../lib/product-mutation-errors";
 import { resolveProductInventoryWarehouse } from "../../services/vendor-inventory-warehouse.service";
 import { enrichMasterCatalog } from "../../services/catalog-enrichment/service";
 import { findMasterCatalogIds } from "../../services/master-catalog-search.service";
-import { CatalogEditError, catalogEditSelect, saveCatalogEdit } from "../../services/master-catalog-editor.service";
+import {
+  CatalogEditError,
+  catalogEditSelect,
+  saveCatalogEdit,
+} from "../../services/master-catalog-editor.service";
 import { Prisma } from "@mgl/database";
 import { Router, type Response, type Router as ExpressRouter } from "express";
 import multer from "multer";
@@ -216,12 +229,21 @@ function canAccessMasterCatalogAdmin(req: Parameters<typeof requireAuth>[0]) {
   );
 }
 
-async function buildMasterCatalogDataset(search = "", take?: number, scopeIds?: string[]) {
+async function buildMasterCatalogDataset(
+  search = "",
+  take?: number,
+  scopeIds?: string[],
+) {
   const since = new Date();
   since.setDate(since.getDate() - 90);
-  const orderedIds = scopeIds ?? (search.trim() ? await findMasterCatalogIds(search) : undefined);
+  const orderedIds =
+    scopeIds ??
+    (search.trim() ? await findMasterCatalogIds(search) : undefined);
   const masters = await prisma.masterProduct.findMany({
-    where: {status: "ACTIVE", ...(orderedIds ? {id:{in:orderedIds}} : {})},
+    where: {
+      status: "ACTIVE",
+      ...(orderedIds ? { id: { in: orderedIds } } : {}),
+    },
     select: {
       id: true,
       canonicalName: true,
@@ -242,8 +264,8 @@ async function buildMasterCatalogDataset(search = "", take?: number, scopeIds?: 
     ...(take ? { take } : {}),
   });
   if (orderedIds) {
-    const ranks = new Map(orderedIds.map((id,index)=>[id,index]));
-    masters.sort((a,b)=>(ranks.get(a.id)??0)-(ranks.get(b.id)??0));
+    const ranks = new Map(orderedIds.map((id, index) => [id, index]));
+    masters.sort((a, b) => (ranks.get(a.id) ?? 0) - (ranks.get(b.id) ?? 0));
   }
   const productToMaster = new Map<string, string>();
   masters.forEach((master) =>
@@ -334,7 +356,9 @@ async function buildMasterCatalogDataset(search = "", take?: number, scopeIds?: 
     aliases: master.aliases.map((alias) => alias.value),
     linkedProductCount: master.products.length,
     organizationCount: new Set(
-      master.products.flatMap((product) => product.organizationId ? [product.organizationId] : []),
+      master.products.flatMap((product) =>
+        product.organizationId ? [product.organizationId] : [],
+      ),
     ).size,
     activeProductCount: master.products.filter((product) => product.isActive)
       .length,
@@ -349,7 +373,10 @@ async function buildMasterCatalogDataset(search = "", take?: number, scopeIds?: 
 async function assertProductMutationPermission(
   req: Parameters<typeof assertOrgPermission>[0],
   res: Parameters<typeof assertOrgPermission>[1],
-  product: { organizationId: string | null; managedByWarehouseId: string | null },
+  product: {
+    organizationId: string | null;
+    managedByWarehouseId: string | null;
+  },
 ) {
   if (!product.managedByWarehouseId) {
     if (!product.organizationId) {
@@ -365,7 +392,10 @@ async function assertProductMutationPermission(
   }
 
   if (product.organizationId) {
-    res.status(409).json({ message: "Vendor болон агуулахын барааны эзэмшил зөрсөн байна. Эхлээд бүртгэлийг тулгана уу." });
+    res.status(409).json({
+      message:
+        "Vendor болон агуулахын барааны эзэмшил зөрсөн байна. Эхлээд бүртгэлийг тулгана уу.",
+    });
     return false;
   }
 
@@ -405,6 +435,37 @@ type Tx = Omit<
   PrismaClient,
   "$connect" | "$disconnect" | "$on" | "$transaction" | "$use" | "$extends"
 >;
+
+interface ProductMutationIdentity {
+  id: string;
+  organizationId: string | null;
+  managedByWarehouseId: string | null;
+}
+
+/** Lock and revalidate ownership after the request's permission check. */
+async function assertProductInventoryMutation(
+  tx: Tx,
+  expected: ProductMutationIdentity,
+  allowArchived = false,
+) {
+  await lockOrganizationInventory(tx, expected.organizationId);
+  await assertProductInventoryOwnership(tx, [expected.id]);
+  const current = await tx.product.findUniqueOrThrow({
+    where: { id: expected.id },
+    select: {
+      organizationId: true,
+      managedByWarehouseId: true,
+      deletedAt: true,
+    },
+  });
+  if (
+    current.organizationId !== expected.organizationId ||
+    current.managedByWarehouseId !== expected.managedByWarehouseId ||
+    (!allowArchived && current.deletedAt !== null)
+  ) {
+    throw new WarehouseProductOwnershipError();
+  }
+}
 
 const normalizeSupplyType = (value: unknown) =>
   String(value || "")
@@ -764,7 +825,14 @@ async function upsertVendorProductInventory(
     createdById?: string | null;
   },
 ) {
-  if (!input.stockProvided && !input.expiryDateProvided) return;
+  if (!input.stockProvided && !input.expiryDateProvided) {
+    if (!input.organizationId) return;
+    const sharedCatalog = await tx.warehouse.findUnique({
+      where: { catalogOrganizationId: input.organizationId },
+      select: { id: true },
+    });
+    if (!sharedCatalog) return;
+  }
 
   const warehouseId = await resolveProductInventoryWarehouse(
     tx,
@@ -850,9 +918,7 @@ async function isOrgFeatureEnabled(
   return TRUE_VALUES.has(String(raw).trim().toLowerCase());
 }
 
-async function getDefaultRestaurantClassificationCode(
-  organizationId: string,
-) {
+async function getDefaultRestaurantClassificationCode(organizationId: string) {
   const setting = await prisma.siteSetting.findUnique({
     where: { key: `self-service-mode-${organizationId}` },
     select: { value: true },
@@ -1144,8 +1210,12 @@ router.get("/products", optionalAuth, async (req, res) => {
     );
     const exactBarcode =
       typeof req.query.barcode === "string" ? req.query.barcode.trim() : "";
-    const inventorySummaryRequested = isTruthyQueryValue(req.query.inventorySummary);
-    const bypassProductCache = Boolean(exactBarcode || inventorySummaryRequested);
+    const inventorySummaryRequested = isTruthyQueryValue(
+      req.query.inventorySummary,
+    );
+    const bypassProductCache = Boolean(
+      exactBarcode || inventorySummaryRequested,
+    );
     const productCacheKey = getProductListCacheKey(req);
     const cachedProducts = bypassProductCache
       ? undefined
@@ -1331,7 +1401,12 @@ router.get("/products", optionalAuth, async (req, res) => {
 
     const catalogSearchPage =
       isOwnOrganizationCatalog && search
-        ? await findOrganizationCatalogSearchPage({ where, search, limit, offset })
+        ? await findOrganizationCatalogSearchPage({
+            where,
+            search,
+            limit,
+            offset,
+          })
         : null;
     const catalogSearchOrder = new Map(
       catalogSearchPage?.ids.map((id, index) => [id, index]),
@@ -1399,7 +1474,11 @@ router.get("/products", optionalAuth, async (req, res) => {
                     { discounts: { _count: "desc" } },
                     { createdAt: "desc" },
                   ]
-                : [{ createdAt: "desc" }, { marketplacePriority: "desc" }, { id: "asc" }],
+                : [
+                    { createdAt: "desc" },
+                    { marketplacePriority: "desc" },
+                    { id: "asc" },
+                  ],
       ...(useDatabasePagination ? { skip: offset } : {}),
       ...(!catalogSearchPage && productCandidateLimit > 0
         ? { take: productCandidateLimit }
@@ -1443,7 +1522,9 @@ router.get("/products", optionalAuth, async (req, res) => {
       const totalCount = await totalCountPromise;
       if (catalogSearchPage) {
         products.sort(
-          (a, b) => (catalogSearchOrder.get(a.id) ?? 0) - (catalogSearchOrder.get(b.id) ?? 0),
+          (a, b) =>
+            (catalogSearchOrder.get(a.id) ?? 0) -
+            (catalogSearchOrder.get(b.id) ?? 0),
         );
       }
       const compactProducts = products.map((product) => ({
@@ -1625,7 +1706,10 @@ router.get("/products", optionalAuth, async (req, res) => {
       .filter((product) => !search || product.searchScore > 0)
       .sort((a, b) => {
         if (catalogSearchPage) {
-          return (catalogSearchOrder.get(a.id) ?? 0) - (catalogSearchOrder.get(b.id) ?? 0);
+          return (
+            (catalogSearchOrder.get(a.id) ?? 0) -
+            (catalogSearchOrder.get(b.id) ?? 0)
+          );
         }
         const aIsCatalogReady = a.images.length > 0 && Number(a.price) >= 100;
         const bIsCatalogReady = b.images.length > 0 && Number(b.price) >= 100;
@@ -1699,7 +1783,13 @@ router.get("/products", optionalAuth, async (req, res) => {
       ]);
       const payload = {
         products: response,
-        ...(inventorySummaryRequested && isOwnOrganizationCatalog ? { inventorySummary: await readOrganizationInventorySummary(requestedOrganizationId) } : {}),
+        ...(inventorySummaryRequested && isOwnOrganizationCatalog
+          ? {
+              inventorySummary: await readOrganizationInventorySummary(
+                requestedOrganizationId,
+              ),
+            }
+          : {}),
         total: totalCount ?? response.length,
         organizationTotal: organizationTotal ?? totalCount ?? response.length,
         limit,
@@ -2700,12 +2790,34 @@ router.post(
             ...reviewData,
           };
 
-          // Keep the existing import path for other organizations; shared catalogs
-          // commit product metadata and physical stock together for each row.
+          // Metadata and physical stock must roll back together on any conflict.
           const saveRow = async (tx: Tx) => {
+            await lockOrganizationInventory(tx, organizationId);
             let product;
             let wasUpdate = false;
             if (normalizedSku) {
+              const matches = await tx.product.findMany({
+                where: { organizationId, sku: normalizedSku },
+                select: {
+                  id: true,
+                  organizationId: true,
+                  managedByWarehouseId: true,
+                },
+              });
+              for (const match of matches) {
+                await assertProductInventoryMutation(tx, match, true);
+                if (
+                  match.managedByWarehouseId &&
+                  !(await tx.warehouse.findFirst({
+                    where: {
+                      id: match.managedByWarehouseId,
+                      catalogOrganizationId: organizationId,
+                    },
+                    select: { id: true },
+                  }))
+                )
+                  throw new WarehouseProductOwnershipError();
+              }
               // Free up SKU from any soft-deleted product first
               await tx.product.updateMany({
                 where: {
@@ -2720,9 +2832,16 @@ router.post(
                 where: {
                   organizationId_sku: { organizationId, sku: normalizedSku },
                 },
-                select: { id: true, masterProductId: true, managedByWarehouseId: true },
+                select: {
+                  id: true,
+                  masterProductId: true,
+                  managedByWarehouseId: true,
+                },
               });
-              if (existing?.managedByWarehouseId) throw new Error("Vendor болон агуулахын барааны эзэмшил зөрсөн байна");
+              if (existing?.managedByWarehouseId)
+                throw new Error(
+                  "Vendor болон агуулахын барааны эзэмшил зөрсөн байна",
+                );
               wasUpdate = !!existing;
               const masterProduct = await resolveMasterProduct(tx, {
                 masterProductId: existing?.masterProductId,
@@ -2732,7 +2851,11 @@ router.post(
                 imageUrl: imageUrls[0] || null,
               });
               if (!masterProduct) throw new Error("MASTER_PRODUCT_NOT_FOUND");
-              await addMasterProductAlias(tx, masterProduct.id, productData.name);
+              await addMasterProductAlias(
+                tx,
+                masterProduct.id,
+                productData.name,
+              );
               // Upsert: update if SKU exists, create if not
               product = await tx.product.upsert({
                 where: {
@@ -2776,7 +2899,11 @@ router.post(
                 imageUrl: imageUrls[0] || null,
               });
               if (!masterProduct) throw new Error("MASTER_PRODUCT_NOT_FOUND");
-              await addMasterProductAlias(tx, masterProduct.id, productData.name);
+              await addMasterProductAlias(
+                tx,
+                masterProduct.id,
+                productData.name,
+              );
               product = await tx.product.create({
                 data: {
                   organizationId,
@@ -2936,16 +3063,27 @@ router.get(
   },
 );
 
-router.post("/products/master-catalog/admin/enrich", requireAuth, async (req, res) => {
-  if (!canAccessMasterCatalogAdmin(req)) return res.status(403).json({ message: "Нэгдсэн барааны сан шинэчлэх эрхгүй" });
-  try {
-    return res.json(await enrichMasterCatalog(req.body));
-  } catch (error: unknown) {
-    if (error instanceof CatalogEditError) return res.status(error.status).json({ message: error.message });
-    console.error("master catalog enrichment error", error);
-    return res.status(500).json({ message: "Сан шинэчлэхэд алдаа гарлаа. Дууссан хэсгүүд хадгалагдсан; дахин тулгахад давхар нэмэгдэхгүй." });
-  }
-});
+router.post(
+  "/products/master-catalog/admin/enrich",
+  requireAuth,
+  async (req, res) => {
+    if (!canAccessMasterCatalogAdmin(req))
+      return res
+        .status(403)
+        .json({ message: "Нэгдсэн барааны сан шинэчлэх эрхгүй" });
+    try {
+      return res.json(await enrichMasterCatalog(req.body));
+    } catch (error: unknown) {
+      if (error instanceof CatalogEditError)
+        return res.status(error.status).json({ message: error.message });
+      console.error("master catalog enrichment error", error);
+      return res.status(500).json({
+        message:
+          "Сан шинэчлэхэд алдаа гарлаа. Дууссан хэсгүүд хадгалагдсан; дахин тулгахад давхар нэмэгдэхгүй.",
+      });
+    }
+  },
+);
 
 router.post(
   "/products/master-catalog/admin/sync",
@@ -3049,9 +3187,15 @@ router.get("/products/master-catalog/admin", requireAuth, async (req, res) => {
   try {
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(100, Math.max(10, Number(req.query.limit) || 50));
-    const ids = await findMasterCatalogIds(String(req.query.search || "").slice(0,200));
+    const ids = await findMasterCatalogIds(
+      String(req.query.search || "").slice(0, 200),
+    );
     const start = (page - 1) * limit;
-    const rows = await buildMasterCatalogDataset("", undefined, ids.slice(start,start+limit));
+    const rows = await buildMasterCatalogDataset(
+      "",
+      undefined,
+      ids.slice(start, start + limit),
+    );
     return res.json({
       items: rows,
       total: ids.length,
@@ -3070,24 +3214,51 @@ router.get("/products/master-catalog/admin", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/products/master-catalog/admin/:id", requireAuth, async (req, res) => {
-  if (!canAccessMasterCatalogAdmin(req)) return res.status(403).json({message: "Нэгдсэн барааны сан засах эрхгүй"});
-  try {
-    const item = await prisma.masterProduct.findUnique({where:{id:String(req.params.id)},select:catalogEditSelect});
-    if (!item) return res.status(404).json({message:"Бараа олдсонгүй"});
-    res.setHeader("Cache-Control", "no-store");
-    return res.json(item);
-  } catch { return res.status(500).json({message:"Барааны мэдээлэл ачаалсангүй"}); }
-});
-router.patch("/products/master-catalog/admin/:id", requireAuth, async (req, res) => {
-  if (!canAccessMasterCatalogAdmin(req)) return res.status(403).json({message: "Нэгдсэн барааны сан засах эрхгүй"});
-  try { return res.json(await saveCatalogEdit(String(req.params.id), req.body)); }
-  catch(error: unknown) {
-    if (error instanceof CatalogEditError) return res.status(error.status).json({message:error.message});
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") return res.status(409).json({message:"Энэ баркод өөр нэгдсэн бараанд бүртгэлтэй байна"});
-    return res.status(500).json({message:"Барааны мэдээлэл хадгалсангүй"});
-  }
-});
+router.get(
+  "/products/master-catalog/admin/:id",
+  requireAuth,
+  async (req, res) => {
+    if (!canAccessMasterCatalogAdmin(req))
+      return res
+        .status(403)
+        .json({ message: "Нэгдсэн барааны сан засах эрхгүй" });
+    try {
+      const item = await prisma.masterProduct.findUnique({
+        where: { id: String(req.params.id) },
+        select: catalogEditSelect,
+      });
+      if (!item) return res.status(404).json({ message: "Бараа олдсонгүй" });
+      res.setHeader("Cache-Control", "no-store");
+      return res.json(item);
+    } catch {
+      return res.status(500).json({ message: "Барааны мэдээлэл ачаалсангүй" });
+    }
+  },
+);
+router.patch(
+  "/products/master-catalog/admin/:id",
+  requireAuth,
+  async (req, res) => {
+    if (!canAccessMasterCatalogAdmin(req))
+      return res
+        .status(403)
+        .json({ message: "Нэгдсэн барааны сан засах эрхгүй" });
+    try {
+      return res.json(await saveCatalogEdit(String(req.params.id), req.body));
+    } catch (error: unknown) {
+      if (error instanceof CatalogEditError)
+        return res.status(error.status).json({ message: error.message });
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      )
+        return res
+          .status(409)
+          .json({ message: "Энэ баркод өөр нэгдсэн бараанд бүртгэлтэй байна" });
+      return res.status(500).json({ message: "Барааны мэдээлэл хадгалсангүй" });
+    }
+  },
+);
 
 router.get("/products/master-catalog/search", requireAuth, async (req, res) => {
   try {
@@ -3128,10 +3299,18 @@ router.get("/products/master-catalog/search", requireAuth, async (req, res) => {
     });
 
     const categories = await prisma.businessCategory.findMany({
-      where: { name: { in: products.flatMap(product => product.categoryName ? [product.categoryName] : []) } },
-      select: {id:true,name:true},
+      where: {
+        name: {
+          in: products.flatMap((product) =>
+            product.categoryName ? [product.categoryName] : [],
+          ),
+        },
+      },
+      select: { id: true, name: true },
     });
-    const categoryIds = new Map(categories.map(category => [category.name, category.id]));
+    const categoryIds = new Map(
+      categories.map((category) => [category.name, category.id]),
+    );
 
     const seen = new Set<string>();
     return res.json(
@@ -3148,14 +3327,23 @@ router.get("/products/master-catalog/search", requireAuth, async (req, res) => {
         .map(({ _count, ...product }) => {
           return {
             ...product,
-            businessCategoryId: product.categoryName ? categoryIds.get(product.categoryName) ?? null : null,
+            businessCategoryId: product.categoryName
+              ? (categoryIds.get(product.categoryName) ?? null)
+              : null,
             suggestedSku: null,
             suggestedPrice: null,
             taxType: null,
             cityTaxRate: null,
             classificationCode: null,
             taxProductCode: null,
-            sourceCompleteness: [product.canonicalName, product.barcode, product.unit, product.description, product.imageUrl, product.categoryName].filter(Boolean).length,
+            sourceCompleteness: [
+              product.canonicalName,
+              product.barcode,
+              product.unit,
+              product.description,
+              product.imageUrl,
+              product.categoryName,
+            ].filter(Boolean).length,
             usageCount: _count.products,
             exactBarcodeMatch: Boolean(barcode && product.barcode === barcode),
           };
@@ -3204,7 +3392,8 @@ router.get("/products/:id/recommendations", optionalAuth, async (req, res) => {
       },
     });
 
-    if (!source?.organizationId || !source.organization) return res.status(404).json({ message: "Бараа олдсонгүй" });
+    if (!source?.organizationId || !source.organization)
+      return res.status(404).json({ message: "Бараа олдсонгүй" });
 
     const canBypassVisibility = await canBypassWebProductsVisibility(
       req,
@@ -3346,12 +3535,21 @@ router.get(
     }
     try {
       const product = await prisma.product.findFirst({
-        where: { organizationId, barcode: { equals: barcode, mode: "insensitive" }, deletedAt: null },
-        include: { images: true, businessCategory: { select: { id: true, name: true } } },
+        where: {
+          organizationId,
+          barcode: { equals: barcode, mode: "insensitive" },
+          deletedAt: null,
+        },
+        include: {
+          images: true,
+          businessCategory: { select: { id: true, name: true } },
+        },
       });
       return res.json({ product });
     } catch {
-      return res.status(500).json({ message: "Баркод шалгаж чадсангүй. Дахин оролдоно уу." });
+      return res
+        .status(500)
+        .json({ message: "Баркод шалгаж чадсангүй. Дахин оролдоно уу." });
     }
   },
 );
@@ -3387,7 +3585,8 @@ router.get("/products/:id", optionalAuth, async (req, res) => {
         },
       },
     });
-    if (!product?.organizationId || !product.organization) return res.status(404).json({ message: "Бараа олдсонгүй" });
+    if (!product?.organizationId || !product.organization)
+      return res.status(404).json({ message: "Бараа олдсонгүй" });
     const canBypassVisibility = await canBypassWebProductsVisibility(
       req,
       product.organizationId,
@@ -3818,6 +4017,7 @@ router.post(
       const reviewData = await getReviewStatusForVendorMutation();
 
       const product = await prisma.$transaction(async (tx) => {
+        await lockOrganizationInventory(tx, organizationId);
         const masterProduct = await resolveMasterProduct(tx, {
           masterProductId: masterProductId ? String(masterProductId) : null,
           name: String(name),
@@ -4035,6 +4235,7 @@ router.post(
           SELECT 1 AS locked
           FROM pg_advisory_xact_lock(hashtext(${`preorder-capacity:${id}`}))
         `;
+        await assertProductInventoryMutation(tx, existing);
         await tx.product.update({
           where: { id },
           data: { preorderCycleStartedAt },
@@ -4050,9 +4251,8 @@ router.post(
       });
     } catch (error) {
       console.error("restart preorder cycle error", error);
-      return res
-        .status(500)
-        .json({ message: "Захиалгыг дахин эхлүүлэхэд алдаа гарлаа" });
+      const failure = productMutationErrorResponse(error);
+      return res.status(failure.status).json({ message: failure.message });
     }
   },
 );
@@ -4442,10 +4642,11 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
     if (supplyType !== undefined) {
       if (
         nextSupplyType === "CHINA_PREORDER" &&
-        (!existing.organizationId || !(await isOrgFeatureEnabled(
-          existing.organizationId,
-          PREORDER_PRODUCTS_FEATURE_KEY,
-        )))
+        (!existing.organizationId ||
+          !(await isOrgFeatureEnabled(
+            existing.organizationId,
+            PREORDER_PRODUCTS_FEATURE_KEY,
+          )))
       ) {
         return res
           .status(403)
@@ -4507,6 +4708,7 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
       submittedById: actorId,
     });
     const product = await prisma.$transaction(async (tx) => {
+      await assertProductInventoryMutation(tx, existing);
       if (Array.isArray(images)) {
         const imageUrls = images.slice(0, 5);
         await tx.productImage.deleteMany({ where: { productId: id } });
@@ -4587,16 +4789,42 @@ router.patch("/products/:id", requireAuth, async (req, res) => {
 router.patch("/products/:id/stock-check", requireAuth, async (req, res) => {
   try {
     const input = parseStockCheckInput(req.body);
-    const actor = (req as typeof req & { user: { userId: string; role: string; organizationId?: string | null } }).user;
-    if (actor.organizationId !== input.organizationId) return res.status(403).json({ message: "Идэвхтэй байгууллага таарахгүй байна" });
-    const { permissions } = await resolvePermissionsForOrg(actor.userId, actor.role, input.organizationId);
-    if (!permissions.has(Permission.MANAGE_STOCK) && !permissions.has(Permission.MANAGE_PRODUCTS)) return res.status(403).json({ message: "Бараа засах эрхгүй байна" });
-    const result = await prisma.$transaction(tx => saveBusinessStockCheck(tx, String(req.params.id), actor.userId, permissions, input), { timeout: 15000 });
+    const actor = (
+      req as typeof req & {
+        user: { userId: string; role: string; organizationId?: string | null };
+      }
+    ).user;
+    if (actor.organizationId !== input.organizationId)
+      return res
+        .status(403)
+        .json({ message: "Идэвхтэй байгууллага таарахгүй байна" });
+    const { permissions } = await resolvePermissionsForOrg(
+      actor.userId,
+      actor.role,
+      input.organizationId,
+    );
+    if (
+      !permissions.has(Permission.MANAGE_STOCK) &&
+      !permissions.has(Permission.MANAGE_PRODUCTS)
+    )
+      return res.status(403).json({ message: "Бараа засах эрхгүй байна" });
+    const result = await prisma.$transaction(
+      (tx) =>
+        saveBusinessStockCheck(
+          tx,
+          String(req.params.id),
+          actor.userId,
+          permissions,
+          input,
+        ),
+      { timeout: 15000 },
+    );
     if (result.changed) productListCache.clear();
     res.setHeader("Cache-Control", "no-store");
     return res.json(result);
   } catch (error) {
-    if (error instanceof StockCheckError) return res.status(error.status).json({ message: error.message });
+    if (error instanceof StockCheckError)
+      return res.status(error.status).json({ message: error.message });
     console.error("stock check correction failed", error);
     const failure = productMutationErrorResponse(error);
     return res.status(failure.status).json({ message: failure.message });
@@ -4630,27 +4858,28 @@ router.patch("/products/:id/images", requireAuth, async (req, res) => {
           "Зураг буруу байна. 5 хүртэлх upload хийгдсэн зураг ашиглана уу.",
       });
     }
-    await prisma.productImage.deleteMany({ where: { productId: id } });
-
-    const product = await prisma.product.update({
-      where: { id },
-      data: {
-        images: { create: toOrderedProductImages(imageUrls) },
-      },
-      include: {
-        images: {
-          select: { id: true, url: true },
-          orderBy: productImageOrderBy(),
+    const product = await prisma.$transaction(async (tx) => {
+      await assertProductInventoryMutation(tx, existing);
+      await tx.productImage.deleteMany({ where: { productId: id } });
+      return tx.product.update({
+        where: { id },
+        data: {
+          images: { create: toOrderedProductImages(imageUrls) },
         },
-      },
+        include: {
+          images: {
+            select: { id: true, url: true },
+            orderBy: productImageOrderBy(),
+          },
+        },
+      });
     });
 
     return res.json(product);
   } catch (error) {
     console.error("update product images error", error);
-    return res
-      .status(500)
-      .json({ message: "Зураг шинэчлэхэд алдаа гарлаа", error: String(error) });
+    const failure = productMutationErrorResponse(error);
+    return res.status(failure.status).json({ message: failure.message });
   }
 });
 
@@ -4709,16 +4938,18 @@ router.delete("/products/:id", requireAuth, async (req, res) => {
     const perm = await assertProductMutationPermission(req, res, existing);
     if (!perm) return;
 
-    await prisma.product.update({
-      where: { id },
-      data: { deletedAt: new Date(), isActive: false, sku: null },
+    await prisma.$transaction(async (tx) => {
+      await assertProductInventoryMutation(tx, existing);
+      await tx.product.update({
+        where: { id },
+        data: { deletedAt: new Date(), isActive: false, sku: null },
+      });
     });
 
     return res.json({ message: "Бараа устгагдлаа" });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ message: "Бараа устгахад алдаа гарлаа", error: String(error) });
+    const failure = productMutationErrorResponse(error);
+    return res.status(failure.status).json({ message: failure.message });
   }
 });
 

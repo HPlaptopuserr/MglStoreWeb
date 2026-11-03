@@ -1,6 +1,6 @@
 import warehouseViewerRoutes from "./routes/operations/warehouse-viewer.routes";
-import reelUploadRoutes from './routes/content/reel-uploads.routes';
-import { startReelUploadWorker } from './services/reel-upload/worker';
+import reelUploadRoutes from "./routes/content/reel-uploads.routes";
+import { startReelUploadWorker } from "./services/reel-upload/worker";
 import "./config/env";
 import { organizationGroupRoutes } from "./routes/organization-groups";
 import { restrictKitchenMember } from "./middleware/kitchen-access";
@@ -11,7 +11,10 @@ import { workforceIntegrationRouter } from "./routes/workforce/integration.route
 import { workforceBillingPublicRouter } from "./routes/workforce/billing.routes";
 import { workforceRoutes, workforceAdminRouter } from "./routes/workforce";
 import productHistoryRoutes from "./routes/operations/product-history.routes";
-import esimRoutes, { reconcileEsimPurchases, esimAdminRoutes } from "./routes/esim";
+import esimRoutes, {
+  reconcileEsimPurchases,
+  esimAdminRoutes,
+} from "./routes/esim";
 import buildingRoutes from "./routes/building";
 import miniAppAdminRoutes from "./routes/store/mini-app-admin.routes";
 import warehouseRetailRoutes from "./routes/store/warehouse-retail.routes";
@@ -20,6 +23,7 @@ import visualSearchRoutes from "./routes/catalog/visual-search.routes";
 import { startVisualSearchWorker } from "./services/visual-search/visual-search-worker";
 
 import express from "express";
+import nomadPaymentRoutes from "./routes/public/nomad-payment.routes";
 import multer from "multer";
 import cors from "cors";
 import helmet from "helmet";
@@ -97,6 +101,8 @@ app.use(
     crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
+
+app.use("/pay", nomadPaymentRoutes);
 
 const defaultAllowedOrigins = [
   "http://mglstore.mn:3002",
@@ -308,24 +314,35 @@ checkoutExpirationTimer.unref();
 // Jobs remain recoverable across restarts; database leases coordinate replicas.
 let esimReconciliationRunning = false;
 const esimReconciliationTimer = setInterval(() => {
-  if (esimReconciliationRunning || process.env.ESIM_WORKER_ENABLED !== "true") return;
+  if (esimReconciliationRunning || process.env.ESIM_WORKER_ENABLED !== "true")
+    return;
   esimReconciliationRunning = true;
-  void reconcileEsimPurchases().catch(() => {
-    console.error("[esim] Reconciliation unavailable; pending jobs retained");
-  }).finally(() => { esimReconciliationRunning = false; });
+  void reconcileEsimPurchases()
+    .catch(() => {
+      console.error("[esim] Reconciliation unavailable; pending jobs retained");
+    })
+    .finally(() => {
+      esimReconciliationRunning = false;
+    });
 }, 15000);
 esimReconciliationTimer.unref();
 
-const workforceMailTimer = setInterval(() => { void processWorkforceMailQueue(); }, 60_000);
+const workforceMailTimer = setInterval(() => {
+  void processWorkforceMailQueue();
+}, 60_000);
 workforceMailTimer.unref();
 
 let retailReconciliationRunning = false;
 const retailReconciliationTimer = setInterval(() => {
   if (retailReconciliationRunning) return;
   retailReconciliationRunning = true;
-  void reconcileRetailPayments().catch((error: unknown) => {
-    console.error("[warehouse retail] reconciliation unavailable", error);
-  }).finally(() => { retailReconciliationRunning = false; });
+  void reconcileRetailPayments()
+    .catch((error: unknown) => {
+      console.error("[warehouse retail] reconciliation unavailable", error);
+    })
+    .finally(() => {
+      retailReconciliationRunning = false;
+    });
 }, 60_000);
 retailReconciliationTimer.unref();
 
@@ -333,9 +350,13 @@ let minuCardReconciliationRunning = false;
 const minuCardReconciliationTimer = setInterval(() => {
   if (minuCardReconciliationRunning) return;
   minuCardReconciliationRunning = true;
-  void reconcilePendingMinuCards().catch((error: unknown) => {
-    console.error("[pos card] Minu reconciliation unavailable", error);
-  }).finally(() => { minuCardReconciliationRunning = false; });
+  void reconcilePendingMinuCards()
+    .catch((error: unknown) => {
+      console.error("[pos card] Minu reconciliation unavailable", error);
+    })
+    .finally(() => {
+      minuCardReconciliationRunning = false;
+    });
 }, 15_000);
 minuCardReconciliationTimer.unref();
 

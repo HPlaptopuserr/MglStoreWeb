@@ -22,7 +22,15 @@ import {
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import { notifyAssignedOrderDelivery } from "../../services/delivery-routing.service";
 import { notifyCustomerOrderStage } from "../../services/order-notification.service";
-import { transferStockToVendor } from "../../services/stock-transfer.service";
+import {
+  transferStockToVendor,
+  StockTransferConflictError,
+} from "../../services/stock-transfer.service";
+import {
+  lockStockDispatchLifecycle,
+  StockLifecycleConflictError,
+} from "../../services/stock-lifecycle-lock.service";
+import { ProductInventoryConflictError } from "../../services/vendor-inventory-warehouse.service";
 import { completeOrderFulfillment } from "../../services/order-completion.service";
 
 const router: ExpressRouter = Router();
@@ -783,6 +791,49 @@ const updateStatusHandler = async (req: Request, res: Response) => {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
+      // Use the same request -> dispatch -> delivery order as dispatch routes.
+      const dispatch = delivery.stockDispatchId
+        ? await lockStockDispatchLifecycle(tx, delivery.stockDispatchId)
+        : null;
+      await tx.$queryRaw`SELECT "id" FROM "Delivery" WHERE "id" = ${deliveryId} FOR UPDATE`;
+      const current = await tx.delivery.findFirst({
+        where: {
+          id: deliveryId,
+          courierId,
+          OR: [
+            { orderId: null },
+            {
+              readyAt: { not: null },
+              order: { paymentStatus: PaymentStatus.PAID },
+            },
+          ],
+        },
+      });
+      if (
+        !current ||
+        current.stockDispatchId !== delivery.stockDispatchId ||
+        current.orderId !== delivery.orderId ||
+        !transitions[current.status]?.includes(status)
+      ) {
+        throw new StockLifecycleConflictError(
+          "Хүргэлтийн төлөв эсвэл хариуцсан ажилтан өөрчлөгдсөн байна",
+        );
+      }
+      if (status === "COMPLETED" && !current.proofImage) {
+        throw new StockLifecycleConflictError(
+          "Хүлээлгэн өгсөн зураг шаардлагатай",
+        );
+      }
+      if (
+        dispatch &&
+        status === "COMPLETED" &&
+        (dispatch.status !== DispatchStatus.DISPATCHED ||
+          dispatch.request.status === StockRequestStatus.COMPLETED)
+      ) {
+        throw new StockLifecycleConflictError(
+          "Илгээмж аль хэдийн дууссан эсвэл илгээгдээгүй байна",
+        );
+      }
       const nextDelivery = await tx.delivery.update({
         where: { id: deliveryId },
         data: updateData,
@@ -810,10 +861,6 @@ const updateStatusHandler = async (req: Request, res: Response) => {
           },
         });
       } else if (delivery.stockDispatchId && status === "COMPLETED") {
-        const dispatch = await tx.stockDispatch.findUnique({
-          where: { id: delivery.stockDispatchId },
-          include: { request: { include: { items: true } } },
-        });
         if (!dispatch) throw new Error("Агуулахын илгээмж олдсонгүй");
         await transferStockToVendor(
           tx,
@@ -843,19 +890,15 @@ const updateStatusHandler = async (req: Request, res: Response) => {
     });
 
     if (delivery.orderId && status === "PICKING") {
-      await notifyCustomerOrderStage(
-        delivery.orderId,
-        "COURIER_ACCEPTED",
-        { email: true },
-      ).catch((error: unknown) => {
+      await notifyCustomerOrderStage(delivery.orderId, "COURIER_ACCEPTED", {
+        email: true,
+      }).catch((error: unknown) => {
         console.error("Courier accepted notification failed", error);
       });
     } else if (delivery.orderId && status === "DELIVERING") {
-      await notifyCustomerOrderStage(
-        delivery.orderId,
-        "OUT_FOR_DELIVERY",
-        { email: true },
-      ).catch((error: unknown) => {
+      await notifyCustomerOrderStage(delivery.orderId, "OUT_FOR_DELIVERY", {
+        email: true,
+      }).catch((error: unknown) => {
         console.error("Out for delivery notification failed", error);
       });
     } else if (delivery.orderId && status === "COMPLETED") {
@@ -869,6 +912,13 @@ const updateStatusHandler = async (req: Request, res: Response) => {
     res.json(updated);
   } catch (error) {
     console.error("Update delivery status error", error);
+    if (
+      error instanceof StockLifecycleConflictError ||
+      error instanceof StockTransferConflictError ||
+      error instanceof ProductInventoryConflictError
+    ) {
+      return res.status(409).json({ message: error.message });
+    }
     res
       .status(500)
       .json({ message: "Хүргэлтийн статус шинэчлэхэд алдаа гарлаа" });

@@ -34,27 +34,23 @@ export function formatReceipt(receipt: PosReceipt): string {
     "--------------------------------",
     `Барааны дүн: ${formatMoney(receipt.subTotal)}`,
     `Татвар: ${formatMoney(receipt.taxTotal)}`,
-    `Хөнгөлөлт: -${formatMoney(receipt.discountTotal)}`,
+    receipt.discountTotal ? `Хөнгөлөлт: -${formatMoney(receipt.discountTotal)}` : "",
     `НИЙТ ДҮН: ${formatMoney(receipt.grandTotal)}`,
-    `Төлбөрийн хэлбэр: ${formatPaymentMethod(receipt.paymentMethod)}`,
-  ];
+  ].filter(Boolean);
 
   const breakdown =
     receipt.paymentBreakdown && receipt.paymentBreakdown.length > 0
       ? [
-          "Төлбөрийн задаргаа:",
           ...receipt.paymentBreakdown.map(
-            (item) =>
-              `- ${formatPaymentMethod(item.method)}: ${formatMoney(item.amount)}`,
+            (item) => `${formatPaymentMethod(item.method)}: ${formatMoney(item.amount)}`,
           ),
         ]
-      : [];
+      : [`${formatPaymentMethod(receipt.paymentMethod)}: ${formatMoney(receipt.grandTotal)}`];
 
   const ebarimt =
     receipt.ebarimt?.status === "SUCCESS"
       ? [
           "--------------------------------",
-          "eBarimt: Амжилттай",
           receipt.ebarimt.receiptType === "B2B" && receipt.ebarimt.customerRegNo
             ? `Байгууллагын РД: ${receipt.ebarimt.customerRegNo}`
             : "",
@@ -62,9 +58,7 @@ export function formatReceipt(receipt: PosReceipt): string {
             ? `Байгууллагын TIN: ${receipt.ebarimt.customerTin}`
             : "",
           receipt.ebarimt.lottery ? `Сугалаа: ${receipt.ebarimt.lottery}` : "",
-          receipt.ebarimt.billId
-            ? `eBarimt баримтын ID: ${receipt.ebarimt.billId}`
-            : "",
+          receipt.ebarimt.billId ? `ДДТД: ${receipt.ebarimt.billId}` : "",
         ].filter(Boolean)
       : receipt.ebarimt?.status === "FAILED"
         ? [

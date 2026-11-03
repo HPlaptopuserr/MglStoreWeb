@@ -21,6 +21,9 @@ test("split preserves both baselines and routes warehouse receipt, return and ve
     const vendorMovement = await prisma.inventoryLedger.create({ data: { productId: product.id, change: 100, reason: "MANUAL_ADJUST" } });
     const plan = await splitVendorWarehouseCatalog({ organizationId: org.id });
     assert.deepEqual(plan.blockers, []);
+    await assert.rejects(splitVendorWarehouseCatalog({ organizationId: org.id, apply: true, expectedFingerprint: plan.fingerprint, rollbackAfterValidation: true }), /CATALOG_REHEARSAL_PASSED_ROLLED_BACK/);
+    assert.deepEqual(await prisma.product.findUniqueOrThrow({ where: { id: product.id } }), product);
+    assert.equal((await splitVendorWarehouseCatalog({ organizationId: org.id })).fingerprint, plan.fingerprint);
     const result = await splitVendorWarehouseCatalog({ organizationId: org.id, apply: true, expectedFingerprint: plan.fingerprint });
     auditId = result.auditId;
     assert.ok(auditId);
@@ -62,6 +65,7 @@ test("split preserves both baselines and routes warehouse receipt, return and ve
     const targets = await prisma.warehouse.findMany({ where: { organizations: { some: { organizationId: org.id } } }, select: { id: true } });
     await prisma.warehouseOrganization.deleteMany({ where: { organizationId: org.id } });
     await prisma.warehouse.deleteMany({ where: { id: { in: [warehouse.id, ...targets.map(w => w.id)] } } });
+    if (auditId) await prisma.auditLog.deleteMany({ where: { meta: { path: ["auditId"], equals: auditId } } });
     if (auditId) await prisma.auditLog.delete({ where: { id: auditId } });
     await prisma.organization.delete({ where: { id: org.id } });
     await prisma.user.delete({ where: { id: user.id } });

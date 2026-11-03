@@ -51,6 +51,18 @@ test("registration checks provider location IDs before sending merchant details"
       assert.equal(result.merchantCode, "test-merchant");
       assert.equal(posted?.khorooId, registration.khorooId);
     });
+    for (const registerNumber of ["аа00112233", "Аа00112233", "АА00112233", "  аа00112233  "]) {
+      await t.test(`normalizes personal register casing: ${registerNumber}`, async () => {
+        await registerSystemQrSubMerchant({ ...registration, registerNumber }, "location-test", "password");
+        assert.equal(posted?.registerNumber, "АА00112233");
+      });
+    }
+    await t.test("company registration digits remain unchanged", async () => {
+      await registerSystemQrSubMerchant({
+        ...registration, registerNumber: "1234567", corporateFlag: "1", corporateName: "Test company",
+      }, "location-test", "password");
+      assert.equal(posted?.registerNumber, "1234567");
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }

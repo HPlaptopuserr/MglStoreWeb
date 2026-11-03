@@ -29,6 +29,7 @@ test("receipt and reprint show tender and change", () => {
   assert.match(text, /Бэлнээр тооцсон: ₮5,500/);
   assert.match(text, /Авсан мөнгө: ₮20,000/);
   assert.match(text, /Хариулт: ₮14,500/);
+  assert.doesNotMatch(text, /Хөнгөлөлт: -₮0/);
   assert.equal(formatReceipt(JSON.parse(JSON.stringify(receipt))), text);
 });
 test("legacy receipts do not invent tender", () => {

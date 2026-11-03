@@ -18,7 +18,7 @@ export async function fetchRegisterConfig(
   registerId: string,
 ): Promise<RegisterConfig> {
   const register = await posRequest<RegisterConfig>(
-    `/pos/register-config?registerId=${encodeURIComponent(registerId)}`,
+    `/pos/register-config?registerId=${encodeURIComponent(registerId)}&mode=RETAIL`,
   );
   assertRetailRegister(register);
   return register;

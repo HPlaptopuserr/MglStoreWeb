@@ -1,7 +1,11 @@
 "use client";
 import { memo } from "react";
 import { type StocktakeCountEdit, type StocktakeLineDto } from "@mgl/types";
-import { storedQuantity } from "./stocktake-model";
+import {
+  stocktakeLineName,
+  stocktakeLineBarcode,
+  storedQuantity,
+} from "./stocktake-model";
 import { StocktakeQuantityInput } from "./StocktakeQuantityInput";
 export const StocktakeRow = memo(function StocktakeRow({
   line,
@@ -25,7 +29,7 @@ export const StocktakeRow = memo(function StocktakeRow({
       className={`border-t border-slate-100 align-top transition ${requiresRecount ? "bg-amber-50 hover:bg-amber-100" : "hover:bg-slate-50"}`}
     >
       <td className="p-3">
-        <p className="font-semibold">{line.name}</p>
+        <p className="font-semibold">{stocktakeLineName(line)}</p>
         {requiresRecount && (
           <span className="mt-1 inline-block rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-900">
             Дахин тоолох шаардлагатай
@@ -37,7 +41,7 @@ export const StocktakeRow = memo(function StocktakeRow({
           </span>
         )}
         <p className="mt-1 text-xs text-slate-500">
-          {line.barcode || "Баркодгүй"} · {line.unit || "ш"}
+          {stocktakeLineBarcode(line) || "Баркодгүй"} · {line.unit || "ш"}
         </p>
       </td>
       <td className="p-3 text-right tabular-nums">
@@ -70,7 +74,7 @@ export const StocktakeRow = memo(function StocktakeRow({
       <td className="max-w-xs whitespace-pre-wrap p-3 text-slate-600">
         {editable ? (
           <input
-            aria-label={`${line.name} шалтгаан`}
+            aria-label={`${stocktakeLineName(line)} шалтгаан`}
             value={line.note}
             maxLength={500}
             onChange={(event) =>

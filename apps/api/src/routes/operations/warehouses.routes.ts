@@ -1,7 +1,14 @@
 import manualDispatchRoutes from "./warehouse-manual-dispatch.routes";
 import { procurementWarehouseWhere } from "../../services/procurement-warehouse.service";
-import { assertWarehouseProductsOwned } from "../../services/warehouse-product-ownership";
-import { parseBarcodeAliases, mergeBarcodeAliases } from "../../services/product-barcode-aliases";
+import {
+  assertWarehouseImportIdentity,
+  assertWarehouseProductsOwned,
+} from "../../services/warehouse-product-ownership";
+import { inventoryConflictResponse } from "../../lib/inventory-conflict-errors";
+import {
+  parseBarcodeAliases,
+  mergeBarcodeAliases,
+} from "../../services/product-barcode-aliases";
 import { Router, type Router as ExpressRouter } from "express";
 import crypto from "crypto";
 import multer from "multer";
@@ -47,7 +54,11 @@ import {
   addMasterProductAlias,
   resolveMasterProduct,
 } from "../../services/master-product.service";
-import { warehouseCatalogOwner, warehouseProductOwnerScope, warehouseProductReadScope } from "../../services/warehouse-product-scope";
+import {
+  warehouseCatalogOwner,
+  warehouseProductOwnerScope,
+  warehouseProductReadScope,
+} from "../../services/warehouse-product-scope";
 import { getWarehouseAdminSummary } from "../../services/warehouse-admin-summary.service";
 import {
   notifyAssignedOrderDelivery,
@@ -599,7 +610,7 @@ router.get("/warehouse-online-orders", requireAuth, async (req, res) => {
                 id: true,
                 sku: true,
                 barcode: true,
-              barcodeAliases: true,
+                barcodeAliases: true,
                 unit: true,
                 managedByWarehouseId: true,
                 images: { select: { url: true }, take: 1 },
@@ -1593,7 +1604,7 @@ router.get("/warehouses/:id/detail", requireAuth, async (req, res) => {
                 description: true,
                 sku: true,
                 barcode: true,
-              barcodeAliases: true,
+                barcodeAliases: true,
                 unit: true,
                 price: true,
                 costPrice: true,
@@ -2091,6 +2102,9 @@ router.post(
 
       res.status(201).json(inventory);
     } catch (error) {
+      const conflict = inventoryConflictResponse(error);
+      if (conflict)
+        return res.status(conflict.status).json({ message: conflict.message });
       console.error("add warehouse inventory error", error);
       res.status(500).json({
         message: "Агуулахийн бүртгэл нэмэхэд алдаа гарлаа",
@@ -2387,7 +2401,7 @@ router.patch(
                 description: true,
                 sku: true,
                 barcode: true,
-              barcodeAliases: true,
+                barcodeAliases: true,
                 unit: true,
                 price: true,
                 costPrice: true,
@@ -2432,8 +2446,14 @@ router.patch(
       });
 
       res.json(inventory);
-    } catch (error: any) {
-      if (error?.code === "P2002") {
+    } catch (error) {
+      const conflict = inventoryConflictResponse(error);
+      if (conflict)
+        return res.status(conflict.status).json({ message: conflict.message });
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
         return res.status(409).json({
           message: "Ижил SKU-тэй бараа аль хэдийн бүртгэлтэй байна",
         });
@@ -2543,6 +2563,9 @@ router.delete(
           requestNumbers: requestNumbers.split(", ").filter(Boolean),
         });
       }
+      const conflict = inventoryConflictResponse(error);
+      if (conflict)
+        return res.status(conflict.status).json({ message: conflict.message });
       console.error("delete warehouse inventory error", error);
       res.status(500).json({
         message: "Агуулахийн бүртгэл устгахад алдаа гарлаа",
@@ -2581,7 +2604,7 @@ router.get(
                 name: true,
                 sku: true,
                 barcode: true,
-              barcodeAliases: true,
+                barcodeAliases: true,
                 isActive: true,
                 deletedAt: true,
               },
@@ -2980,35 +3003,81 @@ router.get("/inventory-ledger", requireAuth, async (req, res) => {
 router.get("/warehouses/:id/products", requireAuth, async (req, res) => {
   try {
     const warehouseId = req.params.id;
-    const actor = (req as typeof req & { user?: { userId?: string; role?: string } }).user;
+    const actor = (
+      req as typeof req & { user?: { userId?: string; role?: string } }
+    ).user;
     if (!(await hasWarehouseAccess(actor ?? {}, warehouseId))) {
-      return res.status(403).json({ message: "Агуулахын бараа харах эрхгүй байна" });
+      return res
+        .status(403)
+        .json({ message: "Агуулахын бараа харах эрхгүй байна" });
     }
     const warehouse = await prisma.warehouse.findUnique({
       where: { id: warehouseId, deletedAt: null },
-      select: { catalogOrganizationId: true, organizations: { select: { organizationId: true } } },
+      select: {
+        catalogOrganizationId: true,
+        organizations: { select: { organizationId: true } },
+      },
     });
-    if (!warehouse) return res.status(404).json({ message: "Агуулах олдсонгүй" });
+    if (!warehouse)
+      return res.status(404).json({ message: "Агуулах олдсонгүй" });
     const search = String(req.query.search ?? "").trim();
-    const exactBarcode = typeof req.query.barcode === "string" ? req.query.barcode.trim() : "";
-    const masterProductId = typeof req.query.masterProductId === "string" ? req.query.masterProductId.trim() : "";
-    const limit = Math.min(50, Math.max(1, Math.floor(Number(req.query.limit) || 10)));
+    const exactBarcode =
+      typeof req.query.barcode === "string" ? req.query.barcode.trim() : "";
+    const masterProductId =
+      typeof req.query.masterProductId === "string"
+        ? req.query.masterProductId.trim()
+        : "";
+    const limit = Math.min(
+      50,
+      Math.max(1, Math.floor(Number(req.query.limit) || 10)),
+    );
     const products = await prisma.product.findMany({
       where: {
         deletedAt: null,
         AND: [
-          warehouseProductReadScope(warehouseId, warehouse.organizations.map((link) => link.organizationId), warehouse.catalogOrganizationId),
-          ...(exactBarcode ? [{ OR: [
-            { barcode: exactBarcode },
-            { barcodeAliases: { has: exactBarcode } },
-          ] }] : []),
+          warehouseProductReadScope(
+            warehouseId,
+            warehouse.organizations.map((link) => link.organizationId),
+            warehouse.catalogOrganizationId,
+          ),
+          ...(exactBarcode
+            ? [
+                {
+                  OR: [
+                    { barcode: exactBarcode },
+                    { barcodeAliases: { has: exactBarcode } },
+                  ],
+                },
+              ]
+            : []),
           ...(masterProductId ? [{ masterProductId }] : []),
-          ...(search ? [{ OR: [
-            { AND: search.split(/\s+/).filter(Boolean).map((word) => ({ name: { contains: word, mode: "insensitive" as const } })) },
-            { sku: { contains: search, mode: "insensitive" as const } },
-            { barcode: { contains: search, mode: "insensitive" as const } },
-            { barcodeAliases: { has: search } },
-          ] }] : []),
+          ...(search
+            ? [
+                {
+                  OR: [
+                    {
+                      AND: search
+                        .split(/\s+/)
+                        .filter(Boolean)
+                        .map((word) => ({
+                          name: {
+                            contains: word,
+                            mode: "insensitive" as const,
+                          },
+                        })),
+                    },
+                    { sku: { contains: search, mode: "insensitive" as const } },
+                    {
+                      barcode: {
+                        contains: search,
+                        mode: "insensitive" as const,
+                      },
+                    },
+                    { barcodeAliases: { has: search } },
+                  ],
+                },
+              ]
+            : []),
         ],
       },
       include: { images: { select: { id: true, url: true }, take: 1 } },
@@ -3028,7 +3097,8 @@ router.get("/warehouses/:id/products", requireAuth, async (req, res) => {
  * to offer existing type numbers for selection.
  * ──────────────────────────────────────────────────────────────────── */
 router.get("/warehouses/:id/sku-lookup", requireAuth, async (req, res) => {
-  if (!(await assertWarehouseMutationPermission(req, res, req.params.id))) return;
+  if (!(await assertWarehouseMutationPermission(req, res, req.params.id)))
+    return;
   try {
     const warehouseId = req.params.id;
     const prefix = ((req.query.prefix as string) || "").trim().toUpperCase();
@@ -3045,7 +3115,11 @@ router.get("/warehouses/:id/sku-lookup", requireAuth, async (req, res) => {
     if (!warehouse)
       return res.status(404).json({ message: "Агуулах олдсонгүй" });
 
-    const scope = warehouseProductReadScope(warehouseId, warehouse.organizations.map((link) => link.organizationId), warehouse.catalogOrganizationId);
+    const scope = warehouseProductReadScope(
+      warehouseId,
+      warehouse.organizations.map((link) => link.organizationId),
+      warehouse.catalogOrganizationId,
+    );
 
     const products = await prisma.product.findMany({
       where: {
@@ -3112,14 +3186,19 @@ router.post(
       }
 
       const organizationId = warehouseCatalogOwner(warehouse);
-      const ownerScope = warehouseProductOwnerScope(warehouseId, organizationId);
+      const ownerScope = warehouseProductOwnerScope(
+        warehouseId,
+        organizationId,
+      );
 
       // Resolve businessCategoryId from organization
       let orgBusinessCategoryId: string | null = null;
-      const org = organizationId ? await prisma.organization.findUnique({
-        where: { id: organizationId },
-        select: { businessCategory: true },
-      }) : null;
+      const org = organizationId
+        ? await prisma.organization.findUnique({
+            where: { id: organizationId },
+            select: { businessCategory: true },
+          })
+        : null;
       if (org?.businessCategory) {
         const matched = await prisma.businessCategory.findFirst({
           where: {
@@ -3310,6 +3389,11 @@ router.post(
 
           // Create or update product + warehouse inventory in a transaction
           const result = await prisma.$transaction(async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${organizationId || warehouseId}))`;
+            await assertWarehouseImportIdentity(tx, warehouseId, {
+              sku: normalizedSku,
+              name: productData.name,
+            });
             let product;
             let wasUpdate = false;
 
@@ -3329,6 +3413,10 @@ router.post(
                 select: { id: true, masterProductId: true },
               });
               wasUpdate = !!existing;
+              if (existing)
+                await assertWarehouseProductsOwned(tx, warehouseId, [
+                  existing.id,
+                ]);
 
               const masterProduct = await resolveMasterProduct(tx, {
                 masterProductId: existing?.masterProductId,
@@ -3349,14 +3437,23 @@ router.post(
                 managedByWarehouseId: warehouseId,
                 deletedAt: null,
               };
-              const select = { id: true, name: true, sku: true, price: true, stock: true } as const;
+              const select = {
+                id: true,
+                name: true,
+                sku: true,
+                price: true,
+                stock: true,
+              } as const;
               product = existing
                 ? await tx.product.update({
                     where: { id: existing.id },
                     data: {
                       ...data,
                       ...(imageUrls.length > 0 && {
-                        images: { deleteMany: {}, create: imageUrls.map((url) => ({ url })) },
+                        images: {
+                          deleteMany: {},
+                          create: imageUrls.map((url) => ({ url })),
+                        },
                       }),
                     },
                     select,
@@ -3403,47 +3500,36 @@ router.post(
               });
             }
 
-            // Create or update warehouse inventory
-            if (stockNum > 0) {
-              const existingInv = await tx.warehouseInventory.findUnique({
-                where: {
-                  warehouseId_productId: { warehouseId, productId: product.id },
-                },
-              });
+            // Imported stock replaces this warehouse's quantity, including zero.
+            await assertWarehouseProductsOwned(tx, warehouseId, [product.id]);
+            const existingInv = await tx.warehouseInventory.findUnique({
+              where: {
+                warehouseId_productId: { warehouseId, productId: product.id },
+              },
+            });
+            await tx.warehouseInventory.upsert({
+              where: {
+                warehouseId_productId: { warehouseId, productId: product.id },
+              },
+              update: { quantity: stockNum, lastRestockedAt: new Date() },
+              create: {
+                warehouseId,
+                productId: product.id,
+                quantity: stockNum,
+                minQuantity: 0,
+                lastRestockedAt: new Date(),
+              },
+            });
 
-              if (existingInv) {
-                await tx.warehouseInventory.update({
-                  where: {
-                    warehouseId_productId: {
-                      warehouseId,
-                      productId: product.id,
-                    },
-                  },
-                  data: {
-                    quantity: stockNum,
-                    lastRestockedAt: new Date(),
-                  },
-                });
-              } else {
-                await tx.warehouseInventory.create({
-                  data: {
-                    warehouseId,
-                    productId: product.id,
-                    quantity: stockNum,
-                    minQuantity: 0,
-                    lastRestockedAt: new Date(),
-                  },
-                });
-              }
-
-              // Ledger entry
+            const change = stockNum - (existingInv?.quantity ?? 0);
+            if (change !== 0) {
               await tx.inventoryLedger.create({
                 data: {
                   productId: product.id,
                   warehouseId,
-                  change: stockNum,
+                  change,
                   reason: wasUpdate ? "RESTOCK" : "INITIAL_STOCK",
-                  note: "Excel импортоор нэмсэн",
+                  note: "Excel импортоор үлдэгдэл шинэчилсэн",
                 },
               });
             }
@@ -3500,31 +3586,74 @@ router.post(
  * No organization permission required — product is created under the
  * warehouse's first assigned organization.
  * ──────────────────────────────────────────────────────────────────── */
-router.post("/warehouses/:id/products/:productId/barcodes", requireAuth, async (req, res) => {
-  const warehouseId = req.params.id;
-  if (!(await assertWarehouseMutationPermission(req, res, warehouseId))) return;
-  const barcodes = parseBarcodeAliases(req.body.barcodes);
-  if (!barcodes) return res.status(400).json({ message: "Баркод зөв оруулна уу (1–100 тэмдэгт)." });
-  try {
-    const result = await prisma.$transaction(async (tx) => {
-      const warehouse = await tx.warehouse.findUnique({ where: { id: warehouseId, deletedAt: null },
-        select: { catalogOrganizationId: true, organizations: { select: { organizationId: true }, take: 1 } } });
-      if (!warehouse) throw new Error("Агуулах олдсонгүй");
-      const owner = warehouseProductOwnerScope(warehouseId, warehouseCatalogOwner(warehouse));
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${warehouseCatalogOwner(warehouse) || warehouseId}))`;
-      const product = await tx.product.findFirst({ where: { id: req.params.productId, ...owner, deletedAt: null } });
-      if (!product) throw new Error("Энэ агуулахын бараа олдсонгүй");
-      const conflict = await tx.product.findFirst({ where: { ...owner, deletedAt: null, id: { not: product.id },
-        OR: [{ barcode: { in: barcodes } }, { barcodeAliases: { hasSome: barcodes } }, { sku: { in: barcodes } }] }, select: { name: true } });
-      if (conflict) throw new Error(`Баркод “${conflict.name}” бараанд бүртгэлтэй байна.`);
-      const aliases = mergeBarcodeAliases(product.barcode, product.barcodeAliases, barcodes);
-      return tx.product.update({ where: { id: product.id }, data: { barcodeAliases: aliases }, select: { id: true, barcode: true, barcodeAliases: true } });
-    });
-    return res.json(result);
-  } catch (error) {
-    return res.status(409).json({ message: error instanceof Error ? error.message : "Баркод холбож чадсангүй" });
-  }
-});
+router.post(
+  "/warehouses/:id/products/:productId/barcodes",
+  requireAuth,
+  async (req, res) => {
+    const warehouseId = req.params.id;
+    if (!(await assertWarehouseMutationPermission(req, res, warehouseId)))
+      return;
+    const barcodes = parseBarcodeAliases(req.body.barcodes);
+    if (!barcodes)
+      return res
+        .status(400)
+        .json({ message: "Баркод зөв оруулна уу (1–100 тэмдэгт)." });
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const warehouse = await tx.warehouse.findUnique({
+          where: { id: warehouseId, deletedAt: null },
+          select: {
+            catalogOrganizationId: true,
+            organizations: { select: { organizationId: true }, take: 1 },
+          },
+        });
+        if (!warehouse) throw new Error("Агуулах олдсонгүй");
+        const owner = warehouseProductOwnerScope(
+          warehouseId,
+          warehouseCatalogOwner(warehouse),
+        );
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${warehouseCatalogOwner(warehouse) || warehouseId}))`;
+        const product = await tx.product.findFirst({
+          where: { id: req.params.productId, ...owner, deletedAt: null },
+        });
+        if (!product) throw new Error("Энэ агуулахын бараа олдсонгүй");
+        const conflict = await tx.product.findFirst({
+          where: {
+            ...owner,
+            deletedAt: null,
+            id: { not: product.id },
+            OR: [
+              { barcode: { in: barcodes } },
+              { barcodeAliases: { hasSome: barcodes } },
+              { sku: { in: barcodes } },
+            ],
+          },
+          select: { name: true },
+        });
+        if (conflict)
+          throw new Error(
+            `Баркод “${conflict.name}” бараанд бүртгэлтэй байна.`,
+          );
+        const aliases = mergeBarcodeAliases(
+          product.barcode,
+          product.barcodeAliases,
+          barcodes,
+        );
+        return tx.product.update({
+          where: { id: product.id },
+          data: { barcodeAliases: aliases },
+          select: { id: true, barcode: true, barcodeAliases: true },
+        });
+      });
+      return res.json(result);
+    } catch (error) {
+      return res.status(409).json({
+        message:
+          error instanceof Error ? error.message : "Баркод холбож чадсангүй",
+      });
+    }
+  },
+);
 
 router.post("/warehouses/:id/products", requireAuth, async (req, res) => {
   try {
@@ -3581,7 +3710,10 @@ router.post("/warehouses/:id/products", requireAuth, async (req, res) => {
       costPrice != null && costPrice !== ""
         ? parseFloat(String(costPrice))
         : null;
-    if (costPriceNum !== null && (!Number.isFinite(costPriceNum) || costPriceNum < 0)) {
+    if (
+      costPriceNum !== null &&
+      (!Number.isFinite(costPriceNum) || costPriceNum < 0)
+    ) {
       return res.status(400).json({ message: "Өртөг үнэ буруу байна" });
     }
 
@@ -3600,22 +3732,40 @@ router.post("/warehouses/:id/products", requireAuth, async (req, res) => {
 
     if (barcode && String(barcode).trim()) {
       const existing = await prisma.product.findFirst({
-        where: { ...ownerScope, OR: [{ barcode: String(barcode).trim() }, { barcodeAliases: { has: String(barcode).trim() } }], deletedAt: null },
+        where: {
+          ...ownerScope,
+          OR: [
+            { barcode: String(barcode).trim() },
+            { barcodeAliases: { has: String(barcode).trim() } },
+          ],
+          deletedAt: null,
+        },
         select: { id: true },
       });
-      if (existing) return res.status(409).json({ message: "Энэ баркодтой бараа бүртгэлтэй байна. Барааны хайлтаас сонгоно уу." });
+      if (existing)
+        return res.status(409).json({
+          message:
+            "Энэ баркодтой бараа бүртгэлтэй байна. Барааны хайлтаас сонгоно уу.",
+        });
     }
     if (masterProductId) {
       const master = await prisma.masterProduct.findFirst({
         where: { id: String(masterProductId), status: "ACTIVE" },
         select: { id: true },
       });
-      if (!master) return res.status(400).json({ message: "Нэгдсэн сангийн бараа олдсонгүй. Дахин хайна уу." });
+      if (!master)
+        return res.status(400).json({
+          message: "Нэгдсэн сангийн бараа олдсонгүй. Дахин хайна уу.",
+        });
       const existing = await prisma.product.findFirst({
         where: { ...ownerScope, masterProductId: master.id, deletedAt: null },
         select: { id: true },
       });
-      if (existing) return res.status(409).json({ message: "Энэ бараа танай байгууллагад бүртгэлтэй байна. Барааны хайлтаас сонгоно уу." });
+      if (existing)
+        return res.status(409).json({
+          message:
+            "Энэ бараа танай байгууллагад бүртгэлтэй байна. Барааны хайлтаас сонгоно уу.",
+        });
     }
 
     if (businessCategoryId) {
@@ -3634,7 +3784,8 @@ router.post("/warehouses/:id/products", requireAuth, async (req, res) => {
     // Create product + inventory + ledger in one transaction
     const product = await prisma.$transaction(async (tx) => {
       const masterProduct = await resolveMasterProduct(tx, {
-        masterProductId: typeof masterProductId === "string" ? masterProductId : null,
+        masterProductId:
+          typeof masterProductId === "string" ? masterProductId : null,
         name: String(name),
         barcode: barcode ? String(barcode) : null,
         unit: unit ? String(unit) : null,

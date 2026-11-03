@@ -1,4 +1,5 @@
 "use client";
+import { StocktakeExportButton } from "./StocktakeExportButton";
 import { StocktakeReviewPanel } from "./StocktakeReviewPanel";
 import {
   matchesReviewFilter,
@@ -25,6 +26,7 @@ import { StocktakeLineTable } from "./StocktakeLineTable";
 
 export function StocktakeEditor({
   session,
+  loadForExport,
   changedLineIds,
   addedProductCount,
   onPrepareReview,
@@ -43,6 +45,7 @@ export function StocktakeEditor({
   onReload,
 }: {
   session: StocktakeDetail;
+  loadForExport: (id: string) => Promise<StocktakeDetail>;
   changedLineIds?: string[];
   addedProductCount: number;
   onPrepareReview: () => void;
@@ -132,6 +135,11 @@ export function StocktakeEditor({
           Серверээс дахин ачаалах
         </button>
       </div>
+      <StocktakeExportButton
+        session={session}
+        load={loadForExport}
+        disabled={busy}
+      />
       <StocktakeSummary
         session={session}
         total={lines.length}

@@ -271,6 +271,7 @@ export default function CheckoutPage() {
   const [now, setNow] = useState(Date.now());
   const cartItemsRef = useRef(items);
   const createdStoreOrdersRef = useRef(createdStoreOrders);
+  const preorderCheckoutInFlightRef = useRef(false);
   cartItemsRef.current = items;
   createdStoreOrdersRef.current = createdStoreOrders;
   const didPrefillPhone = useRef(false);
@@ -619,6 +620,9 @@ export default function CheckoutPage() {
   };
 
   const handleCheckout = async () => {
+    // Existing orders have their own payment retry buttons. Never submit them again.
+    if (createdStoreOrdersRef.current.length > 0) return;
+
     if (deliverySession) {
       await createPayment(deliverySession);
       return;
@@ -660,6 +664,11 @@ export default function CheckoutPage() {
   };
 
   const submitPreorderCheckout = async () => {
+    if (
+      preorderCheckoutInFlightRef.current ||
+      createdStoreOrdersRef.current.length > 0
+    ) return;
+
     if (!user) {
       setAuthOpen(true);
       return;
@@ -678,6 +687,7 @@ export default function CheckoutPage() {
       return;
     }
 
+    preorderCheckoutInFlightRef.current = true;
     setLoading(true);
     setError("");
     setDeliveryUnavailable(false);
@@ -710,15 +720,19 @@ export default function CheckoutPage() {
       }
 
       const storeOrders = toCreatedStoreGroups(data.orders);
-      if (storeOrders.length > 1) {
-        setCreatedStoreOrders(storeOrders);
-        clearCart();
-        return;
+      // Retain every created order before requesting its invoice. Invoice failures
+      // must retry payment for this order, not create another preorder.
+      createdStoreOrdersRef.current = storeOrders;
+      setCreatedStoreOrders(storeOrders);
+      clearCart();
+      const orderId = storeOrders[0]?.orderId;
+      if (storeOrders.length === 1 && orderId) {
+        await createPayment({ orderId });
       }
-      await createPayment({ orderId: data.orderId });
     } catch {
       setError("Сүлжээний алдаа гарлаа");
     } finally {
+      preorderCheckoutInFlightRef.current = false;
       setLoading(false);
     }
   };

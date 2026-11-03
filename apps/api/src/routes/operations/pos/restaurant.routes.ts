@@ -1,4 +1,8 @@
-import { KITCHEN_QUEUE_STATUSES, isRestaurantLineDiscountPercent, calculateRestaurantSelectedUnitDiscount } from "@mgl/types";
+import {
+  KITCHEN_QUEUE_STATUSES,
+  isRestaurantLineDiscountPercent,
+  calculateRestaurantSelectedUnitDiscount,
+} from "@mgl/types";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 import {
@@ -532,7 +536,17 @@ function mapTicket(ticket: TicketWithDetails) {
     openedAt: ticket.openedAt.toISOString(),
     sentAt: ticket.sentAt?.toISOString() ?? null,
     closedAt: ticket.closedAt?.toISOString() ?? null,
-    total: items.reduce((sum, item) => sum + (item.price - calculateRestaurantSelectedUnitDiscount({ unitPrice: item.price, discountPercent: item.discountPercent })) * item.qty, 0),
+    total: items.reduce(
+      (sum, item) =>
+        sum +
+        (item.price -
+          calculateRestaurantSelectedUnitDiscount({
+            unitPrice: item.price,
+            discountPercent: item.discountPercent,
+          })) *
+          item.qty,
+      0,
+    ),
     unsentCount: items.reduce(
       (sum, item) => sum + Math.max(0, item.qty - item.sentQty),
       0,
@@ -2093,8 +2107,7 @@ router.get("/restaurant/pos/kitchen-tickets", async (req, res) => {
       where: {
         branchId,
         organizationId: access.branch.organizationId,
-        // This is a work queue, not history. Return every unfinished ticket;
-        // completed tickets never occupy a slot or hide newer orders.
+        // Completed tickets are history; return every unfinished kitchen order.
         status: { in: [...KITCHEN_QUEUE_STATUSES] },
       },
       orderBy: [{ sentAt: "asc" }, { kitchenTicketNo: "asc" }],
@@ -2582,8 +2595,16 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
         .json({ message: access.error.message });
     }
 
-    if (lines.some((line) => line.discountPercent !== undefined && !isRestaurantLineDiscountPercent(line.discountPercent))) {
-      return res.status(400).json({ message: "Хөнгөлөлт 0, 10, 20, 30, 40 хувь байна" });
+    if (
+      lines.some(
+        (line) =>
+          line.discountPercent !== undefined &&
+          !isRestaurantLineDiscountPercent(line.discountPercent),
+      )
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Хөнгөлөлт 0, 10, 20, 30, 40 хувь байна" });
     }
     const normalizedLines = lines.map((line) => ({
       productId: String(line.productId || "").trim(),
@@ -2792,10 +2813,7 @@ router.post("/restaurant/pos/tickets", async (req, res) => {
           !isSelfService &&
           (activeShift.mode !== "RESTAURANT" ||
             !activeShift.register ||
-            !canUsePosRegisterForMode(
-              activeShift.register.mode,
-              "RESTAURANT",
-            ))
+            !canUsePosRegisterForMode(activeShift.register.mode, "RESTAURANT"))
         ) {
           throw Object.assign(
             new Error(

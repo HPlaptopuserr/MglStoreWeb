@@ -1,6 +1,7 @@
 import { prisma } from "@mgl/database";
 import { assertStocktakeScope } from "./stocktake-scope";
 import { StocktakeError } from "./stocktake.policy";
+import { stocktakeDetailInclude } from "./stocktake-query";
 
 /** Resolve against the live organization catalog before offering registration. */
 export async function resolveStocktakeProduct(input: {
@@ -16,7 +17,11 @@ export async function resolveStocktakeProduct(input: {
         where: { id: input.stocktakeId, organizationId: input.organizationId },
       });
       if (!session) throw new StocktakeError("Тооллого олдсонгүй", 404);
-      await assertStocktakeScope(tx, input.organizationId, session.warehouseId);
+      const catalogWarehouseId = await assertStocktakeScope(
+        tx,
+        input.organizationId,
+        session.warehouseId,
+      );
       if (session.status !== "DRAFT" || session.version !== input.version)
         throw new StocktakeError(
           "Тооллого өөрчлөгдсөн байна. Дахин ачаална уу.",
@@ -26,6 +31,7 @@ export async function resolveStocktakeProduct(input: {
         where: {
           organizationId: input.organizationId,
           deletedAt: null,
+          isActive: true,
           OR: [
             { barcode: input.query },
             { barcodeAliases: { has: input.query } },
@@ -44,6 +50,7 @@ export async function resolveStocktakeProduct(input: {
             where: {
               organizationId: input.organizationId,
               deletedAt: null,
+              isActive: true,
               name: { equals: input.query, mode: "insensitive" },
             },
             include: {
@@ -70,7 +77,11 @@ export async function resolveStocktakeProduct(input: {
       );
       if (
         session.warehouseId
-          ? !inventory
+          ? !inventory &&
+            !(
+              catalogWarehouseId === session.warehouseId &&
+              product.warehouseInventories.length === 0
+            )
           : product.warehouseInventories.length > 0
       ) {
         const location =
@@ -114,10 +125,7 @@ export async function resolveStocktakeProduct(input: {
       const updated = await tx.stocktake.update({
         where: { id: session.id },
         data: { version: { increment: 1 } },
-        include: {
-          warehouse: { select: { name: true } },
-          lines: { orderBy: { name: "asc" } },
-        },
+        include: stocktakeDetailInclude,
       });
       return { session: updated, line };
     },

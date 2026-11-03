@@ -19,6 +19,10 @@ import {
 } from "../../services/systemqr";
 import { OrgRole, prisma } from "@mgl/database";
 import { getMinuAgentToken } from "../../services/minu-pos-agent";
+import {
+  merchantMutationRequiresSettledQr,
+  merchantQrInvoiceBlocksCredentialChange,
+} from "../../services/merchant-unsettled-invoice-policy";
 
 import { parseMerchantBankAccounts, resolveBankAccountOwner, resolveBankAccountReader } from "../../services/merchant-bank-accounts";
 
@@ -43,13 +47,34 @@ router.use('/vendor/merchant', (req, res, next) => {
       const organizationId = await resolveBankAccountOwner(actor.userId, req.body.organizationId ?? actor.organizationId);
       if (!organizationId) return res.status(403).json({ success: false, message: 'Төлбөрийн тохиргоог зөвхөн байгууллагын Owner өөрчилнө.' });
       req.body.organizationId = organizationId;
-      // Replacing credentials must not strand invoices awaiting reconciliation.
-      if (req.path !== '/bank-accounts') {
-        const unsettled = await prisma.qPayInvoice.findFirst({
-          where: { organizationId, consumedAt: null, status: { in: ['PENDING', 'PAID'] } },
-          select: { id: true },
+      // Replacing Dynamic QR credentials must not strand invoices awaiting
+      // reconciliation. Minu Agent card-terminal settings are independent.
+      if (merchantMutationRequiresSettledQr(req.path)) {
+        const now = new Date();
+        await prisma.qPayInvoice.updateMany({
+          where: {
+            organizationId,
+            consumedAt: null,
+            status: 'PENDING',
+            expiresAt: { lte: now },
+          },
+          data: { status: 'EXPIRED' },
         });
-        if (unsettled) return res.status(409).json({ success: false, message: 'Дуусаагүй QR төлбөр байна. Merchant холболт солихын өмнө төлбөрөө дуусгах эсвэл цуцална уу.' });
+        const unsettled = await prisma.qPayInvoice.findFirst({
+          where: {
+            organizationId,
+            consumedAt: null,
+            status: 'PENDING',
+            expiresAt: { gt: now },
+          },
+          select: { id: true, status: true, consumedAt: true, expiresAt: true },
+        });
+        if (
+          unsettled &&
+          merchantQrInvoiceBlocksCredentialChange(unsettled, now)
+        ) {
+          return res.status(409).json({ success: false, message: 'Дуусаагүй QR төлбөр байна. Merchant холболт солихын өмнө төлбөрөө дуусгах эсвэл цуцална уу.' });
+        }
       }
       return next();
     } catch (error: unknown) {
@@ -380,9 +405,18 @@ router.post(
         });
       }
 
+      const merchantCode = String(req.body?.merchantId || "").trim();
+      if (!merchantCode) {
+        return res.status(400).json({
+          success: false,
+          message: "Сэргээх merchant code шаардлагатай.",
+        });
+      }
+
       const result = await recoverVendorSystemQrCredentials(
         organizationId,
         channel,
+        merchantCode,
       );
       if (!result.success) return res.status(400).json(result);
 

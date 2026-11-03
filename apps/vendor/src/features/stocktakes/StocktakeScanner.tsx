@@ -9,6 +9,7 @@ import {
   barcodeIndex,
   matchesStocktakeQuery,
   newProductSeed,
+  stocktakeLineName,
 } from "./stocktake-model";
 import { buttonClass, fieldClass } from "./StocktakeOverview";
 export function StocktakeScanner({
@@ -74,11 +75,7 @@ export function StocktakeScanner({
           const exact = index.get(query.trim()) ?? [];
           const matches = exact.length
             ? exact
-            : lines.filter(
-                (line) =>
-                  line.name.trim().toLocaleLowerCase("mn-MN") ===
-                  query.trim().toLocaleLowerCase("mn-MN"),
-              );
+            : lines.filter((line) => matchesStocktakeQuery(line, query));
           let row = matches.length === 1 ? matches[0] : undefined;
           if (!row && missing) {
             const resolved = await onResolve(query.trim());
@@ -111,7 +108,9 @@ export function StocktakeScanner({
             }
             restoreAfterScan.current = true;
             onFind("");
-            setScanNotice(`${row.name}: ${counted} ш хадгаллаа ✓`);
+            setScanNotice(
+              `${stocktakeLineName(row)}: ${counted} ш хадгаллаа ✓`,
+            );
           } else onSelect(row);
         } catch (error) {
           setScanNotice(

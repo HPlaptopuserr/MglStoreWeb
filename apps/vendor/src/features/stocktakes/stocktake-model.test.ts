@@ -7,6 +7,8 @@ import {
   storedQuantity,
   matchesStocktakeQuery,
   newProductSeed,
+  stocktakeLineBarcode,
+  stocktakeLineName,
 } from "./stocktake-model";
 import type { StocktakeLineDto } from "@mgl/types";
 test("physical counts preserve grams, reject fractional pieces and display signed variance", () => {
@@ -69,11 +71,87 @@ test("unified search matches names, barcodes and aliases with the same rules", (
   assert.deepEqual(newProductSeed(" Сүү "), { name: "Сүү", barcode: "" });
 });
 
+test("stocktake search uses the current catalog name, SKU and barcode", () => {
+  const row: StocktakeLineDto = {
+    id: "1",
+    productId: "p",
+    name: "CHB-MGL-001",
+    barcode: "old-barcode",
+    barcodeAliases: [],
+    unit: "pcs",
+    expected: 0,
+    counted: null,
+    note: "",
+    countedAt: null,
+    countedById: null,
+    product: {
+      name: "Монгол сүү 1 литр",
+      sku: "SKU-MGL-001",
+      barcode: "865000000001",
+      barcodeAliases: ["865000000099"],
+    },
+  };
+
+  assert.equal(matchesStocktakeQuery(row, "suu"), true);
+  assert.equal(matchesStocktakeQuery(row, "SKU-MGL"), true);
+  assert.equal(matchesStocktakeQuery(row, "865000000099"), true);
+  assert.equal(stocktakeLineName(row), "Монгол сүү 1 литр");
+  assert.equal(stocktakeLineBarcode(row), "865000000001");
+});
+
+test("stocktake search matches every word in a mixed Latin and Mongolian name", () => {
+  const row: StocktakeLineDto = {
+    id: "mgl-cup-line",
+    productId: "mgl-cup",
+    name: "Mgl аяга",
+    barcode: null,
+    barcodeAliases: [],
+    unit: "pcs",
+    expected: 1,
+    counted: null,
+    note: "",
+    countedAt: null,
+    countedById: null,
+    product: {
+      name: "Mgl аяга",
+      sku: null,
+      barcode: null,
+      barcodeAliases: [],
+    },
+  };
+
+  assert.equal(matchesStocktakeQuery(row, "Mgl аяга"), true);
+  assert.equal(matchesStocktakeQuery(row, "mgl АЯГА"), true);
+  assert.equal(
+    matchesStocktakeQuery(
+      {
+        ...row,
+        id: "unrelated-line",
+        productId: "unrelated-product",
+        name: "Adicto",
+        product: {
+          name: "Adicto",
+          sku: "MGL-ADICTO-001",
+          barcode: null,
+          barcodeAliases: [],
+        },
+      },
+      "Mgl аяга",
+    ),
+    false,
+  );
+});
+
 test("changed rows move ahead of pagination while preserving order and source data", () => {
-  const rows = Array.from({ length: 1175 }, (_, index) => ({ id: String(index) }));
+  const rows = Array.from({ length: 1175 }, (_, index) => ({
+    id: String(index),
+  }));
   const ids = new Set(["1000", "60", "1174"]);
   const sorted = prioritizeStocktakeLines(rows, ids);
-  assert.deepEqual(sorted.slice(0, 3).map((row) => row.id), ["60", "1000", "1174"]);
+  assert.deepEqual(
+    sorted.slice(0, 3).map((row) => row.id),
+    ["60", "1000", "1174"],
+  );
   assert.equal(sorted[3]?.id, "0");
   assert.equal(sorted.length, rows.length);
   assert.equal(new Set(sorted).size, rows.length);

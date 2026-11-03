@@ -2,6 +2,17 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { canReleaseCheckoutAfterCancelFailure } from "./pos-qpay-cancel-policy";
 
+test("switching to another payment never releases a QR whose provider cancellation failed", () => {
+  for (const invoiceStatus of ["PENDING", "EXPIRED"]) {
+    assert.equal(canReleaseCheckoutAfterCancelFailure({
+      requireProviderCancellation: true,
+      invoiceStatus,
+      providerRecheckCompleted: true,
+      providerPaymentConfirmed: false,
+    }), false);
+  }
+});
+
 test("releases an expired checkout after a successful unpaid provider recheck", () => {
   assert.equal(
     canReleaseCheckoutAfterCancelFailure({

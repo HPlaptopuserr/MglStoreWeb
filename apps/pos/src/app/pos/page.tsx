@@ -94,6 +94,7 @@ import {
   loadQPayCheckoutRecovery,
   saveQPayCheckoutRecovery,
 } from "@/features/pos/utils/qpay-checkout-recovery";
+import { readReceiptPaperWidth } from "@/features/pos/utils/receipt-paper";
 import { API, authFetch } from "@/lib/api";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { formatPosQuantity } from "@mgl/types";
@@ -474,6 +475,7 @@ const renderEbarimtQrMarkup = (value?: string | null) => {
 const printReceipt = (receipt: PosReceipt) => {
   if (typeof window === "undefined") return false;
 
+  const paperWidthMm = readReceiptPaperWidth();
   const popup = window.open("", "_blank", "width=420,height=760");
   if (!popup) return false;
 
@@ -488,17 +490,19 @@ const printReceipt = (receipt: PosReceipt) => {
       <head>
         <title>Баримт ${receipt.receiptNo}</title>
         <style>
-          body { font-family: monospace; margin: 0; padding: 12px; color: #111; }
-          pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; line-height: 1.45; }
-          .ebarimt-qr { margin-top: 10px; text-align: center; }
-          .ebarimt-qr svg { width: 160px; height: 160px; }
-          .ebarimt-qr-title { margin: 0 0 6px; font-family: sans-serif; font-size: 12px; font-weight: 700; }
+          @page { size: ${paperWidthMm}mm auto; margin: 0; }
+          * { box-sizing: border-box; }
+          html, body { width: ${paperWidthMm}mm; max-width: ${paperWidthMm}mm; margin: 0; padding: 0; }
+          body { padding: 2mm 5mm; overflow: hidden; color: #111; font-family: monospace; }
+          pre { width: 100%; max-width: 100%; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; font-size: 11px; line-height: 1.25; }
+          .ebarimt-qr { margin-top: 6px; text-align: center; }
+          .ebarimt-qr svg { width: 38mm; height: 38mm; max-width: 100%; }
           .ebarimt-qr-fallback { white-space: normal; word-break: break-all; font-family: monospace; font-size: 10px; }
         </style>
       </head>
       <body>
         <pre>${content}</pre>
-        ${ebarimtQrData ? `<div class="ebarimt-qr"><p class="ebarimt-qr-title">eBarimt QR код</p>${qrMarkup || `<p class="ebarimt-qr-fallback">${escapeHtml(ebarimtQrData)}</p>`}</div>` : ""}
+        ${ebarimtQrData ? `<div class="ebarimt-qr">${qrMarkup || `<p class="ebarimt-qr-fallback">${escapeHtml(ebarimtQrData)}</p>`}</div>` : ""}
         <script>
           window.onload = function () {
             window.print();

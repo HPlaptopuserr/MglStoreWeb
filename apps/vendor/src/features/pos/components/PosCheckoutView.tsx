@@ -42,6 +42,9 @@ export type PosCheckoutProps = {
   totals: CartTotals;
   paymentMethod: PaymentMethod;
   onChangeMethod: (m: PaymentMethod) => void;
+  methodSwitchDisabled?: boolean;
+  methodSwitchMessage?: string;
+  methodSwitchError?: boolean;
   paymentEntries: CheckoutPaymentEntry[];
   qpayModal?: CheckoutQPayInvoice | null;
   statusMessage?: string;
@@ -138,6 +141,9 @@ export function PosCheckoutView({
   totals,
   paymentMethod,
   onChangeMethod,
+  methodSwitchDisabled,
+  methodSwitchMessage,
+  methodSwitchError,
   paymentEntries,
   qpayModal,
   statusMessage,
@@ -181,6 +187,7 @@ export function PosCheckoutView({
   const amountPreview = checkoutPaymentAmount(enteredAmount, remaining);
   const hasPendingPayment = paymentEntries.some((entry) => entry.status === "pending");
   const paymentBusy = Boolean(disabled || cashPayment.submitting || hasPendingPayment);
+  const methodSelectionBusy = Boolean((methodSwitchDisabled ?? disabled) || cashPayment.submitting);
   const pendingTotal = paymentEntries
     .filter((item) => item.status === "pending")
     .reduce((sum, item) => sum + item.amount, 0);
@@ -298,7 +305,7 @@ export function PosCheckoutView({
         const method = paymentMethodForKey(event.key);
         if (
           method && !splitPayment &&
-          !paymentBusy
+          !methodSelectionBusy
         ) {
           event.preventDefault();
           onChangeMethod(method);
@@ -348,6 +355,12 @@ export function PosCheckoutView({
         </div>
       </header>
 
+      {methodSwitchMessage && (
+        <div role={methodSwitchError ? "alert" : "status"} aria-live="polite" className={`shrink-0 border-b px-4 py-3 text-sm font-semibold leading-5 ${methodSwitchError ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
+          {methodSwitchMessage}
+        </div>
+      )}
+
       {/* Body */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* ── Left: payment selector + numpad ── */}
@@ -377,7 +390,7 @@ export function PosCheckoutView({
                   <button
                     key={opt.value}
                     type="button"
-                    disabled={paymentBusy}
+                    disabled={methodSelectionBusy}
                     aria-keyshortcuts={PAYMENT_SHORTCUTS[opt.value]}
                     aria-pressed={isActive}
                     onClick={() => {

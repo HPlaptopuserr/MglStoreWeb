@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Printer, RotateCcw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { PosReceipt } from "../types/receipt.types";
@@ -10,6 +10,11 @@ import { returnLocalEbarimtReceipt, sendLocalEbarimtData } from "../api/ebarimt"
 import { voidSale } from "../api/void-sale";
 import { formatReceipt } from "../utils/format-receipt";
 import { printReceipt } from "../utils/print-receipt";
+import {
+  readReceiptPaperWidth,
+  saveReceiptPaperWidth,
+  type ReceiptPaperWidth,
+} from "../utils/receipt-paper";
 import { withDemoEbarimt } from "../utils/receipt-preview-demo";
 
 type Props = {
@@ -26,6 +31,11 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
   const [saleVoiding, setSaleVoiding] = useState(false);
   const [saleVoidResult, setSaleVoidResult] = useState<{ succeed: boolean; message?: string } | null>(null);
   const [demoQr, setDemoQr] = useState(true);
+  const [paperWidthMm, setPaperWidthMm] = useState<ReceiptPaperWidth>(58);
+
+  useEffect(() => {
+    setPaperWidthMm(readReceiptPaperWidth());
+  }, []);
 
   if (!receipt) return null;
 
@@ -41,7 +51,12 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
       ? displayReceipt.ebarimt.qrData
       : "";
 
-  const handlePrint = () => printReceipt(displayReceipt, { demo: showingDemo });
+  const handlePrint = () => printReceipt(displayReceipt, { demo: showingDemo, paperWidthMm });
+
+  const handlePaperWidthChange = (width: ReceiptPaperWidth) => {
+    setPaperWidthMm(width);
+    saveReceiptPaperWidth(width);
+  };
 
   const handleTerminalVoid = async () => {
     if (!cardLine?.traceno || !cardLine?.terminalId) return;
@@ -138,6 +153,18 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
           )}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
+          <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+            Цаас
+            <select
+              value={paperWidthMm}
+              onChange={(event) => handlePaperWidthChange(event.target.value === "80" ? 80 : 58)}
+              className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 outline-none focus:border-blue-500"
+              aria-label="Баримтын цаасны өргөн"
+            >
+              <option value={58}>58 мм</option>
+              <option value={80}>80 мм</option>
+            </select>
+          </label>
           <button
             type="button"
             onClick={handlePrint}

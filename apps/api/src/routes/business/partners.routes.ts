@@ -3077,6 +3077,62 @@ router.patch(
   },
 );
 
+router.delete(
+  "/partners/:id/members/:userId",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    try {
+      const { id: organizationId, userId } = req.params;
+
+      const target = await prisma.organizationMember.findFirst({
+        where: {
+          organizationId,
+          userId,
+          isActive: true,
+          deletedAt: null,
+        },
+        select: { id: true, role: true, isPrimary: true },
+      });
+
+      if (!target) {
+        return res
+          .status(404)
+          .json({ message: "Нэвтрэх эрхтэй хэрэглэгч олдсонгүй" });
+      }
+
+      if (target.role === "OWNER" || target.isPrimary) {
+        return res.status(409).json({
+          message:
+            "Owner-ийн нэвтрэх эрхийг шууд хасах боломжгүй. Эхлээд өөр хэрэглэгчийг Owner болгоно уу.",
+        });
+      }
+
+      const members = await prisma.$transaction(
+        async (tx: Prisma.TransactionClient) => {
+          await tx.organizationMember.update({
+            where: { id: target.id },
+            data: {
+              isActive: false,
+              isPrimary: false,
+              deletedAt: new Date(),
+            },
+          });
+
+          return getOrganizationLoginMembers(organizationId, tx);
+        },
+      );
+
+      return res.json({ success: true, members });
+    } catch (error) {
+      console.error("revoke vendor login access error", error);
+      return res
+        .status(500)
+        .json({ message: "Нэвтрэх эрх хасахад алдаа гарлаа" });
+    }
+  },
+);
+
 router.patch(
   "/partners/:id/members/:userId",
   requireAuth,

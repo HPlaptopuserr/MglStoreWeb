@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { prisma, Capability } from "@mgl/database";
 import { Permission, isFullAdmin, isKitchenOnlyMember } from "@mgl/types";
+import { retryDisconnectedRead } from "../lib/retry-disconnected-read";
 import type { AuthPayload } from "../middleware/auth";
 
 // ─── Role → Permission mapping ─────────────────────────────────────────
@@ -157,9 +158,9 @@ export async function resolvePermissions(userId: string, platformRole: string): 
  * Check if a user has an active membership in a specific organization.
  */
 export async function hasOrgMembership(userId: string, organizationId: string): Promise<boolean> {
-  const count = await prisma.organizationMember.count({
+  const count = await retryDisconnectedRead(() => prisma.organizationMember.count({
     where: { userId, organizationId, isActive: true },
-  });
+  }));
   return count > 0;
 }
 

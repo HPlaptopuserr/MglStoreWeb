@@ -1,4 +1,9 @@
-import { normalizePosMeasureUnit, type StocktakeLineDto } from "@mgl/types";
+import {
+  normalizePosMeasureUnit,
+  scoreProductForSearch,
+  tokenizeDiscoveryText,
+  type StocktakeLineDto,
+} from "@mgl/types";
 export const stocktakeStatusLabels = {
   DRAFT: "Тоолж байна",
   REVIEW: "Хяналтад",
@@ -29,7 +34,12 @@ export function barcodeIndex(lines: StocktakeLineDto[]) {
   const index = new Map<string, StocktakeLineDto[]>();
   for (const line of lines)
     for (const code of new Set(
-      [line.barcode, ...line.barcodeAliases]
+      [
+        line.barcode,
+        ...line.barcodeAliases,
+        line.product?.barcode,
+        ...(line.product?.barcodeAliases ?? []),
+      ]
         .filter((value): value is string => Boolean(value?.trim()))
         .map((value) => value.trim()),
     ))
@@ -41,15 +51,28 @@ export function matchesStocktakeQuery(
   line: StocktakeLineDto,
   query: string,
 ): boolean {
-  const value = query.trim().toLocaleLowerCase("mn-MN");
-  return (
-    !value ||
-    [line.name, line.barcode, ...line.barcodeAliases].some((text) =>
-      text?.toLocaleLowerCase("mn-MN").includes(value),
-    )
-  );
+  if (!query.trim()) return true;
+  const product = {
+    id: line.productId,
+    name: [line.product?.name, line.name].filter(Boolean).join(" "),
+    sku: line.product?.sku,
+    barcode: line.product?.barcode ?? line.barcode,
+    barcodeAliases: [
+      ...line.barcodeAliases,
+      ...(line.product?.barcodeAliases ?? []),
+    ],
+  };
+  const terms = tokenizeDiscoveryText(query);
+  return terms.length
+    ? terms.every((term) => scoreProductForSearch(product, term) > 0)
+    : scoreProductForSearch(product, query) > 0;
 }
 
+export const stocktakeLineName = (line: StocktakeLineDto) =>
+  line.product?.name?.trim() || line.name;
+
+export const stocktakeLineBarcode = (line: StocktakeLineDto) =>
+  line.product?.barcode?.trim() || line.barcode;
 /** Stable partition: conflicts must be prioritized before pagination. */
 export function prioritizeStocktakeLines<T extends { id: string }>(
   lines: T[],

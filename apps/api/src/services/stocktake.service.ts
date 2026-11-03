@@ -1,6 +1,6 @@
 import { assertStocktakeScope } from "./stocktake-scope";
 export { assertStocktakeScope } from "./stocktake-scope";
-import { createStocktakeReceipts } from "./stocktake-new-product.service";
+import { createStocktakeReceipts, lockStocktakeInventory } from "./stocktake-new-product.service";
 import { Prisma, prisma } from "@mgl/database";
 import type {
   StocktakeCountEdit,
@@ -14,12 +14,9 @@ import {
   StocktakeError,
   stockChanged,
 } from "./stocktake.policy";
+import { stocktakeDetailInclude } from "./stocktake-query";
 
 type Tx = Prisma.TransactionClient;
-const include = {
-  warehouse: { select: { name: true } },
-  lines: { orderBy: { name: "asc" as const } },
-};
 
 export function stocktakeProductFilter(
   organizationId: string,
@@ -27,8 +24,24 @@ export function stocktakeProductFilter(
   return {
     organizationId,
     deletedAt: null,
+    isActive: true,
     isRestaurantMenuItem: false,
     supplyType: "IN_STOCK",
+  };
+}
+
+export function stocktakeInventoryScopeFilter(
+  warehouseId: string | null,
+  includeUnassigned = false,
+): Prisma.ProductWhereInput {
+  if (!warehouseId) return { warehouseInventories: { none: {} } };
+  if (!includeUnassigned)
+    return { warehouseInventories: { some: { warehouseId } } };
+  return {
+    OR: [
+      { warehouseInventories: { some: { warehouseId } } },
+      { warehouseInventories: { none: {} } },
+    ],
   };
 }
 
@@ -37,13 +50,19 @@ async function snapshot(
   organizationId: string,
   warehouseId: string | null,
 ) {
+  const catalogWarehouse = warehouseId
+    ? await tx.organization.findUnique({
+        where: { id: organizationId },
+        select: { catalogWarehouse: { select: { id: true } } },
+      })
+    : null;
+  const includeUnassigned =
+    catalogWarehouse?.catalogWarehouse?.id === warehouseId;
   const products = await tx.product.findMany({
     where: {
       ...stocktakeProductFilter(organizationId),
       managedByWarehouseId: null,
-      ...(warehouseId
-        ? { warehouseInventories: { some: { warehouseId } } }
-        : { warehouseInventories: { none: {} } }),
+      ...stocktakeInventoryScopeFilter(warehouseId, includeUnassigned),
     },
     select: {
       id: true,
@@ -66,13 +85,42 @@ async function snapshot(
     barcode: product.barcode,
     barcodeAliases: product.barcodeAliases,
     unit: product.unit,
-    expected: warehouseId
-      ? product.warehouseInventories[0]!.quantity
-      : product.stock,
-    stockUpdatedAt: warehouseId
-      ? product.warehouseInventories[0]!.updatedAt
-      : product.updatedAt,
+    expected: product.warehouseInventories[0]?.quantity ?? product.stock,
+    stockUpdatedAt:
+      product.warehouseInventories[0]?.updatedAt ?? product.updatedAt,
   }));
+}
+
+export function missingStocktakeLines<T extends { productId: string }>(
+  current: T[],
+  existing: { productId: string }[],
+) {
+  const existingProductIds = new Set(existing.map((line) => line.productId));
+  return current.filter((line) => !existingProductIds.has(line.productId));
+}
+
+async function addMissingStocktakeLines(
+  tx: Tx,
+  session: {
+    id: string;
+    organizationId: string;
+    warehouseId: string | null;
+    lines: { productId: string }[];
+  },
+) {
+  const missing = missingStocktakeLines(
+    await snapshot(tx, session.organizationId, session.warehouseId),
+    session.lines,
+  );
+
+  for (let offset = 0; offset < missing.length; offset += 500)
+    await tx.stocktakeLine.createMany({
+      data: missing
+        .slice(offset, offset + 500)
+        .map((line) => ({ ...line, stocktakeId: session.id })),
+    });
+
+  return missing.length;
 }
 
 /** Read the session and current stock in one consistent snapshot for review. */
@@ -81,7 +129,7 @@ export function inspectStocktake(organizationId: string, id: string) {
     async (tx) => {
       const session = await tx.stocktake.findFirst({
         where: { id, organizationId },
-        include,
+        include: stocktakeDetailInclude,
       });
       if (!session) throw new StocktakeError("Тооллого олдсонгүй", 404);
       if (session.status === "APPROVED" || session.status === "CANCELLED")
@@ -119,7 +167,7 @@ export function createStocktake(input: {
       await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id" = ${input.organizationId} FOR UPDATE`;
       const existing = await tx.stocktake.findUnique({
         where: { id: input.id },
-        include,
+        include: stocktakeDetailInclude,
       });
       if (existing) {
         if (
@@ -162,11 +210,45 @@ export function createStocktake(input: {
         });
       return tx.stocktake.findUniqueOrThrow({
         where: { id: input.id },
-        include,
+        include: stocktakeDetailInclude,
       });
     },
     { isolationLevel: "Serializable", timeout: 30000 },
   );
+}
+
+/**
+ * Remove products that became ineligible after a draft stocktake was opened.
+ * This keeps existing drafts aligned with the active POS catalog without
+ * resetting counts for otherwise unchanged products.
+ */
+export function loadStocktake(input: { id: string; organizationId: string }) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT "id" FROM "Stocktake" WHERE "id" = ${input.id} AND "organizationId" = ${input.organizationId} FOR UPDATE`;
+    const session = await tx.stocktake.findFirst({
+      where: { id: input.id, organizationId: input.organizationId },
+      include: stocktakeDetailInclude,
+    });
+    if (!session || session.status !== "DRAFT") return session;
+
+    const removed = await tx.stocktakeLine.deleteMany({
+      where: {
+        stocktakeId: session.id,
+        NOT: {
+          product: { is: stocktakeProductFilter(input.organizationId) },
+        },
+      },
+    });
+    const added =
+      session.kind === "FULL" ? await addMissingStocktakeLines(tx, session) : 0;
+    if (!removed.count && !added) return session;
+
+    return tx.stocktake.update({
+      where: { id: session.id },
+      data: { version: { increment: 1 } },
+      include: stocktakeDetailInclude,
+    });
+  });
 }
 
 export type StocktakeAction =
@@ -174,6 +256,7 @@ export type StocktakeAction =
   | "submit"
   | "reopen"
   | "refresh"
+  | "convert_full"
   | "approve"
   | "cancel";
 export function mutateStocktake(input: {
@@ -189,13 +272,14 @@ export function mutateStocktake(input: {
       await tx.$queryRaw`SELECT "id" FROM "Stocktake" WHERE "id" = ${input.id} AND "organizationId" = ${input.organizationId} FOR UPDATE`;
       const session = await tx.stocktake.findFirst({
         where: { id: input.id, organizationId: input.organizationId },
-        include,
+        include: stocktakeDetailInclude,
       });
       if (!session) throw new StocktakeError("Тооллого олдсонгүй", 404);
       // Retried approvals must never create a second ledger adjustment.
       if (
         (input.action === "approve" && session.status === "APPROVED") ||
-        (input.action === "cancel" && session.status === "CANCELLED")
+        (input.action === "cancel" && session.status === "CANCELLED") ||
+        (input.action === "convert_full" && session.kind === "FULL")
       )
         return session;
       if (session.version !== input.version)
@@ -278,6 +362,13 @@ export function mutateStocktake(input: {
               stocktakeId: session.id,
             })),
           });
+      } else if (input.action === "convert_full") {
+        if (status !== "DRAFT")
+          throw new StocktakeError(
+            "Хяналтад байгаа тооллогыг эхлээд засварт буцаана уу",
+            409,
+          );
+        await addMissingStocktakeLines(tx, session);
       } else if (input.action === "approve") {
         if (status !== "REVIEW")
           throw new StocktakeError("Эхлээд хяналтад илгээнэ үү", 409);
@@ -285,6 +376,9 @@ export function mutateStocktake(input: {
         const counted = session.lines
           .filter((line) => line.counted !== null)
           .sort((a, b) => a.productId.localeCompare(b.productId));
+        await lockStocktakeInventory(tx, session.organizationId, counted
+          .filter(line => line.counted! > line.expected)
+          .flatMap(line => line.receiptRegisterId ? [line.receiptRegisterId] : []));
         const ids = counted.map((line) => line.productId);
         // Product locks also serialize warehouse aggregate updates against other scopes.
         await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`;
@@ -340,12 +434,13 @@ export function mutateStocktake(input: {
         where: { id: session.id },
         data: {
           status,
+          ...(input.action === "convert_full" ? { kind: "FULL" as const } : {}),
           version: { increment: 1 },
           ...(status === "APPROVED"
             ? { approvedById: input.actorId, approvedAt: new Date() }
             : {}),
         },
-        include,
+        include: stocktakeDetailInclude,
       });
     },
     { isolationLevel: "Serializable", timeout: 30000 },

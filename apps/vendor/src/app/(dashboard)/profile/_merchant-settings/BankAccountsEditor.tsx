@@ -68,7 +68,7 @@ export function BankAccountsEditor({
       {!isEditing && loadState === "ready" && savedAccounts.length === 0 && (
         <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
           {managedBySystem
-            ? "Төлбөрийн холболт идэвхтэй. Дансны дэлгэрэнгүй мэдээлэл бүртгэгдээгүй байна. Байгууллагын эзэмшигчтэй холбогдоно уу."
+            ? "Орлого хүлээн авах дансыг Minu merchant тохиргоо удирдана. Энэ хэсэгт данс нэмэх шаардлагагүй."
             : "Банкны данс бүртгэгдээгүй байна. QR төлбөр үүсгэхийн тулд данс нэмнэ үү."}
         </div>
       )}

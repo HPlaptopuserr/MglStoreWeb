@@ -1,3 +1,4 @@
+import { gzipSync } from "node:zlib";
 import { createHash } from "node:crypto";
 import { prisma, Prisma } from "@mgl/database";
 
@@ -24,7 +25,7 @@ async function readState(tx: Tx, organizationId: string) {
 }
 
 /** Preserve BOTH portal baselines explicitly. Never transfer one side's quantity into the other. */
-export async function splitVendorWarehouseCatalog(input: { organizationId: string; expectedFingerprint?: string; apply?: boolean }) {
+export async function splitVendorWarehouseCatalog(input: { organizationId: string; expectedFingerprint?: string; apply?: boolean; rollbackAfterValidation?: boolean }) {
   return prisma.$transaction(async tx => {
     if (input.apply) {
       await tx.$queryRaw`SELECT id FROM "Organization" WHERE id=${input.organizationId} FOR UPDATE`;
@@ -59,7 +60,17 @@ export async function splitVendorWarehouseCatalog(input: { organizationId: strin
     if (input.expectedFingerprint !== report.fingerprint) throw new Error("Preview is stale; no changes applied");
     if (blockers.length) throw new Error(blockers.join("; "));
     if (!products.length) return { ...report, applied: false, auditId: null };
-    const audit = await tx.auditLog.create({ data: { action: "MERCHANT_CONFIGURATION_CHANGED", meta: json({ operation: "SPLIT_CATALOG_PRESERVE_BOTH", version: 1, before, report }) } });
+    const compressed = gzipSync(Buffer.from(JSON.stringify(before)));
+    const audit = await tx.auditLog.create({ data: { action: "MERCHANT_CONFIGURATION_CHANGED", meta: json({ operation: "SPLIT_CATALOG_PRESERVE_BOTH", version: 2, report }) } });
+    const snapshotParts: string[] = [];
+    for (let offset = 0; offset < compressed.length; offset += 100_000) {
+      const part = compressed.subarray(offset, offset + 100_000);
+      const row = await tx.auditLog.create({ data: { action: "MERCHANT_CONFIGURATION_CHANGED", meta: json({
+        operation: "SPLIT_CATALOG_SNAPSHOT_PART", auditId: audit.id, offset,
+        sha256: createHash("sha256").update(part).digest("hex"), payload: part.toString("base64"),
+      }) } });
+      snapshotParts.push(row.id);
+    }
     const target = targets[0] ?? await tx.warehouse.create({ data: { name: `${before.organization.name} - Үндсэн агуулах`,
       address: before.organization.address || "Vendor inventory", type: "VENDOR_INTERNAL", organizations: { create: { organizationId: input.organizationId } } } });
     const mappings: { vendorProductId: string; warehouseProductId: string; warehouseId: string; stock: number }[] = [];
@@ -103,7 +114,8 @@ export async function splitVendorWarehouseCatalog(input: { organizationId: strin
       const inventory = await tx.warehouseInventory.findUniqueOrThrow({ where: { warehouseId_productId: { warehouseId: mapping.warehouseId, productId: mapping.warehouseProductId } } });
       if (inventory.quantity !== mapping.stock) throw new Error("Warehouse stock changed; rolling back");
     }
-    await tx.auditLog.update({ where: { id: audit.id }, data: { meta: json({ operation: "SPLIT_CATALOG_PRESERVE_BOTH", version: 1, before, report, mappings, targetId: target.id, afterFingerprint: hash(after) }) } });
+    await tx.auditLog.update({ where: { id: audit.id }, data: { meta: json({ operation: "SPLIT_CATALOG_PRESERVE_BOTH", version: 2, snapshotEncoding: "gzip-base64-parts", snapshotParts, beforeFingerprint: hash(before), report, mappings, targetId: target.id, afterFingerprint: hash(after) }) } });
+    if (input.rollbackAfterValidation) throw new Error("CATALOG_REHEARSAL_PASSED_ROLLED_BACK");
     return { ...report, applied: true, auditId: audit.id };
   }, { isolationLevel: "Serializable", timeout: 120000 });
 }

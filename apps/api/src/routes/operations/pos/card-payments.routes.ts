@@ -1,3 +1,5 @@
+import { isDatabaseUnavailable } from "../../../lib/database-availability";
+import { retryDisconnectedRead } from "../../../lib/retry-disconnected-read";
 import { randomUUID } from "node:crypto";
 import { reconcileMinuCardAttempt } from "../../../services/minu-card-reconciliation";
 import { isPaymentRequestId, matchesPaymentRequest } from "../../../services/payment-request-identity";
@@ -830,13 +832,12 @@ router.post("/pos/payments/push-ecr/settlement", async (req, res) => {
 });
 
 router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
-  const actor = await requirePosUser(req, res);
-  if (!actor) return;
-
   const id = String(req.params.attemptId || "");
   res.setHeader("Cache-Control", "no-store");
   try {
-    const attempt = await prisma.cardPaymentAttempt.findUnique({ where: { id } });
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+    const attempt = await retryDisconnectedRead(() => prisma.cardPaymentAttempt.findUnique({ where: { id } }));
     if (!attempt) return res.status(404).json({ message: "Card attempt олдсонгүй" });
     if (actor.role !== "ADMIN" && attempt.organizationId && !(await hasOrgMembership(actor.id, attempt.organizationId))) {
       return res.status(403).json({ message: "Өөр байгууллагын card attempt харах боломжгүй" });
@@ -885,6 +886,13 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
     });
   } catch (error) {
     console.error("card status error", error);
+    if (isDatabaseUnavailable(error)) {
+      res.setHeader("Retry-After", "5");
+      return res.status(503).json({
+        code: "SERVICE_UNAVAILABLE",
+        message: "Төлбөрийн төлөв шалгах сервер түр саатлаа. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү.",
+      });
+    }
     return res.status(500).json({ message: "Card статус авахад алдаа гарлаа" });
   }
 });
