@@ -18,6 +18,7 @@ import visualSearchRoutes from "./routes/catalog/visual-search.routes";
 import { startVisualSearchWorker } from "./services/visual-search/visual-search-worker";
 
 import express from "express";
+import nomadPaymentRoutes from "./routes/public/nomad-payment.routes";
 import multer from "multer";
 import cors from "cors";
 import helmet from "helmet";
@@ -94,6 +95,8 @@ app.use(
     crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
+
+app.use("/pay", nomadPaymentRoutes);
 
 const defaultAllowedOrigins = [
   "http://mglstore.mn:3002",
