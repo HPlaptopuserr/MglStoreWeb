@@ -51,7 +51,8 @@ test("Nomad payment validates amounts, locks the recipient, renders safe bank li
     assert.match(html, /href="khanbank:\/\/q/);
     assert.match(html, /Khan &lt;bank&gt;/);
     assert.doesNotMatch(html, /javascript:|digipay:\/\/payment\/null|test-password|test-user/);
-    assert.equal((await submit("12500", requestId)).status, 200);
+    // Browsers may omit the serialized origin under privacy/referrer policies.
+    assert.equal((await submit("12500", requestId, "null")).status, 200);
     assert.equal(created, 1);
     assert.equal((await submit("10000", requestId)).status, 409);
     merchantCode = "OTHER_MERCHANT";

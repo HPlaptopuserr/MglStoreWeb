@@ -32,7 +32,7 @@ function sendPage(res: Response, status: number, options: Omit<Parameters<typeof
   res.set({
     "Cache-Control": "no-store",
     "Content-Security-Policy": `default-src 'none'; style-src 'nonce-${nonce}'; img-src data:; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`,
-    "Referrer-Policy": "no-referrer",
+    "Referrer-Policy": "same-origin",
     "X-Content-Type-Options": "nosniff",
   });
   res.status(status).type("html").send(renderNomadPaymentPage({ nonce, ...options }));
@@ -57,7 +57,8 @@ export function createNomadPaymentRouter(deps: PaymentDependencies = dependencie
       return;
     }
     const origin = req.get("origin");
-    if (origin && origin !== `${req.protocol}://${req.get("host")}`) {
+    if (req.get("sec-fetch-site") === "cross-site" ||
+        (origin && origin !== "null" && origin !== `${req.protocol}://${req.get("host")}`)) {
       sendPage(res, 403, { error: "Төлбөрийн хуудсаа дахин нээгээд оролдоно уу." });
       return;
     }
