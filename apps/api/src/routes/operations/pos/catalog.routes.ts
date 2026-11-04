@@ -955,7 +955,11 @@ router.get("/pos/credit-sales", async (req, res) => {
         .json({ message: "Энэ байгууллагын зээлийн жагсаалт харах эрхгүй" });
     }
 
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
+    const requestedLimit = Number(req.query.limit || 50);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(100, Math.max(1, Math.floor(requestedLimit)))
+      : 50;
+    const cursor = String(req.query.cursor || "").trim();
     const credits = await prisma.posCreditSale.findMany({
       where: {
         organizationId: effectiveOrgId,
@@ -1007,12 +1011,14 @@ router.get("/pos/credit-sales", async (req, res) => {
           },
         },
       },
-      orderBy: { createdAt: "desc" },
-      take: limit,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: limit + 1,
     });
 
     return res.json({
-      credits: credits.map((credit) => ({
+      nextCursor: credits.length > limit ? credits[limit - 1].id : null,
+      credits: credits.slice(0, limit).map((credit) => ({
         ...mapCreditSaleResponse({
           ...credit,
           createdAt: credit.sale.createdAt,
@@ -1067,7 +1073,11 @@ router.get("/pos/credit-customers", async (req, res) => {
       });
     }
 
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit || 50)));
+    const requestedLimit = Number(req.query.limit || 50);
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(100, Math.max(1, Math.floor(requestedLimit)))
+      : 50;
+    const cursor = String(req.query.cursor || "").trim();
     const customers = await prisma.posCreditCustomer.findMany({
       where: {
         organizationId: effectiveOrgId,
@@ -1102,12 +1112,14 @@ router.get("/pos/credit-customers", async (req, res) => {
         createdAt: true,
         updatedAt: true,
       },
-      orderBy: { updatedAt: "desc" },
-      take: limit,
+      orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      take: limit + 1,
     });
 
     return res.json({
-      customers: customers.map((customer) => ({
+      nextCursor: customers.length > limit ? customers[limit - 1].id : null,
+      customers: customers.slice(0, limit).map((customer) => ({
         ...customer,
         createdAt: customer.createdAt.toISOString(),
         updatedAt: customer.updatedAt.toISOString(),

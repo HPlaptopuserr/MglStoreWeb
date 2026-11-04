@@ -14,6 +14,7 @@ import { cancelQPayInvoice } from "@/features/pos/api/qpay";
 import { normalizeCashPayment, summarizeCashPayments, type CashPaymentDetails } from "@mgl/types";
 import { VendorNavigationActions } from "@/features/session/VendorNavigationActions";
 import { assertRetailCheckoutContext } from "@/features/pos/utils/retail-register-policy";
+import { getCreditList } from "@/features/pos/api/get-credit-list";
 import { fetchOrgRegisters } from "@/features/pos/api/register";
 import { receiptAction } from "@/features/pos/utils/receipt-flow";
 import { ReceiptBuyerChoice } from "@/features/pos/components/ReceiptBuyerChoice";
@@ -233,14 +234,6 @@ type PosCreditRepaymentSelection = PosCreditListItem & {
   isBulk?: boolean;
   creditIds?: string[];
   credits?: PosCreditListItem[];
-};
-
-type PosCreditListResponse = {
-  credits: PosCreditListItem[];
-};
-
-type PosCreditBorrowerListResponse = {
-  customers: PosCreditBorrower[];
 };
 
 type CreditRepaymentEbarimtReceiptOptions = {
@@ -738,18 +731,13 @@ export default function PosDemoPage() {
     setCreditSalesLoading(true);
     setCreditSalesError("");
     try {
-      const params = new URLSearchParams({ organizationId, limit: "100" });
+      const params = new URLSearchParams({ organizationId });
       if (registerBranchId) params.set("branchId", registerBranchId);
-
-      const res = await authFetch(`${API}/pos/credit-sales?${params.toString()}`);
-      const data = (await res.json().catch(() => ({}))) as Partial<PosCreditListResponse> & { message?: string };
-      if (!res.ok) {
-        throw new Error(data.message || "Зээлийн жагсаалт авахад алдаа гарлаа");
-      }
-      setCreditSales(Array.isArray(data.credits) ? data.credits : []);
+      const credits = await getCreditList<PosCreditListItem>("credits", params);
+      setCreditSales(credits);
       setExpandedCreditCustomerKey(null);
-    } catch (error: any) {
-      setCreditSalesError(error?.message || "Зээлийн жагсаалт авахад алдаа гарлаа");
+    } catch (error: unknown) {
+      setCreditSalesError(error instanceof Error ? error.message : "Зээлийн жагсаалт авахад алдаа гарлаа");
     } finally {
       setCreditSalesLoading(false);
     }
@@ -761,15 +749,9 @@ export default function PosDemoPage() {
     }
 
     try {
-      const params = new URLSearchParams({ organizationId, limit: "100" });
-      const res = await authFetch(`${API}/pos/credit-customers?${params.toString()}`);
-      const data = (await res.json().catch(() => ({}))) as Partial<PosCreditBorrowerListResponse> & {
-        message?: string;
-      };
-      if (!res.ok) {
-        throw new Error(data.message || "Зээлдэгчийн жагсаалт авахад алдаа гарлаа");
-      }
-      setCreditBorrowers(Array.isArray(data.customers) ? data.customers : []);
+      const params = new URLSearchParams({ organizationId });
+      const customers = await getCreditList<PosCreditBorrower>("customers", params);
+      setCreditBorrowers(customers);
     } catch (error) {
       console.warn("Failed to load POS credit borrowers", error);
       setCreditBorrowers([]);
