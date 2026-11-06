@@ -27,7 +27,6 @@ import {
   ReelUploadError,
   REEL_SOURCE_MAX_BYTES,
   REEL_PART_BYTES,
-  REEL_MAX_DURATION_SECONDS,
 } from "../../services/reel-upload/policy";
 import { getReelById } from "../../services/reel.service";
 
@@ -63,7 +62,7 @@ export function createReelUploadsRouter(
       protocol: "private-parts-v1",
       maxSourceBytes: REEL_SOURCE_MAX_BYTES,
       partSize: REEL_PART_BYTES,
-      maxDurationSeconds: REEL_MAX_DURATION_SECONDS,
+      maxDurationSeconds: null,
     });
   });
   router.post(

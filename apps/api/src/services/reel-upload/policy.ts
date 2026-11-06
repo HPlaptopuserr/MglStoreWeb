@@ -1,7 +1,7 @@
-export const REEL_SOURCE_MAX_BYTES = 1024 * 1024 * 1024;
+export const REEL_SOURCE_MAX_BYTES = 2 ** 31 - 1;
 export const REEL_PART_BYTES = 4 * 1024 * 1024;
-export const REEL_OUTPUT_MAX_BYTES = 45 * 1024 * 1024;
-export const REEL_MAX_DURATION_SECONDS = 180;
+export const REEL_OUTPUT_MAX_BYTES = 1024 * 1024 * 1024;
+// Database Int bounds source size; duration is validated as media, not capped.
 export const REEL_UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
 export const REEL_MIME_TYPES = new Set([
   "video/mp4",

@@ -33,6 +33,20 @@ test("files above 50 MB are accepted as bounded source parts, with an exact fina
   assert.throws(() => expectedPartSize(size, 20));
 });
 
+test("large 4K source metadata above one GiB is accepted without allocating file bytes", () => {
+  const size = 1536 * 1024 * 1024;
+  assert.equal(
+    parseNewReelUpload({
+      uploadId: randomUUID(),
+      fileName: "4k.mov",
+      mimeType: "video/quicktime",
+      sizeBytes: size,
+    }).sizeBytes,
+    size,
+  );
+  assert.equal(expectedPartSize(size, 383), REEL_PART_BYTES);
+});
+
 test("invalid source and metadata cannot create upload sessions", () => {
   const input = {
     uploadId: randomUUID(),

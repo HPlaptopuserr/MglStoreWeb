@@ -22,6 +22,7 @@ import {
   type StoredReelVideo,
 } from "../../services/reel-storage.service";
 
+import { REEL_SOURCE_MAX_BYTES } from "../../services/reel-upload/policy";
 import { REEL_VIDEO_MAX_BYTES } from "../../services/reel-upload-limits";
 
 export const PERSONAL_REEL_MAX_BYTES = REEL_VIDEO_MAX_BYTES;
@@ -145,10 +146,10 @@ export function createPersonalReelsRouter(
   router.get("/me/reels/capabilities", deps.authenticate, (_req, res) => {
     res.json({
       enabled: true,
-      protocol: 'private-parts-v1',
-      maxSourceBytes: 1024 * 1024 * 1024,
+      protocol: "private-parts-v1",
+      maxSourceBytes: REEL_SOURCE_MAX_BYTES,
       maxBytes: PERSONAL_REEL_MAX_BYTES,
-      maxDurationSeconds: 180,
+      maxDurationSeconds: null,
       visibility: ["PUBLIC", "PRIVATE"],
     });
   });
@@ -247,12 +248,10 @@ export function createPersonalReelsRouter(
           existing = await deps.find(id);
         } catch {
           // An unavailable lookup is not proof the transaction failed.
-          return res
-            .status(503)
-            .json({
-              message:
-                "Видео хадгалсан эсэхийг шалгаж чадсангүй. Түр хүлээгээд дахин оролдоорой.",
-            });
+          return res.status(503).json({
+            message:
+              "Видео хадгалсан эсэхийг шалгаж чадсангүй. Түр хүлээгээд дахин оролдоорой.",
+          });
         }
         if (owns(existing, user.userId)) {
           try {

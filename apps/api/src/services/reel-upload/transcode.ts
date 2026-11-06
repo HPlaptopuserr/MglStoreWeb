@@ -3,11 +3,7 @@ import fs from "node:fs/promises";
 import { promisify } from "node:util";
 import ffmpegStatic from "ffmpeg-static";
 import ffprobeInstaller from "@ffprobe-installer/ffprobe";
-import {
-  REEL_MAX_DURATION_SECONDS,
-  REEL_OUTPUT_MAX_BYTES,
-  ReelUploadError,
-} from "./policy";
+import { REEL_OUTPUT_MAX_BYTES, ReelUploadError } from "./policy";
 
 const execute = promisify(execFile);
 export const ffmpegPath = process.env.FFMPEG_PATH || ffmpegStatic;
@@ -45,14 +41,13 @@ export async function probeVideo(file: string): Promise<VideoProbe> {
     !video ||
     !Number.isFinite(duration) ||
     duration <= 0 ||
-    duration > REEL_MAX_DURATION_SECONDS + 0.1 ||
     !video.width ||
     !video.height ||
-    video.width > 4096 ||
-    video.height > 4096 ||
-    video.width * video.height > 4096 * 2160
+    video.width > 8192 ||
+    video.height > 8192 ||
+    video.width * video.height > 8192 * 2160
   ) {
-    throw new ReelUploadError("3 мин хүртэлх, 4K-аас ихгүй видео сонгоно уу.");
+    throw new ReelUploadError("Видео бичлэгийн мэдээллийг уншиж чадсангүй.");
   }
   return { duration, width: video.width, height: video.height };
 }
@@ -62,7 +57,7 @@ export async function transcodeReel(
   signal?: AbortSignal,
 ): Promise<VideoProbe & { size: number }> {
   if (!ffmpegPath) throw new Error("Video encoder unavailable");
-  await probeVideo(input);
+  const source = await probeVideo(input);
   await execute(
     ffmpegPath,
     [
@@ -88,25 +83,21 @@ export async function transcodeReel(
       "-map_chapters",
       "-1",
       "-vf",
-      "scale=w='if(gte(iw,ih),min(1280,iw),min(720,iw))':h='if(gte(iw,ih),min(720,ih),min(1280,ih))':force_original_aspect_ratio=decrease:force_divisible_by=2",
+      "scale=w='if(gte(iw,ih),min(1920,iw),min(1080,iw))':h='if(gte(iw,ih),min(1080,ih),min(1920,ih))':force_original_aspect_ratio=decrease:force_divisible_by=2,fps=30",
       "-c:v",
       "libx264",
       "-preset",
       "fast",
       "-pix_fmt",
       "yuv420p",
-      "-r",
-      "30",
-      "-b:v",
-      "1600k",
-      "-maxrate",
-      "1600k",
-      "-bufsize",
-      "3200k",
+      "-crf",
+      "20",
+      "-fs",
+      String(REEL_OUTPUT_MAX_BYTES + 1024 * 1024),
       "-c:a",
       "aac",
       "-b:a",
-      "96k",
+      "192k",
       "-ac",
       "2",
       "-ar",
@@ -117,16 +108,28 @@ export async function transcodeReel(
       "1",
       "-movflags",
       "+faststart",
-      "-t",
-      "180",
       output,
     ],
-    { signal, timeout: 10 * 60 * 1000, maxBuffer: 1024 * 1024 },
+    {
+      signal,
+      timeout: Math.min(
+        20 * 60 * 60 * 1000,
+        Math.max(10 * 60 * 1000, source.duration * 20 * 1000),
+      ),
+      maxBuffer: 1024 * 1024,
+    },
   );
   const size = (await fs.stat(output)).size;
   if (size <= 0 || size > REEL_OUTPUT_MAX_BYTES)
     throw new ReelUploadError(
       "Видео боловсруулж чадсангүй. Өөр видео сонгоно уу.",
     );
-  return { ...(await probeVideo(output)), size };
+  const media = await probeVideo(output);
+  // Never publish a partial movie if the encoder reached the disk/storage budget.
+  if (media.duration + 0.5 < source.duration) {
+    throw new ReelUploadError(
+      "Видео бүрэн боловсруулагдсангүй. Серверийн багтаамжийг шалгана уу.",
+    );
+  }
+  return { ...media, size };
 }

@@ -45,6 +45,12 @@ export function parseNewReelUpload(value: unknown): NewReelUpload {
           .map((value) => value.trim())
           .filter(Boolean)
       : [];
+  if (Number.isSafeInteger(sizeBytes) && sizeBytes > REEL_SOURCE_MAX_BYTES) {
+    throw new ReelUploadError(
+      "Энэ видео серверийн нэг файлын багтаамжаас их байна.",
+      413,
+    );
+  }
   if (
     !reelUploadId.test(id) ||
     !fileName ||
@@ -59,9 +65,7 @@ export function parseNewReelUpload(value: unknown): NewReelUpload {
     tags.length > 20 ||
     tags.some((tag) => tag.length > 60)
   ) {
-    throw new ReelUploadError(
-      "1 GB хүртэлх MP4, MOV эсвэл WebM видео болон тайлбараа шалгана уу.",
-    );
+    throw new ReelUploadError("Видео файл болон тайлбараа шалгана уу.");
   }
   const organizationId = text("organizationId") || null;
   if (organizationId && visibility === "PRIVATE")

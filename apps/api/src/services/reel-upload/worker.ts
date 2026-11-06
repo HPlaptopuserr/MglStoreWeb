@@ -74,7 +74,8 @@ async function processUpload(session: ReelUploadSession, leaseToken: string) {
       if (!stillOwned || abort.signal.aborted)
         throw new Error("Upload lease lost");
       stored = await storeReelVideo({
-        buffer: await fs.readFile(output),
+        filePath: output,
+        signal: abort.signal,
         mimeType: "video/mp4",
         originalName: "video.mp4",
         authorId: session.authorId,
@@ -101,7 +102,7 @@ async function processUpload(session: ReelUploadSession, leaseToken: string) {
         metadata: {
           uploadProtocol: "private-parts-v1",
           sourceBytes: session.sizeBytes,
-          encoder: "h264-aac-720p",
+          encoder: "h264-aac-1080p-crf20",
         },
       });
     } else if (

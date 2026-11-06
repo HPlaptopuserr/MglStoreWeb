@@ -1,8 +1,10 @@
 # Resumable reel uploads
 
 Personal MGL uploads and organization uploads in the web/org portals use the
-same authenticated `private-parts-v1` protocol. A source can be up to 1 GiB and
-180 seconds; only the processed, validated video is published.
+same authenticated `private-parts-v1` protocol. The mobile picker has no file-size or duration restriction. The server accepts
+sources up to 2,147,483,647 bytes (the existing database Int capacity), with no
+reel duration cutoff; only complete, validated video is published. This remains a
+finite storage/compute budget, not unlimited hosting.
 
 The API creates an account-bound upload session, fixes its audience and metadata,
 and issues short-lived signed URLs for immutable 4 MiB source parts. Sources
@@ -16,9 +18,12 @@ links to expire.
 
 After all parts match their expected sizes, a durable database job assembles
 them on temporary disk. FFprobe validates real media/duration/dimensions;
-FFmpeg converts to H.264/AAC MP4, at most 720p/30fps, 1.6 Mbps video plus 96 kbps
-audio, with fast-start playback. The output must be below 45 MiB, so the existing
-50 MiB per-object storage limit remains sufficient. The worker publishes through
+FFmpeg converts to H.264/AAC MP4, at most 1080p/30fps, CRF 20 video plus 192 kbps
+audio, with fast-start playback. Original 4K/HEVC sources are accepted, but the
+published version is 1080p, not a lossless original. Duration is never silently
+cut to three minutes. Encoder output is bounded to 1 GiB and checked for full
+duration before publication. Output uploads use TUS with 6 MiB chunks and
+HEAD-based offset recovery, without loading the entire video into RAM. The worker publishes through
 the existing createReel service, preserving review and PRIVATE visibility.
 Sources and temporary files are cleaned up; failed jobs can retry without
 re-uploading. Account ownership, organization permissions, database leases,
@@ -35,8 +40,14 @@ and a stable Reel ID prevent cross-account access and duplicate publication.
 3. Production requires SUPABASE_URL and SUPABASE_SERVICE_KEY. The staging bucket
    is created privately, limited to 4 MiB and application/octet-stream. An
    existing bucket is checked for privacy. Configure `reels` and `private-reels`
-   as before; their limits must allow 45 MiB MP4 output. No paid plan is required
-   merely to accept larger source videos, since source parts stay below 4 MiB.
+   with their existing public/private visibility. For large high-quality output,
+   set the Supabase project global file-size limit to at least 1 GiB **before
+   rollout**; the worker raises an existing bucket limit to 1 GiB only when output exceeds
+   that bucket limit, preserving
+   its privacy. A Supabase Free project (50 MiB global maximum) cannot provide
+   this output capacity. Do not upgrade billing automatically. The API returns
+   a recoverable storage-configuration error if the provider refuses the limit.
+   Source parts remain 4 MiB.
 4. One job runs at a time per worker process, with two encoder threads and a
    renewable database lease. The API starts an embedded worker by default.
    For higher upload volume use `pnpm --filter @mgl/api reels:worker` in a
@@ -47,7 +58,12 @@ and a stable Reel ID prevent cross-account access and duplicate publication.
 5. Deploy the web/org portals and mobile update. Older mobile/server versions
    retain their advertised multipart contract during rollout. The new app does
    not attempt a large multipart upload against a server that lacks the new
-   protocol.
+   protocol. Deploy this API update before removing mobile duration/size limits.
+   Mobile start/complete/status calls and part transfers retry transient failures;
+   status polling no longer incorrectly fails after 15 minutes of processing.
+   iOS/Android may suspend an app in the background: this is resumable foreground
+   transfer, not a native background upload service. Server processing continues
+   after the app closes. Reselect the same file/details to reconnect to its job.
 
 ## Verification
 
@@ -68,3 +84,6 @@ The pipeline handles durable upload/processing; it is not an HLS adaptive bitrat
 service. Output is a fast-start MP4 served through existing storage/CDN playback.
 Sources: TikTok's Media Transfer Guide and Supabase's resumable/signed-upload
 and file-limit documentation.
+
+Storage requirements: https://supabase.com/docs/guides/storage/uploads/file-limits
+TUS protocol: https://supabase.com/docs/guides/storage/uploads/resumable-uploads

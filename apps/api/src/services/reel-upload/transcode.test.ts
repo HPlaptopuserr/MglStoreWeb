@@ -78,7 +78,7 @@ test("a real MOV over 50 MB becomes a validated, bounded MP4 without loading the
   }
 });
 
-test("nonvideo input and media over three minutes are rejected before publication", async () => {
+test("long videos retain their full duration and nonvideo input is rejected", async () => {
   assert.ok(ffmpegPath);
   const folder = await fs.mkdtemp(path.join(os.tmpdir(), "mgl-invalid-video-"));
   try {
@@ -104,11 +104,57 @@ test("nonvideo input and media over three minutes are rejected before publicatio
       ],
       { timeout: 30000 },
     );
-    await assert.rejects(probeVideo(source));
+    assert.ok((await probeVideo(source)).duration >= 181);
+    const encoded = await transcodeReel(
+      source,
+      path.join(folder, "long-ready.mp4"),
+    );
+    assert.ok(encoded.duration >= 180.9);
     await fs.writeFile(path.join(folder, "bad.mp4"), "not a video");
     await assert.rejects(
       transcodeReel(path.join(folder, "bad.mp4"), path.join(folder, "out.mp4")),
     );
+  } finally {
+    await fs.rm(folder, { recursive: true, force: true });
+  }
+});
+
+test("portrait 4K 10-bit HEVC from a MOV is published as full-length 1080p H264", async () => {
+  assert.ok(ffmpegPath);
+  const folder = await fs.mkdtemp(path.join(os.tmpdir(), "mgl-4k-hevc-"));
+  try {
+    const source = path.join(folder, "iphone.mov");
+    await execute(
+      ffmpegPath,
+      [
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=size=2160x3840:rate=2",
+        "-t",
+        "1",
+        "-c:v",
+        "libx265",
+        "-preset",
+        "ultrafast",
+        "-pix_fmt",
+        "yuv420p10le",
+        "-x265-params",
+        "pools=1:frame-threads=1",
+        "-threads",
+        "1",
+        source,
+      ],
+      { timeout: 60000 },
+    );
+    const media = await transcodeReel(source, path.join(folder, "ready.mp4"));
+    assert.equal(media.width, 1080);
+    assert.equal(media.height, 1920);
+    assert.ok(media.duration >= 0.95);
   } finally {
     await fs.rm(folder, { recursive: true, force: true });
   }

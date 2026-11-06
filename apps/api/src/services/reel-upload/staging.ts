@@ -3,10 +3,16 @@ import { createReadStream, createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { setTimeout as pause } from "node:timers/promises";
 import { pipeline } from "node:stream/promises";
 import { getSupabase } from "../../lib/supabase";
 import { LOCAL_REELS_UPLOAD_DIR } from "../reel-storage.service";
-import { REEL_PART_BYTES, ReelUploadError, type UploadPart } from "./policy";
+import {
+  REEL_PART_BYTES,
+  REEL_SOURCE_MAX_BYTES,
+  ReelUploadError,
+  type UploadPart,
+} from "./policy";
 
 const bucket = process.env.SUPABASE_REEL_STAGING_BUCKET || "reel-upload-parts";
 const localRoot = path.join(LOCAL_REELS_UPLOAD_DIR, "..", "reel-upload-parts");
@@ -19,7 +25,11 @@ function prefix(authorId: string, id: string): string {
   return `${authorId}/${id}`;
 }
 function objectName(authorId: string, id: string, index: number): string {
-  if (!Number.isSafeInteger(index) || index < 0 || index > 256)
+  if (
+    !Number.isSafeInteger(index) ||
+    index < 0 ||
+    index >= Math.ceil(REEL_SOURCE_MAX_BYTES / REEL_PART_BYTES)
+  )
     throw new ReelUploadError("Буруу хэсэг.");
   return `${prefix(authorId, id)}/${index}.part`;
 }
@@ -173,23 +183,54 @@ export async function assembleParts(
           await output.writeFile(chunk as Buffer);
         }
       } else {
-        const signed = await getSupabase()
-          .storage.from(bucket)
-          .createSignedUrl(name, 600);
-        if (signed.error || !signed.data)
-          throw new Error("Source part unavailable");
-        const response = await fetch(signed.data.signedUrl, {
-          signal: signal
-            ? AbortSignal.any([signal, AbortSignal.timeout(120000)])
-            : AbortSignal.timeout(120000),
-        });
-        if (!response.ok || !response.body)
-          throw new Error("Source download failed");
-        for await (const chunk of Readable.fromWeb(
-          response.body as import("node:stream/web").ReadableStream<Uint8Array>,
-        )) {
-          await output.writeFile(chunk as Buffer);
+        // Each private source object is bounded to 4 MiB. Commit only a fully
+        // downloaded part so a timeout/retry cannot duplicate partial bytes.
+        let downloaded: Buffer | undefined;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const signed = await getSupabase()
+              .storage.from(bucket)
+              .createSignedUrl(name, 600);
+            if (signed.error || !signed.data)
+              throw new Error("Source part unavailable");
+            const response = await fetch(signed.data.signedUrl, {
+              signal: signal
+                ? AbortSignal.any([signal, AbortSignal.timeout(120000)])
+                : AbortSignal.timeout(120000),
+            });
+            if (!response.ok || !response.body)
+              throw new Error("Source download failed");
+            const chunks: Buffer[] = [];
+            let length = 0;
+            for await (const chunk of Readable.fromWeb(
+              response.body as import("node:stream/web").ReadableStream<Uint8Array>,
+            )) {
+              const bytes = Buffer.from(chunk as Uint8Array);
+              length += bytes.length;
+              if (length > REEL_PART_BYTES)
+                throw new ReelUploadError("Видео хэсгийн хэмжээ буруу байна.");
+              chunks.push(bytes);
+            }
+            if (
+              length === 0 ||
+              (index < count - 1 && length !== REEL_PART_BYTES)
+            ) {
+              throw new Error("Source part incomplete");
+            }
+            downloaded = Buffer.concat(chunks, length);
+            break;
+          } catch (error: unknown) {
+            if (
+              signal?.aborted ||
+              error instanceof ReelUploadError ||
+              attempt >= 4
+            )
+              throw error;
+            await pause(1000 * 2 ** attempt, undefined, { signal });
+          }
         }
+        if (!downloaded) throw new Error("Source part unavailable");
+        await output.writeFile(downloaded);
       }
     }
   } finally {
