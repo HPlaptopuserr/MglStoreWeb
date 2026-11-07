@@ -1,10 +1,11 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { useEventCallback } from "../hooks/useEventCallback";
 import { CartScrollArea } from "./CartScrollArea";
 import styles from "./PosCartPanel.module.css";
 import { Minus, Plus, ReceiptText, Trash2 } from "lucide-react";
 import type { CartLine, CartTotals } from "../types/pos.types";
-import { formatPosQuantity, POS_WEIGHT_STEP_KG } from "@mgl/types";
+import { formatPosQuantity } from "@mgl/types";
+import { parseCartQuantity } from "../utils/parse-cart-quantity";
 
 type Props = {
   lines: CartLine[];
@@ -41,7 +42,8 @@ const PosCartLineRow = memo(function PosCartLineRow({
 }: CartLineRowProps) {
   const lineTotal = line.qty * line.unitPrice;
   const quantityStep = line.measureUnit === "kg" ? 0.1 : 1;
-  const minimumQty = line.measureUnit === "kg" ? POS_WEIGHT_STEP_KG : 1;
+  // Keep partial input ("", "0.") separate from the valid quantity used for payment.
+  const [quantityDraft, setQuantityDraft] = useState<string | null>(null);
   const taxLabel = `${line.taxType || "VAT_ABLE"}${line.taxRate ? ` / ${line.taxRate}%` : ""}`;
 
   return (
@@ -107,19 +109,26 @@ const PosCartLineRow = memo(function PosCartLineRow({
           <Minus size={14} />
         </button>
         <input
-          type="number"
-          min={minimumQty}
-          max={line.stockQty}
-          step={line.measureUnit === "kg" ? POS_WEIGHT_STEP_KG : 1}
-          value={line.qty}
+          type="text"
+          inputMode={line.measureUnit === "kg" ? "decimal" : "numeric"}
+          value={quantityDraft ?? String(line.qty)}
           aria-label={`${line.name} тоо хэмжээ`}
+          title={line.measureUnit === "kg" ? "Кг-аар оруулна. Жишээ: 250 г = 0.25 кг" : "Ширхэгээр оруулна"}
           onChange={(event) => {
-            const parsed = Number(event.target.value);
-            if (Number.isFinite(parsed) && parsed >= minimumQty) {
+            setQuantityDraft(event.target.value);
+            const parsed = parseCartQuantity(event.target.value, line.measureUnit);
+            if (parsed !== null) {
               onSetQty(line.productId, parsed);
             }
           }}
-          className="h-full w-9 border-x border-slate-200 bg-white text-center text-sm font-black text-slate-950 outline-none"
+          onBlur={() => setQuantityDraft(null)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === "Escape") {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          }}
+          className="h-full min-w-0 flex-1 border-x border-slate-200 bg-white text-center text-xs font-black text-slate-950 outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
         />
         <button
           type="button"
@@ -153,34 +162,23 @@ const PosCartLineRow = memo(function PosCartLineRow({
   );
 });
 
-function PosCartSummary({
-  lines,
-  totals,
-}: {
-  lines: CartLine[];
-  totals?: CartTotals;
-}) {
+function PosCartSummary({ totals }: { totals?: CartTotals }) {
   return (
-    <div className="shrink-0 border-t border-slate-100 bg-white px-3 py-2">
-      <div className="mb-1.5 flex items-center justify-between rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-900">
-        <span>Сагсан дахь бараа</span>
-        <span className="tabular-nums">{lines.length} мөр</span>
-      </div>
-
+    <div className="shrink-0 border-t border-slate-100 bg-white px-2 py-1.5">
       <div className="grid grid-cols-3 gap-1.5 break-words text-[10px] [overflow-wrap:anywhere]">
-        <div className="rounded-lg bg-slate-50 px-2 py-1.5">
+        <div className="rounded-md bg-slate-50 px-1.5 py-1">
           <p className="font-bold text-slate-500">Барааны дүн</p>
           <p className="text-[11px] font-black tabular-nums text-slate-950">
             {money(totals?.subTotal ?? 0)}
           </p>
         </div>
-        <div className="rounded-lg bg-slate-50 px-2 py-1.5">
+        <div className="rounded-md bg-slate-50 px-1.5 py-1">
           <p className="font-bold text-slate-500">Хөнгөлөлт</p>
           <p className="text-[11px] font-black tabular-nums text-slate-950">
             -{money(totals?.discountTotal ?? 0)}
           </p>
         </div>
-        <div className="rounded-lg bg-slate-50 px-2 py-1.5">
+        <div className="rounded-md bg-slate-50 px-1.5 py-1">
           <p className="font-bold text-slate-500">Татвар</p>
           <p className="text-[11px] font-black tabular-nums text-slate-950">
             {money(totals?.taxTotal ?? 0)}
@@ -190,7 +188,7 @@ function PosCartSummary({
 
       <div className="mt-1.5 flex flex-wrap items-end justify-between gap-2 border-t border-dashed border-slate-300 pt-1.5">
         <span className="text-sm font-black text-slate-700">Нийт дүн</span>
-        <span className="text-2xl font-black leading-none tabular-nums text-blue-600">
+        <span className="text-xl font-black leading-none tabular-nums text-blue-600">
           {money(totals?.grandTotal ?? 0)}
         </span>
       </div>
@@ -217,9 +215,9 @@ export function PosCartPanel({
     <section
       className={`${styles.panel} flex min-h-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm ${className}`}
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-4 py-3">
-        <h3 className="inline-flex items-center gap-2 text-lg font-black text-slate-950">
-          <ReceiptText size={22} className="text-blue-600" />
+      <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-2.5 py-2">
+        <h3 className="inline-flex items-center gap-1.5 text-sm font-black text-slate-950">
+          <ReceiptText size={17} className="text-blue-600" />
           Сагс ({lines.length})
         </h3>
         {lines.length > 0 && onClear ? (
@@ -260,7 +258,7 @@ export function PosCartPanel({
               />
             ))}
           </CartScrollArea>
-          <PosCartSummary lines={lines} totals={totals} />
+          <PosCartSummary totals={totals} />
         </>
       )}
     </section>

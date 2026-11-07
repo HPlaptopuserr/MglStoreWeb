@@ -103,7 +103,7 @@ export function DashboardLayout({
             isAdmin
               ? "px-4 pt-6 pb-10 sm:px-10 sm:pt-8"
               : isVendorPosRoute
-                ? "px-2 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-4"
+                ? "px-1.5 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]"
                 : "px-3 pt-4 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-6"
           }`}
         >
@@ -112,7 +112,7 @@ export function DashboardLayout({
               isAdmin
                 ? "max-w-7xl"
                 : isVendorPosRoute
-                  ? "max-w-[1480px]"
+                  ? "max-w-none"
                   : "max-w-6xl"
             } mx-auto w-full min-w-0`}
           >

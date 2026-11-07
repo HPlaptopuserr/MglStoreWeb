@@ -5,9 +5,9 @@
 .frame {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  height: calc(100dvh - 24px);
-  min-height: 520px;
+  gap: 6px;
+  height: calc(100dvh - 12px);
+  min-height: 0;
   min-width: 0;
 }
 .toolbar {
@@ -15,14 +15,14 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 6px;
+  gap: 6px;
+  padding: 4px;
   flex-shrink: 0;
 }
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 6px;
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -30,9 +30,27 @@
 .column {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   min-height: 0;
   min-width: 0;
+}
+.scanner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+.scannerActions {
+  display: flex;
+  gap: 4px;
+}
+@container (max-width: 680px) {
+  .scanner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .scannerActions > button {
+    flex: 1;
+  }
 }
 @container (max-width: 760px) {
   .workspace {

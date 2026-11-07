@@ -37,7 +37,7 @@ export function PosProductList({ products, cartLines, onAdd }: Props) {
     >
       <ul
         key={page}
-        className="grid min-h-0 min-w-0 flex-1 grid-cols-[repeat(auto-fill,minmax(min(100%,168px),1fr))] content-start gap-2 overflow-y-auto overscroll-contain p-0.5 [scrollbar-gutter:stable]"
+        className="grid min-h-0 min-w-0 flex-1 grid-cols-[repeat(auto-fill,minmax(min(100%,132px),1fr))] content-start gap-1.5 overflow-y-auto overscroll-contain p-0.5 [scrollbar-gutter:stable]"
       >
         {visibleProducts.map((product) => {
           const quantity = quantities.get(product.id) ?? 0;
@@ -98,7 +98,7 @@ const ProductCard = memo(function ProductCard({
         disabled={unavailable}
         onClick={() => onAdd(product)}
         aria-label={`${product.name}, ${product.price.toLocaleString("mn-MN")} төгрөг, сагсанд нэмэх`}
-        className={`group flex h-full min-h-44 w-full min-w-0 flex-col rounded-2xl border bg-white p-3.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-600 disabled:cursor-not-allowed ${quantity > 0 ? "border-indigo-300 ring-1 ring-indigo-100" : "border-slate-200 hover:border-indigo-300"} ${unavailable ? "text-slate-500" : "text-slate-900"}`}
+        className={`group flex h-full min-h-32 w-full min-w-0 flex-col rounded-xl border bg-white p-2.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-600 disabled:cursor-not-allowed ${quantity > 0 ? "border-indigo-300 ring-1 ring-indigo-100" : "border-slate-200 hover:border-indigo-300"} ${unavailable ? "text-slate-500" : "text-slate-900"}`}
       >
         <span className="flex w-full items-center justify-between gap-2">
           <span
@@ -120,28 +120,24 @@ const ProductCard = memo(function ProductCard({
                 : formatPosQuantity(product.stockQty, product.measureUnit)}
           </span>
         </span>
-        <span className="mt-3 line-clamp-2 min-h-9 w-full break-words text-[13px] font-bold leading-[18px] [overflow-wrap:anywhere]">
+        <span className="mt-2 line-clamp-2 min-h-8 w-full break-words text-xs font-bold leading-4 [overflow-wrap:anywhere]">
           {product.name}
         </span>
         <span className="mt-0.5 block w-full truncate font-mono text-[10px] font-medium tracking-wide text-slate-400">
           {product.barcode ? `#${product.barcode}` : ""}
         </span>
-        <span className="flex min-h-6 items-center py-1">
-          {quantity > 0 && (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600">
-              <Check size={11} aria-hidden="true" />
-              <span>
-                Сагсанд: {formatPosQuantity(quantity, product.measureUnit)}
-              </span>
-            </span>
-          )}
-        </span>
+        {quantity > 0 && (
+          <span className="my-1 inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-600">
+            <Check size={11} aria-hidden="true" />
+            <span>Сагсанд: {formatPosQuantity(quantity, product.measureUnit)}</span>
+          </span>
+        )}
         <span className="mt-auto flex w-full items-end justify-between gap-2 border-t border-slate-100 pt-2.5">
           <span className="min-w-0">
             <span className="mb-1 block text-[10px] text-slate-400">
               Нэгж үнэ
             </span>
-            <span className="break-words font-mono text-base font-bold tabular-nums [overflow-wrap:anywhere]">
+            <span className="break-words font-mono text-sm font-bold tabular-nums [overflow-wrap:anywhere]">
               ₮{product.price.toLocaleString("mn-MN")}
               <span className="font-sans text-[11px] font-medium text-slate-400">
                 /{product.measureUnit === "kg" ? "кг" : "ш"}
@@ -150,9 +146,9 @@ const ProductCard = memo(function ProductCard({
           </span>
           <span
             aria-hidden="true"
-            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl transition-colors ${unavailable ? "bg-slate-100 text-slate-300" : "bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white"}`}
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors ${unavailable ? "bg-slate-100 text-slate-300" : "bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white"}`}
           >
-            <Plus size={18} strokeWidth={2.5} />
+            <Plus size={16} strokeWidth={2.5} />
           </span>
         </span>
       </button>

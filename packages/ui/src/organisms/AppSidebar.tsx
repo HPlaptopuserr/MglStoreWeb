@@ -48,6 +48,7 @@ export interface AppSidebarProps {
   showDesktopSidebar?: boolean;
   showDesktopSpacer?: boolean;
   className?: string;
+  compact?: boolean;
 }
 
 const EXPANDED_WIDTH = 236;
@@ -394,6 +395,7 @@ function SidebarContent({
 
 export function AppSidebar({
   collapsed,
+  compact = false,
   showDesktopSidebar = true,
   showDesktopSpacer = true,
   mobileOpen = false,
@@ -401,7 +403,8 @@ export function AppSidebar({
   className,
   ...contentProps
 }: AppSidebarProps) {
-  const widthClass = collapsed ? "w-[68px]" : "w-[236px]";
+  const width = compact ? (collapsed ? 56 : 184) : (collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH);
+  const widthClass = compact ? (collapsed ? "w-14" : "w-[184px]") : (collapsed ? "w-[68px]" : "w-[236px]");
 
   return (
     <>
@@ -411,7 +414,7 @@ export function AppSidebar({
             widthClass,
             "hidden shrink-0 transition-all duration-300 md:block",
           )}
-          style={{ width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH }}
+          style={{ width }}
         />
       )}
 
@@ -419,9 +422,11 @@ export function AppSidebar({
         <aside
           className={cn(
             widthClass,
-            "fixed left-0 top-0 z-40 hidden h-screen shrink-0 flex-col border-r border-slate-200 bg-white px-2 py-4 text-slate-700 transition-all duration-300 md:flex",
+            "fixed left-0 top-0 z-40 hidden h-screen shrink-0 flex-col border-r border-slate-200 bg-white px-2 text-slate-700 transition-all duration-300 md:flex",
+            compact ? "py-2 [&_nav_a]:h-7 [&_nav_a]:text-xs [&_nav_button]:h-7 [&_nav_button]:text-xs [&_nav_svg]:size-4" : "py-4",
             className,
           )}
+          style={{ width }}
         >
           <SidebarContent collapsed={collapsed} {...contentProps} />
         </aside>

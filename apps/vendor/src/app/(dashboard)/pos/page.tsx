@@ -4251,7 +4251,7 @@ export default function PosDemoPage() {
                   }
                 }
               }}
-              className={`h-9 rounded-lg px-4 text-sm font-bold transition-colors ${
+              className={`h-8 rounded-lg px-2.5 text-xs font-bold transition-colors ${
                 (tab.id === "shift" ? showShiftHistoryPanel : tab.id === "history" ? salesHistoryOpen : !salesHistoryOpen && !showShiftHistoryPanel)
                   ? "bg-blue-600 text-white shadow-sm"
                   : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
@@ -4360,7 +4360,7 @@ export default function PosDemoPage() {
       <div className={registerLayout.workspace}>
         <section className={registerLayout.column}>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
             <div className="hidden mb-3 flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
@@ -4387,10 +4387,10 @@ export default function PosDemoPage() {
 
           <form
             onSubmit={handleManualSubmit}
-            className="flex shrink-0 flex-col gap-2"
+            className={registerLayout.scanner}
           >
             <div className="relative">
-              <Barcode size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Barcode size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 ref={scannerInputRef}
                 autoFocus
@@ -4410,10 +4410,10 @@ export default function PosDemoPage() {
                   processScan(code);
                 }}
                 placeholder="Barcode уншуулах эсвэл гараар оруулах"
-                className="h-12 w-full rounded-lg border-2 border-blue-500 bg-white pl-12 pr-4 text-base font-bold tracking-wide text-slate-950 outline-none transition focus:ring-4 focus:ring-blue-100"
+                className="h-9 w-full rounded-lg border-2 border-blue-500 bg-white pl-9 pr-2 text-xs font-bold tracking-wide text-slate-950 outline-none transition focus:ring-4 focus:ring-blue-100"
               />
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className={registerLayout.scannerActions}>
               <button
                 type="button"
                 onClick={() => {
@@ -4425,13 +4425,13 @@ export default function PosDemoPage() {
                   setScanStatus("idle");
                   scannerInputRef.current?.focus();
                 }}
-                className="h-11 rounded-lg border border-slate-200 bg-white px-3 text-sm font-bold text-slate-600 shadow-sm transition hover:bg-slate-50"
+                className="h-9 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-bold text-slate-600 shadow-sm transition hover:bg-slate-50"
               >
                 Цэвэрлэх
               </button>
               <button
                 type="submit"
-                className="h-11 rounded-lg bg-blue-600 px-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700"
+                className="h-9 rounded-lg bg-blue-600 px-2.5 text-xs font-black text-white shadow-sm transition hover:bg-blue-700"
               >
                 Унших
               </button>
@@ -4518,10 +4518,10 @@ export default function PosDemoPage() {
             )}
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
-            <div className="mb-2 flex shrink-0 flex-col gap-2">
+          <div className="flex min-h-0 flex-1 flex-col rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+            <div className="mb-1.5 flex shrink-0 flex-col gap-1.5">
               <div>
-                <h2 className="text-sm font-black text-slate-950">
+                <h2 className="sr-only">
                   {listMode === "products" ? "Барааны жагсаалт" : "Зээлийн жагсаалт"}
                 </h2>
                 <p className="text-[11px] text-slate-500">
@@ -4535,7 +4535,7 @@ export default function PosDemoPage() {
                 <button
                   type="button"
                   onClick={() => setListMode("products")}
-                  className={`inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] font-black transition ${
+                  className={`inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] font-black transition ${
                     listMode === "products"
                       ? "bg-white text-blue-700 shadow-sm"
                       : "text-slate-500 hover:text-slate-800"
@@ -4550,7 +4550,7 @@ export default function PosDemoPage() {
                     setListMode("credits");
                     void reloadCreditSales();
                   }}
-                  className={`inline-flex h-9 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] font-black transition ${
+                  className={`inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md px-2 text-[11px] font-black transition ${
                     listMode === "credits"
                       ? "bg-white text-amber-700 shadow-sm"
                       : "text-slate-500 hover:text-slate-800"
@@ -4569,12 +4569,12 @@ export default function PosDemoPage() {
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
                   placeholder={listMode === "products" ? "Barcode, SKU, нэрээр хайх" : "Зээлдэгч, утас, бараагаар хайх"}
-                  className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-semibold outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                  className="h-8 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-xs font-semibold outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
                 />
               </div>
               <button
                 type="button"
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
               >
                 <Filter size={15} />
                 Шүүлтүүр
@@ -4582,7 +4582,7 @@ export default function PosDemoPage() {
               <button
                 type="button"
                 onClick={listMode === "products" ? reloadProducts : () => void reloadCreditSales()}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
               >
                 <RefreshCw size={15} className={listMode === "products" && refreshing ? "animate-spin" : ""} />
                 Сэргээх
@@ -4592,13 +4592,13 @@ export default function PosDemoPage() {
 
 
             {listMode === "products" && (
-            <div className="mb-2 flex shrink-0 items-center gap-1.5 overflow-x-auto pb-1.5">
+            <div className="mb-1 flex shrink-0 items-center gap-1 overflow-x-auto pb-1">
               {categories.map((category) => (
                 <button
                   key={category}
                   type="button"
                   onClick={() => setSelectedCategory(category)}
-                  className={`h-7 shrink-0 rounded-lg px-2.5 text-[11px] font-bold transition-colors ${
+                  className={`h-6 shrink-0 rounded-md px-2 text-[10px] font-bold transition-colors ${
                     selectedCategory === category
                       ? "bg-blue-600 text-white"
                       : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"
@@ -4851,7 +4851,7 @@ export default function PosDemoPage() {
 
             {effectiveEbarimtEnabled && <ReceiptBuyerChoice company={companyReceipt} onChange={setCompanyReceipt} disabled={saleLoading || hasPendingPayment || paymentEntries.length > 0} />}
             <details className="shrink-0 rounded-xl border border-slate-200 bg-white shadow-sm">
-              <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-blue-600">eBarimt · {ebarimtStatusText}</summary>
+              <summary className="cursor-pointer px-2.5 py-1.5 text-[11px] font-bold text-blue-600">eBarimt · {ebarimtStatusText}</summary>
               <div className="max-h-44 overflow-y-auto p-2.5">
 
                 {receiptForPreview?.ebarimt?.status === "SUCCESS" && receiptForPreview.ebarimt.qrData ? (

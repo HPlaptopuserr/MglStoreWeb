@@ -37,7 +37,7 @@ export function CartScrollArea({ children }: { children: ReactNode }) {
         role="region"
         aria-label="Сагсны бараанууд"
         tabIndex={0}
-        className="h-full overflow-y-auto overscroll-contain bg-slate-50/70 p-2.5 pb-9 [scrollbar-gutter:stable] focus-visible:outline-2 focus-visible:outline-blue-600"
+        className={`h-full overflow-y-auto overscroll-contain bg-slate-50/70 p-1.5 ${hasMoreBelow ? "pb-9" : ""} [scrollbar-gutter:stable] focus-visible:outline-2 focus-visible:outline-blue-600`}
       >
         <div ref={contentRef} className="space-y-1">
           {children}

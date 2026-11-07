@@ -4,13 +4,13 @@
 }
 .line {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 96px minmax(76px, auto) 28px;
+  grid-template-columns: 28px minmax(0, 1fr) 112px minmax(76px, auto) 28px;
 }
 .details {
   min-width: 0;
 }
 .quantity {
-  width: 96px;
+  width: 112px;
 }
 .amount {
   min-width: 0;
@@ -18,7 +18,7 @@
 }
 @container (max-width: 620px) {
   .line {
-    grid-template-columns: minmax(0, 1fr) 96px minmax(76px, auto) 28px;
+    grid-template-columns: minmax(0, 1fr) 112px minmax(76px, auto) 28px;
   }
   .index {
     display: none;

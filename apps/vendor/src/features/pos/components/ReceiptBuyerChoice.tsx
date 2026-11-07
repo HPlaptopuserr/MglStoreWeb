@@ -11,7 +11,7 @@ export function ReceiptBuyerChoice({ company, onChange, disabled }: Props) {
     <div
       role="group"
       aria-label="eBarimt авах төрөл"
-      className="flex shrink-0 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"
+      className="flex shrink-0 items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-1"
     >
       <span className="text-xs font-semibold text-slate-500">eBarimt</span>
       <div className="flex rounded-lg bg-slate-50 p-0.5">
@@ -27,7 +27,7 @@ export function ReceiptBuyerChoice({ company, onChange, disabled }: Props) {
             aria-pressed={company === option.company}
             disabled={disabled}
             onClick={() => onChange(option.company)}
-            className={`min-h-8 rounded-md px-3 text-xs font-bold transition-colors focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-40 ${company === option.company ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
+            className={`min-h-7 rounded-md px-2 text-[11px] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-40 ${company === option.company ? "bg-blue-600 text-white shadow-sm" : "text-slate-500 hover:text-slate-900"}`}
           >
             {option.label}
           </button>

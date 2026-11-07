@@ -449,6 +449,7 @@ export function VendorSidebar({
         onSignOut={onSignOut}
         profileHref="/profile"
         mobileOpen={false}
+        compact={pathname === "/pos" || Boolean(pathname?.startsWith("/pos/"))}
       />
 
       <AppSidebar

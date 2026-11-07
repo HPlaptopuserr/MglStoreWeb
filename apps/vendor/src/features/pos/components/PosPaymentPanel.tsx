@@ -31,7 +31,7 @@ export function PosPaymentPanel({
   return (
     <section
       aria-label="Төлбөр эхлүүлэх"
-      className={`${styles.panel} shrink-0 rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm`}
+      className={`${styles.panel} shrink-0 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm`}
     >
       <div className={styles.methods}>
         {PAYMENT_METHODS.map((method) => {
@@ -43,9 +43,9 @@ export function PosPaymentPanel({
               disabled={disabled}
               onClick={() => onStartPayment(method.value)}
               aria-keyshortcuts={PAYMENT_SHORTCUTS[method.value]}
-              className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl border px-1 text-[11px] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-40 ${method.value === "CASH" ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100" : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50"}`}
+              className={`flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg border px-1 text-[10px] font-bold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-40 ${method.value === "CASH" ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100" : "border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:bg-blue-50"}`}
             >
-              <Icon size={17} aria-hidden="true" />
+              <Icon size={16} aria-hidden="true" />
               <span>{method.value === "QR" ? "QR төлбөр" : method.label}</span>
               <kbd className="text-[10px] font-semibold opacity-60">
                 {PAYMENT_SHORTCUTS[method.value]}
@@ -58,9 +58,9 @@ export function PosPaymentPanel({
           disabled={disabled || splitDisabled}
           onClick={onStartSplitPayment}
           aria-haspopup="dialog"
-          className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-1 text-[11px] font-bold text-blue-800 transition-colors hover:border-blue-400 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-lg border border-blue-200 bg-blue-50 px-1 text-[10px] font-bold text-blue-800 transition-colors hover:border-blue-400 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Split size={17} aria-hidden="true" />
+          <Split size={16} aria-hidden="true" />
           <span>Хэсэгчилсэн</span>
           <span className="text-[10px] font-medium opacity-60">
             Хувааж төлөх
