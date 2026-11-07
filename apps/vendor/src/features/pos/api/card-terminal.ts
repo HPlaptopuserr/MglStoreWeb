@@ -44,6 +44,8 @@ type ClientBridgeHealth = {
   [key: string]: unknown;
 };
 
+export class ClientBridgeNotStartedError extends Error {}
+
 async function getClientBridgeHealth(bridgeUrl: string, signal?: AbortSignal): Promise<ClientBridgeHealth> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 8_000);
@@ -86,15 +88,23 @@ export async function chargeClientBridge(payload: {
   signal?: AbortSignal;
 }): Promise<ClientBridgeChargeResult> {
   const bridgeUrl = payload.bridgeUrl.replace(/\/$/, "");
-  const health = await getClientBridgeHealth(bridgeUrl, payload.signal);
+  let health: ClientBridgeHealth;
+  try {
+    health = await getClientBridgeHealth(bridgeUrl, payload.signal);
+  } catch (error: unknown) {
+    if (payload.signal?.aborted) throw error;
+    // No /charge request has been sent. The operator can record a payment
+    // already collected on the standalone terminal, without retrying a charge.
+    throw new ClientBridgeNotStartedError(error instanceof Error ? error.message : "Терминал холбогдоогүй");
+  }
   const provider = String(health.provider || "").toLowerCase();
 
   if (provider && provider !== "android-pgw") {
-    throw new Error(`POS bridge provider ${health.provider} байна. BRIDGE_PROVIDER=android-pgw болгож bridge restart хийнэ үү.`);
+    throw new ClientBridgeNotStartedError(`POS bridge provider ${health.provider} байна. BRIDGE_PROVIDER=android-pgw болгож bridge restart хийнэ үү.`);
   }
 
   if (health.ok === false) {
-    throw new Error(health.message || "Android PGW terminal холбогдоогүй байна");
+    throw new ClientBridgeNotStartedError(health.message || "Android PGW terminal холбогдоогүй байна");
   }
 
   const controller = new AbortController();

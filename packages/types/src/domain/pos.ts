@@ -111,6 +111,7 @@ export interface RegisterConfig {
   name: string;
   label: string | null;
   cardEnabled: boolean;
+  hasOwnCardTerminal?: boolean;
   cardProviderType: string | null;
   cardTerminalId: string | null;
   terminalBridgeUrl: string | null;

@@ -1,5 +1,8 @@
 "use client";
 import { cardPaymentOutcome, cardRequestFailureIsDefinitive } from "@/features/pos/utils/card-payment-outcome";
+import { configuredCardProvider } from "@/features/pos/utils/card-register-provider";
+import { paymentRequestId } from "@/features/pos/utils/payment-request-id";
+import { ClientBridgeNotStartedError } from "@/features/pos/api/card-terminal";
 import type { PaymentFeedback } from "@/features/pos/types/payment-status.types";
 import type { VerifiedCardRecovery } from "@mgl/types";
 import type { CustomerDisplayPayload, CustomerDisplaySuccessDetails } from "@/features/pos/types/customer-display.types";
@@ -293,8 +296,7 @@ const EBARIMT_ENABLED = process.env.NEXT_PUBLIC_EBARIMT_ENABLED === "true";
 const LONG_RUNNING_CARD_PROVIDERS = new Set(["PUSH_ECR", "MINU_AGENT", "ANDROID_PGW"]);
 const terminalNeedsWaitingOverlay = (provider?: string | null) =>
   Boolean(provider && LONG_RUNNING_CARD_PROVIDERS.has(provider));
-const getEffectiveCardProvider = (register?: RegisterConfig | null) =>
-  register?.cardProviderType || (register?.minuAgentEnabled ? "MINU_AGENT" : null);
+const getEffectiveCardProvider = configuredCardProvider;
 const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
 
 function buildCreditRepaymentCartLines(credit: PosCreditRepaymentSelection): CartLine[] {
@@ -2552,15 +2554,16 @@ export default function PosDemoPage() {
           effectiveCardProvider === "ANDROID_PGW" &&
           Boolean(freshRegisterConfig.terminalBridgeUrl);
         const shouldSendBridgeUrl =
+          Boolean(effectiveCardProvider) &&
           Boolean(freshRegisterConfig.terminalBridgeUrl) &&
           effectiveCardProvider !== "MINU_AGENT" &&
           effectiveCardProvider !== "PUSH_ECR";
 
-        // Persist Minu's request identity before dispatch so a lost response cannot
-        // lose the payment or require another charge.
-        if (effectiveCardProvider === "MINU_AGENT") {
-          const attemptId = crypto.randomUUID();
-          const clientSaleId = clientSaleIdRef.current || crypto.randomUUID();
+        // Persist both automatic and manual card identities before dispatch so a
+        // lost response is recovered instead of recording the payment twice.
+        {
+          const attemptId = paymentRequestId();
+          const clientSaleId = clientSaleIdRef.current || paymentRequestId();
           const recoverableEntries: CheckoutPaymentEntry[] = [
             ...paymentEntries,
             {
@@ -2608,7 +2611,7 @@ export default function PosDemoPage() {
         createdAttemptId = attempt.attemptId;
         setPaymentEntries(previous => previous.map(entry => entry.id === pendingId ? { ...entry, attemptId: attempt.attemptId } : entry));
         let approvedAttempt = attempt;
-        if (useClientBridge) {
+        if (useClientBridge && attempt.status === "PENDING") {
           try {
             const bridgeResult = await chargeClientBridge({
               bridgeUrl: freshRegisterConfig.terminalBridgeUrl!,
@@ -2622,16 +2625,18 @@ export default function PosDemoPage() {
               attemptId: attempt.attemptId,
               result: bridgeResult,
             });
-          } catch (bridgeError: any) {
+          } catch (bridgeError: unknown) {
             if (isCardRunCancelled()) return;
-            const message = bridgeError?.message || "Картын терминалын холболтын алдаа гарлаа";
+            const manualCard = bridgeError instanceof ClientBridgeNotStartedError;
+            const message = manualCard ? "Гараар авсан картын төлбөр бүртгэгдлээ"
+              : bridgeError instanceof Error ? bridgeError.message : "Картын терминалын холболтын алдаа гарлаа";
             approvedAttempt = await submitClientBridgeResult({
               attemptId: attempt.attemptId,
-              result: { status: "FAILED", message },
+              result: { status: manualCard ? "APPROVED" : "FAILED", message, ...(manualCard ? { manualCard: true } : {}) },
             }).catch(() => ({
               ...attempt,
               status: "FAILED" as const,
-              message,
+              message: "Төлбөрийн бүртгэлийн холболт тасарсан. Төлөвийг дахин шалгана уу.",
             }));
           }
         } else {
@@ -3195,7 +3200,7 @@ export default function PosDemoPage() {
     void methodSwitch.request(method);
   };
   usePendingCardPayments(paymentEntries,
-    !isCardProcessing && (getEffectiveCardProvider(registerConfig) === "MINU_AGENT" || methodSwitch.pending),
+    !isCardProcessing,
     checkCardPayment,
   );
 
