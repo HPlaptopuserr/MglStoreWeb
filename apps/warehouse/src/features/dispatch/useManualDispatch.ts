@@ -1,6 +1,10 @@
 "use client";
 import { useMemo, useRef, useState } from "react";
-import type { WarehouseDispatchDocument } from "@mgl/types";
+import type {
+  WarehouseDispatchDocument,
+  WarehouseDispatchPaymentStatus,
+  WarehouseDispatchPaymentMethod,
+} from "@mgl/types";
 import type { DispatchLineItem } from "./DispatchItemsSection";
 import type { WarehouseInventorySearchItem } from "./WarehouseProductSearch";
 import type { DispatchDestination } from "./types";
@@ -21,6 +25,18 @@ export function useManualDispatch(warehouseId: string) {
     useState<DispatchDestination>(emptyDestination);
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
+  const [paymentStatus, setPaymentStatus] = useState<
+    WarehouseDispatchPaymentStatus | ""
+  >("");
+  const [paymentMethod, setPaymentMethod] = useState<
+    WarehouseDispatchPaymentMethod | ""
+  >("");
+  const [paymentNote, setPaymentNote] = useState("");
+  const paymentError = !paymentStatus
+    ? "Төлсөн эсвэл зээлээр гаргах эсэхээ сонгоно уу."
+    : paymentStatus === "PAID" && !paymentMethod
+      ? "Төлсөн төлбөрийн аргаа сонгоно уу."
+      : "";
   const [step, setStep] = useState<1 | 2>(1);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -79,7 +95,14 @@ export function useManualDispatch(warehouseId: string) {
           ],
     );
   const submit = async () => {
-    if (busy.current || itemError || recipientError) return;
+    if (
+      busy.current ||
+      itemError ||
+      recipientError ||
+      paymentError ||
+      !paymentStatus
+    )
+      return;
     busy.current = true;
     setSaving(true);
     setError("");
@@ -89,6 +112,9 @@ export function useManualDispatch(warehouseId: string) {
         ...destination,
         reason,
         note,
+        paymentStatus,
+        paymentMethod: paymentStatus === "PAID" ? paymentMethod || null : null,
+        paymentNote,
         requestId: requestId.current,
         items: items.map(({ productId, quantity }) => ({
           productId,
@@ -100,6 +126,9 @@ export function useManualDispatch(warehouseId: string) {
       setDestination(emptyDestination());
       setReason("");
       setNote("");
+      setPaymentStatus("");
+      setPaymentMethod("");
+      setPaymentNote("");
       setStep(1);
       setConfirmOpen(false);
       requestId.current = null;
@@ -124,6 +153,16 @@ export function useManualDispatch(warehouseId: string) {
     setReason,
     note,
     setNote,
+    paymentStatus,
+    setPaymentStatus: (value: WarehouseDispatchPaymentStatus | "") => {
+      setPaymentStatus(value);
+      setPaymentMethod("");
+    },
+    paymentMethod,
+    setPaymentMethod,
+    paymentNote,
+    setPaymentNote,
+    paymentError,
     step,
     setStep,
     saving,

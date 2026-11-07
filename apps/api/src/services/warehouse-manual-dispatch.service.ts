@@ -47,6 +47,9 @@ function serialize(record: DispatchRecord): WarehouseDispatchDocument {
     lng: record.lng,
     reason: record.reason,
     note: record.note,
+    paymentStatus: record.paymentStatus,
+    paymentMethod: record.paymentMethod,
+    paymentNote: record.paymentNote,
     createdAt: record.createdAt.toISOString(),
     createdByName: record.createdBy.profile?.fullName || record.createdBy.email,
     warehouse: record.warehouse,
@@ -90,6 +93,9 @@ export async function createManualDispatch(
               "lng",
               "reason",
               "note",
+              "paymentStatus",
+              "paymentMethod",
+              "paymentNote",
             ] as const
           ).every((key) => existing[key] === input[key]);
           const sameItems =

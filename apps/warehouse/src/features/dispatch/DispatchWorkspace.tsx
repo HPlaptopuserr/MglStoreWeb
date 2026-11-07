@@ -5,6 +5,8 @@ import { Modal } from "@/components/Modal";
 import { DispatchDestinationSection } from "./DispatchDestinationSection";
 import { DispatchItemsSection } from "./DispatchItemsSection";
 import { DispatchSourceFields } from "./DispatchSourceFields";
+import { DispatchPaymentFields } from "./DispatchPaymentFields";
+import { dispatchPaymentLabel } from "./dispatch-payment";
 import { DispatchSummary } from "./DispatchSummary";
 import { DispatchHistory } from "./DispatchHistory";
 import { DispatchDocumentDialog } from "./DispatchDocumentDialog";
@@ -88,6 +90,14 @@ export function DispatchWorkspace({
                 value={state.destination}
                 onChange={state.setDestination}
               />
+              <DispatchPaymentFields
+                status={state.paymentStatus}
+                method={state.paymentMethod}
+                note={state.paymentNote}
+                onStatus={state.setPaymentStatus}
+                onMethod={state.setPaymentMethod}
+                onNote={state.setPaymentNote}
+              />
               <DispatchSourceFields
                 warehouseName={warehouseName}
                 reason={state.reason}
@@ -111,10 +121,15 @@ export function DispatchWorkspace({
             quantity={state.quantity}
             total={state.total}
             destination={state.destination}
+            paymentStatus={state.paymentStatus}
+            paymentMethod={state.paymentMethod}
             saving={state.saving}
             step={state.step}
             issue={
-              state.itemError || (state.step === 2 ? state.recipientError : "")
+              state.itemError ||
+              (state.step === 2
+                ? state.recipientError || state.paymentError
+                : "")
             }
             error={state.error}
             onNext={() => state.setStep(2)}
@@ -162,6 +177,22 @@ export function DispatchWorkspace({
               Хаяг:{" "}
               {state.destination.address || "Оруулаагүй — байршил сонголттой"}
             </p>
+            <div className="rounded-xl bg-slate-50 p-3">
+              <p>
+                Төлбөр:{" "}
+                <strong>
+                  {dispatchPaymentLabel(
+                    state.paymentStatus,
+                    state.paymentMethod,
+                  )}
+                </strong>
+              </p>
+              {state.paymentNote.trim() && (
+                <p className="mt-1 whitespace-pre-wrap break-words">
+                  {state.paymentNote}
+                </p>
+              )}
+            </div>
             <p>Баталгаажуулахад агуулахын үлдэгдэл хасагдана.</p>
             <div className="flex gap-3">
               <button

@@ -2,6 +2,8 @@ import { API, wmsFetch } from "@/lib/api";
 import type {
   WarehouseDispatchDocument,
   WarehouseDispatchHistory,
+  WarehouseDispatchPaymentStatus,
+  WarehouseDispatchPaymentMethod,
 } from "@mgl/types";
 import type { DispatchDestination } from "./types";
 
@@ -24,6 +26,9 @@ export const dispatchEndpoint = (warehouseId: string) =>
 export function createDispatch(
   warehouseId: string,
   input: DispatchDestination & {
+    paymentStatus: WarehouseDispatchPaymentStatus;
+    paymentMethod: WarehouseDispatchPaymentMethod | null;
+    paymentNote: string;
     requestId: string;
     reason: string;
     note: string;

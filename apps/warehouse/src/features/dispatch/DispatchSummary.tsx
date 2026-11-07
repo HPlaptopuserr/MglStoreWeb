@@ -1,3 +1,8 @@
+import type {
+  WarehouseDispatchPaymentStatus,
+  WarehouseDispatchPaymentMethod,
+} from "@mgl/types";
+import { dispatchPaymentLabel } from "./dispatch-payment";
 import { AlertTriangle, ArrowRight, Loader2, PackageMinus } from "lucide-react";
 import type { DispatchDestination } from "./types";
 import { dispatchMoney } from "./dispatch-format";
@@ -7,6 +12,8 @@ export function DispatchSummary({
   quantity,
   total,
   destination,
+  paymentStatus,
+  paymentMethod,
   saving,
   step,
   issue,
@@ -18,6 +25,8 @@ export function DispatchSummary({
   quantity: number;
   total: number;
   destination: DispatchDestination;
+  paymentStatus: WarehouseDispatchPaymentStatus | "";
+  paymentMethod: WarehouseDispatchPaymentMethod | "";
   saving: boolean;
   step: 1 | 2;
   issue: string;
@@ -52,6 +61,14 @@ export function DispatchSummary({
               {dispatchMoney(total)}
             </dd>
           </div>
+          {step === 2 && (
+            <div className="flex justify-between gap-3">
+              <dt className="text-slate-500">Төлбөр</dt>
+              <dd className="text-right font-semibold">
+                {dispatchPaymentLabel(paymentStatus, paymentMethod)}
+              </dd>
+            </div>
+          )}
         </dl>
         {destination.storeName && (
           <div className="rounded-xl bg-blue-50 p-3 text-sm">

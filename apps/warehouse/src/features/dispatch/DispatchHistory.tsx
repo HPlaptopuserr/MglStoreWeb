@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { FileText, Loader2, RefreshCw, Search } from "lucide-react";
+import { dispatchPaymentLabel } from "./dispatch-payment";
 import { useDispatchHistory } from "./useDispatchHistory";
 import { dispatchDate, dispatchMoney } from "./dispatch-format";
 
@@ -137,6 +138,12 @@ export function DispatchHistory({
                   <div className="text-right">
                     <p className="text-sm font-bold text-slate-900">
                       {dispatchMoney(item.totalAmount)}
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-slate-600">
+                      {dispatchPaymentLabel(
+                        item.paymentStatus,
+                        item.paymentMethod,
+                      )}
                     </p>
                     <span className="mt-2 inline-block text-xs font-semibold text-blue-600 group-hover:underline">
                       Падан харах →

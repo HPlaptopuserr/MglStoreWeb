@@ -12,6 +12,7 @@ import {
 } from "@/features/documents/WarehouseDocumentSheet";
 import { printWarehouseDocument } from "@/features/documents/warehouse-document.print";
 import { dispatchEndpoint, dispatchRequest } from "./dispatch-api";
+import { dispatchPaymentLabel } from "./dispatch-payment";
 import { dispatchDate } from "./dispatch-format";
 
 export function DispatchDocumentDialog({
@@ -150,6 +151,19 @@ export function DispatchDocumentDialog({
                 Өмнөх паданы үнэ хадгалагдаагүй тул мөнгөн дүнг харуулахгүй.
               </p>
             )}
+            <div className="mt-4 rounded-xl border border-slate-200 p-3 text-sm">
+              <p>
+                Төлбөр:{" "}
+                <strong>
+                  {dispatchPaymentLabel(data.paymentStatus, data.paymentMethod)}
+                </strong>
+              </p>
+              {data.paymentNote && (
+                <p className="mt-1 whitespace-pre-wrap break-words">
+                  Төлбөрийн тайлбар: {data.paymentNote}
+                </p>
+              )}
+            </div>
             {data.reason && (
               <p className="mt-4 text-sm">Шалтгаан: {data.reason}</p>
             )}

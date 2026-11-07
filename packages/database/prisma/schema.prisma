@@ -2265,9 +2265,25 @@ model WarehouseGoodsReceiptAttachment {
   @@index([receiptId])
 }
 
+enum WarehouseDispatchPaymentStatus {
+  PAID
+  CREDIT
+}
+
+enum WarehouseDispatchPaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CARD
+  QPAY
+  OTHER
+}
+
 /// A transactional, operator-created dispatch to an arbitrary destination.
 /// Unlike StockDispatch this does not require a vendor stock request.
 model WarehouseManualDispatch {
+  paymentStatus  WarehouseDispatchPaymentStatus?
+  paymentMethod  WarehouseDispatchPaymentMethod?
+  paymentNote    String?
   requestId      String?                       @unique
   storeName      String?
   id             String                        @id @default(uuid())

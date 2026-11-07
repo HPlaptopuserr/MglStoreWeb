@@ -102,6 +102,9 @@ test(
         storeName: "Бүртгэлгүй дэлгүүр",
         recipientName: "Хүлээн авагч",
         recipientPhone: "99112233",
+        paymentStatus: "PAID",
+        paymentMethod: "BANK_TRANSFER",
+        paymentNote: "Гүйлгээ 123",
         items: [{ productId: products[0], quantity: 4, unitPrice: 1 }],
       };
       let document: WarehouseDispatchDocument;
@@ -135,6 +138,9 @@ test(
           assert.equal(response.status, 201, await response.clone().text());
           document = (await response.json()) as WarehouseDispatchDocument;
           assert.equal(document.storeName, draft.storeName);
+          assert.equal(document.paymentStatus, "PAID");
+          assert.equal(document.paymentMethod, "BANK_TRANSFER");
+          assert.equal(document.paymentNote, draft.paymentNote);
           assert.equal(document.lat, null);
           assert.equal(document.lng, null);
           assert.equal(document.address, null);
@@ -173,6 +179,19 @@ test(
           );
         },
       );
+      await t.test("retries cannot change the recorded payment", async () => {
+        for (const fields of [
+          { paymentMethod: "CASH" },
+          { paymentStatus: "CREDIT", paymentMethod: null },
+          { paymentNote: "Өөр гүйлгээ" },
+        ]) {
+          assert.equal(
+            (await call(base, operator, { ...draft, ...fields })).status,
+            409,
+          );
+        }
+        assert.equal(await stock(products[0]), 96);
+      });
       await t.test(
         "invalid location, foreign products and insufficient stock leave no partial document",
         async () => {
@@ -231,6 +250,9 @@ test(
           const row = (await detail.json()) as WarehouseDispatchDocument;
           assert.equal(row.items[0].unitPrice, "100.25");
           assert.equal(row.totalAmount, "401.00");
+          assert.equal(row.paymentStatus, "PAID");
+          assert.equal(row.paymentMethod, "BANK_TRANSFER");
+          assert.equal(row.paymentNote, draft.paymentNote);
           assert.notEqual(row.items[0].name, "Renamed");
           assert.equal(
             (
@@ -251,12 +273,16 @@ test(
             lat: 47.91,
             lng: 106.92,
             address: "Дэлгэрэнгүй хаяг",
+            paymentStatus: "CREDIT",
+            paymentMethod: null,
+            paymentNote: "Дараа долоо хоногт төлнө",
           });
           assert.equal(pinned.status, 201);
-          assert.equal(
-            ((await pinned.json()) as WarehouseDispatchDocument).lat,
-            47.91,
-          );
+          const credit = (await pinned.json()) as WarehouseDispatchDocument;
+          assert.equal(credit.lat, 47.91);
+          assert.equal(credit.paymentStatus, "CREDIT");
+          assert.equal(credit.paymentMethod, null);
+          assert.equal(credit.paymentNote, "Дараа долоо хоногт төлнө");
         },
       );
       await t.test(
@@ -300,6 +326,17 @@ test(
             )
           ).json()) as WarehouseDispatchHistory;
           assert.equal(filtered.total, 2);
+          assert.deepEqual(
+            filtered.items.map((row) => row.paymentStatus).sort(),
+            ["CREDIT", "PAID"],
+          );
+          const legacy = first.items.find((row) =>
+            row.dispatchNumber.startsWith("LEGACY"),
+          );
+          assert.ok(legacy);
+          assert.equal(legacy.paymentStatus, null);
+          assert.equal(legacy.paymentMethod, null);
+          assert.equal(legacy.paymentNote, null);
         },
       );
       await t.test(
@@ -314,6 +351,8 @@ test(
           assert.equal(response.status, 201, await response.clone().text());
           const result = (await response.json()) as WarehouseDispatchDocument;
           assert.equal(result.storeName, "Хуучин харилцагчийн хаяг");
+          assert.equal(result.paymentStatus, null);
+          assert.equal(result.paymentMethod, null);
           assert.equal(await stock(products[0]), 91);
         },
       );

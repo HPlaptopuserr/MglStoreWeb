@@ -82,3 +82,52 @@ test("the deployed Warehouse address-and-pin payload remains valid during rollou
     );
   }
 });
+
+test("paid dispatches require a supported payment method and preserve the trimmed note", () => {
+  for (const paymentMethod of [
+    "CASH",
+    "BANK_TRANSFER",
+    "CARD",
+    "QPAY",
+    "OTHER",
+  ]) {
+    const result = parseManualDispatch({
+      ...draft(),
+      paymentStatus: "PAID",
+      paymentMethod,
+      paymentNote: "  Гүйлгээ 123  ",
+    });
+    assert.equal(result.paymentStatus, "PAID");
+    assert.equal(result.paymentMethod, paymentMethod);
+    assert.equal(result.paymentNote, "Гүйлгээ 123");
+  }
+  for (const paymentMethod of [undefined, null, "", "UNKNOWN", 1, {}])
+    assert.throws(() =>
+      parseManualDispatch({ ...draft(), paymentStatus: "PAID", paymentMethod }),
+    );
+});
+
+test("credit dispatches have no payment method; older clients leave payment unknown", () => {
+  const credit = parseManualDispatch({
+    ...draft(),
+    paymentStatus: "CREDIT",
+    paymentNote: "Баасан гарагт төлнө",
+  });
+  assert.equal(credit.paymentStatus, "CREDIT");
+  assert.equal(credit.paymentMethod, null);
+  assert.equal(credit.paymentNote, "Баасан гарагт төлнө");
+  const legacy = parseManualDispatch(draft());
+  assert.equal(legacy.paymentStatus, null);
+  assert.equal(legacy.paymentMethod, null);
+  assert.equal(legacy.paymentNote, null);
+  for (const fields of [
+    { paymentStatus: "CREDIT", paymentMethod: "CASH" },
+    { paymentStatus: "UNKNOWN" },
+    { paymentStatus: "" },
+    { paymentMethod: "CASH" },
+    { paymentNote: "Тайлбар" },
+    { paymentStatus: "CREDIT", paymentNote: "x".repeat(501) },
+    { paymentStatus: "CREDIT", paymentNote: 123 },
+  ])
+    assert.throws(() => parseManualDispatch({ ...draft(), ...fields }));
+});

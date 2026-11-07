@@ -1,3 +1,8 @@
+import type {
+  WarehouseDispatchPaymentMethod,
+  WarehouseDispatchPaymentStatus,
+} from "@mgl/types";
+
 export class ManualDispatchError extends Error {
   constructor(
     message: string,
@@ -27,6 +32,39 @@ function coordinate(value: unknown, min: number, max: number) {
   )
     throw new ManualDispatchError("Газрын зургийн координат буруу байна.");
   return value;
+}
+
+function parsePayment(body: Record<string, unknown>): {
+  paymentStatus: WarehouseDispatchPaymentStatus | null;
+  paymentMethod: WarehouseDispatchPaymentMethod | null;
+  paymentNote: string | null;
+} {
+  const { paymentStatus, paymentMethod } = body;
+  const paymentNote = text(body.paymentNote, 500);
+  // Allow older clients during rollout without assuming that money was received.
+  if (paymentStatus === undefined || paymentStatus === null) {
+    if (paymentMethod != null || paymentNote !== null)
+      throw new ManualDispatchError("Төлбөрийн төлөвөө сонгоно уу.");
+    return { paymentStatus: null, paymentMethod: null, paymentNote: null };
+  }
+  if (paymentStatus !== "PAID" && paymentStatus !== "CREDIT")
+    throw new ManualDispatchError("Төлбөрийн төлөв буруу байна.");
+  if (paymentStatus === "CREDIT") {
+    if (paymentMethod != null)
+      throw new ManualDispatchError(
+        "Зээлээр гаргахад төлбөрийн арга сонгохгүй.",
+      );
+    return { paymentStatus, paymentMethod: null, paymentNote };
+  }
+  if (
+    paymentMethod !== "CASH" &&
+    paymentMethod !== "BANK_TRANSFER" &&
+    paymentMethod !== "CARD" &&
+    paymentMethod !== "QPAY" &&
+    paymentMethod !== "OTHER"
+  )
+    throw new ManualDispatchError("Төлсөн төлбөрийн аргаа сонгоно уу.");
+  return { paymentStatus, paymentMethod, paymentNote };
 }
 
 export function parseManualDispatch(value: unknown) {
@@ -99,6 +137,7 @@ export function parseManualDispatch(value: unknown) {
     lng,
     requestId,
     address,
+    ...parsePayment(body),
     reason: text(body.reason, 250),
     note: text(body.note, 1000),
     items,

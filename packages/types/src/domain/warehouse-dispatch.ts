@@ -1,3 +1,11 @@
+export type WarehouseDispatchPaymentStatus = "PAID" | "CREDIT";
+export type WarehouseDispatchPaymentMethod =
+  | "CASH"
+  | "BANK_TRANSFER"
+  | "CARD"
+  | "QPAY"
+  | "OTHER";
+
 export interface WarehouseDispatchDocument {
   id: string;
   dispatchNumber: string;
@@ -9,6 +17,9 @@ export interface WarehouseDispatchDocument {
   lng: number | null;
   reason: string | null;
   note: string | null;
+  paymentStatus: WarehouseDispatchPaymentStatus | null;
+  paymentMethod: WarehouseDispatchPaymentMethod | null;
+  paymentNote: string | null;
   createdAt: string;
   createdByName: string;
   warehouse: { id: string; name: string; address: string };
