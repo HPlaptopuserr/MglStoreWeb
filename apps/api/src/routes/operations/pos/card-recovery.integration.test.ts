@@ -60,6 +60,7 @@ test(
     let terminalDeclined = false;
     let observedCancellation = false;
     let insufficientFunds = false;
+    let terminalRefusal: string | undefined;
     let invoiceCalls = 0;
     const providerCalls: string[] = [];
     const provider = express();
@@ -85,7 +86,7 @@ test(
           status: terminalDeclined ? "DECLINED" : paid ? "000" : "10",
           rrn: paid && !omitRrn ? "123456789012" : null,
           error: terminalDeclined ? "DECLINED" : paid ? "false" : "true",
-          message: insufficientFunds ? "Үлдэгдэл хүрээгүй" : observedCancellation ? "Гүйлгээ цуцлагдлаа" : paid ? "Гүйлгээ амжилттай" : undefined,
+          message: terminalRefusal ?? (insufficientFunds ? "Үлдэгдэл хүрээгүй" : observedCancellation ? "Гүйлгээ цуцлагдлаа" : paid ? "Гүйлгээ амжилттай" : undefined),
           cardNo: "DO-NOT-EXPOSE",
         },
       });
@@ -988,6 +989,37 @@ test(
         assert.equal((await f.authorize({ ...f.body, attemptId: crypto.randomUUID() })).status, 201);
         paid = true;
       });
+
+      for (const message of ["Not permitted", "Transaction refused"]) {
+        await t.test(`${message} releases the pending payment without clearing its basket or issuing another invoice`, async () => {
+          const f = await fixture();
+          paid = false;
+          assert.equal((await f.authorize()).status, 201);
+          const original = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+          assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
+          const before = invoiceCalls;
+          const callOffset = providerCalls.length;
+          terminalRefusal = message;
+          try {
+            const response = await f.status();
+            const result = await response.json() as { status: string; message: string };
+            assert.equal(response.status, 200);
+            assert.equal(result.status, "DECLINED");
+            assert.equal(result.message, message);
+            assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
+            assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 1);
+            const stored = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+            assert.equal(stored.consumedAt, null);
+            assert.equal(stored.saleReference, null);
+            assert.equal(stored.transactionId, null);
+            assert.deepEqual((stored.providerPayload as Record<string, unknown>).checkout, (original.providerPayload as Record<string, unknown>).checkout);
+            assert.equal(invoiceCalls, before);
+            assert.ok(providerCalls.slice(callOffset).every(path => ["/agent/login", "/agent/checkTxn"].includes(path)));
+          } finally { terminalRefusal = undefined; }
+          assert.equal((await f.authorize({ ...f.body, attemptId: crypto.randomUUID() })).status, 201);
+          paid = true;
+        });
+      }
 
       await t.test("a stale bank poll cannot overwrite newer review evidence", async () => {
         const f = await fixture();

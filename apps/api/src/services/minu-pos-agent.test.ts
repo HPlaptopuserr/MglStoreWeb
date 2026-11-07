@@ -5,7 +5,39 @@ import {
   parseMinuAgentTransactionResponse,
   isMinuTerminalCancellation,
   isMinuInsufficientFunds,
+  isMinuTerminalRefusal,
 } from "./minu-pos-agent";
+
+test("observed explicit terminal refusals settle without interpreting all code 10 replies as declines", () => {
+  for (const message of ["Not permitted", "Transaction refused"]) {
+    const response = { status: "000", message: "Successful", entity: {
+      invoice: "MGL-original", status: "10", error: "true", message, rrn: null,
+    } };
+    assert.equal(isMinuTerminalRefusal(response), true);
+    const result = parseMinuAgentTransactionResponse(response);
+    assert.equal(result.declined, true);
+    assert.equal(result.approved, false);
+    assert.equal(result.pending, false);
+    assert.equal(result.message, message);
+    for (const changed of [
+      { ...response, status: "0064" },
+      { ...response, entity: { ...response.entity, status: "0" } },
+      { ...response, entity: { ...response.entity, error: "false" } },
+      { ...response, entity: { ...response.entity, invoice: "" } },
+      { ...response, entity: { ...response.entity, rrn: "bank-reference" } },
+    ]) {
+      assert.equal(isMinuTerminalRefusal(changed), false);
+      assert.equal(parseMinuAgentTransactionResponse(changed).declined, false);
+    }
+  }
+  for (const message of ["Чипээр уншуулна уу", "Transaction needs to be entered again", "Пин буруу", "Successful", "Not permitted; checking", ""]) {
+    const result = parseMinuAgentTransactionResponse({ status: "000", entity: {
+      invoice: "MGL-original", status: "10", error: "true", message, rrn: null,
+    } });
+    assert.equal(result.pending, true, message);
+    assert.equal(result.declined, false, message);
+  }
+});
 
 test("the observed insufficient-funds response declines and preserves the terminal explanation", () => {
   const response = { status: "000", message: "Successful", entity: {

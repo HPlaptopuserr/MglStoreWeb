@@ -221,6 +221,17 @@ export function isMinuInsufficientFunds(data: MinuAgentResponse<MinuTxnEntity>):
     !String(data.entity?.rrn ?? "").trim();
 }
 
+/** Explicit refusals observed in production checkTxn replies. Code 10 also
+ * carries prompts to retry/insert the chip, so only these exact replies settle. */
+export function isMinuTerminalRefusal(data: MinuAgentResponse<MinuTxnEntity>): boolean {
+  return String(data.status ?? "").trim() === "000" &&
+    String(data.entity?.status ?? "").trim() === "10" &&
+    String(data.entity?.error ?? "").trim().toLowerCase() === "true" &&
+    ["Not permitted", "Transaction refused"].includes(String(data.entity?.message ?? "").trim()) &&
+    Boolean(String(data.entity?.invoice ?? "").trim()) &&
+    !String(data.entity?.rrn ?? "").trim();
+}
+
 export function parseMinuAgentTransactionResponse(
   data: MinuAgentResponse<MinuTxnEntity>,
 ): MinuTxnResult {
@@ -264,6 +275,7 @@ export function parseMinuAgentTransactionResponse(
   const explicitlyDeclined =
     isMinuTerminalCancellation(data) ||
     isMinuInsufficientFunds(data) ||
+    isMinuTerminalRefusal(data) ||
     declinedStatuses.has(normalizedEntityError) ||
     declinedStatuses.has(normalizedEntityStatus) ||
     declinedStatuses.has(normalizedTopStatus);
