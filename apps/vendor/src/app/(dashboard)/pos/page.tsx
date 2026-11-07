@@ -9,6 +9,7 @@ import { printReceipt as printSaleReceipt } from "@/features/pos/utils/print-rec
 import { ReceiptPrintNotice } from "@/features/pos/components/ReceiptPrintNotice";
 import { reconcilePaymentEntry } from "@/features/pos/utils/reconcile-payment-entry";
 import { canClearCheckoutAfterCancelFailure } from "@/features/pos/utils/qpay-cancel-policy";
+import { hasProtectedCheckoutPayment, hasUnresolvedCardPayment } from "@/features/pos/utils/checkout-cart-guard";
 import { cancelQPayInvoice } from "@/features/pos/api/qpay";
 
 import { normalizeCashPayment, summarizeCashPayments, type CashPaymentDetails } from "@mgl/types";
@@ -139,6 +140,7 @@ import {
 } from "@/features/pos";
 import {
   clearQPayCheckoutRecovery,
+  claimQPayCheckoutRecovery,
   hasCheckoutPaymentEvidence,
   loadQPayCheckoutRecovery,
   saveQPayCheckoutRecovery,
@@ -514,7 +516,12 @@ export default function PosDemoPage() {
   const [printableReceipt, setPrintableReceipt] = useState<PosReceipt | null>(null);
   const printReceipt = (receipt: PosReceipt) => {
     setPrintableReceipt(receipt);
-    printSaleReceipt(receipt);
+    try {
+      printSaleReceipt(receipt);
+    } catch (error: unknown) {
+      console.error("Sale recorded but receipt printing failed", error);
+      setScanMessage(`Борлуулалт ${receipt.receiptNo} бүртгэгдсэн. Баримт хэвлэж чадсангүй. «Баримт хэвлэх» товчоор дахин хэвлэнэ үү. Төлбөрийг дахин авахгүй.`);
+    }
   };
   const router = useRouter();
   const [organizationId, setOrganizationId] = useState("");
@@ -570,8 +577,7 @@ export default function PosDemoPage() {
   const [checkoutStarting, setCheckoutStarting] = useState(false);
   const [registerDiscoveryDoneFor, setRegisterDiscoveryDoneFor] = useState("");
   const effectiveEbarimtEnabled = EBARIMT_ENABLED && Boolean(registerConfig?.ebarimtEnabled);
-  const hasUnresolvedMinuPayment = getEffectiveCardProvider(registerConfig) === "MINU_AGENT" &&
-    paymentEntries.some(entry => entry.method === "CARD" && entry.status === "pending" && entry.attemptId);
+  const unresolvedCardPayment = hasUnresolvedCardPayment(paymentEntries);
   const ebarimtStatusText = !EBARIMT_ENABLED
     ? "eBarimt систем идэвхгүй байна."
     : registerConfig?.ebarimtEnabled
@@ -641,7 +647,8 @@ export default function PosDemoPage() {
   const { products, loading: catalogLoading, error, hasSnapshot, refreshing, refreshProducts } = productCatalog;
   const loading = catalogLoading || (posEnabled && !registerBranchId && registerDiscoveryDoneFor !== organizationId);
   const reloadProducts = registerBranchId ? posProductsState.reload : ownProductsState.reload;
-  const { state, totals, addProduct, dispatch } = usePosCart();
+  const recoveryScope = organizationId && registerConfig?.id ? `${organizationId}:${registerConfig.id}` : "";
+  const { state, totals, addProduct, dispatch } = usePosCart(recoveryScope || undefined);
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
   const { shift, blockingShift, ready: shiftReady, error: shiftError, loading: shiftLoading, load: loadShift, open: openShift, close: closeShiftFn, closeBlocking } = useCurrentShift(registerConfig?.id);
   const unknownBarcode = useUnknownBarcodeRegistration();
@@ -652,10 +659,18 @@ export default function PosDemoPage() {
   );
 
   useEffect(() => {
-    if (!organizationId || checkoutRecoveryScope === organizationId) return;
+    if (!recoveryScope || checkoutRecoveryScope === recoveryScope) return;
 
-    const recovery = loadQPayCheckoutRecovery(organizationId);
+    const recovery = loadQPayCheckoutRecovery(organizationId, registerConfig?.id);
+    if (!recovery && checkoutRecoveryScope && checkoutRecoveryScope !== recoveryScope) {
+      setPaymentEntries([]);
+      setQpayModal(null);
+      setLoyalty(initialLoyaltyState);
+      setLoyaltyRedeemSession(null);
+      clientSaleIdRef.current = null;
+    }
     if (recovery) {
+      if (recovery.cart) dispatch({ type: "restore-cart", payload: recovery.cart });
       clientSaleIdRef.current = recovery.clientSaleId;
       setPaymentEntries(recovery.paymentEntries);
       setQpayModal(recovery.qpayModal);
@@ -678,8 +693,8 @@ export default function PosDemoPage() {
               : "Өмнөх төлбөрийг сэргээж, төлөвийг автоматаар шалгаж байна...",
       );
     }
-    setCheckoutRecoveryScope(organizationId);
-  }, [checkoutRecoveryScope, organizationId]);
+    setCheckoutRecoveryScope(recoveryScope);
+  }, [checkoutRecoveryScope, organizationId, recoveryScope, registerConfig?.id, dispatch]);
 
   useEffect(
     () => () => {
@@ -691,10 +706,10 @@ export default function PosDemoPage() {
   );
 
   useEffect(() => {
-    if (!organizationId || checkoutRecoveryScope !== organizationId) return;
+    if (!recoveryScope || checkoutRecoveryScope !== recoveryScope) return;
 
     if (!hasCheckoutPaymentEvidence(paymentEntries)) {
-      clearQPayCheckoutRecovery(organizationId);
+      clearQPayCheckoutRecovery(organizationId, registerConfig?.id, clientSaleIdRef.current ?? undefined);
       if (autoFinalizeRetryTimerRef.current !== null) {
         window.clearTimeout(autoFinalizeRetryTimerRef.current);
         autoFinalizeRetryTimerRef.current = null;
@@ -706,15 +721,23 @@ export default function PosDemoPage() {
     if (!clientSaleIdRef.current) {
       clientSaleIdRef.current = `sale-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
     }
-    saveQPayCheckoutRecovery(organizationId, {
+    try { saveQPayCheckoutRecovery(organizationId, {
+      registerId: registerConfig?.id,
+      cart: state.cart,
       clientSaleId: clientSaleIdRef.current,
       paymentEntries,
       qpayModal,
       loyalty,
       loyaltyRedeemSession,
-    });
+    }); } catch (error: unknown) {
+      setScanStatus("not-found");
+      setScanMessage(error instanceof Error ? error.message : "Төлбөрийн сэргээх мэдээллийг хадгалж чадсангүй.");
+    }
   }, [
     checkoutRecoveryScope,
+    recoveryScope,
+    registerConfig?.id,
+    state.cart,
     loyalty,
     loyaltyRedeemSession,
     organizationId,
@@ -1430,6 +1453,7 @@ export default function PosDemoPage() {
   }, [showSetupPanel, organizationId]);
 
   const handleSelfRegister = async () => {
+    if (blockQPayCartMutation()) return;
     if (!setupName.trim() || !setupBranchId) {
       setSetupError("Нэр болон салбараа сонгоно уу.");
       return;
@@ -1474,12 +1498,14 @@ export default function PosDemoPage() {
   };
 
   const handleConnectExisting = () => {
+    if (blockQPayCartMutation()) return;
     const id = setupExistingId.trim();
     if (!id) return;
     setSetupRegistering(true);
     setSetupError("");
     fetchRegisterConfig(id)
       .then((cfg) => {
+        if (blockQPayCartMutation()) return;
         if (cfg.organizationId !== organizationId) {
           throw new Error("Register ID нь өөр байгууллагад харьяалагдаж байна.");
         }
@@ -1497,6 +1523,7 @@ export default function PosDemoPage() {
   };
 
   const handleDisconnectRegister = () => {
+    if (blockQPayCartMutation()) return;
     localStorage.removeItem(registerStorageKey);
     localStorage.removeItem(POS_REGISTER_ID_KEY);
     setRegisterConfig(null);
@@ -1736,7 +1763,7 @@ export default function PosDemoPage() {
     assertRetailCheckoutContext(registerConfig, shift, organizationId);
     clientSaleIdRef.current = `card-recovery-${payment.attemptId}`;
     const entries: CheckoutPaymentEntry[] = [{ id: `recovery-${payment.attemptId}`, method: "CARD", status: "confirmed", amount: payment.amount, attemptId: payment.attemptId, transactionId: payment.transactionId }];
-    saveQPayCheckoutRecovery(organizationId, { clientSaleId: clientSaleIdRef.current, paymentEntries: entries, qpayModal: null, loyalty: initialLoyaltyState, loyaltyRedeemSession: null });
+    saveQPayCheckoutRecovery(organizationId, { registerId: registerConfig.id, cart: state.cart, clientSaleId: clientSaleIdRef.current, paymentEntries: entries, qpayModal: null, loyalty: initialLoyaltyState, loyaltyRedeemSession: null });
     setPaymentEntries(entries);
     setLoyalty(initialLoyaltyState);
     setLoyaltyRedeemSession(null);
@@ -1751,13 +1778,14 @@ export default function PosDemoPage() {
 
 
   const blockQPayCartMutation = () => {
-    if (!showCardRecovery && !qpayCreatingRef.current && !paymentEntries.some(item => item.status === "confirmed" || (item.method === "QR" && item.invoiceId))) return false;
+    if (!showCardRecovery && !qpayCreatingRef.current && !cardPaymentRunRef.current && !hasProtectedCheckoutPayment(paymentEntries)) return false;
     setScanStatus("not-found");
     setScanMessage("Төлбөртэй сагсыг өөрчлөх боломжгүй. Төлбөрийн төлөвөө шалгаж, борлуулалтаа дуусгана уу.");
     return true;
   };
 
-  const resetCreditRepaymentMode = () => {
+  const resetCreditRepaymentMode = (saleCompleted = false) => {
+    clearQPayCheckoutRecovery(organizationId, registerConfig?.id, clientSaleIdRef.current ?? undefined, saleCompleted);
     if (cardPaymentRunRef.current) {
       cardPaymentRunRef.current.cancelled = true;
       cardPaymentRunRef.current.abortController.abort();
@@ -1985,7 +2013,7 @@ export default function PosDemoPage() {
       }
 
       dispatch({ type: "clear-cart" });
-      resetCreditRepaymentMode();
+      resetCreditRepaymentMode(true);
       setListMode("credits");
       setScanStatus("success");
       setScanMessage(`${repaymentLabel} төлөлт амжилттай бүртгэгдлээ.`);
@@ -2114,6 +2142,7 @@ export default function PosDemoPage() {
   };
 
   const completePaidSale = (finalReceipt: PosReceipt, finalMessage: string, isCreditSale: boolean) => {
+    clearQPayCheckoutRecovery(organizationId, registerConfig?.id, clientSaleIdRef.current ?? undefined, true);
     setPendingEbarimtSale(null);
     setCompanyReceipt(false);
     setQpayModal(null);
@@ -2542,7 +2571,9 @@ export default function PosDemoPage() {
           ];
           // A React effect may run after the authorization request reaches the bank.
           // If durable storage fails, stop here before dispatching any payment.
-          saveQPayCheckoutRecovery(organizationId, {
+          await claimQPayCheckoutRecovery(organizationId, {
+            registerId: freshRegisterConfig.id,
+            cart: state.cart,
             clientSaleId,
             paymentEntries: recoverableEntries,
             qpayModal,
@@ -2562,6 +2593,11 @@ export default function PosDemoPage() {
           registerId: freshRegisterConfig.id,
           organizationId,
           clientBridge: useClientBridge,
+          ...(effectiveCardProvider === "MINU_AGENT" && !selectedCreditRepayment ? { checkout: {
+            clientSaleId: clientSaleIdRef.current!, branchId: freshRegisterConfig.branchId,
+            shiftId: shift?.id ?? "", lines: state.cart.map(line => ({ productId: line.productId, qty: line.qty,
+              unitPrice: line.unitPrice, priceType: line.priceType, discountAmount: line.discountAmount, taxRate: line.taxRate })),
+          } } : {}),
         });
         authorizationAccepted = true;
 
@@ -2640,6 +2676,7 @@ export default function PosDemoPage() {
           ),
         );
         const completesBalance = canAutoCompletePayment({ status: "confirmed", amount: safeAmount, remaining, loyaltyReady: effectiveCardProvider === "MINU_AGENT" || loyaltyReady });
+        if (completesBalance) setView("checkout");
         setAutoCheckoutActive(completesBalance);
         clearProgressTicker();
         setScanStatus("success");
@@ -2649,7 +2686,8 @@ export default function PosDemoPage() {
         if (isCardRunCancelled()) return;
         clearProgressTicker();
         const status = error && typeof error === "object" && "status" in error ? Number(error.status) : 0;
-        const knownFailure = cardRequestFailureIsDefinitive({ hasAttemptId: Boolean(createdAttemptId), authorizationAccepted, httpStatus: status });
+        const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : undefined;
+        const knownFailure = cardRequestFailureIsDefinitive({ hasAttemptId: Boolean(createdAttemptId), authorizationAccepted, httpStatus: status, code });
         const message = error instanceof Error ? error.message : "Картын терминалын холболтын алдаа гарлаа";
         if (knownFailure) setPaymentEntries((prev) => prev.filter((item) => item.id !== pendingId));
         setPaymentFeedback(previous => ({ ...previous, CARD: { kind: knownFailure ? "failed" : "unknown", message: knownFailure ? message : `${message} Төлбөрийн төлөв тодорхойгүй тул дахин карт уншуулахгүй. Төлөвөө шалгана уу.` } }));
@@ -2694,7 +2732,7 @@ export default function PosDemoPage() {
     const pendingEntries = [...paymentEntries, pendingEntry];
 
     try {
-      saveQPayCheckoutRecovery(organizationId, { clientSaleId: clientSaleIdRef.current, paymentEntries: pendingEntries, qpayModal: null, loyalty, loyaltyRedeemSession });
+      await claimQPayCheckoutRecovery(organizationId, { registerId: registerConfig?.id, cart: state.cart, clientSaleId: clientSaleIdRef.current, paymentEntries: pendingEntries, qpayModal: null, loyalty, loyaltyRedeemSession });
       setPaymentEntries(pendingEntries);
       startProgressTicker("QR бэлтгэж байна…");
       const invoice = await createQPayInvoice({
@@ -2797,12 +2835,20 @@ export default function PosDemoPage() {
       if (outcome === "confirmed") {
         clearPaymentFeedback("CARD");
         setPaymentEntries(previous => previous.map(item => item.id === id ? { ...item, status: "confirmed", transactionId: attempt.transactionId } : item));
-        setAutoCheckoutActive(canAutoCompletePayment({ status: "confirmed", amount: entry.amount, remaining, loyaltyReady: getEffectiveCardProvider(registerConfig) === "MINU_AGENT" || loyaltyReady }));
+        const completesBalance = canAutoCompletePayment({ status: "confirmed", amount: entry.amount, remaining, loyaltyReady: getEffectiveCardProvider(registerConfig) === "MINU_AGENT" || loyaltyReady });
+        // The cashier may have returned to the register while Minu was pending.
+        // Finalization runs in checkout, so resume that view when payment arrives.
+        if (completesBalance) setView("checkout");
+        setAutoCheckoutActive(completesBalance);
         setScanStatus("success");
         setScanMessage(entry.amount === remaining ? "Картын төлбөр баталгаажлаа. Борлуулалтыг бүртгэж байна…" : "Картын хэсэгчилсэн төлбөр баталгаажлаа. Үлдэгдлээ төлнө үү.");
       } else if (outcome === "failed") {
+        const message = attempt.message || "Картын төлбөр амжилтгүй.";
         setPaymentEntries(previous => previous.filter(item => item.id !== id));
-        setPaymentFeedback(previous => ({ ...previous, CARD: { kind: "failed", message: attempt.message || "Картын төлбөр амжилтгүй." } }));
+        setPaymentFeedback(previous => ({ ...previous, CARD: { kind: "failed", message } }));
+        setAutoCheckoutActive(false);
+        setScanStatus("not-found");
+        setScanMessage(message);
       } else {
         setPaymentFeedback(previous => ({ ...previous, CARD: { kind: "unknown", message: "Банкны төлөвийг автоматаар шалгаж байна. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү." } }));
       }
@@ -2845,20 +2891,16 @@ export default function PosDemoPage() {
   };
 
   const resetPaymentEntries = () => {
-    if (hasUnresolvedMinuPayment) {
-      setScanMessage("Minu төлбөрийн төлөвийг автоматаар шалгаж байна. Төлбөртэй сагсыг цэвэрлэх боломжгүй.");
+    if (cardPaymentRunRef.current || unresolvedCardPayment) {
+      setScanMessage("Картын төлбөрийн төлөвийг шалгаж байна. Төлбөртэй сагсыг цэвэрлэх боломжгүй.");
       return;
     }
-    if (qpayCreatingRef.current || paymentEntries.some(item => (item.method === "QR" && item.invoiceId) || (item.method === "CARD" && item.status === "confirmed" && item.attemptId))) {
+    if (qpayCreatingRef.current || paymentEntries.some(item => (item.method === "QR" && item.invoiceId) || (item.method === "CARD" && item.status === "confirmed"))) {
       setScanStatus("not-found");
       setScanMessage("Банкны төлбөртэй тул төлбөрүүдийг цэвэрлэх боломжгүй. Борлуулалтаа дуусгана уу.");
       return;
     }
-    if (cardPaymentRunRef.current) {
-      cardPaymentRunRef.current.cancelled = true;
-      cardPaymentRunRef.current.abortController.abort();
-      cardPaymentRunRef.current = null;
-    }
+    clearQPayCheckoutRecovery(organizationId, registerConfig?.id, clientSaleIdRef.current ?? undefined);
     setIsCardProcessing(false);
     setAutoCheckoutActive(false);
     setPaymentEntries([]);
@@ -2870,9 +2912,9 @@ export default function PosDemoPage() {
   };
 
   const cancelCheckoutAndClearCart = async () => {
-    if (hasUnresolvedMinuPayment) {
+    if (cardPaymentRunRef.current || unresolvedCardPayment) {
       setScanStatus("idle");
-      setScanMessage("Minu төлбөрийн төлөвийг автоматаар шалгаж байна. Төлбөр батлагдаагүй байхад сагсыг цуцлах боломжгүй.");
+      setScanMessage("Картын төлбөрийн төлөвийг шалгаж байна. Төлбөр батлагдаагүй байхад сагсыг цуцлах боломжгүй.");
       return;
     }
     if (qpayCreatingRef.current) {
@@ -2972,8 +3014,8 @@ export default function PosDemoPage() {
     setLoyaltyRedeemSession(null);
     setCustomerDisplaySuccess(null);
     setCashChangeReceipt(null);
+    clearQPayCheckoutRecovery(organizationId, registerConfig?.id, clientSaleIdRef.current ?? undefined);
     clientSaleIdRef.current = null;
-    clearQPayCheckoutRecovery(organizationId);
     dispatch({ type: "clear-cart" });
     setView("register");
     setScanStatus("idle");
@@ -3632,6 +3674,7 @@ export default function PosDemoPage() {
                 key={reg.id}
                 type="button"
                 onClick={() => {
+                  if (blockQPayCartMutation()) return;
                   if (reg.organizationId !== organizationId || reg.mode !== "RETAIL") return;
                   localStorage.setItem(registerStorageKey, reg.id);
                   localStorage.removeItem(POS_REGISTER_ID_KEY);
@@ -4766,6 +4809,7 @@ export default function PosDemoPage() {
                   void cancelCheckoutAndClearCart();
                   return;
                 }
+                if (blockQPayCartMutation()) return;
                 dispatch({ type: "clear-cart" });
                 resetCreditRepaymentMode();
               }}

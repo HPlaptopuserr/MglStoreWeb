@@ -3,7 +3,47 @@ import test from "node:test";
 import {
   describeMinuAgentInvoiceError,
   parseMinuAgentTransactionResponse,
+  isMinuTerminalCancellation,
+  isMinuInsufficientFunds,
 } from "./minu-pos-agent";
+
+test("the observed insufficient-funds response declines and preserves the terminal explanation", () => {
+  const response = { status: "000", message: "Successful", entity: {
+    invoice: "MGL-original", status: "10", error: "true", message: "Үлдэгдэл хүрээгүй", rrn: null,
+  } };
+  assert.equal(isMinuInsufficientFunds(response), true);
+  const result = parseMinuAgentTransactionResponse(response);
+  assert.equal(result.declined, true);
+  assert.equal(result.approved, false);
+  assert.equal(result.pending, false);
+  assert.equal(result.message, "Үлдэгдэл хүрээгүй");
+  for (const changed of [
+    { ...response, status: "0064" },
+    { ...response, entity: { ...response.entity, status: "0" } },
+    { ...response, entity: { ...response.entity, message: "Successful" } },
+    { ...response, entity: { ...response.entity, invoice: "" } },
+    { ...response, entity: { ...response.entity, error: "false" } },
+    { ...response, entity: { ...response.entity, rrn: "existing-bank-reference" } },
+  ]) {
+    assert.equal(isMinuInsufficientFunds(changed), false);
+    assert.equal(parseMinuAgentTransactionResponse(changed).declined, false);
+  }
+});
+
+test("the observed Minu code 10 cancellation requires the exact terminal message and no RRN", () => {
+  const response = { status: "000", message: "Successful", entity: {
+    invoice: "MGL-original", status: "10", error: "true", message: "Цуцлагдлаа", rrn: null,
+  } };
+  assert.equal(isMinuTerminalCancellation(response), true);
+  assert.equal(parseMinuAgentTransactionResponse(response).declined, true);
+  for (const changed of [
+    { ...response, status: "0064" },
+    { ...response, entity: { ...response.entity, message: "Successful" } },
+    { ...response, entity: { ...response.entity, rrn: "existing-bank-reference" } },
+    { ...response, entity: { ...response.entity, invoice: "" } },
+    { ...response, entity: { ...response.entity, error: "0064" } },
+  ]) assert.equal(isMinuTerminalCancellation(changed), false);
+});
 
 test("explains Minu device lookup errors with terminal and branch context", () => {
   const message = describeMinuAgentInvoiceError({

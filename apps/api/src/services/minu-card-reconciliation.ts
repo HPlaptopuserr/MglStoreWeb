@@ -2,6 +2,7 @@ import { prisma, PosPaymentStatus, type Prisma } from "@mgl/database";
 import type { CardPaymentAttempt } from "@prisma/client";
 import { getMinuAgentContextForRegister } from "./minu-register-context";
 import { checkMinuAgentTransaction, type MinuTxnResult } from "./minu-pos-agent";
+import { checkoutFromPayload } from "./pos-card-checkout";
 
 export function minuCardInvoice(attempt: CardPaymentAttempt): string | null {
   const payload = attempt.providerPayload;
@@ -45,21 +46,61 @@ async function reconcileAttempt(attempt: CardPaymentAttempt) {
   const result = await checkMinuAgentTransaction(context, invoice);
   const data = minuCardStatusUpdate(attempt, result);
   if (data) {
-    // A late pending/declined response must never overwrite approval or consumption.
-    await prisma.cardPaymentAttempt.updateMany({
-      where: {
-        id: attempt.id,
-        status: { in: result.approved
-          ? [PosPaymentStatus.PENDING, PosPaymentStatus.FAILED, PosPaymentStatus.DECLINED]
-          : [PosPaymentStatus.PENDING, PosPaymentStatus.FAILED] },
-        consumedAt: null,
-        saleReference: null,
-      },
-      data,
+    const checkout = checkoutFromPayload(attempt.providerPayload);
+    await prisma.$transaction(async (tx) => {
+      if (checkout)
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${attempt.organizationId}:${attempt.terminalId}`}, 0))`;
+      // A late pending/declined response must never overwrite approval or consumption.
+      await tx.cardPaymentAttempt.updateMany({
+        where: {
+          id: attempt.id,
+          updatedAt: attempt.updatedAt,
+          status: {
+            in: result.approved
+              ? [
+                  PosPaymentStatus.PENDING,
+                  PosPaymentStatus.FAILED,
+                  PosPaymentStatus.DECLINED,
+                ]
+              : [PosPaymentStatus.PENDING, PosPaymentStatus.FAILED],
+          },
+          consumedAt: null,
+          saleReference: null,
+        },
+        data,
+      });
+      if (result.declined && checkout && attempt.organizationId) {
+        const unresolved = await tx.cardPaymentAttempt.count({
+          where: {
+            organizationId: attempt.organizationId,
+            status: {
+              in: [
+                PosPaymentStatus.PENDING,
+                PosPaymentStatus.APPROVED,
+                PosPaymentStatus.FAILED,
+              ],
+            },
+            consumedAt: null,
+            providerPayload: {
+              path: ["checkout", "clientSaleId"],
+              equals: checkout.clientSaleId,
+            },
+          },
+        });
+        if (!unresolved)
+          await tx.posCardStockReservation.deleteMany({
+            where: {
+              organizationId: attempt.organizationId!,
+              clientSaleId: checkout.clientSaleId,
+            },
+          });
+      }
     });
   }
   return {
-    attempt: await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: attempt.id } }),
+    attempt: await prisma.cardPaymentAttempt.findUniqueOrThrow({
+      where: { id: attempt.id },
+    }),
     result,
   };
 }

@@ -16,3 +16,7 @@ test("preflight failure is safe to discard, but a lost authorization response ke
     assert.equal(cardRequestFailureIsDefinitive({ hasAttemptId: true, authorizationAccepted: false, httpStatus }), true);
   }
 });
+test("server-proven stock or price rejection releases only the unstarted attempt", () => {
+  assert.equal(cardRequestFailureIsDefinitive({ hasAttemptId: true, authorizationAccepted: false, httpStatus: 409, code: "CARD_PAYMENT_NOT_STARTED" }), true);
+  assert.equal(cardRequestFailureIsDefinitive({ hasAttemptId: true, authorizationAccepted: true, httpStatus: 409, code: "CARD_PAYMENT_NOT_STARTED" }), false);
+});

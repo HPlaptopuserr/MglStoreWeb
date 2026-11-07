@@ -33,6 +33,7 @@ export type PosAction =
       };
     }
   | { type: "clear-cart" }
+  | { type: "restore-cart"; payload: CartLine[] }
   | { type: "set-error"; payload: string | null };
 
 export function posReducer(state: PosState, action: PosAction): PosState {
@@ -133,6 +134,8 @@ export function posReducer(state: PosState, action: PosAction): PosState {
       };
     case "clear-cart":
       return { ...state, cart: [] };
+    case "restore-cart":
+      return { ...state, cart: action.payload, lastError: null };
     case "set-error":
       return { ...state, lastError: action.payload };
     default:

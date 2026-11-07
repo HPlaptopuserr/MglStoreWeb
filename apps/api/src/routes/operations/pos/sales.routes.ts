@@ -6,6 +6,7 @@ import {
   buildCreditBorrowerKey,
 } from "@mgl/types";
 import { parseCreditWorkDetails } from "./credit-work-details";
+import { checkoutFromPayload, sameCheckout, type CardCheckout } from "../../../services/pos-card-checkout";
 import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
 import { assertProductInventoryOwnership } from "../../../services/warehouse-product-ownership";
 import { resolvePosDiscountProfileType } from "./discount-profile";
@@ -1640,6 +1641,7 @@ router.post("/pos/sales", async (req, res) => {
           string,
           { traceno: string | null; terminalId: string }
         >();
+        let cardCheckout: CardCheckout | null = null;
         for (const cardLine of cardLines) {
           const attemptId = String(
             cardLine.attemptId || cardLine.transactionId || "",
@@ -1665,6 +1667,12 @@ router.post("/pos/sales", async (req, res) => {
               409,
               `Card attempt ${attemptId} approved биш байна`,
             );
+          }
+          const frozen = checkoutFromPayload(attempt.providerPayload);
+          if (frozen) {
+            const submitted = { clientSaleId, branchId: body.branchId!, shiftId: activeShift.id, lines: effectiveLines };
+            if (!sameCheckout(frozen, submitted)) throw toApiError(409, "Борлуулалтын сагс төлбөр эхэлсэн сагстай таарахгүй байна");
+            cardCheckout = frozen;
           }
           if (attempt.saleReference || attempt.consumedAt) {
             throw toApiError(
@@ -1796,6 +1804,7 @@ router.post("/pos/sales", async (req, res) => {
           );
 
           const adjustment = await adjustStock(tx, {
+            ...(cardCheckout ? { cardCheckout: { organizationId: effectiveOrganizationId, clientSaleId } } : {}),
             productId,
             warehouseId: warehouseId ?? undefined,
             branchId: body.branchId,
@@ -1874,18 +1883,19 @@ router.post("/pos/sales", async (req, res) => {
             line.priceType === "WHOLESALE" || line.priceType === "ORDER"
               ? line.priceType
               : "UNIT";
-          if (!multiPriceEnabled && priceType !== "UNIT") {
+          if (!cardCheckout && !multiPriceEnabled && priceType !== "UNIT") {
             throw toApiError(
               403,
               "Олон төрлийн борлуулалтын үнэ энэ байгууллагад идэвхгүй байна",
             );
           }
-          const configuredPrice =
+          const frozenPrice = cardCheckout?.lines.find(item => item.productId === line.productId)?.unitPrice;
+          const configuredPrice = frozenPrice ?? (
             priceType === "WHOLESALE"
               ? product?.wholesalePrice
               : priceType === "ORDER"
                 ? product?.orderPrice
-                : product?.price;
+                : product?.price);
           if (configuredPrice == null) {
             throw toApiError(
               400,
@@ -2457,6 +2467,7 @@ router.post("/pos/sales", async (req, res) => {
           },
           data: { response: saleResponse as object },
         });
+        if (cardCheckout) await tx.posCardStockReservation.deleteMany({ where: { organizationId: effectiveOrganizationId, clientSaleId } });
 
         return {
           saleResponse,
@@ -2465,6 +2476,10 @@ router.post("/pos/sales", async (req, res) => {
           loyalty: loyaltyResponse,
         };
       },
+      // Stock allocation runs for every basket product. Production sales have
+      // exceeded Prisma's default 5s deadline after the bank already approved.
+      // Keep stock, payment consumption and the receipt in one atomic commit.
+      { timeout: 30_000 },
     );
 
     void prisma.auditLog.create({

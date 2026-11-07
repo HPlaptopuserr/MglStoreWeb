@@ -1,4 +1,4 @@
-import type { CardAttempt, PushEcrResult, SettlementResult } from "@mgl/types";
+import type { CardAttempt, PushEcrResult, SettlementResult, SalePayload } from "@mgl/types";
 import { posRequest } from "./_pos-client";
 
 export type { CardAttempt, CardAttemptStatus, PushEcrResult, SettlementResult } from "@mgl/types";
@@ -11,6 +11,7 @@ export function createCardAttempt(payload: {
   registerId?: string;
   organizationId?: string;
   clientBridge?: boolean;
+  checkout?: { clientSaleId: string; branchId: string; shiftId: string; lines: SalePayload["lines"] };
 }): Promise<CardAttempt> {
   return posRequest<CardAttempt>("/pos/payments/card/authorize", {
     method: "POST",
@@ -22,6 +23,7 @@ export function createCardAttempt(payload: {
       registerId: payload.registerId || null,
       organizationId: payload.organizationId || null,
       clientBridge: payload.clientBridge === true,
+      checkout: payload.checkout,
     },
   });
 }

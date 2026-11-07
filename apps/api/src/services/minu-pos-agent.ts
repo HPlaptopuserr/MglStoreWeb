@@ -199,6 +199,28 @@ export async function createMinuAgentInvoice(params: {
   };
 }
 
+/** Exact checkTxn cancellation response observed in production on 2026-11-07.
+ * Code 10 alone, API success alone, or a message with an RRN is not cancellation. */
+export function isMinuTerminalCancellation(data: MinuAgentResponse<MinuTxnEntity>): boolean {
+  return String(data.status ?? "").trim() === "000" &&
+    String(data.entity?.status ?? "").trim() === "10" &&
+    String(data.entity?.error ?? "").trim().toLowerCase() === "true" &&
+    String(data.entity?.message ?? "").trim() === "Цуцлагдлаа" &&
+    Boolean(String(data.entity?.invoice ?? "").trim()) &&
+    !String(data.entity?.rrn ?? "").trim();
+}
+
+/** Exact insufficient-funds checkTxn response observed in production.
+ * Numeric status 10 or error=true alone remains an unknown outcome. */
+export function isMinuInsufficientFunds(data: MinuAgentResponse<MinuTxnEntity>): boolean {
+  return String(data.status ?? "").trim() === "000" &&
+    String(data.entity?.status ?? "").trim() === "10" &&
+    String(data.entity?.error ?? "").trim().toLowerCase() === "true" &&
+    String(data.entity?.message ?? "").trim() === "Үлдэгдэл хүрээгүй" &&
+    Boolean(String(data.entity?.invoice ?? "").trim()) &&
+    !String(data.entity?.rrn ?? "").trim();
+}
+
 export function parseMinuAgentTransactionResponse(
   data: MinuAgentResponse<MinuTxnEntity>,
 ): MinuTxnResult {
@@ -240,6 +262,8 @@ export function parseMinuAgentTransactionResponse(
   ]);
   const hasFailureError = !successErrorCodes.has(normalizedEntityError);
   const explicitlyDeclined =
+    isMinuTerminalCancellation(data) ||
+    isMinuInsufficientFunds(data) ||
     declinedStatuses.has(normalizedEntityError) ||
     declinedStatuses.has(normalizedEntityStatus) ||
     declinedStatuses.has(normalizedTopStatus);

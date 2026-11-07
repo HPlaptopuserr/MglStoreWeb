@@ -9,6 +9,8 @@ interface Props {
   hasPendingQPay: boolean;
   cancelling: boolean;
   disabled?: boolean;
+  confirmedPaid?: number;
+  unknownCardPayment?: boolean;
   onCancel: () => void;
 }
 
@@ -25,11 +27,14 @@ export function CheckoutPaymentError(props: Props) {
   return (
     <div role="alert" className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4">
       <p className="text-[10px] font-bold uppercase tracking-widest text-rose-700">
-        {props.hasPendingQPay ? "QPay төлбөрийн анхааруулга"
+        {(props.confirmedPaid ?? 0) > 0 ? "Төлбөр батлагдсан — борлуулалт дуусаагүй"
+          : props.unknownCardPayment ? "Картын төлбөрийн төлөв тодорхойгүй"
+          : props.hasPendingQPay ? "QPay төлбөрийн анхааруулга"
           : props.method === "CARD" ? "Картын төлбөр амжилтгүй"
           : props.method === "QR" ? "QPay QR үүссэнгүй" : "Төлбөр амжилтгүй"}
       </p>
       <p className="mt-2 text-sm font-semibold text-rose-800">{props.message}</p>
+      {((props.confirmedPaid ?? 0) > 0 || props.unknownCardPayment) && <p className="mt-2 text-sm text-rose-800">Төлбөрийг дахин авахгүй. Төлөвөө шалгаж, борлуулалтын бүртгэлийг дуусгана уу.</p>}
       {props.hasPendingQPay && (
         <button type="button" onClick={props.onCancel} disabled={props.disabled || props.cancelling}
           className="mt-4 inline-flex items-center justify-center rounded-lg border border-rose-400/50 bg-rose-500/15 px-4 py-2 text-xs font-black text-rose-800 transition hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-40">

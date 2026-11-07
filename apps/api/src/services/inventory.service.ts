@@ -20,6 +20,7 @@ interface AdjustStockInput {
   createdById?: string | null;
   referenceId?: string;
   referenceType?: string;
+  cardCheckout?: { organizationId: string; clientSaleId: string };
 }
 
 async function consumePosReceiptLotsFefo(
@@ -167,6 +168,17 @@ export async function adjustStock(
     referenceId,
     referenceType,
   } = input;
+
+  if (change < 0) {
+    await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${productId} FOR UPDATE`;
+    const reserved = await tx.posCardStockReservation.aggregate({ where: { productId,
+      ...(input.cardCheckout ? { NOT: input.cardCheckout } : {}) }, _sum: { quantity: true } });
+    if ((reserved._sum.quantity ?? 0) > 0) {
+      const product = await tx.product.findUniqueOrThrow({ where: { id: productId }, select: { stock: true, name: true } });
+      if (product.stock + change < (reserved._sum.quantity ?? 0)) throw { status: 409,
+        message: `"${product.name}" барааны нөөц картын төлбөр хүлээж буй сагсанд хадгалагдсан байна` };
+    }
+  }
 
   if (warehouseId) await assertWarehouseProductsOwned(tx, warehouseId, [productId]);
   else await assertUnassignedProductInventory(tx, [productId]);

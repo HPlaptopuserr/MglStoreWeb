@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { saveQPayCheckoutRecovery, loadQPayCheckoutRecovery, type QPayCheckoutRecovery } from "./qpay-checkout-recovery";
+import { saveQPayCheckoutRecovery, loadQPayCheckoutRecovery, clearQPayCheckoutRecovery, claimQPayCheckoutRecovery, type QPayCheckoutRecovery } from "./qpay-checkout-recovery";
 
 test("pending QR references survive reload and remain organization scoped", () => {
   const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
@@ -53,6 +53,50 @@ test("pending QR references survive reload and remain organization scoped", () =
     saveQPayCheckoutRecovery("org-1", recovery);
     assert.equal(loadQPayCheckoutRecovery("org-1")?.paymentEntries[0].attemptId, "unresolved-bank-attempt", "uncertain card references survive refresh for verification without a new charge");
     assert.equal(loadQPayCheckoutRecovery("org-2"), null);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "window", previous);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("a register checkout restores its entire basket and rejects another tab overwriting payment evidence", async () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const storage = new Map<string, string>();
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+    removeItem: (key: string) => storage.delete(key),
+  } } });
+  const recovery: Omit<QPayCheckoutRecovery, "updatedAt"> = {
+    registerId: "register-1", clientSaleId: "sale-1", qpayModal: null, loyaltyRedeemSession: null,
+    loyalty: { mode: "NONE", phone: "", lookupLoading: false, lookupError: "", found: false, balance: 0, earnRate: 0, membershipBadge: "NONE", redeemPoints: 0 },
+    cart: [{ productId: "product", name: "Large basket", qty: 1, stockQty: 1, unitPrice: 50_000_000, baseUnitPrice: 50_000_000, priceType: "UNIT", taxRate: 0, discountAmount: 0 }],
+    paymentEntries: [{ id: "pending", method: "CARD", amount: 50_000_000, status: "pending", attemptId: "bank-attempt" }],
+  };
+  try {
+    await claimQPayCheckoutRecovery("org", recovery);
+    assert.deepEqual(loadQPayCheckoutRecovery("org", "register-1")?.cart, recovery.cart);
+    assert.equal(loadQPayCheckoutRecovery("org", "register-2"), null);
+    await assert.rejects(claimQPayCheckoutRecovery("org", { ...recovery, clientSaleId: "another-tab" }));
+    clearQPayCheckoutRecovery("org", "register-1", "another-tab");
+    assert.equal(loadQPayCheckoutRecovery("org", "register-1")?.clientSaleId, "sale-1");
+    saveQPayCheckoutRecovery("org", { ...recovery, paymentEntries: [{ ...recovery.paymentEntries[0], status: "confirmed" }] });
+    saveQPayCheckoutRecovery("org", recovery);
+    assert.equal(loadQPayCheckoutRecovery("org", "register-1")?.paymentEntries[0].status, "confirmed", "a stale tab cannot downgrade a verified payment");
+    assert.throws(() => saveQPayCheckoutRecovery("org", { ...recovery, paymentEntries: [{ id: "other", method: "CASH", status: "confirmed", amount: 1 }] }));
+    clearQPayCheckoutRecovery("org", "register-1");
+    assert.ok(loadQPayCheckoutRecovery("org", "register-1"), "an unrelated empty tab cannot clear the checkout");
+    clearQPayCheckoutRecovery("org", "register-1", "sale-1");
+    assert.ok(loadQPayCheckoutRecovery("org", "register-1"), "a stale empty state cannot delete confirmed money");
+    clearQPayCheckoutRecovery("org", "register-1", "sale-1", true);
+    assert.equal(loadQPayCheckoutRecovery("org", "register-1"), null);
+    saveQPayCheckoutRecovery("org", recovery);
+    const [key, raw] = [...storage.entries()][0];
+    const broken = JSON.stringify({ ...JSON.parse(raw), cart: [{ ...recovery.cart![0], qty: 0 }] });
+    storage.set(key, broken);
+    assert.equal(loadQPayCheckoutRecovery("org", "register-1"), null);
+    assert.throws(() => saveQPayCheckoutRecovery("org", recovery));
+    assert.equal(storage.get(key), broken, "unreadable financial evidence is preserved for review");
   } finally {
     if (previous) Object.defineProperty(globalThis, "window", previous);
     else Reflect.deleteProperty(globalThis, "window");

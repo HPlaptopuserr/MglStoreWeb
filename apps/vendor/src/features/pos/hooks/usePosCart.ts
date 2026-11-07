@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useReducer } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
 import { calculateCartTotal } from "../utils/calculate-cart-total";
 import { initialPosState, posReducer } from "../store/pos.store";
-import type { CartLine, PosProduct } from "../types/pos.types";
+import type { PosProduct } from "../types/pos.types";
+import { isCartLine } from "../utils/cart-line-validation";
 import {
   normalizePosMeasureUnit,
   POS_WEIGHT_STEP_KG,
@@ -27,26 +28,13 @@ function resolveCartStorageKey(storageScope?: string) {
   return POS_CART_STORAGE_PREFIX;
 }
 
-function isCartLine(value: unknown): value is CartLine {
-  if (!value || typeof value !== "object") return false;
-
-  const line = value as CartLine;
-  return (
-    typeof line.productId === "string" &&
-    typeof line.name === "string" &&
-    Number.isFinite(line.qty) &&
-    Number.isFinite(line.stockQty) &&
-    Number.isFinite(line.unitPrice) &&
-    Number.isFinite(line.taxRate) &&
-    Number.isFinite(line.discountAmount)
-  );
-}
-
-function loadStoredPosState() {
+function loadStoredPosState(storageScope?: string) {
   if (typeof window === "undefined") return initialPosState;
 
   try {
-    const rawCart = window.localStorage.getItem(resolveCartStorageKey());
+    const rawCart = window.localStorage.getItem(
+      resolveCartStorageKey(storageScope),
+    );
     if (!rawCart) return initialPosState;
 
     const parsed = JSON.parse(rawCart);
@@ -84,26 +72,59 @@ function loadStoredPosState() {
   }
 }
 
-export function usePosCart() {
-  const [state, dispatch] = useReducer(
-    posReducer,
-    undefined,
-    loadStoredPosState,
-  );
-  const storageKey = useMemo(() => resolveCartStorageKey(), []);
+export function usePosCart(storageScope?: string) {
+  const [state, dispatch] = useReducer(posReducer, initialPosState);
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
+  const storageKey = storageScope ? resolveCartStorageKey(storageScope) : null;
+
+  useEffect(() => {
+    if (!storageKey || !storageScope) return;
+    try {
+      let stored = loadStoredPosState(storageScope);
+      // Migrate the old organization basket once; new baskets are register scoped.
+      if (!window.localStorage.getItem(storageKey)) {
+        const legacyKey = resolveCartStorageKey();
+        stored = loadStoredPosState();
+        if (stored.cart.length) {
+          window.localStorage.setItem(storageKey, JSON.stringify(stored.cart));
+          window.localStorage.removeItem(legacyKey);
+        }
+      }
+      dispatch({ type: "restore-cart", payload: stored.cart });
+      setLoadedScope(storageKey);
+    } catch {
+      dispatch({
+        type: "set-error",
+        payload:
+          "Сагсыг хадгалах сан руу хандаж чадсангүй. Төлбөр эхлүүлэхийн өмнө browser-ийн хадгалалтаа шалгана уу.",
+      });
+    }
+  }, [storageKey, storageScope]);
 
   const totals = useMemo(() => calculateCartTotal(state.cart), [state.cart]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    if (state.cart.length === 0) {
-      window.localStorage.removeItem(storageKey);
+    if (
+      typeof window === "undefined" ||
+      !storageKey ||
+      loadedScope !== storageKey
+    )
       return;
-    }
+    try {
+      if (state.cart.length === 0) {
+        window.localStorage.removeItem(storageKey);
+        return;
+      }
 
-    window.localStorage.setItem(storageKey, JSON.stringify(state.cart));
-  }, [state.cart, storageKey]);
+      window.localStorage.setItem(storageKey, JSON.stringify(state.cart));
+    } catch {
+      dispatch({
+        type: "set-error",
+        payload:
+          "Сагсыг хадгалж чадсангүй. Browser-ийн хадгалалтаа шалгана уу.",
+      });
+    }
+  }, [state.cart, storageKey, loadedScope]);
 
   const addProduct = (product: PosProduct) => {
     const currentLine = state.cart.find(

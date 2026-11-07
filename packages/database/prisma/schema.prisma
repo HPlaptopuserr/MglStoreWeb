@@ -2518,6 +2518,21 @@ model DispatchReturnItem {
   @@index([productId])
 }
 
+// Stock held for a server-validated Vendor basket while bank status is unresolved.
+// Released only on definitive decline or atomically when its sale commits.
+model PosCardStockReservation {
+  id             String   @id @default(uuid())
+  organizationId String
+  clientSaleId   String
+  registerId     String
+  productId      String
+  quantity       Int
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, clientSaleId, productId], map: "pos_card_stock_checkout_product_key")
+  @@index([productId])
+}
+
 model CardPaymentAttempt {
   id              String           @id @default(uuid())
   registerId      String?

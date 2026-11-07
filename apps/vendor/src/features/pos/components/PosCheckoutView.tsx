@@ -551,6 +551,8 @@ export function PosCheckoutView({
             message={statusMessage}
             tone={statusTone}
             feedback={paymentFeedback}
+            confirmedPaid={confirmedTotal}
+            unknownCardPayment={paymentEntries.some(entry => entry.method === "CARD" && entry.status === "pending")}
             hasPendingQPay={hasPendingQPay}
             cancelling={cancelCheckoutLoading}
             disabled={disabled}

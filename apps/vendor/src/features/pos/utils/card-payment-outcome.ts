@@ -4,8 +4,10 @@ export function cardRequestFailureIsDefinitive(input: {
   hasAttemptId: boolean;
   authorizationAccepted: boolean;
   httpStatus: number;
+  code?: string;
 }): boolean {
   if (input.authorizationAccepted) return false;
+  if (input.code === "CARD_PAYMENT_NOT_STARTED") return true;
   return !input.hasAttemptId || [400, 401, 403, 404, 422].includes(input.httpStatus);
 }
 

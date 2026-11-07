@@ -56,6 +56,9 @@ test(
     let omitRrn = false;
     let wrongInvoice = false;
     let allowInvoice = false;
+    let terminalDeclined = false;
+    let observedCancellation = false;
+    let insufficientFunds = false;
     let invoiceCalls = 0;
     const providerCalls: string[] = [];
     const provider = express();
@@ -78,10 +81,10 @@ test(
         status: "000",
         entity: {
           invoice: wrongInvoice ? "different-invoice" : req.body.invoice,
-          status: paid ? "000" : "10",
+          status: terminalDeclined ? "DECLINED" : paid ? "000" : "10",
           rrn: paid && !omitRrn ? "123456789012" : null,
-          error: paid ? "false" : "true",
-          message: paid ? "Гүйлгээ амжилттай" : "Үлдэгдэл хүрээгүй",
+          error: terminalDeclined ? "DECLINED" : paid ? "false" : "true",
+          message: insufficientFunds ? "Үлдэгдэл хүрээгүй" : observedCancellation ? "Цуцлагдлаа" : paid ? "Гүйлгээ амжилттай" : undefined,
           cardNo: "DO-NOT-EXPOSE",
         },
       });
@@ -356,22 +359,38 @@ test(
         },
       );
       await t.test(
-        "successful recovery produces a normal receipt and deducts stock once",
+        "a sale taking over five seconds records the paid card and deducts stock once",
         async () => {
-          const result = await sell();
-          const body = await result.text();
-          assert.equal(result.status, 201, body);
-          assert.ok(body.includes("receiptNo"));
-          assert.ok(body.includes("39140"));
-          assert.equal(await stock(), 8);
-          assert.equal(await sales(), 1);
-          assert.ok(
-            (
-              await prisma.cardPaymentAttempt.findUniqueOrThrow({
-                where: { id: attempt.id },
-              })
-            ).consumedAt,
-          );
+          // Reproduce the production P2028 failure in this disposable DB only.
+          await prisma.$executeRawUnsafe(`
+            CREATE FUNCTION test_card_recovery_slow_sale() RETURNS trigger
+            LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(6); RETURN NEW; END $$
+          `);
+          try {
+            await prisma.$executeRawUnsafe(`
+              CREATE TRIGGER test_card_recovery_slow_sale BEFORE INSERT ON "PosSale"
+              FOR EACH ROW EXECUTE FUNCTION test_card_recovery_slow_sale()
+            `);
+            const startedAt = Date.now();
+            const result = await sell();
+            const body = await result.text();
+            assert.equal(result.status, 201, body);
+            assert.ok(Date.now() - startedAt >= 6_000);
+            assert.ok(body.includes("receiptNo"));
+            assert.ok(body.includes("39140"));
+            assert.equal(await stock(), 8);
+            assert.equal(await sales(), 1);
+            assert.ok(
+              (
+                await prisma.cardPaymentAttempt.findUniqueOrThrow({
+                  where: { id: attempt.id },
+                })
+              ).consumedAt,
+            );
+          } finally {
+            await prisma.$executeRawUnsafe('DROP TRIGGER IF EXISTS test_card_recovery_slow_sale ON "PosSale"');
+            await prisma.$executeRawUnsafe('DROP FUNCTION test_card_recovery_slow_sale()');
+          }
         },
       );
       await t.test(
@@ -639,9 +658,9 @@ test(
       });
       await t.test("retrying a client payment identity dispatches only one Minu invoice", async () => {
         allowInvoice = true;
-        await prisma.posRegister.update({ where: { id: register.id }, data: { cardEnabled: true, cardTerminalId: "TEST-TERMINAL" } });
+        await prisma.posRegister.update({ where: { id: register.id }, data: { cardEnabled: true, cardTerminalId: "TEST-IDEMPOTENT" } });
         const attemptId = crypto.randomUUID();
-        const body = { attemptId, registerId: register.id, organizationId: organization.id, terminalId: "TEST-TERMINAL", amount: 28500 };
+        const body = { attemptId, registerId: register.id, organizationId: organization.id, terminalId: "TEST-IDEMPOTENT", amount: 28500 };
         const authorize = (payload: unknown = body) => fetch(`${base}/pos/payments/card/authorize`, { method: "POST", headers, body: JSON.stringify(payload) });
         const response = await authorize();
         assert.equal(response.status, 201, await response.text());
@@ -653,6 +672,231 @@ test(
         const result = await fetch(`${base}/pos/payments/card/status/${attemptId}`, { headers });
         assert.equal(result.status, 200);
         assert.equal(invoiceCalls, 1);
+      });
+
+      const fixture = async () => {
+        const terminalId = crypto.randomUUID();
+        const register = await prisma.posRegister.create({ data: { organizationId: organization.id, branchId: branch.id,
+          name: terminalId, cardEnabled: true, cardProviderType: "MINU_AGENT", cardTerminalId: terminalId,
+          activationStatus: "APPROVED", isActive: true } });
+        const shift = await prisma.posShift.create({ data: { organizationId: organization.id, branchId: branch.id,
+          registerId: register.id, cashierId: user.id, openingCash: 0 } });
+        const product = await prisma.product.create({ data: { organizationId: organization.id, name: "Reserved product", stock: 1, price: 50_000_000 } });
+        const clientSaleId = crypto.randomUUID();
+        const lines = [{ productId: product.id, qty: 1, unitPrice: 50_000_000, priceType: "UNIT", discountAmount: 0, taxRate: 0 }];
+        const body = { attemptId: crypto.randomUUID(), organizationId: organization.id, registerId: register.id,
+          terminalId, amount: 50_000_000, checkout: { clientSaleId, branchId: branch.id, shiftId: shift.id, lines } };
+        const authorize = (payload: unknown = body) => fetch(`${base}/pos/payments/card/authorize`, { method: "POST", headers, body: JSON.stringify(payload) });
+        const status = () => fetch(`${base}/pos/payments/card/status/${body.attemptId}`, { headers });
+        const sale = { ...saleBody, clientSaleId, registerId: register.id, shiftId: shift.id, lines,
+          paymentBreakdown: [{ method: "CARD", amount: body.amount, attemptId: body.attemptId }] };
+        return { body, authorize, status, sale, product, register };
+      };
+
+      await t.test("missing Minu merchant settings never approve, reserve stock or contact the provider", async () => {
+        const f = await fixture();
+        const before = invoiceCalls;
+        await prisma.organization.update({ where: { id: organization.id }, data: { minuAgentEnabled: false } });
+        try {
+          const result = await f.authorize();
+          assert.equal(result.status, 422, await result.text());
+          assert.equal(await prisma.cardPaymentAttempt.count({ where: { id: f.body.attemptId } }), 0);
+          assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
+          assert.equal(invoiceCalls, before);
+        } finally {
+          await prisma.organization.update({ where: { id: organization.id }, data: { minuAgentEnabled: true } });
+        }
+      });
+
+      await t.test("price, stock and shift failures are rejected before a terminal invoice is sent", async () => {
+        const f = await fixture();
+        const before = invoiceCalls;
+        await prisma.product.update({ where: { id: f.product.id }, data: { price: 60_000_000 } });
+        const priceRejected = await f.authorize();
+        assert.equal(priceRejected.status, 409);
+        assert.equal((await priceRejected.json() as { code: string }).code, "CARD_PAYMENT_NOT_STARTED");
+        await prisma.product.update({ where: { id: f.product.id }, data: { price: 50_000_000, stock: 0 } });
+        assert.equal((await f.authorize()).status, 409);
+        await prisma.product.update({ where: { id: f.product.id }, data: { stock: 1 } });
+        assert.equal((await f.authorize({ ...f.body, checkout: { ...f.body.checkout, shiftId: "unknown" } })).status, 409);
+        assert.equal(await prisma.cardPaymentAttempt.count({ where: { id: f.body.attemptId } }), 0);
+        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
+        assert.equal(invoiceCalls, before);
+      });
+
+      await t.test("legacy unknown payments stay recoverable without permanently blocking the new dispatch flow", async () => {
+        const f = await fixture();
+        const history = await prisma.cardPaymentAttempt.create({ data: {
+          organizationId: organization.id, registerId: f.register.id, terminalId: f.body.terminalId,
+          amount: 12000, status: "PENDING",
+          providerPayload: { provider: "MINU_AGENT", invoice: "original-legacy-invoice" },
+        } });
+        const before = invoiceCalls;
+        const response = await f.authorize();
+        assert.equal(response.status, 201, await response.text());
+        const created = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+        const payload = created.providerPayload as Record<string, unknown>;
+        assert.equal(payload.terminalGuardVersion, 1);
+        const unchanged = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: history.id } });
+        assert.equal(unchanged.status, "PENDING");
+        assert.deepEqual(unchanged.providerPayload, history.providerPayload);
+        assert.equal(unchanged.transactionId, null);
+        assert.equal(unchanged.consumedAt, null);
+        assert.equal(unchanged.saleReference, null);
+        await f.status();
+        assert.equal(invoiceCalls, before + 1);
+      });
+
+      await t.test("simultaneous different requests on one terminal dispatch only one invoice", async () => {
+        const f = await fixture();
+        const before = invoiceCalls;
+        const responses = await Promise.all([f.authorize(), f.authorize({ ...f.body, attemptId: crypto.randomUUID() })]);
+        assert.deepEqual(responses.map(r => r.status).sort(), [201, 409]);
+        // Wait for the background provider dispatch to finish before counting.
+        const accepted = await prisma.cardPaymentAttempt.findFirstOrThrow({ where: { terminalId: f.body.terminalId } });
+        await fetch(`${base}/pos/payments/card/status/${accepted.id}`, { headers });
+        assert.equal(invoiceCalls, before + 1);
+        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
+      });
+
+      await t.test("simultaneous retries of the same request return the same attempt and never charge twice", async () => {
+        const f = await fixture();
+        const before = invoiceCalls;
+        const results = await Promise.all([f.authorize(), f.authorize()]);
+        assert.deepEqual(results.map(r => r.status).sort(), [200, 201]);
+        await f.status();
+        assert.equal(invoiceCalls, before + 1);
+        assert.equal(await prisma.cardPaymentAttempt.count({ where: { id: f.body.attemptId } }), 1);
+      });
+
+      await t.test("paid basket keeps its validated price, protects stock and rejects altered sale lines", async () => {
+        const f = await fixture();
+        const response = await f.authorize();
+        assert.equal(response.status, 201, await response.text());
+        await f.status();
+        await prisma.product.update({ where: { id: f.product.id }, data: { price: 60_000_000 } });
+        const competing = { ...f.sale, clientSaleId: crypto.randomUUID(), paymentMethod: "CASH",
+          paymentBreakdown: [{ method: "CASH", amount: 60_000_000 }], lines: [{ ...f.sale.lines[0], unitPrice: 60_000_000 }] };
+        const blocked = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(competing) });
+        assert.equal(blocked.status, 409, await blocked.text());
+        assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 1);
+        const changed = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify({ ...f.sale, lines: [{ ...f.sale.lines[0], qty: 2, unitPrice: 25_000_000 }] }) });
+        assert.equal(changed.status, 409, await changed.text());
+        const sold = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(f.sale) });
+        assert.equal(sold.status, 201, await sold.text());
+        assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 0);
+        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
+        const retry = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(f.sale) });
+        assert.equal(retry.status, 200, await retry.text());
+        assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 0);
+        const before = invoiceCalls;
+        assert.equal((await f.authorize({ ...f.body, attemptId: crypto.randomUUID() })).status, 409);
+        assert.equal(invoiceCalls, before, "a completed sale cannot be charged again with a new attempt ID");
+      });
+
+      await t.test("pending and failed unknown bank states retain stock, explicit decline releases it", async () => {
+        const f = await fixture();
+        paid = false;
+        const result = await f.authorize();
+        assert.equal(result.status, 201, await result.text());
+        await f.status();
+        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
+        await prisma.cardPaymentAttempt.update({ where: { id: f.body.attemptId }, data: { status: "FAILED", message: "network timeout" } });
+        assert.equal((await f.authorize({ ...f.body, attemptId: crypto.randomUUID() })).status, 409);
+        terminalDeclined = true;
+        try {
+          const status = await f.status();
+          assert.equal(status.status, 200);
+          assert.equal((await status.json() as { status: string }).status, "DECLINED");
+          assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
+          assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 1);
+        } finally { terminalDeclined = false; paid = true; }
+      });
+
+      await t.test("observed Minu cancellation releases stock without sending a cancel or another invoice", async () => {
+        const f = await fixture();
+        paid = false;
+        assert.equal((await f.authorize()).status, 201);
+        await f.status();
+        const before = invoiceCalls;
+        const callOffset = providerCalls.length;
+        observedCancellation = true;
+        try {
+          const response = await f.status();
+          assert.equal((await response.json() as { status: string }).status, "DECLINED");
+          assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
+          assert.equal(invoiceCalls, before);
+          assert.ok(providerCalls.slice(callOffset).every((path) => ["/agent/login", "/agent/checkTxn"].includes(path)));
+        } finally { observedCancellation = false; paid = true; }
+      });
+
+      await t.test("insufficient funds reaches the till, preserves the basket and permits another payment", async () => {
+        const f = await fixture();
+        paid = false;
+        assert.equal((await f.authorize()).status, 201);
+        await f.status();
+        const original = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
+        const before = invoiceCalls;
+        const callOffset = providerCalls.length;
+        insufficientFunds = true;
+        try {
+          const response = await f.status();
+          assert.equal(response.status, 200);
+          const result = await response.json() as { status: string; message: string };
+          assert.equal(result.status, "DECLINED");
+          assert.equal(result.message, "Үлдэгдэл хүрээгүй");
+          assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
+          assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 1);
+          const stored = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+          assert.equal(stored.consumedAt, null);
+          assert.equal(stored.saleReference, null);
+          assert.equal(stored.transactionId, null);
+          assert.deepEqual((stored.providerPayload as Record<string, unknown>).checkout, (original.providerPayload as Record<string, unknown>).checkout);
+          assert.equal(invoiceCalls, before);
+          assert.ok(providerCalls.slice(callOffset).every((path) => ["/agent/login", "/agent/checkTxn"].includes(path)));
+        } finally { insufficientFunds = false; }
+        // A distinct, deliberate payment attempt may use the same intact basket.
+        assert.equal((await f.authorize({ ...f.body, attemptId: crypto.randomUUID() })).status, 201);
+        paid = true;
+      });
+
+      await t.test("a stale bank poll cannot overwrite newer review evidence", async () => {
+        const f = await fixture();
+        paid = false;
+        assert.equal((await f.authorize()).status, 201);
+        const stale = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+        const payload = stale.providerPayload;
+        assert.ok(payload && typeof payload === "object" && !Array.isArray(payload));
+        await prisma.cardPaymentAttempt.update({ where: { id: stale.id }, data: {
+          updatedAt: new Date(stale.updatedAt.getTime() + 1),
+          providerPayload: { ...payload, legacyMinuReview: { runId: "newer-evidence" } },
+        } });
+        paid = true;
+        const result = await reconcileMinuCardAttempt(stale);
+        assert.equal(result.attempt.status, "PENDING");
+        assert.deepEqual((result.attempt.providerPayload as Record<string, unknown>).legacyMinuReview, { runId: "newer-evidence" });
+        const fresh = await f.status();
+        assert.equal((await fresh.json() as { status: string }).status, "APPROVED");
+        const saved = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: stale.id } });
+        assert.deepEqual((saved.providerPayload as Record<string, unknown>).legacyMinuReview, { runId: "newer-evidence" });
+      });
+
+      await t.test("declining a second card preserves the first payment and its stock until a mixed sale commits", async () => {
+        const f = await fixture();
+        f.body.amount = 25_000_000;
+        assert.equal((await f.authorize()).status, 201);
+        await f.status();
+        const secondId = crypto.randomUUID();
+        assert.equal((await f.authorize({ ...f.body, attemptId: secondId })).status, 201);
+        terminalDeclined = true;
+        try { await fetch(`${base}/pos/payments/card/status/${secondId}`, { headers }); }
+        finally { terminalDeclined = false; }
+        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
+        const result = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify({ ...f.sale, paymentMethod: "MIXED",
+          paymentBreakdown: [{ method: "CARD", amount: 25_000_000, attemptId: f.body.attemptId }, { method: "CASH", amount: 25_000_000 }] }) });
+        assert.equal(result.status, 201, await result.text());
+        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
       });
     } finally {
       if (previousMinuUrl === undefined) delete process.env.MINU_AGENT_BASE_URL;

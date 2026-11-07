@@ -23,3 +23,24 @@ test("stock and checkout errors remain visible and idle state shows no stale ale
   assert.ok(renderToStaticMarkup(<CheckoutPaymentError {...base} method="CASH" message="Барааны нөөц хүрэлцэхгүй" />).includes("Барааны нөөц хүрэлцэхгүй"));
   assert.equal(renderToStaticMarkup(<CheckoutPaymentError {...base} method="CARD" tone="idle" />), "");
 });
+test("a recorded bank payment is never labelled as a failed card charge", () => {
+  const html = renderToStaticMarkup(<CheckoutPaymentError {...base} method="CARD" message="Борлуулалт бүртгэх сервер түр саатлаа" confirmedPaid={50_000_000} />);
+  assert.ok(html.includes("Төлбөр батлагдсан — борлуулалт дуусаагүй"));
+  assert.ok(html.includes("Төлбөрийг дахин авахгүй"));
+  assert.ok(!html.includes("Картын төлбөр амжилтгүй"));
+});
+test("an unknown bank response tells the cashier to check the existing charge", () => {
+  const html = renderToStaticMarkup(<CheckoutPaymentError {...base} method="CARD" unknownCardPayment />);
+  assert.ok(html.includes("Картын төлбөрийн төлөв тодорхойгүй"));
+  assert.ok(!html.includes("Картын төлбөр амжилтгүй"));
+});
+
+test("insufficient funds displays the terminal explanation as a card failure", () => {
+  const message = "Үлдэгдэл хүрээгүй";
+  const html = renderToStaticMarkup(<CheckoutPaymentError {...base} method="CARD" message={message}
+    feedback={{ CARD: { kind: "failed", message } }} />);
+  assert.ok(html.includes('role="alert"'));
+  assert.ok(html.includes(message));
+  assert.ok(html.includes("Картын төлбөр амжилтгүй"));
+  assert.ok(!html.includes("Картын төлбөрийн төлөв тодорхойгүй"));
+});

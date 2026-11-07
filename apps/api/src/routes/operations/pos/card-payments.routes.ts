@@ -5,7 +5,8 @@ import { reconcileMinuCardAttempt } from "../../../services/minu-card-reconcilia
 import { isPaymentRequestId, matchesPaymentRequest } from "../../../services/payment-request-identity";
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus, CardTerminalRequestStatus } from "@mgl/database";
-import type { Prisma } from "@mgl/database";
+import { Prisma } from "@mgl/database";
+import { parseCardCheckout, reserveCardCheckout, checkoutFromPayload, sameCheckout } from "../../../services/pos-card-checkout";
 import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
 import { hasOrgMembership } from "../../../services/permission.service";
 import { checkQPayPayment, createQPayInvoice } from "../../../services/qpay";
@@ -249,6 +250,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     });
   }
 
+  let attemptExists = false;
   try {
     let effectiveOrganizationId: string | null = null;
     let registerCardTerminalId: string | null = null;
@@ -287,12 +289,25 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
 
       registerCardTerminalId = register.cardTerminalId || inheritedCardTerminalId || null;
       effectiveOrganizationId = register.organizationId;
+      // Configuration may change after an accepted payment. Retrying its identity
+      // still returns the original record, without creating or charging anything.
+      if (requestedAttemptId) {
+        const existing = await prisma.cardPaymentAttempt.findUnique({ where: { id: requestedAttemptId } });
+        if (existing) {
+          attemptExists = true;
+          if (existing.initiatedById !== actor.id || !matchesPaymentRequest(existing, { registerId, organizationId: effectiveOrganizationId, amount })) throw toApiError(409, "Картын төлбөрийн хүсэлт зөрүүтэй байна");
+          if (req.body?.checkout !== undefined) {
+            const saved = checkoutFromPayload(existing.providerPayload);
+            if (!saved || !sameCheckout(saved, parseCardCheckout(req.body.checkout))) throw toApiError(409, "Төлбөртэй сагсны мэдээлэл өөрчлөгдсөн байна");
+          }
+          return res.json(toCardAttemptResponse(existing));
+        }
+      }
 
       if (isMinuAgent) {
         const org = register.organization;
         if (!org.minuAgentEnabled || !org.minuAgentUsername || !org.minuAgentPassword || !org.minuAgentBranchId) {
-          forceManualCard = true;
-          manualCardReason = "minu-agent-config-incomplete";
+          return res.status(422).json({ message: "Minu merchant тохиргоо дутуу байна. Төлбөр эхлээгүй.", code: "MINU_CONFIG_INCOMPLETE" });
         } else {
           minuAgentContext = {
             username: org.minuAgentUsername,
@@ -332,31 +347,60 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
           ? terminalId
           : (registerCardTerminalId || "");
       if (!effectiveTerminalId || effectiveTerminalId === "terminal-1") {
-        forceManualCard = true;
-        manualCardReason = "minu-terminal-not-configured";
+        return res.status(422).json({ message: "Minu terminalId тохируулаагүй байна. Төлбөр эхлээгүй.", code: "MINU_CONFIG_INCOMPLETE" });
+      }
+      if (terminalId !== "terminal-1" && registerCardTerminalId && terminalId !== registerCardTerminalId) {
+        return res.status(422).json({ message: "Minu терминал кассын тохиргоотой зөрүүтэй байна. Төлбөр эхлээгүй." });
       }
     }
 
     const manualCardAttempt = forceManualCard || (!usesLocalBridge && !isPushEcr && !isMinuAgent);
+    if (manualCardAttempt) return res.status(422).json({
+      message: "Картын терминалын тохиргоо дутуу байна. Төлбөр эхлээгүй.", code: "CARD_CONFIG_INCOMPLETE",
+    });
     const attemptId = requestedAttemptId || randomUUID();
     const minuInvoice = `MGL-${attemptId.replace(/-/g, "").slice(0, 24).toUpperCase()}`;
-    if (requestedAttemptId) {
-      const existing = await prisma.cardPaymentAttempt.findUnique({ where: { id: requestedAttemptId } });
+    const checkout = isMinuAgent && req.body?.checkout !== undefined ? parseCardCheckout(req.body.checkout) : null;
+    const effectiveTerminalId = terminalId !== "terminal-1" ? terminalId : (registerCardTerminalId || terminalId);
+    const created = await prisma.$transaction(async tx => {
+      if (isMinuAgent) {
+        // Database lock also covers requests from other tabs and API instances.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${effectiveOrganizationId}:${effectiveTerminalId}`}, 0))`;
+      }
+      const existing = await tx.cardPaymentAttempt.findUnique({ where: { id: attemptId } });
       if (existing) {
+        attemptExists = true;
         if (existing.initiatedById !== actor.id || !matchesPaymentRequest(existing, {
           registerId, organizationId: effectiveOrganizationId, amount,
-        })) return res.status(409).json({ message: "Картын төлбөрийн хүсэлт зөрүүтэй байна" });
-        return res.json(toCardAttemptResponse(existing));
+        })) throw toApiError(409, "Картын төлбөрийн хүсэлт зөрүүтэй байна");
+        const savedCheckout = checkoutFromPayload(existing.providerPayload);
+        if (checkout && (!savedCheckout || !sameCheckout(checkout, savedCheckout))) throw toApiError(409, "Төлбөртэй сагсны мэдээлэл өөрчлөгдсөн байна");
+        return { attempt: existing, isNew: false };
       }
-    }
-
-    const attempt = await prisma.cardPaymentAttempt.create({
+      if (isMinuAgent) {
+        // This guard owns invoices created by the serialized dispatch flow.
+        // Historical unknown payments remain recoverable; their age or missing
+        // bank response does not prove cancellation or permanently lock a till.
+        // Roll out only after terminals have no payment currently in progress.
+        const active = await tx.cardPaymentAttempt.findFirst({ where: { organizationId: effectiveOrganizationId,
+          terminalId: effectiveTerminalId, status: { in: [PosPaymentStatus.PENDING, PosPaymentStatus.FAILED] }, consumedAt: null,
+          AND: [
+            { providerPayload: { path: ["provider"], equals: "MINU_AGENT" } },
+            { providerPayload: { path: ["terminalGuardVersion"], equals: 1 } },
+          ] } });
+        if (active) throw toApiError(409, "Энэ терминал дээр өмнөх төлбөрийн төлөв тодорхойгүй байна. Эхлээд өмнөх төлбөрөө шалгана уу.");
+        if (checkout) {
+          if (!effectiveOrganizationId || !registerId) throw toApiError(400, "Кассын мэдээлэл дутуу байна");
+          await reserveCardCheckout(tx, { checkout, organizationId: effectiveOrganizationId, registerId, amount, cashierId: actor.id });
+        }
+      }
+      const attempt = await tx.cardPaymentAttempt.create({
       data: {
         id: attemptId,
         registerId: registerId || null,
         organizationId: effectiveOrganizationId || null,
         initiatedById: actor?.id || null,
-        terminalId,
+        terminalId: isMinuAgent ? effectiveTerminalId : terminalId,
         bridgeUrl: usesLocalBridge ? effectiveBridgeUrl : null,
         amount,
         status: manualCardAttempt ? PosPaymentStatus.APPROVED : PosPaymentStatus.PENDING,
@@ -371,12 +415,19 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
             } as object
           : isMinuAgent ? {
               provider: "MINU_AGENT",
+              terminalGuardVersion: 1,
               invoice: minuInvoice,
               terminalId: terminalId !== "terminal-1" ? terminalId : registerCardTerminalId,
               branchId: minuAgentContext?.branchId || null,
+              ...(checkout ? { checkout: JSON.parse(JSON.stringify(checkout)) as Prisma.InputJsonValue } : {}),
             } : undefined,
       },
-    });
+      });
+      return { attempt, isNew: true };
+    }, { timeout: 30_000 });
+    const { attempt } = created;
+    attemptExists = true;
+    if (!created.isNew) return res.json(toCardAttemptResponse(attempt));
 
     void prisma.auditLog.create({
       data: {
@@ -524,6 +575,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
               terminalId: effectiveTerminalId,
               message: minuResult.message || "Minu terminal руу төлбөр илгээгдлээ",
               providerPayload: {
+                ...(attempt.providerPayload as Prisma.JsonObject),
                 provider: "MINU_AGENT",
                 invoice,
                 terminalId: effectiveTerminalId,
@@ -561,9 +613,10 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
             where: { id: attempt.id, status: PosPaymentStatus.PENDING, consumedAt: null },
             data: {
               // A lost invoice response does not prove the terminal did not charge.
-              status: isMinuAgentApiError(err) ? PosPaymentStatus.FAILED : PosPaymentStatus.PENDING,
+              status: PosPaymentStatus.PENDING,
               message,
               providerPayload: {
+                ...(attempt.providerPayload as Prisma.JsonObject),
                 provider: "MINU_AGENT",
                 invoice,
                 terminalId: effectiveTerminalId,
@@ -597,6 +650,10 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     return res.status(201).json(toCardAttemptResponse(attempt));
   } catch (error) {
     console.error("card authorize error", error);
+    const failure = error as Partial<ApiError>;
+    if (failure.status && failure.message) return res.status(failure.status).json({
+      message: failure.message, ...(!attemptExists ? { code: "CARD_PAYMENT_NOT_STARTED" } : {}),
+    });
     return res.status(500).json({ message: "Card authorize хийхэд алдаа гарлаа" });
   }
 });
