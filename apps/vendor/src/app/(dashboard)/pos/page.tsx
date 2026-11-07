@@ -154,7 +154,7 @@ import {
   POS_FEATURE_KEY,
 } from "@/lib/vendor-features";
 import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
-import { createProductSearchScorer, formatPosQuantity } from "@mgl/types";
+import { createPosProductSearchScorer, formatPosQuantity } from "@mgl/types";
 
 type PosView = "register" | "checkout";
 
@@ -1597,7 +1597,7 @@ export default function PosDemoPage() {
       result = result.filter((item) => (item.categoryName || "Бусад") === selectedCategory);
     }
     if (!lowerSearch) return result;
-    const score = createProductSearchScorer(lowerSearch);
+    const score = createPosProductSearchScorer(lowerSearch);
     return result
       .map((product) => ({ product, score: score(product) }))
       .filter((entry) => entry.score > 0)
@@ -4764,6 +4764,7 @@ export default function PosDemoPage() {
                 <div>
                   <p className="text-sm font-bold text-slate-700">Бараа олдсонгүй</p>
                   <p className="mt-1 text-xs text-slate-500">Нэр, SKU эсвэл barcode-оо шалгаарай</p>
+                  <p className="mt-1 text-xs text-slate-500">Идэвхгүй бараа POS кассанд харагдахгүй. Бараа цэснээс төлөвийг нь шалгана уу.</p>
                 </div>
               </div>
             ) : (

@@ -488,6 +488,34 @@ export function createProductSearchScorer(search: string) {
   };
 }
 
+/** Till lookup requires every word. Discovery's partial-word recommendations
+ * are useful for browsing but must not substitute unrelated stock at checkout. */
+export function createPosProductSearchScorer(search: string) {
+  const normalized = normalizeDiscoveryText(search);
+  if (!normalized) return (_product: SearchableProduct) => 0;
+  const groups = normalized.split(" ").map((token) =>
+    [token, ...transliterateLatinTokenToCyrillic(token)].map(
+      normalizeDiscoveryText,
+    ),
+  );
+  const rank = createProductSearchScorer(search);
+  return (product: SearchableProduct) => {
+    const codes = [product.sku, product.barcode, ...(product.barcodeAliases ?? [])]
+      .map((value) => normalizeDiscoveryText(value ?? ""))
+      .filter(Boolean);
+    const name = normalizeDiscoveryText(product.name);
+    const fields = [
+      name, ...codes, normalizeDiscoveryText(product.categoryName ?? ""),
+    ];
+    if (!groups.every((variants) =>
+      variants.some((token) => fields.some((field) => field.includes(token))),
+    )) return 0;
+    const priority = codes.includes(normalized)
+      ? 10_000 : name === normalized ? 5_000 : 1;
+    return priority + rank(product);
+  };
+}
+
 export function scoreProductForSearch(
   product: SearchableProduct,
   search: string,
