@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { configuredCardProvider } from "./card-register-provider";
+import {
+  configuredCardProvider,
+  effectiveCardProvider,
+} from "./card-register-provider";
 
 const configured = {
   cardEnabled: true,
@@ -37,5 +40,26 @@ test("configured own Minu and local HTTP loopback bridges keep their automatic f
       terminalBridgeUrl: "http://127.0.0.1:8787",
     }),
     "ANDROID_PGW",
+  );
+});
+
+test("old API configurations preserve legacy routing until the new contract is advertised", () => {
+  const inherited = { ...configured, hasOwnCardTerminal: false };
+  assert.equal(effectiveCardProvider(inherited), "MINU_AGENT");
+  assert.equal(
+    effectiveCardProvider({ ...inherited, cardFlowVersion: 2 }),
+    null,
+  );
+  assert.equal(
+    effectiveCardProvider({ ...configured, cardFlowVersion: 2 }),
+    "MINU_AGENT",
+  );
+  assert.equal(
+    effectiveCardProvider({
+      ...configured,
+      cardProviderType: null,
+      minuAgentEnabled: true,
+    }),
+    "MINU_AGENT",
   );
 });

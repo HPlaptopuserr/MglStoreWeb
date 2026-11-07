@@ -1,6 +1,6 @@
 "use client";
 import { cardPaymentOutcome, cardRequestFailureIsDefinitive } from "@/features/pos/utils/card-payment-outcome";
-import { configuredCardProvider } from "@/features/pos/utils/card-register-provider";
+import { effectiveCardProvider } from "@/features/pos/utils/card-register-provider";
 import { paymentRequestId } from "@/features/pos/utils/payment-request-id";
 import { ClientBridgeNotStartedError } from "@/features/pos/api/card-terminal";
 import type { PaymentFeedback } from "@/features/pos/types/payment-status.types";
@@ -296,7 +296,7 @@ const EBARIMT_ENABLED = process.env.NEXT_PUBLIC_EBARIMT_ENABLED === "true";
 const LONG_RUNNING_CARD_PROVIDERS = new Set(["PUSH_ECR", "MINU_AGENT", "ANDROID_PGW"]);
 const terminalNeedsWaitingOverlay = (provider?: string | null) =>
   Boolean(provider && LONG_RUNNING_CARD_PROVIDERS.has(provider));
-const getEffectiveCardProvider = configuredCardProvider;
+const getEffectiveCardProvider = effectiveCardProvider;
 const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
 
 function buildCreditRepaymentCartLines(credit: PosCreditRepaymentSelection): CartLine[] {
@@ -2546,6 +2546,7 @@ export default function PosDemoPage() {
         setRegisterConfig(freshRegisterConfig);
 
         const effectiveCardProvider = validateCardRegisterConfig(freshRegisterConfig);
+        const cardFlowVersion = freshRegisterConfig.cardFlowVersion;
         const terminalId = freshRegisterConfig.cardTerminalId ?? "terminal-1";
         cardRun.provider = effectiveCardProvider;
         cardRun.terminalId = terminalId;
@@ -2591,6 +2592,8 @@ export default function PosDemoPage() {
         }
         cardRun.authorizationStarted = true;
         const attempt = await createCardAttempt({
+          cardFlowVersion,
+          signal: cardRun.abortController.signal,
           attemptId: createdAttemptId,
           amount: safeAmount,
           terminalId,
@@ -2622,15 +2625,17 @@ export default function PosDemoPage() {
             });
             if (isCardRunCancelled()) return;
             approvedAttempt = await submitClientBridgeResult({
+              cardFlowVersion,
               attemptId: attempt.attemptId,
               result: bridgeResult,
             });
           } catch (bridgeError: unknown) {
             if (isCardRunCancelled()) return;
-            const manualCard = bridgeError instanceof ClientBridgeNotStartedError;
+            const manualCard = cardFlowVersion === 2 && bridgeError instanceof ClientBridgeNotStartedError;
             const message = manualCard ? "Гараар авсан картын төлбөр бүртгэгдлээ"
               : bridgeError instanceof Error ? bridgeError.message : "Картын терминалын холболтын алдаа гарлаа";
             approvedAttempt = await submitClientBridgeResult({
+              cardFlowVersion,
               attemptId: attempt.attemptId,
               result: { status: manualCard ? "APPROVED" : "FAILED", message, ...(manualCard ? { manualCard: true } : {}) },
             }).catch(() => ({

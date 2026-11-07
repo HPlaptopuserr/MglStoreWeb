@@ -9,6 +9,20 @@ type CardConfig = Pick<
   | "terminalBridgeUrl"
 >;
 
+export function effectiveCardProvider(
+  register?:
+    | (CardConfig &
+        Pick<RegisterConfig, "cardFlowVersion" | "minuAgentEnabled">)
+    | null,
+): string | null {
+  if (register?.cardFlowVersion === 2) return configuredCardProvider(register);
+  // An older API has not enabled the standalone-card contract yet.
+  return (
+    register?.cardProviderType ||
+    (register?.minuAgentEnabled ? "MINU_AGENT" : null)
+  );
+}
+
 /** An unconnected till records a card payment already collected externally.
  * Organization fallback metadata never authorizes another till's device. */
 export function configuredCardProvider(

@@ -8,6 +8,7 @@ import { prisma } from "@mgl/database";
 import recoveryRoutes from "./card-recovery.routes";
 import cardRoutes from "./card-payments.routes";
 import salesRoutes from "./sales.routes";
+import registerRoutes from "./registers.routes";
 import { JWT_SECRET } from "./_shared";
 import { cardRecoveryDayRange } from "../../../services/card-payment-recovery";
 import { reconcileMinuCardAttempt, reconcilePendingMinuCards } from "../../../services/minu-card-reconciliation";
@@ -97,6 +98,7 @@ test(
     app.use(recoveryRoutes);
     app.use(cardRoutes);
     app.use(salesRoutes);
+    app.use(registerRoutes);
     const server = createServer(app);
     const base = await listen(server);
     try {
@@ -686,12 +688,72 @@ test(
         const lines = [{ productId: product.id, qty: 1, unitPrice: 50_000_000, priceType: "UNIT", discountAmount: 0, taxRate: 0 }];
         const body = { attemptId: crypto.randomUUID(), organizationId: organization.id, registerId: register.id,
           terminalId, amount: 50_000_000, checkout: { clientSaleId, branchId: branch.id, shiftId: shift.id, lines } };
-        const authorize = (payload: unknown = body) => fetch(`${base}/pos/payments/card/authorize`, { method: "POST", headers, body: JSON.stringify(payload) });
+        const authorize = (payload: unknown = body) => fetch(`${base}/pos/payments/card/authorize-v2`, { method: "POST", headers, body: JSON.stringify(payload) });
+        const legacyAuthorize = (payload: unknown = body) => fetch(`${base}/pos/payments/card/authorize`, { method: "POST", headers, body: JSON.stringify(payload) });
         const status = () => fetch(`${base}/pos/payments/card/status/${body.attemptId}`, { headers });
         const sale = { ...saleBody, clientSaleId, registerId: register.id, shiftId: shift.id, lines,
           paymentBreakdown: [{ method: "CARD", amount: body.amount, attemptId: body.attemptId }] };
-        return { body, authorize, status, sale, product, register };
+        return { body, authorize, legacyAuthorize, status, sale, product, register };
       };
+
+      await t.test("register config advertises the v2 contract without changing legacy terminal fields", async () => {
+        const f = await fixture();
+        const response = await fetch(`${base}/pos/register-config?registerId=${f.register.id}`, { headers });
+        assert.equal(response.status, 200, await response.clone().text());
+        const config = await response.json() as { cardFlowVersion: number; cardProviderType: string; cardTerminalId: string; hasOwnCardTerminal: boolean };
+        assert.equal(config.cardFlowVersion, 2);
+        assert.equal(config.cardProviderType, "MINU_AGENT");
+        assert.equal(config.cardTerminalId, f.body.terminalId);
+        assert.equal(config.hasOwnCardTerminal, true);
+      });
+
+      await t.test("old tabs retain their integration contract while v2 enables manual cards", async () => {
+        const f = await fixture();
+        const before = providerCalls.length;
+        await prisma.organization.update({ where: { id: organization.id }, data: { minuAgentEnabled: false } });
+        try {
+          assert.equal((await f.legacyAuthorize()).status, 422);
+          assert.equal(await prisma.cardPaymentAttempt.count({ where: { id: f.body.attemptId } }), 0);
+          const modern = await f.authorize();
+          assert.equal(modern.status, 201);
+          assert.equal((await modern.json() as { status: string }).status, "APPROVED");
+          assert.equal(providerCalls.length, before);
+        } finally { await prisma.organization.update({ where: { id: organization.id }, data: { minuAgentEnabled: true } }); }
+      });
+
+      await t.test("a legacy Minu payment continues through rollout on the same invoice", async () => {
+        const f = await fixture();
+        paid = false;
+        const before = invoiceCalls;
+        assert.equal((await f.legacyAuthorize()).status, 201);
+        await f.status();
+        const original = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+        const modernRetry = await f.authorize();
+        assert.equal(modernRetry.status, 200);
+        assert.equal((await modernRetry.json() as { status: string }).status, "PENDING");
+        paid = true;
+        assert.equal((await f.status().then(r => r.json()) as { status: string }).status, "APPROVED");
+        const saved = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+        assert.equal((saved.providerPayload as Record<string, unknown>).invoice, (original.providerPayload as Record<string, unknown>).invoice);
+        assert.equal(invoiceCalls, before + 1);
+        const sale = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(f.sale) });
+        assert.equal(sale.status, 201, await sale.text());
+      });
+
+      await t.test("a legacy client bridge result can finish on the upgraded API", async () => {
+        const f = await fixture();
+        await prisma.posRegister.update({ where: { id: f.register.id }, data: { cardProviderType: "ANDROID_PGW", terminalBridgeUrl: "http://127.0.0.1:8787" } });
+        assert.equal((await f.legacyAuthorize({ ...f.body, clientBridge: true })).status, 201);
+        const result = await fetch(`${base}/pos/payments/card/client-bridge-result`, { method: "POST", headers,
+          body: JSON.stringify({ attemptId: f.body.attemptId, result: { status: "APPROVED", rrn: "legacy-bank-proof" } }) });
+        assert.equal(result.status, 200);
+        const stored = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+        assert.equal(stored.status, "APPROVED");
+        assert.equal(stored.traceno, "legacy-bank-proof");
+        assert.notEqual((stored.providerPayload as Record<string, unknown>).mode, "manual-card");
+        const sale = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(f.sale) });
+        assert.equal(sale.status, 201, await sale.text());
+      });
 
       await t.test("missing Minu merchant settings record a standalone manual payment without contacting the provider", async () => {
         const f = await fixture();

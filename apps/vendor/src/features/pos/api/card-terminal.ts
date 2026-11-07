@@ -1,9 +1,9 @@
 import type { CardAttempt, PushEcrResult, SettlementResult, SalePayload } from "@mgl/types";
-import { posRequest } from "./_pos-client";
+import { PosApiError, posRequest } from "./_pos-client";
 
 export type { CardAttempt, CardAttemptStatus, PushEcrResult, SettlementResult } from "@mgl/types";
 
-export function createCardAttempt(payload: {
+export async function createCardAttempt(payload: {
   attemptId?: string;
   amount: number;
   terminalId?: string;
@@ -11,10 +11,14 @@ export function createCardAttempt(payload: {
   registerId?: string;
   organizationId?: string;
   clientBridge?: boolean;
+  cardFlowVersion?: 2;
+  signal?: AbortSignal;
   checkout?: { clientSaleId: string; branchId: string; shiftId: string; lines: SalePayload["lines"] };
 }): Promise<CardAttempt> {
-  return posRequest<CardAttempt>("/pos/payments/card/authorize", {
-    method: "POST",
+  const path = payload.cardFlowVersion === 2 ? "/pos/payments/card/authorize-v2" : "/pos/payments/card/authorize";
+  const options = {
+    method: "POST" as const,
+    signal: payload.signal,
     body: {
       attemptId: payload.attemptId,
       amount: payload.amount,
@@ -25,7 +29,16 @@ export function createCardAttempt(payload: {
       clientBridge: payload.clientBridge === true,
       checkout: payload.checkout,
     },
-  });
+  };
+  try {
+    return await posRequest<CardAttempt>(path, options);
+  } catch (error: unknown) {
+    // A rolling deploy may lose a response. Only retry the exact same persisted
+    // identity; the server returns the original invoice instead of charging again.
+    const transient = error instanceof TypeError || (error instanceof PosApiError && [408, 429, 500, 502, 503, 504].includes(error.status));
+    if (payload.signal?.aborted || !payload.attemptId || !transient) throw error;
+    return posRequest<CardAttempt>(path, options);
+  }
 }
 
 export type ClientBridgeChargeResult = {
@@ -158,8 +171,9 @@ export async function chargeClientBridge(payload: {
 export function submitClientBridgeResult(payload: {
   attemptId: string;
   result: ClientBridgeChargeResult;
+  cardFlowVersion?: 2;
 }): Promise<CardAttempt> {
-  return posRequest<CardAttempt>("/pos/payments/card/client-bridge-result", {
+  return posRequest<CardAttempt>(payload.cardFlowVersion === 2 ? "/pos/payments/card/client-bridge-result-v2" : "/pos/payments/card/client-bridge-result", {
     method: "POST",
     body: payload,
   });

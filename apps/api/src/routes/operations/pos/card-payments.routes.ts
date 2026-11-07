@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { reconcileMinuCardAttempt } from "../../../services/minu-card-reconciliation";
 import { isPaymentRequestId, matchesPaymentRequest } from "../../../services/payment-request-identity";
 import { Router, type Router as ExpressRouter } from "express";
-import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus } from "@mgl/database";
+import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus, CardTerminalRequestStatus } from "@mgl/database";
 import { Prisma } from "@mgl/database";
 import { parseCardCheckout, reserveCardCheckout, checkoutFromPayload, sameCheckout } from "../../../services/pos-card-checkout";
 import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.service";
@@ -56,6 +56,57 @@ const isUsableCardConfig = (config: {
   return Boolean(normalizeNullableString(config.cardTerminalId));
 };
 
+async function resolveOrganizationCardTerminalFallback(input: {
+  organizationId: string;
+  currentRegisterId?: string | null;
+}) {
+  const orgRegister = await prisma.posRegister.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      deletedAt: null,
+      isActive: true,
+      activationStatus: PosActivationStatus.APPROVED,
+      cardEnabled: true,
+      cardProviderType: { not: null },
+      ...(input.currentRegisterId ? { id: { not: input.currentRegisterId } } : {}),
+    },
+    orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+    select: {
+      cardProviderType: true,
+      cardTerminalId: true,
+      terminalBridgeUrl: true,
+    },
+  });
+  if (orgRegister && isUsableCardConfig({ ...orgRegister, cardEnabled: true })) {
+    return {
+      cardProviderType: orgRegister.cardProviderType,
+      cardTerminalId: orgRegister.cardTerminalId,
+      terminalBridgeUrl: orgRegister.terminalBridgeUrl,
+    };
+  }
+
+  const request = await prisma.cardTerminalRequest.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      status: CardTerminalRequestStatus.APPROVED,
+      providerType: { in: ["ANDROID_PGW", "MINU_AGENT", "PUSH_ECR", "QPOSLANE", "GANTIGO", "IDPAY"] },
+    },
+    orderBy: [{ reviewedAt: "desc" }, { updatedAt: "desc" }],
+    select: {
+      providerType: true,
+      cardTerminalId: true,
+      terminalBridgeUrl: true,
+    },
+  });
+  if (!request) return null;
+  const requestConfig = {
+    cardProviderType: normalizeNullableString(request.providerType),
+    cardTerminalId: normalizeNullableString(request.cardTerminalId),
+    terminalBridgeUrl: normalizeNullableString(request.terminalBridgeUrl),
+  };
+  return isUsableCardConfig({ ...requestConfig, cardEnabled: true }) ? requestConfig : null;
+}
+
 type CardAttemptResponseSource = {
   id: string;
   amount: unknown;
@@ -95,7 +146,8 @@ const toCardAttemptResponse = (attempt: CardAttemptResponseSource) => ({
   updatedAt: attempt.updatedAt.toISOString(),
 });
 
-router.post("/pos/payments/card/authorize", async (req, res) => {
+router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"], async (req, res) => {
+  const standaloneCards = req.path.endsWith("/authorize-v2");
   const actor = await requirePosUser(req, res);
   if (!actor) return;
 
@@ -137,22 +189,32 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     if (!regForProvider) {
       return res.status(404).json({ message: "POS register олдсонгүй" });
     }
-    // A register without its own integration records externally collected card
-    // payments. Never dispatch its request to another till's terminal.
-    const terminalCardEnabled = isUsableCardConfig(regForProvider);
-    cardProviderType = terminalCardEnabled ? regForProvider.cardProviderType ?? null : null;
-    inheritedCardTerminalId = terminalCardEnabled ? regForProvider.cardTerminalId ?? null : null;
-    inheritedTerminalBridgeUrl = terminalCardEnabled ? regForProvider.terminalBridgeUrl ?? null : null;
+    // Old open tills retain the legacy integration until they load the new UI.
+    // Only the v2 endpoint enables standalone cards and own-register routing.
+    let effectiveCardConfig = {
+      cardEnabled: regForProvider.cardEnabled,
+      cardProviderType: regForProvider.cardProviderType,
+      cardTerminalId: regForProvider.cardTerminalId,
+      terminalBridgeUrl: regForProvider.terminalBridgeUrl,
+    };
+    if (!standaloneCards && !isUsableCardConfig(effectiveCardConfig)) {
+      const fallback = await resolveOrganizationCardTerminalFallback({ organizationId: regForProvider.organizationId, currentRegisterId: registerId });
+      if (fallback) effectiveCardConfig = { cardEnabled: true, ...fallback };
+    }
+    const terminalCardEnabled = standaloneCards ? isUsableCardConfig(effectiveCardConfig) : effectiveCardConfig.cardEnabled !== false;
+    cardProviderType = terminalCardEnabled ? effectiveCardConfig.cardProviderType ?? null : null;
+    inheritedCardTerminalId = terminalCardEnabled ? effectiveCardConfig.cardTerminalId ?? null : null;
+    inheritedTerminalBridgeUrl = terminalCardEnabled ? effectiveCardConfig.terminalBridgeUrl ?? null : null;
     isPushEcr = cardProviderType === "PUSH_ECR";
-    isMinuAgent = cardProviderType === "MINU_AGENT";
+    isMinuAgent = cardProviderType === "MINU_AGENT" || (!standaloneCards && !cardProviderType && terminalCardEnabled && regForProvider.organization.minuAgentEnabled);
     isAndroidPgw = cardProviderType === "ANDROID_PGW";
   }
   const isLocalBridgeProvider = Boolean(
     cardProviderType && LOCAL_BRIDGE_CARD_PROVIDERS.has(cardProviderType)
   );
-  const effectiveBridgeUrl = registerId
+  const effectiveBridgeUrl = standaloneCards && registerId
     ? (isLocalBridgeProvider ? inheritedTerminalBridgeUrl : null)
-    : bridgeUrl;
+    : bridgeUrl || (isLocalBridgeProvider ? inheritedTerminalBridgeUrl : null);
 
   if (effectiveBridgeUrl !== null) {
     try {
@@ -237,6 +299,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
       if (isMinuAgent) {
         const org = register.organization;
         if (!org.minuAgentEnabled || !org.minuAgentUsername || !org.minuAgentPassword || !org.minuAgentBranchId) {
+          if (!standaloneCards) return res.status(422).json({ message: "Minu merchant тохиргоо дутуу байна. Төлбөр эхлээгүй.", code: "MINU_CONFIG_INCOMPLETE" });
           forceManualCard = true;
           manualCardReason = "minu-merchant-not-configured";
         } else {
@@ -278,6 +341,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
           ? terminalId
           : (registerCardTerminalId || "");
       if (!effectiveTerminalId || effectiveTerminalId === "terminal-1") {
+        if (!standaloneCards) return res.status(422).json({ message: "Minu terminalId тохируулаагүй байна. Төлбөр эхлээгүй.", code: "MINU_CONFIG_INCOMPLETE" });
         forceManualCard = true;
         manualCardReason = "minu-terminal-not-configured";
       }
@@ -287,6 +351,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
     }
 
     const manualCardAttempt = forceManualCard || (!usesLocalBridge && !isPushEcr && !isMinuAgent);
+    if (manualCardAttempt && !standaloneCards) return res.status(422).json({ message: "Картын терминалын тохиргоо дутуу байна. Төлбөр эхлээгүй.", code: "CARD_CONFIG_INCOMPLETE" });
     if (manualCardAttempt && !registerId) return res.status(400).json({ message: "Гараар авсан картын төлбөрт касс шаардлагатай" });
     const attemptId = requestedAttemptId || randomUUID();
     const minuInvoice = `MGL-${attemptId.replace(/-/g, "").slice(0, 24).toUpperCase()}`;
@@ -597,7 +662,7 @@ router.post("/pos/payments/card/authorize", async (req, res) => {
   }
 });
 
-router.post("/pos/payments/card/client-bridge-result", async (req, res) => {
+router.post(["/pos/payments/card/client-bridge-result", "/pos/payments/card/client-bridge-result-v2"], async (req, res) => {
   const actor = await requirePosUser(req, res);
   if (!actor) return;
 
