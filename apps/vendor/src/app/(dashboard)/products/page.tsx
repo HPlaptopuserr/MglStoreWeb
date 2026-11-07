@@ -1129,6 +1129,24 @@ export default function ProductsPage() {
             className="w-full max-w-sm bg-white h-full overflow-y-auto shadow-2xl animate-in slide-in-from-right-4"
             onClick={(e) => e.stopPropagation()}
           >
+            <div className="sticky top-0 z-10 flex items-center gap-3 border-b border-slate-100 bg-white p-4">
+              <button
+                type="button"
+                onClick={() => openEdit(selectedProduct)}
+                className="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-500/25 transition-colors hover:bg-indigo-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                <Pencil size={16} />
+                Мэдээлэл засах
+              </button>
+              <button
+                type="button"
+                aria-label="Дэлгэрэнгүй цонх хаах"
+                onClick={() => setSelectedProduct(null)}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-black/40 text-white transition-colors hover:bg-black/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+              >
+                <X size={16} />
+              </button>
+            </div>
             <div className="relative">
               {selectedProduct.images.length > 0 ? (
                 <img
@@ -1141,12 +1159,6 @@ export default function ProductsPage() {
                   <Package size={48} className="text-slate-300" />
                 </div>
               )}
-              <button
-                onClick={() => setSelectedProduct(null)}
-                className="absolute top-4 right-4 w-8 h-8 bg-black/40 hover:bg-black/60 text-white backdrop-blur-md rounded-full flex items-center justify-center shadow-sm transition-colors"
-              >
-                <X size={16} />
-              </button>
             </div>
 
             <div className="p-6 space-y-6">
@@ -1450,13 +1462,6 @@ export default function ProductsPage() {
               )}
 
               <div className="flex flex-col gap-3 pt-6 border-t border-slate-100">
-                <button
-                  onClick={() => openEdit(selectedProduct)}
-                  className="flex items-center justify-center gap-2 h-11 rounded-xl bg-indigo-600 text-white text-sm font-bold shadow-lg shadow-indigo-500/25 hover:bg-indigo-700 transition-colors"
-                >
-                  <Pencil size={16} />
-                  Мэдээлэл засах
-                </button>
                 <button
                   onClick={() => handleToggleActive(selectedProduct)}
                   className="flex items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors"
