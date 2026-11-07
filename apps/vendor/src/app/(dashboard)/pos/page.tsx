@@ -561,6 +561,7 @@ export default function PosDemoPage() {
   const [qpayModal, setQpayModal] = useState<QPayModalPayload | null>(null);
   const [isCardProcessing, setIsCardProcessing] = useState(false);
   const [isCancellingCard, setIsCancellingCard] = useState(false);
+  const [minuCancellationRequested, setMinuCancellationRequested] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("Бүгд");
   const [autoCheckoutActive, setAutoCheckoutActive] = useState(false);
   const [autoFinalizing, setAutoFinalizing] = useState(false);
@@ -2522,6 +2523,7 @@ export default function PosDemoPage() {
         },
       ]);
 
+      setMinuCancellationRequested(false);
       setIsCardProcessing(true);
       startProgressTicker("Карт уншуулна уу");
       const isCardRunCancelled = () => cardRun.cancelled || cardPaymentRunRef.current !== cardRun;
@@ -4187,23 +4189,20 @@ export default function PosDemoPage() {
           <div className="rounded-3xl border border-blue-300/40 bg-white px-10 py-8 text-center shadow-2xl w-80">
             <Loader2 className="mx-auto h-14 w-14 animate-spin text-blue-500" />
             <p className="mt-4 text-lg font-bold text-slate-900">Картаар төлж байна</p>
-            <p className="mt-1 text-sm text-slate-500">Терминал дээр карт уншуулна уу</p>
+            <p role="status" className="mt-1 text-sm text-slate-500">{minuCancellationRequested
+              ? "Терминалын Cancel товчийг дарна уу. Цуцлалтын хариуг хүлээж байна."
+              : "Терминал дээр карт уншуулна уу"}</p>
             <button
               type="button"
-              onClick={handleCancelCardPayment}
-              disabled={isCancellingCard || methodSwitch.pending || methodSwitch.resolving}
+              onClick={() => {
+                if (getEffectiveCardProvider(registerConfig) === "MINU_AGENT") setMinuCancellationRequested(true);
+                else void handleCancelCardPayment();
+              }}
+              disabled={minuCancellationRequested || isCancellingCard || methodSwitch.pending || methodSwitch.resolving}
               className="mt-6 inline-flex items-center gap-2 rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
             >
               {isCancellingCard ? <Loader2 size={14} className="animate-spin" /> : null}
-              {getEffectiveCardProvider(registerConfig) === "MINU_AGENT" ? "Төлөвийг ард шалгуулах" : "Цуцлах"}
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePaymentMethodChange("QR")}
-              disabled={methodSwitchDisabled || methodSwitch.resolving || isCancellingCard}
-              className="mt-3 block min-h-11 w-full rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-50"
-            >
-              QR руу шилжих
+              Цуцлах
             </button>
             {methodSwitch.message && <p role="status" className="mt-3 text-xs leading-5 text-slate-600">{methodSwitch.message}</p>}
           </div>

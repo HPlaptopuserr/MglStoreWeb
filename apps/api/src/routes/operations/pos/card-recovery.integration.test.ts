@@ -84,7 +84,7 @@ test(
           status: terminalDeclined ? "DECLINED" : paid ? "000" : "10",
           rrn: paid && !omitRrn ? "123456789012" : null,
           error: terminalDeclined ? "DECLINED" : paid ? "false" : "true",
-          message: insufficientFunds ? "Үлдэгдэл хүрээгүй" : observedCancellation ? "Цуцлагдлаа" : paid ? "Гүйлгээ амжилттай" : undefined,
+          message: insufficientFunds ? "Үлдэгдэл хүрээгүй" : observedCancellation ? "Гүйлгээ цуцлагдлаа" : paid ? "Гүйлгээ амжилттай" : undefined,
           cardNo: "DO-NOT-EXPOSE",
         },
       });
@@ -823,7 +823,9 @@ test(
         observedCancellation = true;
         try {
           const response = await f.status();
-          assert.equal((await response.json() as { status: string }).status, "DECLINED");
+          const result = await response.json() as { status: string; message: string };
+          assert.equal(result.status, "DECLINED");
+          assert.equal(result.message, "Гүйлгээ цуцлагдлаа");
           assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
           assert.equal(invoiceCalls, before);
           assert.ok(providerCalls.slice(callOffset).every((path) => ["/agent/login", "/agent/checkTxn"].includes(path)));

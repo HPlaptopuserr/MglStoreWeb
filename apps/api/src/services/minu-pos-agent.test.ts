@@ -36,6 +36,7 @@ test("the observed Minu code 10 cancellation requires the exact terminal message
   } };
   assert.equal(isMinuTerminalCancellation(response), true);
   assert.equal(parseMinuAgentTransactionResponse(response).declined, true);
+  assert.equal(parseMinuAgentTransactionResponse({ ...response, entity: { ...response.entity, message: "Гүйлгээ цуцлагдлаа" } }).declined, true);
   for (const changed of [
     { ...response, status: "0064" },
     { ...response, entity: { ...response.entity, message: "Successful" } },

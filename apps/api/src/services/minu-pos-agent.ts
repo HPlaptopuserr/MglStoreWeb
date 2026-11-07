@@ -205,7 +205,7 @@ export function isMinuTerminalCancellation(data: MinuAgentResponse<MinuTxnEntity
   return String(data.status ?? "").trim() === "000" &&
     String(data.entity?.status ?? "").trim() === "10" &&
     String(data.entity?.error ?? "").trim().toLowerCase() === "true" &&
-    String(data.entity?.message ?? "").trim() === "Цуцлагдлаа" &&
+    ["Цуцлагдлаа", "Гүйлгээ цуцлагдлаа"].includes(String(data.entity?.message ?? "").trim()) &&
     Boolean(String(data.entity?.invoice ?? "").trim()) &&
     !String(data.entity?.rrn ?? "").trim();
 }
