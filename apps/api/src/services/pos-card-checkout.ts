@@ -163,6 +163,11 @@ export async function reserveCardCheckout(
   const frozen = previous
     ? checkoutFromPayload(previous.providerPayload)
     : null;
+  const unresolved = await tx.cardPaymentAttempt.findFirst({ where: {
+    organizationId, status: { in: ["PENDING", "FAILED"] }, consumedAt: null,
+    providerPayload: { path: ["checkout", "clientSaleId"], equals: checkout.clientSaleId },
+  } });
+  if (unresolved) fail("Энэ сагсны өмнөх картын төлбөр шалгагдаж байна. Дахин төлбөр авахгүй.");
   if (frozen && !sameCheckout(frozen, checkout))
     fail("Төлбөртэй сагсны мэдээлэл өөрчлөгдсөн байна");
   const ids = checkout.lines.map((l) => l.productId).sort();

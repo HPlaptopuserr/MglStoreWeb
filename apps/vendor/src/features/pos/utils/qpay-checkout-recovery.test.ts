@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { saveQPayCheckoutRecovery, loadQPayCheckoutRecovery, clearQPayCheckoutRecovery, claimQPayCheckoutRecovery, type QPayCheckoutRecovery } from "./qpay-checkout-recovery";
+import { saveQPayCheckoutRecovery, loadQPayCheckoutRecovery, clearQPayCheckoutRecovery, claimQPayCheckoutRecovery, type QPayCheckoutRecovery, detachDeferredQPayCheckout, restoreDeferredQPayCheckout, parseQPayCheckoutSnapshot } from "./qpay-checkout-recovery";
 
 test("pending QR references survive reload and remain organization scoped", () => {
   const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
@@ -97,6 +97,48 @@ test("a register checkout restores its entire basket and rejects another tab ove
     assert.equal(loadQPayCheckoutRecovery("org", "register-1"), null);
     assert.throws(() => saveQPayCheckoutRecovery("org", recovery));
     assert.equal(storage.get(key), broken, "unreadable financial evidence is preserved for review");
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "window", previous);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+
+test("deferring preserves a complete snapshot, frees a new checkout and prevents stale tabs overwriting it", async () => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const storage = new Map<string, string>();
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+    removeItem: (key: string) => storage.delete(key),
+  } } });
+  const original: Omit<QPayCheckoutRecovery, "updatedAt"> = {
+    registerId: "register", clientSaleId: "old-customer", qpayModal: null, loyaltyRedeemSession: null,
+    loyalty: { mode: "NONE", phone: "", lookupLoading: false, lookupError: "", found: false, balance: 0, earnRate: 0, membershipBadge: "NONE", redeemPoints: 0 },
+    cart: [{ productId: "coffee", name: "Coffee", qty: 1, stockQty: 10, unitPrice: 7500, baseUnitPrice: 7500, priceType: "UNIT", taxRate: 0, discountAmount: 0 }],
+    paymentEntries: [{ id: "pending", method: "CARD", amount: 7500, status: "pending", attemptId: "original-invoice" }],
+  };
+  try {
+    await claimQPayCheckoutRecovery("org", original);
+    const snapshot = loadQPayCheckoutRecovery("org", "register")!;
+    assert.throws(() => detachDeferredQPayCheckout("org", "register", snapshot.clientSaleId, snapshot.updatedAt - 1));
+    assert.ok(loadQPayCheckoutRecovery("org", "register"), "a stale completion must not clear newer browser evidence");
+    detachDeferredQPayCheckout("org", "register", snapshot.clientSaleId, snapshot.updatedAt);
+    assert.equal(loadQPayCheckoutRecovery("org", "register"), null);
+    assert.throws(() => saveQPayCheckoutRecovery("org", original), "an old tab must not revive the pending checkout");
+    const next = { ...original, clientSaleId: "next-customer", paymentEntries: [{ id: "cash", method: "CASH" as const, status: "confirmed" as const, amount: 7500 }] };
+    await claimQPayCheckoutRecovery("org", next);
+    const recovered = parseQPayCheckoutSnapshot(JSON.stringify(snapshot), "register")!;
+    assert.equal(recovered.paymentEntries[0].attemptId, "original-invoice");
+    await assert.rejects(restoreDeferredQPayCheckout("org", recovered));
+    assert.equal(loadQPayCheckoutRecovery("org", "register")?.clientSaleId, "next-customer");
+    clearQPayCheckoutRecovery("org", "register", "next-customer", true);
+    recovered.paymentEntries[0].status = "confirmed";
+    await restoreDeferredQPayCheckout("org", recovered);
+    assert.deepEqual(loadQPayCheckoutRecovery("org", "register")?.cart, original.cart);
+    assert.equal(loadQPayCheckoutRecovery("org", "register")?.paymentEntries[0].status, "confirmed");
+    clearQPayCheckoutRecovery("org", "register", "old-customer");
+    assert.ok(loadQPayCheckoutRecovery("org", "register"), "confirmed money cannot be discarded after restoration");
   } finally {
     if (previous) Object.defineProperty(globalThis, "window", previous);
     else Reflect.deleteProperty(globalThis, "window");

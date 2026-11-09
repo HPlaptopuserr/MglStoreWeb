@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer, useState } from "react";
 import { calculateCartTotal } from "../utils/calculate-cart-total";
 import { initialPosState, posReducer } from "../store/pos.store";
-import type { PosProduct } from "../types/pos.types";
+import type { PosProduct, CartLine } from "../types/pos.types";
 import { isCartLine } from "../utils/cart-line-validation";
 import {
   normalizePosMeasureUnit,
@@ -10,6 +10,10 @@ import {
 } from "@mgl/types";
 
 const POS_CART_STORAGE_PREFIX = "mglstore.vendor.pos.cart.v1";
+
+export function persistPosCart(storageScope: string, cart: CartLine[]) {
+  window.localStorage.setItem(resolveCartStorageKey(storageScope), JSON.stringify(cart));
+}
 
 function resolveCartStorageKey(storageScope?: string) {
   if (storageScope) return `${POS_CART_STORAGE_PREFIX}:${storageScope}`;

@@ -10,6 +10,22 @@ import type {
 } from "@mgl/types";
 import { EBARIMT_RESTAURANT_SELF_SERVICE_CLASSIFICATION_CODE } from "@mgl/types";
 import { API, authFetch } from "@/lib/api";
+import type { DeferredCardCheckout } from "@mgl/types";
+
+export async function getDeferredRestaurantCards(registerId: string) {
+  return readApiResponse<{ checkouts: DeferredCardCheckout[] }>(await authFetch(
+    `${API}/pos/payments/card/deferred?${new URLSearchParams({ registerId })}`, { cache: "no-store" }));
+}
+export async function deferRestaurantCard(registerId: string, attemptId: string, clientSaleId: string, snapshot: string) {
+  return readApiResponse<DeferredCardCheckout>(await authFetch(`${API}/pos/payments/card/deferred/${encodeURIComponent(attemptId)}`, {
+    method: "POST", body: JSON.stringify({ registerId, clientSaleId, snapshot, kind: "SELF_SERVICE" }),
+  }));
+}
+export async function acknowledgeDeferredRestaurantCard(registerId: string, attemptId: string) {
+  return readApiResponse<DeferredCardCheckout>(await authFetch(`${API}/pos/payments/card/deferred/${encodeURIComponent(attemptId)}`, {
+    method: "POST", body: JSON.stringify({ registerId, resume: true }),
+  }));
+}
 
 export const EBARIMT_CAFE_BEVERAGE_CLASSIFICATION_CODE = "6340000";
 
@@ -559,6 +575,10 @@ export type RestaurantPosQPayInvoice = {
   createdAt: string;
 };
 
+export class RestaurantPosApiError extends Error {
+  constructor(message: string, public readonly status: number, public readonly code?: string) { super(message); }
+}
+
 async function readApiResponse<T>(response: Response): Promise<T> {
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
@@ -566,7 +586,7 @@ async function readApiResponse<T>(response: Response): Promise<T> {
       payload && typeof payload === "object" && "message" in payload
         ? String(payload.message)
         : `POS хүсэлт амжилтгүй (HTTP ${response.status})`;
-    throw new Error(message);
+    throw new RestaurantPosApiError(message, response.status, typeof payload?.code === "string" ? payload.code : undefined);
   }
   return payload as T;
 }
@@ -611,6 +631,8 @@ export async function connectRestaurantCardTerminal(
 }
 
 export async function createRestaurantCardAttempt(input: {
+  attemptId?: string;
+  saleIdentity?: { clientSaleId: string; restaurantTicketId: string };
   amount: number;
   terminalId?: string | null;
   bridgeUrl?: string | null;
@@ -623,6 +645,8 @@ export async function createRestaurantCardAttempt(input: {
   const response = await authFetch(`${API}/pos/payments/card/${endpoint}`, {
     method: "POST",
     body: JSON.stringify({
+      attemptId: input.attemptId,
+      saleIdentity: input.saleIdentity,
       amount: input.amount,
       terminalId: input.terminalId || "terminal-1",
       bridgeUrl: input.bridgeUrl || null,
@@ -634,10 +658,10 @@ export async function createRestaurantCardAttempt(input: {
   return readApiResponse<CardAttempt>(response);
 }
 
-export async function getRestaurantCardAttemptStatus(attemptId: string) {
+export async function getRestaurantCardAttemptStatus(attemptId: string, signal?: AbortSignal) {
   const response = await authFetch(
     `${API}/pos/payments/card/status/${encodeURIComponent(attemptId)}`,
-    { cache: "no-store" },
+    { cache: "no-store", signal },
   );
   return readApiResponse<CardAttempt>(response);
 }

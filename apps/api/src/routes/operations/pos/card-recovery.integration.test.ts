@@ -6,6 +6,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { prisma } from "@mgl/database";
 import recoveryRoutes from "./card-recovery.routes";
+import deferredRoutes from "./deferred-card.routes";
 import cardRoutes from "./card-payments.routes";
 import salesRoutes from "./sales.routes";
 import registerRoutes from "./registers.routes";
@@ -64,6 +65,8 @@ test(
     let invoiceCalls = 0;
     let loginUnavailable = false;
     let loseInvoiceResponse = false;
+    let delayInvoiceResponse = false;
+    let releaseInvoiceResponse: (() => void) | undefined;
     const providerCalls: string[] = [];
     const provider = express();
     provider.use(express.json());
@@ -75,6 +78,7 @@ test(
       if (req.path === "/agent/invoice" && allowInvoice) {
         invoiceCalls += 1;
         if (loseInvoiceResponse) return req.socket.destroy();
+        if (delayInvoiceResponse) { releaseInvoiceResponse = () => { res.json({ status: "000", message: "Successful" }); }; return; }
         return res.json({ status: "000", message: "Successful" });
       }
       if (req.path !== "/agent/checkTxn")
@@ -101,6 +105,7 @@ test(
     const app = express();
     app.use(express.json());
     app.use(recoveryRoutes);
+    app.use(deferredRoutes);
     app.use(cardRoutes);
     app.use(salesRoutes);
     app.use(registerRoutes);
@@ -700,6 +705,144 @@ test(
           paymentBreakdown: [{ method: "CARD", amount: body.amount, attemptId: body.attemptId }] };
         return { body, authorize, legacyAuthorize, status, sale, product, register };
       };
+
+      await t.test("deferred unknown cards free the till for another cash customer without unlocking or charging twice", async () => {
+        const f = await fixture();
+        paid = false;
+        await prisma.product.update({ where: { id: f.product.id }, data: { stock: 2 } });
+        assert.equal((await f.authorize()).status, 201);
+        await f.status();
+        const before = invoiceCalls;
+        const snapshot = JSON.stringify({ registerId: f.register.id, clientSaleId: f.body.checkout.clientSaleId,
+          cart: f.body.checkout.lines, paymentEntries: [{ attemptId: f.body.attemptId, method: "CARD", status: "pending", amount: f.body.amount }] });
+        const save = (extra: Record<string, unknown> = {}) => fetch(`${base}/pos/payments/card/deferred/${f.body.attemptId}`, {
+          method: "POST", headers, body: JSON.stringify({ registerId: f.register.id, kind: "RETAIL", clientSaleId: f.body.checkout.clientSaleId, snapshot, ...extra }),
+        });
+        const list = () => fetch(`${base}/pos/payments/card/deferred?registerId=${f.register.id}`, { headers });
+        providerUnavailable = true;
+        try {
+          const deferred = await save();
+          assert.equal(deferred.status, 200, await deferred.clone().text());
+          assert.equal((await deferred.json() as { status: string }).status, "PENDING");
+          assert.equal((await save()).status, 200, "saving twice returns the same original checkout");
+          assert.equal((await save({ resume: true })).status, 409, "unknown payment cannot be resumed for another charge");
+          const queue = await (await list()).json() as { checkouts: Array<{ snapshot: string }> };
+          assert.equal(queue.checkouts.length, 1);
+          assert.equal(queue.checkouts[0].snapshot, snapshot);
+          const old = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+          assert.equal(old.status, "PENDING");
+          assert.equal((old.providerPayload as Record<string, unknown>).terminalGuardVersion, 1);
+          assert.equal(invoiceCalls, before);
+          const cash = { ...f.sale, paymentMethod: "CASH", paymentBreakdown: [{ method: "CASH", amount: f.body.amount }] };
+          const submit = (body: unknown) => fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(body) });
+          assert.equal((await submit(cash)).status, 409, "the original customer cannot be charged in cash while their card is unknown");
+          const next = await submit({ ...cash, clientSaleId: crypto.randomUUID() });
+          assert.equal(next.status, 201, await next.clone().text());
+          assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 1);
+          assert.equal((await f.authorize({ ...f.body, attemptId: crypto.randomUUID() })).status, 409);
+          assert.equal(invoiceCalls, before);
+        } finally { providerUnavailable = false; paid = true; }
+        await f.status();
+        const queue = await (await list()).json() as { checkouts: Array<{ status: string; snapshot: string }> };
+        assert.equal(queue.checkouts[0].status, "APPROVED", "late approval belongs to the saved original checkout");
+        assert.equal(queue.checkouts[0].snapshot, snapshot, "reconciliation preserves the durable snapshot");
+        const originalSale = () => fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(f.sale) });
+        const settled = await originalSale();
+        assert.equal(settled.status, 201, await settled.clone().text());
+        assert.equal((await originalSale()).status, 200);
+        assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 0);
+        assert.equal((await (await list()).json() as { checkouts: unknown[] }).checkouts.length, 0);
+        assert.equal(invoiceCalls, before, "settlement and repeat confirmation do not send another bank invoice");
+      });
+
+      await t.test("deferred snapshots enforce register ownership and cannot fabricate cancellation", async () => {
+        const f = await fixture();
+        const other = await fixture();
+        paid = false;
+        assert.equal((await f.authorize()).status, 201);
+        await f.status();
+        const data = { registerId: f.register.id, kind: "RETAIL", clientSaleId: f.body.checkout.clientSaleId,
+          snapshot: JSON.stringify({ clientSaleId: f.body.checkout.clientSaleId, paymentEntries: [{ attemptId: f.body.attemptId }] }) };
+        const save = (body: unknown, auth = headers) => fetch(`${base}/pos/payments/card/deferred/${f.body.attemptId}`, { method: "POST", headers: auth, body: JSON.stringify(body) });
+        assert.equal((await save({ ...data, registerId: other.register.id })).status, 404);
+        assert.equal((await save({ ...data, clientSaleId: "different" })).status, 409);
+        assert.equal((await save({ ...data, snapshot: "{}" })).status, 409);
+        assert.equal((await save({ ...data, snapshot: "invalid-json" })).status, 409);
+        assert.equal((await save(data, { "Content-Type": "application/json", Authorization: "Bearer invalid" })).status, 401);
+        assert.equal((await save(data)).status, 200);
+        terminalRefusal = "System Error";
+        try { await f.status(); } finally { terminalRefusal = undefined; paid = true; }
+        const before = invoiceCalls;
+        const resumed = await save({ registerId: f.register.id, resume: true });
+        assert.equal(resumed.status, 200);
+        assert.equal((await resumed.json() as { status: string }).status, "DECLINED");
+        assert.equal(invoiceCalls, before);
+        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
+      });
+
+      await t.test("self-service deferred orders retain their ticket identity and settle once after a late approval", async () => {
+        const f = await fixture();
+        await prisma.posRegister.update({ where: { id: f.register.id }, data: { mode: "SELF_SERVICE" } });
+        await prisma.posShift.update({ where: { id: f.body.checkout.shiftId }, data: { mode: "SELF_SERVICE", registerId: null, note: "SYSTEM:SELF_SERVICE" } });
+        await prisma.product.update({ where: { id: f.product.id }, data: { isRestaurantMenuItem: true } });
+        const ticket = await prisma.restaurantTicket.create({ data: {
+          organizationId: organization.id, branchId: branch.id, shiftId: f.body.checkout.shiftId, openedById: user.id,
+          ticketNo: crypto.randomUUID(), items: { create: { productId: f.product.id, productName: "Test meal", qty: 1, unitPrice: f.body.amount } },
+        } });
+        const identity = { clientSaleId: f.body.checkout.clientSaleId, restaurantTicketId: ticket.id };
+        const request = { ...f.body, checkout: undefined, saleIdentity: identity };
+        paid = false;
+        assert.equal((await f.authorize(request)).status, 201);
+        assert.equal((await f.authorize({ ...request, saleIdentity: { ...identity, restaurantTicketId: "another-ticket" } })).status, 409);
+        await f.status();
+        const before = invoiceCalls;
+        const snapshot = JSON.stringify({ version: 1, registerId: f.register.id, organizationId: organization.id,
+          paymentMethod: "CARD", orderMode: "DINE_IN", checkout: { ticket, clientSaleId: identity.clientSaleId,
+            cardAttempt: { attemptId: f.body.attemptId, amount: f.body.amount, status: "PENDING" } } });
+        const defer = await fetch(`${base}/pos/payments/card/deferred/${f.body.attemptId}`, { method: "POST", headers,
+          body: JSON.stringify({ registerId: f.register.id, kind: "SELF_SERVICE", clientSaleId: identity.clientSaleId, snapshot }) });
+        assert.equal(defer.status, 200, await defer.clone().text());
+        const originalSale = { ...f.sale, source: "SELF_SERVICE", restaurantTicketId: ticket.id, packagingFee: 0 };
+        const submit = (body: unknown) => fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(body) });
+        assert.equal((await submit({ ...originalSale, clientSaleId: crypto.randomUUID(), paymentMethod: "CASH",
+          paymentBreakdown: [{ method: "CASH", amount: f.body.amount }] })).status, 409);
+        assert.equal((await f.authorize({ ...request, attemptId: crypto.randomUUID() })).status, 409);
+        paid = true;
+        await f.status();
+        assert.equal((await f.authorize({ ...request, attemptId: crypto.randomUUID() })).status, 409);
+        const forgedSale = await submit({ ...originalSale, clientSaleId: crypto.randomUUID() });
+        assert.equal(forgedSale.status, 409, "a paid card cannot be attached to another order identity");
+        const saved = await submit(originalSale);
+        assert.equal(saved.status, 201, await saved.clone().text());
+        assert.equal((await submit(originalSale)).status, 200);
+        assert.equal(invoiceCalls, before);
+        assert.ok((await prisma.restaurantTicket.findUniqueOrThrow({ where: { id: ticket.id } })).posSaleId);
+      });
+
+      await t.test("a late invoice acknowledgement cannot erase a deferred checkout snapshot", async () => {
+        const f = await fixture();
+        paid = false;
+        delayInvoiceResponse = true;
+        try {
+          assert.equal((await f.authorize()).status, 201);
+          for (let i = 0; !releaseInvoiceResponse && i < 50; i += 1) await new Promise(resolve => setTimeout(resolve, 10));
+          assert.ok(releaseInvoiceResponse);
+          const snapshot = JSON.stringify({ clientSaleId: f.body.checkout.clientSaleId, paymentEntries: [{ attemptId: f.body.attemptId }] });
+          const saved = await fetch(`${base}/pos/payments/card/deferred/${f.body.attemptId}`, { method: "POST", headers,
+            body: JSON.stringify({ registerId: f.register.id, kind: "RETAIL", clientSaleId: f.body.checkout.clientSaleId, snapshot }) });
+          assert.equal(saved.status, 200);
+          releaseInvoiceResponse();
+          releaseInvoiceResponse = undefined;
+          await new Promise(resolve => setTimeout(resolve, 25));
+          const record = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+          const payload = record.providerPayload as Record<string, unknown>;
+          assert.equal((payload.deferredCheckout as { snapshot: string }).snapshot, snapshot);
+          assert.equal(record.status, "PENDING");
+        } finally {
+          releaseInvoiceResponse?.(); releaseInvoiceResponse = undefined;
+          delayInvoiceResponse = false; paid = true;
+        }
+      });
 
       await t.test("login failure never reserves a terminal or stock and can be retried", async () => {
         const f = await fixture();

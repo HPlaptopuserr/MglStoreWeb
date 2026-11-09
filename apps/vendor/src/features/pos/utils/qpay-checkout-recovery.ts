@@ -59,7 +59,13 @@ export function loadQPayCheckoutRecovery(
       (registerId ? window.localStorage.getItem(storageKey(organizationId)) : null);
     if (!raw) return null;
 
-    const parsed = JSON.parse(raw) as Partial<QPayCheckoutRecovery>;
+    return parseQPayCheckoutSnapshot(raw, registerId);
+  } catch { return null; }
+}
+
+export function parseQPayCheckoutSnapshot(snapshot: string, registerId?: string): QPayCheckoutRecovery | null {
+  try {
+    const parsed = JSON.parse(snapshot) as Partial<QPayCheckoutRecovery>;
     if (registerId && parsed.registerId && parsed.registerId !== registerId) return null;
     if (parsed.cart !== undefined && (!Array.isArray(parsed.cart) || !parsed.cart.length || !parsed.cart.every(isCartLine))) return null;
     const paymentEntries = Array.isArray(parsed.paymentEntries)
@@ -117,6 +123,9 @@ export function saveQPayCheckoutRecovery(
     return;
   }
 
+  if (window.localStorage.getItem(`${storageKey(organizationId, recovery.registerId)}:deferred:${recovery.clientSaleId}`)) {
+    throw new Error("Энэ сагс тусад нь хадгалагдсан. Хүлээгдэж буй сагснаас сэргээнэ үү.");
+  }
   const existing = loadQPayCheckoutRecovery(organizationId, recovery.registerId);
   if (recovery.registerId && window.localStorage.getItem(storageKey(organizationId, recovery.registerId)) && !existing) {
     throw new Error("Өмнөх төлбөрийн хадгалсан мэдээллийг уншиж чадсангүй. Төлбөрийн төлөвийг тулгаж шалгана уу.");
@@ -151,4 +160,20 @@ export function clearQPayCheckoutRecovery(organizationId: string, registerId?: s
   if (registerId && (!clientSaleId || saved?.clientSaleId !== clientSaleId)) return;
   if (registerId && !saleCompleted && saved?.paymentEntries.some(entry => entry.status === "confirmed" && (entry.method === "CARD" || entry.method === "QR"))) return;
   window.localStorage.removeItem(storageKey(organizationId, registerId));
+}
+
+/** Only call after the server has acknowledged the complete recovery snapshot. */
+export function detachDeferredQPayCheckout(organizationId: string, registerId: string, clientSaleId: string, expectedUpdatedAt: number) {
+  const saved = loadQPayCheckoutRecovery(organizationId, registerId);
+  if (saved?.clientSaleId !== clientSaleId || saved.updatedAt !== expectedUpdatedAt) throw new Error("Одоогийн сагс өөрчлөгдсөн байна.");
+  window.localStorage.setItem(`${storageKey(organizationId, registerId)}:deferred:${clientSaleId}`, "1");
+  window.localStorage.removeItem(storageKey(organizationId, registerId));
+}
+
+export async function restoreDeferredQPayCheckout(organizationId: string, recovery: QPayCheckoutRecovery) {
+  if (loadQPayCheckoutRecovery(organizationId, recovery.registerId)) throw new Error("Одоогийн сагсаа эхлээд дуусгана уу.");
+  const key = `${storageKey(organizationId, recovery.registerId)}:deferred:${recovery.clientSaleId}`;
+  window.localStorage.removeItem(key);
+  try { await claimQPayCheckoutRecovery(organizationId, recovery); }
+  catch (error) { window.localStorage.setItem(key, "1"); throw error; }
 }

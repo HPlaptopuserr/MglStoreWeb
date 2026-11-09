@@ -8,6 +8,16 @@ Verification changes only the existing payment's approval/RRN metadata. Stock ch
 
 Deploy both the API and Vendor application. No schema migration or payment credential changes are required. Local test merchants do not contain production transactions.
 
+## Continue serving customers during an unknown Minu outcome
+
+Vendor retail and Org self-service automatically save an uncertain Minu checkout to the API before clearing the active basket. The payment wait has a wall-clock limit (90 seconds, with individual status requests bounded to 12 seconds); a lost status response also enters this flow. The saved record retains the original invoice, sale identity, complete browser recovery snapshot and any stock reservation. The next customer uses an independent basket and available cash/QR methods (self-service uses QR). The original Minu terminal remains unavailable for another card request until its outcome is known. This keeps the till usable without pretending a bank transaction was cancelled.
+
+The API checks bank state in the background. The saved basket list displays unknown, approved or declined results. Unknown baskets cannot be restored for another payment. Once the result is final, a cashier can restore the original basket when the current checkout is empty. An approved basket uses its existing payment to complete the normal receipt/eBarimt flow; it never sends a new invoice. A declined basket can be retried normally. A late result does not replace the current customer's basket or print the previous customer's receipt automatically.
+
+`GET /pos/payments/card/deferred` and `POST /pos/payments/card/deferred/:attemptId` are register-authorized recovery metadata operations. They never change bank status or remove terminal guards. Only declined snapshots can be acknowledged out of the queue; approved snapshots remain until the existing sale transaction consumes the payment. Minu dispatch acknowledgements cannot overwrite a newer saved snapshot. Same-order card retries and alternate cash/sale completion are rejected while an unresolved or unattached approved card payment exists. Self-service authorization now persists a UUID before sending and binds payment to the original restaurant ticket and client sale ID.
+
+The API must be deployed before Vendor and Org. Existing browsers continue their previous behavior until refreshed. If the API cannot durably save the snapshot, the current basket is retained. A full payment-provider outage can still make its card/QR channels unavailable; this change does not create an offline payment method or authorize unsafe card retries.
+
 ## Validation
 
 - API and Vendor strict TypeScript checks.

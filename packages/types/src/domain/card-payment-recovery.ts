@@ -12,3 +12,10 @@ export interface VerifiedCardRecovery extends RecoverableCardPayment {
   status: "APPROVED";
   transactionId: string;
 }
+
+/** A saved checkout awaiting its original card result; never a new charge. */
+export interface DeferredCardCheckout extends RecoverableCardPayment {
+  kind: "RETAIL" | "SELF_SERVICE";
+  clientSaleId: string;
+  snapshot: string;
+}

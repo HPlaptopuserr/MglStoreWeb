@@ -27,6 +27,12 @@ import { canAutoCompletePayment } from "@/features/pos/utils/auto-complete-payme
 import { useEventCallback } from "@/features/pos/hooks/useEventCallback";
 import { canSwitchAfterQrCancellation } from "@/features/pos/utils/payment-method-switch";
 import { usePaymentMethodSwitch } from "@/features/pos/hooks/usePaymentMethodSwitch";
+import type { DeferredCardCheckout } from "@mgl/types";
+import { persistPosCart } from "@/features/pos/hooks/usePosCart";
+import { useDeferredCardCheckouts } from "@/features/pos/hooks/useDeferredCardCheckouts";
+import { DeferredCardCheckouts } from "@/features/pos/components/DeferredCardCheckouts";
+import { deferCardCheckout, acknowledgeDeferredCardCheckout } from "@/features/pos/api/card-payment-recovery";
+import { detachDeferredQPayCheckout, restoreDeferredQPayCheckout, parseQPayCheckoutSnapshot } from "@/features/pos/utils/qpay-checkout-recovery";
 import { usePendingCardPayments } from "@/features/pos/hooks/usePendingCardPayments";
 import dynamic from "next/dynamic";
 import type { PosCheckoutProps } from "@/features/pos/components/PosCheckoutView";
@@ -634,6 +640,10 @@ export default function PosDemoPage() {
   const keyBufferRef = useRef("");
   const lastKeyTsRef = useRef(0);
   const clientSaleIdRef = useRef<string | null>(null);
+  const deferringCheckoutRef = useRef(false);
+  const [deferringCheckout, setDeferringCheckout] = useState(false);
+  const deferredCards = useDeferredCardCheckouts(registerConfig?.id);
+
   const autoFinalizingRef = useRef(false);
   const autoFinalizeRetryTimerRef = useRef<number | null>(null);
   const autoFinalizeRetryCountRef = useRef(0);
@@ -1745,6 +1755,7 @@ export default function PosDemoPage() {
   });
 
   const canFinalizeSale =
+    !deferringCheckout &&
     state.cart.length > 0 &&
     (paymentEntries.length > 0 || payableTotal <= 0) &&
     remaining <= 0 &&
@@ -1784,7 +1795,7 @@ export default function PosDemoPage() {
 
 
   const blockQPayCartMutation = () => {
-    if (!showCardRecovery && !qpayCreatingRef.current && !cardPaymentRunRef.current && !hasProtectedCheckoutPayment(paymentEntries)) return false;
+    if (!deferringCheckoutRef.current && !showCardRecovery && !qpayCreatingRef.current && !cardPaymentRunRef.current && !hasProtectedCheckoutPayment(paymentEntries)) return false;
     setScanStatus("not-found");
     setScanMessage("Төлбөртэй сагсыг өөрчлөх боломжгүй. Төлбөрийн төлөвөө шалгаж, борлуулалтаа дуусгана уу.");
     return true;
@@ -1808,6 +1819,63 @@ export default function PosDemoPage() {
     setLoyalty(initialLoyaltyState);
     setLoyaltyRedeemSession(null);
     clientSaleIdRef.current = null;
+  };
+
+  useEffect(() => {
+    if (isCardProcessing || deferringCheckoutRef.current || selectedCreditRepayment ||
+        paymentFeedback.CARD?.kind !== "unknown" || getEffectiveCardProvider(registerConfig) !== "MINU_AGENT") return;
+    const entry = paymentEntries.find(item => item.method === "CARD" && item.status === "pending" && item.attemptId);
+    const saved = loadQPayCheckoutRecovery(organizationId, registerConfig?.id);
+    if (!entry?.attemptId || !saved || !registerConfig || saved.clientSaleId !== clientSaleIdRef.current) return;
+    deferringCheckoutRef.current = true;
+    setDeferringCheckout(true);
+    setAutoCheckoutActive(false);
+    void deferCardCheckout(registerConfig.id, entry.attemptId, saved.clientSaleId, JSON.stringify(saved))
+      .then(record => {
+        if (clientSaleIdRef.current !== saved.clientSaleId) return;
+        deferredCards.remember(record);
+        detachDeferredQPayCheckout(organizationId, registerConfig.id, saved.clientSaleId, saved.updatedAt);
+        resetCreditRepaymentMode();
+        dispatch({ type: "clear-cart" });
+        setView("register");
+        setScanStatus("idle");
+        setScanMessage("Өмнөх сагс тусад нь хадгалагдлаа. Хариуг автоматаар шалгана. Дараагийн үйлчлүүлэгчийг бэлэн/QR-аар үйлчилнэ үү.");
+        deferredCards.refresh();
+      }).catch((error: unknown) => {
+        setScanStatus("not-found");
+        setScanMessage(error instanceof Error ? error.message : "Сагсыг хадгалж чадсангүй.");
+      }).finally(() => { deferringCheckoutRef.current = false; setDeferringCheckout(false); });
+  }, [isCardProcessing, paymentFeedback.CARD?.kind, paymentEntries, organizationId, registerConfig, selectedCreditRepayment, dispatch, deferredCards.refresh, deferredCards.remember]);
+
+  const restoreDeferredCard = async (record: DeferredCardCheckout) => {
+    if (!registerConfig || state.cart.length || paymentEntries.length || deferringCheckoutRef.current) return;
+    deferringCheckoutRef.current = true;
+    setDeferringCheckout(true);
+    try {
+      const saved = parseQPayCheckoutSnapshot(record.snapshot, registerConfig.id);
+      if (!saved || saved.clientSaleId !== record.clientSaleId) throw new Error("Хадгалсан сагсыг уншиж чадсангүй.");
+      if (record.status !== "APPROVED" && record.status !== "DECLINED") return;
+      saved.paymentEntries = saved.paymentEntries.flatMap(entry => entry.attemptId !== record.attemptId ? [entry]
+        : record.status === "DECLINED" ? [] : [{ ...entry, status: "confirmed" as const, transactionId: record.transactionId || record.attemptId }]);
+      // Save the original bank reference before acknowledging queue removal.
+      await restoreDeferredQPayCheckout(organizationId, saved);
+      persistPosCart(recoveryScope, saved.cart || []);
+      if (record.status === "DECLINED") await acknowledgeDeferredCardCheckout(registerConfig.id, record.attemptId);
+      dispatch({ type: "restore-cart", payload: saved.cart || [] });
+      clientSaleIdRef.current = saved.clientSaleId;
+      setPaymentEntries(saved.paymentEntries);
+      setQpayModal(saved.qpayModal);
+      setLoyalty(saved.loyalty);
+      setLoyaltyRedeemSession(saved.loyaltyRedeemSession);
+      setView("checkout");
+      setAutoCheckoutActive(false);
+      setPaymentMethod(record.status === "APPROVED" ? "CARD" : "CASH");
+      setScanMessage(record.status === "APPROVED" ? "Өмнөх төлбөр баталгаажсан. Дахин төлөхгүйгээр баримтыг дуусгана уу." : "Өмнөх төлбөр амжилтгүй. Сагсыг сэргээв.");
+      deferredCards.refresh();
+    } catch (error: unknown) {
+      setScanStatus("not-found");
+      setScanMessage(error instanceof Error ? error.message : "Сагсыг сэргээж чадсангүй.");
+    } finally { deferringCheckoutRef.current = false; setDeferringCheckout(false); }
   };
 
   const addRegisterProduct = (product: (typeof products)[number]) => {
@@ -2494,7 +2562,7 @@ export default function PosDemoPage() {
   };
 
   const addPaymentEntry = async (method: PaymentMethod, amount: number, credit?: SaleCreditPaymentMeta, cash?: CashPaymentDetails) => {
-    if (qpayCreatingRef.current || cardPaymentRunRef.current || paymentEntries.some(item => item.status === "pending")) {
+    if (deferringCheckoutRef.current || qpayCreatingRef.current || cardPaymentRunRef.current || paymentEntries.some(item => item.status === "pending")) {
       setScanMessage("Хүлээгдэж буй төлбөрөө эхлээд баталгаажуулна уу. Дараагийн хэсгийг дараа нь төлнө.");
       return;
     }
@@ -2509,6 +2577,12 @@ export default function PosDemoPage() {
     const confirmedCash = normalizeCashPayment(method, safeAmount, cash);
     clearPaymentFeedback(method);
 
+    if (method === "CARD" && deferredCards.checkouts.some(item =>
+      item.terminalId === registerConfig?.cardTerminalId && ["PENDING", "FAILED"].includes(item.status))) {
+      setScanStatus("not-found");
+      setScanMessage("Minu терминал өмнөх төлбөрийн хариуг хүлээж байна. Энэ шинэ сагсыг бэлэн/QR-аар төлнө үү.");
+      return;
+    }
     if (method === "CARD") {
       const pendingId = `CARD-${Date.now()}`;
       const cardRun: CardPaymentRun = {
@@ -2648,13 +2722,14 @@ export default function PosDemoPage() {
         } else {
           const isLongRunningTerminal = terminalNeedsWaitingOverlay(effectiveCardProvider);
           const maxPolls = isLongRunningTerminal ? 150 : 8; // 150x800ms=120s for terminal-side card flows
-          for (let i = 0; i < maxPolls; i += 1) {
+          const deadline = Date.now() + 90_000;
+          for (let i = 0; i < maxPolls && Date.now() < deadline; i += 1) {
             if (isCardRunCancelled()) return;
             if (approvedAttempt.status === "APPROVED") break;
             if (approvedAttempt.status === "DECLINED" || approvedAttempt.status === "FAILED") break;
             await new Promise((resolve) => setTimeout(resolve, 800));
             if (isCardRunCancelled()) return;
-            approvedAttempt = await getCardAttemptStatus(attempt.attemptId);
+            approvedAttempt = await getCardAttemptStatus(attempt.attemptId, AbortSignal.timeout(12_000));
           }
         }
 
@@ -2836,12 +2911,13 @@ export default function PosDemoPage() {
   const checkCardPayment = async (id: string, signal?: AbortSignal): Promise<boolean> => {
     const entry = paymentEntries.find(item => item.id === id && item.method === "CARD" && item.status === "pending");
     if (!entry?.attemptId) return true;
-    if (cardStatusChecksRef.current.has(id)) return false;
+    if (cardStatusChecksRef.current.has(id) || deferringCheckoutRef.current) return false;
+    const originalSaleId = clientSaleIdRef.current;
     cardStatusChecksRef.current.add(id);
     clearPaymentFeedback("CARD");
     try {
       const attempt = await getCardAttemptStatus(entry.attemptId, signal);
-      if (signal?.aborted) return false;
+      if (signal?.aborted || deferringCheckoutRef.current || originalSaleId !== clientSaleIdRef.current) return false;
       const outcome = cardPaymentOutcome(attempt.status, attempt.message);
       if (outcome === "confirmed") {
         clearPaymentFeedback("CARD");
@@ -3204,7 +3280,7 @@ export default function PosDemoPage() {
     void methodSwitch.request(method);
   };
   usePendingCardPayments(paymentEntries,
-    !isCardProcessing,
+    !isCardProcessing && !deferringCheckout,
     checkCardPayment,
   );
 
@@ -3637,6 +3713,9 @@ export default function PosDemoPage() {
       )}
     <div className={`${registerLayout.shell} hidden bg-slate-50 md:block`}>
       <div className={registerLayout.frame}>
+      <DeferredCardCheckouts checkouts={deferredCards.checkouts.filter(item => item.clientSaleId !== clientSaleIdRef.current)}
+        disabled={state.cart.length > 0 || paymentEntries.length > 0 || deferringCheckout || saleLoading}
+        onRestore={record => void restoreDeferredCard(record)} />
       {registerConnectionError && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         <p className="font-semibold">{registerConnectionError}</p>
         {paymentEntries.some((entry) => entry.status === "confirmed") && <p className="mt-1">Төлбөр аль хэдийн авсан бол дахин авахгүй. Бүртгэгдсэн төлбөрийг хадгалж байна.</p>}

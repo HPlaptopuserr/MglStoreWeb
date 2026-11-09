@@ -1291,6 +1291,23 @@ router.post("/pos/sales", async (req, res) => {
         }
 
         await lockOrganizationInventory(tx, effectiveOrganizationId);
+        const suppliedCardIds = normalizedPayments.filter(line => line.method === PaymentMethod.CARD)
+          .map(line => String(line.attemptId || line.transactionId || ""));
+        const unresolvedCard = await tx.cardPaymentAttempt.findFirst({ where: {
+          organizationId: effectiveOrganizationId, consumedAt: null,
+          status: { in: [PosPaymentStatus.PENDING, PosPaymentStatus.FAILED, PosPaymentStatus.APPROVED] },
+          NOT: { id: { in: suppliedCardIds } },
+          OR: [
+            { providerPayload: { path: ["checkout", "clientSaleId"], equals: clientSaleId } },
+            { providerPayload: { path: ["deferredCheckout", "clientSaleId"], equals: clientSaleId } },
+            { providerPayload: { path: ["saleIdentity", "clientSaleId"], equals: clientSaleId } },
+            ...(body.restaurantTicketId ? [
+              { providerPayload: { path: ["saleIdentity", "restaurantTicketId"], equals: body.restaurantTicketId } },
+              { providerPayload: { path: ["deferredCheckout", "restaurantTicketId"], equals: body.restaurantTicketId } },
+            ] : []),
+          ],
+        } });
+        if (unresolvedCard) throw toApiError(409, "Энэ сагсны картын төлбөр бүртгэлтэй. Давхар төлбөр бүртгэхгүй.");
         await assertProductInventoryOwnership(tx, productIds);
 
         const resolvedShiftId = String(body.shiftId || "").trim();
@@ -1668,6 +1685,12 @@ router.post("/pos/sales", async (req, res) => {
               409,
               `Card attempt ${attemptId} approved биш байна`,
             );
+          }
+          const attemptPayload = attempt.providerPayload as Prisma.JsonObject | null;
+          const identity = (attemptPayload?.saleIdentity || attemptPayload?.deferredCheckout) as Prisma.JsonObject | undefined;
+          if (identity && (identity.clientSaleId !== clientSaleId ||
+              (identity.restaurantTicketId && identity.restaurantTicketId !== body.restaurantTicketId))) {
+            throw toApiError(409, "Картын төлбөр анхны захиалгатай таарахгүй байна.");
           }
           const frozen = checkoutFromPayload(attempt.providerPayload);
           if (frozen) {

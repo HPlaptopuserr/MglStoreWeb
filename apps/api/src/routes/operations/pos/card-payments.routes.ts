@@ -1,3 +1,4 @@
+import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
 import { isDatabaseUnavailable } from "../../../lib/database-availability";
 import { retryDisconnectedRead } from "../../../lib/retry-disconnected-read";
 import { randomUUID } from "node:crypto";
@@ -119,6 +120,15 @@ type CardAttemptResponseSource = {
   message: string | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+const matchesRestaurantSaleIdentity = (payload: Prisma.JsonValue, value: unknown): boolean => {
+  if (value === undefined) return true;
+  if (!value || typeof value !== "object" || Array.isArray(value) || !payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  const requested = value as Record<string, unknown>;
+  const saved = payload.saleIdentity;
+  return Boolean(saved && typeof saved === "object" && !Array.isArray(saved) &&
+    saved.clientSaleId === requested.clientSaleId && saved.restaurantTicketId === requested.restaurantTicketId);
 };
 
 const firstString = (...values: unknown[]) => {
@@ -290,6 +300,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
         const existing = await prisma.cardPaymentAttempt.findUnique({ where: { id: requestedAttemptId } });
         if (existing) {
           attemptExists = true;
+          if (!matchesRestaurantSaleIdentity(existing.providerPayload, req.body?.saleIdentity)) throw toApiError(409, "Төлбөрийн захиалга өөрчлөгдсөн байна.");
           if (existing.initiatedById !== actor.id || !matchesPaymentRequest(existing, { registerId, organizationId: effectiveOrganizationId, amount })) throw toApiError(409, "Картын төлбөрийн хүсэлт зөрүүтэй байна");
           const savedPayload = existing.providerPayload as Prisma.JsonObject | null;
           if (req.body?.checkout !== undefined && savedPayload?.mode !== "manual-card") {
@@ -358,6 +369,15 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
     const attemptId = requestedAttemptId || randomUUID();
     const minuInvoice = `MGL-${attemptId.replace(/-/g, "").slice(0, 24).toUpperCase()}`;
     const checkout = !manualCardAttempt && isMinuAgent && req.body?.checkout !== undefined ? parseCardCheckout(req.body.checkout) : null;
+    const saleIdentityInput: unknown = req.body?.saleIdentity;
+    let saleIdentity: { clientSaleId: string; restaurantTicketId: string } | null = null;
+    if (saleIdentityInput !== undefined) {
+      const value = saleIdentityInput as Record<string, unknown> | null;
+      if (!value || typeof value.clientSaleId !== "string" || !value.clientSaleId.trim() || value.clientSaleId.length > 200 ||
+          typeof value.restaurantTicketId !== "string" || !value.restaurantTicketId.trim() || value.restaurantTicketId.length > 200)
+        throw toApiError(400, "Захиалгын мэдээлэл буруу байна.");
+      saleIdentity = { clientSaleId: value.clientSaleId, restaurantTicketId: value.restaurantTicketId };
+    }
     const effectiveTerminalId = terminalId !== "terminal-1" ? terminalId : (registerCardTerminalId || terminalId);
     let minuToken: string | null = null;
     if (isMinuAgent) {
@@ -398,6 +418,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
       const existing = await tx.cardPaymentAttempt.findUnique({ where: { id: attemptId } });
       if (existing) {
         attemptExists = true;
+        if (!matchesRestaurantSaleIdentity(existing.providerPayload, req.body?.saleIdentity)) throw toApiError(409, "Төлбөрийн захиалга өөрчлөгдсөн байна.");
         if (existing.initiatedById !== actor.id || !matchesPaymentRequest(existing, {
           registerId, organizationId: effectiveOrganizationId, amount,
         })) throw toApiError(409, "Картын төлбөрийн хүсэлт зөрүүтэй байна");
@@ -425,6 +446,25 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
             { providerPayload: { path: ["terminalGuardVersion"], equals: 1 } },
           ] } });
         if (active) throw toApiError(409, minuPendingPaymentMessage(active.message));
+        if (saleIdentity) {
+          if (!effectiveOrganizationId || !registerId) throw toApiError(400, "Кассын мэдээлэл дутуу байна.");
+          await lockOrganizationInventory(tx, effectiveOrganizationId);
+          const ticket = await tx.restaurantTicket.findFirst({ where: {
+            id: saleIdentity.restaurantTicketId, organizationId: effectiveOrganizationId, posSaleId: null,
+          } });
+          const register = await tx.posRegister.findUnique({ where: { id: registerId } });
+          if (!ticket || !register || register.mode === "RETAIL" || ticket.branchId !== register.branchId || ticket.status === "CANCELLED")
+            throw toApiError(409, "Захиалга касстай таарахгүй эсвэл хаагдсан байна.");
+          const previous = await tx.cardPaymentAttempt.findFirst({ where: {
+            organizationId: effectiveOrganizationId, consumedAt: null,
+            status: { in: [PosPaymentStatus.PENDING, PosPaymentStatus.FAILED, PosPaymentStatus.APPROVED] },
+            OR: [
+              { providerPayload: { path: ["saleIdentity", "restaurantTicketId"], equals: saleIdentity.restaurantTicketId } },
+              { providerPayload: { path: ["deferredCheckout", "restaurantTicketId"], equals: saleIdentity.restaurantTicketId } },
+            ],
+          } });
+          if (previous) throw toApiError(409, "Энэ захиалгын картын төлбөр бүртгэлтэй. Дахин төлбөр эхлүүлэхгүй.");
+        }
         if (checkout) {
           if (!effectiveOrganizationId || !registerId) throw toApiError(400, "Кассын мэдээлэл дутуу байна");
           await reserveCardCheckout(tx, { checkout, organizationId: effectiveOrganizationId, registerId, amount, cashierId: actor.id });
@@ -456,6 +496,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
               invoice: minuInvoice,
               terminalId: terminalId !== "terminal-1" ? terminalId : registerCardTerminalId,
               branchId: minuAgentContext?.branchId || null,
+              ...(saleIdentity ? { saleIdentity } : {}),
               ...(checkout ? { checkout: JSON.parse(JSON.stringify(checkout)) as Prisma.InputJsonValue } : {}),
             } : undefined,
       },
@@ -608,7 +649,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
           });
 
           await prisma.cardPaymentAttempt.updateMany({
-            where: { id: attempt.id, status: PosPaymentStatus.PENDING, consumedAt: null },
+            where: { id: attempt.id, updatedAt: attempt.updatedAt, status: PosPaymentStatus.PENDING, consumedAt: null },
             data: {
               terminalId: effectiveTerminalId,
               message: minuResult.message || "Minu terminal руу төлбөр илгээгдлээ",
@@ -648,7 +689,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
             message,
           });
           await prisma.cardPaymentAttempt.updateMany({
-            where: { id: attempt.id, status: PosPaymentStatus.PENDING, consumedAt: null },
+            where: { id: attempt.id, updatedAt: attempt.updatedAt, status: PosPaymentStatus.PENDING, consumedAt: null },
             data: {
               // A lost invoice response does not prove the terminal did not charge.
               status: PosPaymentStatus.PENDING,

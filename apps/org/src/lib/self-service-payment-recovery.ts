@@ -157,7 +157,7 @@ export function parseSelfServicePendingPayment(
       !isObject(attempt) ||
       !isNonEmptyString(attempt.attemptId) ||
       !isFiniteNumber(attempt.amount) ||
-      (attempt.status !== "PENDING" && attempt.status !== "APPROVED")
+      (attempt.status !== "PENDING" && attempt.status !== "APPROVED" && attempt.status !== "DECLINED")
     ) {
       return null;
     }

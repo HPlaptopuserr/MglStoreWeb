@@ -1,5 +1,16 @@
-import type { RecoverableCardPayment, VerifiedCardRecovery } from "@mgl/types";
+import type { RecoverableCardPayment, VerifiedCardRecovery, DeferredCardCheckout } from "@mgl/types";
 import { posRequest } from "./_pos-client";
+
+export const getDeferredCardCheckouts = (registerId: string) =>
+  posRequest<{ checkouts: DeferredCardCheckout[] }>(`/pos/payments/card/deferred?${new URLSearchParams({ registerId })}`);
+export const deferCardCheckout = (registerId: string, attemptId: string, clientSaleId: string, snapshot: string) =>
+  posRequest<DeferredCardCheckout>(`/pos/payments/card/deferred/${encodeURIComponent(attemptId)}`, {
+    method: "POST", body: { registerId, clientSaleId, snapshot, kind: "RETAIL" },
+  });
+export const acknowledgeDeferredCardCheckout = (registerId: string, attemptId: string) =>
+  posRequest<DeferredCardCheckout>(`/pos/payments/card/deferred/${encodeURIComponent(attemptId)}`, {
+    method: "POST", body: { registerId, resume: true },
+  });
 
 export function getRecoverableCardPayments(
   registerId: string,
