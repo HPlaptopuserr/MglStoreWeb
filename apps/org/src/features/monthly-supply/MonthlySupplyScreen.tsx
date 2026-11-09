@@ -533,7 +533,7 @@ function MonthlySupplyContent() {
               <p className="text-xs text-slate-500">
                 «Авсан нэгж үнэ» баганад эхний үлдэгдлийн 1 кг / л / ширхэгийг
                 авсан үнийг оруулна. Энэ сарын нэмэлт авалтын хэмжээ, үнийг
-                «Бүртгэл» дотор оруулна. Жорын өртөгт эдгээрийн жигнэсэн дундаж
+                «Нэмэх» товчоор оруулна. Жорын өртөгт эдгээрийн жигнэсэн дундаж
                 үнийг ашиглана.
               </p>
               <div className="overflow-x-auto border border-slate-300 bg-white">
@@ -695,7 +695,7 @@ function MonthlySupplyContent() {
                               onClick={() => setExpandedMaterialId(item.id)}
                               className="flex min-h-10 items-center gap-1 px-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-indigo-500"
                             >
-                              Бүртгэл
+                              Нэмэх
                               <Plus className="size-3.5" aria-hidden="true" />
                             </button>
                             <Remove
