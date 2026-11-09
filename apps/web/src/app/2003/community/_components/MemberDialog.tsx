@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef } from "react";
-import { X } from "lucide-react";
+import { X, Phone } from "lucide-react";
 import { ACTIVITY_TYPES, type Member } from "../model";
 import styles from "../community.module.css";
 export function MemberDialog({
@@ -50,6 +50,16 @@ export function MemberDialog({
         <p>
           {member.city} · {member.sector}
         </p>
+        {member.phone && (
+          <a
+            className={styles.phoneLink}
+            href={`tel:${member.phone}`}
+            aria-label={`${member.name} руу залгах: ${member.phone}`}
+          >
+            <Phone size={16} aria-hidden="true" />
+            {member.phone}
+          </a>
+        )}
         <section>
           <h3>
             {member.activity
@@ -88,7 +98,7 @@ export function MemberDialog({
         <div className={styles.notice}>
           {demo
             ? "Энэ бол зохиомол хүний жишээ. Бодит холбоо барих мэдээлэл байхгүй."
-            : "Гишүүний зөвшөөрөлтэй танилцуулга. Утасны дугаар нийтэд харагдахгүй."}
+            : "Нийтлэгдсэн танилцуулга. Утасны дугаар дээр дарж залгах боломжтой."}
         </div>
       </div>
     </dialog>

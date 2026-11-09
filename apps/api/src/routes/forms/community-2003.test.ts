@@ -86,6 +86,7 @@ test("publishes only profile fields and maps each activity category", () => {
       id: "member-id",
       activity,
       name: "Бат",
+      phone: "99112233",
       city: "Улаанбаатар",
       profession: "Инженер",
       role: "Инженер",

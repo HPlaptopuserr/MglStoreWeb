@@ -54,6 +54,7 @@ export function toPublicCommunityMember(id: string, input: unknown) {
     id,
     activity,
     name: data.name,
+    phone: data.phone,
     city: data.city,
     profession: data.profession,
     role: data.profession,

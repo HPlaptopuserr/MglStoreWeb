@@ -1170,3 +1170,23 @@
     padding-bottom: 20px;
   }
 }
+
+.phoneLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  min-height: 44px;
+  color: #153e80;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.phoneLink:hover {
+  color: #0a2450;
+}
+.phoneLink:focus-visible {
+  outline: 2px solid #153e80;
+  outline-offset: 3px;
+  border-radius: 4px;
+}

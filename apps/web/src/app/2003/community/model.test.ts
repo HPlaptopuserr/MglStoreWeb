@@ -43,3 +43,24 @@ test("activity types separate employees, businesses and planned businesses", () 
   assert.ok(planned);
   assert.equal(matchesMember(planned, planned.sector, "", ""), true);
 });
+
+test("directory accepts valid phone links and rejects malformed phone values", () => {
+  for (const phone of [undefined, "99112233"]) {
+    assert.equal(
+      isDemoState({
+        members: [{ ...DEMO_STATE.members[0], phone }],
+        requests: [],
+      }),
+      true,
+    );
+  }
+  for (const phone of [12345678, "tel:99112233", "invalid", ""]) {
+    assert.equal(
+      isDemoState({
+        members: [{ ...DEMO_STATE.members[0], phone }],
+        requests: [],
+      }),
+      false,
+    );
+  }
+});

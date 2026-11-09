@@ -79,6 +79,7 @@ test("a submitted public profile appears in the directory without private fields
           id: "member",
           activity: "employed",
           name: "Бат",
+          phone: "99112233",
           city: "",
           profession: "Инженер",
           role: "Инженер",

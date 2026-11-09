@@ -1,4 +1,4 @@
-import { ArrowUpRight, MapPin } from "lucide-react";
+import { ArrowUpRight, MapPin, Phone } from "lucide-react";
 import { ACTIVITY_TYPES, type Member } from "../model";
 import styles from "../community.module.css";
 export function MemberCard({
@@ -51,6 +51,16 @@ export function MemberCard({
         <span>Хайж байна</span>{" "}
         {member.needs.join(", ") || "Одоогоор хүсэлтгүй"}
       </p>
+      {member.phone && (
+        <a
+          className={styles.phoneLink}
+          href={`tel:${member.phone}`}
+          aria-label={`${member.name} руу залгах: ${member.phone}`}
+        >
+          <Phone size={16} aria-hidden="true" />
+          {member.phone}
+        </a>
+      )}
       <button className={styles.cardAction} onClick={() => onOpen(member)}>
         Танилцуулга үзэх <ArrowUpRight size={17} />
       </button>
