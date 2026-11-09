@@ -1,6 +1,7 @@
 "use client";
 import Image from "next/image";
 import { useState, type ChangeEvent } from "react";
+import { prepareCommunityPhoto } from "./prepare-community-photo";
 import { API, resolveApiAssetUrl } from "@/lib/api";
 export function CommunityPhotoField({
   value,
@@ -18,26 +19,18 @@ export function CommunityPhotoField({
     event.currentTarget.value = "";
     if (!file || uploading) return;
     setError("");
-    if (
-      file.size > 5 * 1024 * 1024 ||
-      !["image/jpeg", "image/png", "image/webp"].includes(file.type)
-    ) {
-      setError(
-        "JPG, PNG эсвэл WebP зураг, 5 MB хүртэл хэмжээтэй файл сонгоно уу.",
-      );
-      return;
-    }
     setUploading(true);
     onBusy(true);
     try {
+      const photo = await prepareCommunityPhoto(file);
       const body = new FormData();
-      body.append("photo", file);
+      body.append("photo", photo);
       const response = await fetch(`${API}/forms/2003/photos`, {
         method: "POST",
         body,
-        signal: AbortSignal.timeout(30000),
+        signal: AbortSignal.timeout(60000),
       });
-      const data: unknown = await response.json();
+      const data: unknown = await response.json().catch(() => null);
       if (
         !response.ok ||
         !data ||
@@ -45,7 +38,14 @@ export function CommunityPhotoField({
         !("url" in data) ||
         typeof data.url !== "string"
       )
-        throw new Error("Зураг хадгалахад алдаа гарлаа. Дахин оролдоно уу.");
+        throw new Error(
+          data &&
+            typeof data === "object" &&
+            "message" in data &&
+            typeof data.message === "string"
+            ? data.message
+            : "Зураг хадгалахад алдаа гарлаа. Дахин оролдоно уу.",
+        );
       onChange(data.url);
     } catch (cause) {
       setError(
@@ -79,18 +79,19 @@ export function CommunityPhotoField({
       <input
         id="community-photo"
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
         disabled={uploading}
         onChange={upload}
         aria-describedby="community-photo-help"
         className="block max-w-full text-sm file:mr-3 file:rounded-xl file:border-0 file:bg-blue-50 file:px-4 file:py-3 file:font-semibold file:text-blue-900"
       />
       <p id="community-photo-help" className="text-xs text-slate-500">
-        JPG, PNG, WebP · 5 MB хүртэл. Зураг танилцуулгатай хамт нийтлэгдэнэ.
+        JPG, PNG, WebP, HEIC · 30 MB хүртэл. Зургийн хэмжээг автоматаар
+        багасгана.
       </p>
       {uploading && (
         <p role="status" className="text-sm text-blue-800">
-          Зураг оруулж байна…
+          Зургийг бэлдэж, оруулж байна…
         </p>
       )}
       {error && (

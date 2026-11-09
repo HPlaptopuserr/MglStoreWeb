@@ -214,6 +214,30 @@ export function RegistrationForm({
         </fieldset>
         <label
           className="block text-sm font-medium text-slate-700"
+          htmlFor="offers"
+        >
+          Юугаар тусалж чадах вэ?{" "}
+          <span className="font-normal text-slate-400">(заавал биш)</span>
+          <textarea
+            id="offers"
+            name="offers"
+            defaultValue={values.offers || ""}
+            rows={3}
+            maxLength={1000}
+            placeholder="Жишээ: Хуулийн зөвлөгөө, барилгын зураг төсөл…"
+            aria-describedby="offers-help"
+            className="mt-2 block w-full resize-y rounded-xl border border-slate-200 p-4 text-base outline-none transition focus:border-orange-500 focus:ring-4 focus:ring-orange-100"
+          />
+          <span
+            id="offers-help"
+            className="mt-2 block text-xs font-normal text-slate-500"
+          >
+            Чадвар, үйлчилгээ бүрийг шинэ мөрөнд эсвэл таслалаар тусгаарлан
+            бичээрэй.
+          </span>
+        </label>
+        <label
+          className="block text-sm font-medium text-slate-700"
           htmlFor="notes"
         >
           Нэмэлт мэдээлэл{" "}

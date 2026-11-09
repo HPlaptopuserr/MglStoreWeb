@@ -98,3 +98,20 @@ test("publishes only profile fields and maps each activity category", () => {
     });
   }
 });
+
+test("help offers are saved, trimmed, deduplicated and exposed on cards", () => {
+  const data = {
+    ...valid,
+    publishConsent: "yes",
+    offers: " Вэб хөгжүүлэлт, Зөвлөгөө\nВэб хөгжүүлэлт\n ",
+  };
+  assert.equal(parseCommunityResponse(data)?.offers, data.offers.trim());
+  assert.deepEqual(toPublicCommunityMember("member", data)?.offers, [
+    "Вэб хөгжүүлэлт",
+    "Зөвлөгөө",
+  ]);
+  assert.equal(
+    parseCommunityResponse({ ...valid, offers: "x".repeat(1001) }),
+    null,
+  );
+});

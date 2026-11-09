@@ -13,6 +13,7 @@ export const communityFields = [
   { id: "business", label: "Бизнес эрхэлдэг эсэх", required: true },
   { id: "businessName", label: "Бизнес / байгууллагын нэр", required: false },
   { id: "industry", label: "Бизнесийн чиглэл", required: false },
+  { id: "offers", label: "Юугаар тусалж чадах вэ?", required: false },
   { id: "notes", label: "Нэмэлт мэдээлэл", required: false },
   { id: "consent", label: "Мэдээлэл ашиглах зөвшөөрөл", required: true },
 ].map((field) => ({ ...field, type: "text" }));
@@ -29,7 +30,11 @@ export function parseCommunityResponse(
     data[field.id] = typeof value === "string" ? value.trim() : "";
     if (
       data[field.id].length >
-      (field.id === "notes" ? 1000 : field.id === "photoUrl" ? 2048 : 160)
+      (field.id === "notes" || field.id === "offers"
+        ? 1000
+        : field.id === "photoUrl"
+          ? 2048
+          : 160)
     )
       return null;
     if (field.required && !data[field.id]) return null;
@@ -68,7 +73,14 @@ export function toPublicCommunityMember(id: string, input: unknown) {
     organization: data.businessName,
     sector: data.industry || data.profession,
     bio: data.notes,
-    offers: [],
+    offers: [
+      ...new Set(
+        data.offers
+          .split(/[,\r\n]+/)
+          .map((offer) => offer.trim())
+          .filter(Boolean),
+      ),
+    ],
     needs: [],
   };
 }
