@@ -1,5 +1,6 @@
 "use client";
 
+import { ProductRecipeEditor } from "@/features/recipes/ProductRecipeEditor";
 import { ProductHistoryTrigger } from "@mgl/ui";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -13,6 +14,7 @@ import {
   Loader2,
   LockKeyhole,
   Pencil,
+  NotebookText,
   Plus,
   Search,
   Tags,
@@ -194,6 +196,8 @@ function RestaurantProductsContent({ onLock }: { onLock: () => void }) {
     string | null
   >(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [recipeProduct, setRecipeProduct] =
+    useState<RestaurantProduct | null>(null);
   const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<MenuForm>(() => createEmptyForm(isCafe));
@@ -793,6 +797,15 @@ function RestaurantProductsContent({ onLock }: { onLock: () => void }) {
                           ? ` · Ширхэгийн сав ${product.pieceSmallPackSize}ш/${formatMoney(product.pieceSmallPackFee)}, ${product.pieceLargePackSize}ш/${formatMoney(product.pieceLargePackFee)}`
                           : ` · Сав ${formatMoney(product.takeawayPackagingFee)}`}
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => setRecipeProduct(product)}
+                      className="mt-2 inline-flex min-h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-600"
+                      aria-label={`${product.name} орц, жор`}
+                    >
+                      <NotebookText className="h-4 w-4" />
+                      Орц, жор
+                    </button>
                   </div>
                 </div>
 
@@ -858,6 +871,20 @@ function RestaurantProductsContent({ onLock }: { onLock: () => void }) {
         </div>
       )}
 
+      {recipeProduct && (
+        <ProductRecipeEditor
+          key={recipeProduct.id}
+          product={recipeProduct}
+          onClose={() => setRecipeProduct(null)}
+          onSaved={(costPrice) => {
+            if (costPrice !== null) {
+              setProducts((current) => current.map((product) =>
+                product.id === recipeProduct.id ? { ...product, costPrice } : product,
+              ));
+            }
+          }}
+        />
+      )}
       {formOpen ? (
         <MenuItemForm
           form={form}

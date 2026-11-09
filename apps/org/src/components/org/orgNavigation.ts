@@ -18,7 +18,7 @@ import {
   TimerReset,
   Users,
 } from "lucide-react";
-import { isKitchenOnlyMember } from "@mgl/types";
+import { isCashierOnlyMember, isKitchenOnlyMember } from "@mgl/types";
 import { OrgUser } from "@/lib/api";
 import { OrgFeatureState } from "@/lib/org-types";
 import { canViewWorkforceReport } from "@/lib/workforce-api";
@@ -41,7 +41,28 @@ export function getOrgNavItems(
         href: "/dashboard/kitchen-display",
         icon: ChefHat,
       },
+      { label: "Нэгдсэн бараа", href: "/dashboard/supply", icon: Boxes },
+      {
+        label: "Захиалгын бараа",
+        href: "/dashboard/preorder",
+        icon: ClipboardList,
+      },
     ];
+  if (user && isCashierOnlyMember(user)) {
+    return [
+      {
+        label: "Ресторан касс",
+        href: "/dashboard/restaurant-pos",
+        icon: UtensilsCrossed,
+      },
+      { label: "Нэгдсэн бараа", href: "/dashboard/supply", icon: Boxes },
+      {
+        label: "Захиалгын бараа",
+        href: "/dashboard/preorder",
+        icon: ClipboardList,
+      },
+    ];
+  }
   if (features.selfService) {
     const isCafe = features.selfServiceMode === "CAFE";
     const role = String(user?.role || "").toUpperCase();
@@ -80,6 +101,16 @@ export function getOrgNavItems(
           ]
         : []),
       { label: "Бүтээгдэхүүн", href: "/dashboard/products", icon: Package },
+      {
+        label: "Сарын хангамж",
+        href: "/dashboard/monthly-supply",
+        icon: Boxes,
+        enabled:
+          user?.orgRole === "OWNER" ||
+          user?.orgRole === "ADMIN" ||
+          user?.role === "ADMIN" ||
+          user?.role === "SUPER_ADMIN",
+      },
       ...(isCafe
         ? [
             {
@@ -133,6 +164,16 @@ export function getOrgNavItems(
       enabled: features.servicePosts,
     },
     { label: "Бүтээгдэхүүн", href: "/dashboard/products", icon: Package },
+    {
+      label: "Сарын хангамж",
+      href: "/dashboard/monthly-supply",
+      icon: Boxes,
+      enabled:
+        user?.orgRole === "OWNER" ||
+        user?.orgRole === "ADMIN" ||
+        user?.role === "ADMIN" ||
+        user?.role === "SUPER_ADMIN",
+    },
     { label: "Reels", href: "/dashboard/reels", icon: Clapperboard },
     {
       label: "Ресторан касс",

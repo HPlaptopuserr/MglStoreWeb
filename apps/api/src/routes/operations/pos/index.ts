@@ -17,7 +17,10 @@ import stocktakesRoutes from "./stocktakes.routes";
 
 import creditCustomersRoutes from "./credit-customers.routes";
 
+import incomingDispatchesRoutes from "./incoming-dispatches.routes";
+
 const router: ExpressRouter = Router();
+router.use(incomingDispatchesRoutes);
 
 router.use(stocktakesRoutes);
 router.use(quickRestockRoutes);

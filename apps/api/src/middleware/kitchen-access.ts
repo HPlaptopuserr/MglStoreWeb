@@ -70,7 +70,11 @@ export async function restrictKitchenMember(
     if (!isKitchenRequest(req.method, path)) {
       return res
         .status(403)
-        .json({ message: "Тогооч зөвхөн гал тогооны хэсэгт хандах эрхтэй" });
+        .json({ message: "Тогооч зөвхөн гал тогоо болон бараа хүлээн авах хэсэгт хандах эрхтэй" });
+    }
+    if (req.method === "GET" && req.query.organizationId !== undefined &&
+        req.query.organizationId !== membership.organizationId) {
+      return res.status(403).json({ message: "Энэ байгууллагын бараанд хандах эрхгүй" });
     }
     const branchId: unknown =
       req.method === "GET" ? req.query.branchId : req.body?.branchId;

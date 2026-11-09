@@ -495,6 +495,7 @@ model BusinessCategory {
 }
 
 model Organization {
+  supplyMonths RestaurantSupplyMonth[]
   groupCompanies GroupCompany[]
   headedGroups OrganizationGroup[] @relation("GroupHeadCompany")
   groupInvitations GroupCompanyInvitation[]
@@ -1261,6 +1262,7 @@ model Category {
 }
 
 model Product {
+  recipe ProductRecipe?
   warehouseRetailItems WarehouseRetailOrderItem[]
   sentTransferItems WarehouseTransferItem[] @relation("TransferSourceProduct")
   receivedTransferItems WarehouseTransferItem[] @relation("TransferTargetProduct")
@@ -3925,6 +3927,7 @@ model PosCreditSale {
 
 /// Individual line item within a POS sale.
 model PosSaleLine {
+  recipeSnapshot PosSaleRecipeSnapshot?
   id                 String   @id @default(uuid())
   saleId             String
   productId          String
@@ -5001,4 +5004,40 @@ model WorkforceEmployeeProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   member OrganizationMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+/// Private recipe and cost inputs, managed independently from the public catalog.
+model ProductRecipe {
+  productId String @id
+  data Json
+  version Int @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+/// Monthly manual supply reconciliation, independent from POS inventory mutations.
+model RestaurantSupplyMonth {
+  organizationId String
+  month String
+  data Json
+  version Int @default(1)
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@id([organizationId, month])
+}
+
+/// Immutable recipe inputs and portion count captured in the sale transaction.
+model PosSaleRecipeSnapshot {
+  bindings Json?
+  saleLineId String @id
+  productId String
+  productName String
+  recipeVersion Int
+  recipe Json
+  servings Decimal @db.Decimal(18, 3)
+  saleLine PosSaleLine @relation(fields: [saleLineId], references: [id], onDelete: Cascade)
+
+  @@index([productId, recipeVersion])
 }

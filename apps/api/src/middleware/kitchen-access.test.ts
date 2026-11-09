@@ -208,3 +208,34 @@ test("unexpected access-check failures do not impersonate a kitchen permission d
   assert.doesNotMatch(payload.message, /гал тогоо/i);
   assert.equal(payload.ok, undefined);
 });
+
+test("chef can receive goods without access to sales, register settings or product edits", async () => {
+  for (const [method, path] of [
+    ["GET", "/pos/receiving-registers"],
+    ["GET", "/pos/products?organizationId=restaurant"],
+    ["GET", "/pos/incoming-dispatches?organizationId=restaurant"],
+    ["POST", "/pos/quick-restock"],
+    ["POST", "/pos/incoming-dispatches/dispatch/receive"],
+  ])
+    assert.equal(
+      (await fetch(url + path, { method, headers })).status,
+      200,
+      path,
+    );
+  for (const [method, path] of [
+    ["GET", "/pos/products?organizationId=other"],
+    ["GET", "/pos/incoming-dispatches?organizationId=other"],
+    ["GET", "/pos/registers/mine"],
+    ["POST", "/pos/sales"],
+    ["POST", "/products"],
+    ["PATCH", "/products/product"],
+    ["PATCH", "/pos/goods-receipts/receipt"],
+    ["POST", "/pos/goods-receipts"],
+    ["POST", "/restaurant/pos/menu-categories"],
+  ])
+    assert.equal(
+      (await fetch(url + path, { method, headers })).status,
+      403,
+      path,
+    );
+});

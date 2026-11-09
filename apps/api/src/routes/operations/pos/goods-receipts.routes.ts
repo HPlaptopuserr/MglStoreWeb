@@ -21,6 +21,7 @@ import {
 import { canAccessPosOrganization, requirePosUser } from "./_shared";
 import { parsePosGoodsReceiptInput } from "./goods-receipt";
 import {
+  isCashierOnlyMember,
   fromPosStoredStockQuantity,
   normalizePosMeasureUnit,
 } from "@mgl/types";
@@ -183,6 +184,10 @@ router.post("/pos/goods-receipts", async (req, res) => {
       return res.status(400).json({ message: parsed.message });
     }
     const input = parsed.value;
+    if (isCashierOnlyMember(actor) && input.items.some((item) =>
+      item.salePrice !== undefined || item.masterProductId || item.productSnapshot)) {
+      return res.status(403).json({ message: "Кассчин бүртгэлтэй барааг хүлээн авна. Бараа үүсгэх, үнэ болон мэдээлэл засах эрхгүй." });
+    }
 
     const register = await prisma.posRegister.findUnique({
       where: { id: input.registerId },

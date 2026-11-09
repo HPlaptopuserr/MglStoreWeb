@@ -536,6 +536,10 @@ export function KitchenDisplayScreen() {
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
+            {kitchenOnly && <nav aria-label="Гал тогооны ажлын хэсгүүд" className="flex flex-wrap gap-2">
+              <Link href="/dashboard/supply" className="rounded-xl border border-white/10 px-3 py-2 text-sm font-bold text-slate-300 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300">Нэгдсэн бараа</Link>
+              <Link href="/dashboard/preorder" className="rounded-xl border border-white/10 px-3 py-2 text-sm font-bold text-slate-300 hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300">Захиалгын бараа</Link>
+            </nav>}
             <div className="hidden min-w-24 text-right md:block">
               <p className="text-xl font-black tabular-nums leading-none text-white">
                 {clockLabel}

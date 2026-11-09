@@ -25,6 +25,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { isCashierOnlyMember } from "@mgl/types";
 import { QrGenerator } from "@mgl/ui";
 import {
   ArrowLeft,
@@ -52,7 +53,6 @@ import {
   X,
 } from "lucide-react";
 import { useOrg } from "@/components/org/OrgContext";
-import ProtectedSectionGate from "@/components/org/ProtectedSectionGate";
 import {
   bootstrapRestaurantDiningTables,
   cancelRestaurantTicketItem,
@@ -602,28 +602,6 @@ function printRestaurantReceipt(
 }
 
 export function RestaurantPosScreen() {
-  const { user } = useOrg();
-  const [cashRegisterUnlocked, setCashRegisterUnlocked] = useState(false);
-
-  if (!cashRegisterUnlocked) {
-    return (
-      <ProtectedSectionGate
-        organizationId={user.organizationId || ""}
-        organizationName={user.organizationName}
-        userId={user.id}
-        scope="RESTAURANT_POS"
-        allowedOrgRoles={["OWNER", "ADMIN", "STAFF"]}
-        eyebrow="Хамгаалалттай касс"
-        title="4 оронтой PIN оруулна уу"
-        description="бэлэн мөнгөний касс руу нэвтрэх хамгаалалтын PIN кодыг оруулна."
-        submitLabel="Бэлэн мөнгөний касс руу нэвтрэх"
-        footer="Кассын хуудсыг хаах эсвэл дахин ачаалахад нэвтрэх эрх дахин шаардана."
-        accessDeniedMessage="Зөвхөн байгууллагын эзэмшигч, админ эсвэл ажилтан бэлэн мөнгөний касс ашиглах эрхтэй."
-        onUnlock={() => setCashRegisterUnlocked(true)}
-      />
-    );
-  }
-
   return (
     <ProductImageFeedbackProvider>
       <RestaurantPosContent />
@@ -633,6 +611,7 @@ export function RestaurantPosScreen() {
 
 function RestaurantPosContent() {
   const { user, features } = useOrg();
+  const cashierOnly = isCashierOnlyMember(user);
   const defaultMenuClassificationCode = getRestaurantMenuClassificationCode(
     features.selfServiceMode,
   );
@@ -2376,6 +2355,7 @@ function RestaurantPosContent() {
   };
 
   const openProductManager = () => {
+    if (cashierOnly) return;
     setProductManagerOpen(true);
     setProductManagerMode("new");
     setCatalogError("");
@@ -2393,6 +2373,7 @@ function RestaurantPosContent() {
   };
 
   const handleEnableMenuProduct = async (product: RestaurantPosProduct) => {
+    if (cashierOnly) return;
     setProductManagerSaving(true);
     setCatalogError("");
     try {
@@ -2439,6 +2420,7 @@ function RestaurantPosContent() {
       return;
     }
 
+    if (cashierOnly) return;
     setProductManagerSaving(true);
     setCatalogError("");
     try {
@@ -3869,10 +3851,10 @@ function RestaurantPosContent() {
             <div className="flex items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 <Link
-                  href="/dashboard"
+                  href={cashierOnly ? "/dashboard/supply" : "/dashboard"}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[#3d484f] bg-[#122131] text-[#bcc8d1] transition hover:border-[#75d1ff]/60 hover:text-white"
-                  aria-label="Буцах"
-                  title="Буцах"
+                  aria-label={cashierOnly ? "Нэгдсэн бараа" : "Буцах"}
+                  title={cashierOnly ? "Нэгдсэн бараа" : "Буцах"}
                 >
                   <ArrowLeft className="h-5 w-5" />
                 </Link>
@@ -3897,6 +3879,7 @@ function RestaurantPosContent() {
               <div className="flex shrink-0 items-center gap-2">
 
               <RestaurantManagementMenu
+                cashierOnly={cashierOnly}
                 shiftOpen={shiftMatchesRegister}
                 qrDisabled={!selectedRegister || diningTables.length === 0}
                 onQr={() => void handleOpenQrModal()}
@@ -4155,7 +4138,7 @@ function RestaurantPosContent() {
                   />
                   Шинэчлэх
                 </button>
-                <button
+                {!cashierOnly && <button
                   type="button"
                   onClick={openProductManager}
                   disabled={!selectedRegister}
@@ -4163,7 +4146,7 @@ function RestaurantPosContent() {
                 >
                   <Plus className="h-4 w-4" />
                   Хоол нэмэх
-                </button>
+                </button>}
               </div>
             </div>
 
@@ -4190,7 +4173,7 @@ function RestaurantPosContent() {
                     ? "Тохирох хоол олдсонгүй"
                     : "Менюд хоол бүртгэгдээгүй байна"}
                 </p>
-                {!query && activeCategory === "all" ? (
+                {!cashierOnly && !query && activeCategory === "all" ? (
                   <button
                     type="button"
                     onClick={openProductManager}
@@ -4610,13 +4593,7 @@ function RestaurantPosContent() {
             {paymentMethod === "CARD" && !cardTerminalReady && !showCardTerminalSetup ? (
               <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-slate-400">
                 <p>Тусдаа терминалаар авсан картын төлбөрийг бүртгэнэ.</p>
-                <button
-                  type="button"
-                  onClick={() => { setShowCardTerminalSetup(true); setCardSetupError(""); }}
-                  className="shrink-0 rounded-lg px-2 py-2 font-semibold text-slate-400 underline underline-offset-2 hover:text-sky-200"
-                >
-                  Тохиргоо
-                </button>
+                <button type="button" onClick={() => { setShowCardTerminalSetup(true); setCardSetupError(""); }} className="shrink-0 rounded-lg px-2 py-2 font-semibold text-slate-400 underline underline-offset-2 hover:text-sky-200">Тохиргоо</button>
               </div>
             ) : null}
             {paymentMethod === "CARD" && (cardTerminalReady || showCardTerminalSetup) ? (
@@ -5487,7 +5464,7 @@ function RestaurantPosContent() {
         </div>
       ) : null}
 
-      {productManagerOpen ? (
+      {!cashierOnly && productManagerOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
           <div className="grid max-h-[92vh] w-full max-w-5xl grid-cols-[320px_minmax(0,1fr)] overflow-hidden rounded-2xl border border-white/10 bg-[#242735] shadow-2xl max-lg:grid-cols-1">
             <div className="border-r border-white/10 p-5 max-lg:border-b max-lg:border-r-0">

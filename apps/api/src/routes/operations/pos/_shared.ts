@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { readOpenPosOrganizationIds } from "../../../services/pos-activation.service";
-import { isKitchenOnlyMember, isKitchenRequest } from "@mgl/types";
+import { isCashierOnlyMember, isKitchenOnlyMember, isKitchenRequest } from "@mgl/types";
 import { type Request, type Response } from "express";
 import jwt from "jsonwebtoken";
 import { Capability, prisma, PaymentMethod, PosPaymentStatus } from "@mgl/database";
@@ -315,6 +315,14 @@ export const requirePosUser = async (req: Request, res: Response) => {
   }
   if (isKitchenOnlyMember(actor) ? !isKitchenRequest(req.method, req.path) : !canOperatePos(actor)) {
     res.status(403).json({ message: "POS ашиглах эрх хүрэлцэхгүй" });
+    return null;
+  }
+  if (isCashierOnlyMember(actor) && (
+    (req.method !== "GET" && /^\/restaurant\/pos\/(menu-categories|discount-schedule)(\/|$)/.test(req.path)) ||
+    (req.method === "PUT" && req.path === "/restaurant/pos/cafe-daily-stock") ||
+    (req.method === "DELETE" && req.path.startsWith("/restaurant/pos/cafe-daily-stock/receipts/"))
+  )) {
+    res.status(403).json({ message: "Кассчин хоол, барааны мэдээлэл засах эрхгүй" });
     return null;
   }
   // App Control governs the mobile POS only; Vendor has its own add-on settings.

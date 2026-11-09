@@ -25,7 +25,7 @@ router.post("/pos/quick-restock", async (req, res) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${register.organizationId}))`;
       await lockOrganizationInventory(tx, register.organizationId);
       await tx.$queryRaw`SELECT "id" FROM "Product" WHERE "id" = ${productId} AND "organizationId" = ${register.organizationId} FOR UPDATE`;
-      const product = await tx.product.findFirst({ where: { id: productId, organizationId: register.organizationId, deletedAt: null, isActive: true, supplyType: "IN_STOCK", isRestaurantMenuItem: false } });
+      const product = await tx.product.findFirst({ where: { id: productId, organizationId: register.organizationId, deletedAt: null, isActive: true } });
       if (!product) throw new StocktakeError("Бараа олдсонгүй эсвэл орлого авах боломжгүй", 404);
       const scaled = quantity * (normalizePosMeasureUnit(product.unit) === "kg" ? 1000 : 1);
       if (Math.round(scaled) < 1 || Math.abs(scaled - Math.round(scaled)) > 0.000001 || scaled > 2147483647)

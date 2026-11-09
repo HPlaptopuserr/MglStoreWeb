@@ -1,3 +1,4 @@
+import { capturePosRecipeSnapshots } from "../../../services/pos-recipe-snapshot.service";
 import { calculateRestaurantSelectedUnitDiscount } from "@mgl/types";
 import {
   calculateCafeRegularCustomerUnitDiscount,
@@ -2021,6 +2022,8 @@ router.post("/pos/sales", async (req, res) => {
           },
           select: { id: true },
         });
+
+        await capturePosRecipeSnapshots(tx, posSale.id);
 
         if (regularCustomer) {
           await tx.cafeRegularCustomer.update({

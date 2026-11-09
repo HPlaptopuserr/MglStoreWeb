@@ -291,6 +291,7 @@ router.get("/pos/products", async (req, res) => {
         taxProductCode: true,
         unit: true,
         stock: true,
+        supplyType: true,
         isActive: true,
         isRestaurantMenuItem: true,
         isTakeawayAvailable: true,
@@ -341,6 +342,7 @@ router.get("/pos/products", async (req, res) => {
           wholesalePrice:
             p.wholesalePrice == null ? null : Number(p.wholesalePrice),
           orderPrice: p.orderPrice == null ? null : Number(p.orderPrice),
+          supplyType: p.supplyType,
           stockQty: p.isRestaurantMenuItem
             ? RESTAURANT_MENU_AVAILABLE_QTY
             : fromPosStoredStockQuantity(p.stock, p.unit),

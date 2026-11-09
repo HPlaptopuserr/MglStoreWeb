@@ -49,7 +49,7 @@ const ORG_ROLE_PERMISSIONS: Record<string, Permission[]> = {
 
 /** Capability → additional permissions granted */
 const CAPABILITY_PERMISSIONS: Record<string, Permission[]> = {
-  [Capability.POS_CASHIER]: [Permission.OPERATE_POS, Permission.CREATE_PRODUCTS],
+  [Capability.POS_CASHIER]: [Permission.OPERATE_POS],
   [Capability.DELIVERY_DRIVER]: [Permission.MAKE_DELIVERIES],
   [Capability.STOCK_MANAGER]: [Permission.MANAGE_STOCK, Permission.REQUEST_STOCK],
   [Capability.ORDER_PROCESSOR]: [Permission.MANAGE_ORDERS, Permission.VIEW_ORDERS],

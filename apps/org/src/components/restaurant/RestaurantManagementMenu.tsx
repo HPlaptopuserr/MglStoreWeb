@@ -6,6 +6,7 @@ import { ChefHat, History, Monitor, QrCode, ReceiptText, Settings2 } from "lucid
 import { RestaurantDialog } from "./RestaurantDialog";
 
 interface RestaurantManagementMenuProps {
+  cashierOnly?: boolean;
   shiftOpen: boolean;
   qrDisabled: boolean;
   registerControls: (closeMenu: () => void) => ReactNode;
@@ -17,7 +18,7 @@ interface RestaurantManagementMenuProps {
 
 const actionStyle = "flex min-h-10 items-center gap-2 rounded-lg border border-[#3d484f] bg-[#122131] px-3 py-2 text-left text-xs font-bold text-[#d4e4fa] transition-colors hover:border-sky-300/60 hover:bg-[#273647] focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300 disabled:cursor-not-allowed disabled:opacity-40";
 
-export function RestaurantManagementMenu({ shiftOpen, qrDisabled, registerControls, onQr, onCustomerDisplay, onShiftHistory, onSalesHistory }: RestaurantManagementMenuProps) {
+export function RestaurantManagementMenu({ cashierOnly = false, shiftOpen, qrDisabled, registerControls, onQr, onCustomerDisplay, onShiftHistory, onSalesHistory }: RestaurantManagementMenuProps) {
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
   const continueWith = (action: () => void) => {
@@ -42,7 +43,11 @@ export function RestaurantManagementMenu({ shiftOpen, qrDisabled, registerContro
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button type="button" disabled={qrDisabled} onClick={() => continueWith(onQr)} className={actionStyle}><QrCode className="h-4 w-4" />QR хэвлэх</button>
                 <button type="button" onClick={() => continueWith(onCustomerDisplay)} className={actionStyle}><Monitor className="h-4 w-4" />Хэрэглэгчийн дэлгэц</button>
-                <Link href="/dashboard/kitchen-display" onClick={close} className={actionStyle}><ChefHat className="h-4 w-4" />Гал тогоо</Link>
+                {!cashierOnly && <Link href="/dashboard/kitchen-display" onClick={close} className={actionStyle}><ChefHat className="h-4 w-4" />Гал тогоо</Link>}
+                {cashierOnly && <>
+                  <Link href="/dashboard/supply" onClick={close} className={actionStyle}>Нэгдсэн бараа</Link>
+                  <Link href="/dashboard/preorder" onClick={close} className={actionStyle}>Захиалгын бараа</Link>
+                </>}
               </div>
             </section>
             <section aria-labelledby="pos-history-settings">

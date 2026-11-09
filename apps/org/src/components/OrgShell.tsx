@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, useMemo, useState, useEffect } from "react";
-import { isKitchenOnlyMember } from "@mgl/types";
+import { isCashierOnlyMember, isCashierDashboardPath, isKitchenDashboardPath, isKitchenOnlyMember } from "@mgl/types";
 import { useRouter, usePathname } from "next/navigation";
 import { useOrgFeatures } from "@/hooks/useOrgFeatures";
 import { useOrgSession } from "@/hooks/useOrgSession";
@@ -30,10 +30,13 @@ export default function OrgShell({ children }: { children: ReactNode }) {
     pathname.startsWith("/dashboard/self-service");
 
   const kitchenOnly = Boolean(user && isKitchenOnlyMember(user));
-  const blockedPage = kitchenOnly && pathname !== "/dashboard/kitchen-display";
+  const cashierOnly = Boolean(user && isCashierOnlyMember(user));
+  const blockedPage = (kitchenOnly && !isKitchenDashboardPath(pathname)) ||
+    (cashierOnly && !isCashierDashboardPath(pathname));
+  const landingPage = kitchenOnly ? "/dashboard/kitchen-display" : "/dashboard/restaurant-pos";
   useEffect(() => {
-    if (ready && blockedPage) router.replace("/dashboard/kitchen-display");
-  }, [ready, blockedPage, router]);
+    if (ready && blockedPage) router.replace(landingPage);
+  }, [ready, blockedPage, landingPage, router]);
 
   if (blockedPage || !ready || !user || featuresLoading)
     return <OrgShellLoading />;

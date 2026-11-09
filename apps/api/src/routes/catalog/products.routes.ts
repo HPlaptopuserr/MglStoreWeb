@@ -1,3 +1,5 @@
+import restaurantSupplyRoutes from "./restaurant-supply.routes";
+import productRecipeRoutes from "./product-recipes.routes";
 import { lockOrganizationInventory } from "../../services/vendor-inventory-warehouse.service";
 import {
   assertProductInventoryOwnership,
@@ -3553,6 +3555,9 @@ router.get(
     }
   },
 );
+
+router.use(productRecipeRoutes);
+router.use(restaurantSupplyRoutes);
 
 router.get("/products/:id", optionalAuth, async (req, res) => {
   try {

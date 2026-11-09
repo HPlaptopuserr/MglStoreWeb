@@ -69,3 +69,11 @@ export * from "./domain/card-payment-recovery";
 
 export * from "./domain/warehouse-viewer";
 export * from "./domain/warehouse-dispatch";
+
+export * from "./domain/cashier-access";
+
+export * from "./domain/product-recipe";
+
+export * from "./domain/restaurant-supply";
+
+export * from "./domain/recipe-consumption";

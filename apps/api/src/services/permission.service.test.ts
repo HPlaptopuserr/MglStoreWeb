@@ -14,7 +14,7 @@ test("owner receives the complete store management permission set", () => {
 
 test("cashier receives POS permission without management permissions", () => {
   const permissions = buildPermissionSet("STAFF", [Capability.POS_CASHIER]);
-  assert.deepEqual([...permissions], [Permission.OPERATE_POS, Permission.CREATE_PRODUCTS]);
+  assert.deepEqual([...permissions], [Permission.OPERATE_POS]);
   assert.equal(permissions.has(Permission.MANAGE_PRODUCTS), false);
   assert.equal(permissions.has(Permission.VIEW_ORDERS), false);
   assert.equal(permissions.has(Permission.REQUEST_STOCK), false);
