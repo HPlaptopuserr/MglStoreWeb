@@ -78,6 +78,14 @@ export function CommunityProfile() {
         )}
       </section>
       <section className={styles.actions} aria-label="Миний боломжууд">
+        <Link href="/2003/edit">
+          <UserRound size={22} aria-hidden="true" />
+          <span>
+            <b>Мэдээллээ засах</b>
+            <small>Өөрийн танилцуулгаа шинэчлэх</small>
+          </span>
+          <ArrowUpRight size={18} aria-hidden="true" />
+        </Link>
         <Link href="/2003/join">
           <CirclePlus size={22} aria-hidden="true" />
           <span>

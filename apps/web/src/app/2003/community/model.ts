@@ -27,6 +27,7 @@ export interface Member {
   id: string;
   name: string;
   phone?: string;
+  photoUrl?: string;
   city: string;
   profession: string;
   role: string;
@@ -94,6 +95,9 @@ export function isDemoState(value: unknown): value is DemoState {
           "sector",
           "bio",
         ].every((key) => typeof row[key] === "string") &&
+        (row.photoUrl === undefined ||
+          (typeof row.photoUrl === "string" &&
+            /^(https:\/\/|\/api\/forms\/2003\/photos\/)/.test(row.photoUrl))) &&
         (row.phone === undefined ||
           (typeof row.phone === "string" && /^[0-9]{8}$/.test(row.phone))) &&
         (row.activity === undefined || isActivityType(row.activity)) &&

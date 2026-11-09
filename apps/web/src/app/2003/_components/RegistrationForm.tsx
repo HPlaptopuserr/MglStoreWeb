@@ -3,13 +3,27 @@
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { ArrowRight, Check, LoaderCircle, ShieldCheck } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
 import { API } from "@/lib/api";
 import { BusinessChoice } from "./BusinessChoice";
+import { CommunityPhotoField } from "./CommunityPhotoField";
 import styles from "../registration.module.css";
 import { RegistrationField } from "./RegistrationField";
 
-export function RegistrationForm() {
-  const [business, setBusiness] = useState("");
+export function RegistrationForm({
+  initialData = {},
+  editing,
+  onSaved,
+}: {
+  initialData?: Record<string, string>;
+  editing?: { id: string; token: string };
+  onSaved?: (data: Record<string, string>) => void;
+}) {
+  const { authFetch } = useAuth();
+  const [values, setValues] = useState(initialData);
+  const [photoUrl, setPhotoUrl] = useState(initialData.photoUrl || "");
+  const [photoPending, setPhotoPending] = useState(false);
+  const [business, setBusiness] = useState(initialData.business || "");
   const [pending, setPending] = useState(false);
   const [published, setPublished] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -17,25 +31,40 @@ export function RegistrationForm() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pending) return;
-    const data = Object.fromEntries(new FormData(event.currentTarget));
+    if (pending || photoPending) return;
+    const data: Record<string, string> = {};
+    for (const [key, value] of new FormData(event.currentTarget)) {
+      if (typeof value === "string") data[key] = value;
+    }
     setPending(true);
     setError("");
     try {
-      const response = await fetch(`${API}/forms/2003/responses`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data }),
-        signal: AbortSignal.timeout(20000),
-      });
+      const response = await (editing ? fetch : authFetch)(
+        editing
+          ? `${API}/forms/2003/edit/${editing.id}`
+          : `${API}/forms/2003/responses`,
+        {
+          method: editing ? "PUT" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(editing ? { Authorization: `Bearer ${editing.token}` } : {}),
+          },
+          body: JSON.stringify({ data }),
+          signal: AbortSignal.timeout(20000),
+        },
+      );
       if (!response.ok)
         throw new Error(
-          response.status === 410
-            ? "Бүртгэл хаагдсан байна."
-            : response.status === 429
-              ? "Түр хүлээгээд дахин оролдоно уу."
-              : "Илгээхэд алдаа гарлаа. Мэдээллээ шалгаад дахин оролдоно уу.",
+          response.status === 401
+            ? "Засах эрх дууссан. Профайл руу буцаж танилцуулгаа дахин нээнэ үү."
+            : response.status === 410
+              ? "Бүртгэл хаагдсан байна."
+              : response.status === 429
+                ? "Түр хүлээгээд дахин оролдоно уу."
+                : "Илгээхэд алдаа гарлаа. Мэдээллээ шалгаад дахин оролдоно уу.",
         );
+      setValues(data);
+      onSaved?.(data);
       setPublished(data.publishConsent === "yes");
       setSubmitted(true);
     } catch (cause) {
@@ -56,7 +85,7 @@ export function RegistrationForm() {
           <Check size={32} />
         </div>
         <h2 className="text-2xl font-bold text-slate-900">
-          Бүртгэл амжилттай!
+          {editing ? "Өөрчлөлт хадгалагдлаа!" : "Бүртгэл амжилттай!"}
         </h2>
         <p className="mt-3 leading-7 text-slate-500">
           Мэдээллээ хуваалцсанд баярлалаа.
@@ -65,6 +94,23 @@ export function RegistrationForm() {
             ? "Таны танилцуулга хүрээллийн нүүр хуудсанд нийтлэгдлээ."
             : "Таны хариултыг хүлээн авлаа. Нийтлэх зөвшөөрөл өгөөгүй тул нүүр хуудсанд харагдахгүй."}
         </p>
+        {editing && (
+          <button
+            type="button"
+            className={styles.submit}
+            onClick={() => setSubmitted(false)}
+          >
+            Үргэлжлүүлэн засах
+          </button>
+        )}
+        {!editing && (
+          <Link
+            href="/2003/edit"
+            className="mt-6 block font-semibold text-blue-800 hover:underline"
+          >
+            Мэдээллээ засах
+          </Link>
+        )}
         <Link
           href="/2003"
           className="mt-8 inline-flex items-center gap-2 font-semibold text-blue-800 hover:underline"
@@ -76,7 +122,7 @@ export function RegistrationForm() {
 
   return (
     <form onSubmit={submit} id="registration" className={styles.form}>
-      <fieldset disabled={pending} className="space-y-8">
+      <fieldset disabled={pending || photoPending} className="space-y-8">
         <div className={styles.formHeading}>
           <p className={styles.formEyebrow}>
             <span /> ТАНЫ ТАНИЛЦУУЛГА{" "}
@@ -89,6 +135,11 @@ export function RegistrationForm() {
             Таныг илүү сайн таних хэдхэн асуулт.
           </p>
         </div>
+        <CommunityPhotoField
+          value={photoUrl}
+          onChange={setPhotoUrl}
+          onBusy={setPhotoPending}
+        />
         <div className={styles.sectionTitle}>
           <span>01</span>
           <h3>Хувийн мэдээлэл</h3>
@@ -97,6 +148,7 @@ export function RegistrationForm() {
         <div className={styles.fields}>
           <RegistrationField
             name="name"
+            defaultValue={values.name || ""}
             label="Овог, нэр"
             placeholder="Таны овог, нэр"
             autoComplete="name"
@@ -104,17 +156,20 @@ export function RegistrationForm() {
           />
           <RegistrationField
             name="profession"
+            defaultValue={values.profession || ""}
             label="Мэргэжил"
             placeholder="Жишээ: Инженер"
             required
           />
           <RegistrationField
             name="city"
+            defaultValue={values.city || ""}
             label="Хот, байршил"
             placeholder="Жишээ: Улаанбаатар"
           />
           <RegistrationField
             name="phone"
+            defaultValue={values.phone || ""}
             label="Утасны дугаар"
             placeholder="8 оронтой дугаар"
             type="tel"
@@ -142,12 +197,14 @@ export function RegistrationForm() {
             <div className="mt-5 grid gap-5 rounded-2xl bg-slate-50 p-5 sm:grid-cols-2">
               <RegistrationField
                 name="businessName"
+                defaultValue={values.businessName || ""}
                 label="Бизнес / байгууллагын нэр"
                 placeholder="Бизнесийн нэр"
                 autoComplete="organization"
               />
               <RegistrationField
                 name="industry"
+                defaultValue={values.industry || ""}
                 label="Үйл ажиллагааны чиглэл"
                 placeholder="Жишээ: Худалдаа, барилга, IT"
                 required
@@ -163,6 +220,7 @@ export function RegistrationForm() {
           <span className="font-normal text-slate-400">(заавал биш)</span>
           <textarea
             id="notes"
+            defaultValue={values.notes || ""}
             name="notes"
             rows={3}
             maxLength={1000}
@@ -173,6 +231,7 @@ export function RegistrationForm() {
         <label className={styles.consent}>
           <input
             type="checkbox"
+            defaultChecked={values.consent === "yes"}
             name="consent"
             value="yes"
             required
@@ -184,13 +243,14 @@ export function RegistrationForm() {
         <label className={styles.consent}>
           <input
             type="checkbox"
+            defaultChecked={values.publishConsent === "yes"}
             name="publishConsent"
             value="yes"
             className="mt-1 size-4 shrink-0 accent-orange-600"
           />
-          Миний нэр, утасны дугаар, мэргэжил, байршил, бизнес болон нэмэлт
-          мэдээллийг 2003 хүрээллийн нүүр хуудсанд нийтэд харуулахыг зөвшөөрч
-          байна.
+          Миний нэр, зураг, утасны дугаар, мэргэжил, байршил, бизнес болон
+          нэмэлт мэдээллийг 2003 хүрээллийн нүүр хуудсанд нийтэд харуулахыг
+          зөвшөөрч байна.
         </label>
         {error && (
           <p
@@ -208,7 +268,8 @@ export function RegistrationForm() {
             </>
           ) : (
             <>
-              Бүртгэл илгээх <ArrowRight size={20} />
+              {editing ? "Өөрчлөлт хадгалах" : "Бүртгэл илгээх"}{" "}
+              <ArrowRight size={20} />
             </>
           )}
         </button>

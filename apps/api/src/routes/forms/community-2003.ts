@@ -1,5 +1,7 @@
+import { isCommunityPhotoUrl } from "./community-2003-photo";
 export const communityFields = [
   { id: "name", label: "Овог, нэр", required: true },
+  { id: "photoUrl", label: "Танилцуулгын зураг", required: false },
   { id: "profession", label: "Мэргэжил", required: true },
   { id: "city", label: "Хот, байршил", required: false },
   {
@@ -25,10 +27,14 @@ export function parseCommunityResponse(
     const value = source[field.id];
     if (value !== undefined && typeof value !== "string") return null;
     data[field.id] = typeof value === "string" ? value.trim() : "";
-    if (data[field.id].length > (field.id === "notes" ? 1000 : 160))
+    if (
+      data[field.id].length >
+      (field.id === "notes" ? 1000 : field.id === "photoUrl" ? 2048 : 160)
+    )
       return null;
     if (field.required && !data[field.id]) return null;
   }
+  if (data.photoUrl && !isCommunityPhotoUrl(data.photoUrl)) return null;
   if (!/^[0-9]{8}$/.test(data.phone) || data.consent !== "yes") return null;
   if (data.publishConsent && data.publishConsent !== "yes") return null;
   if (!["yes", "no", "planning"].includes(data.business)) return null;
@@ -55,6 +61,7 @@ export function toPublicCommunityMember(id: string, input: unknown) {
     activity,
     name: data.name,
     phone: data.phone,
+    ...(data.photoUrl ? { photoUrl: data.photoUrl } : {}),
     city: data.city,
     profession: data.profession,
     role: data.profession,

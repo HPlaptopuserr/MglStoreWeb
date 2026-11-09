@@ -1,18 +1,22 @@
-import { Router, type Router as ExpressRouter } from "express";
+import { Router, type Router as ExpressRouter, type Request } from "express";
 import { prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
 import crypto from "crypto";
-import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
+import { requireAuth, requirePlatformPermission, optionalAuth, type AuthPayload } from "../../middleware/auth";
 
 import { rateLimit } from "express-rate-limit";
 import { communityFields, parseCommunityResponse, toPublicCommunityMember } from "./community-2003";
 
+import { createCommunityPhotoRouter } from "./community-2003-photo.routes";
+import { createCommunityEditRouter } from "./community-2003-edit.routes";
 import mglClubRouter from "./mgl-club.routes";
 
 const router: ExpressRouter = Router();
 router.use(mglClubRouter);
+router.use(createCommunityEditRouter());
+router.use(createCommunityPhotoRouter());
 
-router.post("/forms/2003/responses", rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false }), async (req, res) => {
+router.post("/forms/2003/responses", optionalAuth, rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false }), async (req, res) => {
   const data = parseCommunityResponse(req.body?.data);
   if (!data) return res.status(400).json({ message: "Мэдээллээ шалгаад дахин илгээнэ үү." });
   try {
@@ -22,7 +26,8 @@ router.post("/forms/2003/responses", rateLimit({ windowMs: 60_000, limit: 10, st
       create: { slug: "2003", title: "2003 • Танилцах бүртгэл", fields: communityFields },
     });
     if (!form.isActive) return res.status(410).json({ message: "Бүртгэл хаагдсан байна." });
-    await prisma.formResponse.create({ data: { formId: form.id, data } });
+    const actor = (req as Request & { user?: AuthPayload }).user;
+    await prisma.formResponse.create({ data: { formId: form.id, data: { ...data, ...(actor ? { ownerUserId: actor.userId } : {}) } } });
     return res.status(201).json({ success: true });
   } catch {
     return res.status(500).json({ message: "Мэдээлэл хадгалахад алдаа гарлаа. Дахин оролдоно уу." });

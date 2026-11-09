@@ -3,6 +3,7 @@ import { after, before, test } from "node:test";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import express from "express";
+import jwt from "jsonwebtoken";
 import { prisma } from "@mgl/database";
 import router from "./forms.routes";
 
@@ -108,5 +109,51 @@ test("directory storage failures return an error instead of a successful empty l
     assert.equal((await fetch(`${base}/members`)).status, 500);
   } finally {
     Reflect.set(prisma.formResponse, "findMany", original);
+  }
+});
+
+test("authenticated registration binds ownership to the login subject, not submitted fields", async () => {
+  const upsert = prisma.form.upsert;
+  const create = prisma.formResponse.create;
+  let owner: unknown;
+  Reflect.set(prisma.form, "upsert", async () => ({
+    id: "community",
+    isActive: true,
+  }));
+  Reflect.set(
+    prisma.formResponse,
+    "create",
+    async (args: { data: { data: Record<string, unknown> } }) => {
+      owner = args.data.data.ownerUserId;
+      return {};
+    },
+  );
+  try {
+    const token = jwt.sign(
+      { userId: "actual-owner", role: "USER" },
+      process.env.JWT_SECRET || "dev-secret-change-me",
+    );
+    const response = await fetch(`${base}/responses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        data: {
+          name: "Бат",
+          profession: "Инженер",
+          phone: "99112233",
+          business: "no",
+          consent: "yes",
+          ownerUserId: "forged-owner",
+        },
+      }),
+    });
+    assert.equal(response.status, 201);
+    assert.equal(owner, "actual-owner");
+  } finally {
+    Reflect.set(prisma.form, "upsert", upsert);
+    Reflect.set(prisma.formResponse, "create", create);
   }
 });

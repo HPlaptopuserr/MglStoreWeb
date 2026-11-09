@@ -1,4 +1,6 @@
 import { ArrowUpRight, MapPin, Phone } from "lucide-react";
+import Image from "next/image";
+import { resolveApiAssetUrl } from "@/lib/api";
 import { ACTIVITY_TYPES, type Member } from "../model";
 import styles from "../community.module.css";
 export function MemberCard({
@@ -12,7 +14,18 @@ export function MemberCard({
     <article className={styles.card}>
       <div className={styles.cardHeader}>
         <span className={styles.avatar} aria-hidden="true">
-          {member.name.split(" ").at(-1)?.slice(0, 1)}
+          {member.photoUrl ? (
+            <Image
+              src={resolveApiAssetUrl(member.photoUrl)}
+              alt=""
+              width={48}
+              height={48}
+              unoptimized
+              className={styles.avatarPhoto}
+            />
+          ) : (
+            member.name.split(" ").at(-1)?.slice(0, 1)
+          )}
         </span>
         <div>
           <h2>{member.name}</h2>

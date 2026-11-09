@@ -64,3 +64,22 @@ test("directory accepts valid phone links and rejects malformed phone values", (
     );
   }
 });
+
+test("directory accepts uploaded photos and rejects executable photo URLs", () => {
+  const photoUrl =
+    "/api/forms/2003/photos/00000000-0000-4000-8000-000000000000.webp";
+  assert.equal(
+    isDemoState({
+      members: [{ ...DEMO_STATE.members[0], photoUrl }],
+      requests: [],
+    }),
+    true,
+  );
+  assert.equal(
+    isDemoState({
+      members: [{ ...DEMO_STATE.members[0], photoUrl: "javascript:alert(1)" }],
+      requests: [],
+    }),
+    false,
+  );
+});

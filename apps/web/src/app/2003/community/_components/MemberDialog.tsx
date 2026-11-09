@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef } from "react";
+import Image from "next/image";
+import { resolveApiAssetUrl } from "@/lib/api";
 import { X, Phone } from "lucide-react";
 import { ACTIVITY_TYPES, type Member } from "../model";
 import styles from "../community.module.css";
@@ -46,6 +48,16 @@ export function MemberDialog({
         <p className={styles.eyebrow}>
           {demo ? "ТУРШИЛТЫН ТАНИЛЦУУЛГА" : "ГИШҮҮНИЙ ТАНИЛЦУУЛГА"}
         </p>
+        {member.photoUrl && (
+          <Image
+            src={resolveApiAssetUrl(member.photoUrl)}
+            alt={`${member.name} — танилцуулгын зураг`}
+            width={160}
+            height={160}
+            unoptimized
+            className={styles.profilePhoto}
+          />
+        )}
         <h2 id="member-title">{member.name}</h2>
         <p>
           {member.city} · {member.sector}
