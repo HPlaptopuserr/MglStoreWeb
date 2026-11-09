@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   CreditCard,
-  ExternalLink,
   Loader2,
   Menu,
   Minus,
@@ -14,7 +13,9 @@ import {
   Smartphone,
   UtensilsCrossed,
 } from "lucide-react";
+import Image from "next/image";
 import { QrGenerator } from "@mgl/ui";
+import { QrMenuDialog } from "./QrMenuDialog";
 import {
   createPublicRestaurantQPayInvoice,
   getPublicRestaurantQPayStatus,
@@ -248,6 +249,9 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
   >("ALL");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [orderNote, setOrderNote] = useState("");
+  const [activeSheet, setActiveSheet] = useState<"cart" | "payment" | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
@@ -311,11 +315,11 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
 
   const sectionTitle =
     activeCategory === "ALL"
-      ? "Popular Items"
+      ? "Меню"
       : categoryLabels.get(activeCategory) || activeCategory;
   const sectionSubtitle =
     activeCategory === "ALL"
-      ? "The most commonly ordered items and dishes from this store"
+      ? "Хоол, уух зүйлсээ сонгоод сагсандаа нэмээрэй."
       : "Энэ ангиллын хоол, уух зүйлс";
   const cartTotal = cart.reduce((sum, line) => sum + line.price * line.qty, 0);
   const cartQty = cart.reduce((sum, line) => sum + line.qty, 0);
@@ -328,7 +332,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
     !paymentPending;
 
   const addToCart = (product: RestaurantPublicMenuProduct) => {
-    if (paymentPending) return;
+    if (paymentPending || submitting) return;
     setSuccessTicket(null);
     setError("");
     setCart((current) => {
@@ -356,7 +360,14 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
   };
 
   const changeQty = (lineId: string, delta: number) => {
-    if (paymentPending) return;
+    if (paymentPending || submitting) return;
+    if (
+      delta < 0 &&
+      cart.length === 1 &&
+      cart[0].id === lineId &&
+      cart[0].qty === 1
+    )
+      setActiveSheet(null);
     setCart((current) =>
       current
         .map((line) => {
@@ -371,7 +382,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
   };
 
   const updateLineNote = (lineId: string, note: string) => {
-    if (paymentPending) return;
+    if (paymentPending || submitting) return;
     setCart((current) =>
       current.map((line) => (line.id === lineId ? { ...line, note } : line)),
     );
@@ -393,7 +404,8 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
         })),
       });
       setPaymentInvoice(result);
-      setPaymentMessage("Банкны апп сонгоод төлбөрөө төлнө үү.");
+      setPaymentMessage("Төлбөрийн апп сонгоно уу.");
+      setActiveSheet("payment");
     } catch (submitError) {
       setError(
         submitError instanceof Error
@@ -403,6 +415,11 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const openPayment = () => {
+    if (paymentInvoice) setActiveSheet("payment");
+    else void submitOrder();
   };
 
   const paymentInvoiceId = paymentInvoice?.invoiceId || "";
@@ -427,6 +444,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
           setOrderNote("");
           setPaymentInvoice(null);
           setPaymentMessage("");
+          setActiveSheet(null);
           await loadMenu();
         } else if (result.status === "EXPIRED") {
           setError(result.message);
@@ -491,11 +509,13 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
   if (!menu) return null;
 
   return (
-    <main className="min-h-screen bg-white pb-44 text-slate-950">
+    <main className="min-h-screen bg-white pb-32 text-slate-950">
       <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 pt-4">
           <div>
-            <h1 className="text-base font-bold leading-tight">Full Menu</h1>
+            <h1 className="text-base font-bold leading-tight">
+              {menu.organization.name}
+            </h1>
             <p className="mt-1 text-xs font-medium text-slate-500">
               {menu.branch.name} · Ширээ {menu.table.label}
             </p>
@@ -511,7 +531,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
             <div className="mt-3 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold leading-5 text-emerald-800">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
-                Захиалга касс болон гал тогоо руу илгээгдлээ. Ticket:{" "}
+                Захиалга касс болон гал тогоо руу илгээгдлээ. Захиалгын №:{" "}
                 {successTicket.ticketNo}
               </span>
             </div>
@@ -534,7 +554,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
                   : "text-slate-500 hover:text-slate-900"
               }`}
             >
-              Popular Items
+              Бүгд
               {activeCategory === "ALL" ? (
                 <span className="absolute inset-x-0 bottom-0 h-0.5 rounded-full bg-slate-950" />
               ) : null}
@@ -640,209 +660,273 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
         )}
       </section>
 
-      {cart.length > 0 ? (
-        <section className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white p-3 shadow-[0_-8px_30px_rgba(15,23,42,0.10)]">
-          <div className="mx-auto max-w-6xl">
-            {paymentInvoice ? (
-              <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-white">
-                      <CreditCard className="h-3.5 w-3.5" />
-                      Банкны апп-аар төлөх
-                    </span>
-                    <span className="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-700">
-                      {paymentInvoice.status}
-                    </span>
-                  </div>
-                  <p className="mt-2 text-xl font-extrabold text-slate-950">
-                    {formatMoney(paymentInvoice.amount)}
-                  </p>
-                  <p className="mt-1 text-sm font-semibold leading-5 text-slate-600">
-                    {paymentMessage || "Банкны апп сонгоод төлбөрөө төлнө үү."}
-                  </p>
-                  <p className="mt-1 text-xs font-medium text-slate-500">
-                    Дуусах хугацаа:{" "}
-                    {new Date(paymentInvoice.expiresAt).toLocaleTimeString(
-                      "mn-MN",
-                      { hour: "2-digit", minute: "2-digit" },
-                    )}
-                  </p>
-
-                  {hasBankDeepLinks ? (
-                    <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-                      {bankDeepLinks.map((link, index) => (
-                        <a
-                          key={`${link.link}-${index}`}
-                          href={link.link}
-                          className="group flex min-h-14 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-left shadow-sm transition active:scale-[0.98]"
-                        >
-                          <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-100 text-slate-700">
-                            <BankAppLogo link={link} />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-extrabold text-slate-950">
-                              {link.name || link.description || "Банк"}
-                            </span>
-                            <span className="mt-0.5 flex items-center gap-1 text-[11px] font-bold text-slate-500">
-                              Апп нээх
-                              <ExternalLink className="h-3 w-3" />
-                            </span>
-                          </span>
-                        </a>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-3 flex flex-col items-center rounded-2xl border border-slate-200 bg-white p-3 text-center">
-                      <p className="mb-2 text-xs font-bold text-slate-500">
-                        Банкны апп линк ирсэнгүй. QR fallback ашиглана уу.
-                      </p>
-                      {paymentInvoice.qrText ? (
-                        <QrGenerator
-                          value={paymentInvoice.qrText}
-                          size={170}
-                          level="M"
-                        />
-                      ) : paymentInvoice.qrImage ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={`data:image/png;base64,${paymentInvoice.qrImage}`}
-                          alt="QPay QR"
-                          className="h-[170px] w-[170px]"
-                        />
-                      ) : (
-                        <Loader2 className="h-9 w-9 animate-spin text-slate-400" />
-                      )}
-                    </div>
-                  )}
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void checkPaymentStatus(false)}
-                      disabled={
-                        checkingPayment || paymentInvoice.status !== "PENDING"
-                      }
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-slate-950 px-4 text-sm font-bold text-white disabled:cursor-not-allowed disabled:bg-slate-300"
-                    >
-                      {checkingPayment ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
-                      )}
-                      Төлбөр шалгах
-                    </button>
-                    {paymentInvoice.status === "EXPIRED" ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPaymentInvoice(null);
-                          setPaymentMessage("");
-                          setError("");
-                        }}
-                        className="inline-flex h-10 items-center justify-center rounded-full border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800"
-                      >
-                        Шинэ QR үүсгэх
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                      Таны сагс
-                    </p>
-                    <p className="text-lg font-bold text-slate-950">
-                      {cartQty} item · {formatMoney(cartTotal)}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void submitOrder()}
-                    disabled={!canSubmit}
-                    className="flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-5 text-sm font-bold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-                  >
-                    {submitting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <CreditCard className="h-4 w-4" />
-                    )}
-                    {paymentPending
-                      ? "Төлбөр хүлээгдэж байна"
-                      : "Банкны апп-аар төлөх"}
-                  </button>
-                </div>
-
-                <div className="mt-3 max-h-44 space-y-2 overflow-y-auto pr-1">
-                  {cart.map((line) => (
-                    <article
-                      key={line.id}
-                      className="grid grid-cols-[1fr_auto] gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="truncate text-sm font-bold text-slate-950">
-                            {line.name}
-                          </p>
-                          <span className="shrink-0 text-xs font-semibold text-slate-500">
-                            {formatMoney(line.price * line.qty)}
-                          </span>
-                        </div>
-                        <input
-                          value={line.note}
-                          onChange={(event) =>
-                            updateLineNote(line.id, event.target.value)
-                          }
-                          disabled={paymentPending}
-                          placeholder="Тэмдэглэл: сонгино багатай..."
-                          className="mt-1 h-8 w-full rounded-md border border-slate-200 bg-white px-2 text-xs font-medium text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-400"
-                        />
-                      </div>
-                      <div className="flex h-9 items-center gap-1 rounded-full border border-slate-200 bg-white px-1">
-                        <button
-                          type="button"
-                          onClick={() => changeQty(line.id, -1)}
-                          disabled={paymentPending}
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100"
-                          aria-label={`${line.name} хасах`}
-                        >
-                          <Minus className="h-4 w-4" />
-                        </button>
-                        <span className="w-6 text-center text-sm font-bold tabular-nums">
-                          {line.qty}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => changeQty(line.id, 1)}
-                          disabled={paymentPending || line.qty >= line.stockQty}
-                          className="flex h-7 w-7 items-center justify-center rounded-full text-slate-600 hover:bg-slate-100 disabled:text-slate-300"
-                          aria-label={`${line.name} нэмэх`}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </article>
-                  ))}
-                </div>
-
-                <textarea
-                  value={orderNote}
-                  onChange={(event) => setOrderNote(event.target.value)}
-                  disabled={paymentPending}
-                  rows={2}
-                  placeholder="Нийт захиалгын тэмдэглэл..."
-                  className="mt-2 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-400"
-                />
-              </div>
-            </div>
+      {cart.length > 0 && (
+        <section
+          aria-label="Сагсны хураангуй"
+          className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white px-4 py-3 shadow-[0_-4px_20px_rgba(15,23,42,0.08)]"
+          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+        >
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setActiveSheet("cart")}
+              className="flex min-h-12 min-w-0 items-center gap-3 rounded-xl text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900"
+              aria-label="Сагс харах"
+            >
+              <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-slate-100">
+                <ShoppingBag className="h-5 w-5" aria-hidden="true" />
+                <span className="absolute -right-1 -top-1 rounded-full bg-slate-950 px-1.5 text-[10px] font-bold leading-5 text-white">
+                  {cartQty}
+                </span>
+              </span>
+              <span>
+                <span className="block text-xs font-medium text-slate-500">
+                  Сагс харах
+                </span>
+                <span className="block text-base font-bold tabular-nums">
+                  {formatMoney(cartTotal)}
+                </span>
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={openPayment}
+              disabled={submitting || (!canSubmit && !paymentInvoice)}
+              className="flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-7 text-sm font-bold text-white disabled:opacity-50"
+            >
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <CreditCard className="h-4 w-4" aria-hidden="true" />
+              )}
+              Төлөх
+            </button>
           </div>
         </section>
-      ) : null}
+      )}
+      {activeSheet === "cart" && cart.length > 0 && (
+        <QrMenuDialog
+          title="Таны сагс"
+          subtitle={`Ширээ ${menu.table.label} · ${cartQty} бүтээгдэхүүн`}
+          onClose={() => setActiveSheet(null)}
+          footer={
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs text-slate-500">Нийт төлөх</p>
+                <p className="text-xl font-bold tabular-nums">
+                  {formatMoney(cartTotal)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openPayment}
+                disabled={submitting || (!canSubmit && !paymentInvoice)}
+                className="flex min-h-12 items-center justify-center gap-2 rounded-xl bg-slate-950 px-7 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {submitting && (
+                  <Loader2
+                    className="h-4 w-4 animate-spin"
+                    aria-hidden="true"
+                  />
+                )}
+                Төлөх
+              </button>
+            </div>
+          }
+        >
+          {error && (
+            <p
+              role="alert"
+              className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700"
+            >
+              {error}
+            </p>
+          )}
+          {paymentPending && (
+            <p
+              role="status"
+              className="mb-3 rounded-xl bg-slate-100 p-3 text-sm text-slate-600"
+            >
+              Төлбөр хүлээгдэж байна. «Төлөх» товчоор үргэлжлүүлнэ үү.
+            </p>
+          )}
+          <div className="space-y-3">
+            {cart.map((line) => (
+              <article
+                key={line.id}
+                className="rounded-xl border border-slate-200 p-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-sm font-bold">{line.name}</p>
+                  <p className="shrink-0 text-sm font-bold tabular-nums">
+                    {formatMoney(line.price * line.qty)}
+                  </p>
+                </div>
+                <div className="mt-3 flex items-center gap-2">
+                  <input
+                    aria-label={`${line.name} тэмдэглэл`}
+                    value={line.note}
+                    onChange={(event) =>
+                      updateLineNote(line.id, event.target.value)
+                    }
+                    disabled={paymentPending || submitting}
+                    placeholder="Нэмэлт хүсэлт…"
+                    className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 text-xs outline-none focus:border-slate-600"
+                  />
+                  <div className="flex shrink-0 items-center rounded-lg bg-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => changeQty(line.id, -1)}
+                      disabled={paymentPending || submitting}
+                      aria-label={`${line.name} хасах`}
+                      className="grid h-11 w-9 place-items-center disabled:opacity-30"
+                    >
+                      <Minus className="h-4 w-4" />
+                    </button>
+                    <span className="w-6 text-center text-sm font-bold">
+                      {line.qty}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => changeQty(line.id, 1)}
+                      disabled={
+                        paymentPending ||
+                        submitting ||
+                        line.qty >= line.stockQty
+                      }
+                      aria-label={`${line.name} нэмэх`}
+                      className="grid h-11 w-9 place-items-center disabled:opacity-30"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+          <label className="mt-4 block text-xs font-semibold text-slate-600">
+            Захиалгын нэмэлт хүсэлт
+            <textarea
+              value={orderNote}
+              onChange={(event) => setOrderNote(event.target.value)}
+              disabled={paymentPending || submitting}
+              rows={2}
+              placeholder="Нэмэлт хүсэлтээ бичээрэй…"
+              className="mt-2 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal outline-none focus:border-slate-600"
+            />
+          </label>
+        </QrMenuDialog>
+      )}
+      {activeSheet === "payment" && paymentInvoice && (
+        <QrMenuDialog
+          title="Төлөх"
+          subtitle={`Ширээ ${menu.table.label}`}
+          onClose={() => setActiveSheet(null)}
+          footer={
+            paymentInvoice.status === "EXPIRED" ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentInvoice(null);
+                  setPaymentMessage("");
+                  setActiveSheet("cart");
+                }}
+                className="min-h-12 w-full rounded-xl bg-slate-950 px-4 text-sm font-bold text-white"
+              >
+                Дахин төлөх
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void checkPaymentStatus(false)}
+                disabled={
+                  checkingPayment || paymentInvoice.status !== "PENDING"
+                }
+                className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-bold text-white disabled:opacity-50"
+              >
+                {checkingPayment ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4" />
+                )}
+                Төлбөр шалгах
+              </button>
+            )
+          }
+        >
+          <div className="mb-4 text-center">
+            <p className="text-xs font-medium text-slate-500">Төлөх дүн</p>
+            <p className="mt-1 text-3xl font-bold tabular-nums">
+              {formatMoney(paymentInvoice.amount)}
+            </p>
+            <p role="status" className="mt-2 text-sm text-slate-600">
+              {paymentInvoice.status === "EXPIRED"
+                ? "Төлбөрийн хугацаа дууссан"
+                : paymentMessage || "Төлбөрийн апп сонгоно уу."}
+            </p>
+          </div>
+          {error && (
+            <p
+              role="alert"
+              className="mb-3 rounded-xl bg-rose-50 p-3 text-sm text-rose-700"
+            >
+              {error}
+            </p>
+          )}
+          {hasBankDeepLinks ? (
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {bankDeepLinks.map((link, index) => (
+                <a
+                  key={`${link.link}-${index}`}
+                  href={
+                    paymentInvoice.status === "PENDING" ? link.link : undefined
+                  }
+                  aria-disabled={paymentInvoice.status !== "PENDING"}
+                  className="flex min-h-24 min-w-0 flex-col items-center justify-start gap-2 rounded-xl border border-slate-200 bg-white px-1.5 py-3 text-center transition hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-slate-900 aria-disabled:opacity-40"
+                >
+                  <span className="grid h-10 w-10 shrink-0 place-items-center overflow-hidden rounded-lg bg-slate-50">
+                    <BankAppLogo link={link} />
+                  </span>
+                  <span className="break-words text-[11px] font-semibold leading-4">
+                    {link.name || link.description || "Төлбөрийн апп"}
+                  </span>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 p-4">
+              <p className="text-sm text-slate-600">
+                Өөр төхөөрөмжөөр QR кодыг уншуулж төлнө үү.
+              </p>
+              {paymentInvoice.qrText ? (
+                <QrGenerator
+                  value={paymentInvoice.qrText}
+                  size={180}
+                  level="M"
+                />
+              ) : paymentInvoice.qrImage ? (
+                <Image
+                  src={`data:image/png;base64,${paymentInvoice.qrImage}`}
+                  unoptimized
+                  width={180}
+                  height={180}
+                  alt="Төлбөрийн QR код"
+                  className="h-44 w-44"
+                />
+              ) : (
+                <Loader2 className="h-8 w-8 animate-spin" />
+              )}
+            </div>
+          )}
+          <p className="mt-4 text-center text-xs text-slate-400">
+            Хүчинтэй хугацаа:{" "}
+            {new Date(paymentInvoice.expiresAt).toLocaleTimeString("mn-MN", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </p>
+        </QrMenuDialog>
+      )}
     </main>
   );
 }
