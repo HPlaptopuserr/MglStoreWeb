@@ -6,7 +6,13 @@ import {
   PosRecipeBindings,
   type SupplyProductChoice,
 } from "./PosRecipeBindings";
-import { useEffect, useState, type ReactNode, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type FormEvent,
+} from "react";
 import {
   Banknote,
   ChevronDown,
@@ -37,6 +43,12 @@ import {
   type ReceiptDraft,
   type UsageDraft,
 } from "./supply-draft";
+
+import {
+  decodeSupplyDraftBackup,
+  supplyDraftKey,
+  supplyDraftSignature,
+} from "./supply-draft-storage";
 
 type ProductChoice = SupplyProductChoice;
 type ResponseData = SupplyMonthResponse & { products: ProductChoice[] };
@@ -117,7 +129,20 @@ function MonthlySupplyContent() {
   const [reload, setReload] = useState(0);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const busy = loading || saving || copying;
+  const [autoSaving, setAutoSaving] = useState(false);
+  const [identityEditing, setIdentityEditing] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [backupError, setBackupError] = useState("");
+  const draftKey = supplyDraftKey(user.id, user.organizationId || "", month);
+  const loadedKey = useRef<string | null>(null);
+  const inFlight = useRef(false);
+  const currentVersion = useRef(0);
+  const latestDraft = useRef({ materials, posBindings, draftKey });
+  latestDraft.current = { materials, posBindings, draftKey };
+  const saveLatest = useRef<(automatic: boolean) => Promise<void>>(
+    async () => {},
+  );
+  const busy = loading || saving || copying || autoSaving;
   const defaultDate = today.startsWith(month) ? today : `${month}-01`;
   const soldByProduct = new Map<string, { name: string; servings: number }>();
   for (const source of posSources) {
@@ -167,8 +192,11 @@ function MonthlySupplyContent() {
 
   useEffect(() => {
     const controller = new AbortController();
+    loadedKey.current = null;
     setLoading(true);
     setLoaded(false);
+    setSaveError("");
+    setBackupError("");
     setError("");
     setNotice("");
     const params = new URLSearchParams({
@@ -182,16 +210,34 @@ function MonthlySupplyContent() {
       .then(read<ResponseData>)
       .then((data) => {
         if (controller.signal.aborted) return;
-        setMaterials(toSupplyDraft(data.data.materials));
-        setPosBindings(data.data.posBindings ?? []);
+        let backup = null;
+        try {
+          backup = decodeSupplyDraftBackup(
+            window.localStorage.getItem(draftKey),
+          );
+        } catch {
+          setBackupError(
+            "Браузерт түр хадгалах боломжгүй байна. Хуудсаа хаахаас өмнө серверт хадгална уу.",
+          );
+        }
+        setMaterials(backup?.materials ?? toSupplyDraft(data.data.materials));
+        setPosBindings(backup?.posBindings ?? data.data.posBindings ?? []);
         setPosSources(data.posSources ?? []);
         setUncapturedSaleLines(data.uncapturedSaleLines ?? 0);
         setPosRefreshError("");
-        setVersion(data.version);
+        currentVersion.current = backup?.version ?? data.version;
+        setVersion(currentVersion.current);
         setUpdatedAt(data.updatedAt);
         setProducts(data.products);
-        setDirty(false);
-        setEditing(false);
+        setDirty(Boolean(backup));
+        setEditing(Boolean(backup));
+        if (backup) {
+          if (backup.version !== data.version)
+            setSaveError(
+              "Серверийн мэдээлэл өөрчлөгдсөн байна. Түр хадгалсан мэдээлэл хэвээр байгаа тул шалгалгүй дарж хадгалахгүй.",
+            );
+        }
+        loadedKey.current = draftKey;
         setLoaded(true);
       })
       .catch((cause: unknown) => {
@@ -204,7 +250,7 @@ function MonthlySupplyContent() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [month, reload, user.organizationId]);
+  }, [month, reload, user.organizationId, draftKey]);
 
   useEffect(() => {
     if (!loaded || loading || saving || copying) return;
@@ -260,6 +306,7 @@ function MonthlySupplyContent() {
     setMaterials(next);
     setDirty(true);
     setNotice("");
+    setSaveError("");
   };
   const edit = (id: string, patch: Partial<MaterialDraft>) =>
     change(
@@ -281,39 +328,139 @@ function MonthlySupplyContent() {
         row.id === id ? { ...row, ...patch } : row,
       ),
     });
-  const mayDiscard = () =>
-    !dirty || window.confirm("Хадгалаагүй өөрчлөлтөө орхих уу?");
-  const save = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (busy || !loaded || !editing) return;
+  const mayDiscard = () => {
+    if (inFlight.current) return false;
+    if (
+      dirty &&
+      !window.confirm(
+        "Түр хадгалсан өөрчлөлтөө устгаж, серверийн мэдээллийг авах уу?",
+      )
+    )
+      return false;
+    try {
+      window.localStorage.removeItem(draftKey);
+    } catch {
+      /* Keep server controls usable when storage is unavailable. */
+    }
+    setDirty(false);
+    return true;
+  };
+  const persist = async (automatic: boolean) => {
+    if (
+      inFlight.current ||
+      loading ||
+      copying ||
+      !loaded ||
+      !editing ||
+      !dirty ||
+      loadedKey.current !== draftKey
+    )
+      return;
     if (!parsed.ok) {
-      setError(parsed.message);
+      if (!automatic) setSaveError(parsed.message);
       return;
     }
-    setSaving(true);
-    setError("");
-    setNotice("");
+    const sentSignature = supplyDraftSignature(materials, posBindings);
+    const sentKey = draftKey;
+    inFlight.current = true;
+    if (automatic) setAutoSaving(true);
+    else setSaving(true);
+    setSaveError("");
     try {
       const data = await authFetch(endpoint(), {
         method: "PUT",
-        body: JSON.stringify({ expectedVersion: version, data: parsed.value }),
+        body: JSON.stringify({
+          expectedVersion: currentVersion.current,
+          data: parsed.value,
+        }),
       }).then(read<SupplyMonthResponse>);
-      setMaterials(toSupplyDraft(data.data.materials));
-      setPosBindings(data.data.posBindings ?? []);
-      setPosSources(data.posSources ?? []);
-      setUncapturedSaleLines(data.uncapturedSaleLines ?? 0);
+      if (loadedKey.current !== sentKey) return;
+      currentVersion.current = data.version;
       setVersion(data.version);
       setUpdatedAt(data.updatedAt);
-      setDirty(false);
-      setEditing(false);
-      setExpandedMaterialId(null);
-      setNotice(`${month} сарын хангамж хадгалагдлаа.`);
+      setPosSources(data.posSources ?? []);
+      setUncapturedSaleLines(data.uncapturedSaleLines ?? 0);
+      // Preserve newer keystrokes and keep the editor/dialog open when a save finishes.
+      const unchanged =
+        supplyDraftSignature(
+          latestDraft.current.materials,
+          latestDraft.current.posBindings,
+        ) === sentSignature;
+      setMaterials((current) =>
+        current.map((item) => {
+          const saved = data.data.materials.find(
+            (entry) => entry.id === item.id,
+          );
+          return saved && saved.name === item.name && saved.unit === item.unit
+            ? { ...item, identityLocked: true }
+            : item;
+        }),
+      );
+      setDirty(!unchanged);
+      if (unchanged) {
+        try {
+          window.localStorage.removeItem(sentKey);
+        } catch {
+          /* The server copy is already safe. */
+        }
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Хадгалж чадсангүй");
+      if (loadedKey.current === sentKey)
+        setSaveError(
+          cause instanceof Error ? cause.message : "Хадгалж чадсангүй",
+        );
     } finally {
+      inFlight.current = false;
       setSaving(false);
+      setAutoSaving(false);
     }
   };
+  saveLatest.current = persist;
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    await persist(false);
+  };
+  useEffect(() => {
+    if (!loaded || loadedKey.current !== draftKey || !dirty) return;
+    try {
+      window.localStorage.setItem(
+        draftKey,
+        JSON.stringify({ materials, posBindings, version }),
+      );
+      setBackupError("");
+    } catch {
+      setBackupError(
+        "Браузерт түр хадгалж чадсангүй. Серверийн хадгалалт дуустал хуудсаа бүү хаагаарай.",
+      );
+    }
+  }, [materials, posBindings, version, dirty, loaded, draftKey]);
+  useEffect(() => {
+    if (
+      !loaded ||
+      !editing ||
+      !dirty ||
+      busy ||
+      identityEditing ||
+      !parsed.ok ||
+      saveError
+    )
+      return;
+    const timer = window.setTimeout(() => {
+      void saveLatest.current(true);
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [
+    materials,
+    posBindings,
+    version,
+    loaded,
+    editing,
+    dirty,
+    busy,
+    identityEditing,
+    parsed.ok,
+    saveError,
+  ]);
   const copyPrevious = async () => {
     if (busy || materials.length) return;
     setCopying(true);
@@ -486,7 +633,7 @@ function MonthlySupplyContent() {
             <div className="flex flex-wrap items-center justify-between gap-3 border border-slate-300 bg-white px-4 py-3">
               <p className="text-xs text-slate-500">
                 {editing
-                  ? "Засах горим · Өөрчлөлтөө хийсний дараа хадгална уу."
+                  ? "Засах горим · Өөрчлөлт автоматаар хадгалагдана."
                   : "Харах горим · Мэдээлэл өөрчлөх бол «Засах» товч дарна уу."}
               </p>
               {editing ? (
@@ -584,7 +731,9 @@ function MonthlySupplyContent() {
                         <td className="min-w-44">
                           <input
                             aria-label={`${itemIndex + 1}. Түүхий эдийн нэр`}
-                            disabled={!editing || item.identityLocked}
+                            disabled={
+                              !editing || item.identityLocked || autoSaving
+                            }
                             title={
                               item.identityLocked
                                 ? "Хадгалсан материалын нэрийг өөрчлөх боломжгүй"
@@ -593,6 +742,8 @@ function MonthlySupplyContent() {
                             required
                             maxLength={160}
                             value={item.name}
+                            onFocus={() => setIdentityEditing(true)}
+                            onBlur={() => setIdentityEditing(false)}
                             onChange={(event) =>
                               edit(item.id, { name: event.target.value })
                             }
@@ -604,8 +755,11 @@ function MonthlySupplyContent() {
                           <select
                             aria-label={`${itemIndex + 1}. Хэмжих нэгж`}
                             value={item.unit}
+                            onFocus={() => setIdentityEditing(true)}
+                            onBlur={() => setIdentityEditing(false)}
                             disabled={
                               !editing ||
+                              autoSaving ||
                               item.identityLocked ||
                               item.receipts.length > 0 ||
                               item.usages.length > 0 ||
@@ -770,16 +924,28 @@ function MonthlySupplyContent() {
                 </button>
               </div>
             </fieldset>
+            {(saveError || backupError) && (
+              <p
+                role="alert"
+                className="rounded-md bg-rose-50 p-3 text-sm text-rose-800"
+              >
+                {saveError || backupError}
+              </p>
+            )}
             <div
               className={`flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 px-4 py-3 ${editing ? "sticky bottom-0 z-10 bg-white shadow-sm" : "bg-slate-50/60"}`}
             >
               <div>
-                <p className="text-sm font-bold">
-                  {dirty
-                    ? "Хадгалаагүй өөрчлөлт байна"
-                    : version > 0
-                      ? "Хадгалсан мэдээлэл"
-                      : "Шинэ сарын бүртгэл"}
+                <p role="status" className="text-sm font-bold">
+                  {autoSaving || saving
+                    ? "Серверт хадгалж байна…"
+                    : dirty
+                      ? backupError
+                        ? "Өөрчлөлт серверт хадгалагдаагүй байна"
+                        : "Браузерт түр хадгалсан · Серверт хадгалах хүлээгдэж байна"
+                      : version > 0
+                        ? "Хадгалсан мэдээлэл"
+                        : "Шинэ сарын бүртгэл"}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   {updatedAt
@@ -793,7 +959,11 @@ function MonthlySupplyContent() {
                   disabled={busy || !editing || !dirty}
                   className={primary}
                 >
-                  {saving ? "Хадгалж байна…" : "Сарын хангамж хадгалах"}
+                  {saving || autoSaving
+                    ? "Хадгалж байна…"
+                    : saveError
+                      ? "Дахин хадгалах"
+                      : "Одоо хадгалах"}
                 </button>
               )}
             </div>
@@ -807,7 +977,7 @@ function MonthlySupplyContent() {
                 editing={editing}
                 saving={saving}
                 canSave={!busy && editing && dirty}
-                error={error}
+                error={saveError || backupError || error}
                 onClose={() => setExpandedMaterialId(null)}
               >
                 <fieldset
@@ -1314,6 +1484,7 @@ function MonthlySupplyContent() {
               disabled={!editing || saving || copying}
               onChange={(bindings) => {
                 setPosBindings(bindings);
+                setSaveError("");
                 setDirty(true);
                 setNotice("");
               }}

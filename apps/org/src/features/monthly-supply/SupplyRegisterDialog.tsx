@@ -87,7 +87,7 @@ export function SupplyRegisterDialog({
         <footer className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-3">
           <p className="text-xs text-slate-500">
             {editing
-              ? "Өөрчлөлтүүд сарын хангамжтай хамт хадгалагдана."
+              ? "Өөрчлөлт автоматаар хадгалагдана. Дутуу мөр браузерт түр хадгалагдана."
               : "Мэдээлэл өөрчлөхийн тулд үндсэн хүснэгтийн «Засах» товчийг дарна уу."}
           </p>
           <div className="flex gap-2">
@@ -106,7 +106,7 @@ export function SupplyRegisterDialog({
                 disabled={!canSave || saving}
                 className="min-h-10 rounded-md bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-40"
               >
-                {saving ? "Хадгалж байна…" : "Сарын хангамж хадгалах"}
+                {saving ? "Хадгалж байна…" : "Одоо хадгалах"}
               </button>
             )}
           </div>
