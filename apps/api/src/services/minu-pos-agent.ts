@@ -301,7 +301,10 @@ export function parseMinuAgentTransactionResponse(
     !explicitlyDeclined &&
     normalizedTopStatus === "000" &&
     (approvedStatuses.has(normalizedEntityStatus) || (Boolean(rrn) && !hasFailureError));
-  const declined = !approved && explicitlyDeclined;
+  // An API error or a conflicting bank reference does not prove no debit.
+  // Only a successful inquiry identifying a failed terminal invoice may unlock.
+  const declined = !approved && explicitlyDeclined && normalizedTopStatus === "000" &&
+    Boolean(String(data.entity?.invoice ?? "").trim()) && !rrn;
   // A successful checkTxn API call is not proof that the card was charged.
   // Unknown and intermediate terminal states must remain pending until Minu
   // returns an explicit paid state or a bank RRN.

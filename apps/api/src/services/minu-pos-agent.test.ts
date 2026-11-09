@@ -226,7 +226,7 @@ test("keeps unknown Minu terminal states pending instead of declining them", () 
   assert.equal(result.pending, true);
 });
 
-test("does not approve an RRN response that contains a terminal error", () => {
+test("a terminal error conflicting with an RRN stays pending and cannot unlock", () => {
   const result = parseMinuAgentTransactionResponse({
     status: "000",
     entity: {
@@ -237,8 +237,22 @@ test("does not approve an RRN response that contains a terminal error", () => {
   });
 
   assert.equal(result.approved, false);
-  assert.equal(result.declined, true);
-  assert.equal(result.pending, false);
+  assert.equal(result.declined, false);
+  assert.equal(result.pending, true);
+});
+
+test("API errors and unidentified refusals cannot prove an unsuccessful card charge", () => {
+  for (const response of [
+    { status: "ERROR", message: "System Error" },
+    { status: "FAILED", entity: { invoice: "MGL-original", status: "FAILED" } },
+    { status: "000", entity: { status: "DECLINED", error: "DECLINED" } },
+    { status: "000", entity: { invoice: "MGL-original", status: "DECLINED", rrn: "bank-reference" } },
+  ]) {
+    const result = parseMinuAgentTransactionResponse(response);
+    assert.equal(result.pending, true);
+    assert.equal(result.declined, false);
+    assert.equal(result.approved, false);
+  }
 });
 
 test("pending diagnostics show terminal errors without presenting API success as payment success", () => {

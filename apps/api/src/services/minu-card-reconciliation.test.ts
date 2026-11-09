@@ -55,3 +55,8 @@ test("an explicit terminal decline remains a decline", () => {
   }));
   assert.equal(data?.status, "DECLINED");
 });
+
+test("approval without the original invoice cannot settle an unknown attempt", () => {
+  const result = parseMinuAgentTransactionResponse({ status: "000", entity: { status: "000", rrn: "bank-reference" } });
+  assert.throws(() => minuCardStatusUpdate(attempt(), result), /нэхэмжлэх/);
+});

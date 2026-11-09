@@ -38,3 +38,20 @@ test("in-flight cancellation locks method changes to avoid overlapping provider 
   assert.ok(methodButton(html, "F10").includes("disabled"));
   assert.ok(methodButton(html, "F11").includes("disabled"));
 });
+
+test("cashier recovery remains available while an unknown payment blocks checkout and method switching", () => {
+  const html = renderToStaticMarkup(<PosCheckoutView {...base} disabled methodSwitchDisabled
+    onTerminalRecovery={noop} terminalRecoveryDisabled={false}
+    paymentEntries={[{ id: "pending", attemptId: "original", method: "CARD", amount: 7500, status: "pending" }]} />);
+  const button = html.match(/<button[^>]*>Терминалын түгжээ шалгаж тайлах<\/button>/)?.[0];
+  assert.ok(button);
+  assert.doesNotMatch(button, /\sdisabled(?:=|\s|>)/);
+  assert.match(html, /<button[^>]*disabled[^>]*>Гүйлгээ батлах/);
+  assert.ok(methodButton(html, "F10").includes("disabled"));
+});
+
+test("terminal recovery cannot be opened during an active charge and is absent for other providers", () => {
+  const busy = renderToStaticMarkup(<PosCheckoutView {...base} onTerminalRecovery={noop} terminalRecoveryDisabled />);
+  assert.match(busy, /<button[^>]* disabled=""[^>]*>Терминалын түгжээ шалгаж тайлах<\/button>/);
+  assert.ok(!renderToStaticMarkup(<PosCheckoutView {...base} />).includes("Терминалын түгжээ шалгаж тайлах"));
+});

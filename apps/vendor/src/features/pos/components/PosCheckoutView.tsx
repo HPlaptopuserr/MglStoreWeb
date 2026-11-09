@@ -85,6 +85,8 @@ export type PosCheckoutProps = {
   splitPayment?: boolean;
   paymentFeedback?: PaymentFeedback;
   onCheckCard?: (id: string) => void;
+  onTerminalRecovery?: () => void;
+  terminalRecoveryDisabled?: boolean;
 };
 
 export type CheckoutPaymentEntry = {
@@ -177,6 +179,8 @@ export function PosCheckoutView({
   splitPayment = false,
   paymentFeedback = {},
   onCheckCard,
+  onTerminalRecovery,
+  terminalRecoveryDisabled,
 }: PosCheckoutProps) {
   const [enteredAmount, setEnteredAmount] = useState("");
   const [loyaltyPanelOpen, setLoyaltyPanelOpen] = useState(false);
@@ -555,6 +559,12 @@ export function PosCheckoutView({
             />
           )}
 
+          {onTerminalRecovery && (paymentMethod === "CARD" || paymentEntries.some(entry => entry.method === "CARD" && entry.status === "pending")) && (
+            <button type="button" onClick={onTerminalRecovery} disabled={terminalRecoveryDisabled ?? disabled}
+              className="min-h-11 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-800 hover:bg-blue-100 focus-visible:outline-2 focus-visible:outline-blue-600 disabled:opacity-50">
+              Терминалын түгжээ шалгаж тайлах
+            </button>
+          )}
           {!qpayModal?.open && <CheckoutPaymentError
             method={paymentMethod}
             message={statusMessage}

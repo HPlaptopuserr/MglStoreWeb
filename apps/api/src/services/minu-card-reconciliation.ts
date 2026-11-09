@@ -22,7 +22,7 @@ export function minuCardStatusUpdate(
 ): Prisma.CardPaymentAttemptUpdateManyMutationInput | null {
   const invoice = minuCardInvoice(attempt);
   if (!invoice) return null;
-  if (result.entity?.invoice && result.entity.invoice !== invoice) {
+  if ((result.approved || result.declined || result.entity?.invoice) && result.entity?.invoice !== invoice) {
     throw new Error("Minu хариуны нэхэмжлэх төлбөртэй таарахгүй байна");
   }
   const payload = attempt.providerPayload as Prisma.JsonObject;
@@ -48,7 +48,7 @@ async function reconcileAttempt(attempt: CardPaymentAttempt) {
   if (data) {
     const checkout = checkoutFromPayload(attempt.providerPayload);
     await prisma.$transaction(async (tx) => {
-      if (checkout)
+      if (attempt.organizationId)
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${attempt.organizationId}:${attempt.terminalId}`}, 0))`;
       // A late pending/declined response must never overwrite approval or consumption.
       await tx.cardPaymentAttempt.updateMany({
