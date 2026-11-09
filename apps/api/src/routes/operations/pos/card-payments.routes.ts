@@ -14,6 +14,7 @@ import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
 import {
   createMinuAgentInvoice,
+  getMinuAgentToken,
   minuPendingPaymentMessage,
   describeMinuAgentInvoiceError,
   isMinuAgentApiError,
@@ -358,6 +359,37 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
     const minuInvoice = `MGL-${attemptId.replace(/-/g, "").slice(0, 24).toUpperCase()}`;
     const checkout = !manualCardAttempt && isMinuAgent && req.body?.checkout !== undefined ? parseCardCheckout(req.body.checkout) : null;
     const effectiveTerminalId = terminalId !== "terminal-1" ? terminalId : (registerCardTerminalId || terminalId);
+    let minuToken: string | null = null;
+    if (isMinuAgent) {
+      // Refresh an old terminal result automatically before rejecting a new
+      // request. Never hold a database transaction open across provider I/O.
+      const active = await prisma.cardPaymentAttempt.findFirst({ where: {
+        id: { not: attemptId },
+        organizationId: effectiveOrganizationId, terminalId: effectiveTerminalId,
+        status: { in: [PosPaymentStatus.PENDING, PosPaymentStatus.FAILED] }, consumedAt: null,
+        AND: [
+          { providerPayload: { path: ["provider"], equals: "MINU_AGENT" } },
+          { providerPayload: { path: ["terminalGuardVersion"], equals: 1 } },
+        ],
+      } });
+      if (active) {
+        let current = active;
+        try { current = (await reconcileMinuCardAttempt(active)).attempt; }
+        catch { console.warn("[pos card] Minu automatic preflight failed", { attemptId: active.id }); }
+        if (current.status === PosPaymentStatus.APPROVED) {
+          throw toApiError(409, "Өмнөх картын төлбөр амжилттай болсон. Шинэ төлбөр эхлүүлээгүй.");
+        }
+        if (current.status !== PosPaymentStatus.DECLINED) {
+          throw toApiError(409, minuPendingPaymentMessage(current.message));
+        }
+      }
+      if (!minuAgentContext) throw toApiError(422, "Minu merchant тохиргоо дутуу байна. Төлбөр эхлээгүй.");
+      try { minuToken = await getMinuAgentToken(minuAgentContext); }
+      catch {
+        // No invoice has been sent, and no terminal or stock is reserved yet.
+        throw toApiError(502, "Minu холболт амжилтгүй. Төлбөр эхлээгүй, дахин оролдоно уу.");
+      }
+    }
     const created = await prisma.$transaction(async tx => {
       if (!manualCardAttempt && isMinuAgent) {
         // Database lock also covers requests from other tabs and API instances.
@@ -568,6 +600,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
 
           const minuResult = await createMinuAgentInvoice({
             context: minuAgentContext!,
+            token: minuToken!,
             terminalId: effectiveTerminalId,
             amount,
             invoice,

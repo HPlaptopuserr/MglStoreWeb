@@ -58,7 +58,6 @@ interface Props {
   onCheckEbarimt: () => void;
   onRecoverCard: () => void;
   recoveryDisabled: boolean;
-  onTerminalRecovery?: () => void;
 }
 export function PosSettingsMenu(props: Props) {
   return (
@@ -81,13 +80,6 @@ export function PosSettingsMenu(props: Props) {
         aria-label="Кассын үйлдлүүд"
         className="grid gap-3 sm:grid-cols-2"
       >
-        {props.onTerminalRecovery && <SettingsAction
-          icon={CreditCard}
-          title="Терминалын түгжээ шалгаж тайлах"
-          description="Хүлээгдэж буй гүйлгээг Minu-с шалгаж, баталгаажсан түгжээг тайлах"
-          onClick={props.onTerminalRecovery}
-          disabled={props.disabled}
-        />}
         <SettingsAction
           icon={Wallet}
           title="Бэлэн мөнгө"

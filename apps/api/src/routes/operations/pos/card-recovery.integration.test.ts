@@ -6,7 +6,6 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { prisma } from "@mgl/database";
 import recoveryRoutes from "./card-recovery.routes";
-import terminalRecoveryRoutes from "./terminal-recovery.routes";
 import cardRoutes from "./card-payments.routes";
 import salesRoutes from "./sales.routes";
 import registerRoutes from "./registers.routes";
@@ -62,18 +61,20 @@ test(
     let observedCancellation = false;
     let insufficientFunds = false;
     let terminalRefusal: string | undefined;
-    let inquiryOverride: ((invoice: string) => unknown) | undefined;
-    let beforeInquiryResponse: (() => Promise<void>) | undefined;
     let invoiceCalls = 0;
+    let loginUnavailable = false;
+    let loseInvoiceResponse = false;
     const providerCalls: string[] = [];
     const provider = express();
     provider.use(express.json());
-    provider.use(async (req, res) => {
+    provider.use((req, res) => {
       providerCalls.push(req.path);
       if (req.path === "/agent/login")
-        return res.json({ status: "000", entity: "test-token" });
+        return loginUnavailable ? res.status(503).json({ message: "Login unavailable" })
+          : res.json({ status: "000", entity: "test-token" });
       if (req.path === "/agent/invoice" && allowInvoice) {
         invoiceCalls += 1;
+        if (loseInvoiceResponse) return req.socket.destroy();
         return res.json({ status: "000", message: "Successful" });
       }
       if (req.path !== "/agent/checkTxn")
@@ -82,7 +83,7 @@ test(
           .json({ message: "NEW CHARGES ARE FORBIDDEN IN RECOVERY" });
       if (providerUnavailable)
         return res.status(503).json({ message: "Unavailable" });
-      const reply = inquiryOverride ? inquiryOverride(String(req.body.invoice)) : {
+      return res.json({
         status: "000",
         entity: {
           invoice: wrongInvoice ? "different-invoice" : req.body.invoice,
@@ -92,9 +93,7 @@ test(
           message: terminalRefusal ?? (insufficientFunds ? "Үлдэгдэл хүрээгүй" : observedCancellation ? "Гүйлгээ цуцлагдлаа" : paid ? "Гүйлгээ амжилттай" : undefined),
           cardNo: "DO-NOT-EXPOSE",
         },
-      };
-      await beforeInquiryResponse?.();
-      return res.json(reply);
+      });
     });
     const providerServer = createServer(provider);
     const previousMinuUrl = process.env.MINU_AGENT_BASE_URL;
@@ -102,7 +101,6 @@ test(
     const app = express();
     app.use(express.json());
     app.use(recoveryRoutes);
-    app.use(terminalRecoveryRoutes);
     app.use(cardRoutes);
     app.use(salesRoutes);
     app.use(registerRoutes);
@@ -703,6 +701,68 @@ test(
         return { body, authorize, legacyAuthorize, status, sale, product, register };
       };
 
+      await t.test("login failure never reserves a terminal or stock and can be retried", async () => {
+        const f = await fixture();
+        const before = invoiceCalls;
+        // A fresh credential avoids the token cached by earlier test fixtures.
+        await prisma.organization.update({ where: { id: organization.id }, data: { minuAgentUsername: "login-failure-test" } });
+        loginUnavailable = true;
+        try {
+          const response = await f.authorize();
+          assert.equal(response.status, 502);
+          assert.equal((await response.json() as { code: string }).code, "CARD_PAYMENT_NOT_STARTED");
+          assert.equal(await prisma.cardPaymentAttempt.count({ where: { id: f.body.attemptId } }), 0);
+          assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
+          assert.equal(invoiceCalls, before);
+          loginUnavailable = false;
+          assert.equal((await f.authorize()).status, 201);
+          await f.status();
+          assert.equal(invoiceCalls, before + 1);
+        } finally {
+          loginUnavailable = false;
+          await prisma.organization.update({ where: { id: organization.id }, data: { minuAgentUsername: "test-user" } });
+        }
+      });
+
+      await t.test("a new request automatically clears a confirmed old refusal without a cashier unlock", async () => {
+        const f = await fixture();
+        paid = false;
+        assert.equal((await f.authorize()).status, 201);
+        await f.status();
+        const before = invoiceCalls;
+        terminalRefusal = "Пин буруу";
+        try {
+          const retryId = crypto.randomUUID();
+          const response = await f.authorize({ ...f.body, attemptId: retryId });
+          assert.equal(response.status, 201, await response.clone().text());
+          assert.equal((await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } })).status, "DECLINED");
+          await fetch(`${base}/pos/payments/card/status/${retryId}`, { headers });
+          assert.equal(invoiceCalls, before + 1);
+        } finally { terminalRefusal = undefined; paid = true; }
+      });
+
+      await t.test("lost invoice response is checked automatically and never causes a second debit", async () => {
+        const f = await fixture();
+        paid = false;
+        loseInvoiceResponse = true;
+        const before = invoiceCalls;
+        try {
+          assert.equal((await f.authorize()).status, 201);
+          await f.status();
+          const retry = () => f.authorize({ ...f.body, attemptId: crypto.randomUUID() });
+          providerUnavailable = true;
+          assert.equal((await retry()).status, 409);
+          providerUnavailable = false;
+          assert.equal((await retry()).status, 409, "unknown bank outcome must not cause another invoice");
+          assert.equal(invoiceCalls, before + 1);
+          assert.equal((await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } })).status, "PENDING");
+          paid = true;
+          assert.equal((await retry()).status, 409, "late bank approval is retained instead of charged again");
+          assert.equal((await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } })).status, "APPROVED");
+          assert.equal(invoiceCalls, before + 1);
+        } finally { loseInvoiceResponse = false; providerUnavailable = false; paid = true; }
+      });
+
       await t.test("register config advertises the v2 contract without changing legacy terminal fields", async () => {
         const f = await fixture();
         const response = await fetch(`${base}/pos/register-config?registerId=${f.register.id}`, { headers });
@@ -1099,181 +1159,6 @@ test(
           paid = true;
         });
       }
-
-      const checkTerminal = (registerId: string, attemptId: string) => fetch(`${base}/pos/payments/card/terminal-recovery/${attemptId}/check`, {
-        method: "POST", headers, body: JSON.stringify({ registerId }),
-      });
-
-      await t.test("cashier terminal inquiry keeps unknown and unavailable payments locked without sending invoices", async () => {
-        const f = await fixture();
-        paid = false;
-        assert.equal((await f.authorize()).status, 201);
-        await f.status();
-        const before = invoiceCalls;
-        const first = await checkTerminal(f.register.id, f.body.attemptId);
-        assert.equal(first.status, 200);
-        assert.equal((await first.json() as { outcome: string }).outcome, "PENDING");
-        providerUnavailable = true;
-        try { assert.equal((await checkTerminal(f.register.id, f.body.attemptId)).status, 502); }
-        finally { providerUnavailable = false; }
-        assert.equal((await f.authorize({ ...f.body, attemptId: crypto.randomUUID() })).status, 409);
-        assert.equal(invoiceCalls, before);
-        const stored = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
-        assert.equal(stored.status, "PENDING");
-        assert.equal(stored.consumedAt, null);
-        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
-        paid = true;
-      });
-
-      await t.test("cashier terminal inquiry refuses unrelated invoices, API failures and conflicting bank references", async () => {
-        const f = await fixture();
-        paid = false;
-        await f.authorize();
-        await f.status();
-        const before = invoiceCalls;
-        try {
-          for (const override of [
-            () => ({ status: "000", entity: { invoice: "another-invoice", status: "DECLINED" } }),
-            () => ({ status: "000", entity: { status: "DECLINED" } }),
-            () => ({ status: "ERROR", message: "System Error" }),
-            (invoice: string) => ({ status: "000", entity: { invoice, status: "DECLINED", rrn: "bank-reference" } }),
-          ]) {
-            inquiryOverride = override;
-            const response = await checkTerminal(f.register.id, f.body.attemptId);
-            assert.ok([200, 502].includes(response.status));
-            if (response.status === 200) assert.equal((await response.json() as { outcome: string }).outcome, "PENDING");
-            assert.equal((await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } })).status, "PENDING");
-            assert.equal((await f.authorize({ ...f.body, attemptId: crypto.randomUUID() })).status, 409);
-          }
-        } finally { inquiryOverride = undefined; paid = true; }
-        assert.equal(invoiceCalls, before);
-      });
-
-      await t.test("confirmed terminal cancellation unlocks through repeated cashier checks; only a separate new attempt charges", async () => {
-        const f = await fixture();
-        paid = false;
-        await f.authorize();
-        await f.status();
-        const before = invoiceCalls;
-        const original = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
-        observedCancellation = true;
-        try {
-          const responses = await Promise.all([checkTerminal(f.register.id, f.body.attemptId), checkTerminal(f.register.id, f.body.attemptId)]);
-          for (const response of responses) {
-            assert.equal(response.status, 200, await response.clone().text());
-            const result = await response.json() as { outcome: string; remainingLocks: number };
-            assert.equal(result.outcome, "RELEASED");
-            assert.equal(result.remainingLocks, 0);
-          }
-        } finally { observedCancellation = false; }
-        assert.equal(invoiceCalls, before);
-        const stored = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
-        assert.equal(stored.status, "DECLINED");
-        assert.equal(stored.saleReference, null);
-        assert.equal(stored.consumedAt, null);
-        assert.deepEqual((stored.providerPayload as Record<string, unknown>).checkout, (original.providerPayload as Record<string, unknown>).checkout);
-        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
-        assert.ok(await prisma.auditLog.count({ where: { userId: user.id, meta: { path: ["attemptId"], equals: f.body.attemptId } } }) >= 1);
-        assert.equal((await f.authorize()).status, 200);
-        assert.equal(invoiceCalls, before);
-        const retryId = crypto.randomUUID();
-        assert.equal((await f.authorize({ ...f.body, attemptId: retryId })).status, 201);
-        await fetch(`${base}/pos/payments/card/status/${retryId}`, { headers });
-        assert.equal(invoiceCalls, before + 1);
-        paid = true;
-      });
-
-      await t.test("releasing one invoice never clears another unresolved guard on the terminal", async () => {
-        const f = await fixture();
-        paid = false;
-        await f.authorize();
-        await f.status();
-        const other = await prisma.cardPaymentAttempt.create({ data: {
-          organizationId: organization.id, registerId: f.register.id, terminalId: f.body.terminalId, amount: 1000,
-          providerPayload: { provider: "MINU_AGENT", invoice: "another-unresolved-invoice", terminalGuardVersion: 1 },
-        } });
-        const before = invoiceCalls;
-        observedCancellation = true;
-        try {
-          const response = await checkTerminal(f.register.id, f.body.attemptId);
-          const result = await response.json() as { outcome: string; remainingLocks: number; message: string };
-          assert.equal(result.outcome, "RELEASED");
-          assert.equal(result.remainingLocks, 1);
-          assert.match(result.message, /бусад/);
-        } finally { observedCancellation = false; }
-        assert.equal((await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: other.id } })).status, "PENDING");
-        assert.equal((await f.authorize({ ...f.body, attemptId: crypto.randomUUID() })).status, 409);
-        assert.equal(invoiceCalls, before);
-        paid = true;
-      });
-
-      await t.test("approval during cashier recovery preserves payment and refuses another charge for the same basket", async () => {
-        const f = await fixture();
-        paid = false;
-        await f.authorize();
-        await f.status();
-        const before = invoiceCalls;
-        paid = true;
-        const response = await checkTerminal(f.register.id, f.body.attemptId);
-        assert.equal((await response.json() as { outcome: string }).outcome, "PAID");
-        assert.equal((await f.authorize({ ...f.body, attemptId: crypto.randomUUID() })).status, 409);
-        assert.equal(invoiceCalls, before);
-        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
-        const sold = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(f.sale) });
-        assert.equal(sold.status, 201, await sold.clone().text());
-        const calls = providerCalls.length;
-        const completed = await checkTerminal(f.register.id, f.body.attemptId);
-        assert.equal((await completed.json() as { outcome: string }).outcome, "COMPLETED");
-        assert.equal(providerCalls.length, calls);
-      });
-
-      await t.test("late cancellation cannot overwrite concurrent approval while the cashier checks", async () => {
-        const f = await fixture();
-        paid = false;
-        await f.authorize();
-        await f.status();
-        const before = invoiceCalls;
-        observedCancellation = true;
-        beforeInquiryResponse = async () => {
-          await prisma.cardPaymentAttempt.update({ where: { id: f.body.attemptId }, data: { status: "APPROVED", transactionId: "concurrent-bank-reference" } });
-        };
-        try {
-          const response = await checkTerminal(f.register.id, f.body.attemptId);
-          assert.equal(response.status, 200);
-          assert.equal((await response.json() as { outcome: string }).outcome, "PAID");
-        } finally { beforeInquiryResponse = undefined; observedCancellation = false; paid = true; }
-        assert.equal(invoiceCalls, before);
-        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
-        assert.equal((await f.authorize({ ...f.body, attemptId: crypto.randomUUID() })).status, 409);
-      });
-
-      await t.test("terminal recovery scopes access, finds old locks after a lost browser basket and exposes no provider secrets", async () => {
-        const f = await fixture();
-        paid = false;
-        await f.authorize();
-        await f.status();
-        await prisma.cardPaymentAttempt.update({ where: { id: f.body.attemptId }, data: { createdAt: new Date(Date.now() - 10 * 86400_000) } });
-        const listPath = `${base}/pos/payments/card/terminal-recovery?registerId=${f.register.id}`;
-        assert.equal((await fetch(listPath)).status, 401);
-        assert.equal((await fetch(`${base}/pos/payments/card/terminal-recovery/${f.body.attemptId}/check`, { method: "POST" })).status, 401);
-        const response = await fetch(listPath, { headers });
-        assert.equal(response.status, 200);
-        const text = await response.text();
-        assert.ok(text.includes(f.body.attemptId));
-        assert.ok(!text.includes("DO-NOT-EXPOSE"));
-        assert.ok(!text.includes("test-password"));
-        const other = await fixture();
-        const before = providerCalls.length;
-        assert.equal((await checkTerminal(other.register.id, f.body.attemptId)).status, 403);
-        assert.equal(providerCalls.length, before);
-        const otherOrgRegister = await prisma.posRegister.findFirstOrThrow({ where: { name: "Other" } });
-        assert.equal((await checkTerminal(otherOrgRegister.id, f.body.attemptId)).status, 403);
-        await prisma.posRegister.update({ where: { id: f.register.id }, data: { cardTerminalId: null } });
-        const shared = await prisma.posRegister.create({ data: { organizationId: organization.id, branchId: branch.id,
-          name: "Reassigned terminal", cardTerminalId: f.body.terminalId, cardProviderType: "MINU_AGENT", activationStatus: "APPROVED", isActive: true } });
-        assert.equal((await checkTerminal(shared.id, f.body.attemptId)).status, 200);
-        paid = true;
-      });
 
       await t.test("a stale bank poll cannot overwrite newer review evidence", async () => {
         const f = await fixture();

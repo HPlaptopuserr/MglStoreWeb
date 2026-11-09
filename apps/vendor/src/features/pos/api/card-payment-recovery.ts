@@ -1,4 +1,4 @@
-import type { RecoverableCardPayment, VerifiedCardRecovery, TerminalCardPayment, TerminalCardRecoveryResult } from "@mgl/types";
+import type { RecoverableCardPayment, VerifiedCardRecovery } from "@mgl/types";
 import { posRequest } from "./_pos-client";
 
 export function getRecoverableCardPayments(
@@ -24,18 +24,5 @@ export function verifyCardRecovery(
       method: "POST",
       body: { registerId, amount },
     },
-  );
-}
-
-export function getTerminalCardPayments(registerId: string, signal: AbortSignal) {
-  return posRequest<{ payments: TerminalCardPayment[]; truncated: boolean }>(
-    `/pos/payments/card/terminal-recovery?${new URLSearchParams({ registerId })}`, { signal },
-  );
-}
-
-export function checkTerminalCardPayment(registerId: string, attemptId: string) {
-  return posRequest<TerminalCardRecoveryResult>(
-    `/pos/payments/card/terminal-recovery/${encodeURIComponent(attemptId)}/check`,
-    { method: "POST", body: { registerId } },
   );
 }

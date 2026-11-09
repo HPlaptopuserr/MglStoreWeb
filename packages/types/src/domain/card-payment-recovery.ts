@@ -12,19 +12,3 @@ export interface VerifiedCardRecovery extends RecoverableCardPayment {
   status: "APPROVED";
   transactionId: string;
 }
-
-export interface TerminalCardPayment extends RecoverableCardPayment {
-  status: "PENDING" | "APPROVED" | "DECLINED" | "FAILED";
-  registerId: string | null;
-  registerName: string;
-  invoice: string;
-  message: string | null;
-  blocksTerminal: boolean;
-}
-
-export interface TerminalCardRecoveryResult {
-  payment: TerminalCardPayment;
-  outcome: "RELEASED" | "PAID" | "PENDING" | "COMPLETED";
-  remainingLocks: number;
-  message: string;
-}

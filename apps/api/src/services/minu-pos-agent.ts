@@ -162,6 +162,8 @@ export async function getMinuAgentToken(contextInput: MinuAgentContext): Promise
 
 export async function createMinuAgentInvoice(params: {
   context: MinuAgentContext;
+  // Authenticate before reserving the terminal. Login failure cannot charge it.
+  token: string;
   terminalId: string;
   amount: number;
   invoice: string;
@@ -169,14 +171,13 @@ export async function createMinuAgentInvoice(params: {
   purchaseType?: "card" | "qr";
 }): Promise<MinuInvoiceResult> {
   const context = assertMinuAgentContext(params.context);
-  const token = await getMinuAgentToken(context);
   const branchId = (params.branchId || "").trim() || context.branchId;
 
   const data = await fetchMinu<MinuAgentResponse>("/agent/invoice", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${params.token}`,
     },
     body: JSON.stringify({
       terminalId: params.terminalId,

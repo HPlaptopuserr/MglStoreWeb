@@ -44,7 +44,6 @@ import { PosSettingsMenu } from "@/features/pos/components/PosSettingsMenu";
 import { CustomerDisplayDialog } from "@/features/pos/components/CustomerDisplayDialog";
 import { ShiftOpeningForm } from "@/features/pos/components/ShiftOpeningForm";
 const CardPaymentRecoveryDialog = dynamic(() => import("@/features/pos/components/CardPaymentRecoveryDialog").then((module) => module.CardPaymentRecoveryDialog), { ssr: false, loading: CheckoutLoading });
-const TerminalCardRecoveryDialog = dynamic(() => import("@/features/pos/components/TerminalCardRecoveryDialog").then((module) => module.TerminalCardRecoveryDialog), { ssr: false, loading: CheckoutLoading });
 import { PosSettingsDialog } from "@/features/pos/components/PosSettingsDialog";
 import { CashBalanceBadge } from "@/features/pos/components/CashBalanceBadge";
 import { CashDrawerPanel } from "@/features/pos/components/CashDrawerPanel";
@@ -592,7 +591,6 @@ export default function PosDemoPage() {
       : "Энэ касс дээр eBarimt унтраалттай.";
   const [showPosSettings, setShowPosSettings] = useState(false);
   const [showCardRecovery, setShowCardRecovery] = useState(false);
-  const [showTerminalRecovery, setShowTerminalRecovery] = useState(false);
   const [showCustomerDisplaySettings, setShowCustomerDisplaySettings] = useState(false);
   const [showSetupPanel, setShowSetupPanel] = useState(false);
   // self-registration form
@@ -809,7 +807,6 @@ export default function PosDemoPage() {
     showCashDrawerPanel ||
     showPosSettings ||
     showCardRecovery ||
-    showTerminalRecovery ||
     showCustomerDisplaySettings ||
     successOverlay.visible ||
     isCardProcessing ||
@@ -1787,7 +1784,7 @@ export default function PosDemoPage() {
 
 
   const blockQPayCartMutation = () => {
-    if (!showCardRecovery && !showTerminalRecovery && !qpayCreatingRef.current && !cardPaymentRunRef.current && !hasProtectedCheckoutPayment(paymentEntries)) return false;
+    if (!showCardRecovery && !qpayCreatingRef.current && !cardPaymentRunRef.current && !hasProtectedCheckoutPayment(paymentEntries)) return false;
     setScanStatus("not-found");
     setScanMessage("Төлбөртэй сагсыг өөрчлөх боломжгүй. Төлбөрийн төлөвөө шалгаж, борлуулалтаа дуусгана уу.");
     return true;
@@ -2497,7 +2494,6 @@ export default function PosDemoPage() {
   };
 
   const addPaymentEntry = async (method: PaymentMethod, amount: number, credit?: SaleCreditPaymentMeta, cash?: CashPaymentDetails) => {
-    if (showTerminalRecovery) return;
     if (qpayCreatingRef.current || cardPaymentRunRef.current || paymentEntries.some(item => item.status === "pending")) {
       setScanMessage("Хүлээгдэж буй төлбөрөө эхлээд баталгаажуулна уу. Дараагийн хэсгийг дараа нь төлнө.");
       return;
@@ -4144,8 +4140,6 @@ export default function PosDemoPage() {
           totals={totals}
           paymentMethod={paymentMethod}
           cardPaymentMode={registerConfig?.cardPaymentMode}
-          onTerminalRecovery={getEffectiveCardProvider(registerConfig) === "MINU_AGENT" ? () => setShowTerminalRecovery(true) : undefined}
-          terminalRecoveryDisabled={qpayCreating || saleLoading || autoFinalizing || isCardProcessing || methodSwitch.resolving}
           onChangeMethod={handlePaymentMethodChange}
           methodSwitchDisabled={methodSwitchDisabled || methodSwitch.resolving}
           methodSwitchMessage={methodSwitch.message}
@@ -4305,15 +4299,6 @@ export default function PosDemoPage() {
         <CardPaymentRecoveryDialog registerId={registerConfig.id} amount={totals.grandTotal} onVerified={attachRecoveredCard} onClose={() => setShowCardRecovery(false)} />
       )}
 
-      {showTerminalRecovery && registerConfig && (
-        <TerminalCardRecoveryDialog key={registerConfig.id} registerId={registerConfig.id}
-          onClose={() => setShowTerminalRecovery(false)}
-          onChecked={async result => {
-            const entry = paymentEntries.find(item => item.method === "CARD" && item.status === "pending" && item.attemptId === result.payment.attemptId);
-            if (entry) await checkCardPayment(entry.id);
-          }} />
-      )}
-
       {showPosSettings && (
         <PosSettingsDialog onClose={() => setShowPosSettings(false)}>
           <PosSettingsMenu
@@ -4342,10 +4327,6 @@ export default function PosDemoPage() {
               setShowCardRecovery(true);
             }}
             recoveryDisabled={!registerConfig?.isActive || !shift?.id || !shiftReady || shiftRegisterMismatch || Boolean(selectedCreditRepayment) || paymentEntries.length > 0 || !state.cart.length || totals.grandTotal <= 0 || checkoutStarting || creditRepaymentSubmitting || autoFinalizing}
-            onTerminalRecovery={getEffectiveCardProvider(registerConfig) === "MINU_AGENT" ? () => {
-              setShowPosSettings(false);
-              setShowTerminalRecovery(true);
-            } : undefined}
           />
 
       {scanMessage && (
