@@ -65,6 +65,7 @@ export function getOrgNavItems(
   }
   if (features.selfService) {
     const isCafe = features.selfServiceMode === "CAFE";
+    const baristaOnly = isCafe && !features.restaurantPos;
     const role = String(user?.role || "").toUpperCase();
     const canManageDiscountProfiles =
       user?.orgRole === "OWNER" ||
@@ -89,9 +90,9 @@ export function getOrgNavItems(
           ]
         : []),
       {
-        label: isCafe ? "Бариста дэлгэц" : "Гал тогооны дэлгэц",
+        label: baristaOnly ? "Бариста дэлгэц" : "Гал тогооны дэлгэц",
         href: "/dashboard/kitchen-display",
-        icon: isCafe ? Coffee : ChefHat,
+        icon: baristaOnly ? Coffee : ChefHat,
       },
       ...(!isCafe
         ? [

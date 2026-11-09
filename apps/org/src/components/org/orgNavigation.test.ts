@@ -115,6 +115,22 @@ test("staffed restaurant service can be enabled without removing cafe and kiosk 
     modules.find((item) => item.href === "/dashboard/restaurant-pos")?.label,
     "Ресторан касс",
   );
+  assert.equal(
+    modules.find((item) => item.href === "/dashboard/kitchen-display")?.label,
+    "Гал тогооны дэлгэц",
+  );
+  assert.equal(
+    getDashboardModules({ ...cafe, restaurantPos: true }, owner).find(
+      (item) => item.href === "/dashboard/kitchen-display",
+    )?.title,
+    "Гал тогооны дэлгэц",
+  );
+  assert.equal(
+    getOrgNavItems(cafe, owner).find(
+      (item) => item.href === "/dashboard/kitchen-display",
+    )?.label,
+    "Бариста дэлгэц",
+  );
   for (const href of [
     "/dashboard/self-service",
     "/dashboard/daily-stock",

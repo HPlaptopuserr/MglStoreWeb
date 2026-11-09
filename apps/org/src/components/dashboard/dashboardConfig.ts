@@ -57,6 +57,7 @@ export function getDashboardModules(
 ) {
   if (features.selfService) {
     const isCafe = features.selfServiceMode === "CAFE";
+    const baristaOnly = isCafe && !features.restaurantPos;
     const role = String(user?.role || "").toUpperCase();
     const canManageDiscountProfiles =
       user?.orgRole === "OWNER" ||
@@ -87,12 +88,12 @@ export function getDashboardModules(
           ]
         : []),
       {
-        title: isCafe ? "Бариста дэлгэц" : "Гал тогооны дэлгэц",
-        desc: isCafe
+        title: baristaOnly ? "Бариста дэлгэц" : "Гал тогооны дэлгэц",
+        desc: baristaOnly
           ? "Шинэ захиалгыг хүлээн авч, кофе болон уух зүйлсийн бэлтгэлийг удирдана."
           : "Шинэ захиалгыг хүлээн авч, бэлтгэлийн төлөвийг удирдана.",
         href: "/dashboard/kitchen-display",
-        icon: isCafe ? Coffee : ChefHat,
+        icon: baristaOnly ? Coffee : ChefHat,
         enabled: true,
       },
       ...(!isCafe

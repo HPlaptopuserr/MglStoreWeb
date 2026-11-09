@@ -133,7 +133,7 @@ const stationOptions: Array<{
 export function KitchenDisplayScreen() {
   const { user, features, logout } = useOrg();
   const kitchenOnly = isKitchenOnlyMember(user);
-  const isCafe = features.selfServiceMode === "CAFE";
+  const isCafe = features.selfServiceMode === "CAFE" && !features.restaurantPos;
   const [branches, setBranches] = useState<RestaurantKitchenBranch[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState("");
   const [tickets, setTickets] = useState<RestaurantKitchenTicket[]>([]);
