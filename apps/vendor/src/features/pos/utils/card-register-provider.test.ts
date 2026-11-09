@@ -43,6 +43,11 @@ test("configured own Minu and local HTTP loopback bridges keep their automatic f
   );
 });
 
+test("explicit manual mode cannot dispatch to an inherited or stale API terminal", () => {
+  assert.equal(effectiveCardProvider({ ...configured, cardFlowVersion: 2, cardPaymentMode: "MANUAL" }), null);
+  assert.equal(effectiveCardProvider({ ...configured, cardFlowVersion: 2, cardPaymentMode: "API" }), "MINU_AGENT");
+});
+
 test("old API configurations preserve legacy routing until the new contract is advertised", () => {
   const inherited = { ...configured, hasOwnCardTerminal: false };
   assert.equal(effectiveCardProvider(inherited), "MINU_AGENT");

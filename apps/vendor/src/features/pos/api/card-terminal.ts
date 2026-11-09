@@ -59,6 +59,17 @@ type ClientBridgeHealth = {
 
 export class ClientBridgeNotStartedError extends Error {}
 
+/** Transport failures never authorize a payment or switch its configured mode. */
+export function clientBridgeFailureResult(error: unknown): ClientBridgeChargeResult {
+  const notStarted = error instanceof ClientBridgeNotStartedError;
+  return {
+    status: notStarted ? "DECLINED" : "PENDING",
+    message: notStarted
+      ? "Терминалтай холбогдож чадсангүй. Төлбөр эхлээгүй. Холболтоо шалгаад дахин оролдоно уу."
+      : "Терминалын эцсийн хариу ирээгүй байна. Төлсөн бол дахин карт уншуулахгүйгээр төлөвийг шалгана уу.",
+  };
+}
+
 async function getClientBridgeHealth(bridgeUrl: string, signal?: AbortSignal): Promise<ClientBridgeHealth> {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 8_000);
@@ -106,8 +117,8 @@ export async function chargeClientBridge(payload: {
     health = await getClientBridgeHealth(bridgeUrl, payload.signal);
   } catch (error: unknown) {
     if (payload.signal?.aborted) throw error;
-    // No /charge request has been sent. The operator can record a payment
-    // already collected on the standalone terminal, without retrying a charge.
+    // No /charge request was sent. This attempt can fail without recording
+    // a manual payment or claiming that the bank approved it.
     throw new ClientBridgeNotStartedError(error instanceof Error ? error.message : "Терминал холбогдоогүй");
   }
   const provider = String(health.provider || "").toLowerCase();

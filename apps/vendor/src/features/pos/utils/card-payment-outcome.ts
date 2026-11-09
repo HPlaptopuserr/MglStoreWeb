@@ -1,5 +1,11 @@
 import type { CardAttemptStatus } from "@mgl/types";
 
+/** Only use after the provider has returned a definitive unsuccessful outcome. */
+export function cardPaymentFailureMessage(message?: string): string {
+  const detail = message?.trim().replace(/[.!?…]+$/u, "");
+  return `Картын төлбөр амжилтгүй.${detail ? ` ${detail}.` : ""} Дахин оролдох эсвэл өөр төлбөрийн хэлбэр сонгоно уу.`;
+}
+
 export function cardRequestFailureIsDefinitive(input: {
   hasAttemptId: boolean;
   authorizationAccepted: boolean;

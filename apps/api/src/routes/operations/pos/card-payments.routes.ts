@@ -14,6 +14,7 @@ import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
 import {
   createMinuAgentInvoice,
+  minuPendingPaymentMessage,
   describeMinuAgentInvoiceError,
   isMinuAgentApiError,
   type MinuAgentContext,
@@ -174,6 +175,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
   let isAndroidPgw = false;
   let inheritedCardTerminalId: string | null = null;
   let inheritedTerminalBridgeUrl: string | null = null;
+  let incompleteAutomaticCardConfig = false;
   if (registerId) {
     const regForProvider = await prisma.posRegister.findUnique({
       where: { id: registerId },
@@ -201,7 +203,9 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
       const fallback = await resolveOrganizationCardTerminalFallback({ organizationId: regForProvider.organizationId, currentRegisterId: registerId });
       if (fallback) effectiveCardConfig = { cardEnabled: true, ...fallback };
     }
-    const terminalCardEnabled = standaloneCards ? isUsableCardConfig(effectiveCardConfig) : effectiveCardConfig.cardEnabled !== false;
+    // Configured automatic tills never become manual because settings are broken.
+    incompleteAutomaticCardConfig = effectiveCardConfig.cardEnabled && !isUsableCardConfig(effectiveCardConfig);
+    const terminalCardEnabled = effectiveCardConfig.cardEnabled !== false;
     cardProviderType = terminalCardEnabled ? effectiveCardConfig.cardProviderType ?? null : null;
     inheritedCardTerminalId = terminalCardEnabled ? effectiveCardConfig.cardTerminalId ?? null : null;
     inheritedTerminalBridgeUrl = terminalCardEnabled ? effectiveCardConfig.terminalBridgeUrl ?? null : null;
@@ -246,8 +250,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
     let effectiveOrganizationId: string | null = null;
     let registerCardTerminalId: string | null = null;
     let minuAgentContext: MinuAgentContext | null = null;
-    let forceManualCard = false;
-    let manualCardReason = "terminal-not-configured";
+    const manualCardReason = "terminal-not-configured";
     if (registerId) {
       const register = await prisma.posRegister.findUnique({
         where: { id: registerId },
@@ -296,12 +299,13 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
         }
       }
 
+      if (incompleteAutomaticCardConfig) {
+        return res.status(422).json({ message: "API картын терминалын тохиргоо дутуу байна. Тохиргоогоо шалгана уу.", code: "CARD_CONFIG_INCOMPLETE" });
+      }
       if (isMinuAgent) {
         const org = register.organization;
         if (!org.minuAgentEnabled || !org.minuAgentUsername || !org.minuAgentPassword || !org.minuAgentBranchId) {
-          if (!standaloneCards) return res.status(422).json({ message: "Minu merchant тохиргоо дутуу байна. Төлбөр эхлээгүй.", code: "MINU_CONFIG_INCOMPLETE" });
-          forceManualCard = true;
-          manualCardReason = "minu-merchant-not-configured";
+          return res.status(422).json({ message: "Minu merchant тохиргоо дутуу байна. Төлбөр эхлээгүй.", code: "MINU_CONFIG_INCOMPLETE" });
         } else {
           minuAgentContext = {
             username: org.minuAgentUsername,
@@ -330,8 +334,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
           : (registerCardTerminalId || pushEcrDefaultTerminalId || "");
       const configError = pushEcrConfigError();
       if (!effectiveTerminalId || effectiveTerminalId === "terminal-1" || configError) {
-        forceManualCard = true;
-        manualCardReason = configError ? "push-ecr-config-incomplete" : "push-ecr-terminal-not-configured";
+        return res.status(422).json({ message: "Push ECR терминалын тохиргоо дутуу байна. Төлбөр эхлээгүй.", code: "CARD_CONFIG_INCOMPLETE" });
       }
     }
 
@@ -341,16 +344,14 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
           ? terminalId
           : (registerCardTerminalId || "");
       if (!effectiveTerminalId || effectiveTerminalId === "terminal-1") {
-        if (!standaloneCards) return res.status(422).json({ message: "Minu terminalId тохируулаагүй байна. Төлбөр эхлээгүй.", code: "MINU_CONFIG_INCOMPLETE" });
-        forceManualCard = true;
-        manualCardReason = "minu-terminal-not-configured";
+        return res.status(422).json({ message: "Minu terminalId тохируулаагүй байна. Төлбөр эхлээгүй.", code: "MINU_CONFIG_INCOMPLETE" });
       }
       if (terminalId !== "terminal-1" && registerCardTerminalId && terminalId !== registerCardTerminalId) {
         return res.status(422).json({ message: "Minu терминал кассын тохиргоотой зөрүүтэй байна. Төлбөр эхлээгүй." });
       }
     }
 
-    const manualCardAttempt = forceManualCard || (!usesLocalBridge && !isPushEcr && !isMinuAgent);
+    const manualCardAttempt = !usesLocalBridge && !isPushEcr && !isMinuAgent;
     if (manualCardAttempt && !standaloneCards) return res.status(422).json({ message: "Картын терминалын тохиргоо дутуу байна. Төлбөр эхлээгүй.", code: "CARD_CONFIG_INCOMPLETE" });
     if (manualCardAttempt && !registerId) return res.status(400).json({ message: "Гараар авсан картын төлбөрт касс шаардлагатай" });
     const attemptId = requestedAttemptId || randomUUID();
@@ -391,7 +392,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
             { providerPayload: { path: ["provider"], equals: "MINU_AGENT" } },
             { providerPayload: { path: ["terminalGuardVersion"], equals: 1 } },
           ] } });
-        if (active) throw toApiError(409, "Энэ терминал дээр өмнөх төлбөрийн төлөв тодорхойгүй байна. Эхлээд өмнөх төлбөрөө шалгана уу.");
+        if (active) throw toApiError(409, minuPendingPaymentMessage(active.message));
         if (checkout) {
           if (!effectiveOrganizationId || !registerId) throw toApiError(400, "Кассын мэдээлэл дутуу байна");
           await reserveCardCheckout(tx, { checkout, organizationId: effectiveOrganizationId, registerId, amount, cashierId: actor.id });
@@ -690,10 +691,15 @@ router.post(["/pos/payments/card/client-bridge-result", "/pos/payments/card/clie
     if (originalPayload?.mode !== "client-bridge" || originalPayload.provider !== "ANDROID_PGW") {
       return res.status(403).json({ message: "Энэ төлбөр локал bridge-ийн хүсэлт биш байна" });
     }
-    const manualCard = bridgeData.manualCard === true;
+    if (bridgeData.manualCard === true) {
+      return res.status(422).json({ code: "CARD_MANUAL_FALLBACK_FORBIDDEN", message: "API төлбөрийг гараар төлсөн гэж автоматаар бүртгэх боломжгүй. Терминалын төлөвийг шалгана уу." });
+    }
     const statusText = firstString(bridgeData.status, bridgeData.Status).toUpperCase();
-    const newStatus = parseBridgeResultStatus(statusText);
-    if (manualCard && newStatus !== PosPaymentStatus.APPROVED) return res.status(400).json({ message: "Гараар авсан төлбөрийн төлөв буруу байна" });
+    // Android PGW also reports FAILED for an unknown terminal response. Only
+    // explicit approval/decline is final; transport or malformed results are not.
+    const newStatus = statusText === "APPROVED" || statusText === "DECLINED"
+      ? parseBridgeResultStatus(statusText)
+      : PosPaymentStatus.PENDING;
     const transactionId = firstString(
       bridgeData.transactionId,
       bridgeData.rrn,
@@ -708,14 +714,13 @@ router.post(["/pos/payments/card/client-bridge-result", "/pos/payments/card/clie
       where: { id: attempt.id, status: PosPaymentStatus.PENDING, consumedAt: null, saleReference: null },
       data: {
         status: newStatus,
-        transactionId: manualCard ? `manual-card-${attempt.id}` : transactionId || null,
-        traceno: manualCard ? null : traceNo || null,
+        transactionId: transactionId || null,
+        traceno: traceNo || null,
         message: message || null,
-        providerPayload: manualCard ? {
-          mode: "manual-card", provider: "MANUAL_CARD", configuredProvider: "ANDROID_PGW",
-          reason: "client-bridge-not-started",
-        } : {
+        providerPayload: {
+          ...originalPayload,
           ...bridgeData,
+          provider: "ANDROID_PGW",
           mode: "client-bridge",
         } as object,
       },
@@ -936,7 +941,7 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
 
     const responseMessage =
       freshAttempt.status === PosPaymentStatus.PENDING && payload?.provider === "MINU_AGENT"
-        ? "Minu төлбөрийн төлөвийг автоматаар шалгаж байна. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү."
+        ? minuPendingPaymentMessage(freshAttempt.message)
         : freshAttempt.message;
 
     return res.json({

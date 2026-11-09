@@ -41,6 +41,7 @@ export type PosCheckoutProps = {
   lines: CartLine[];
   totals: CartTotals;
   paymentMethod: PaymentMethod;
+  cardPaymentMode?: "MANUAL" | "API";
   onChangeMethod: (m: PaymentMethod) => void;
   methodSwitchDisabled?: boolean;
   methodSwitchMessage?: string;
@@ -140,6 +141,7 @@ export function PosCheckoutView({
   lines,
   totals,
   paymentMethod,
+  cardPaymentMode,
   onChangeMethod,
   methodSwitchDisabled,
   methodSwitchMessage,
@@ -365,6 +367,13 @@ export function PosCheckoutView({
       <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* ── Left: payment selector + numpad ── */}
         <div className="flex min-h-0 w-[360px] shrink-0 flex-col gap-2 overflow-y-auto overscroll-contain border-r border-slate-300 p-3 min-[1600px]:w-[400px] min-[1600px]:p-4">
+          {cardPaymentMode && (splitPayment || paymentMethod === "CARD") && (
+            <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
+              {cardPaymentMode === "MANUAL"
+                ? "Карт · гараар: терминал дээр төлбөр амжилттай болсны дараа картын төлбөрийг бүртгэнэ."
+                : "Карт · API: терминалын баталгаажуулалтыг хүлээнэ. Холболтын алдаа гарвал гар горимд шилжихгүй."}
+            </p>
+          )}
           {splitPayment ? (
             <SplitPaymentPlanner remaining={remaining} entries={paymentEntries} disabled={Boolean(disabled)} feedback={paymentFeedback} onCheckCard={onCheckCard} onCheckQr={onMarkQPayPaid} onPay={async (method, amount, cash) => {
               onChangeMethod(method);

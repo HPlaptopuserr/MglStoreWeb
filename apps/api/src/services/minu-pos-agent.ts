@@ -221,13 +221,22 @@ export function isMinuInsufficientFunds(data: MinuAgentResponse<MinuTxnEntity>):
     !String(data.entity?.rrn ?? "").trim();
 }
 
-/** Explicit refusals observed in production checkTxn replies. Code 10 also
- * carries prompts to retry/insert the chip, so only these exact replies settle. */
+const TERMINAL_FAILURE_MESSAGES = new Set([
+  "not permitted",
+  "transaction refused",
+  "пин буруу",
+  "system error",
+  "systemerror",
+]);
+
+/** Explicit terminal errors settle the attempt and permit a deliberate retry.
+ * Code 10 also carries intermediate prompts; never classify it on its own or
+ * discard a conflicting bank reference. Preserve the provider reply for audit. */
 export function isMinuTerminalRefusal(data: MinuAgentResponse<MinuTxnEntity>): boolean {
   return String(data.status ?? "").trim() === "000" &&
     String(data.entity?.status ?? "").trim() === "10" &&
     String(data.entity?.error ?? "").trim().toLowerCase() === "true" &&
-    ["Not permitted", "Transaction refused"].includes(String(data.entity?.message ?? "").trim()) &&
+    TERMINAL_FAILURE_MESSAGES.has(String(data.entity?.message ?? "").trim().toLowerCase()) &&
     Boolean(String(data.entity?.invoice ?? "").trim()) &&
     !String(data.entity?.rrn ?? "").trim();
 }
@@ -326,4 +335,11 @@ export async function checkMinuAgentTransaction(contextInput: MinuAgentContext, 
   }, context);
 
   return parseMinuAgentTransactionResponse(data);
+}
+
+/** API-level success is not a useful cashier message for an unresolved payment. */
+export function minuPendingPaymentMessage(terminalMessage?: string | null): string {
+  const detail = terminalMessage?.trim();
+  const meaningful = detail && !/^(successful|success|ok)$/i.test(detail);
+  return `${meaningful ? `Терминалын хариу: ${detail}. ` : ""}Өмнөх картын төлбөрийн эцсийн төлөв баталгаажаагүй байна. Терминал дээрх төлбөрийг шалгана уу. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү.`;
 }

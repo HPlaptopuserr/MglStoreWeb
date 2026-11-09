@@ -2,14 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   describeMinuAgentInvoiceError,
+  minuPendingPaymentMessage,
   parseMinuAgentTransactionResponse,
   isMinuTerminalCancellation,
   isMinuInsufficientFunds,
   isMinuTerminalRefusal,
 } from "./minu-pos-agent";
 
-test("observed explicit terminal refusals settle without interpreting all code 10 replies as declines", () => {
-  for (const message of ["Not permitted", "Transaction refused"]) {
+test("explicit terminal errors settle without interpreting all code 10 replies as declines", () => {
+  for (const message of ["Not permitted", "Transaction refused", "Пин буруу", "System Error", "SystemError", " SYSTEM ERROR ", "пин буруу"]) {
     const response = { status: "000", message: "Successful", entity: {
       invoice: "MGL-original", status: "10", error: "true", message, rrn: null,
     } };
@@ -30,7 +31,7 @@ test("observed explicit terminal refusals settle without interpreting all code 1
       assert.equal(parseMinuAgentTransactionResponse(changed).declined, false);
     }
   }
-  for (const message of ["Чипээр уншуулна уу", "Transaction needs to be entered again", "Пин буруу", "Successful", "Not permitted; checking", ""]) {
+  for (const message of ["Чипээр уншуулна уу", "Transaction needs to be entered again", "Successful", "Not permitted; checking", "System Error; checking", "Пин буруу; дахин оруулна уу", ""]) {
     const result = parseMinuAgentTransactionResponse({ status: "000", entity: {
       invoice: "MGL-original", status: "10", error: "true", message, rrn: null,
     } });
@@ -238,4 +239,14 @@ test("does not approve an RRN response that contains a terminal error", () => {
   assert.equal(result.approved, false);
   assert.equal(result.declined, true);
   assert.equal(result.pending, false);
+});
+
+test("pending diagnostics show terminal errors without presenting API success as payment success", () => {
+  assert.match(minuPendingPaymentMessage("System Error"), /System Error/);
+  assert.match(minuPendingPaymentMessage("Пин буруу"), /Пин буруу/);
+  for (const message of [null, "", "Successful", "Success", "OK"]) {
+    const display = minuPendingPaymentMessage(message);
+    assert.match(display, /баталгаажаагүй/);
+    assert.doesNotMatch(display, /Successful|Success|OK/);
+  }
 });

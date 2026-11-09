@@ -123,7 +123,12 @@ export async function reconcilePendingMinuCards() {
       status: { in: [PosPaymentStatus.PENDING, PosPaymentStatus.FAILED] },
       consumedAt: null,
       saleReference: null,
-      createdAt: { gte: new Date(now - 7 * 24 * 60 * 60 * 1000) },
+      OR: [
+        { createdAt: { gte: new Date(now - 7 * 24 * 60 * 60 * 1000) } },
+        // A guarded invoice can block the terminal indefinitely; never age it
+        // out of reconciliation while authorization still considers it active.
+        { providerPayload: { path: ["terminalGuardVersion"], equals: 1 } },
+      ],
       updatedAt: { lt: new Date(now - 15_000) },
       providerPayload: { path: ["provider"], equals: "MINU_AGENT" },
     },
@@ -135,8 +140,11 @@ export async function reconcilePendingMinuCards() {
     try {
       await reconcileMinuCardAttempt(attempt);
     } catch {
+      // Avoid logging provider credentials or raw responses. The invoice can be
+      // located by attempt ID, and a newer successful poll must win this race.
+      console.warn("[pos card] Minu reconciliation failed", { attemptId: attempt.id });
       await prisma.cardPaymentAttempt.updateMany({
-        where: { id: attempt.id, status: { in: [PosPaymentStatus.PENDING, PosPaymentStatus.FAILED] }, consumedAt: null },
+        where: { id: attempt.id, updatedAt: attempt.updatedAt, status: { in: [PosPaymentStatus.PENDING, PosPaymentStatus.FAILED] }, consumedAt: null, saleReference: null },
         data: { updatedAt: new Date() },
       });
     }

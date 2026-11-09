@@ -285,6 +285,7 @@ router.get("/pos/register-config", async (req, res) => {
     return res.json({
       ...safeRegister,
       cardFlowVersion: 2,
+      cardPaymentMode: register.cardEnabled ? "API" : "MANUAL",
       cardEnabled: register.cardEnabled || effectiveCardTerminal.cardEnabled,
       cardProviderType: register.cardProviderType ?? effectiveCardTerminal.cardProviderType,
       cardTerminalId: register.cardTerminalId ?? effectiveCardTerminal.cardTerminalId,
@@ -542,6 +543,7 @@ router.get("/pos/registers/mine", async (req, res) => {
         });
         return {
           ...register,
+          cardPaymentMode: register.cardEnabled ? "API" : "MANUAL",
           cardEnabled: register.cardEnabled || effectiveCardTerminal.cardEnabled,
           cardProviderType: register.cardProviderType ?? effectiveCardTerminal.cardProviderType,
           cardTerminalId: register.cardTerminalId ?? effectiveCardTerminal.cardTerminalId,

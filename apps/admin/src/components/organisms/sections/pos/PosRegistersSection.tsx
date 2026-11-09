@@ -284,9 +284,8 @@ export function PosRegistersSection({
   const set = <K extends keyof FormState>(key: K, val: FormState[K]) =>
     setForm((prev) => ({ ...prev, [key]: val }));
 
-  const toggleCardEnabled = () => {
+  const changeCardEnabled = (nextEnabled: boolean) => {
     setForm((prev) => {
-      const nextEnabled = !prev.cardEnabled;
       if (nextEnabled) return { ...prev, cardEnabled: true };
       return {
         ...prev,
@@ -696,14 +695,14 @@ export function PosRegistersSection({
                         <div className="mt-1.5 flex flex-wrap gap-2">
                           {r.cardEnabled ? (
                             <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                              <CreditCard size={11} /> Card
+                              <CreditCard size={11} /> Карт · API
                               {r.cardProviderType
                                 ? ` · ${r.cardProviderType}`
                                 : ""}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-400">
-                              <CreditCard size={11} /> Card идэвхгүй
+                              <CreditCard size={11} /> {r.mode === "RETAIL" ? "Карт · гараар" : "Card идэвхгүй"}
                             </span>
                           )}
                           {r.qpayEnabled ? (
@@ -958,19 +957,40 @@ export function PosRegistersSection({
 
               {/* card section */}
               <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 flex flex-col gap-3">
-                <label className="flex items-center gap-3 cursor-pointer select-none">
-                  <div
-                    onClick={toggleCardEnabled}
+                {form.mode === "RETAIL" ? (
+                  <fieldset className="space-y-2">
+                    <legend className="text-sm font-semibold text-slate-700">Картын төлбөрийн горим</legend>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input type="radio" name="card-payment-mode" checked={!form.cardEnabled} onChange={() => changeCardEnabled(false)} />
+                      Гараар — терминал дээр авсан төлбөрийг бүртгэх
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-slate-700">
+                      <input type="radio" name="card-payment-mode" checked={form.cardEnabled} onChange={() => changeCardEnabled(true)} />
+                      API — терминалтай холбогдож баталгаажуулах
+                    </label>
+                    <p className="text-xs leading-5 text-slate-500">
+                      {form.cardEnabled
+                        ? "Терминал баталгаажуулсны дараа борлуулалт дуусна. Холболтын алдаа гарвал гар горимд автоматаар шилжихгүй."
+                        : "Терминал дээр төлбөр авсны дараа кассчин «Карт» дарж бүртгэнэ. Касс терминал руу төлбөрийн хүсэлт илгээхгүй."}
+                    </p>
+                  </fieldset>
+                ) : <div className="flex items-center gap-3 select-none">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={form.cardEnabled}
+                    aria-label="Картын терминалын API холболт"
+                    onClick={() => changeCardEnabled(!form.cardEnabled)}
                     className={`relative h-5 w-9 rounded-full transition-colors ${form.cardEnabled ? "bg-emerald-500" : "bg-slate-300"}`}
                   >
                     <span
                       className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${form.cardEnabled ? "translate-x-4" : "translate-x-0.5"}`}
                     />
-                  </div>
+                  </button>
                   <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                    <CreditCard size={14} /> Картын терминал идэвхжүүлэх
+                    <CreditCard size={14} /> Картын терминалын API холболт
                   </span>
-                </label>
+                </div>}
                 {form.cardEnabled && (
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Провайдер">

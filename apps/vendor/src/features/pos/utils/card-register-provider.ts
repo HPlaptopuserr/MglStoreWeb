@@ -3,6 +3,7 @@ import type { RegisterConfig } from "@mgl/types";
 type CardConfig = Pick<
   RegisterConfig,
   | "cardEnabled"
+  | "cardPaymentMode"
   | "hasOwnCardTerminal"
   | "cardProviderType"
   | "cardTerminalId"
@@ -28,7 +29,7 @@ export function effectiveCardProvider(
 export function configuredCardProvider(
   register?: CardConfig | null,
 ): string | null {
-  if (!register?.cardEnabled || register.hasOwnCardTerminal === false)
+  if (!register?.cardEnabled || register.cardPaymentMode === "MANUAL" || register.hasOwnCardTerminal === false)
     return null;
   const provider = register.cardProviderType;
   if (provider === "MINU_AGENT" || provider === "PUSH_ECR")

@@ -9,7 +9,7 @@ import recoveryRoutes from "./card-recovery.routes";
 import cardRoutes from "./card-payments.routes";
 import salesRoutes from "./sales.routes";
 import registerRoutes from "./registers.routes";
-import { JWT_SECRET } from "./_shared";
+import { JWT_SECRET, pushEcrApiKey, pushEcrClientId } from "./_shared";
 import { cardRecoveryDayRange } from "../../../services/card-payment-recovery";
 import { reconcileMinuCardAttempt, reconcilePendingMinuCards } from "../../../services/minu-card-reconciliation";
 
@@ -701,14 +701,15 @@ test(
         const f = await fixture();
         const response = await fetch(`${base}/pos/register-config?registerId=${f.register.id}`, { headers });
         assert.equal(response.status, 200, await response.clone().text());
-        const config = await response.json() as { cardFlowVersion: number; cardProviderType: string; cardTerminalId: string; hasOwnCardTerminal: boolean };
+        const config = await response.json() as { cardFlowVersion: number; cardPaymentMode: string; cardProviderType: string; cardTerminalId: string; hasOwnCardTerminal: boolean };
         assert.equal(config.cardFlowVersion, 2);
+        assert.equal(config.cardPaymentMode, "API");
         assert.equal(config.cardProviderType, "MINU_AGENT");
         assert.equal(config.cardTerminalId, f.body.terminalId);
         assert.equal(config.hasOwnCardTerminal, true);
       });
 
-      await t.test("old tabs retain their integration contract while v2 enables manual cards", async () => {
+      await t.test("missing merchant settings never switch either API version to manual cards", async () => {
         const f = await fixture();
         const before = providerCalls.length;
         await prisma.organization.update({ where: { id: organization.id }, data: { minuAgentEnabled: false } });
@@ -716,8 +717,10 @@ test(
           assert.equal((await f.legacyAuthorize()).status, 422);
           assert.equal(await prisma.cardPaymentAttempt.count({ where: { id: f.body.attemptId } }), 0);
           const modern = await f.authorize();
-          assert.equal(modern.status, 201);
-          assert.equal((await modern.json() as { status: string }).status, "APPROVED");
+          assert.equal(modern.status, 422);
+          assert.equal((await modern.json() as { code: string }).code, "MINU_CONFIG_INCOMPLETE");
+          assert.equal(await prisma.cardPaymentAttempt.count({ where: { id: f.body.attemptId } }), 0);
+          assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
           assert.equal(providerCalls.length, before);
         } finally { await prisma.organization.update({ where: { id: organization.id }, data: { minuAgentEnabled: true } }); }
       });
@@ -756,27 +759,42 @@ test(
         assert.equal(sale.status, 201, await sale.text());
       });
 
-      await t.test("missing Minu merchant settings record a standalone manual payment without contacting the provider", async () => {
-        const f = await fixture();
-        const before = invoiceCalls;
-        await prisma.organization.update({ where: { id: organization.id }, data: { minuAgentEnabled: false } });
-        try {
+      await t.test("incomplete automatic register settings reject payment without contacting a provider", async () => {
+        const before = providerCalls.length;
+        for (const config of [
+          { cardProviderType: "MINU_AGENT", cardTerminalId: null, terminalBridgeUrl: null },
+          { cardProviderType: "ANDROID_PGW", cardTerminalId: null, terminalBridgeUrl: null },
+          { cardProviderType: "PUSH_ECR", cardTerminalId: null, terminalBridgeUrl: null },
+          { cardProviderType: null, cardTerminalId: null, terminalBridgeUrl: null },
+          { cardProviderType: "UNKNOWN", cardTerminalId: null, terminalBridgeUrl: null },
+        ]) {
+          const f = await fixture();
+          await prisma.posRegister.update({ where: { id: f.register.id }, data: config });
           const result = await f.authorize();
-          assert.equal(result.status, 201, await result.text());
-          const saved = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
-          assert.equal(saved.status, "APPROVED");
-          assert.equal((saved.providerPayload as Record<string, unknown>).mode, "manual-card");
-          assert.equal(saved.traceno, null);
+          assert.equal(result.status, 422, await result.clone().text());
+          assert.equal((await result.json() as { code: string }).code, "CARD_CONFIG_INCOMPLETE");
+          assert.equal(await prisma.cardPaymentAttempt.count({ where: { id: f.body.attemptId } }), 0);
           assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
-          assert.equal(invoiceCalls, before);
-        } finally {
-          await prisma.organization.update({ where: { id: organization.id }, data: { minuAgentEnabled: true } });
         }
+        assert.equal(providerCalls.length, before);
+      });
+
+      await t.test("missing Push ECR credentials cannot approve an API payment as manual", async () => {
+        assert.equal(pushEcrApiKey, "", "integration tests require empty PUSH_ECR_API_KEY");
+        assert.equal(pushEcrClientId, "", "integration tests require empty PUSH_ECR_CLIENT_ID");
+        const f = await fixture();
+        await prisma.posRegister.update({ where: { id: f.register.id }, data: { cardProviderType: "PUSH_ECR" } });
+        const result = await f.authorize();
+        assert.equal(result.status, 422);
+        assert.equal((await result.json() as { code: string }).code, "CARD_CONFIG_INCOMPLETE");
+        assert.equal(await prisma.cardPaymentAttempt.count({ where: { id: f.body.attemptId } }), 0);
       });
 
       await t.test("an unconfigured till records manual cards, completes the sale once and never inherits another terminal", async () => {
         const f = await fixture();
         await prisma.posRegister.update({ where: { id: f.register.id }, data: { cardEnabled: false, cardProviderType: null, cardTerminalId: null } });
+        const config = await fetch(`${base}/pos/register-config?registerId=${f.register.id}`, { headers });
+        assert.equal((await config.json() as { cardPaymentMode: string }).cardPaymentMode, "MANUAL");
         const before = providerCalls.length;
         const response = await f.authorize();
         assert.equal(response.status, 201, await response.text());
@@ -796,24 +814,70 @@ test(
         assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 0);
       });
 
-      await t.test("a disconnected local bridge can record a standalone payment without bank proof", async () => {
+      await t.test("a disconnected API terminal cannot be approved by manual fallback, including old tabs", async () => {
         const f = await fixture();
         await prisma.posRegister.update({ where: { id: f.register.id }, data: { cardProviderType: "ANDROID_PGW", terminalBridgeUrl: "http://127.0.0.1:8787" } });
         const before = providerCalls.length;
         const response = await f.authorize({ ...f.body, clientBridge: true });
         assert.equal(response.status, 201, await response.text());
-        const record = () => fetch(`${base}/pos/payments/card/client-bridge-result`, { method: "POST", headers,
-          body: JSON.stringify({ attemptId: f.body.attemptId, result: { status: "APPROVED", manualCard: true, message: "Гараар авсан картын төлбөр бүртгэгдлээ" } }) });
-        const approved = await record();
-        assert.equal(approved.status, 200);
-        assert.equal((await approved.json() as { status: string }).status, "APPROVED");
-        assert.equal((await record()).status, 200);
+        for (const endpoint of ["client-bridge-result", "client-bridge-result-v2"]) {
+          const result = await fetch(`${base}/pos/payments/card/${endpoint}`, { method: "POST", headers,
+            body: JSON.stringify({ attemptId: f.body.attemptId, result: { status: "APPROVED", manualCard: true, message: "Гараар авсан картын төлбөр бүртгэгдлээ" } }) });
+          assert.equal(result.status, 422);
+          assert.equal((await result.json() as { code: string }).code, "CARD_MANUAL_FALLBACK_FORBIDDEN");
+        }
         const saved = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
-        assert.equal((saved.providerPayload as Record<string, unknown>).mode, "manual-card");
+        assert.equal(saved.status, "PENDING");
+        assert.equal((saved.providerPayload as Record<string, unknown>).mode, "client-bridge");
+        assert.equal(saved.transactionId, null);
         assert.equal(saved.traceno, null);
         assert.equal(providerCalls.length, before);
         const sold = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(f.sale) });
-        assert.equal(sold.status, 201, await sold.text());
+        assert.equal(sold.status, 409, await sold.text());
+        assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 1);
+      });
+
+      await t.test("a bridge preflight failure stays declined and cannot complete a sale", async () => {
+        const f = await fixture();
+        await prisma.posRegister.update({ where: { id: f.register.id }, data: { cardProviderType: "ANDROID_PGW", terminalBridgeUrl: "http://127.0.0.1:8787" } });
+        assert.equal((await f.authorize({ ...f.body, clientBridge: true })).status, 201);
+        const result = await fetch(`${base}/pos/payments/card/client-bridge-result-v2`, { method: "POST", headers,
+          body: JSON.stringify({ attemptId: f.body.attemptId, result: { status: "DECLINED", message: "Төлбөр эхлээгүй" } }) });
+        assert.equal((await result.json() as { status: string }).status, "DECLINED");
+        const sold = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(f.sale) });
+        assert.equal(sold.status, 409, await sold.text());
+        assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 1);
+      });
+
+      await t.test("a lost bridge response remains pending until the terminal result arrives", async () => {
+        const f = await fixture();
+        await prisma.posRegister.update({ where: { id: f.register.id }, data: { cardProviderType: "ANDROID_PGW", terminalBridgeUrl: "http://127.0.0.1:8787" } });
+        const request = { ...f.body, checkout: undefined, clientBridge: true };
+        assert.equal((await f.authorize(request)).status, 201);
+        const record = (result: Record<string, unknown>) => fetch(`${base}/pos/payments/card/client-bridge-result-v2`, { method: "POST", headers,
+          body: JSON.stringify({ attemptId: f.body.attemptId, result }) });
+        const pending = await record({ status: "PENDING", message: "Хариу ирээгүй" });
+        assert.equal((await pending.json() as { status: string }).status, "PENDING");
+        for (const unknown of [{ status: "FAILED", message: "Unknown terminal response" }, {}, { status: "000", message: "Successful" }]) {
+          const result = await record(unknown);
+          assert.equal((await result.json() as { status: string }).status, "PENDING");
+        }
+        assert.equal((await f.status().then(r => r.json()) as { status: string }).status, "PENDING");
+        assert.equal((await f.authorize(request)).status, 200);
+        const send = () => fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(f.sale) });
+        assert.equal((await send()).status, 409);
+        assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 1);
+        const approved = await record({ status: "APPROVED", rrn: "bridge-bank-proof" });
+        assert.equal((await approved.json() as { status: string }).status, "APPROVED");
+        const saved = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+        assert.equal(saved.transactionId, "bridge-bank-proof");
+        assert.equal((saved.providerPayload as Record<string, unknown>).provider, "ANDROID_PGW");
+        assert.equal((saved.providerPayload as Record<string, unknown>).mode, "client-bridge");
+        assert.equal((await send()).status, 201);
+        assert.equal((await send()).status, 200);
+        const lateFailure = await record({ status: "PENDING", message: "Late timeout" });
+        assert.equal((await lateFailure.json() as { status: string }).status, "APPROVED");
+        assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 0);
       });
 
       await t.test("an accepted Minu payment cannot become manual after a timeout or configuration change", async () => {
@@ -990,11 +1054,12 @@ test(
         paid = true;
       });
 
-      for (const message of ["Not permitted", "Transaction refused"]) {
+      for (const message of ["Not permitted", "Transaction refused", "Пин буруу", "System Error", "SystemError"]) {
         await t.test(`${message} releases the pending payment without clearing its basket or issuing another invoice`, async () => {
           const f = await fixture();
           paid = false;
           assert.equal((await f.authorize()).status, 201);
+          await f.status();
           const original = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
           assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
           const before = invoiceCalls;
@@ -1012,11 +1077,19 @@ test(
             assert.equal(stored.consumedAt, null);
             assert.equal(stored.saleReference, null);
             assert.equal(stored.transactionId, null);
+            assert.equal((stored.providerPayload as Record<string, unknown>).terminalGuardVersion, 1,
+              "the status, rather than deleting audit evidence, removes the terminal guard");
             assert.deepEqual((stored.providerPayload as Record<string, unknown>).checkout, (original.providerPayload as Record<string, unknown>).checkout);
             assert.equal(invoiceCalls, before);
             assert.ok(providerCalls.slice(callOffset).every(path => ["/agent/login", "/agent/checkTxn"].includes(path)));
           } finally { terminalRefusal = undefined; }
-          assert.equal((await f.authorize({ ...f.body, attemptId: crypto.randomUUID() })).status, 201);
+          const repeated = await f.authorize();
+          assert.equal((await repeated.json() as { status: string }).status, "DECLINED");
+          assert.equal(invoiceCalls, before, "retrying the failed request ID must never send another invoice");
+          const retryId = crypto.randomUUID();
+          assert.equal((await f.authorize({ ...f.body, attemptId: retryId })).status, 201);
+          await fetch(`${base}/pos/payments/card/status/${retryId}`, { headers });
+          assert.equal(invoiceCalls, before + 1, "only a deliberate new attempt dispatches a new invoice");
           paid = true;
         });
       }

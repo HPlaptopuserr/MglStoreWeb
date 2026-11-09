@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cardRequestFailureIsDefinitive } from "./card-payment-outcome";
+import { cardPaymentOutcome, cardRequestFailureIsDefinitive } from "./card-payment-outcome";
+
+test("terminal decline ends the wait while a lost or unknown response never confirms a payment", () => {
+  for (const message of ["Пин буруу", "System Error", "SystemError"]) {
+    assert.equal(cardPaymentOutcome("DECLINED", message), "failed");
+    assert.equal(cardPaymentOutcome("PENDING", message), "pending");
+  }
+  assert.equal(cardPaymentOutcome("FAILED", "network timeout"), "pending");
+  assert.equal(cardPaymentOutcome("APPROVED"), "confirmed");
+});
 
 test("status endpoint errors never discard an already-authorized card reference", () => {
   for (const httpStatus of [0, 400, 401, 403, 404, 408, 409, 422, 429, 500, 502]) {

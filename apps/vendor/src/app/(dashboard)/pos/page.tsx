@@ -1,8 +1,8 @@
 "use client";
-import { cardPaymentOutcome, cardRequestFailureIsDefinitive } from "@/features/pos/utils/card-payment-outcome";
+import { cardPaymentFailureMessage, cardPaymentOutcome, cardRequestFailureIsDefinitive } from "@/features/pos/utils/card-payment-outcome";
 import { effectiveCardProvider } from "@/features/pos/utils/card-register-provider";
 import { paymentRequestId } from "@/features/pos/utils/payment-request-id";
-import { ClientBridgeNotStartedError } from "@/features/pos/api/card-terminal";
+import { clientBridgeFailureResult } from "@/features/pos/api/card-terminal";
 import type { PaymentFeedback } from "@/features/pos/types/payment-status.types";
 import type { VerifiedCardRecovery } from "@mgl/types";
 import type { CustomerDisplayPayload, CustomerDisplaySuccessDetails } from "@/features/pos/types/customer-display.types";
@@ -490,6 +490,9 @@ const validateCardRegisterConfig = (register: RegisterConfig | null) => {
   }
 
   const provider = getEffectiveCardProvider(register);
+  if (register.cardPaymentMode === "API" && !provider) {
+    throw new Error("API картын терминалын тохиргоо дутуу байна. Кассын тохиргоогоо шалгана уу.");
+  }
   if (!provider) {
     return null;
   }
@@ -2631,13 +2634,11 @@ export default function PosDemoPage() {
             });
           } catch (bridgeError: unknown) {
             if (isCardRunCancelled()) return;
-            const manualCard = cardFlowVersion === 2 && bridgeError instanceof ClientBridgeNotStartedError;
-            const message = manualCard ? "Гараар авсан картын төлбөр бүртгэгдлээ"
-              : bridgeError instanceof Error ? bridgeError.message : "Картын терминалын холболтын алдаа гарлаа";
+            const failure = clientBridgeFailureResult(bridgeError);
             approvedAttempt = await submitClientBridgeResult({
               cardFlowVersion,
               attemptId: attempt.attemptId,
-              result: { status: manualCard ? "APPROVED" : "FAILED", message, ...(manualCard ? { manualCard: true } : {}) },
+              result: failure,
             }).catch(() => ({
               ...attempt,
               status: "FAILED" as const,
@@ -2662,16 +2663,14 @@ export default function PosDemoPage() {
         if (approvedAttempt.status !== "APPROVED") {
           clearProgressTicker();
           const uncertain = cardPaymentOutcome(approvedAttempt.status, approvedAttempt.message) === "pending";
+          const message = uncertain
+            ? approvedAttempt.message || "Төлбөрийн төлөвийг автоматаар шалгаж байна. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү."
+            : cardPaymentFailureMessage(approvedAttempt.message);
           if (!uncertain) setPaymentEntries((prev) => prev.filter((item) => item.id !== pendingId));
-          setPaymentFeedback(previous => ({ ...previous, CARD: { kind: uncertain ? "unknown" : "failed", message: uncertain ? "Банкны төлөвийг автоматаар шалгаж байна. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү." : approvedAttempt.message || "Картын төлбөр амжилтгүй боллоо." } }));
+          setPaymentFeedback(previous => ({ ...previous, CARD: { kind: uncertain ? "unknown" : "failed", message } }));
           setAutoCheckoutActive(false);
           setScanStatus("not-found");
-          setScanMessage(
-            approvedAttempt.message ||
-              (approvedAttempt.status === "PENDING"
-                ? "Төлбөрийн төлөвийг автоматаар шалгаж байна. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү."
-                : "Картын төлбөр цуцлагдлаа"),
-          );
+          setScanMessage(message);
           return;
         }
 
@@ -2855,7 +2854,7 @@ export default function PosDemoPage() {
         setScanStatus("success");
         setScanMessage(entry.amount === remaining ? "Картын төлбөр баталгаажлаа. Борлуулалтыг бүртгэж байна…" : "Картын хэсэгчилсэн төлбөр баталгаажлаа. Үлдэгдлээ төлнө үү.");
       } else if (outcome === "failed") {
-        const message = attempt.message || "Картын төлбөр амжилтгүй.";
+        const message = cardPaymentFailureMessage(attempt.message);
         setPaymentEntries(previous => previous.filter(item => item.id !== id));
         setPaymentFeedback(previous => ({ ...previous, CARD: { kind: "failed", message } }));
         setAutoCheckoutActive(false);
@@ -2878,8 +2877,8 @@ export default function PosDemoPage() {
   const removePaymentEntry = async (id: string) => {
     const target = paymentEntries.find(item => item.id === id);
     if (!target || paymentRemovalRef.current.has(id)) return;
-    if (getEffectiveCardProvider(registerConfig) === "MINU_AGENT" && target.method === "CARD" && target.status === "pending" && target.attemptId) {
-      setScanMessage("Minu төлбөрийг шалгаж байгаа тул устгах боломжгүй. Төлөв батлагдахад борлуулалт автоматаар үргэлжилнэ.");
+    if (target.method === "CARD" && target.status === "pending" && target.attemptId) {
+      setScanMessage("Картын төлбөрийн эцсийн төлөв тодорхойгүй тул устгах боломжгүй. Терминалын төлөвийг шалгана уу.");
       return;
     }
     if ((target.method === "QR" || target.method === "CARD") && target.status === "confirmed") {
@@ -3703,8 +3702,10 @@ export default function PosDemoPage() {
                   <p className="text-xs text-slate-500">{reg.branch?.name}</p>
                 </div>
                 <div className="flex gap-1 flex-wrap justify-end">
-                  {reg.cardEnabled && (
-                    <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">Карт</span>
+                  {(reg.cardEnabled || reg.cardPaymentMode) && (
+                    <span className="text-[10px] font-semibold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-full">
+                      {reg.cardPaymentMode === "MANUAL" ? "Карт · гараар" : "Карт · API"}
+                    </span>
                   )}
                   {reg.qpayEnabled && (
                     <span className="text-[10px] font-semibold bg-sky-50 text-sky-700 px-2 py-0.5 rounded-full">QR төлбөр</span>
@@ -4138,6 +4139,7 @@ export default function PosDemoPage() {
           lines={state.cart}
           totals={totals}
           paymentMethod={paymentMethod}
+          cardPaymentMode={registerConfig?.cardPaymentMode}
           onChangeMethod={handlePaymentMethodChange}
           methodSwitchDisabled={methodSwitchDisabled || methodSwitch.resolving}
           methodSwitchMessage={methodSwitch.message}

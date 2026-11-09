@@ -113,6 +113,8 @@ export interface RegisterConfig {
   cardEnabled: boolean;
   hasOwnCardTerminal?: boolean;
   cardFlowVersion?: 2;
+  /** The register's own selection; inherited terminal metadata does not change it. */
+  cardPaymentMode?: "MANUAL" | "API";
   cardProviderType: string | null;
   cardTerminalId: string | null;
   terminalBridgeUrl: string | null;
