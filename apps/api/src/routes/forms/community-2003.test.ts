@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseCommunityResponse } from "./community-2003";
+import {
+  parseCommunityResponse,
+  toPublicCommunityMember,
+} from "./community-2003";
 
 const valid = {
   name: " Бат ",
@@ -39,5 +42,58 @@ test("rejects malformed, oversized, and unconsented submissions", () => {
     { ...valid, profession: " " },
   ]) {
     assert.equal(parseCommunityResponse(input), null);
+  }
+});
+
+test("keeps legacy and non-public registrations out of the directory", () => {
+  assert.equal(toPublicCommunityMember("old", valid), null);
+  assert.equal(
+    toPublicCommunityMember("private", { ...valid, publishConsent: "" }),
+    null,
+  );
+  assert.equal(
+    parseCommunityResponse({ ...valid, publishConsent: "no" }),
+    null,
+  );
+  assert.equal(
+    toPublicCommunityMember("invalid", {
+      ...valid,
+      publishConsent: "yes",
+      phone: "invalid",
+    }),
+    null,
+  );
+});
+
+test("publishes only profile fields and maps each activity category", () => {
+  for (const [business, activity] of [
+    ["no", "employed"],
+    ["yes", "business"],
+    ["planning", "planning"],
+  ]) {
+    const member = toPublicCommunityMember("member-id", {
+      ...valid,
+      business,
+      industry: "IT",
+      businessName: "Example",
+      city: "Улаанбаатар",
+      notes: "Танилцуулга",
+      publishConsent: "yes",
+      secret: "private",
+    });
+    assert.ok(member);
+    assert.deepEqual(member, {
+      id: "member-id",
+      activity,
+      name: "Бат",
+      city: "Улаанбаатар",
+      profession: "Инженер",
+      role: "Инженер",
+      organization: business === "yes" ? "Example" : "",
+      sector: business === "yes" ? "IT" : "Инженер",
+      bio: "Танилцуулга",
+      offers: [],
+      needs: [],
+    });
   }
 });

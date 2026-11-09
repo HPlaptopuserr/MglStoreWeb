@@ -11,6 +11,7 @@ import { RegistrationField } from "./RegistrationField";
 export function RegistrationForm() {
   const [business, setBusiness] = useState("");
   const [pending, setPending] = useState(false);
+  const [published, setPublished] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
 
@@ -35,6 +36,7 @@ export function RegistrationForm() {
               ? "Түр хүлээгээд дахин оролдоно уу."
               : "Илгээхэд алдаа гарлаа. Мэдээллээ шалгаад дахин оролдоно уу.",
         );
+      setPublished(data.publishConsent === "yes");
       setSubmitted(true);
     } catch (cause) {
       setError(
@@ -59,7 +61,9 @@ export function RegistrationForm() {
         <p className="mt-3 leading-7 text-slate-500">
           Мэдээллээ хуваалцсанд баярлалаа.
           <br />
-          Таны хариултыг хүлээн авлаа.
+          {published
+            ? "Таны танилцуулга хүрээллийн нүүр хуудсанд нийтлэгдлээ."
+            : "Таны хариултыг хүлээн авлаа. Нийтлэх зөвшөөрөл өгөөгүй тул нүүр хуудсанд харагдахгүй."}
         </p>
         <Link
           href="/2003"
@@ -103,6 +107,11 @@ export function RegistrationForm() {
             label="Мэргэжил"
             placeholder="Жишээ: Инженер"
             required
+          />
+          <RegistrationField
+            name="city"
+            label="Хот, байршил"
+            placeholder="Жишээ: Улаанбаатар"
           />
           <RegistrationField
             name="phone"
@@ -172,6 +181,17 @@ export function RegistrationForm() {
           Миний өгсөн мэдээллийг энэхүү бүртгэл болон надтай холбоо барих
           зорилгоор ашиглахыг зөвшөөрч байна.
         </label>
+        <label className={styles.consent}>
+          <input
+            type="checkbox"
+            name="publishConsent"
+            value="yes"
+            className="mt-1 size-4 shrink-0 accent-orange-600"
+          />
+          Миний нэр, мэргэжил, байршил, бизнес болон нэмэлт мэдээллийг 2003
+          хүрээллийн нүүр хуудсанд нийтэд харуулахыг зөвшөөрч байна. Утасны
+          дугаар нийтэд харагдахгүй.
+        </label>
         {error && (
           <p
             role="alert"
@@ -194,7 +214,7 @@ export function RegistrationForm() {
         </button>
         <p className="flex items-center justify-center gap-2 text-xs text-slate-500">
           <ShieldCheck size={16} />
-          Таны хариулт нийтэд харагдахгүй.
+          Зөвхөн нийтлэх зөвшөөрөлтэй танилцуулга нүүр хуудсанд харагдана.
         </p>
       </fieldset>
     </form>

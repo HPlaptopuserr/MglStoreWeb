@@ -11,7 +11,7 @@ import { DirectoryResults } from "./_components/DirectoryResults";
 import { MemberDialog } from "./_components/MemberDialog";
 import styles from "./community.module.css";
 export function Directory({ demo = true }: { demo?: boolean }) {
-  const { data, ready, error, reset } = useDemoDirectory(demo);
+  const { data, ready, error, reset, retry } = useDemoDirectory(demo);
   const { filters, setFilters } = useCommunityFilters();
   const { tab, query, city, sector } = filters;
   const [selected, setSelected] = useState<Member | null>(null);
@@ -49,16 +49,19 @@ export function Directory({ demo = true }: { demo?: boolean }) {
         {error && (
           <p role="alert" className={styles.notice}>
             {error}
+            {!demo && <button onClick={retry}>Дахин оролдох</button>}
           </p>
         )}
-        <DirectoryResults
-          members={members}
-          total={data.members.length}
-          ready={ready}
-          demo={demo}
-          onClear={clear}
-          onOpen={setSelected}
-        />
+        {(!error || demo) && (
+          <DirectoryResults
+            members={members}
+            total={data.members.length}
+            ready={ready}
+            demo={demo}
+            onClear={clear}
+            onOpen={setSelected}
+          />
+        )}
         <section className={styles.joinCallout}>
           <div>
             <h2>Таны туршлага хэн нэгэнд хэрэгтэй.</h2>
@@ -89,7 +92,11 @@ export function Directory({ demo = true }: { demo?: boolean }) {
         </footer>
       </div>
       {selected && (
-        <MemberDialog member={selected} onClose={() => setSelected(null)} />
+        <MemberDialog
+          demo={demo}
+          member={selected}
+          onClose={() => setSelected(null)}
+        />
       )}
     </div>
   );

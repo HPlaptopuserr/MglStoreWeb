@@ -6,8 +6,10 @@ import styles from "../community.module.css";
 export function MemberDialog({
   member,
   onClose,
+  demo = true,
 }: {
   member: Member;
+  demo?: boolean;
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -41,7 +43,9 @@ export function MemberDialog({
         >
           <X />
         </button>
-        <p className={styles.eyebrow}>ТУРШИЛТЫН ТАНИЛЦУУЛГА</p>
+        <p className={styles.eyebrow}>
+          {demo ? "ТУРШИЛТЫН ТАНИЛЦУУЛГА" : "ГИШҮҮНИЙ ТАНИЛЦУУЛГА"}
+        </p>
         <h2 id="member-title">{member.name}</h2>
         <p>
           {member.city} · {member.sector}
@@ -82,9 +86,9 @@ export function MemberDialog({
           {!member.needs.length && <p>Одоогоор хүсэлт оруулаагүй.</p>}
         </section>
         <div className={styles.notice}>
-          Энэ бол зохиомол хүний жишээ. Бодит холбоо барих мэдээлэл байхгүй.
-          Үндсэн хувилбарт зөвшөөрсөн холбоо барих сувгийг зөвхөн баталгаажсан
-          гишүүдэд харуулна.
+          {demo
+            ? "Энэ бол зохиомол хүний жишээ. Бодит холбоо барих мэдээлэл байхгүй."
+            : "Гишүүний зөвшөөрөлтэй танилцуулга. Утасны дугаар нийтэд харагдахгүй."}
         </div>
       </div>
     </dialog>

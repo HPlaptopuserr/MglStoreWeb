@@ -1,6 +1,12 @@
 export const communityFields = [
   { id: "name", label: "Овог, нэр", required: true },
   { id: "profession", label: "Мэргэжил", required: true },
+  { id: "city", label: "Хот, байршил", required: false },
+  {
+    id: "publishConsent",
+    label: "Танилцуулга нийтлэх зөвшөөрөл",
+    required: false,
+  },
   { id: "phone", label: "Утасны дугаар", required: true },
   { id: "business", label: "Бизнес эрхэлдэг эсэх", required: true },
   { id: "businessName", label: "Бизнес / байгууллагын нэр", required: false },
@@ -24,6 +30,7 @@ export function parseCommunityResponse(
     if (field.required && !data[field.id]) return null;
   }
   if (!/^[0-9]{8}$/.test(data.phone) || data.consent !== "yes") return null;
+  if (data.publishConsent && data.publishConsent !== "yes") return null;
   if (!["yes", "no", "planning"].includes(data.business)) return null;
   if (data.business === "yes" && !data.industry) return null;
   if (data.business !== "yes") {
@@ -31,4 +38,29 @@ export function parseCommunityResponse(
     data.industry = "";
   }
   return data;
+}
+
+// Only expose the explicitly consented profile fields, never the raw response.
+export function toPublicCommunityMember(id: string, input: unknown) {
+  const data = parseCommunityResponse(input);
+  if (!data || data.publishConsent !== "yes") return null;
+  const activity: "business" | "planning" | "employed" =
+    data.business === "yes"
+      ? "business"
+      : data.business === "planning"
+        ? "planning"
+        : "employed";
+  return {
+    id,
+    activity,
+    name: data.name,
+    city: data.city,
+    profession: data.profession,
+    role: data.profession,
+    organization: data.businessName,
+    sector: data.industry || data.profession,
+    bio: data.notes,
+    offers: [],
+    needs: [],
+  };
 }

@@ -5,7 +5,7 @@ import crypto from "crypto";
 import { requireAuth, requirePlatformPermission } from "../../middleware/auth";
 
 import { rateLimit } from "express-rate-limit";
-import { communityFields, parseCommunityResponse } from "./community-2003";
+import { communityFields, parseCommunityResponse, toPublicCommunityMember } from "./community-2003";
 
 import mglClubRouter from "./mgl-club.routes";
 
@@ -26,6 +26,29 @@ router.post("/forms/2003/responses", rateLimit({ windowMs: 60_000, limit: 10, st
     return res.status(201).json({ success: true });
   } catch {
     return res.status(500).json({ message: "Мэдээлэл хадгалахад алдаа гарлаа. Дахин оролдоно уу." });
+  }
+});
+
+router.get("/forms/2003/members", async (_req, res) => {
+  try {
+    const responses = await prisma.formResponse.findMany({
+      where: {
+        form: { slug: "2003", isActive: true },
+        data: { path: ["publishConsent"], equals: "yes" },
+      },
+      select: { id: true, data: true },
+      orderBy: [{ submittedAt: "desc" }, { id: "asc" }],
+    });
+    const members = responses.flatMap((response) => {
+      const member = toPublicCommunityMember(response.id, response.data);
+      return member ? [member] : [];
+    });
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ members, requests: [] });
+  } catch {
+    return res
+      .status(500)
+      .json({ message: "Танилцуулгуудыг авахад алдаа гарлаа." });
   }
 });
 

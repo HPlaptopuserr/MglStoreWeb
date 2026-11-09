@@ -30,7 +30,7 @@ export function DirectoryResults({
         <button onClick={onClear}>Шүүлтүүр цэвэрлэх</button>
       </div>
       {!ready ? (
-        <div className={styles.empty}>Туршилтын мэдээллийг бэлдэж байна…</div>
+        <div className={styles.empty}>Танилцуулгуудыг ачаалж байна…</div>
       ) : count === 0 ? (
         <div className={styles.empty}>
           <Search size={30} />
@@ -41,7 +41,7 @@ export function DirectoryResults({
           </h2>
           <p>
             {!demo && total === 0
-              ? "Бүртгэл нээлттэй байна. Нийтлэх зөвшөөрөлтэй танилцуулгуудыг баталгаажуулсны дараа энд харуулна."
+              ? "Бүртгэл нээлттэй байна. Нийтлэх зөвшөөрөлтэй танилцуулгууд энд харагдана."
               : "Өөр үгээр хайх эсвэл шүүлтүүрээ цэвэрлээрэй."}
           </p>
           {!demo && total === 0 ? (
