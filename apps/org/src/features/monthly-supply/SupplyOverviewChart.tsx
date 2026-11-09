@@ -44,12 +44,13 @@ export function SupplyOverviewChart({ rows, month, valid }: Props) {
     (row) => row.remainingQuantity < 0,
   ).length;
 
+  // Draft validity changes while typing; reserve preview space so the form stays still.
   return (
     <section
       aria-label="Хангамжийн хөдөлгөөний график"
-      className="overflow-hidden rounded-lg border border-slate-200 bg-white"
+      className="flex h-[440px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white"
     >
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-b border-slate-200 px-5 py-4">
         <div className="flex items-center gap-3">
           <span className="flex size-9 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
             <BarChart3 className="size-4" aria-hidden="true" />
@@ -108,17 +109,17 @@ export function SupplyOverviewChart({ rows, month, valid }: Props) {
       {!valid ? (
         <p
           role="status"
-          className="px-5 py-10 text-center text-sm text-slate-500"
+          className="flex flex-1 items-center justify-center px-5 py-10 text-center text-sm text-slate-500"
         >
           Дутуу хэмжээ, үнийн мэдээллээ бөглөхөд график шинэчлэгдэнэ.
         </p>
       ) : !visible.length ? (
-        <p className="px-5 py-10 text-center text-sm text-slate-500">
+        <p className="flex flex-1 items-center justify-center px-5 py-10 text-center text-sm text-slate-500">
           Түүхий эдээ бүртгэхэд нөөцийн ашиглалт энд харагдана.
         </p>
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-[11px] text-slate-500">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 px-5 py-3 text-[11px] text-slate-500">
             <p>Материал бүрийн нийт нөөц = 100%</p>
             <div className="flex gap-4">
               <span className="flex items-center gap-1.5">
@@ -137,7 +138,7 @@ export function SupplyOverviewChart({ rows, month, valid }: Props) {
               </span>
             </div>
           </div>
-          <div className="min-h-[264px] overflow-x-auto">
+          <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
             <table className="w-full min-w-[680px] table-fixed text-sm">
               <caption className="sr-only">
                 Материалын нийт нөөц, зарцуулалт, үлдэгдэл ({units[unit]})
@@ -228,7 +229,7 @@ export function SupplyOverviewChart({ rows, month, valid }: Props) {
               </tbody>
             </table>
           </div>
-          <footer className="flex min-h-15 flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/50 px-5 py-3">
+          <footer className="flex min-h-15 shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/50 px-5 py-3">
             <p aria-live="polite" className="text-[11px] text-slate-500">
               {selected
                 ? "Сонгосон материал"
