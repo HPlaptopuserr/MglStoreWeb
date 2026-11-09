@@ -9,6 +9,13 @@ import {
 } from "@/components/organisms/auth/VerifyMnPanel";
 import { RegistrationForm } from "../_components/RegistrationForm";
 import { RegistrationField } from "../_components/RegistrationField";
+import {
+  EmptyListings,
+  ListingCard,
+  ListingsHeader,
+  ListingsLoading,
+} from "../mine/ListingView";
+import listingStyles from "../mine/listings.module.css";
 import styles from "../registration.module.css";
 
 interface EditableResponse {
@@ -115,7 +122,7 @@ function Editor({ authenticated }: { authenticated: boolean }) {
           throw new Error("Танилцуулгаа ачаалж чадсангүй. Дахин оролдоно уу.");
         if (!controller.signal.aborted) {
           setResponses(data.responses);
-          setSelectedId(data.responses[0]?.id || "");
+          setSelectedId("");
         }
       } catch (cause) {
         if (!controller.signal.aborted)
@@ -165,7 +172,7 @@ function Editor({ authenticated }: { authenticated: boolean }) {
       if (!Array.isArray(data.responses) || !data.responses.every(isEditable))
         throw new Error("Танилцуулгын мэдээлэл буруу байна.");
       setResponses(data.responses);
-      setSelectedId(data.responses[0]?.id || "");
+      setSelectedId("");
       setSession(null);
     } catch (cause) {
       setError(
@@ -185,18 +192,18 @@ function Editor({ authenticated }: { authenticated: boolean }) {
     setError("");
   }
   return (
-    <div className={styles.page}>
-      <div className="mx-auto max-w-2xl space-y-6 py-10 sm:py-16">
-        <header>
-          <h1 className="text-3xl font-bold">Мэдээллээ засах</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            {authenticated
-              ? "Өөрийн танилцуулгаа шинэчилнэ үү."
-              : "Бүртгэлд оруулсан утасны дугаараа баталгаажуулж, өөрийн танилцуулгаа шинэчилнэ үү."}
-          </p>
-        </header>
+    <div className={listingStyles.page}>
+      <div className="space-y-6">
+        <ListingsHeader
+          count={responses?.length}
+          description={
+            authenticated
+              ? undefined
+              : "Өөрийн танилцуулгуудыг харахын тулд бүртгэлтэй утсаа баталгаажуулна уу."
+          }
+        />
         {authenticated && loadingMine ? (
-          <p role="status">Таны танилцуулгыг ачаалж байна…</p>
+          <ListingsLoading />
         ) : authenticated && error && responses === null ? (
           <div role="alert">
             <p>{error}</p>
@@ -243,15 +250,8 @@ function Editor({ authenticated }: { authenticated: boolean }) {
             )}
           </section>
         ) : responses.length === 0 ? (
-          <section className={styles.form} role="status">
-            <h2 className="text-xl font-bold">
-              {authenticated
-                ? "Таны танилцуулга одоогоор бүртгэгдээгүй байна."
-                : "Энэ дугаараар танилцуулга олдсонгүй."}
-            </h2>
-            <Link className="mt-4 block underline" href="/2003/join">
-              Шинээр нэгдэх
-            </Link>
+          <>
+            <EmptyListings />
             {!authenticated && (
               <button
                 type="button"
@@ -261,7 +261,7 @@ function Editor({ authenticated }: { authenticated: boolean }) {
                 Өөр дугаараар шалгах
               </button>
             )}
-          </section>
+          </>
         ) : (
           <>
             {!authenticated && (
@@ -269,25 +269,37 @@ function Editor({ authenticated }: { authenticated: boolean }) {
                 Дахин баталгаажуулах / Өөр дугаар ашиглах
               </button>
             )}
-            {responses.length > 1 && (
-              <label className="block">
-                Засах танилцуулга
-                <select
-                  className="mt-2 block w-full rounded-xl border bg-white p-3"
-                  value={selectedId}
-                  onChange={(event) => setSelectedId(event.target.value)}
-                >
-                  {responses.map((response, index) => (
-                    <option key={response.id} value={response.id}>
-                      {response.data.name} · {response.data.profession} (
-                      {index + 1})
-                    </option>
-                  ))}
-                </select>
-              </label>
+            {!selected && (
+              <ul
+                className={listingStyles.grid}
+                aria-label="Миний танилцуулгууд"
+              >
+                {responses.map((response) => (
+                  <li key={response.id}>
+                    <ListingCard
+                      listing={{
+                        id: response.id,
+                        title:
+                          response.data.offers ||
+                          response.data.industry ||
+                          response.data.profession ||
+                          "Танилцуулга",
+                        name: response.data.name,
+                        city: response.data.city,
+                        profession: response.data.profession,
+                        organization: response.data.businessName,
+                        photoUrl: response.data.photoUrl,
+                        published: response.data.publishConsent === "yes",
+                      }}
+                      onEdit={() => setSelectedId(response.id)}
+                    />
+                  </li>
+                ))}
+              </ul>
             )}
             {selected && (
               <RegistrationForm
+                onClose={() => setSelectedId("")}
                 key={selected.id}
                 initialData={selected.data}
                 editing={{ id: selected.id, token: selected.editToken }}

@@ -115,3 +115,25 @@ test("help offers are saved, trimmed, deduplicated and exposed on cards", () => 
     null,
   );
 });
+
+test("support needs accept multiple values without exposing unconsented profiles", () => {
+  const data = {
+    ...valid,
+    needs: " Хамтрагч, Хөрөнгө оруулалт\nХамтрагч ",
+    publishConsent: "yes",
+  };
+  assert.deepEqual(toPublicCommunityMember("member", data)?.needs, [
+    "Хамтрагч",
+    "Хөрөнгө оруулалт",
+  ]);
+  assert.equal(
+    toPublicCommunityMember("member", { ...data, publishConsent: "" }),
+    null,
+  );
+  assert.equal(parseCommunityResponse({ ...valid, needs: ["Хамтрагч"] }), null);
+  assert.equal(
+    parseCommunityResponse({ ...valid, needs: "x".repeat(1001) }),
+    null,
+  );
+  assert.equal(parseCommunityResponse(valid)?.needs, "");
+});

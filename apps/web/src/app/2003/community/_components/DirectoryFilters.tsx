@@ -5,6 +5,13 @@ import {
   Store,
   Rocket,
 } from "lucide-react";
+import {
+  COMMUNITY_LOCATIONS,
+  UNSPECIFIED_LOCATION,
+  communityLocationLabel,
+  normalizeCommunityLocation,
+  matchesCommunityLocation,
+} from "../locations";
 import { ACTIVITY_TYPES, type Member } from "../model";
 import { useCommunityFilters } from "@/features/community-2003/CommunityWorkspace";
 import styles from "../community.module.css";
@@ -27,7 +34,23 @@ export function DirectoryFilters({ members }: { members: Member[] }) {
     setFilters((previous) => ({ ...previous, city }));
   const setSector = (sector: string) =>
     setFilters((previous) => ({ ...previous, sector }));
-  const cities = [...new Set(members.map((member) => member.city))].sort();
+  const legacyLocations = [
+    ...new Set(
+      members
+        .map((member) => normalizeCommunityLocation(member.city))
+        .filter(
+          (value) =>
+            value &&
+            !COMMUNITY_LOCATIONS.some((location) => location === value),
+        ),
+    ),
+  ].sort();
+  const locationCount = (location: string) =>
+    members.filter(
+      (member) =>
+        (tab === "all" || member.activity === tab) &&
+        matchesCommunityLocation(member.city, location),
+    ).length;
   const sectors = [
     ...new Set(
       members
@@ -88,19 +111,35 @@ export function DirectoryFilters({ members }: { members: Member[] }) {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Нэр, байгууллага, үйл ажиллагааны чиглэл…"
+            placeholder="Тусалж чадах зүйл, мэргэжил, нэр…"
           />
         </label>
         <label>
-          <span className={styles.srOnly}>Байршил</span>
+          <span className={styles.srOnly}>Аймаг / хот</span>
           <select
             value={city}
             onChange={(event) => setCity(event.target.value)}
           >
-            <option value="">Бүх байршил</option>
-            {cities.map((value) => (
-              <option key={value}>{value}</option>
+            <option value="">Бүх аймаг, хот</option>
+            {COMMUNITY_LOCATIONS.map((location) => (
+              <option key={location} value={location}>
+                {communityLocationLabel(location)} ({locationCount(location)})
+              </option>
             ))}
+            {legacyLocations.length > 0 && (
+              <optgroup label="Бусад хот, байршил">
+                {legacyLocations.map((location) => (
+                  <option key={location} value={location}>
+                    {location} ({locationCount(location)})
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {members.some((member) => !member.city.trim()) && (
+              <option value={UNSPECIFIED_LOCATION}>
+                Байршил оруулаагүй ({locationCount(UNSPECIFIED_LOCATION)})
+              </option>
+            )}
           </select>
         </label>
         <label>

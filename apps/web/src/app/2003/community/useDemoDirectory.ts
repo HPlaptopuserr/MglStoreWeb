@@ -90,7 +90,18 @@ export function useDemoDirectory(demo = true) {
     error,
     reset: () => save(DEMO_STATE),
     addMember: (member: Member) =>
-      save({ ...data, members: [...data.members, member] }),
+      save({
+        ...data,
+        members: data.members.some((item) => item.id === member.id)
+          ? data.members.map((item) => (item.id === member.id ? member : item))
+          : [...data.members, member],
+      }),
+    removeMember: (id: string) =>
+      save({
+        ...data,
+        members: data.members.filter((member) => member.id !== id),
+        requests: data.requests.filter((request) => request.memberId !== id),
+      }),
     toggleRequest: (id: string) =>
       save({
         ...data,

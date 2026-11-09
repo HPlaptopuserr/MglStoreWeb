@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
-import Link from "next/link";
+import { CommunityJoinLink } from "@/features/community-2003/CommunityMembership";
 import { ArrowUpRight } from "lucide-react";
+import { normalizeCommunityLocation } from "./locations";
 import { matchesMember, type Member } from "./model";
 import { useCommunityFilters } from "@/features/community-2003/CommunityWorkspace";
 import { useDemoDirectory } from "./useDemoDirectory";
@@ -21,7 +22,13 @@ export function Directory({ demo = true }: { demo?: boolean }) {
   const members = categoryMembers.filter((member) =>
     matchesMember(member, query, city, sector),
   );
-  const cities = [...new Set(data.members.map((member) => member.city))].sort();
+  const cities = [
+    ...new Set(
+      data.members
+        .map((member) => normalizeCommunityLocation(member.city))
+        .filter(Boolean),
+    ),
+  ].sort();
   function clear() {
     setFilters((previous) => ({
       ...previous,
@@ -67,9 +74,9 @@ export function Directory({ demo = true }: { demo?: boolean }) {
             <h2>Таны туршлага хэн нэгэнд хэрэгтэй.</h2>
             <p>Өөрийн тухай, бусдад хэрхэн тусалж чадахаа хуваалцаарай.</p>
           </div>
-          <Link className={styles.primary} href="/2003/join">
+          <CommunityJoinLink className={styles.primary}>
             Нэгдэх <ArrowUpRight size={17} />
-          </Link>
+          </CommunityJoinLink>
         </section>
         <footer className={styles.footer}>
           <span>2003 · Танилцаанаас хамтын ажиллагаа руу.</span>

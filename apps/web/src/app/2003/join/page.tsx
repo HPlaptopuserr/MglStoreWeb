@@ -5,10 +5,15 @@ export const metadata: Metadata = {
   title: "2003 • Нэгдэх",
   robots: { index: false, follow: false },
 };
-export default function JoinPage() {
+export default async function JoinPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ new?: string; edit?: string }>;
+}) {
+  const params = await searchParams;
   return process.env.NODE_ENV === "development" ? (
-    <JoinDemo />
+    <JoinDemo key={params.edit || "new"} editId={params.edit} />
   ) : (
-    <LegacyRegistration />
+    <LegacyRegistration createNew={params.new === "1"} />
   );
 }

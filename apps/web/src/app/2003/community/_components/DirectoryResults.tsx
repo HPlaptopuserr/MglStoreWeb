@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { CommunityJoinLink } from "@/features/community-2003/CommunityMembership";
 import { Search } from "lucide-react";
 import { MemberCard } from "./MemberCard";
 import type { Member } from "../model";
@@ -45,9 +45,9 @@ export function DirectoryResults({
               : "Өөр үгээр хайх эсвэл шүүлтүүрээ цэвэрлээрэй."}
           </p>
           {!demo && total === 0 ? (
-            <Link href="/2003/join" className={styles.primary}>
+            <CommunityJoinLink className={styles.primary}>
               Нэгдэх
-            </Link>
+            </CommunityJoinLink>
           ) : (
             <button className={styles.primary} onClick={onClear}>
               Бүгдийг харах
@@ -55,35 +55,13 @@ export function DirectoryResults({
           )}
         </div>
       ) : (
-        <div className={styles.sectorGroups}>
-          {[...new Set(members.map((member) => member.sector))]
-            .sort()
-            .map((direction) => (
-              <section key={direction} aria-label={direction}>
-                <h2 className={styles.sectorHeading}>
-                  {direction}
-                  <span>
-                    {
-                      members.filter((member) => member.sector === direction)
-                        .length
-                    }{" "}
-                    хүн
-                  </span>
-                </h2>
-                <div className={styles.grid}>
-                  {members
-                    .filter((member) => member.sector === direction)
-                    .map((member) => (
-                      <MemberCard
-                        key={member.id}
-                        member={member}
-                        onOpen={onOpen}
-                      />
-                    ))}
-                </div>
-              </section>
-            ))}
-        </div>
+        <ul className={styles.memberList} aria-label="Гишүүдийн жагсаалт">
+          {members.map((member) => (
+            <li key={member.id}>
+              <MemberCard member={member} onOpen={onOpen} />
+            </li>
+          ))}
+        </ul>
       )}
     </>
   );

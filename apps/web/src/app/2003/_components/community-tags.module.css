@@ -1,0 +1,104 @@
+.label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #33465f;
+}
+.label > span {
+  font-size: 12px;
+  font-weight: 400;
+  color: #8491a4;
+}
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 10px;
+}
+.tags li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #cbdcf5;
+  border-radius: 20px;
+  padding: 3px 5px 3px 12px;
+  background: #f1f6ff;
+  color: #285486;
+  max-width: 100%;
+  font-size: 12px;
+}
+.tags li > span {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.tags button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  cursor: pointer;
+  border-radius: 50%;
+}
+.tags button:hover {
+  background: #dfeafd;
+}
+.search {
+  position: relative;
+}
+.search > svg {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #8092ab;
+  pointer-events: none;
+}
+.options {
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 6px 0 0;
+  padding: 6px;
+  border: 1px solid #dce4ef;
+  border-radius: 12px;
+  background: #fff;
+  list-style: none;
+}
+.options > li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px;
+  min-height: 44px;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #375271;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.options > li:hover,
+.options > li[data-active="true"] {
+  background: #edf3ff;
+  color: #174987;
+}
+.options > li > svg {
+  flex-shrink: 0;
+}
+.options .noResults {
+  color: #8090a6;
+  cursor: default;
+}
+.help {
+  color: #8491a4;
+  font-size: 11px;
+  line-height: 1.7;
+  margin-top: 8px;
+}
+.error {
+  color: #b54545;
+  font-size: 12px;
+  margin-top: 8px;
+}

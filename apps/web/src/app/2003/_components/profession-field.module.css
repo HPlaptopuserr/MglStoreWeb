@@ -1,0 +1,44 @@
+.search {
+  position: relative;
+}
+.search > svg {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #7186a3;
+  pointer-events: none;
+}
+.search input[role="combobox"] {
+  padding-left: 42px;
+}
+.list {
+  margin: 6px 0 0;
+  padding: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  border: 1px solid #dce4ef;
+  border-radius: 12px;
+  background: white;
+}
+.list li {
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.list li:hover,
+.list li[data-active="true"],
+.list li[aria-selected="true"] {
+  background: #edf3ff;
+  color: #163f82;
+}
+.group {
+  display: block;
+  color: #7186a3;
+  font-size: 11px;
+  margin-bottom: 6px;
+}

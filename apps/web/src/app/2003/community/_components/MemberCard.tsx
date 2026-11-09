@@ -1,4 +1,4 @@
-import { ArrowUpRight, MapPin, Phone } from "lucide-react";
+import { ChevronRight, Phone } from "lucide-react";
 import Image from "next/image";
 import { resolveApiAssetUrl } from "@/lib/api";
 import { ACTIVITY_TYPES, type Member } from "../model";
@@ -10,73 +10,69 @@ export function MemberCard({
   member: Member;
   onOpen: (member: Member) => void;
 }) {
+  const title =
+    member.offers.filter((offer) => offer.trim()).join(", ") ||
+    member.role ||
+    member.profession ||
+    member.sector;
+  const description = [
+    ...new Set(
+      [member.organization, member.role || member.profession].filter(Boolean),
+    ),
+  ].join(" · ");
+  const activity = member.activity
+    ? ACTIVITY_TYPES[member.activity].label
+    : member.sector;
   return (
-    <article className={styles.card}>
-      <div className={styles.cardHeader}>
-        <span className={styles.avatar} aria-hidden="true">
-          {member.photoUrl ? (
-            <Image
-              src={resolveApiAssetUrl(member.photoUrl)}
-              alt=""
-              width={48}
-              height={48}
-              unoptimized
-              className={styles.avatarPhoto}
-            />
+    <article className={styles.memberRow}>
+      <span className={styles.rowAvatar} aria-hidden="true">
+        {member.photoUrl ? (
+          <Image
+            src={resolveApiAssetUrl(member.photoUrl)}
+            alt=""
+            width={64}
+            height={64}
+            unoptimized
+            className={styles.rowPhoto}
+          />
+        ) : (
+          member.name.split(" ").at(-1)?.slice(0, 1)
+        )}
+      </span>
+      <div className={styles.rowContent}>
+        <h2 className={styles.rowName}>
+          <button
+            type="button"
+            className={styles.rowOpen}
+            onClick={() => onOpen(member)}
+            aria-haspopup="dialog"
+            aria-label={`${title} — ${member.name}, танилцуулга үзэх`}
+          >
+            <span>{title}</span>
+            <ChevronRight size={20} aria-hidden="true" />
+          </button>
+        </h2>
+        <p className={styles.rowPerson}>{member.name}</p>
+        {description && <p className={styles.rowDescription}>{description}</p>}
+        <div className={styles.rowBottom}>
+          {member.phone ? (
+            <a
+              className={styles.rowPhone}
+              href={`tel:${member.phone}`}
+              aria-label={`${member.name} руу залгах: ${member.phone}`}
+            >
+              <Phone size={14} aria-hidden="true" />
+              {member.phone}
+            </a>
           ) : (
-            member.name.split(" ").at(-1)?.slice(0, 1)
+            <span className={styles.rowProfession}>{member.profession}</span>
           )}
-        </span>
-        <div>
-          <h2>{member.name}</h2>
-          <p>
-            <MapPin size={13} aria-hidden="true" />
-            {member.city}
+          <p className={styles.rowMeta}>
+            {member.city && <span>{member.city}</span>}
+            <span>{activity}</span>
           </p>
         </div>
       </div>
-      <div className={styles.activityBadge}>
-        {member.activity
-          ? ACTIVITY_TYPES[member.activity].label
-          : "Төлөв тодорхойлоогүй"}{" "}
-        · {member.sector}
-      </div>
-      <div className={styles.work}>
-        <span className={styles.fieldCaption}>
-          {member.activity
-            ? ACTIVITY_TYPES[member.activity].role
-            : "Одоо хийж буй ажил"}
-        </span>
-        <strong>{member.role}</strong>
-        <p>
-          {member.organization} · {member.sector}
-        </p>
-      </div>
-      <div className={styles.offer}>
-        <span>ТУСАЛЖ ЧАДНА</span>
-        <div className={styles.tags}>
-          {member.offers.map((offer) => (
-            <span key={offer}>{offer}</span>
-          ))}
-        </div>
-      </div>
-      <p className={styles.need}>
-        <span>Хайж байна</span>{" "}
-        {member.needs.join(", ") || "Одоогоор хүсэлтгүй"}
-      </p>
-      {member.phone && (
-        <a
-          className={styles.phoneLink}
-          href={`tel:${member.phone}`}
-          aria-label={`${member.name} руу залгах: ${member.phone}`}
-        >
-          <Phone size={16} aria-hidden="true" />
-          {member.phone}
-        </a>
-      )}
-      <button className={styles.cardAction} onClick={() => onOpen(member)}>
-        Танилцуулга үзэх <ArrowUpRight size={17} />
-      </button>
     </article>
   );
 }

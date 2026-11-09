@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { CommunityJoinLink } from "@/features/community-2003/CommunityMembership";
 import {
   ArrowDown,
   ArrowUpRight,
@@ -40,9 +40,9 @@ export function DirectoryHero({
             <a href="#directory" className={styles.primary}>
               Хүмүүстэй танилцах <ArrowDown size={17} />
             </a>
-            <Link href="/2003/join" className={styles.heroLink}>
+            <CommunityJoinLink className={styles.heroLink}>
               Би ч бас нэгдье <ArrowUpRight size={17} />
-            </Link>
+            </CommunityJoinLink>
           </div>
         </div>
         <div className={styles.heroArtwork} aria-hidden="true">

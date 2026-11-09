@@ -1,3 +1,4 @@
+import { matchesCommunityLocation } from "./locations";
 export const ACTIVITY_TYPES = {
   employed: {
     label: "Ажил эрхэлдэг",
@@ -69,7 +70,7 @@ export function matchesMember(
     .join(" ")
     .toLocaleLowerCase("mn");
   return (
-    (!city || member.city === city) &&
+    matchesCommunityLocation(member.city, city) &&
     (!sector || member.sector === sector) &&
     text.includes(query.trim().toLocaleLowerCase("mn"))
   );
