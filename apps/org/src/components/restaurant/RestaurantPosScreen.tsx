@@ -2264,8 +2264,8 @@ function RestaurantPosContent() {
         : "";
     setNotice(
       (mode === "DINE_IN"
-        ? `Борлуулалт амжилттай: ${finalReceipt.receiptNo}. Ширээ "Төлсөн" төлөвтэй хэвээр байна — үйлчлүүлэгч гарсны дараа ширээг чөлөөлнө үү.`
-        : `Борлуулалт амжилттай: ${finalReceipt.receiptNo}. Захиалга гал тогоо руу автоматаар илгээгдлээ.`) +
+        ? `Төлбөр амжилттай: ${finalReceipt.receiptNo}. Ширээ "Төлсөн" төлөвтэй хэвээр байна — үйлчлүүлэгч гарсны дараа ширээг чөлөөлнө үү.`
+        : `Төлбөр амжилттай: ${finalReceipt.receiptNo}. Захиалга гал тогоо руу автоматаар илгээгдлээ.`) +
         ebarimtFailure,
     );
     setPaymentDialogOpen(false);
@@ -2918,6 +2918,7 @@ function RestaurantPosContent() {
         registerId: selectedRegister.id,
         organizationId: user.organizationId,
         clientBridge: useClientBridge,
+        standaloneCard: !cardTerminalReady,
       });
       if (isCancelled()) throw new Error("Картын төлбөр цуцлагдлаа.");
 

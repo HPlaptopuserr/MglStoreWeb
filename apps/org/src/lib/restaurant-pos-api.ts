@@ -617,8 +617,10 @@ export async function createRestaurantCardAttempt(input: {
   registerId: string;
   organizationId: string;
   clientBridge?: boolean;
+  standaloneCard?: boolean;
 }) {
-  const response = await authFetch(`${API}/pos/payments/card/authorize`, {
+  const endpoint = input.standaloneCard ? "authorize-v2" : "authorize";
+  const response = await authFetch(`${API}/pos/payments/card/${endpoint}`, {
     method: "POST",
     body: JSON.stringify({
       amount: input.amount,
