@@ -631,6 +631,7 @@ export async function connectRestaurantCardTerminal(
 }
 
 export async function createRestaurantCardAttempt(input: {
+  signal?: AbortSignal;
   attemptId?: string;
   saleIdentity?: { clientSaleId: string; restaurantTicketId: string };
   amount: number;
@@ -644,6 +645,7 @@ export async function createRestaurantCardAttempt(input: {
   const endpoint = input.standaloneCard ? "authorize-v2" : "authorize";
   const response = await authFetch(`${API}/pos/payments/card/${endpoint}`, {
     method: "POST",
+    signal: input.signal,
     body: JSON.stringify({
       attemptId: input.attemptId,
       saleIdentity: input.saleIdentity,

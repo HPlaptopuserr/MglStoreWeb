@@ -43,8 +43,11 @@ import {
   X,
   ZoomIn,
 } from "lucide-react";
-import { QrGenerator } from "@mgl/ui";
+import { CardPaymentCountdown, QrGenerator } from "@mgl/ui";
 import {
+  MINU_CARD_WAIT_MS,
+  waitForMinuCardPayment,
+  withCardPaymentDeadline,
   calculateCafeRegularCustomerDiscount,
   calculateCafeRegularCustomerUnitDiscount,
   calculateTakeawayPackagingFee,
@@ -395,6 +398,7 @@ function SelfServiceCheckoutContent() {
   const [kitchenPrintError, setKitchenPrintError] = useState("");
   const [cardMessage, setCardMessage] = useState("");
   const [cardCancelRequested, setCardCancelRequested] = useState(false);
+  const [cardWaitDeadline, setCardWaitDeadline] = useState<number | null>(null);
   const [secondsToReset, setSecondsToReset] = useState(30);
   const [silentPrintEnabled, setSilentPrintEnabled] = useState(false);
   const finalizedInvoiceRef = useRef<string | null>(null);
@@ -1417,12 +1421,14 @@ function SelfServiceCheckoutContent() {
       );
     }
 
+    const organizationId = user.organizationId;
     const run: CardPaymentRun = {
       abortController: new AbortController(),
       cancelled: false,
       terminalCancelRequested: false,
     };
     setCardCancelRequested(false);
+    setCardWaitDeadline(null);
     if (cardPaymentRunRef.current) {
       cardPaymentRunRef.current.cancelled = true;
       cardPaymentRunRef.current.abortController.abort();
@@ -1450,16 +1456,24 @@ function SelfServiceCheckoutContent() {
       const initialAttempt: CardAttempt = { attemptId: requestId, amount, terminalId, status: "PENDING",
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
       onAttemptChange(initialAttempt);
+      const minuWaitDeadline = cardProvider === "MINU_AGENT" ? Date.now() + MINU_CARD_WAIT_MS : null;
+      setCardWaitDeadline(minuWaitDeadline);
       let attempt: CardAttempt;
-      try { attempt = await createRestaurantCardAttempt({
+      const authorize = (signal: AbortSignal) => createRestaurantCardAttempt({
+        signal,
         attemptId: requestId, saleIdentity,
         amount,
         terminalId,
         bridgeUrl: shouldSendBridgeUrl ? register.terminalBridgeUrl : null,
         registerId: register.id,
-        organizationId: user.organizationId,
+        organizationId,
         clientBridge: useClientBridge,
-      }); } catch (error: unknown) {
+      });
+      try {
+        attempt = minuWaitDeadline === null
+          ? await authorize(run.abortController.signal)
+          : await withCardPaymentDeadline(authorize, minuWaitDeadline, run.abortController.signal);
+      } catch (error: unknown) {
         if (error instanceof RestaurantPosApiError && (error.code === "CARD_PAYMENT_NOT_STARTED" || [400, 403, 404, 422].includes(error.status))) {
           onAttemptChange({ ...initialAttempt, status: "DECLINED" });
         }
@@ -1505,6 +1519,12 @@ function SelfServiceCheckoutContent() {
           }
           throw new Error(message);
         }
+      } else if (minuWaitDeadline !== null) {
+        approvedAttempt = await waitForMinuCardPayment({
+          attempt, deadline: minuWaitDeadline, signal: run.abortController.signal,
+          getStatus: getRestaurantCardAttemptStatus,
+          onStatus: onAttemptChange,
+        });
       } else {
         const maxPolls = LONG_RUNNING_CARD_PROVIDERS.has(cardProvider)
           ? 150
@@ -1560,6 +1580,7 @@ function SelfServiceCheckoutContent() {
     } finally {
       if (cardPaymentRunRef.current === run) {
         cardPaymentRunRef.current = null;
+        setCardWaitDeadline(null);
       }
     }
   };
@@ -2378,6 +2399,8 @@ function SelfServiceCheckoutContent() {
           <p className="mx-auto mt-4 max-w-md text-base font-semibold leading-7 text-white/55">
             {cardMessage || "Терминалын дэлгэц дээрх зааврыг дагана уу."}
           </p>
+          {cardWaitDeadline !== null && <CardPaymentCountdown key={cardWaitDeadline}
+            deadline={cardWaitDeadline} className="mt-6 text-[#f4c34f]" />}
           <p className="mt-8 text-4xl font-black text-[#f4c34f]">
             {formatMoney(pendingCardCheckout?.total || cartTotal)}
           </p>

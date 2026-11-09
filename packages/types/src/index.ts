@@ -66,6 +66,7 @@ export * from "./workforce-payroll";
 export * from "./domain/kitchen-queue";
 
 export * from "./domain/card-payment-recovery";
+export * from "./domain/card-payment-wait";
 
 export * from "./domain/warehouse-viewer";
 export * from "./domain/warehouse-dispatch";

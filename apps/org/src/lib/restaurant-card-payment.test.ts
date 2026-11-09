@@ -11,6 +11,19 @@ const input = {
   organizationId: "restaurant",
 };
 
+test("card authorization forwards its wait signal without changing the persisted identity", async t => {
+  const controller = new AbortController();
+  t.mock.method(globalThis, "fetch", async (_url: string | URL, init?: RequestInit) => {
+    assert.equal(init?.signal, controller.signal);
+    const body: Record<string, unknown> = JSON.parse(String(init?.body));
+    assert.equal(body.attemptId, "original-attempt");
+    assert.equal("signal" in body, false);
+    return Response.json({ attemptId: "original-attempt", status: "PENDING" });
+  });
+  const attempt = await createRestaurantCardAttempt({ ...input, attemptId: "original-attempt", signal: controller.signal });
+  assert.equal(attempt.status, "PENDING");
+});
+
 test("standalone approval is saved as a CARD sale with its payment reference", async (t) => {
   const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
   t.mock.method(

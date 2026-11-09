@@ -28,6 +28,8 @@ import { useEventCallback } from "@/features/pos/hooks/useEventCallback";
 import { canSwitchAfterQrCancellation } from "@/features/pos/utils/payment-method-switch";
 import { usePaymentMethodSwitch } from "@/features/pos/hooks/usePaymentMethodSwitch";
 import type { DeferredCardCheckout } from "@mgl/types";
+import { MINU_CARD_WAIT_MS, waitForMinuCardPayment, withCardPaymentDeadline } from "@mgl/types";
+import { CardPaymentCountdown } from "@mgl/ui";
 import { persistPosCart } from "@/features/pos/hooks/usePosCart";
 import { useDeferredCardCheckouts } from "@/features/pos/hooks/useDeferredCardCheckouts";
 import { DeferredCardCheckouts } from "@/features/pos/components/DeferredCardCheckouts";
@@ -651,6 +653,7 @@ export default function PosDemoPage() {
   const successOverlayTimerRef = useRef<number | null>(null);
   const customerDisplaySuccessTimerRef = useRef<number | null>(null);
   const cardPaymentRunRef = useRef<CardPaymentRun | null>(null);
+  const [cardWaitDeadline, setCardWaitDeadline] = useState<number | null>(null);
   const restoredCardAutoFinalizeRef = useRef(false);
   const ebarimtSendDataInFlightRef = useRef(false);
 
@@ -898,6 +901,7 @@ export default function PosDemoPage() {
       // Closing the waiting overlay does not cancel a charge at Minu.
       clearProgressTicker();
       cardPaymentRunRef.current = null;
+      setCardWaitDeadline(null);
       setIsCardProcessing(false);
       setScanStatus("idle");
       setScanMessage("Minu төлбөрийн төлөвийг автоматаар шалгаж байна. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү.");
@@ -2603,6 +2607,7 @@ export default function PosDemoPage() {
       ]);
 
       setMinuCancellationRequested(false);
+      setCardWaitDeadline(null);
       setIsCardProcessing(true);
       startProgressTicker("Карт уншуулна уу");
       const isCardRunCancelled = () => cardRun.cancelled || cardPaymentRunRef.current !== cardRun;
@@ -2668,9 +2673,11 @@ export default function PosDemoPage() {
           setPaymentEntries(recoverableEntries);
         }
         cardRun.authorizationStarted = true;
-        const attempt = await createCardAttempt({
+        const minuWaitDeadline = effectiveCardProvider === "MINU_AGENT" ? Date.now() + MINU_CARD_WAIT_MS : null;
+        setCardWaitDeadline(minuWaitDeadline);
+        const authorize = (signal: AbortSignal) => createCardAttempt({
           cardFlowVersion,
-          signal: cardRun.abortController.signal,
+          signal,
           attemptId: createdAttemptId,
           amount: safeAmount,
           terminalId,
@@ -2684,6 +2691,9 @@ export default function PosDemoPage() {
               unitPrice: line.unitPrice, priceType: line.priceType, discountAmount: line.discountAmount, taxRate: line.taxRate })),
           } } : {}),
         });
+        const attempt = minuWaitDeadline === null
+          ? await authorize(cardRun.abortController.signal)
+          : await withCardPaymentDeadline(authorize, minuWaitDeadline, cardRun.abortController.signal);
         authorizationAccepted = true;
 
         if (isCardRunCancelled()) return;
@@ -2719,6 +2729,11 @@ export default function PosDemoPage() {
               message: "Төлбөрийн бүртгэлийн холболт тасарсан. Төлөвийг дахин шалгана уу.",
             }));
           }
+        } else if (minuWaitDeadline !== null) {
+          approvedAttempt = await waitForMinuCardPayment({
+            attempt, deadline: minuWaitDeadline, signal: cardRun.abortController.signal,
+            getStatus: getCardAttemptStatus,
+          });
         } else {
           const isLongRunningTerminal = terminalNeedsWaitingOverlay(effectiveCardProvider);
           const maxPolls = isLongRunningTerminal ? 150 : 8; // 150x800ms=120s for terminal-side card flows
@@ -2783,6 +2798,7 @@ export default function PosDemoPage() {
       } finally {
         if (cardPaymentRunRef.current === cardRun) {
           cardPaymentRunRef.current = null;
+          setCardWaitDeadline(null);
           setIsCardProcessing(false);
         }
       }
@@ -4280,6 +4296,8 @@ export default function PosDemoPage() {
           <div className="rounded-3xl border border-blue-300/40 bg-white px-10 py-8 text-center shadow-2xl w-80">
             <Loader2 className="mx-auto h-14 w-14 animate-spin text-blue-500" />
             <p className="mt-4 text-lg font-bold text-slate-900">Картаар төлж байна</p>
+            {cardWaitDeadline !== null && <CardPaymentCountdown key={cardWaitDeadline}
+              deadline={cardWaitDeadline} className="mt-4 text-blue-600" />}
             <p role="status" className="mt-1 text-sm text-slate-500">{minuCancellationRequested
               ? "Терминалын Cancel товчийг дарна уу. Цуцлалтын хариуг хүлээж байна."
               : "Терминал дээр карт уншуулна уу"}</p>
