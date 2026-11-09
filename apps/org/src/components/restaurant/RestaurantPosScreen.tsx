@@ -4606,7 +4606,19 @@ function RestaurantPosContent() {
               }}
             />
           ) : null}
-            {paymentMethod === "CARD" ? (
+            {paymentMethod === "CARD" && !cardTerminalReady && !showCardTerminalSetup ? (
+              <div className="mt-3 flex items-center justify-between gap-3 text-[11px] text-slate-400">
+                <p>Тусдаа терминалаар авсан картын төлбөрийг бүртгэнэ.</p>
+                <button
+                  type="button"
+                  onClick={() => { setShowCardTerminalSetup(true); setCardSetupError(""); }}
+                  className="shrink-0 rounded-lg px-2 py-2 font-semibold text-slate-400 underline underline-offset-2 hover:text-sky-200"
+                >
+                  Тохиргоо
+                </button>
+              </div>
+            ) : null}
+            {paymentMethod === "CARD" && (cardTerminalReady || showCardTerminalSetup) ? (
               <div className="mt-3 rounded-xl border border-sky-300/25 bg-sky-300/10 p-2.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -4935,7 +4947,7 @@ function RestaurantPosContent() {
                 ) : null}
                 <button type="button" onClick={() => void handleCheckout()} disabled={!canCheckout} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl bg-sky-300 px-4 text-sm font-bold text-slate-950 transition hover:bg-sky-200 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-100">
                   {checkoutSubmitting ? <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" /> : <SelectedPaymentIcon aria-hidden="true" className="h-4 w-4" />}
-                  {checkoutSubmitting ? "Төлбөр бүртгэж байна..." : selectedPayment.action}
+                  {checkoutSubmitting ? "Төлбөр бүртгэж байна..." : paymentMethod === "CARD" && !cardTerminalReady ? "Картын төлбөр бүртгэх" : selectedPayment.action}
                 </button>
                 {selectedTicketActive ? (
                   <details className="mt-4 rounded-lg border border-white/10 px-3 py-2">

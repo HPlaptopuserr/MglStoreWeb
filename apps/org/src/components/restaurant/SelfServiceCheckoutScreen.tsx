@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SelfServiceCheckoutLayout } from "./SelfServiceCheckoutLayout";
 import { ProductImage } from "./ProductImage";
 import { KitchenPrinterSettingsButton } from "./KitchenPrinterSettingsButton";
 import { ProductImagePreviewDialog } from "./ProductImagePreviewDialog";
@@ -2740,8 +2741,8 @@ function SelfServiceCheckoutContent() {
 
   if (screen === "checkout") {
     return (
-      <main className="min-h-[100dvh] bg-[#f3f5f2] px-4 py-5 text-[#10221c] sm:px-8 sm:py-8">
-        <div className="mx-auto max-w-5xl">
+      <SelfServiceCheckoutLayout
+        header={
           <header className="flex items-center justify-between gap-4">
             <button
               type="button"
@@ -2755,503 +2756,18 @@ function SelfServiceCheckoutContent() {
               Захиалга баталгаажуулах
             </p>
           </header>
-
-          <ProductImageNotice className="mt-5" />
-
-          {catalogNotice ? (
-            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
-              {catalogNotice}
+        }
+        footer={
+          <div className="grid items-center gap-3 sm:grid-cols-[1fr_minmax(240px,360px)]">
+            <div className="flex items-center justify-between gap-3 sm:block">
+              <p className="text-xs font-bold text-slate-500">
+                {paymentMethod === "CONTRACT" ? "Сарын тооцоонд" : "Нийт төлөх"}
+              </p>
+              <p className="text-2xl font-black tracking-tight sm:mt-1">
+                {formatMoney(cartTotal)}
+              </p>
             </div>
-          ) : null}
-
-          <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]">
-            <section className="rounded-[28px] bg-white p-5 shadow-sm sm:p-7">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-2xl font-black">Таны захиалга</h1>
-                  <p className="mt-1 text-sm font-semibold text-slate-500">
-                    {orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"}
-                  </p>
-                </div>
-                <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">
-                  {cartQty} бараа
-                </span>
-              </div>
-
-              <div className="mt-6 divide-y divide-slate-100">
-                {cart.map((line) => (
-                  <div
-                    key={line.product.id}
-                    className="grid grid-cols-[64px_1fr_auto] items-center gap-4 py-4"
-                  >
-                    <div className="h-16 w-16 overflow-hidden rounded-2xl bg-slate-100">
-                      <ProductImage
-                        src={line.product.imageUrl}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-black">
-                        {line.product.name}
-                      </p>
-                      <p className="mt-1 text-xs font-bold text-slate-400">
-                        {formatMoney(Number(line.product.price))} × {line.qty}
-                      </p>
-                    </div>
-                    <p className="text-sm font-black">
-                      {formatMoney(Number(line.product.price) * line.qty)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <aside className="h-fit rounded-[28px] border border-[#e7e1d3] bg-[#fffdf8] p-6 text-[#10221c] shadow-xl shadow-slate-200/70">
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
-                {paymentMethod === "CONTRACT"
-                  ? "Захиалгын тооцоо"
-                  : "Төлбөрийн мэдээлэл"}
-              </p>
-              <div className="mt-6 space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="font-semibold text-slate-500">
-                    Барааны дүн
-                  </span>
-                  <span className="font-black">
-                    {formatMoney(cartSubtotal)}
-                  </span>
-                </div>
-                {packagingFee > 0 ? (
-                  <div className="flex justify-between">
-                    <span className="font-semibold text-slate-500">
-                      Савны үнэ
-                    </span>
-                    <span className="font-black">
-                      {formatMoney(packagingFee)}
-                    </span>
-                  </div>
-                ) : null}
-                <div className="flex justify-between">
-                  <span className="font-semibold text-slate-500">
-                    {regularCustomer
-                      ? `${discountProfileGenitive} хөнгөлөлт`
-                      : "Хөнгөлөлт"}
-                  </span>
-                  <span className="font-black">
-                    {regularCustomerDiscount > 0
-                      ? `-${formatMoney(regularCustomerDiscount)}`
-                      : "0₮"}
-                  </span>
-                </div>
-              </div>
-              <div className="mt-6 flex items-end justify-between border-t border-slate-200 pt-6">
-                <span className="text-sm font-bold text-slate-500">
-                  {paymentMethod === "CONTRACT"
-                    ? "Сарын тооцоонд"
-                    : "Нийт төлөх"}
-                </span>
-                <span className="text-3xl font-black tracking-tight">
-                  {formatMoney(cartTotal)}
-                </span>
-              </div>
-
-              {paymentMethod !== "CONTRACT" &&
-              (features.selfServiceMode === "CAFE" ||
-                features.selfServiceMode === "RESTAURANT") ? (
-                <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-3">
-                  <div className="flex items-center gap-2">
-                    <BadgePercent className="h-4 w-4 text-emerald-600" />
-                    <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                      {discountProfileLabel}
-                    </p>
-                  </div>
-                  {regularCustomer ? (
-                    <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-emerald-50 px-3 py-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-black text-emerald-800">
-                          {regularCustomer.name}
-                        </p>
-                        <p className="mt-0.5 text-xs font-bold text-slate-500">
-                          {regularCustomer.phone} ·{" "}
-                          {regularCustomer.discountPercent}% хямдрал
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRegularCustomer(null);
-                          setRegularCustomerPhone("");
-                          setRegularCustomerError("");
-                          setActionError("");
-                        }}
-                        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
-                        aria-label={`${discountProfileObject} салгах`}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="mt-3 flex gap-2">
-                        <input
-                          inputMode="numeric"
-                          maxLength={8}
-                          value={regularCustomerPhone}
-                          onChange={(event) => {
-                            setRegularCustomerPhone(
-                              event.target.value.replace(/\D/g, "").slice(0, 8),
-                            );
-                            setRegularCustomer(null);
-                            setRegularCustomerError("");
-                            setActionError("");
-                          }}
-                          onKeyDown={(event) => {
-                            if (
-                              event.key === "Enter" &&
-                              regularCustomerPhone.length === 8 &&
-                              !regularCustomerLoading
-                            ) {
-                              event.preventDefault();
-                              void resolveRegularCustomer(
-                                regularCustomerPhone,
-                                true,
-                              ).catch(() => null);
-                            }
-                          }}
-                          placeholder="Утасны 8 орон"
-                          className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-emerald-500"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void resolveRegularCustomer(
-                              regularCustomerPhone,
-                              true,
-                            ).catch(() => null)
-                          }
-                          disabled={
-                            regularCustomerLoading ||
-                            regularCustomerPhone.length !== 8
-                          }
-                          className="inline-flex h-11 items-center justify-center rounded-xl bg-[#11231d] px-3 text-xs font-black text-white disabled:opacity-40"
-                        >
-                          {regularCustomerLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            "Шалгах"
-                          )}
-                        </button>
-                      </div>
-                      {regularCustomerError ? (
-                        <p className="mt-2 text-xs font-bold leading-5 text-rose-600">
-                          {regularCustomerError}
-                        </p>
-                      ) : (
-                        <p className="mt-2 text-[11px] font-semibold leading-4 text-slate-400">
-                          Бүртгэлтэй утсаа оруулж хямдралаа авна уу.
-                        </p>
-                      )}
-                    </>
-                  )}
-                </div>
-              ) : null}
-
-              {paymentMethod !== "CONTRACT" && ebarimtReady ? (
-                <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-3">
-                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                    Ebarimt авах төрөл
-                  </p>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEbarimtBuyerMode("B2C");
-                        setCompanyLookupError("");
-                        setActionError("");
-                      }}
-                      className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-black transition ${
-                        ebarimtBuyerMode === "B2C"
-                          ? "border-emerald-300 bg-emerald-100 text-emerald-900"
-                          : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
-                      }`}
-                    >
-                      <UserRound className="h-4 w-4" />
-                      Хувь хүн
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEbarimtBuyerMode("B2B");
-                        setActionError("");
-                      }}
-                      className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-black transition ${
-                        ebarimtBuyerMode === "B2B"
-                          ? "border-emerald-300 bg-emerald-100 text-emerald-900"
-                          : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
-                      }`}
-                    >
-                      <Building2 className="h-4 w-4" />
-                      Байгууллага
-                    </button>
-                  </div>
-
-                  {ebarimtBuyerMode === "B2B" ? (
-                    <div className="mt-3">
-                      <div className="flex gap-2">
-                        <input
-                          inputMode="numeric"
-                          maxLength={7}
-                          value={companyRegNo}
-                          onChange={(event) => {
-                            const value = event.target.value
-                              .replace(/\D/g, "")
-                              .slice(0, 7);
-                            companyLookupRequestRef.current += 1;
-                            setCompanyRegNo(value);
-                            setCompanyLookup(null);
-                            setCompanyLookupLoading(false);
-                            setCompanyLookupError("");
-                            setActionError("");
-                          }}
-                          placeholder="Регистрийн 7 орон"
-                          className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-emerald-500"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            void lookupCompanyBuyer().catch(() => null)
-                          }
-                          disabled={
-                            companyLookupLoading || companyRegNo.length !== 7
-                          }
-                          className="inline-flex h-11 items-center justify-center rounded-xl bg-[#11231d] px-3 text-xs font-black text-white disabled:opacity-40"
-                        >
-                          {companyLookupLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            "Шалгах"
-                          )}
-                        </button>
-                      </div>
-                      {companyLookup ? (
-                        <div className="mt-2 flex items-start gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold leading-5 text-emerald-700">
-                          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                          <span>
-                            {companyLookup.name || "Байгууллага"} · TIN{" "}
-                            {companyLookup.tin}
-                          </span>
-                        </div>
-                      ) : null}
-                      {companyLookupError ? (
-                        <p className="mt-2 text-xs font-bold leading-5 text-rose-600">
-                          {companyLookupError}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              ) : paymentMethod !== "CONTRACT" && register.ebarimtEnabled ? (
-                <p className="mt-4 rounded-xl bg-amber-100 px-3 py-2 text-xs font-bold leading-5 text-amber-800">
-                  Ebarimt үйлчилгээний орчны тохиргоо идэвхгүй байна.
-                </p>
-              ) : null}
-
-              <p className="mt-6 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                Төлбөрийн хэлбэр
-              </p>
-              <div
-                className={`mt-3 grid gap-2 ${
-                  !isCafe
-                    ? "grid-cols-2"
-                    : DEMO_CASH_PAYMENT_ENABLED
-                      ? "grid-cols-3"
-                      : "grid-cols-2"
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPaymentMethod("QPAY");
-                    setActionError("");
-                  }}
-                  className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border text-sm font-black transition ${
-                    paymentMethod === "QPAY"
-                      ? "border-[#f4c34f] bg-[#f4c34f] text-[#172219]"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  <QrCode className="h-6 w-6" />
-                  QPay
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!cardTerminalReady) return;
-                    setPaymentMethod("CARD");
-                    setActionError("");
-                  }}
-                  disabled={!cardTerminalReady}
-                  className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-40 ${
-                    paymentMethod === "CARD"
-                      ? "border-[#f4c34f] bg-[#f4c34f] text-[#172219]"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  <CreditCard className="h-6 w-6" />
-                  Карт
-                </button>
-                {!isCafe ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPaymentMethod("CONTRACT");
-                      setRegularCustomer(null);
-                      setRegularCustomerPhone("");
-                      setActionError("");
-                    }}
-                    className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border px-1 text-center text-xs font-black transition ${
-                      paymentMethod === "CONTRACT"
-                        ? "border-emerald-400 bg-emerald-100 text-emerald-950"
-                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    <Building2 className="h-6 w-6" />
-                    Гэрээт байгууллага
-                  </button>
-                ) : null}
-                {DEMO_CASH_PAYMENT_ENABLED ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPaymentMethod("CASH");
-                      setActionError("");
-                    }}
-                    className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border px-1 text-center text-xs font-black transition ${
-                      paymentMethod === "CASH"
-                        ? "border-[#f4c34f] bg-[#f4c34f] text-[#172219]"
-                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                    }`}
-                  >
-                    <Banknote className="h-6 w-6" />
-                    Тест
-                  </button>
-                ) : null}
-              </div>
-              {paymentMethod === "CONTRACT" ? (
-                <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                  <div className="flex items-start gap-3">
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white">
-                      <BadgeCheck className="h-5 w-5" />
-                    </span>
-                    <div>
-                      <p className="text-sm font-black text-emerald-950">
-                        Байгууллагын PIN баталгаажуулах
-                      </p>
-                      <p className="mt-1 text-xs font-semibold leading-5 text-emerald-800">
-                        Байгууллагаа сонгоод гэрээний 4 оронтой PIN-ээ оруулна
-                        уу.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="mt-4 space-y-2">
-                    <select
-                      value={selectedMealContractId}
-                      disabled={mealOptionsLoading}
-                      onChange={(event) => {
-                        setSelectedMealContractId(event.target.value);
-                        setMealVerification(null);
-                        setMealPin("");
-                        setActionError("");
-                      }}
-                      className="h-11 w-full rounded-xl border border-emerald-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none disabled:opacity-60"
-                    >
-                      <option value="">
-                        {mealOptionsLoading
-                          ? "Байгууллагууд ачаалж байна..."
-                          : "Байгууллага сонгох"}
-                      </option>
-                      {mealContractOptions.map((contract) => (
-                        <option key={contract.id} value={contract.id}>
-                          {contract.customerOrganization}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="flex gap-2">
-                      <label className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3">
-                        <KeyRound className="h-4 w-4 shrink-0 text-emerald-600" />
-                        <input
-                          inputMode="numeric"
-                          autoComplete="off"
-                          maxLength={4}
-                          value={mealPin}
-                          onChange={(event) => {
-                            setMealPin(
-                              event.target.value.replace(/\D/g, "").slice(0, 4),
-                            );
-                            setMealVerification(null);
-                            setActionError("");
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              void verifyContractPin();
-                            }
-                          }}
-                          placeholder="PIN код"
-                          type="password"
-                          className="h-full min-w-0 flex-1 bg-transparent text-sm font-black tracking-[0.25em] text-slate-800 outline-none placeholder:tracking-normal placeholder:text-slate-400"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => void verifyContractPin()}
-                        disabled={
-                          mealVerifying ||
-                          !selectedMealContractId ||
-                          !/^\d{4}$/.test(mealPin)
-                        }
-                        className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-xs font-black text-white disabled:opacity-40"
-                      >
-                        {mealVerifying ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="h-4 w-4" />
-                        )}
-                        Шалгах
-                      </button>
-                    </div>
-                  </div>
-                  {mealVerification ? (
-                    <div className="mt-3 rounded-xl bg-white px-3 py-3 text-xs leading-5 text-emerald-900 shadow-sm">
-                      <p className="font-black">
-                        {mealVerification.contract.customerOrganization}
-                      </p>
-                      <p className="font-semibold text-emerald-700">
-                        PIN зөв · Гэрээ {mealVerification.contract.endDate}{" "}
-                        хүртэл
-                      </p>
-                    </div>
-                  ) : mealContractOptions.length === 0 &&
-                    !mealOptionsLoading ? (
-                    <p className="mt-3 text-xs font-bold text-amber-700">
-                      Идэвхтэй, PIN тохируулсан гэрээт байгууллага алга байна.
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-              {paymentMethod === "CARD" && !cardTerminalReady ? (
-                <p className="mt-2 text-[11px] font-semibold leading-4 text-amber-700">
-                  Карт ашиглахын тулд POS терминалаа тохируулна уу.
-                </p>
-              ) : null}
-
-              {actionError ? (
-                <div className="mt-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold leading-5 text-rose-700">
-                  {actionError}
-                </div>
-              ) : null}
-
+            <div>
               <button
                 type="button"
                 onClick={() => void startPayment()}
@@ -3262,7 +2778,7 @@ function SelfServiceCheckoutContent() {
                   (paymentMethod === "CARD" && !cardTerminalReady) ||
                   (paymentMethod === "CONTRACT" && !mealVerification)
                 }
-                className="mt-6 inline-flex h-16 w-full items-center justify-center gap-3 rounded-2xl bg-[#d9a62e] px-5 text-base font-black text-[#172219] transition hover:bg-[#e2b440] disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex min-h-[56px] w-full py-3 items-center justify-center gap-3 rounded-2xl bg-[#d9a62e] px-5 text-base font-black text-[#172219] transition hover:bg-[#e2b440] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {submitting ? (
                   <Loader2 className="h-5 w-5 animate-spin" />
@@ -3283,16 +2799,507 @@ function SelfServiceCheckoutContent() {
                       ? "Сарын тооцоонд бүртгэх"
                       : "QPay-аар төлөх"}
               </button>
-              <div className="mt-4 flex items-center justify-center gap-2 text-[11px] font-bold text-slate-400">
+              <div className="mt-2 flex items-center justify-center gap-2 text-[11px] font-bold text-slate-400">
                 <Check className="h-3.5 w-3.5" />
                 {paymentMethod === "CONTRACT"
                   ? "Төлбөр авахгүй, захиалга гал тогоонд шууд илгээгдэнэ"
                   : "Төлөгдсөний дараа захиалга шууд илгээгдэнэ"}
               </div>
-            </aside>
+            </div>
           </div>
+        }
+      >
+        <ProductImageNotice className="mt-5" />
+
+        {catalogNotice ? (
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-800">
+            {catalogNotice}
+          </div>
+        ) : null}
+
+        <div className="mt-6 grid gap-5 lg:grid-cols-[1fr_360px]">
+          <section className="rounded-[28px] bg-white p-5 shadow-sm sm:p-7">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-black">Таны захиалга</h1>
+                <p className="mt-1 text-sm font-semibold text-slate-500">
+                  {orderMode === "DINE_IN" ? "Энд хэрэглэх" : "Авч явах"}
+                </p>
+              </div>
+              <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-black text-slate-600">
+                {cartQty} бараа
+              </span>
+            </div>
+
+            <div className="mt-6 divide-y divide-slate-100">
+              {cart.map((line) => (
+                <div
+                  key={line.product.id}
+                  className="grid grid-cols-[64px_1fr_auto] items-center gap-4 py-4"
+                >
+                  <div className="h-16 w-16 overflow-hidden rounded-2xl bg-slate-100">
+                    <ProductImage
+                      src={line.product.imageUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-black">
+                      {line.product.name}
+                    </p>
+                    <p className="mt-1 text-xs font-bold text-slate-400">
+                      {formatMoney(Number(line.product.price))} × {line.qty}
+                    </p>
+                  </div>
+                  <p className="text-sm font-black">
+                    {formatMoney(Number(line.product.price) * line.qty)}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <aside className="h-fit rounded-[28px] border border-[#e7e1d3] bg-[#fffdf8] p-6 text-[#10221c] shadow-xl shadow-slate-200/70">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
+              {paymentMethod === "CONTRACT"
+                ? "Захиалгын тооцоо"
+                : "Төлбөрийн мэдээлэл"}
+            </p>
+            <div className="mt-6 space-y-3 text-sm">
+              <div className="flex justify-between">
+                <span className="font-semibold text-slate-500">
+                  Барааны дүн
+                </span>
+                <span className="font-black">{formatMoney(cartSubtotal)}</span>
+              </div>
+              {packagingFee > 0 ? (
+                <div className="flex justify-between">
+                  <span className="font-semibold text-slate-500">
+                    Савны үнэ
+                  </span>
+                  <span className="font-black">
+                    {formatMoney(packagingFee)}
+                  </span>
+                </div>
+              ) : null}
+              <div className="flex justify-between">
+                <span className="font-semibold text-slate-500">
+                  {regularCustomer
+                    ? `${discountProfileGenitive} хөнгөлөлт`
+                    : "Хөнгөлөлт"}
+                </span>
+                <span className="font-black">
+                  {regularCustomerDiscount > 0
+                    ? `-${formatMoney(regularCustomerDiscount)}`
+                    : "0₮"}
+                </span>
+              </div>
+            </div>
+            <div className="mt-6 flex items-end justify-between border-t border-slate-200 pt-6">
+              <span className="text-sm font-bold text-slate-500">
+                {paymentMethod === "CONTRACT" ? "Сарын тооцоонд" : "Нийт төлөх"}
+              </span>
+              <span className="text-3xl font-black tracking-tight">
+                {formatMoney(cartTotal)}
+              </span>
+            </div>
+
+            {paymentMethod !== "CONTRACT" &&
+            (features.selfServiceMode === "CAFE" ||
+              features.selfServiceMode === "RESTAURANT") ? (
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-3">
+                <div className="flex items-center gap-2">
+                  <BadgePercent className="h-4 w-4 text-emerald-600" />
+                  <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+                    {discountProfileLabel}
+                  </p>
+                </div>
+                {regularCustomer ? (
+                  <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-emerald-50 px-3 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-emerald-800">
+                        {regularCustomer.name}
+                      </p>
+                      <p className="mt-0.5 text-xs font-bold text-slate-500">
+                        {regularCustomer.phone} ·{" "}
+                        {regularCustomer.discountPercent}% хямдрал
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRegularCustomer(null);
+                        setRegularCustomerPhone("");
+                        setRegularCustomerError("");
+                        setActionError("");
+                      }}
+                      className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+                      aria-label={`${discountProfileObject} салгах`}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        inputMode="numeric"
+                        maxLength={8}
+                        value={regularCustomerPhone}
+                        onChange={(event) => {
+                          setRegularCustomerPhone(
+                            event.target.value.replace(/\D/g, "").slice(0, 8),
+                          );
+                          setRegularCustomer(null);
+                          setRegularCustomerError("");
+                          setActionError("");
+                        }}
+                        onKeyDown={(event) => {
+                          if (
+                            event.key === "Enter" &&
+                            regularCustomerPhone.length === 8 &&
+                            !regularCustomerLoading
+                          ) {
+                            event.preventDefault();
+                            void resolveRegularCustomer(
+                              regularCustomerPhone,
+                              true,
+                            ).catch(() => null);
+                          }
+                        }}
+                        placeholder="Утасны 8 орон"
+                        className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void resolveRegularCustomer(
+                            regularCustomerPhone,
+                            true,
+                          ).catch(() => null)
+                        }
+                        disabled={
+                          regularCustomerLoading ||
+                          regularCustomerPhone.length !== 8
+                        }
+                        className="inline-flex h-11 items-center justify-center rounded-xl bg-[#11231d] px-3 text-xs font-black text-white disabled:opacity-40"
+                      >
+                        {regularCustomerLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "Шалгах"
+                        )}
+                      </button>
+                    </div>
+                    {regularCustomerError ? (
+                      <p className="mt-2 text-xs font-bold leading-5 text-rose-600">
+                        {regularCustomerError}
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-[11px] font-semibold leading-4 text-slate-400">
+                        Бүртгэлтэй утсаа оруулж хямдралаа авна уу.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            ) : null}
+
+            {paymentMethod !== "CONTRACT" && ebarimtReady ? (
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+                  Ebarimt авах төрөл
+                </p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEbarimtBuyerMode("B2C");
+                      setCompanyLookupError("");
+                      setActionError("");
+                    }}
+                    className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-black transition ${
+                      ebarimtBuyerMode === "B2C"
+                        ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <UserRound className="h-4 w-4" />
+                    Хувь хүн
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEbarimtBuyerMode("B2B");
+                      setActionError("");
+                    }}
+                    className={`flex h-11 items-center justify-center gap-2 rounded-xl border text-xs font-black transition ${
+                      ebarimtBuyerMode === "B2B"
+                        ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    <Building2 className="h-4 w-4" />
+                    Байгууллага
+                  </button>
+                </div>
+
+                {ebarimtBuyerMode === "B2B" ? (
+                  <div className="mt-3">
+                    <div className="flex gap-2">
+                      <input
+                        inputMode="numeric"
+                        maxLength={7}
+                        value={companyRegNo}
+                        onChange={(event) => {
+                          const value = event.target.value
+                            .replace(/\D/g, "")
+                            .slice(0, 7);
+                          companyLookupRequestRef.current += 1;
+                          setCompanyRegNo(value);
+                          setCompanyLookup(null);
+                          setCompanyLookupLoading(false);
+                          setCompanyLookupError("");
+                          setActionError("");
+                        }}
+                        placeholder="Регистрийн 7 орон"
+                        className="h-11 min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none placeholder:text-slate-400 focus:border-emerald-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void lookupCompanyBuyer().catch(() => null)
+                        }
+                        disabled={
+                          companyLookupLoading || companyRegNo.length !== 7
+                        }
+                        className="inline-flex h-11 items-center justify-center rounded-xl bg-[#11231d] px-3 text-xs font-black text-white disabled:opacity-40"
+                      >
+                        {companyLookupLoading ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          "Шалгах"
+                        )}
+                      </button>
+                    </div>
+                    {companyLookup ? (
+                      <div className="mt-2 flex items-start gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-bold leading-5 text-emerald-700">
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                        <span>
+                          {companyLookup.name || "Байгууллага"} · TIN{" "}
+                          {companyLookup.tin}
+                        </span>
+                      </div>
+                    ) : null}
+                    {companyLookupError ? (
+                      <p className="mt-2 text-xs font-bold leading-5 text-rose-600">
+                        {companyLookupError}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : paymentMethod !== "CONTRACT" && register.ebarimtEnabled ? (
+              <p className="mt-4 rounded-xl bg-amber-100 px-3 py-2 text-xs font-bold leading-5 text-amber-800">
+                Ebarimt үйлчилгээний орчны тохиргоо идэвхгүй байна.
+              </p>
+            ) : null}
+
+            <p className="mt-6 text-xs font-black uppercase tracking-[0.16em] text-slate-500">
+              Төлбөрийн хэлбэр
+            </p>
+            <div
+              className={`mt-3 grid gap-2 ${
+                !isCafe
+                  ? "grid-cols-2"
+                  : DEMO_CASH_PAYMENT_ENABLED
+                    ? "grid-cols-3"
+                    : "grid-cols-2"
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setPaymentMethod("QPAY");
+                  setActionError("");
+                }}
+                className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border text-sm font-black transition ${
+                  paymentMethod === "QPAY"
+                    ? "border-[#f4c34f] bg-[#f4c34f] text-[#172219]"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <QrCode className="h-6 w-6" />
+                QPay
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!cardTerminalReady) return;
+                  setPaymentMethod("CARD");
+                  setActionError("");
+                }}
+                disabled={!cardTerminalReady}
+                className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border text-sm font-black transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                  paymentMethod === "CARD"
+                    ? "border-[#f4c34f] bg-[#f4c34f] text-[#172219]"
+                    : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <CreditCard className="h-6 w-6" />
+                Карт
+              </button>
+              {!isCafe ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethod("CONTRACT");
+                    setRegularCustomer(null);
+                    setRegularCustomerPhone("");
+                    setActionError("");
+                  }}
+                  className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border px-1 text-center text-xs font-black transition ${
+                    paymentMethod === "CONTRACT"
+                      ? "border-emerald-400 bg-emerald-100 text-emerald-950"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <Building2 className="h-6 w-6" />
+                  Гэрээт байгууллага
+                </button>
+              ) : null}
+              {DEMO_CASH_PAYMENT_ENABLED ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethod("CASH");
+                    setActionError("");
+                  }}
+                  className={`flex min-h-20 flex-col items-center justify-center gap-2 rounded-2xl border px-1 text-center text-xs font-black transition ${
+                    paymentMethod === "CASH"
+                      ? "border-[#f4c34f] bg-[#f4c34f] text-[#172219]"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <Banknote className="h-6 w-6" />
+                  Тест
+                </button>
+              ) : null}
+            </div>
+            {paymentMethod === "CONTRACT" ? (
+              <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-emerald-600 text-white">
+                    <BadgeCheck className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-sm font-black text-emerald-950">
+                      Байгууллагын PIN баталгаажуулах
+                    </p>
+                    <p className="mt-1 text-xs font-semibold leading-5 text-emerald-800">
+                      Байгууллагаа сонгоод гэрээний 4 оронтой PIN-ээ оруулна уу.
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-2">
+                  <select
+                    value={selectedMealContractId}
+                    disabled={mealOptionsLoading}
+                    onChange={(event) => {
+                      setSelectedMealContractId(event.target.value);
+                      setMealVerification(null);
+                      setMealPin("");
+                      setActionError("");
+                    }}
+                    className="h-11 w-full rounded-xl border border-emerald-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none disabled:opacity-60"
+                  >
+                    <option value="">
+                      {mealOptionsLoading
+                        ? "Байгууллагууд ачаалж байна..."
+                        : "Байгууллага сонгох"}
+                    </option>
+                    {mealContractOptions.map((contract) => (
+                      <option key={contract.id} value={contract.id}>
+                        {contract.customerOrganization}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <label className="flex h-11 min-w-0 flex-1 items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3">
+                      <KeyRound className="h-4 w-4 shrink-0 text-emerald-600" />
+                      <input
+                        inputMode="numeric"
+                        autoComplete="off"
+                        maxLength={4}
+                        value={mealPin}
+                        onChange={(event) => {
+                          setMealPin(
+                            event.target.value.replace(/\D/g, "").slice(0, 4),
+                          );
+                          setMealVerification(null);
+                          setActionError("");
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void verifyContractPin();
+                          }
+                        }}
+                        placeholder="PIN код"
+                        type="password"
+                        className="h-full min-w-0 flex-1 bg-transparent text-sm font-black tracking-[0.25em] text-slate-800 outline-none placeholder:tracking-normal placeholder:text-slate-400"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => void verifyContractPin()}
+                      disabled={
+                        mealVerifying ||
+                        !selectedMealContractId ||
+                        !/^\d{4}$/.test(mealPin)
+                      }
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 text-xs font-black text-white disabled:opacity-40"
+                    >
+                      {mealVerifying ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4" />
+                      )}
+                      Шалгах
+                    </button>
+                  </div>
+                </div>
+                {mealVerification ? (
+                  <div className="mt-3 rounded-xl bg-white px-3 py-3 text-xs leading-5 text-emerald-900 shadow-sm">
+                    <p className="font-black">
+                      {mealVerification.contract.customerOrganization}
+                    </p>
+                    <p className="font-semibold text-emerald-700">
+                      PIN зөв · Гэрээ {mealVerification.contract.endDate} хүртэл
+                    </p>
+                  </div>
+                ) : mealContractOptions.length === 0 && !mealOptionsLoading ? (
+                  <p className="mt-3 text-xs font-bold text-amber-700">
+                    Идэвхтэй, PIN тохируулсан гэрээт байгууллага алга байна.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+            {paymentMethod === "CARD" && !cardTerminalReady ? (
+              <p className="mt-2 text-[11px] font-semibold leading-4 text-amber-700">
+                Карт ашиглахын тулд POS терминалаа тохируулна уу.
+              </p>
+            ) : null}
+
+            {actionError ? (
+              <div className="mt-5 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-bold leading-5 text-rose-700">
+                {actionError}
+              </div>
+            ) : null}
+          </aside>
         </div>
-      </main>
+      </SelfServiceCheckoutLayout>
     );
   }
 
