@@ -4,6 +4,7 @@ export const SUPPLY_PRODUCTS_FEATURE_KEY = "supply-products-enabled";
 export const SERVICE_POSTS_FEATURE_KEY = "service-posts-enabled";
 export const PREORDER_PRODUCTS_FEATURE_KEY = "preorder-products-enabled";
 export const SELF_SERVICE_FEATURE_KEY = "self-service-enabled";
+export const RESTAURANT_POS_FEATURE_KEY = "restaurant-pos-enabled";
 export const SELF_SERVICE_MODE_KEY = "self-service-mode";
 
 const TRUE_VALUES = new Set(["1", "true", "on", "yes"]);

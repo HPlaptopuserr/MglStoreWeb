@@ -77,10 +77,12 @@ export function getOrgNavItems(
         href: "/dashboard/self-service",
         icon: MonitorSmartphone,
       },
-      ...(!isCafe
+      ...(!isCafe || features.restaurantPos
         ? [
             {
-              label: "Бэлэн мөнгөний касс",
+              label: features.restaurantPos
+                ? "Ресторан касс"
+                : "Бэлэн мөнгөний касс",
               href: "/dashboard/restaurant-pos",
               icon: Banknote,
             },

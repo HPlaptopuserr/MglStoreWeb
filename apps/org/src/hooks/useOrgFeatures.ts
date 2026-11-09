@@ -7,6 +7,7 @@ import {
   isFeatureEnabled,
   PREORDER_PRODUCTS_FEATURE_KEY,
   SELF_SERVICE_FEATURE_KEY,
+  RESTAURANT_POS_FEATURE_KEY,
   SERVICE_POSTS_FEATURE_KEY,
   SUPPLY_PRODUCTS_FEATURE_KEY,
 } from "@/lib/org-features";
@@ -43,6 +44,11 @@ export function useOrgFeatures(organizationId?: string | null) {
       if (cancelled) return;
 
       setFeatures({
+        restaurantPos: isFeatureEnabled(
+          settings,
+          RESTAURANT_POS_FEATURE_KEY,
+          organizationId,
+        ),
         supplyProducts: isFeatureEnabled(
           settings,
           SUPPLY_PRODUCTS_FEATURE_KEY,
@@ -82,8 +88,6 @@ export function useOrgFeatures(organizationId?: string | null) {
 
   return {
     features,
-    loading: Boolean(
-      organizationId && loadedOrganizationId !== organizationId,
-    ),
+    loading: Boolean(organizationId && loadedOrganizationId !== organizationId),
   };
 }

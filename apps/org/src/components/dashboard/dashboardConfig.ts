@@ -71,11 +71,15 @@ export function getDashboardModules(
         icon: MonitorSmartphone,
         enabled: true,
       },
-      ...(!isCafe
+      ...(!isCafe || features.restaurantPos
         ? [
             {
-              title: "Бэлэн мөнгөний касс",
-              desc: "Менежер хэрэглэгчийн захиалгыг оруулж, бэлэн мөнгийг хүлээн авч борлуулалт үүсгэнэ.",
+              title: features.restaurantPos
+                ? "Ресторан касс"
+                : "Бэлэн мөнгөний касс",
+              desc: features.restaurantPos
+                ? "Ширээний захиалга, төлбөр болон ширээний QR менюг удирдана."
+                : "Менежер хэрэглэгчийн захиалгыг оруулж, бэлэн мөнгийг хүлээн авч борлуулалт үүсгэнэ.",
               href: "/dashboard/restaurant-pos",
               icon: Banknote,
               enabled: true,

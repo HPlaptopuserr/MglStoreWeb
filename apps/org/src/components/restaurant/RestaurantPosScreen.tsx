@@ -3878,6 +3878,12 @@ function RestaurantPosContent() {
 
               <div className="flex shrink-0 items-center gap-2">
 
+              {features.restaurantPos && <button
+                type="button"
+                onClick={() => void handleOpenQrModal()}
+                disabled={!selectedRegister || diningTables.length === 0}
+                className="flex min-h-10 items-center gap-2 rounded-lg border border-[#3d484f] bg-[#122131] px-3 py-2 text-xs font-bold text-[#d4e4fa] hover:border-sky-300/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300 disabled:opacity-40"
+              ><QrCode aria-hidden="true" className="h-4 w-4" />Ширээний QR меню</button>}
               <RestaurantManagementMenu
                 cashierOnly={cashierOnly}
                 shiftOpen={shiftMatchesRegister}

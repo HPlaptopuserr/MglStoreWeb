@@ -6,6 +6,7 @@ import {
   isKitchenDashboardPath,
 } from "@mgl/types";
 import { getOrgNavItems } from "./orgNavigation";
+import { getDashboardModules } from "../dashboard/dashboardConfig";
 import type { OrgFeatureState } from "@/lib/org-types";
 
 const features: OrgFeatureState = {
@@ -100,4 +101,39 @@ test("kitchen workers see kitchen and receiving in both restaurant and cafe mode
     "/dashboard/supply/edit",
   ])
     assert.equal(isKitchenDashboardPath(path), false, path);
+});
+
+test("staffed restaurant service can be enabled without removing cafe and kiosk tools", () => {
+  const cafe = {
+    ...features,
+    selfService: true,
+    selfServiceMode: "CAFE" as const,
+  };
+  const owner = { ...cashier, orgRole: "OWNER" };
+  const modules = getOrgNavItems({ ...cafe, restaurantPos: true }, owner);
+  assert.equal(
+    modules.find((item) => item.href === "/dashboard/restaurant-pos")?.label,
+    "Ресторан касс",
+  );
+  for (const href of [
+    "/dashboard/self-service",
+    "/dashboard/daily-stock",
+    "/dashboard/regular-customers",
+  ])
+    assert.ok(
+      modules.some((item) => item.href === href),
+      href,
+    );
+  assert.equal(
+    getDashboardModules({ ...cafe, restaurantPos: true }, owner).find(
+      (item) => item.href === "/dashboard/restaurant-pos",
+    )?.title,
+    "Ресторан касс",
+  );
+  assert.equal(
+    getOrgNavItems(cafe, owner).some(
+      (item) => item.href === "/dashboard/restaurant-pos",
+    ),
+    false,
+  );
 });
