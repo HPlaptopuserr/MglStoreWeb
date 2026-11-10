@@ -1058,6 +1058,53 @@ test(
         assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 1);
       });
 
+      await t.test("Android PGW -21 cancels on both callback versions and never completes a sale", async () => {
+        for (const endpoint of ["client-bridge-result", "client-bridge-result-v2"]) {
+          const f = await fixture();
+          await prisma.posRegister.update({ where: { id: f.register.id }, data: { cardProviderType: "ANDROID_PGW", terminalBridgeUrl: "http://127.0.0.1:8787" } });
+          assert.equal((await f.authorize({ ...f.body, clientBridge: true })).status, 201);
+          const before: number = providerCalls.length;
+          const result = { provider: "ANDROID_PGW", status: "FAILED", code: "-21", message: "Гүйлгээ цуцлагдсан",
+            data: f.body.attemptId, transactionId: f.body.attemptId, terminal: "TEST-TERMINAL", rrn: null, appCode: null,
+            parsed: { code: -21, desc: "Гүйлгээ цуцлагдсан", terminal: "TEST-TERMINAL", rrn: "" } };
+          const response = await fetch(`${base}/pos/payments/card/${endpoint}`, { method: "POST", headers,
+            body: JSON.stringify({ attemptId: f.body.attemptId, result }) });
+          assert.equal(response.status, 200);
+          assert.equal((await response.json() as { status: string }).status, "DECLINED");
+          const sold = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(f.sale) });
+          assert.equal(sold.status, 409, await sold.text());
+          assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 1);
+          const retryId = crypto.randomUUID();
+          assert.equal((await f.authorize({ ...f.body, attemptId: retryId, clientBridge: true })).status, 201);
+          assert.equal((await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: retryId } })).status, "PENDING");
+          assert.equal(providerCalls.length, before);
+        }
+      });
+
+      await t.test("normal polling recovers an already stored PGW cancellation without contacting a terminal", async () => {
+        const f = await fixture();
+        await prisma.posRegister.update({ where: { id: f.register.id }, data: { cardProviderType: "ANDROID_PGW", terminalBridgeUrl: "http://127.0.0.1:8787" } });
+        assert.equal((await f.authorize({ ...f.body, clientBridge: true })).status, 201);
+        const payload = { provider: "ANDROID_PGW", mode: "client-bridge", status: "FAILED", code: "-21",
+          message: "Гүйлгээ цуцлагдсан", data: f.body.attemptId, transactionId: f.body.attemptId,
+          terminal: "TEST-TERMINAL", rrn: null, appCode: null,
+          parsed: { code: -21, desc: "Гүйлгээ цуцлагдсан", terminal: "TEST-TERMINAL", rrn: "" } };
+        await prisma.cardPaymentAttempt.update({ where: { id: f.body.attemptId },
+          data: { providerPayload: payload, message: payload.message } });
+        const before = providerCalls.length;
+        const polls = await Promise.all([f.status(), f.status()]);
+        for (const response of polls) assert.equal((await response.json() as { status: string }).status, "DECLINED");
+        const saved = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } });
+        assert.equal(saved.status, "DECLINED");
+        assert.deepEqual(saved.providerPayload, payload);
+        assert.equal(saved.consumedAt, null);
+        assert.equal(saved.saleReference, null);
+        assert.equal(providerCalls.length, before);
+        // A contradictory paid record must never be downgraded by old cancellation data.
+        await prisma.cardPaymentAttempt.update({ where: { id: saved.id }, data: { status: "APPROVED", transactionId: "later-bank-proof" } });
+        assert.equal((await f.status().then(r => r.json()) as { status: string }).status, "APPROVED");
+      });
+
       await t.test("a lost bridge response remains pending until the terminal result arrives", async () => {
         const f = await fixture();
         await prisma.posRegister.update({ where: { id: f.register.id }, data: { cardProviderType: "ANDROID_PGW", terminalBridgeUrl: "http://127.0.0.1:8787" } });

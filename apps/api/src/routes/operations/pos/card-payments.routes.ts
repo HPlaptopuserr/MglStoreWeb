@@ -3,6 +3,7 @@ import { isDatabaseUnavailable } from "../../../lib/database-availability";
 import { retryDisconnectedRead } from "../../../lib/retry-disconnected-read";
 import { randomUUID } from "node:crypto";
 import { reconcileMinuCardAttempt } from "../../../services/minu-card-reconciliation";
+import { androidPgwResultStatus, hasAndroidPgwCancellation } from "../../../services/android-pgw-result";
 import { isPaymentRequestId, matchesPaymentRequest } from "../../../services/payment-request-identity";
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus, CardTerminalRequestStatus } from "@mgl/database";
@@ -768,12 +769,7 @@ router.post(["/pos/payments/card/client-bridge-result", "/pos/payments/card/clie
     if (bridgeData.manualCard === true) {
       return res.status(422).json({ code: "CARD_MANUAL_FALLBACK_FORBIDDEN", message: "API төлбөрийг гараар төлсөн гэж автоматаар бүртгэх боломжгүй. Терминалын төлөвийг шалгана уу." });
     }
-    const statusText = firstString(bridgeData.status, bridgeData.Status).toUpperCase();
-    // Android PGW also reports FAILED for an unknown terminal response. Only
-    // explicit approval/decline is final; transport or malformed results are not.
-    const newStatus = statusText === "APPROVED" || statusText === "DECLINED"
-      ? parseBridgeResultStatus(statusText)
-      : PosPaymentStatus.PENDING;
+    const newStatus = androidPgwResultStatus(bridgeData, attempt.id);
     const transactionId = firstString(
       bridgeData.transactionId,
       bridgeData.rrn,
@@ -997,6 +993,16 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
     let providerError: string | undefined;
     let providerHasRrn: boolean | undefined;
     const payload = attempt.providerPayload as Record<string, unknown> | null;
+    if (attempt.status === PosPaymentStatus.PENDING && !attempt.consumedAt && !attempt.saleReference &&
+        payload?.mode === "client-bridge" && hasAndroidPgwCancellation(payload, attempt.id)) {
+      // Recover already stored cancellations during the cashier's normal poll.
+      // Never issue another terminal request or overwrite a concurrent result.
+      await prisma.cardPaymentAttempt.updateMany({
+        where: { id, status: PosPaymentStatus.PENDING, updatedAt: attempt.updatedAt, consumedAt: null, saleReference: null },
+        data: { status: PosPaymentStatus.DECLINED },
+      });
+      freshAttempt = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id } });
+    }
     if (payload?.provider === "MINU_AGENT") {
       try {
         const reconciled = await reconcileMinuCardAttempt(attempt);
