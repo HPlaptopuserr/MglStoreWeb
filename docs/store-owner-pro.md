@@ -2,8 +2,10 @@
 
 The `store-owners` mini app charges **100,000 MNT** for one calendar month of
 ordering access. This entitlement belongs to the authenticated user, independently
-of organization ownership, general MGL membership, and the old phone allowlist.
-Legacy phone grants no longer permit ordering. All selected vendor products are
+of organization ownership and general MGL membership. Administrators can also
+activate Pro immediately by saving a registered user's phone in the App Control
+ordering-access list. These account-bound grants remain active until removed;
+users with a grant do not need to pay. All selected vendor products are
 covered; product purchases are charged separately.
 
 ## Runtime setup
@@ -17,14 +19,15 @@ covered; product purchases are charged separately.
 3. Set `API_PUBLIC_URL` for the provider callback. Polling also verifies payments
    if a callback is delayed. Keep credentials exclusively on the server.
 4. Enable `store-owners` and choose vendor sources in Admin → App Control → MGL
-   Store. The old phone-entry UI is replaced by an explanation of paid Pro access.
+   Store. The phone-entry list grants immediate Pro access as an alternative to payment.
 5. Install the updated Flutter app. An old API without the Pro routes displays a
    retry state and cannot activate paid access.
 
 ## Payment and access
 
-- `GET /api/store/store-owners/pro`: authenticated access, price, expiry, and
-  catalog availability. Recovers the latest pending invoice from the provider
+- `GET /api/store/store-owners/pro`: authenticated access, price, expiry, source
+  (`ADMIN`, `PAYMENT`, or `NONE`), and catalog availability. Admin-granted access
+  has no payment expiry and is also honored by catalog/checkout authorization. Recovers the latest pending invoice from the provider
   after a missed callback or app termination.
 - `POST /api/store/store-owners/pro/invoice`: creates or reuses an account-bound
   pending invoice. The server fixes the amount at 100,000 MNT. A database row

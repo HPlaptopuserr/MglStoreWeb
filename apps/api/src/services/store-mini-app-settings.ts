@@ -73,13 +73,25 @@ export async function resolvePhoneGrants(
     return { phone, userId: matches[0].userId };
   });
 }
+export function hasStoreOwnerAdminGrant(
+  config: StoredMiniApps,
+  userId: string,
+): boolean {
+  return config.grants.some(
+    (grant) =>
+      grant.userId === userId &&
+      config.settings["store-owners"].allowedPhones.includes(grant.phone),
+  );
+}
+
 export async function canOrderVendorMiniApp(
   config: StoredMiniApps,
   userId: string,
 ): Promise<boolean> {
   return (
     config.settings["store-owners"].enabled &&
-    (await getStoreOwnerProAccess(userId)).active
+    (hasStoreOwnerAdminGrant(config, userId) ||
+      (await getStoreOwnerProAccess(userId)).active)
   );
 }
 export async function assertMiniAppOrderAccess(

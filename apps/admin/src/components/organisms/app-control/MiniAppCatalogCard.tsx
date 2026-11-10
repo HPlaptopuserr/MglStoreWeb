@@ -7,6 +7,7 @@ import {
   type StoreMiniAppOption,
 } from "@mgl/types";
 import { MiniAppSourcePicker } from "./MiniAppSourcePicker";
+import { MiniAppPhoneAccess } from "./MiniAppPhoneAccess";
 
 interface Props {
   id: StoreMiniAppId;
@@ -79,11 +80,19 @@ export function MiniAppCatalogCard({ id, config, options, onChange }: Props) {
             харагдана.
           </div>
         ) : (
-          <div className="rounded-xl bg-violet-50 px-3.5 py-3 text-xs leading-5 text-slate-600">
-            Худалдан авагч «Дэлгүүрийн эзэд» mini app дотор Pro эрхээ 100,000₮
-            төлж идэвхжүүлнэ. Эрх нь төлбөр баталгаажсанаас хойш нэг календарь
-            сар хүчинтэй. Өмнөх утасны зөвшөөрөл худалдан авах эрх нээхгүй.
-          </div>
+          <>
+            <MiniAppPhoneAccess
+              phones={config.allowedPhones}
+              onChange={(allowedPhones) =>
+                onChange({ ...config, allowedPhones })
+              }
+            />
+            <p className="rounded-xl bg-violet-50 px-3.5 py-3 text-xs leading-5 text-slate-600">
+              Энэ жагсаалтад нэмээд хадгалсан хэрэглэгч шууд Pro эрхтэй болно.
+              Админаас олгосон эрхийг жагсаалтаас хасах хүртэл ашиглана. Бусад
+              хэрэглэгч mini app дотор 100,000₮ төлж нэг сарын Pro эрх авна.
+            </p>
+          </>
         )}
       </div>
     </section>

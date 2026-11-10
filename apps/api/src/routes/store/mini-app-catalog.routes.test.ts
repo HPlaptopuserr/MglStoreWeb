@@ -525,3 +525,18 @@ test("mini app returns each vendor product's own threshold and shared web cycle 
     ],
   );
 });
+
+test("admin-approved account can order without a paid Pro subscription", async () => {
+  stub(prisma.storeOwnerProPayment, "findFirst", async () => null);
+  const response = await fetch(
+    `${base}/store/mini-apps/store-owners/products`,
+    {
+      headers: { Authorization: `Bearer ${token("allowed")}` },
+    },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(
+    ((await response.json()) as { canOrder: boolean }).canOrder,
+    true,
+  );
+});

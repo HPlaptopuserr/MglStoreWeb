@@ -26,6 +26,7 @@ let payments: Payment[] = [];
 let requests: Array<{ url: string; body: Record<string, unknown> }> = [];
 let settled = false;
 let inactive = false;
+let adminGranted = false;
 let server: Server, base: string;
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -96,6 +97,7 @@ beforeEach(() => {
   requests = [];
   settled = false;
   inactive = false;
+  adminGranted = false;
   Object.assign(process.env, {
     STORE_OWNERS_MINU_MERCHANT_CODE: "pro-merchant",
     STORE_OWNERS_MINU_USERNAME: "pro-test-master",
@@ -109,7 +111,16 @@ beforeEach(() => {
     allowedPhones: [],
   };
   stub(prisma.siteSetting, "findUnique", async () => ({
-    value: JSON.stringify({ settings, grants: [] }),
+    value: JSON.stringify({
+      settings: {
+        ...settings,
+        "store-owners": {
+          ...settings["store-owners"],
+          allowedPhones: adminGranted ? ["99112233"] : [],
+        },
+      },
+      grants: adminGranted ? [{ phone: "99112233", userId: "buyer" }] : [],
+    }),
   }));
   stub(
     prisma.user,
@@ -396,4 +407,42 @@ test("reopening Pro recovers an expired paid invoice without buying twice", asyn
     requests.filter((r) => r.url.endsWith("/createInvoice")).length,
     1,
   );
+});
+
+test("admin ordering grant activates Pro immediately and prevents unnecessary payment", async () => {
+  adminGranted = true;
+  stub(prisma.storeOwnerProPayment, "findFirst", async () => {
+    throw new Error("Admin access must not require payment/provider recovery");
+  });
+  const response = await originalFetch(base, { headers: headers() });
+  assert.equal(response.status, 200);
+  const access = (await response.json()) as {
+    active: boolean;
+    source: string;
+    expiresAt: string | null;
+  };
+  assert.equal(access.active, true);
+  assert.equal(access.source, "ADMIN");
+  assert.equal(access.expiresAt, null);
+  assert.equal(
+    (
+      await originalFetch(`${base}/invoice`, {
+        method: "POST",
+        headers: headers(),
+      })
+    ).status,
+    409,
+  );
+  assert.equal(requests.length, 0);
+  assert.equal(payments.length, 0);
+});
+test("removing an admin grant removes Pro unless a paid month remains active", async () => {
+  adminGranted = true;
+  const granted = await originalFetch(base, { headers: headers() });
+  assert.equal(((await granted.json()) as { active: boolean }).active, true);
+  adminGranted = false;
+  const removed = await originalFetch(base, { headers: headers() });
+  const access = (await removed.json()) as { active: boolean; source: string };
+  assert.equal(access.active, false);
+  assert.equal(access.source, "NONE");
 });

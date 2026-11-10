@@ -49,7 +49,7 @@ test("settings validate source requirements and deduplicate grants", () => {
   assert.throws(() => parseStoreMiniAppSettings(settings));
   assert.throws(() => parseStoreMiniAppSettings({}));
 });
-test("only a paid active Pro grants ordering; legacy phone grants do not", async () => {
+test("admin account grants and paid active Pro both permit ordering", async () => {
   const value = config();
   stub(
     prisma.storeOwnerProPayment,
@@ -60,20 +60,18 @@ test("only a paid active Pro grants ordering; legacy phone grants do not", async
         : null,
   );
   assert.equal(await canOrderVendorMiniApp(value, "paid"), true);
-  assert.equal(await canOrderVendorMiniApp(value, "approved"), false);
+  assert.equal(await canOrderVendorMiniApp(value, "approved"), true);
   assert.equal(await canOrderVendorMiniApp(value, "other-user"), false);
+  value.settings["store-owners"].allowedPhones = [];
+  assert.equal(await canOrderVendorMiniApp(value, "approved"), false);
+  assert.equal(await canOrderVendorMiniApp(value, "paid"), true);
+  value.settings["store-owners"].allowedPhones = ["99112233"];
   value.settings["store-owners"].enabled = false;
+  assert.equal(await canOrderVendorMiniApp(value, "approved"), false);
   assert.equal(await canOrderVendorMiniApp(value, "paid"), false);
 });
 test("checkout enforces selected vendor restrictions even without a mini app id", async () => {
-  stub(
-    prisma.storeOwnerProPayment,
-    "findFirst",
-    async ({ where }: { where: { userId: string } }) =>
-      where.userId === "approved"
-        ? { paidAt: new Date(), accessExpiresAt: new Date(Date.now() + 60000) }
-        : null,
-  );
+  stub(prisma.storeOwnerProPayment, "findFirst", async () => null);
   stub(prisma.siteSetting, "findUnique", async () => ({
     value: JSON.stringify(config()),
   }));

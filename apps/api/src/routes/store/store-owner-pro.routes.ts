@@ -7,7 +7,10 @@ import {
 import rateLimit from "express-rate-limit";
 import { prisma } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
-import { readStoreMiniApps } from "../../services/store-mini-app-settings";
+import {
+  readStoreMiniApps,
+  hasStoreOwnerAdminGrant,
+} from "../../services/store-mini-app-settings";
 import {
   createStoreOwnerProInvoice,
   checkStoreOwnerProPayment,
@@ -90,13 +93,15 @@ router.use(base, requireAuth, async (req: Request, res, next) => {
 router.get(base, paymentLimit, async (_req, res) => {
   try {
     const userId = String(res.locals.proUserId);
-    const [access, config] = await Promise.all([
-      recoverStoreOwnerProPayment(userId),
-      readStoreMiniApps(),
-    ]);
+    const config = await readStoreMiniApps();
+    const adminGranted = hasStoreOwnerAdminGrant(config, userId);
+    const access = adminGranted
+      ? { active: true, paidAt: null, expiresAt: null }
+      : await recoverStoreOwnerProPayment(userId);
     const app = config.settings["store-owners"];
     return res.json({
       ...access,
+      source: adminGranted ? "ADMIN" : access.active ? "PAYMENT" : "NONE",
       price: STORE_OWNER_PRO_PRICE,
       durationMonths: STORE_OWNER_PRO_MONTHS,
       available: app.enabled && app.sourceIds.length > 0,
@@ -115,9 +120,14 @@ router.post(`${base}/invoice`, invoiceLimit, async (_req, res) => {
         409,
         "Каталог бэлтгэгдэж байна. Идэвхжсэний дараа Pro эрх авах боломжтой.",
       );
-    const payment = await createStoreOwnerProInvoice(
-      String(res.locals.proUserId),
-    );
+    const userId = String(res.locals.proUserId);
+    if (hasStoreOwnerAdminGrant(config, userId)) {
+      throw new StoreOwnerProError(
+        409,
+        "Танд админаас Pro эрх олгосон байна. Төлбөр төлөх шаардлагагүй.",
+      );
+    }
+    const payment = await createStoreOwnerProInvoice(userId);
     return res.json({
       invoiceId: payment.id,
       amount: payment.amount,
