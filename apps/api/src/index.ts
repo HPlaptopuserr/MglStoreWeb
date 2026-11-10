@@ -19,6 +19,7 @@ import buildingRoutes from "./routes/building";
 import miniAppAdminRoutes from "./routes/store/mini-app-admin.routes";
 import warehouseRetailRoutes from "./routes/store/warehouse-retail.routes";
 import miniAppCatalogRoutes from "./routes/store/mini-app-catalog.routes";
+import storeOwnerProRoutes from "./routes/store/store-owner-pro.routes";
 import visualSearchRoutes from "./routes/catalog/visual-search.routes";
 import { startVisualSearchWorker } from "./services/visual-search/visual-search-worker";
 
@@ -230,6 +231,7 @@ app.use("/api", storeBranchRoutes);
 app.use("/api", hypermarketRoutes);
 app.use("/api", miniAppAdminRoutes);
 app.use("/api", miniAppCatalogRoutes);
+app.use("/api", storeOwnerProRoutes);
 app.use("/api", warehouseRetailRoutes);
 app.use("/api", vendorMerchantRoutes);
 app.use("/api", vendorUpgradeRoutes);

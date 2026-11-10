@@ -1,4 +1,5 @@
 import { prisma } from "@mgl/database";
+import { getStoreOwnerProAccess } from "./store-owner-pro.service";
 import {
   StoreMiniAppValidationError,
   emptyStoreMiniAppSettings,
@@ -72,17 +73,13 @@ export async function resolvePhoneGrants(
     return { phone, userId: matches[0].userId };
   });
 }
-export function canOrderVendorMiniApp(
+export async function canOrderVendorMiniApp(
   config: StoredMiniApps,
   userId: string,
-): boolean {
-  const app = config.settings["store-owners"];
+): Promise<boolean> {
   return (
-    app.enabled &&
-    config.grants.some(
-      (grant) =>
-        grant.userId === userId && app.allowedPhones.includes(grant.phone),
-    )
+    config.settings["store-owners"].enabled &&
+    (await getStoreOwnerProAccess(userId)).active
   );
 }
 export async function assertMiniAppOrderAccess(

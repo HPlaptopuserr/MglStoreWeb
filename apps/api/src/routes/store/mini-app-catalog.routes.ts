@@ -21,6 +21,7 @@ import {
 import { productImageOrderBy } from "../../lib/product-images";
 import { onlineProductStock } from "../../services/store-product-stock";
 import { reservedStock } from "../../services/stock-reservation.service";
+import { getPreorderCapacityProgress } from "../../services/preorder-capacity.service";
 
 const router: ExpressRouter = Router();
 router.get(
@@ -43,7 +44,7 @@ router.get(
       const canOrder =
         id === "shared-store"
           ? Boolean(user)
-          : Boolean(user && canOrderVendorMiniApp(config, user.id));
+          : Boolean(user && (await canOrderVendorMiniApp(config, user.id)));
       res.setHeader("Cache-Control", "private, no-store");
       const warehouses =
         id === "shared-store" && app.enabled
@@ -172,6 +173,8 @@ router.get(
             unit: true,
             stock: true,
             supplyType: true,
+            preorderCapacity: true,
+            preorderCycleStartedAt: true,
             managedByWarehouseId: true,
             managedByWarehouse: {
               select: {
@@ -202,6 +205,10 @@ router.get(
         }),
         prisma.product.count({ where }),
       ]);
+      const preorderProgress = await getPreorderCapacityProgress(
+        prisma,
+        products,
+      );
       const reservations = new Map<string, Map<string, number>>();
       if (id === "shared-store") {
         await Promise.all(
@@ -238,6 +245,7 @@ router.get(
             ...product
           }) => ({
             ...product,
+            ...preorderProgress.get(product.id),
             warehouse: product.managedByWarehouse
               ? {
                   id: product.managedByWarehouse.id,

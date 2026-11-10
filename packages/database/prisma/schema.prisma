@@ -8,6 +8,7 @@ datasource db {
 }
 
 model User {
+  storeOwnerProPayments StoreOwnerProPayment[]
   investmentTopUps WarehouseInvestmentTopUp[]
   warehouseDividends WarehouseInvestorDividend[] @relation("WarehouseDividendOwner")
   recordedWarehouseDividends WarehouseInvestorDividend[] @relation("WarehouseDividendRecorder")
@@ -5040,4 +5041,26 @@ model PosSaleRecipeSnapshot {
   saleLine PosSaleLine @relation(fields: [saleLineId], references: [id], onDelete: Cascade)
 
   @@index([productId, recipeVersion])
+}
+
+// Independent of general MGL membership and organization ownership.
+model StoreOwnerProPayment {
+  id                String            @id @default(uuid())
+  userId            String
+  amount            Int
+  status            PlanPaymentStatus @default(PENDING)
+  merchantCode      String
+  merchantUsername  String
+  providerInvoiceId String?           @unique
+  qrText            String            @default("")
+  deepLinks         Json              @default("[]")
+  invoiceExpiresAt  DateTime
+  paidAt            DateTime?
+  accessExpiresAt   DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  user              User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, status, accessExpiresAt])
+  @@index([userId, status, invoiceExpiresAt])
 }

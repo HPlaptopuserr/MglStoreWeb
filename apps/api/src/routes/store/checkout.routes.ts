@@ -1059,7 +1059,7 @@ router.post("/store/checkout", async (req: Request, res: Response) => {
 
     // Enforce source permissions regardless of the client route or submitted phone.
     if (!(await assertMiniAppOrderAccess(customer.id, products.map(product => ({ ...product, miniAppId: lines.find(line => line.productId === product.id)?.miniAppId }))))) {
-      return res.status(403).json({ code: "MINI_APP_ORDER_FORBIDDEN", message: "Энэ vendor-ийн барааг захиалах эрх таны бүртгэлд олгогдоогүй байна." });
+      return res.status(403).json({ code: "MINI_APP_ORDER_FORBIDDEN", message: "Дэлгүүрийн эзэд Pro эрхээ идэвхжүүлж захиалга хийнэ үү." });
     }
 
     const productMap = new Map(products.map((p) => [p.id, p]));

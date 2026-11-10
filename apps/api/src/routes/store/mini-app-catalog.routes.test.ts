@@ -56,6 +56,15 @@ afterEach(() => {
 });
 beforeEach(() => {
   stub(
+    prisma.storeOwnerProPayment,
+    "findFirst",
+    async ({ where }: { where: { userId: string } }) =>
+      where.userId === "allowed"
+        ? { paidAt: new Date(), accessExpiresAt: new Date(Date.now() + 60000) }
+        : null,
+  );
+
+  stub(
     prisma.siteSetting,
     "findUnique",
     async ({ where }: { where: { key: string } }) => ({
@@ -426,5 +435,93 @@ test("shared catalog includes all 69 published inventory items but blocks placeh
     received
       .filter((product) => product.price >= 100)
       .every((product) => product.orderable),
+  );
+});
+
+test("mini app returns each vendor product's own threshold and shared web cycle progress", async () => {
+  const cycle = new Date("2026-11-01T00:00:00Z");
+  stub(
+    prisma.product,
+    "findMany",
+    async ({ select }: { select: Record<string, unknown> }) => {
+      assert.equal(select.preorderCapacity, true);
+      assert.equal(select.preorderCycleStartedAt, true);
+      return [
+        {
+          id: "small",
+          name: "Small",
+          unit: "pcs",
+          price: 5000,
+          stock: 0,
+          supplyType: "CHINA_PREORDER",
+          preorderCapacity: 3,
+          preorderCycleStartedAt: cycle,
+          managedByWarehouseId: null,
+          warehouseInventories: [],
+          images: [],
+          organization: { id: "vendor", name: "Vendor" },
+        },
+        {
+          id: "large",
+          name: "Large",
+          unit: "pcs",
+          price: 9000,
+          stock: 0,
+          supplyType: "CHINA_PREORDER",
+          preorderCapacity: 25,
+          preorderCycleStartedAt: null,
+          managedByWarehouseId: null,
+          warehouseInventories: [],
+          images: [],
+          organization: { id: "vendor", name: "Vendor" },
+        },
+      ];
+    },
+  );
+  stub(prisma.order, "findMany", async () => [
+    {
+      customerId: "old",
+      createdAt: new Date("2026-10-01T00:00:00Z"),
+      items: [{ productId: "small" }],
+    },
+    ...["one", "two", "three"].map((customerId) => ({
+      customerId,
+      createdAt: new Date("2026-11-02T00:00:00Z"),
+      items: [{ productId: "small" }],
+    })),
+    {
+      customerId: "buyer",
+      createdAt: new Date("2026-11-02T00:00:00Z"),
+      items: [{ productId: "large" }],
+    },
+    {
+      customerId: "buyer",
+      createdAt: new Date("2026-11-03T00:00:00Z"),
+      items: [{ productId: "large" }],
+    },
+  ]);
+  const response = await fetch(`${base}/store/mini-apps/store-owners/products`);
+  assert.equal(response.status, 200);
+  const data = (await response.json()) as {
+    products: Array<{
+      id: string;
+      preorderCapacity: number;
+      preorderParticipantCount: number;
+      preorderRemaining: number;
+      preorderIsFull: boolean;
+    }>;
+  };
+  assert.deepEqual(
+    data.products.map((p) => [
+      p.id,
+      p.preorderCapacity,
+      p.preorderParticipantCount,
+      p.preorderRemaining,
+      p.preorderIsFull,
+    ]),
+    [
+      ["small", 3, 3, 0, true],
+      ["large", 25, 1, 24, false],
+    ],
   );
 });
