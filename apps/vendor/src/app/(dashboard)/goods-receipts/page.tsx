@@ -1,6 +1,8 @@
 "use client";
 
 import { useReceiptDraft } from "@/features/receive/useReceiptDraft";
+import { receiptItemPayload } from "@/features/receive/receipt-item-payload";
+import { parseVendorSessionUser } from "@/features/session/vendor-session.model";
 import { markedUpPrice } from "@/features/receive/receipt-pricing";
 import { ReceiptMarkupControl } from "@/features/receive/ReceiptMarkupControl";
 import {
@@ -35,7 +37,7 @@ import {
   normalizePosMeasureUnit,
   POS_WEIGHT_STEP_KG,
   roundPosQuantity,
-  toPosStoredStockQuantity,
+  isCashierOnlyMember,
 } from "@mgl/types";
 
 type GoodsReceiptResult = {
@@ -89,6 +91,18 @@ async function readJson<T>(response: Response, fallbackMessage: string) {
 }
 
 export default function GoodsReceiptsPage() {
+  const [canManageProducts, setCanManageProducts] = useState(false);
+  useEffect(() => {
+    try {
+      const user = parseVendorSessionUser(
+        JSON.parse(localStorage.getItem("vendor_user") || "null"),
+      );
+      setCanManageProducts(!isCashierOnlyMember(user));
+    } catch {
+      setCanManageProducts(false);
+    }
+  }, []);
+
   const [markup, setMarkup] = useState("");
   const changeMarkup = (value: string) => {
     setMarkup(value);
@@ -174,7 +188,9 @@ export default function GoodsReceiptsPage() {
         includeExpiredInventory: "1",
       });
       const [registerResponse, productResponse] = await Promise.all([
-        authFetch(`${API}/pos/registers/mine?mode=RETAIL`, { cache: "no-store" }),
+        authFetch(`${API}/pos/registers/mine?mode=RETAIL`, {
+          cache: "no-store",
+        }),
         authFetch(`${API}/products?${productParams.toString()}`, {
           cache: "no-store",
         }),
@@ -302,6 +318,7 @@ export default function GoodsReceiptsPage() {
   };
 
   const openProductCreate = (code = search) => {
+    if (!canManageProducts) return;
     setInitialMaster(null);
     setNewProductCode(code.trim());
     setCreateProductOpen(true);
@@ -352,6 +369,7 @@ export default function GoodsReceiptsPage() {
     field: "batchNumber" | "expiryDate" | "unitCost" | "salePrice",
     value: string,
   ) => {
+    if (field === "salePrice" && !canManageProducts) return;
     setLines((current) =>
       current.map((line) =>
         line.id === lineId
@@ -411,6 +429,15 @@ export default function GoodsReceiptsPage() {
       setSubmitError("Хүлээн авах бараа нэмнэ үү.");
       return;
     }
+    if (
+      !canManageProducts &&
+      lines.some((line) => line.product.id.startsWith("catalog:"))
+    ) {
+      setSubmitError(
+        "Ноорогт бүртгэлгүй бараа байна. Тухайн мөрийг хасаад дэлгүүрийн бүртгэлтэй барааг сонгоно уу.",
+      );
+      return;
+    }
     const invalidCostLine = lines.find((line) => {
       const cost = Number(line.unitCost);
       return !line.unitCost.trim() || !Number.isFinite(cost) || cost < 0;
@@ -423,6 +450,7 @@ export default function GoodsReceiptsPage() {
     }
 
     if (
+      canManageProducts &&
       lines.some(
         (line) =>
           line.salePrice.trim() &&
@@ -455,31 +483,9 @@ export default function GoodsReceiptsPage() {
           supplierRegisterNo: supplierRegisterNo.trim() || undefined,
           documentNo: documentNo.trim() || undefined,
           note: note.trim() || undefined,
-          items: lines.map((line) => ({
-            ...(line.product.id.startsWith("catalog:")
-              ? { masterProductId: line.product.masterProductId }
-              : {
-                  productId: line.product.id,
-                  productSnapshot: {
-                    name: line.product.name,
-                    barcode: line.product.barcode ?? null,
-                    unit: normalizePosMeasureUnit(line.product.unit),
-                    ...(line.product.price != null
-                      ? { price: Number(line.product.price) }
-                      : {}),
-                  },
-                }),
-            quantity: toPosStoredStockQuantity(
-              line.quantity,
-              line.product.unit,
-            ),
-            unitCost: Number(line.unitCost),
-            salePrice: line.salePrice.trim()
-              ? Number(line.salePrice)
-              : undefined,
-            batchNumber: line.batchNumber.trim() || undefined,
-            expiryDate: line.expiryDate || undefined,
-          })),
+          items: lines.map((line) =>
+            receiptItemPayload(line, canManageProducts),
+          ),
         }),
       });
       const receipt = await readJson<GoodsReceiptResult>(
@@ -534,13 +540,15 @@ export default function GoodsReceiptsPage() {
             Орлогын баримтаа бөглөж, бараагаа үлдэгдэлд нэмнэ.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => openProductCreate("")}
-          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-        >
-          <Plus size={16} /> Шинэ бараа
-        </button>
+        {canManageProducts && (
+          <button
+            type="button"
+            onClick={() => openProductCreate("")}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <Plus size={16} /> Шинэ бараа
+          </button>
+        )}
       </div>
 
       {(draftStatus || offline) && (
@@ -700,7 +708,8 @@ export default function GoodsReceiptsPage() {
                 )}
               </div>
 
-              {normalizedSearch &&
+              {canManageProducts &&
+                normalizedSearch &&
                 matchingProducts.length === 0 &&
                 !createProductOpen && (
                   <div className="mt-3">
@@ -723,19 +732,28 @@ export default function GoodsReceiptsPage() {
                     />
                   </div>
                 )}
+              {!canManageProducts &&
+                normalizedSearch &&
+                matchingProducts.length === 0 && (
+                  <p role="status" className="mt-3 text-sm text-slate-500">
+                    Бүртгэлтэй бараа олдсонгүй. Баркод эсвэл нэрээ шалгана уу.
+                  </p>
+                )}
               <div className="mt-5 space-y-2">
-                <details className="rounded-xl border border-slate-200 p-3">
-                  <summary className="cursor-pointer text-sm font-semibold text-slate-600">
-                    Зарах үнэ тооцох тохиргоо{" "}
-                    {markup ? `· +${markup}%` : "· Заавал биш"}
-                  </summary>
-                  <div className="mt-3">
-                    <ReceiptMarkupControl
-                      value={markup}
-                      onChange={changeMarkup}
-                    />
-                  </div>
-                </details>
+                {canManageProducts && (
+                  <details className="rounded-xl border border-slate-200 p-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-slate-600">
+                      Зарах үнэ тооцох тохиргоо{" "}
+                      {markup ? `· +${markup}%` : "· Заавал биш"}
+                    </summary>
+                    <div className="mt-3">
+                      <ReceiptMarkupControl
+                        value={markup}
+                        onChange={changeMarkup}
+                      />
+                    </div>
+                  </details>
+                )}
                 {lines.length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 py-12 text-center">
                     <PackageCheck className="mx-auto h-9 w-9 text-slate-300" />
@@ -745,6 +763,7 @@ export default function GoodsReceiptsPage() {
                   </div>
                 ) : (
                   <ReceiptLinesTable
+                    showSalePrice={canManageProducts}
                     lines={lines}
                     total={totalPurchaseCost}
                     onQuantity={setQuantity}
@@ -781,15 +800,17 @@ export default function GoodsReceiptsPage() {
           refreshKey={success?.id ?? ""}
         />
       )}
-      <QuickProductCreateModal
-        markupPercent={markup}
-        open={createProductOpen}
-        organizationId={getOrganizationId()}
-        initialCode={newProductCode}
-        initialMaster={initialMaster}
-        onClose={() => setCreateProductOpen(false)}
-        onCreated={handleProductCreated}
-      />
+      {canManageProducts && (
+        <QuickProductCreateModal
+          markupPercent={markup}
+          open={createProductOpen}
+          organizationId={getOrganizationId()}
+          initialCode={newProductCode}
+          initialMaster={initialMaster}
+          onClose={() => setCreateProductOpen(false)}
+          onCreated={handleProductCreated}
+        />
+      )}
     </div>
   );
 }
