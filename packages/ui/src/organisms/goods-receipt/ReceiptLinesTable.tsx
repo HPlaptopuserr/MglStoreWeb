@@ -18,6 +18,7 @@ interface Props {
   renderProduct?: (line: ReceiptLine) => ReactNode;
   onAddProduct?: () => void;
   showSalePrice?: boolean;
+  salePriceReadOnly?: boolean;
   renderMetadata?: (line: ReceiptLine) => ReactNode;
   total: number;
   onQuantity: (id: string, value: number) => void;
@@ -39,6 +40,7 @@ export function ReceiptLinesTable({
   onAddLot,
   onAutomaticPrice,
   showSalePrice = true,
+  salePriceReadOnly = false,
   renderMetadata,
   productSearch,
   renderProduct,
@@ -159,6 +161,7 @@ export function ReceiptLinesTable({
                             max="1000000000"
                             step="0.01"
                             placeholder="Өөрчлөхгүй"
+                            readOnly={salePriceReadOnly}
                             value={line.salePrice}
                             onChange={(event) =>
                               onField(line.id, "salePrice", event.target.value)
@@ -166,7 +169,7 @@ export function ReceiptLinesTable({
                             className={inputClass}
                           />
                         )}
-                        {line.manualPrice && (
+                        {line.manualPrice && !salePriceReadOnly && (
                           <button
                             type="button"
                             onClick={() => onAutomaticPrice?.(line.id)}

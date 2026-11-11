@@ -38,6 +38,18 @@ export function ReceiptLinesTable(props: Props) {
     if (!isWeight(line)) return null;
     const unit = entry(line.id).price;
     const label = unit === "g" ? "г" : "кг";
+    if (field === "salePrice" && props.salePriceReadOnly) {
+      return (
+        <div className="py-2 text-right text-sm tabular-nums">
+          {line.salePrice.trim()
+            ? new Intl.NumberFormat("mn-MN", {
+                maximumFractionDigits: 2,
+              }).format(displayWeightPrice(Number(line.salePrice), unit))
+            : "—"}
+          <p className="mt-1 text-xs text-slate-500">₮ / 1 {label}</p>
+        </div>
+      );
+    }
     return (
       <div>
         <WeightEntryInput

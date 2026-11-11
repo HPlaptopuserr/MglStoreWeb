@@ -3,7 +3,7 @@
 import { useReceiptDraft } from "@/features/receive/useReceiptDraft";
 import { receiptItemPayload } from "@/features/receive/receipt-item-payload";
 import { parseVendorSessionUser } from "@/features/session/vendor-session.model";
-import { markedUpPrice } from "@/features/receive/receipt-pricing";
+import { receiptSalePrice } from "@/features/receive/receipt-pricing";
 import { ReceiptMarkupControl } from "@/features/receive/ReceiptMarkupControl";
 import {
   ReceiptSourceFields,
@@ -110,7 +110,10 @@ export default function GoodsReceiptsPage() {
       current.map((line) =>
         line.manualPrice
           ? line
-          : { ...line, salePrice: markedUpPrice(line.unitCost, value) },
+          : {
+              ...line,
+              salePrice: receiptSalePrice(line.product, line.unitCost, value),
+            },
       ),
     );
   };
@@ -216,6 +219,22 @@ export default function GoodsReceiptsPage() {
 
       setRegisters(nextRegisters);
       setProducts(nextProducts);
+      const productsById = new Map(
+        nextProducts.map((product) => [product.id, product]),
+      );
+      setLines((current) =>
+        current.map((line) => {
+          const product = productsById.get(line.product.id);
+          if (!product) return line;
+          return {
+            ...line,
+            product: { ...line.product, ...product },
+            salePrice:
+              line.salePrice.trim() ||
+              receiptSalePrice(product, line.unitCost, ""),
+          };
+        }),
+      );
       setSelectedRegisterId((current) => {
         const stored = localStorage.getItem(SELECTED_REGISTER_KEY) || "";
         const candidate = current || stored;
@@ -276,7 +295,11 @@ export default function GoodsReceiptsPage() {
     quantity: 1,
     salePrice:
       product.manualReceiptPrice ??
-      markedUpPrice(String(product.costPrice ?? ""), markup),
+      receiptSalePrice(
+        product,
+        String(product.costPrice ?? ""),
+        canManageProducts ? markup : "",
+      ),
     manualPrice: product.manualReceiptPrice !== undefined,
     unitCost:
       product.costPrice == null || Number(product.costPrice) < 0
@@ -378,7 +401,13 @@ export default function GoodsReceiptsPage() {
               ...(field === "salePrice"
                 ? { manualPrice: true }
                 : field === "unitCost" && !line.manualPrice
-                  ? { salePrice: markedUpPrice(value, markup) }
+                  ? {
+                      salePrice: receiptSalePrice(
+                        line.product,
+                        value,
+                        canManageProducts ? markup : "",
+                      ),
+                    }
                   : {}),
             }
           : line,
@@ -767,7 +796,7 @@ export default function GoodsReceiptsPage() {
                   </div>
                 ) : (
                   <ReceiptLinesTable
-                    showSalePrice={canManageProducts}
+                    salePriceReadOnly={!canManageProducts}
                     lines={lines}
                     total={totalPurchaseCost}
                     onQuantity={setQuantity}
@@ -785,7 +814,11 @@ export default function GoodsReceiptsPage() {
                             ? {
                                 ...line,
                                 manualPrice: false,
-                                salePrice: markedUpPrice(line.unitCost, markup),
+                                salePrice: receiptSalePrice(
+                                  line.product,
+                                  line.unitCost,
+                                  markup,
+                                ),
                               }
                             : line,
                         ),
