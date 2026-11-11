@@ -1,3 +1,4 @@
+import { allocateEbarimtVat } from "../utils/ebarimt-vat";
 import type { PosReceipt } from "../types/receipt.types";
 import type { RegisterConfig, SalePaymentLine } from "../types/pos.types";
 import {
@@ -355,7 +356,10 @@ async function fetchLocalPosApi<T>(
       return await fetchLocalPosApiUrl<T>(url, init, timeoutMs);
     } catch (error) {
       lastError = error;
-      if (error instanceof PosApiHttpError) break;
+      // A failed response does not prove that a receipt mutation was rejected.
+      // Trying a second transport could issue the same fiscal receipt twice.
+      const method = (init?.method || "GET").toUpperCase();
+      if (error instanceof PosApiHttpError || !["GET", "HEAD"].includes(method)) break;
     }
   }
 
@@ -786,7 +790,17 @@ export async function issueLocalEbarimtReceipt(
     group.totalCityTax = money(group.totalCityTax + item.totalCityTax);
     groupedReceipts.set(receiptTaxType, group);
   });
-  const receiptGroups = Array.from(groupedReceipts.values());
+  const receiptGroups = Array.from(groupedReceipts.values()).map((group) => {
+    const allocation = allocateEbarimtVat(group.items, vatPayer, group.taxType);
+    return {
+      ...group,
+      totalVAT: allocation.totalVAT,
+      items: group.items.map((item, index) => ({
+        ...item,
+        totalVAT: allocation.itemVAT[index],
+      })),
+    };
+  });
   const totalVAT = money(
     receiptGroups.reduce((sum, group) => sum + group.totalVAT, 0),
   );
