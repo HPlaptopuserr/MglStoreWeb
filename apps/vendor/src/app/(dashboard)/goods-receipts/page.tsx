@@ -318,7 +318,6 @@ export default function GoodsReceiptsPage() {
   };
 
   const openProductCreate = (code = search) => {
-    if (!canManageProducts) return;
     setInitialMaster(null);
     setNewProductCode(code.trim());
     setCreateProductOpen(true);
@@ -540,15 +539,13 @@ export default function GoodsReceiptsPage() {
             Орлогын баримтаа бөглөж, бараагаа үлдэгдэлд нэмнэ.
           </p>
         </div>
-        {canManageProducts && (
-          <button
-            type="button"
-            onClick={() => openProductCreate("")}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            <Plus size={16} /> Шинэ бараа
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => openProductCreate("")}
+          className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+        >
+          <Plus size={16} /> Шинэ бараа
+        </button>
       </div>
 
       {(draftStatus || offline) && (
@@ -736,7 +733,14 @@ export default function GoodsReceiptsPage() {
                 normalizedSearch &&
                 matchingProducts.length === 0 && (
                   <p role="status" className="mt-3 text-sm text-slate-500">
-                    Бүртгэлтэй бараа олдсонгүй. Баркод эсвэл нэрээ шалгана уу.
+                    Энэ баркодтой бараа дэлгүүрт бүртгэлгүй байна.{" "}
+                    <button
+                      type="button"
+                      onClick={() => openProductCreate(search)}
+                      className="font-semibold text-cyan-700 underline"
+                    >
+                      Шинэ бараа бүртгэж орлогодох
+                    </button>
                   </p>
                 )}
               <div className="mt-5 space-y-2">
@@ -800,17 +804,15 @@ export default function GoodsReceiptsPage() {
           refreshKey={success?.id ?? ""}
         />
       )}
-      {canManageProducts && (
-        <QuickProductCreateModal
-          markupPercent={markup}
-          open={createProductOpen}
-          organizationId={getOrganizationId()}
-          initialCode={newProductCode}
-          initialMaster={initialMaster}
-          onClose={() => setCreateProductOpen(false)}
-          onCreated={handleProductCreated}
-        />
-      )}
+      <QuickProductCreateModal
+        markupPercent={markup}
+        open={createProductOpen}
+        organizationId={getOrganizationId()}
+        initialCode={newProductCode}
+        initialMaster={initialMaster}
+        onClose={() => setCreateProductOpen(false)}
+        onCreated={handleProductCreated}
+      />
     </div>
   );
 }
