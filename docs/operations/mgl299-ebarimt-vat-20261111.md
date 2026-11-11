@@ -12,6 +12,6 @@ A successful PosAPI response is cached on the issuing browser until the API stor
 
 Verify completion by querying only this manifest: all 25 must have `ebarimtStatus=SUCCESS` and `vatRecovery.state=COMPLETED`. A local rejected ID absent from the invalid list is skipped, not assumed missing. A cashier must refresh the deployed Vendor POS on the original till to run local recovery; the cloud server cannot reach that computer's localhost.
 
-MGL TUGS separately had 21 completed sales with no recorded eBarimt outcome. They are not in this recovery manifest and must not be blindly reissued: absence of an attached response does not establish that a fiscal receipt was never issued.
+MGL TUGS separately had 21 completed CREDIT sales with no recorded eBarimt outcome. The existing receipt flow defers fiscal issuance until credit repayment; paid CASH/CARD/QPAY/MIXED sales had successful outcomes. These credit sales are not in this recovery manifest and must not be blindly reissued.
 
 Primary PosAPI reference: https://developer.itc.gov.mn/detail/proj-1787042993564?item=api-1787209763945 (`inactiveId` corrects the prior fiscal receipt; `billIdSuffix` is a daily unique internal suffix).
