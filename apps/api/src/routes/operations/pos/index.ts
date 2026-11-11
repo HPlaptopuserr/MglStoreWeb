@@ -1,3 +1,4 @@
+import ebarimtVatRecoveryRoutes from "./ebarimt-vat-recovery.routes";
 import quickRestockRoutes from "./quick-restock.routes";
 import { Router, type Router as ExpressRouter } from "express";
 import cardPaymentsRoutes from "./card-payments.routes";
@@ -21,6 +22,7 @@ import creditCustomersRoutes from "./credit-customers.routes";
 import incomingDispatchesRoutes from "./incoming-dispatches.routes";
 
 const router: ExpressRouter = Router();
+router.use(ebarimtVatRecoveryRoutes);
 router.use(incomingDispatchesRoutes);
 
 router.use(stocktakesRoutes);

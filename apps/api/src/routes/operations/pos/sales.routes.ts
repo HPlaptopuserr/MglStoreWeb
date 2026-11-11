@@ -2591,6 +2591,14 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
         organizationId: true,
         receiptNo: true,
         ebarimtPayload: true,
+        ebarimtStatus: true,
+        ebarimtBillId: true,
+        ebarimtReceiptId: true,
+        ebarimtQrData: true,
+        ebarimtLottery: true,
+        ebarimtDate: true,
+        ebarimtError: true,
+        ebarimtSyncedAt: true,
       },
     });
     if (!sale) {
@@ -2604,6 +2612,11 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
       return res
         .status(403)
         .json({ message: "Энэ борлуулалтын eBarimt мэдээлэл засах эрхгүй" });
+    }
+
+    // A late failure or duplicate browser response must never erase a fiscal success.
+    if (sale.ebarimtStatus === "SUCCESS") {
+      return res.json({ ebarimt: mapEbarimtReceipt(sale) });
     }
 
     const body = req.body as {
@@ -2667,7 +2680,10 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
     };
 
     const updated = await prisma.posSale.update({
-      where: { id: sale.id },
+      where: {
+        id: sale.id,
+        OR: [{ ebarimtStatus: null }, { ebarimtStatus: { not: "SUCCESS" } }],
+      },
       data: {
         ebarimtStatus: status,
         ebarimtBillId: cleanText(body.billId),

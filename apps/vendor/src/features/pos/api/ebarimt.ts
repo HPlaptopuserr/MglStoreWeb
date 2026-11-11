@@ -1,3 +1,4 @@
+import { buildVatRecoveryPayload } from "../utils/ebarimt-vat-recovery";
 import { allocateEbarimtVat } from "../utils/ebarimt-vat";
 import type { PosReceipt } from "../types/receipt.types";
 import type { RegisterConfig, SalePaymentLine } from "../types/pos.types";
@@ -901,4 +902,18 @@ export async function attachEbarimtReceipt(
       body: payload,
     },
   );
+}
+
+
+export async function correctRejectedEbarimtVat(
+  source: unknown, receiptNo: string, originalId: string, totalAmount: number,
+  register: RegisterConfig,
+): Promise<unknown> {
+  const payload = buildVatRecoveryPayload(source, receiptNo, originalId, totalAmount);
+  const raw = await fetchLocalPosApi<EbarimtWrapperResponse | EbarimtReceiptContent>(
+    "/rest/receipt", { method: "POST", body: JSON.stringify(payload) }, 10_000, getRegisterPosApiUrl(register),
+  );
+  const response = parseReceiptResponse(raw);
+  if (response.status !== "SUCCESS") throw new Error(response.message || "PosAPI баримтын засварыг баталгаажуулаагүй байна.");
+  return response;
 }

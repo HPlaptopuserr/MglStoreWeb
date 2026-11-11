@@ -9,6 +9,7 @@ import type { CustomerDisplayPayload, CustomerDisplaySuccessDetails } from "@/fe
 import type { PosProduct } from "@/features/pos/types/pos.types";
 import { RestockProductDialog } from "@/features/pos/components/RestockProductDialog";
 import { printReceipt as printSaleReceipt } from "@/features/pos/utils/print-receipt";
+import { EbarimtVatRecoveryNotice } from "@/features/pos/components/EbarimtVatRecoveryNotice";
 import { ReceiptPrintNotice } from "@/features/pos/components/ReceiptPrintNotice";
 import { reconcilePaymentEntry } from "@/features/pos/utils/reconcile-payment-entry";
 import { canClearCheckoutAfterCancelFailure } from "@/features/pos/utils/qpay-cancel-policy";
@@ -3592,6 +3593,8 @@ export default function PosDemoPage() {
   return (
     <>
       <MobileBlock />
+      {registerConfig && <EbarimtVatRecoveryNotice register={registerConfig}
+        idle={view === "register" && state.cart.length === 0 && paymentEntries.length === 0 && !pendingEbarimtSale && !checkoutStarting && !autoFinalizing && !checkingEbarimt} />}
       <ReceiptPrintNotice receipt={printableReceipt} onDismiss={() => setPrintableReceipt(null)} />
       <CashChangeNotice receipt={cashChangeReceipt} onDismiss={() => { setCashChangeReceipt(null); setCustomerDisplaySuccess(null); }} />
       {pendingEbarimtSale && (
