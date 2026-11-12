@@ -9,6 +9,7 @@ interface InventoryPageOptions extends InventoryFilters {
   page: number;
   limit: number;
   signal?: AbortSignal;
+  timeoutMs?: number;
 }
 
 export async function fetchInventoryPage({
@@ -18,6 +19,7 @@ export async function fetchInventoryPage({
   page,
   limit,
   signal,
+  timeoutMs = 15_000,
 }: InventoryPageOptions): Promise<InventoryResponse> {
   const params = new URLSearchParams({
     page: String(page),
@@ -30,7 +32,7 @@ export async function fetchInventoryPage({
     {
       cache: "no-store",
       signal: signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(15_000)])
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
         : undefined,
     },
   );
@@ -71,6 +73,7 @@ export async function fetchInventoryForExport(
       page,
       limit: 100,
       signal,
+      timeoutMs: 60_000,
     });
     if (page === 1) {
       totalPages = data.pagination.totalPages;

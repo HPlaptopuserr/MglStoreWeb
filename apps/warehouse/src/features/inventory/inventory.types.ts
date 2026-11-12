@@ -18,6 +18,11 @@ export interface InventoryItem {
     price: string;
     costPrice: string | null;
     businessCategoryId: string | null;
+    businessCategory?: {
+      id: string;
+      name: string;
+      parent?: { id: string; name: string } | null;
+    } | null;
     supplyType: string;
     preorderLeadTimeDays: number | null;
     preorderNote: string | null;
@@ -49,6 +54,8 @@ export interface InventorySummary {
   out: number;
   totalStock: number;
   located: number;
+  totalCost?: string;
+  missingCostCount?: number;
 }
 
 export interface InventoryFilters {

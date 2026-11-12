@@ -5,6 +5,8 @@ import {
   InventoryExpiryDetails,
 } from "@/features/inventory/InventoryDetailSections";
 import { InventoryImageModal } from "@/features/inventory/InventoryImageModal";
+import { InventoryCatalogExportButton } from "@/features/inventory/InventoryCatalogExportButton";
+import { InventorySummaryCards } from "@/features/inventory/InventorySummaryCards";
 
 import { useEffect, useState } from "react";
 import {
@@ -19,9 +21,6 @@ import {
   Trash2,
   Edit3,
   Save,
-  BarChart3,
-  Layers3,
-  ShieldCheck,
 } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
 import { WarehouseCategoryPicker } from "@/features/categories";
@@ -382,7 +381,7 @@ export default function InventoryPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
         {/* Search */}
@@ -391,6 +390,7 @@ export default function InventoryPage() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            aria-label="Бараа, SKU эсвэл байрлалаар хайх"
             placeholder="Бараа, SKU, байрлал хайх..."
             className="h-10 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-4 text-sm outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
           />
@@ -422,54 +422,24 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      {/* Vendor-style summary cards */}
-      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
-        {[
-          {
-            label: "Нийт бараа",
-            value: summary.total,
-            icon: Package,
-            color: "bg-indigo-50 text-indigo-600",
-          },
-          {
-            label: "Хэвийн",
-            value: summary.healthy,
-            icon: ShieldCheck,
-            color: "bg-emerald-50 text-emerald-600",
-          },
-          {
-            label: "Нийт нөөц",
-            value: summary.totalStock,
-            icon: BarChart3,
-            color: "bg-amber-50 text-amber-600",
-          },
-          {
-            label: "Байрлалтай",
-            value: summary.located,
-            icon: Layers3,
-            color: "bg-blue-50 text-blue-600",
-          },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <div
-            key={label}
-            className="flex min-w-0 items-center gap-2.5 rounded-xl border border-slate-200/80 bg-white px-3 py-2.5 shadow-sm transition-shadow hover:shadow-md sm:px-4"
-          >
-            <div
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg sm:h-10 sm:w-10 ${color}`}
-            >
-              <Icon size={18} />
-            </div>
-            <div className="min-w-0">
-              <div className="truncate text-lg font-black leading-tight text-slate-900 sm:text-xl">
-                {value.toLocaleString()}
-              </div>
-              <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-500 sm:text-xs">
-                {label}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+      <InventorySummaryCards
+        summary={summary}
+        warehouseName={selectedWarehouse?.name || "Агуулах"}
+        loading={loading}
+        unavailable={fetchError}
+      />
+      <InventoryCatalogExportButton
+        warehouseId={selectedWarehouseId}
+        warehouseName={selectedWarehouse?.name || "Агуулах"}
+        search={debouncedSearch}
+        status={statusFilter}
+        disabled={
+          loading ||
+          fetchError ||
+          totalItems === 0 ||
+          search.trim() !== debouncedSearch
+        }
+      />
 
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">

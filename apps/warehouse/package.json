@@ -13,10 +13,12 @@
   "dependencies": {
     "@mgl/types": "workspace:*",
     "@mgl/ui": "workspace:*",
+    "@pdf-lib/fontkit": "^1.1.1",
     "clsx": "^2.1.1",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",
     "next": "16.1.6",
+    "pdf-lib": "^1.17.1",
     "qrcode.react": "^4.2.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",

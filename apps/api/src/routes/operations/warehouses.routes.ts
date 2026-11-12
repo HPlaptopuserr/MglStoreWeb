@@ -1,4 +1,5 @@
 import manualDispatchRoutes from "./warehouse-manual-dispatch.routes";
+import { inventoryValuation } from "../../services/inventory-valuation";
 import { procurementWarehouseWhere } from "../../services/procurement-warehouse.service";
 import {
   assertWarehouseImportIdentity,
@@ -1854,6 +1855,7 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
       lowCount,
       stockAggregate,
       locatedCount,
+      valuationItems,
     ] = await Promise.all([
       prisma.warehouseInventory.findMany({
         where,
@@ -1916,6 +1918,10 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
       }),
       prisma.warehouseInventory.count({
         where: { ...baseWhere, location: { not: null } },
+      }),
+      prisma.warehouseInventory.findMany({
+        where: { ...baseWhere, quantity: { gt: 0 } },
+        select: { quantity: true, product: { select: { costPrice: true } } },
       }),
     ]);
 
@@ -1980,6 +1986,7 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
         out: outCount,
         totalStock: stockAggregate._sum.quantity ?? 0,
         located: locatedCount,
+        ...inventoryValuation(valuationItems),
       },
     });
   } catch (error) {
