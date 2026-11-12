@@ -110,8 +110,8 @@ export function EbarimtVatRecoveryNotice({
       )}
       {!running && list && completed < total && uncertain === 0 && !message && (
         <p className="mt-1">
-          PosAPI дээр баталгаажсан алдаатай баримт олдоогүй тул үлдсэн баримтыг
-          давтан илгээгээгүй.
+          Өмнөх баримтын төлөв баталгаажаагүй тул дахин илгээгээгүй.
+          Шинэ борлуулалтаа хэвийн үргэлжлүүлж болно.
         </p>
       )}
     </div>

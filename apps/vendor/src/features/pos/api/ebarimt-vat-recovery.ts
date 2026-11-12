@@ -2,7 +2,9 @@ import { posRequest } from "./_pos-client";
 import {
   correctRejectedEbarimtVat,
   getLocalEbarimtInfo,
-  getLocalEbarimtInvalidReceipts,
+  getLocalEbarimtInvalidReceiptSnapshot,
+  type EbarimtInfo,
+  type InvalidReceiptSnapshot,
 } from "./ebarimt";
 import type { RegisterConfig } from "../types/pos.types";
 
@@ -68,7 +70,25 @@ export async function recoverVatReceipts(
 ): Promise<VatRecoveryList> {
   if (!isVatRecoveryRegister(register.id))
     throw new Error("Энэ касс сэргээх жагсаалтад байхгүй.");
-  const info = await getLocalEbarimtInfo(register);
+  const report = async (details: Record<string, unknown>) => {
+    await posRequest("/pos/ebarimt-vat-recovery-diagnostics", {
+      method: "POST",
+      body: { registerId: register.id, ...details },
+    }).catch(() => {});
+  };
+  let info: EbarimtInfo;
+  try {
+    info = await getLocalEbarimtInfo(register);
+  } catch (error: unknown) {
+    await report({
+      phase: "INFO_FAILED",
+      error:
+        error instanceof Error
+          ? error.message.slice(0, 200)
+          : "Unknown connection error",
+    });
+    throw error;
+  }
   if (
     String(info.posNo) !== "10052245" ||
     !info.merchants?.some(
@@ -78,8 +98,37 @@ export async function recoverVatReceipts(
   )
     throw new Error("Энэ компьютерт MGL-299-ийн PosAPI холбогдоогүй байна.");
   const list = await loadVatRecovery();
-  const invalid = await getLocalEbarimtInvalidReceipts(register);
-  const invalidIds = new Set(invalid.map((receipt) => receipt.id));
+  let snapshot: InvalidReceiptSnapshot;
+  try {
+    snapshot = await getLocalEbarimtInvalidReceiptSnapshot(register);
+  } catch (error: unknown) {
+    await report({
+      phase: "LIST_FAILED",
+      version: info.version ?? "",
+      error:
+        error instanceof Error
+          ? error.message.slice(0, 200)
+          : "Unknown list error",
+    });
+    throw error;
+  }
+  const invalidIds = new Set(snapshot.receipts.map((receipt) => receipt.id));
+  const matching = list.receipts.filter((entry) =>
+    invalidIds.has(entry.originalId),
+  ).length;
+  await report({
+    phase: "LIST_RECEIVED",
+    version: info.version ?? "",
+    recognized: snapshot.recognized,
+    rawKind: snapshot.rawKind,
+    keys: snapshot.keys,
+    invalidCount: snapshot.receipts.length,
+    matchingCount: matching,
+  });
+  if (!snapshot.recognized)
+    throw new Error(
+      "PosAPI-ийн жагсаалтыг баталгаажуулж чадсангүй. Давтан илгээхгүйгээр шалгаж байна.",
+    );
   for (const entry of list.receipts) {
     if (!shouldContinue()) break;
     if (entry.state === "COMPLETED" || entry.state === "SKIPPED") continue;

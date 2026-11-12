@@ -63,11 +63,13 @@ let starts: number;
 let completeFails: boolean;
 let responseLost: boolean;
 let invalidPresent: boolean;
+let diagnostics: Array<Record<string, unknown>>;
 let storage: Map<string, string>;
 let previousFetch: typeof globalThis.fetch;
 let previousWindow: PropertyDescriptor | undefined;
 let previousStorage: PropertyDescriptor | undefined;
 beforeEach(() => {
+  diagnostics = [];
   state = "READY";
   issuances = 0;
   starts = 0;
@@ -92,6 +94,12 @@ beforeEach(() => {
   });
   globalThis.fetch = async (input, init) => {
     const url = String(input);
+    if (url.endsWith("/pos/ebarimt-vat-recovery-diagnostics")) {
+      diagnostics.push(
+        JSON.parse(String(init?.body)) as Record<string, unknown>,
+      );
+      return Response.json({ recorded: true });
+    }
     if (url.includes("/rest/info"))
       return Response.json({
         posNo: "10052245",
@@ -275,4 +283,19 @@ test("source validation preserves sale amounts and blocks mismatched or altered 
         10865,
       ),
     );
+});
+
+test("an empty local list reports read-only diagnostics without reserving or issuing a receipt", async () => {
+  invalidPresent = false;
+  await recoverVatReceipts(
+    register,
+    () => true,
+    () => {},
+  );
+  assert.equal(starts, 0);
+  assert.equal(issuances, 0);
+  assert.equal(diagnostics.length, 1);
+  assert.equal(diagnostics[0].phase, "LIST_RECEIVED");
+  assert.equal(diagnostics[0].invalidCount, 0);
+  assert.equal(diagnostics[0].matchingCount, 0);
 });

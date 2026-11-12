@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { PosReceipt } from "@mgl/types";
-import { issueLocalEbarimtReceipt } from "./ebarimt";
+import {
+  issueLocalEbarimtReceipt,
+  parseInvalidReceiptSnapshot,
+} from "./ebarimt";
 
 const receipt: PosReceipt = {
   id: "sale-vat",
@@ -128,4 +131,30 @@ test("an uncertain receipt POST never falls back to a second transport", async (
       Object.defineProperty(globalThis, "localStorage", previousStorage);
     else Reflect.deleteProperty(globalThis, "localStorage");
   }
+});
+
+test("invalid-list parsing handles both object and JSON Content wrappers without treating unknown responses as empty", () => {
+  for (const raw of [
+    [{ id: "original" }],
+    { Content: [{ id: "original" }] },
+    { Content: JSON.stringify([{ id: "original" }]) },
+    { data: { items: [{ id: "original" }] } },
+  ]) {
+    const result = parseInvalidReceiptSnapshot(raw);
+    assert.equal(result.recognized, true);
+    assert.deepEqual(
+      result.receipts.map((entry) => entry.id),
+      ["original"],
+    );
+  }
+  assert.equal(parseInvalidReceiptSnapshot([]).recognized, true);
+  assert.equal(parseInvalidReceiptSnapshot({ data: [] }).recognized, true);
+  assert.equal(
+    parseInvalidReceiptSnapshot({ message: "unsupported" }).recognized,
+    false,
+  );
+  assert.equal(
+    parseInvalidReceiptSnapshot([{ message: "not a receipt" }]).recognized,
+    false,
+  );
 });

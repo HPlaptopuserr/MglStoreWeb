@@ -237,16 +237,56 @@ test("mismatched response, total, tax and request identity never mark a receipt 
   assert.equal(writes.length, 1);
 });
 
-
 test("a late FAILED attachment never erases a recovered fiscal SUCCESS", async () => {
   const requestId = randomUUID();
   await post({ action: "START", requestId });
   await post({ action: "COMPLETE", requestId, response });
   const before = writes.length;
-  const late = await fetch(base.replace("/pos/ebarimt-vat-recovery", "/pos/sales/sale/ebarimt"), {
-    method: "POST", headers, body: JSON.stringify({ status: "FAILED", error: "old browser response" }),
-  });
+  const late = await fetch(
+    base.replace("/pos/ebarimt-vat-recovery", "/pos/sales/sale/ebarimt"),
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ status: "FAILED", error: "old browser response" }),
+    },
+  );
   assert.equal(late.status, 200);
   assert.equal(sale.ebarimtStatus, "SUCCESS");
   assert.equal(writes.length, before);
+});
+
+test("till diagnostics are scoped and cannot reserve or change any fiscal receipt", async () => {
+  const previous = console.info;
+  const observed: unknown[][] = [];
+  console.info = (...args: unknown[]) => {
+    observed.push(args);
+  };
+  const url = base.replace(
+    "/pos/ebarimt-vat-recovery",
+    "/pos/ebarimt-vat-recovery-diagnostics",
+  );
+  const send = () =>
+    fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        registerId: register,
+        phase: "LIST_RECEIVED",
+        invalidCount: 0,
+        matchingCount: 0,
+        keys: ["Content"],
+        rawPayload: "must not be logged",
+      }),
+    });
+  try {
+    assert.equal((await send()).status, 200);
+    assert.equal(writes.length, 0);
+    assert.ok(JSON.stringify(observed).includes("LIST_RECEIVED"));
+    assert.ok(!JSON.stringify(observed).includes("must not be logged"));
+    actorOrg = "another-store";
+    assert.equal((await send()).status, 403);
+    assert.equal(writes.length, 0);
+  } finally {
+    console.info = previous;
+  }
 });

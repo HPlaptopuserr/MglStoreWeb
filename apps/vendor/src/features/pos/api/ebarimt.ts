@@ -389,40 +389,37 @@ function receiptIdFrom(value: Record<string, unknown>) {
   );
 }
 
-function normalizeInvalidReceipts(raw: unknown): LocalInvalidReceipt[] {
+export interface InvalidReceiptSnapshot {
+  receipts: LocalInvalidReceipt[];
+  recognized: boolean;
+  rawKind: string;
+  keys: string[];
+}
+
+export function parseInvalidReceiptSnapshot(raw: unknown): InvalidReceiptSnapshot {
   const value = parseMaybeJson(raw);
-
+  const keys = typeof value === "object" && value !== null && !Array.isArray(value)
+    ? Object.keys(value).slice(0, 20) : [];
   if (Array.isArray(value)) {
-    return value
-      .map((item) =>
-        typeof item === "object" && item !== null
-          ? (item as Record<string, unknown>)
-          : null,
-      )
-      .map((item) => {
-        if (!item) return null;
-        const id = receiptIdFrom(item);
-        return id ? ({ ...item, id } as LocalInvalidReceipt) : null;
-      })
-      .filter((item): item is LocalInvalidReceipt => Boolean(item));
+    const receipts = value.flatMap((item: unknown) => {
+      if (typeof item !== "object" || item === null || Array.isArray(item)) return [];
+      const record = item as Record<string, unknown>;
+      const id = receiptIdFrom(record);
+      return id ? [{ ...record, id }] : [];
+    });
+    return { receipts, recognized: receipts.length === value.length, rawKind: "array", keys };
   }
-
-  if (typeof value !== "object" || value === null) return [];
-
-  const objectValue = value as Record<string, unknown>;
-  if (typeof objectValue.Content === "string") {
-    return normalizeInvalidReceipts(objectValue.Content);
-  }
-
-  for (const key of ["data", "receipts", "list", "items"]) {
-    if (key in objectValue) {
-      const receipts = normalizeInvalidReceipts(objectValue[key]);
-      if (receipts.length > 0) return receipts;
+  if (typeof value !== "object" || value === null)
+    return { receipts: [], recognized: false, rawKind: value === null ? "null" : typeof value, keys };
+  const record = value as Record<string, unknown>;
+  for (const key of ["Content", "content", "data", "receipts", "list", "items"]) {
+    if (key in record) {
+      const nested = parseInvalidReceiptSnapshot(record[key]);
+      return { ...nested, rawKind: "object", keys };
     }
   }
-
-  const id = receiptIdFrom(objectValue);
-  return id ? [{ ...objectValue, id } as LocalInvalidReceipt] : [];
+  const id = receiptIdFrom(record);
+  return { receipts: id ? [{ ...record, id }] : [], recognized: Boolean(id), rawKind: "object", keys };
 }
 
 export async function getLocalEbarimtInfo(
@@ -485,16 +482,21 @@ export async function lookupEbarimtTin(
   };
 }
 
+export async function getLocalEbarimtInvalidReceiptSnapshot(
+  register?: RegisterConfig | null,
+): Promise<InvalidReceiptSnapshot> {
+  const raw = await fetchLocalPosApi<unknown>(
+    "/rest/receipt/invalid/list", undefined, 10_000, getRegisterPosApiUrl(register),
+  );
+  return parseInvalidReceiptSnapshot(raw);
+}
+
 export async function getLocalEbarimtInvalidReceipts(
   register?: RegisterConfig | null,
 ): Promise<LocalInvalidReceipt[]> {
-  const raw = await fetchLocalPosApi<unknown>(
-    "/rest/receipt/invalid/list",
-    undefined,
-    10_000,
-    getRegisterPosApiUrl(register),
-  );
-  return normalizeInvalidReceipts(raw);
+  const snapshot = await getLocalEbarimtInvalidReceiptSnapshot(register);
+  if (!snapshot.recognized) throw new Error("PosAPI-ийн баримтын жагсаалтыг баталгаажуулж чадсангүй.");
+  return snapshot.receipts;
 }
 
 export async function sendLocalEbarimtInvalidReceipt(

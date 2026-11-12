@@ -53,6 +53,64 @@ function rejectedSource(
 }
 class RecoveryConflict extends Error {}
 
+// Read-only observations from the actual till; never expose fiscal payloads or reserve a receipt.
+router.post("/pos/ebarimt-vat-recovery-diagnostics", async (req, res) => {
+  try {
+    const actor = await requirePosUser(req, res);
+    if (!actor) return;
+    const body: unknown = req.body;
+    if (
+      !canAccessPosOrganization(actor, VAT_RECOVERY_ORGANIZATION_ID) ||
+      !object(body) ||
+      body.registerId !== VAT_RECOVERY_REGISTER_ID
+    )
+      return res
+        .status(403)
+        .json({ message: "Энэ кассын оношлогоонд хандах эрхгүй" });
+    if (
+      !["INFO_FAILED", "LIST_FAILED", "LIST_RECEIVED"].includes(
+        String(body.phase),
+      )
+    )
+      return res.status(400).json({ message: "Оношлогооны төрөл буруу байна" });
+    const shortText = (value: unknown, max: number) =>
+      typeof value === "string" ? value.slice(0, max) : "";
+    const count = (value: unknown) =>
+      typeof value === "number" &&
+      Number.isInteger(value) &&
+      value >= 0 &&
+      value <= 100000
+        ? value
+        : null;
+    console.info(
+      "VAT_RECOVERY_DIAGNOSTICS",
+      JSON.stringify({
+        registerId: VAT_RECOVERY_REGISTER_ID,
+        phase: body.phase,
+        version: shortText(body.version, 40),
+        rawKind: shortText(body.rawKind, 20),
+        keys: Array.isArray(body.keys)
+          ? body.keys
+              .filter(
+                (key: unknown): key is string =>
+                  typeof key === "string" &&
+                  /^[a-zA-Z_][a-zA-Z_0-9]{0,63}$/.test(key),
+              )
+              .slice(0, 20)
+          : [],
+        recognized: body.recognized === true,
+        invalidCount: count(body.invalidCount),
+        matchingCount: count(body.matchingCount),
+        error: shortText(body.error, 200),
+      }),
+    );
+    return res.json({ recorded: true });
+  } catch (error: unknown) {
+    console.error("VAT recovery diagnostics failed", error);
+    return res.status(500).json({ message: "Оношлогоог хүлээн авч чадсангүй" });
+  }
+});
+
 router.get("/pos/ebarimt-vat-recovery", async (req, res) => {
   try {
     const actor = await requirePosUser(req, res);
