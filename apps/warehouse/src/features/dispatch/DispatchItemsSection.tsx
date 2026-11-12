@@ -14,6 +14,8 @@ export interface DispatchLineItem {
   imageUrl: string | null;
   unitPrice: number;
   available: number;
+  physicalQuantity: number;
+  reservedQuantity: number;
   quantity: number;
 }
 
@@ -109,7 +111,11 @@ export function DispatchItemsSection({
                           {item.sku || "SKU байхгүй"}
                         </span>
                         <span className="rounded-md bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">
-                          Нөөц {item.available}
+                          Гаргах боломжтой {item.available}
+                        </span>
+                        <span className="text-slate-500">
+                          Нийт {item.physicalQuantity} · Нөөцөлсөн{" "}
+                          {item.reservedQuantity}
                         </span>
                       </div>
                       <div className="mt-1.5 flex flex-wrap items-baseline gap-1.5 text-xs">

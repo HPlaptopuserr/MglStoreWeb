@@ -56,10 +56,21 @@ export async function reservedStock(
   });
   const reserved = sumReservedStock(items);
   const retailItems = await db.warehouseRetailOrderItem.findMany({
-    where: { productId: { in: productIds }, order: { warehouseId, paymentStatus: "PENDING", expiresAt: { gt: new Date() } } },
+    where: {
+      productId: { in: productIds },
+      order: {
+        warehouseId,
+        paymentStatus: "PENDING",
+        expiresAt: { gt: new Date() },
+      },
+    },
     select: { productId: true, storedQuantity: true },
   });
-  for (const item of retailItems) reserved.set(item.productId, (reserved.get(item.productId) ?? 0) + item.storedQuantity);
+  for (const item of retailItems)
+    reserved.set(
+      item.productId,
+      (reserved.get(item.productId) ?? 0) + item.storedQuantity,
+    );
   return reserved;
 }
 
@@ -94,13 +105,13 @@ export function sumReservedStock(
   return reserved;
 }
 
-export async function canReserveStock(
+export async function stockReservationShortage(
   tx: Prisma.TransactionClient,
   warehouseId: string,
   items: { productId: string; quantity: number }[],
 ) {
   const ids = [...new Set(items.map((item) => item.productId))].sort();
-  if (!ids.length) return false;
+  if (!ids.length) return null;
   // Both order entry points use the same row locks. Concurrent requests cannot
   // validate the same unreserved units before either request has committed.
   await tx.$queryRaw`SELECT "productId" FROM "WarehouseInventory"
@@ -118,8 +129,25 @@ export async function canReserveStock(
       item.productId,
       (requested.get(item.productId) ?? 0) + item.quantity,
     );
-  return [...requested].every(([id, quantity]) => {
-    const row = stock.find((item) => item.productId === id);
-    return row != null && row.quantity - (reserved.get(id) ?? 0) >= quantity;
-  });
+  for (const [productId, quantity] of requested) {
+    const row = stock.find((item) => item.productId === productId);
+    const availability = stockAvailability(
+      row?.quantity ?? 0,
+      reserved.get(productId) ?? 0,
+    );
+    if (!row || availability.quantity < quantity)
+      return { productId, requestedQuantity: quantity, ...availability };
+  }
+  return null;
+}
+
+export async function canReserveStock(
+  tx: Prisma.TransactionClient,
+  warehouseId: string,
+  items: { productId: string; quantity: number }[],
+) {
+  return (
+    items.length > 0 &&
+    !(await stockReservationShortage(tx, warehouseId, items))
+  );
 }

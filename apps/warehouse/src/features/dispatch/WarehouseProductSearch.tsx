@@ -15,6 +15,8 @@ function formatMoney(value: string) {
 export interface WarehouseInventorySearchItem {
   id: string;
   quantity: number;
+  availableQuantity: number;
+  reservedQuantity: number;
   minQuantity: number;
   product: {
     id: string;
@@ -71,11 +73,12 @@ export function WarehouseProductSearch({
           limit: "10",
           status: "all",
           smartSearch: "true",
+          includeAvailability: "true",
           search: trimmedQuery,
         });
         const response = await wmsFetch(
           `${API}/warehouses/${warehouseId}/inventory?${params}`,
-          { signal: controller.signal },
+          { signal: controller.signal, cache: "no-store" },
         );
         if (!response.ok) throw new Error("SEARCH_FAILED");
         const payload = (await response.json()) as InventorySearchResponse;
@@ -105,6 +108,7 @@ export function WarehouseProductSearch({
   }, [excludedProductIds, trimmedQuery, warehouseId]);
 
   const select = (item: WarehouseInventorySearchItem) => {
+    if (item.availableQuantity <= 0) return;
     onSelect(item);
     setQuery("");
     setResults([]);
@@ -141,7 +145,7 @@ export function WarehouseProductSearch({
           } else if (event.key === "Enter" && activeIndex >= 0) {
             event.preventDefault();
             const item = results[activeIndex];
-            if (item) select(item);
+            if (item && item.availableQuantity > 0) select(item);
           } else if (event.key === "Escape") {
             setResults([]);
             setActiveIndex(-1);
@@ -179,12 +183,13 @@ export function WarehouseProductSearch({
                 id={`${listboxId}-${index}`}
                 role="option"
                 aria-selected={index === activeIndex}
+                aria-disabled={item.availableQuantity <= 0}
                 type="button"
                 key={item.id}
                 onMouseEnter={() => setActiveIndex(index)}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => select(item)}
-                className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition ${
+                className={`flex w-full flex-wrap items-center gap-3 rounded-xl px-3 py-3 text-left text-sm transition ${
                   index === activeIndex ? "bg-blue-50" : "hover:bg-slate-50"
                 }`}
               >
@@ -208,8 +213,13 @@ export function WarehouseProductSearch({
                     {formatMoney(item.product.price)}
                   </span>
                 </span>
-                <span className="ml-3 shrink-0 rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
-                  Нөөц: {item.quantity}
+                <span className="ml-auto shrink-0 rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                  <span className="block">
+                    Гаргах боломжтой: {item.availableQuantity}
+                  </span>
+                  <span className="mt-1 block font-normal">
+                    Нийт: {item.quantity} · Нөөцөлсөн: {item.reservedQuantity}
+                  </span>
                 </span>
               </button>
             ))

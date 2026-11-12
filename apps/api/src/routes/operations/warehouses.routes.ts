@@ -42,7 +42,11 @@ import {
   resolveOrgWarehouse,
   syncProductStock,
 } from "../../services/inventory.service";
-import { approvedStockRequestQuantity } from "../../services/stock-reservation.service";
+import {
+  approvedStockRequestQuantity,
+  reservedStock,
+  stockAvailability,
+} from "../../services/stock-reservation.service";
 import {
   inventoryAuditIssues,
   isCriticalInventoryAuditIssue,
@@ -1964,15 +1968,33 @@ router.get("/warehouses/:id/inventory", requireAuth, async (req, res) => {
       }
     }
 
+    // Manual dispatch needs the same unreserved quantity used by its final check.
+    const includeAvailability = req.query.includeAvailability === "true";
+    const reservations =
+      includeAvailability && productIds.length
+        ? await reservedStock(id, productIds)
+        : new Map<string, number>();
     const inventory = records.map((record) => ({
       ...record,
+      ...(includeAvailability
+        ? {
+            availableQuantity: stockAvailability(
+              record.quantity,
+              reservations.get(record.product.id) ?? 0,
+            ).quantity,
+            reservedQuantity: reservations.get(record.product.id) ?? 0,
+          }
+        : {}),
       product: {
         ...record.product,
         images: imagesByProductId.get(record.product.id) ?? [],
       },
     }));
 
-    res.setHeader("Cache-Control", "private, max-age=15");
+    res.setHeader(
+      "Cache-Control",
+      includeAvailability ? "no-store" : "private, max-age=15",
+    );
     return res.json({
       inventory,
       pagination: {

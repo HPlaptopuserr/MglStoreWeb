@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { Prisma } from "@mgl/database";
 import {
+  canReserveStock,
+  stockReservationShortage,
+  reservedStock,
   approvedStockRequestQuantity,
   stockAvailability,
   sumReservedStock,
@@ -87,4 +91,123 @@ test("legacy processing requests without a dispatch remain reserved", () => {
     },
   ]);
   assert.equal(reserved.get("tea-150g"), 17);
+});
+
+function reservationDb(physicalQuantity: number, reservedQuantity: number) {
+  let locked = false;
+  const db = {
+    $queryRaw: async () => {
+      locked = true;
+      return [];
+    },
+    warehouseInventory: {
+      findMany: async (args: Prisma.WarehouseInventoryFindManyArgs) => {
+        assert.ok(locked, "lock inventory before reading availability");
+        assert.equal(args.where?.warehouseId, "central");
+        return [{ productId: "tea", quantity: physicalQuantity }];
+      },
+    },
+    warehouseStockRequestItem: {
+      findMany: async () => [
+        {
+          productId: "tea",
+          quantity: reservedQuantity,
+          approvedQuantity: null,
+          request: { status: "PENDING" },
+        },
+      ],
+    },
+    warehouseRetailOrderItem: { findMany: async () => [] },
+  } as unknown as Prisma.TransactionClient;
+  return db;
+}
+
+test("manual dispatch reports physical stock, reservations and the actual shortage", async () => {
+  const shortage = await stockReservationShortage(
+    reservationDb(20, 18),
+    "central",
+    [{ productId: "tea", quantity: 3 }],
+  );
+  assert.deepEqual(shortage, {
+    productId: "tea",
+    requestedQuantity: 3,
+    quantity: 2,
+    physicalQuantity: 20,
+    reservedQuantity: 18,
+  });
+  assert.equal(
+    await canReserveStock(reservationDb(20, 18), "central", [
+      { productId: "tea", quantity: 2 },
+    ]),
+    true,
+  );
+  assert.equal(
+    await canReserveStock(reservationDb(20, 18), "central", [
+      { productId: "tea", quantity: 3 },
+    ]),
+    false,
+  );
+});
+
+test("availability checks aggregate duplicate lines and reject missing inventory", async () => {
+  assert.equal(
+    (
+      await stockReservationShortage(reservationDb(20, 18), "central", [
+        { productId: "tea", quantity: 2 },
+        { productId: "tea", quantity: 1 },
+      ])
+    )?.requestedQuantity,
+    3,
+  );
+  assert.equal(
+    (
+      await stockReservationShortage(reservationDb(20, 0), "central", [
+        { productId: "missing", quantity: 1 },
+      ])
+    )?.quantity,
+    0,
+  );
+  assert.equal(
+    (
+      await stockReservationShortage(reservationDb(2, 20), "central", [
+        { productId: "tea", quantity: 1 },
+      ])
+    )?.quantity,
+    0,
+  );
+  assert.equal(
+    await canReserveStock(reservationDb(20, 0), "central", []),
+    false,
+  );
+});
+
+test("dispatch availability also subtracts unexpired unpaid retail orders", async () => {
+  const db = reservationDb(20, 5);
+  const retailDb = {
+    ...db,
+    warehouseRetailOrderItem: {
+      findMany: async (args: Prisma.WarehouseRetailOrderItemFindManyArgs) => {
+        const order = args.where
+          ?.order as Prisma.WarehouseRetailOrderWhereInput;
+        assert.equal(order.warehouseId, "central");
+        assert.equal(order.paymentStatus, "PENDING");
+        assert.ok(
+          (order.expiresAt as Prisma.DateTimeFilter).gt instanceof Date,
+        );
+        return [{ productId: "tea", storedQuantity: 12 }];
+      },
+    },
+  } as unknown as Prisma.TransactionClient;
+  assert.equal(
+    (await reservedStock("central", ["tea"], retailDb)).get("tea"),
+    17,
+  );
+  assert.equal(
+    (
+      await stockReservationShortage(retailDb, "central", [
+        { productId: "tea", quantity: 4 },
+      ])
+    )?.quantity,
+    3,
+  );
 });

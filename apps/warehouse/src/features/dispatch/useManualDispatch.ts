@@ -79,6 +79,7 @@ export function useManualDispatch(warehouseId: string) {
         : "";
   const add = (inv: WarehouseInventorySearchItem) =>
     setItems((current) =>
+      inv.availableQuantity <= 0 ||
       current.some((item) => item.productId === inv.product.id)
         ? current
         : [
@@ -89,7 +90,9 @@ export function useManualDispatch(warehouseId: string) {
               sku: inv.product.sku,
               imageUrl: inv.product.images?.[0]?.url ?? null,
               unitPrice: Number(inv.product.price) || 0,
-              available: inv.quantity,
+              available: inv.availableQuantity,
+              physicalQuantity: inv.quantity,
+              reservedQuantity: inv.reservedQuantity,
               quantity: 1,
             },
           ],

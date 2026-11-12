@@ -8,7 +8,7 @@ import type { WarehouseActor } from "./warehouse-access.service";
 import { assertWarehouseViewerManagement } from "./warehouse-viewer-access.service";
 import { assertWarehouseProductsOwned } from "./warehouse-product-ownership";
 import { syncProductStock } from "./inventory.service";
-import { canReserveStock } from "./stock-reservation.service";
+import { stockReservationShortage } from "./stock-reservation.service";
 import {
   ManualDispatchError,
   parseDispatchHistoryQuery,
@@ -154,10 +154,16 @@ export async function createManualDispatch(
         };
       });
       const { items: dispatchItems, ...destination } = input;
-      if (!(await canReserveStock(tx, warehouseId, dispatchItems)))
+      const shortage = await stockReservationShortage(
+        tx,
+        warehouseId,
+        dispatchItems,
+      );
+      if (shortage)
         throw new ManualDispatchError(
-          "Захиалгад нөөцөлсөн барааг хассан боломжит үлдэгдэл хүрэлцэхгүй байна.",
+          `${byId.get(shortage.productId)!.name}: нийт үлдэгдэл ${shortage.physicalQuantity}, захиалгад нөөцөлсөн ${shortage.reservedQuantity}, гаргах боломжтой ${shortage.quantity} ш. Гаргах тоо ${shortage.requestedQuantity} ш тул хүрэлцэхгүй байна. Барааны тоогоо шинэчилнэ үү.`,
           409,
+          shortage.productId,
         );
       const created = await tx.warehouseManualDispatch.create({
         data: {
