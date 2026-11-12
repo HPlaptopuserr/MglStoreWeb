@@ -2,7 +2,7 @@
 
 25 completed sales had explicit PosAPI ERROR responses: independently rounded item VAT did not equal VAT rounded on the sub-receipt total. Sale payments and inventory had already completed.
 
-The Vendor issuer now allocates VAT in integer minor units. Each tax-type sub-receipt rounds once; item VAT uses deterministic largest-remainder allocation so header, group and items agree. Non-VAT merchants and exempt groups remain zero. City tax is excluded from the VAT-inclusive basis. The original sale totals, payments and quantities are unchanged. A receipt mutation never retries on another transport after a lost response.
+The Vendor issuer calculates VAT in integer minor units. Each item and tax-type sub-receipt is independently rounded from its own tax-inclusive amount, as PosAPI validates both levels separately. Item VAT must never be rebalanced to force its sum to equal the rounded sub-receipt VAT; their sum can differ by a cent. The original largest-remainder approach was found to trigger item-level validation errors and was removed. Non-VAT merchants and exempt groups remain zero. City tax is excluded from the VAT-inclusive basis. The original sale totals, payments and quantities are unchanged. A receipt mutation never retries on another transport after a lost response.
 
 The frozen recovery manifest contains only the 25 original receipts, their rejected fiscal IDs, one organization and one register. It never selects later sales. On that register, the Vendor POS checks the local PosAPI identity and rejected-receipt list before starting. Recovery waits for an empty checkout and pauses before the next receipt if a sale starts.
 

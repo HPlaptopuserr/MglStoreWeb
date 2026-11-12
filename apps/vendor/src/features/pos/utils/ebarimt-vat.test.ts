@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { allocateEbarimtVat } from "./ebarimt-vat";
+import { calculateEbarimtVat } from "./ebarimt-vat";
 
 const rejectedReceipts: Array<[number[], number]> = [
   [[1455, 2355, 1355], 469.55],
@@ -36,21 +36,20 @@ const rejectedReceipts: Array<[number[], number]> = [
   [[5910, 4955], 987.73],
 ];
 
-test("all 25 real rejected totals match PosAPI's expected VAT and item sums", () => {
+test("all 25 rejected sub-receipt totals and each item independently match PosAPI VAT", () => {
   assert.equal(rejectedReceipts.length, 25);
   for (const [amounts, expected] of rejectedReceipts) {
     const items = amounts.map((totalAmount) => ({
       totalAmount,
       totalCityTax: 0,
     }));
-    const result = allocateEbarimtVat(items, true, "VAT_ABLE");
+    const result = calculateEbarimtVat(items, true, "VAT_ABLE");
     assert.equal(result.totalVAT, expected);
-    assert.equal(
-      result.itemVAT.reduce((sum, amount) => sum + Math.round(amount * 100), 0),
-      Math.round(expected * 100),
-    );
     result.itemVAT.forEach((vat, index) =>
-      assert.ok(Math.abs(vat - amounts[index] / 11) < 0.011),
+      assert.equal(
+        vat,
+        Math.round(Math.round(amounts[index] * 100) / 11) / 100,
+      ),
     );
     assert.deepEqual(
       items.map((item) => item.totalAmount),
@@ -62,7 +61,7 @@ test("all 25 real rejected totals match PosAPI's expected VAT and item sums", ()
 test("non-VAT merchants and exempt tax groups retain zero VAT", () => {
   for (const taxType of ["VAT_FREE", "VAT_ZERO", "NOT_VAT"]) {
     assert.deepEqual(
-      allocateEbarimtVat(
+      calculateEbarimtVat(
         [{ totalAmount: 10865, totalCityTax: 0 }],
         true,
         taxType,
@@ -71,7 +70,7 @@ test("non-VAT merchants and exempt tax groups retain zero VAT", () => {
     );
   }
   assert.deepEqual(
-    allocateEbarimtVat(
+    calculateEbarimtVat(
       [{ totalAmount: 10865, totalCityTax: 0 }],
       false,
       "VAT_ABLE",
@@ -82,7 +81,7 @@ test("non-VAT merchants and exempt tax groups retain zero VAT", () => {
 
 test("VAT excludes city tax from the final discounted line amount", () => {
   assert.deepEqual(
-    allocateEbarimtVat(
+    calculateEbarimtVat(
       [{ totalAmount: 1120, totalCityTax: 20 }],
       true,
       "VAT_ABLE",
@@ -90,7 +89,7 @@ test("VAT excludes city tax from the final discounted line amount", () => {
     { totalVAT: 100, itemVAT: [100] },
   );
   assert.deepEqual(
-    allocateEbarimtVat(
+    calculateEbarimtVat(
       [{ totalAmount: 1008, totalCityTax: 18 }],
       true,
       "VAT_ABLE",
@@ -101,7 +100,7 @@ test("VAT excludes city tax from the final discounted line amount", () => {
 
 test("single rows, zero totals and fractional weighted amounts preserve cents", () => {
   for (const totalAmount of [0, 0.01, 1.23, 2955, 12345.67, 1000000000]) {
-    const result = allocateEbarimtVat(
+    const result = calculateEbarimtVat(
       [{ totalAmount, totalCityTax: 0 }],
       true,
       "VAT_ABLE",
@@ -112,26 +111,25 @@ test("single rows, zero totals and fractional weighted amounts preserve cents", 
     );
     assert.deepEqual(result.itemVAT, [result.totalVAT]);
   }
-  assert.deepEqual(allocateEbarimtVat([], true, "VAT_ABLE"), {
+  assert.deepEqual(calculateEbarimtVat([], true, "VAT_ABLE"), {
     totalVAT: 0,
     itemVAT: [],
   });
 });
 
-test("large baskets remain deterministic, balanced and within one cent per line", () => {
+test("large baskets preserve exact independently rounded item VAT", () => {
   for (let size = 1; size <= 100; size++) {
     const items = Array.from({ length: size }, (_, i) => ({
       totalAmount: ((i * 7919 + size * 1337) % 1000000) / 100,
       totalCityTax: 0,
     }));
-    const result = allocateEbarimtVat(items, true, "VAT_ABLE");
-    assert.deepEqual(allocateEbarimtVat(items, true, "VAT_ABLE"), result);
-    assert.equal(
-      result.itemVAT.reduce((sum, amount) => sum + Math.round(amount * 100), 0),
-      Math.round(result.totalVAT * 100),
-    );
+    const result = calculateEbarimtVat(items, true, "VAT_ABLE");
+    assert.deepEqual(calculateEbarimtVat(items, true, "VAT_ABLE"), result);
     result.itemVAT.forEach((vat, index) =>
-      assert.ok(Math.abs(vat - items[index].totalAmount / 11) < 0.011),
+      assert.equal(
+        vat,
+        Math.round(Math.round(items[index].totalAmount * 100) / 11) / 100,
+      ),
     );
   }
 });
@@ -139,10 +137,43 @@ test("large baskets remain deterministic, balanced and within one cent per line"
 test("invalid financial amounts fail before contacting PosAPI", () => {
   for (const totalAmount of [NaN, Infinity, -1, Number.MAX_SAFE_INTEGER]) {
     assert.throws(() =>
-      allocateEbarimtVat([{ totalAmount, totalCityTax: 0 }], true, "VAT_ABLE"),
+      calculateEbarimtVat([{ totalAmount, totalCityTax: 0 }], true, "VAT_ABLE"),
     );
   }
   assert.throws(() =>
-    allocateEbarimtVat([{ totalAmount: 1, totalCityTax: 2 }], true, "VAT_ABLE"),
+    calculateEbarimtVat(
+      [{ totalAmount: 1, totalCityTax: 2 }],
+      true,
+      "VAT_ABLE",
+    ),
   );
+});
+
+test("real item-level rejections retain each required VAT without allocating rounding differences", () => {
+  const cases: Array<[number[], number[], number]> = [
+    [
+      [4955, 7355, 8555, 13955, 12955],
+      [450.45, 668.64, 777.73, 1268.64, 1177.73],
+      4343.18,
+    ],
+    [[1665, 1310, 4955, 4955], [151.36, 119.09, 450.45, 450.45], 1171.36],
+    [
+      [200, 24955, 7455, 4710, 3855, 4455, 12955, 4955, 1955, 17955, 13820],
+      [
+        18.18, 2268.64, 677.73, 428.18, 350.45, 405, 1177.73, 450.45, 177.73,
+        1632.27, 1256.36,
+      ],
+      8842.73,
+    ],
+    [[5955, 14910], [541.36, 1355.45], 1896.82],
+  ];
+  for (const [amounts, expectedItems, expectedTotal] of cases) {
+    const result = calculateEbarimtVat(
+      amounts.map((totalAmount) => ({ totalAmount, totalCityTax: 0 })),
+      true,
+      "VAT_ABLE",
+    );
+    assert.deepEqual(result.itemVAT, expectedItems);
+    assert.equal(result.totalVAT, expectedTotal);
+  }
 });

@@ -1,5 +1,5 @@
 import { buildVatRecoveryPayload } from "../utils/ebarimt-vat-recovery";
-import { allocateEbarimtVat } from "../utils/ebarimt-vat";
+import { calculateEbarimtVat } from "../utils/ebarimt-vat";
 import type { PosReceipt } from "../types/receipt.types";
 import type { RegisterConfig, SalePaymentLine } from "../types/pos.types";
 import {
@@ -792,7 +792,7 @@ export async function issueLocalEbarimtReceipt(
     groupedReceipts.set(receiptTaxType, group);
   });
   const receiptGroups = Array.from(groupedReceipts.values()).map((group) => {
-    const allocation = allocateEbarimtVat(group.items, vatPayer, group.taxType);
+    const allocation = calculateEbarimtVat(group.items, vatPayer, group.taxType);
     return {
       ...group,
       totalVAT: allocation.totalVAT,

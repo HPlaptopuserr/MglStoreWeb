@@ -1,4 +1,4 @@
-import { allocateEbarimtVat } from "./ebarimt-vat";
+import { calculateEbarimtVat } from "./ebarimt-vat";
 
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -84,7 +84,7 @@ export function buildVatRecoveryPayload(
     ) !== Math.round(expectedAmount * 100)
   )
     throw new Error("Эх баримтын төлбөрийн нийлбэр зөрсөн байна.");
-  const allocation = allocateEbarimtVat(items, true, "VAT_ABLE");
+  const allocation = calculateEbarimtVat(items, true, "VAT_ABLE");
   return {
     inactiveId: expectedId,
     billIdSuffix: `R${receiptNo.replace(/[^a-z0-9]/gi, "").slice(-19)}`,
