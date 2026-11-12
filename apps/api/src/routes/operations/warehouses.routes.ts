@@ -1,4 +1,5 @@
 import manualDispatchRoutes from "./warehouse-manual-dispatch.routes";
+import warehouseCatalogRoutes from "./warehouse-catalog.routes";
 import { inventoryValuation } from "../../services/inventory-valuation";
 import { procurementWarehouseWhere } from "../../services/procurement-warehouse.service";
 import {
@@ -79,6 +80,7 @@ import {
 
 const router: ExpressRouter = Router();
 router.use(manualDispatchRoutes);
+router.use(warehouseCatalogRoutes);
 
 // The database enum keeps its historical names, while these aliases express
 // the actual ownership boundary used by the applications.

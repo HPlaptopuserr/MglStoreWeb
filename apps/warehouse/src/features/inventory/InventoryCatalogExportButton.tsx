@@ -9,8 +9,10 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@mgl/ui";
-import { groupCatalogItems } from "./catalog-data";
-import { fetchInventoryForExport } from "./inventory.api";
+import {
+  requestCatalogDownload,
+  startNativeCatalogDownload,
+} from "./catalog-download";
 import { STOCK_STATUS_LABELS, type InventoryFilters } from "./inventory.types";
 
 interface Props extends InventoryFilters {
@@ -20,10 +22,6 @@ interface Props extends InventoryFilters {
 
 function CatalogExportAction({ disabled, ...filters }: Props) {
   const [inStockOnly, setInStockOnly] = useState(filters.status !== "out");
-  const [progress, setProgress] = useState<{
-    completed: number;
-    total: number;
-  } | null>(null);
   const [finished, setFinished] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
@@ -37,41 +35,19 @@ function CatalogExportAction({ disabled, ...filters }: Props) {
     request.current = controller;
     setBusy(true);
     setError("");
-    setProgress(null);
     setFinished(false);
-    setFeedback("Бүх хуудсын барааг татаж байна…");
+    setFeedback("Chrome таталтын хүсэлтийг бэлтгэж байна…");
     try {
-      const items = await fetchInventoryForExport(filters, controller.signal);
-      const groups = groupCatalogItems(items, inStockOnly);
-      if (!groups.length)
-        throw new Error(
-          "Каталогт оруулах идэвхтэй бараа олдсонгүй. Хайлт, шүүлтүүрээ өөрчилнө үү.",
-        );
-      const { downloadCatalogPdf } = await import("./export-catalog-pdf");
+      const ticket = await requestCatalogDownload(
+        filters,
+        inStockOnly,
+        controller.signal,
+      );
       controller.signal.throwIfAborted();
-      const result = await downloadCatalogPdf({
-        groups,
-        warehouseName: filters.warehouseName,
-        scopeLabel: [
-          inStockOnly ? "Зөвхөн нөөцтэй бараа" : "Бүх идэвхтэй бараа",
-          `Төлөв: ${STOCK_STATUS_LABELS[filters.status]}`,
-          filters.search ? `Хайлт: ${filters.search}` : "",
-        ]
-          .filter(Boolean)
-          .join(" | "),
-        signal: controller.signal,
-        onProgress: (completed, total) => {
-          if (!controller.signal.aborted) {
-            setProgress({ completed, total });
-            setFeedback(
-              `Зураг, хуудсыг бэлтгэж байна: ${completed} / ${total} бараа`,
-            );
-          }
-        },
-      });
+      startNativeCatalogDownload(filters.warehouseId, ticket);
       setFinished(true);
       setFeedback(
-        `${result.itemCount} барааны PDF таталт эхэллээ.${result.missingImages ? ` ${result.missingImages} бараа зураггүй эсвэл зураг нь ачаалсангүй.` : ""}`,
+        "Таталтын хүсэлтийг Chrome руу шилжүүллээ. Явцыг браузерийн Таталтууд хэсгээс харж, цуцалж болно. Сервер зураг, хуудсыг бэлтгэн дамжуулж байгаа тул энэ хуудсаар үргэлжлүүлэн ажиллаж болно.",
       );
     } catch (caught: unknown) {
       if (!controller.signal.aborted) {
@@ -94,14 +70,9 @@ function CatalogExportAction({ disabled, ...filters }: Props) {
     request.current?.abort();
     request.current = null;
     setBusy(false);
-    setProgress(null);
     setFinished(false);
     setFeedback("PDF бэлтгэхийг цуцаллаа.");
   };
-
-  const percent = progress
-    ? Math.round((progress.completed / progress.total) * 100)
-    : null;
 
   return (
     <section
@@ -118,7 +89,8 @@ function CatalogExportAction({ disabled, ...filters }: Props) {
               Худалдааны каталог
             </h2>
             <p className="mt-1 text-xs leading-relaxed text-slate-500">
-              Барааны зураг, код, үнэ болон захиалах тооны зайтай PDF.
+              Зураг, код, үнэ, захиалах тооны зайтай PDF. Chrome-ийн таталтаар
+              хадгална.
             </p>
             <p className="mt-1.5 text-[11px] font-medium text-blue-700">
               {filters.warehouseName} · {STOCK_STATUS_LABELS[filters.status]}
@@ -137,7 +109,6 @@ function CatalogExportAction({ disabled, ...filters }: Props) {
                 setFeedback("");
                 setError("");
                 setFinished(false);
-                setProgress(null);
               }}
               className="h-4 w-4 rounded accent-blue-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             />
@@ -150,7 +121,7 @@ function CatalogExportAction({ disabled, ...filters }: Props) {
               onClick={exportCatalog}
               disabled={disabled || !filters.warehouseId}
               isLoading={busy}
-              loadingText="PDF бэлтгэж байна…"
+              loadingText="Chrome руу шилжүүлж байна…"
               aria-busy={busy}
               title="Хайлт, шүүлтүүрт тохирох бүх идэвхтэй барааны зурагтай каталог татах"
               icon={<FileDown className="h-4 w-4" aria-hidden="true" />}
@@ -195,21 +166,6 @@ function CatalogExportAction({ disabled, ...filters }: Props) {
             ) : null}
             {error || feedback}
           </p>
-          {busy && percent !== null && (
-            <div
-              role="progressbar"
-              aria-label="PDF бэлтгэх явц"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={percent}
-              className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-blue-100"
-            >
-              <div
-                className="h-full rounded-full bg-blue-600 motion-safe:transition-[width]"
-                style={{ width: `${percent}%` }}
-              />
-            </div>
-          )}
         </div>
       )}
     </section>
