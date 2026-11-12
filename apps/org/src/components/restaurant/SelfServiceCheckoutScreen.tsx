@@ -100,6 +100,7 @@ import {
   type EbarimtTinLookupResult,
 } from "@/lib/ebarimt";
 import { formatRestaurantOrderNumber } from "@/lib/restaurant-order-number";
+import { checkRestaurantCardCancellation, isRestaurantCardUnresolved, restaurantCardInstructions } from "@/lib/restaurant-card-state";
 import {
   formatReceiptMoney as formatMoney,
   printThermalPosReceipt,
@@ -398,6 +399,7 @@ function SelfServiceCheckoutContent() {
   const [kitchenPrintError, setKitchenPrintError] = useState("");
   const [cardMessage, setCardMessage] = useState("");
   const [cardCancelRequested, setCardCancelRequested] = useState(false);
+  const [returningFromCardPayment, setReturningFromCardPayment] = useState(false);
   const [cardWaitDeadline, setCardWaitDeadline] = useState<number | null>(null);
   const [secondsToReset, setSecondsToReset] = useState(30);
   const [silentPrintEnabled, setSilentPrintEnabled] = useState(false);
@@ -1386,7 +1388,7 @@ function SelfServiceCheckoutContent() {
 
 
   useEffect(() => {
-    if (cardProvider !== "MINU_AGENT" || submitting || cardPaymentRunRef.current || deferringCardRef.current ||
+    if (cardProvider !== "MINU_AGENT" || cardCancelRequested || returningFromCardPayment || submitting || cardPaymentRunRef.current || deferringCardRef.current ||
         pendingCardCheckout?.cardAttempt.status !== "PENDING" || !register || !user.organizationId || !orderMode) return;
     const checkout = pendingCardCheckout;
     const snapshot = JSON.stringify({ version: 1, savedAt: new Date().toISOString(), organizationId: user.organizationId,
@@ -1403,7 +1405,7 @@ function SelfServiceCheckoutContent() {
         setActionError(error instanceof Error ? error.message : "Захиалгыг хадгалж чадсангүй.");
         deferRetryTimer.current = setTimeout(() => setDeferRetry(value => value + 1), 5_000);
       }).finally(() => { deferringCardRef.current = false; });
-  }, [cardProvider, submitting, pendingCardCheckout, register, user.organizationId, orderMode, resetOrder, deferRetry]);
+  }, [cardProvider, submitting, pendingCardCheckout, register, user.organizationId, orderMode, resetOrder, deferRetry, cardCancelRequested, returningFromCardPayment]);
 
   const authorizeCardPayment = async (
     amount: number,
@@ -1523,7 +1525,11 @@ function SelfServiceCheckoutContent() {
         approvedAttempt = await waitForMinuCardPayment({
           attempt, deadline: minuWaitDeadline, signal: run.abortController.signal,
           getStatus: getRestaurantCardAttemptStatus,
-          onStatus: onAttemptChange,
+          onStatus: (nextAttempt) => {
+            onAttemptChange(nextAttempt);
+            if (isRestaurantCardUnresolved(nextAttempt, cardProvider))
+              setCardMessage(restaurantCardInstructions(nextAttempt, run.terminalCancelRequested).message);
+          },
         });
       } else {
         const maxPolls = LONG_RUNNING_CARD_PROVIDERS.has(cardProvider)
@@ -1550,17 +1556,13 @@ function SelfServiceCheckoutContent() {
           );
           onAttemptChange?.(approvedAttempt);
           if (approvedAttempt.status === "PENDING") {
-            setCardMessage(
-              run.terminalCancelRequested
-                ? "POS дээр Буцах товч дарна уу."
-                : "Терминал дээр картаа уншуулж төлбөрөө баталгаажуулна уу.",
-            );
+            setCardMessage(restaurantCardInstructions(approvedAttempt, run.terminalCancelRequested).message);
           }
         }
       }
 
       if (
-        (isCancelled() || run.terminalCancelRequested) &&
+        isCancelled() &&
         approvedAttempt.status !== "APPROVED"
       ) {
         throw new Error(CARD_PAYMENT_CANCELLED_MESSAGE);
@@ -1588,16 +1590,16 @@ function SelfServiceCheckoutContent() {
   const cancelCardPayment = () => {
     const run = cardPaymentRunRef.current;
     if (!run) {
-      if (pendingCardCheckout?.cardAttempt.status === "PENDING") {
+      if (isRestaurantCardUnresolved(pendingCardCheckout?.cardAttempt, cardProvider)) {
         setCardCancelRequested(true);
-        setCardMessage("POS дээр Буцах товч дарна уу.");
+        setCardMessage(restaurantCardInstructions(null, true).message);
       }
       return;
     }
     if (run.cancelled || run.terminalCancelRequested) return;
     run.terminalCancelRequested = true;
     setCardCancelRequested(true);
-    setCardMessage("POS дээр Буцах товч дарна уу.");
+    setCardMessage(restaurantCardInstructions(null, true).message);
   };
 
   const finalizeCardPayment = useCallback(
@@ -1682,6 +1684,46 @@ function SelfServiceCheckoutContent() {
   );
 
 
+  const returnFromCancelledCardPayment = async () => {
+    if (returningFromCardPayment || submitting || cardPaymentRunRef.current) return;
+    const checkout = pendingCardCheckout;
+    if (!checkout) return;
+    setReturningFromCardPayment(true);
+    setCardCancelRequested(true);
+    setActionError("");
+    try {
+      const { attempt, next } = await checkRestaurantCardCancellation(
+        checkout.cardAttempt.attemptId, cardProvider,
+      );
+      const nextCheckout = { ...checkout, cardAttempt: attempt };
+      if (next === "COMPLETE") {
+        persistPendingCardCheckout(nextCheckout);
+        setPendingCardCheckout(nextCheckout);
+        await finalizeCardPayment(nextCheckout);
+        return;
+      }
+      if (next === "WAIT") {
+        persistPendingCardCheckout(nextCheckout);
+        setPendingCardCheckout(nextCheckout);
+        setCardMessage(restaurantCardInstructions(attempt, true).message);
+        return;
+      }
+      clearSelfServicePendingPayment();
+      autoRecoverCardAttemptRef.current = null;
+      setPendingCardCheckout(null);
+      setCardMessage("");
+      setCardCancelRequested(false);
+      setScreen("checkout");
+      await cleanupDraftTicket(checkout);
+    } catch {
+      setActionError("Төлбөрийг шалгаж чадсангүй. Дахин мөнгө төлөхгүй түр хүлээнэ үү. Автоматаар дахин шалгана.");
+      setCardMessage(restaurantCardInstructions(null, true).message);
+    } finally {
+      setReturningFromCardPayment(false);
+    }
+  };
+
+
   const restoreDeferredOrder = async (record: DeferredCardCheckout) => {
     if (!register || cart.length || submitting || pendingCardCheckout || deferringCardRef.current || !["APPROVED", "DECLINED"].includes(record.status)) return;
     deferringCardRef.current = true;
@@ -1739,11 +1781,11 @@ function SelfServiceCheckoutContent() {
     const attemptId = checkout?.cardAttempt.attemptId;
     if (
       screen !== "card" ||
-      cardProvider === "MINU_AGENT" ||
+      (cardProvider === "MINU_AGENT" && !cardCancelRequested) ||
       !checkout ||
       !attemptId ||
-      checkout.cardAttempt.status !== "PENDING" ||
-      cardPaymentRunRef.current
+      !isRestaurantCardUnresolved(checkout.cardAttempt, cardProvider) ||
+      cardPaymentRunRef.current || returningFromCardPayment
     ) {
       return;
     }
@@ -1772,10 +1814,7 @@ function SelfServiceCheckoutContent() {
           return;
         }
 
-        if (
-          nextAttempt.status === "DECLINED" ||
-          nextAttempt.status === "FAILED"
-        ) {
+        if (!isRestaurantCardUnresolved(nextAttempt, cardProvider)) {
           clearSelfServicePendingPayment();
           setPendingCardCheckout(null);
           setActionError(
@@ -1783,12 +1822,17 @@ function SelfServiceCheckoutContent() {
               "Картын төлбөр амжилтгүй болсон тул дахин оролдоно уу.",
           );
           setCardMessage("");
+          setCardCancelRequested(false);
           setScreen("checkout");
           await cleanupDraftTicket(checkout);
           return;
         }
 
-        setCardMessage("Терминалын хариуг автоматаар шалгаж байна...");
+        if (nextAttempt.message !== checkout.cardAttempt.message || nextAttempt.status !== checkout.cardAttempt.status) {
+          persistPendingCardCheckout(nextCheckout);
+          setPendingCardCheckout(nextCheckout);
+        }
+        setCardMessage(restaurantCardInstructions(nextAttempt, cardCancelRequested).message);
       } catch {
         if (!disposed) {
           setCardMessage(
@@ -1808,6 +1852,9 @@ function SelfServiceCheckoutContent() {
     };
   }, [
     cleanupDraftTicket,
+    cardProvider,
+    cardCancelRequested,
+    returningFromCardPayment,
     pendingCardCheckout,
     persistPendingCardCheckout,
     screen,
@@ -1961,7 +2008,7 @@ function SelfServiceCheckoutContent() {
             };
             recoverableCardCheckout = nextCheckout;
             if (
-              nextAttempt.status === "PENDING" ||
+              isRestaurantCardUnresolved(nextAttempt, cardProvider) ||
               nextAttempt.status === "APPROVED"
             ) {
               persistPendingCardCheckout(nextCheckout);
@@ -2019,15 +2066,14 @@ function SelfServiceCheckoutContent() {
         errorMessage === CARD_PAYMENT_CANCELLED_MESSAGE;
       const keepCardRecovery =
         paymentMethod === "CARD" &&
-        recoverableCardCheckout?.cardAttempt.status === "PENDING";
+        isRestaurantCardUnresolved(recoverableCardCheckout?.cardAttempt, cardProvider);
       setActionError(cardPaymentCancelled ? "" : errorMessage);
       if (paymentMethod === "CARD") {
         if (keepCardRecovery && recoverableCardCheckout) {
           persistPendingCardCheckout(recoverableCardCheckout);
           setPendingCardCheckout(recoverableCardCheckout);
-          setCardMessage(
-            "Терминалын хариу тасарсан байна. Төлөвийг автоматаар дахин шалгаж байна...",
-          );
+          setCardMessage(restaurantCardInstructions(recoverableCardCheckout.cardAttempt,
+            cardPaymentRunRef.current?.terminalCancelRequested || cardCancelRequested).message);
           setScreen("card");
         } else {
           clearSelfServicePendingPayment();
@@ -2380,7 +2426,8 @@ function SelfServiceCheckoutContent() {
 
   if (screen === "card") {
     const cardPaymentPending =
-      submitting || pendingCardCheckout?.cardAttempt.status === "PENDING";
+      submitting || isRestaurantCardUnresolved(pendingCardCheckout?.cardAttempt, cardProvider);
+    const cardInstructions = restaurantCardInstructions(pendingCardCheckout?.cardAttempt, cardCancelRequested);
     return (
       <main className="flex min-h-[100dvh] items-center justify-center bg-[#11231d] px-5 py-10 text-white">
         <section className="w-full max-w-xl text-center">
@@ -2394,9 +2441,9 @@ function SelfServiceCheckoutContent() {
             Картын төлбөр
           </p>
           <h1 className="mt-3 text-4xl font-black tracking-tight">
-            {cardPaymentPending ? "Картаа уншуулна уу" : "Төлбөр баталгаажсан"}
+            {pendingCardCheckout?.cardAttempt.status === "APPROVED" ? "Төлбөр баталгаажсан" : cardInstructions.title}
           </h1>
-          <p className="mx-auto mt-4 max-w-md text-base font-semibold leading-7 text-white/55">
+          <p role="status" aria-live="polite" className="mx-auto mt-4 max-w-md text-base font-semibold leading-7 text-white/75">
             {cardMessage || "Терминалын дэлгэц дээрх зааврыг дагана уу."}
           </p>
           {cardWaitDeadline !== null && <CardPaymentCountdown key={cardWaitDeadline}
@@ -2415,7 +2462,7 @@ function SelfServiceCheckoutContent() {
             <div className="mt-8 flex flex-col items-center gap-4">
               <div className="inline-flex items-center gap-3 rounded-full bg-white/10 px-5 py-3 text-sm font-black text-white/70">
                 <Loader2 className="h-5 w-5 animate-spin text-[#f4c34f]" />
-                Терминалын хариуг хүлээж байна
+                {pendingCardCheckout?.cardAttempt.status === "APPROVED" ? "Захиалгыг бүртгэж байна" : "Төлбөрийг шалгаж байна"}
               </div>
               {pendingCardCheckout?.cardAttempt.status !== "APPROVED" ? (
                 <div className="flex flex-col items-center gap-3">
@@ -2426,10 +2473,19 @@ function SelfServiceCheckoutContent() {
                     className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/5 px-6 text-sm font-black text-white/75 transition hover:bg-white/10 disabled:cursor-wait disabled:opacity-50"
                   >
                     <ArrowLeft className="h-5 w-5" />
-                    Цуцлах · Захиалга руу буцах
+                    {cardCancelRequested ? "Төхөөрөмж дээр цуцална уу" : "Төлбөрөө болих"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void returnFromCancelledCardPayment()}
+                    disabled={returningFromCardPayment || submitting || !pendingCardCheckout}
+                    className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-[#f4c34f] px-6 py-3 text-sm font-black text-[#172219] transition hover:bg-[#f7cf6d] disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {returningFromCardPayment ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5" />}
+                    {returningFromCardPayment ? "Төлөвийг шалгаж байна..." : "Цуцалсан эсэхийг шалгах"}
                   </button>
                   <p className="max-w-sm text-xs font-semibold leading-5 text-white/45">
-                    Хариу ирэхгүй бол захиалгыг хадгалж, дараагийн үйлчлүүлэгчид кассыг автоматаар чөлөөлнө.
+                    Төхөөрөмж дээр төлбөрөө цуцалсны дараа захиалга руу буцна. Хариу ирэхгүй бол төлөвийг дахин шалгана уу.
                   </p>
                 </div>
               ) : null}
