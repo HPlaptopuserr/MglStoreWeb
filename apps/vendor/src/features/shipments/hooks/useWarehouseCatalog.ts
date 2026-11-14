@@ -9,6 +9,7 @@ import type {
   SupplyWarehouse,
   WarehouseInventoryItem,
   WarehouseCatalogCategory,
+  WarehouseCatalogSort,
 } from "@/features/shipments/types/stock-request.types";
 import { readWarehouseProductsPage } from "@/features/shipments/utils/warehouse-products-page";
 import { API, authFetch } from "@/lib/api";
@@ -56,8 +57,11 @@ export function useWarehouseCatalog({
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [categories, setCategories] = useState<WarehouseCatalogCategory[]>([]);
+  const [productSort, setProductSort] =
+    useState<WarehouseCatalogSort>("topSelling");
 
   const productsRequestRef = useRef<AbortController | null>(null);
+  const loadedFiltersRef = useRef<string | null>(null);
 
   const skipNextProductsFilterEffectRef = useRef(false);
 
@@ -82,6 +86,15 @@ export function useWarehouseCatalog({
         return;
       }
 
+      const filterKey = JSON.stringify([
+        warehouse.id,
+        search.trim(),
+        category,
+        productSort,
+      ]);
+      // A sort/filter change must start at page one before more rows can append.
+      if (append && loadedFiltersRef.current !== filterKey) return null;
+      if (!append) loadedFiltersRef.current = null;
       productsRequestRef.current?.abort();
       const controller = new AbortController();
       productsRequestRef.current = controller;
@@ -92,7 +105,7 @@ export function useWarehouseCatalog({
       try {
         const params = new URLSearchParams({
           organizationId: user.organizationId,
-          sort: "name",
+          sort: productSort,
           mode: "catalog",
           limit: String(WAREHOUSE_PRODUCTS_PAGE_SIZE),
           page: String(page),
@@ -139,6 +152,7 @@ export function useWarehouseCatalog({
         setProductsPage(page);
         setProductsTotal(result.total);
         setProductsHasMore(result.hasMore);
+        loadedFiltersRef.current = filterKey;
         if (result.categories) setCategories(result.categories);
         return result;
       } catch (error) {
@@ -162,7 +176,7 @@ export function useWarehouseCatalog({
         }
       }
     },
-    [user?.organizationId],
+    [user?.organizationId, productSort],
   );
 
   const enterWarehouse = async (
@@ -313,6 +327,8 @@ export function useWarehouseCatalog({
   });
   return {
     selectedWarehouse,
+    productSort,
+    setProductSort,
     warehouseProducts,
     productsLoading,
     productsLoadingMore,

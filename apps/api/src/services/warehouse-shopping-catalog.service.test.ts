@@ -181,3 +181,92 @@ test("search pages keep warehouse-wide categories, paginate in the database and 
     result.categories.some((category) => category.id === "business:home"),
   );
 });
+
+test("best sellers are ranked before pagination, with stable ties and unsold products retained", async (t) => {
+  const originalCategories = prisma.businessCategory.findMany;
+  const originalInventory = prisma.warehouseInventory.findMany;
+  t.after(() => {
+    Object.assign(prisma.businessCategory, { findMany: originalCategories });
+    Object.assign(prisma.warehouseInventory, { findMany: originalInventory });
+  });
+  Object.assign(prisma.businessCategory, { findMany: async () => categories });
+  const candidates = ["A", "Z", "X", "B"].map((id) => ({
+    id,
+    productId: id,
+    quantity: 10,
+    minQuantity: 0,
+    location: null,
+    product: {
+      id,
+      name: id,
+      masterProductId: null,
+      sku: null,
+      barcode: null,
+      barcodeAliases: [],
+      unit: "pcs",
+      businessCategoryId: "milk",
+      category: null,
+    },
+  }));
+  const hydratedPages: string[][] = [];
+  Object.assign(prisma.warehouseInventory, {
+    findMany: async (args: Prisma.WarehouseInventoryFindManyArgs) => {
+      if (!args.select?.productId) return candidates;
+      if (args.take === undefined) {
+        assert.deepEqual(args.where?.product, {
+          AND: [
+            { deletedAt: null, isActive: true },
+            shoppingSearchProductWhere("milk"),
+            { businessCategoryId: { in: ["food", "dairy", "milk"] } },
+          ],
+        });
+        return candidates;
+      }
+      const filter = args.where?.productId as { in: string[] };
+      hydratedPages.push(filter.in);
+      assert.equal(args.skip, undefined);
+      // Database name ordering differs from the requested sales order.
+      return candidates.filter((item) => filter.in.includes(item.productId));
+    },
+  });
+  const dependencies = {
+    db: prisma,
+    readSales: async () =>
+      new Map([
+        ["A", 1],
+        ["Z", 10],
+        ["X", 10],
+      ]),
+    reservedStock: async () => new Map<string, number>(),
+  };
+  const input = {
+    warehouseId: "central",
+    search: "milk",
+    categoryId: "business:food",
+    limit: 2,
+    sort: "topSelling" as const,
+  };
+  const first = await readWarehouseShoppingCatalog(
+    { ...input, page: 1 },
+    dependencies,
+  );
+  const second = await readWarehouseShoppingCatalog(
+    { ...input, page: 2 },
+    dependencies,
+  );
+  assert.deepEqual(
+    first.items.map((item) => item.productId),
+    ["X", "Z"],
+  );
+  assert.deepEqual(
+    second.items.map((item) => item.productId),
+    ["A", "B"],
+  );
+  assert.deepEqual(hydratedPages, [
+    ["X", "Z"],
+    ["A", "B"],
+  ]);
+  assert.equal(first.total, 4);
+  assert.equal(first.hasMore, true);
+  assert.equal(second.hasMore, false);
+});

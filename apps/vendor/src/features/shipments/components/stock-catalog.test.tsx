@@ -29,6 +29,8 @@ function renderCatalog(
 ) {
   return renderToStaticMarkup(
     <WarehouseProductCatalog
+      productSort="topSelling"
+      setProductSort={noop}
       navigation={null}
       outstandingPayments={null}
       retryProducts={noop}
@@ -126,6 +128,18 @@ test("recommendations are collapsed so shoppers reach the product grid immediate
   assert.match(html, /Туршилтын бараа/);
 });
 
+test("catalog defaults to best sellers and offers alphabetical ordering", () => {
+  const html = renderCatalog();
+  assert.match(
+    html,
+    /<option value="topSelling" selected="">Их борлуулалттай эхэнд/,
+  );
+  assert.match(html, /Сүүлийн 90 хоногийн сүлжээний дууссан борлуулалтаар/);
+  const alphabetical = renderCatalog({ productSort: "name" });
+  assert.match(alphabetical, /<option value="name" selected="">Нэрээр/);
+  assert.match(alphabetical, /Барааны нэрийн дарааллаар/);
+});
+
 test("product cards label quantity controls and disable adding unavailable stock", () => {
   const html = renderToStaticMarkup(
     <WarehouseProductCard
@@ -161,6 +175,8 @@ test("outstanding invoices do not remove catalog navigation or its product grid"
   );
   const html = renderToStaticMarkup(
     <WarehouseProductCatalog
+      productSort="topSelling"
+      setProductSort={noop}
       navigation={nav}
       outstandingPayments={{ count: 1, totalUnpaid: 12500, payments: [] }}
       retryProducts={noop}

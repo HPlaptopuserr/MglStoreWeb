@@ -9,6 +9,7 @@ import type {
   SupplyWarehouse,
   WarehouseInventoryItem,
   WarehouseCatalogCategory,
+  WarehouseCatalogSort,
 } from "@/features/shipments/types/stock-request.types";
 import type { RecommendedWarehouseItem } from "@/features/shipments/types/warehouse-recommendation.types";
 import {
@@ -34,6 +35,8 @@ interface WarehouseProductCatalogProps {
   setViewMode: React.Dispatch<React.SetStateAction<StockRequestView>>;
   totalCartItems: number;
   productSearch: string;
+  productSort: WarehouseCatalogSort;
+  setProductSort: React.Dispatch<React.SetStateAction<WarehouseCatalogSort>>;
   setProductSearch: React.Dispatch<React.SetStateAction<string>>;
   categories: WarehouseCatalogCategory[];
   setSelectedCategory: React.Dispatch<React.SetStateAction<string | null>>;
@@ -67,6 +70,8 @@ export function WarehouseProductCatalog({
   setViewMode,
   totalCartItems,
   productSearch,
+  productSort,
+  setProductSort,
   setProductSearch,
   categories,
   setSelectedCategory,
@@ -284,6 +289,28 @@ export function WarehouseProductCatalog({
 
       {/* Products Grid */}
       <div className="p-4">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-slate-500">
+            {productSort === "topSelling"
+              ? "Сүүлийн 90 хоногийн сүлжээний дууссан борлуулалтаар эрэмбэлэв."
+              : "Барааны нэрийн дарааллаар эрэмбэлэв."}
+          </p>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            Эрэмбэлэх
+            <select
+              value={productSort}
+              onChange={(event) =>
+                setProductSort(
+                  event.target.value === "name" ? "name" : "topSelling",
+                )
+              }
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            >
+              <option value="topSelling">Их борлуулалттай эхэнд</option>
+              <option value="name">Нэрээр</option>
+            </select>
+          </label>
+        </div>
         {!productSearch &&
           !selectedCategory &&
           !productsLoading &&

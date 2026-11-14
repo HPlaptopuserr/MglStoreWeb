@@ -60,6 +60,13 @@ initially so the product grid remains visible. Both searching and browsing use
 database pagination without the procurement analytics queries, and shoppers can
 load the next page by button as well as by scrolling.
 
+The default shopping sort is `topSelling`: completed online and POS sales in
+the last 90 days across the network. Store product copies are matched by master
+product or barcode; SKU fallback also requires the same name. Warehouse
+transfers and pending orders do not count as sales. Ranking happens across the
+filtered catalog before paging; zero-sales products remain available, with name
+and inventory ID breaking ties. Shoppers can switch back to alphabetical order.
+
 Verification: `vendor-procurement.integration.test.ts` exercises real HTTP routes
 with a disposable local PostgreSQL database (explicit
 `VENDOR_PROCUREMENT_INTEGRATION=1`). `components/stock-catalog.test.tsx` verifies

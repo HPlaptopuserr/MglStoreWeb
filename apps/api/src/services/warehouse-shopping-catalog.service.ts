@@ -1,5 +1,6 @@
 import { prisma, type Prisma } from "@mgl/database";
 import { reservedStock, stockAvailability } from "./stock-reservation.service";
+import { readWarehouseCatalogSales } from "./warehouse-catalog-sales.service";
 
 type CatalogCategory = {
   id: string;
@@ -132,12 +133,17 @@ interface ShoppingCatalogInput {
   page: number;
   limit: number;
   productIds?: string[];
+  sort?: "name" | "topSelling";
 }
 
 /** Shopping needs stock and categories, without procurement sales analytics. */
 export async function readWarehouseShoppingCatalog(
   input: ShoppingCatalogInput,
-  dependencies = { db: prisma as Prisma.TransactionClient, reservedStock },
+  dependencies: {
+    db: Prisma.TransactionClient;
+    reservedStock: typeof reservedStock;
+    readSales?: typeof readWarehouseCatalogSales;
+  } = { db: prisma, reservedStock },
 ) {
   const { db } = dependencies;
   const baseProductWhere: Prisma.ProductWhereInput = {
@@ -185,10 +191,48 @@ export async function readWarehouseShoppingCatalog(
     product: { AND: productFilters },
   };
   const offset = (input.page - 1) * input.limit;
-  const [total, items] = await Promise.all([
-    db.warehouseInventory.count({ where }),
-    db.warehouseInventory.findMany({
+  let rankedIds: string[] | undefined;
+  let rankedTotal: number | undefined;
+  if (input.sort === "topSelling") {
+    const candidates = await db.warehouseInventory.findMany({
       where,
+      select: {
+        id: true,
+        productId: true,
+        product: {
+          select: {
+            id: true,
+            name: true,
+            masterProductId: true,
+            barcode: true,
+            barcodeAliases: true,
+            sku: true,
+            unit: true,
+          },
+        },
+      },
+    });
+    const sales = await (dependencies.readSales ?? readWarehouseCatalogSales)(
+      candidates.map((item) => item.product),
+      db,
+    );
+    candidates.sort(
+      (a, b) =>
+        (sales.get(b.productId) ?? 0) - (sales.get(a.productId) ?? 0) ||
+        a.product.name.localeCompare(b.product.name, "mn") ||
+        a.id.localeCompare(b.id),
+    );
+    rankedTotal = candidates.length;
+    rankedIds = candidates
+      .slice(offset, offset + input.limit)
+      .map((item) => item.productId);
+  }
+  const [total, items] = await Promise.all([
+    rankedTotal === undefined
+      ? db.warehouseInventory.count({ where })
+      : Promise.resolve(rankedTotal),
+    db.warehouseInventory.findMany({
+      where: rankedIds ? { ...where, productId: { in: rankedIds } } : where,
       select: {
         id: true,
         productId: true,
@@ -211,10 +255,17 @@ export async function readWarehouseShoppingCatalog(
         },
       },
       orderBy: [{ product: { name: "asc" } }, { id: "asc" }],
-      skip: offset,
+      skip: rankedIds ? undefined : offset,
       take: input.limit,
     }),
   ]);
+  if (rankedIds) {
+    const position = new Map(rankedIds.map((id, index) => [id, index]));
+    items.sort(
+      (a, b) =>
+        (position.get(a.productId) ?? 0) - (position.get(b.productId) ?? 0),
+    );
+  }
   const reserved = await dependencies.reservedStock(
     input.warehouseId,
     items.map((item) => item.productId),

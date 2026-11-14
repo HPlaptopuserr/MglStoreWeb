@@ -1686,11 +1686,17 @@ router.get(
       const page = Math.max(1, Number(req.query.page) || 1);
       const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 40));
 
-      if (mode === "catalog" && sort === "name" && !lowStockOnly && !category) {
+      if (
+        mode === "catalog" &&
+        (sort === "name" || sort === "topSelling") &&
+        !lowStockOnly &&
+        !category
+      ) {
         return res.json(
           await readWarehouseShoppingCatalog({
             warehouseId,
             search,
+            sort,
             categoryId:
               typeof req.query.categoryId === "string"
                 ? req.query.categoryId

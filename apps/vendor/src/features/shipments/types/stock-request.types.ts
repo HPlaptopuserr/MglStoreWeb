@@ -86,6 +86,8 @@ export type WarehouseCatalogCategory = {
   productCount: number;
 };
 
+export type WarehouseCatalogSort = "topSelling" | "name";
+
 export type WarehouseProductsPage = {
   items: WarehouseInventoryItem[];
   total: number;
