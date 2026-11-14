@@ -1,6 +1,7 @@
 import { stockInvoiceCost } from "../../services/warehouse-sales-cost";
 import { selectProcurementCatalog } from "../../services/procurement-catalog-selection";
 import { readWarehouseProcurement } from "../../services/warehouse-procurement.service";
+import { readWarehouseShoppingCatalog } from "../../services/warehouse-shopping-catalog.service";
 import { canProcureFromWarehouse } from "../../services/procurement-warehouse.service";
 import express, {
   Router,
@@ -1684,6 +1685,22 @@ router.get(
       const lowStockOnly = req.query.lowStock === "true";
       const page = Math.max(1, Number(req.query.page) || 1);
       const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 40));
+
+      if (mode === "catalog" && sort === "name" && !lowStockOnly && !category) {
+        return res.json(
+          await readWarehouseShoppingCatalog({
+            warehouseId,
+            search,
+            categoryId:
+              typeof req.query.categoryId === "string"
+                ? req.query.categoryId
+                : undefined,
+            page,
+            limit,
+            productIds: requestedProductIds,
+          }),
+        );
+      }
 
       const [catalogCategoryIds, businessCategoryIds] = category
         ? await Promise.all([

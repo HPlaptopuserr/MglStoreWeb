@@ -79,10 +79,18 @@ export type WarehouseInventoryItem = {
   };
 };
 
+export type WarehouseCatalogCategory = {
+  id: string;
+  name: string;
+  parentId: string | null;
+  productCount: number;
+};
+
 export type WarehouseProductsPage = {
   items: WarehouseInventoryItem[];
   total: number;
   hasMore: boolean;
+  categories?: WarehouseCatalogCategory[];
 };
 
 export type SupplyWarehouse = {

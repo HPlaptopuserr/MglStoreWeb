@@ -24,7 +24,7 @@ export function WarehouseProductCard({
   const image = resolveShipmentAssetUrl(item.product.images[0]?.url);
   const selected = cartQty > 0;
   const category =
-    item.product.category?.name || item.product.businessCategory?.name;
+    item.product.businessCategory?.name || item.product.category?.name;
   const available = item.quantity > 0;
   const quantityButton =
     "flex h-10 w-10 items-center justify-center rounded-lg bg-white text-slate-800 shadow-sm transition-colors hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 disabled:cursor-not-allowed disabled:opacity-40";

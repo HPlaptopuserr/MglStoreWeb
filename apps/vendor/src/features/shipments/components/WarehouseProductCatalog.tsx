@@ -8,6 +8,7 @@ import type {
   StockRequestView,
   SupplyWarehouse,
   WarehouseInventoryItem,
+  WarehouseCatalogCategory,
 } from "@/features/shipments/types/stock-request.types";
 import type { RecommendedWarehouseItem } from "@/features/shipments/types/warehouse-recommendation.types";
 import {
@@ -18,20 +19,23 @@ import {
   Package,
   Search,
   ShoppingCart,
+  X,
 } from "lucide-react";
 import type * as React from "react";
+import { Fragment as ReactFragment } from "react";
 
 interface WarehouseProductCatalogProps {
   navigation: React.ReactNode;
   outstandingPayments: OutstandingPaymentSummary | null;
   retryProducts: () => void;
+  loadMoreProducts: () => void;
   selectedWarehouse: SupplyWarehouse | null;
   exitWarehouse: () => void;
   setViewMode: React.Dispatch<React.SetStateAction<StockRequestView>>;
   totalCartItems: number;
   productSearch: string;
   setProductSearch: React.Dispatch<React.SetStateAction<string>>;
-  categories: string[];
+  categories: WarehouseCatalogCategory[];
   setSelectedCategory: React.Dispatch<React.SetStateAction<string | null>>;
   selectedCategory: string | null;
   productsLoading: boolean;
@@ -57,6 +61,7 @@ export function WarehouseProductCatalog({
   navigation,
   outstandingPayments,
   retryProducts,
+  loadMoreProducts,
   selectedWarehouse,
   exitWarehouse,
   setViewMode,
@@ -79,6 +84,25 @@ export function WarehouseProductCatalog({
   cart,
 }: WarehouseProductCatalogProps) {
   if (!selectedWarehouse) return null;
+  const categoryById = new Map(
+    categories.map((category) => [category.id, category]),
+  );
+  const categoryPath: WarehouseCatalogCategory[] = [];
+  const visited = new Set<string>();
+  let currentCategory = selectedCategory
+    ? categoryById.get(selectedCategory)
+    : undefined;
+  while (currentCategory && !visited.has(currentCategory.id)) {
+    visited.add(currentCategory.id);
+    categoryPath.unshift(currentCategory);
+    currentCategory = currentCategory.parentId
+      ? categoryById.get(currentCategory.parentId)
+      : undefined;
+  }
+  const rootCategories = categories.filter((category) => !category.parentId);
+  const childCategories = selectedCategory
+    ? categories.filter((category) => category.parentId === selectedCategory)
+    : [];
   return (
     <div className="min-h-screen space-y-4 bg-slate-50 pb-28">
       {navigation}
@@ -144,39 +168,117 @@ export function WarehouseProductCatalog({
               aria-label="Агуулахын бараа хайх"
               placeholder="Нэр, SKU, баркодоор хайх..."
               value={productSearch}
-              onChange={(e) => setProductSearch(e.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm focus:border-[#FFAD02] focus:bg-white focus:outline-none"
+              onChange={(e) => {
+                setProductSearch(e.target.value);
+                setSelectedCategory(null);
+              }}
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-12 text-sm focus:border-[#FFAD02] focus:bg-white focus:outline-none"
             />
+            {productSearch && (
+              <button
+                type="button"
+                aria-label="Хайлт цэвэрлэх"
+                onClick={() => setProductSearch("")}
+                className="absolute right-1 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 hover:bg-slate-200 focus-visible:ring-2 focus-visible:ring-amber-500"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            )}
           </div>
+          {productSearch && (
+            <p className="mt-2 text-xs text-slate-500">
+              Сонгосон агуулахын бүх ангиллаас хайж байна.
+            </p>
+          )}
         </div>
 
         {/* Categories */}
         {categories.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto px-4 pb-3 scrollbar-hide">
-            <button
-              onClick={() => setSelectedCategory(null)}
-              className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
-                !selectedCategory
-                  ? "bg-[#FFAD02] text-white"
-                  : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              Бүгд
-            </button>
-            {categories.map((cat) => (
+          <nav
+            aria-label="Барааны ангилал"
+            className="max-h-[40vh] space-y-3 overflow-y-auto px-4 pb-3"
+          >
+            <p className="text-xs text-slate-500">
+              Ангиллаа сонгоод хэрэгтэй бараагаа үзээрэй.
+            </p>
+            <div className="flex flex-wrap gap-2">
               <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
+                type="button"
+                aria-pressed={!selectedCategory}
+                onClick={() => setSelectedCategory(null)}
                 className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
-                  selectedCategory === cat
+                  !selectedCategory
                     ? "bg-[#FFAD02] text-white"
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
                 }`}
               >
-                {cat}
+                Бүгд
               </button>
-            ))}
-          </div>
+              {rootCategories.map((cat) => (
+                <button
+                  type="button"
+                  key={cat.id}
+                  aria-pressed={categoryPath[0]?.id === cat.id}
+                  onClick={() => {
+                    setProductSearch("");
+                    setSelectedCategory(cat.id);
+                  }}
+                  className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
+                    categoryPath[0]?.id === cat.id
+                      ? "bg-[#FFAD02] text-white"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                  }`}
+                >
+                  {cat.name}{" "}
+                  <span className="opacity-70">({cat.productCount})</span>
+                </button>
+              ))}
+            </div>
+            {categoryPath.length > 0 && (
+              <div
+                aria-label="Сонгосон ангиллын зам"
+                className="flex flex-wrap items-center gap-2 text-sm"
+              >
+                {categoryPath.map((category, index) => (
+                  <ReactFragment key={category.id}>
+                    {index > 0 && (
+                      <ChevronRight
+                        aria-hidden="true"
+                        className="h-3 w-3 text-slate-400"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory(category.id)}
+                      aria-current={
+                        category.id === selectedCategory ? "page" : undefined
+                      }
+                      className="rounded px-1 py-1 font-medium text-slate-700 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-amber-500"
+                    >
+                      {category.name}
+                    </button>
+                  </ReactFragment>
+                ))}
+              </div>
+            )}
+            {childCategories.length > 0 && (
+              <div aria-label="Дэд ангилал" className="flex flex-wrap gap-2">
+                {childCategories.map((category) => (
+                  <button
+                    type="button"
+                    key={category.id}
+                    onClick={() => setSelectedCategory(category.id)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:border-amber-400 hover:bg-amber-50 focus-visible:ring-2 focus-visible:ring-amber-500"
+                  >
+                    {category.name}{" "}
+                    <span className="text-slate-400">
+                      ({category.productCount})
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </nav>
         )}
       </div>
 
@@ -187,13 +289,18 @@ export function WarehouseProductCatalog({
           !productsLoading &&
           !productsError &&
           user?.organizationId && (
-            <div className="mb-6">
-              <WarehouseProductRecommendations
-                organizationId={user.organizationId}
-                warehouseId={selectedWarehouse.id}
-                onAdd={addRecommendationToCart}
-              />
-            </div>
+            <details className="mb-4 rounded-xl border border-slate-200 bg-white p-3">
+              <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+                Танд санал болгох бараа
+              </summary>
+              <div className="mt-3">
+                <WarehouseProductRecommendations
+                  organizationId={user.organizationId}
+                  warehouseId={selectedWarehouse.id}
+                  onAdd={addRecommendationToCart}
+                />
+              </div>
+            </details>
           )}
         {productsLoading ? (
           <div
@@ -257,13 +364,32 @@ export function WarehouseProductCatalog({
           <div className="space-y-8">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-bold text-slate-900">
-                {productSearch || selectedCategory
+                {productSearch
                   ? "Хайлтын үр дүн"
-                  : "Бүх бараа"}
+                  : (selectedCategory &&
+                      categoryById.get(selectedCategory)?.name) ||
+                    "Бүх бараа"}
               </h2>
-              <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-slate-600 ring-1 ring-slate-200">
-                {productsTotal.toLocaleString()} бараа
-              </span>
+              <div className="flex flex-wrap items-center justify-end gap-3">
+                {(productSearch || selectedCategory) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setProductSearch("");
+                      setSelectedCategory(null);
+                    }}
+                    className="rounded-lg px-2 py-1 text-sm font-semibold text-slate-600 underline underline-offset-4 hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-amber-500"
+                  >
+                    Бүх барааг үзэх
+                  </button>
+                )}
+                <span
+                  role="status"
+                  className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-slate-600 ring-1 ring-slate-200"
+                >
+                  {productsTotal.toLocaleString()} бараа
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
@@ -280,9 +406,13 @@ export function WarehouseProductCatalog({
                   Бараа ачаалж байна…
                 </div>
               ) : productsHasMore ? (
-                <span className="sr-only">
-                  Дараагийн бараануудыг ачаалах цэг
-                </span>
+                <button
+                  type="button"
+                  onClick={loadMoreProducts}
+                  className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-amber-500"
+                >
+                  Дараагийн барааг үзэх
+                </button>
               ) : warehouseProducts.length > 0 ? (
                 <p className="text-xs font-bold text-slate-400">
                   {productsTotal.toLocaleString()} барааг бүгдийг үзүүллээ

@@ -8,6 +8,7 @@ import type {
   SuggestedStockItem,
   SupplyWarehouse,
   WarehouseInventoryItem,
+  WarehouseCatalogCategory,
 } from "@/features/shipments/types/stock-request.types";
 import { readWarehouseProductsPage } from "@/features/shipments/utils/warehouse-products-page";
 import { API, authFetch } from "@/lib/api";
@@ -54,6 +55,7 @@ export function useWarehouseCatalog({
   const [debouncedProductSearch, setDebouncedProductSearch] = useState("");
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [categories, setCategories] = useState<WarehouseCatalogCategory[]>([]);
 
   const productsRequestRef = useRef<AbortController | null>(null);
 
@@ -97,7 +99,7 @@ export function useWarehouseCatalog({
         });
         const normalizedSearch = search.trim();
         if (normalizedSearch) params.set("search", normalizedSearch);
-        if (category) params.set("category", category);
+        if (category) params.set("categoryId", category);
         if (productIds?.length) params.set("productIds", productIds.join(","));
 
         const res = await authFetch(
@@ -137,6 +139,7 @@ export function useWarehouseCatalog({
         setProductsPage(page);
         setProductsTotal(result.total);
         setProductsHasMore(result.hasMore);
+        if (result.categories) setCategories(result.categories);
         return result;
       } catch (error) {
         if (
@@ -167,6 +170,7 @@ export function useWarehouseCatalog({
     autoItems?: SuggestedStockItem[],
   ) => {
     setSelectedWarehouse(warehouse);
+    setCategories([]);
     skipNextProductsFilterEffectRef.current = true;
     setProductsLoading(true);
     setProductsError(null);
@@ -226,6 +230,7 @@ export function useWarehouseCatalog({
     productsRequestRef.current?.abort();
     setSelectedWarehouse(null);
     setWarehouseProducts([]);
+    setCategories([]);
     setProductsError(null);
     setProductSearch("");
     setDebouncedProductSearch("");
@@ -278,17 +283,23 @@ export function useWarehouseCatalog({
     });
   };
 
-  const categories = Array.from(
-    new Set(
-      (Array.isArray(warehouseProducts) ? warehouseProducts : [])
-        .map(
-          (product) =>
-            product.product.category?.name ||
-            product.product.businessCategory?.name,
-        )
-        .filter(Boolean),
-    ),
-  ) as string[];
+  const loadMoreProducts = () => {
+    if (
+      !selectedWarehouse ||
+      productsLoading ||
+      productsLoadingMore ||
+      productsError ||
+      !productsHasMore
+    )
+      return;
+    void loadWarehouseProducts({
+      warehouse: selectedWarehouse,
+      page: productsPage + 1,
+      search: debouncedProductSearch,
+      category: selectedCategory,
+      append: true,
+    });
+  };
 
   const productsLoadMoreRef = useInfiniteScroll({
     enabled:
@@ -298,16 +309,7 @@ export function useWarehouseCatalog({
       !productsLoadingMore &&
       !productsError &&
       productsHasMore,
-    onLoadMore: () => {
-      if (!selectedWarehouse) return;
-      void loadWarehouseProducts({
-        warehouse: selectedWarehouse,
-        page: productsPage + 1,
-        search: debouncedProductSearch,
-        category: selectedCategory,
-        append: true,
-      });
-    },
+    onLoadMore: loadMoreProducts,
   });
   return {
     selectedWarehouse,
@@ -327,5 +329,6 @@ export function useWarehouseCatalog({
     categories,
     productsLoadMoreRef,
     retryProducts,
+    loadMoreProducts,
   };
 }

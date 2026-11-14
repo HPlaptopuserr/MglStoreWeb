@@ -49,6 +49,17 @@ open order history. The catalog refreshes when returning from checkout so stock
 availability reflects reservations. Product cards show uncropped images, stock,
 SKU, price and labeled quantity controls; unavailable products cannot be added.
 
+Catalog responses include warehouse-wide category IDs, parent IDs and product
+counts independently of search and pagination. Shoppers select a main category,
+then its children, with breadcrumbs to return to a parent. Parent selections
+include all descendant categories. Active business categories take precedence
+over legacy labels; products without a category remain browsable separately.
+The UI sends `categoryId` in catalog mode, while the API keeps the legacy
+`category` name filter for existing consumers. Recommendations are collapsed
+initially so the product grid remains visible. Both searching and browsing use
+database pagination without the procurement analytics queries, and shoppers can
+load the next page by button as well as by scrolling.
+
 Verification: `vendor-procurement.integration.test.ts` exercises real HTTP routes
 with a disposable local PostgreSQL database (explicit
 `VENDOR_PROCUREMENT_INTEGRATION=1`). `components/stock-catalog.test.tsx` verifies

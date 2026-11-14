@@ -1,6 +1,7 @@
 import type {
   WarehouseInventoryItem,
   WarehouseProductsPage,
+  WarehouseCatalogCategory,
 } from "../types/stock-request.types";
 
 export function readWarehouseProductsPage(
@@ -27,5 +28,20 @@ export function readWarehouseProductsPage(
   const hasMore =
     typeof record.hasMore === "boolean" ? record.hasMore : page * limit < total;
 
-  return { items, total, hasMore };
+  const categories = Array.isArray(record.categories)
+    ? record.categories.filter(
+        (item: unknown): item is WarehouseCatalogCategory =>
+          typeof item === "object" &&
+          item !== null &&
+          "id" in item &&
+          "name" in item &&
+          "parentId" in item &&
+          "productCount" in item &&
+          typeof item.id === "string" &&
+          typeof item.name === "string" &&
+          (item.parentId === null || typeof item.parentId === "string") &&
+          typeof item.productCount === "number",
+      )
+    : undefined;
+  return { items, total, hasMore, categories };
 }
