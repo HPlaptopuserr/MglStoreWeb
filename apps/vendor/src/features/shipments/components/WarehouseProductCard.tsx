@@ -31,28 +31,33 @@ export function WarehouseProductCard({
 
   return (
     <article
-      className={`group flex min-w-0 flex-col overflow-hidden rounded-2xl border bg-white transition-shadow motion-safe:duration-200 hover:shadow-lg ${isHorizontal ? "w-48 shrink-0" : ""} ${selected ? "border-amber-400 ring-2 ring-amber-100" : "border-slate-200"}`}
+      className={`group flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border bg-white transition-shadow motion-safe:duration-200 hover:shadow-lg ${isHorizontal ? "w-48 shrink-0" : ""} ${selected ? "border-amber-400 ring-2 ring-amber-100" : "border-slate-200"}`}
     >
-      <div className="relative aspect-[4/3] bg-slate-50 p-4 sm:p-6">
-        {image && failedImage !== image ? (
-          <img
-            src={image}
-            alt={item.product.name}
-            loading="lazy"
-            decoding="async"
-            width={320}
-            height={240}
-            onError={() => setFailedImage(image)}
-            className="h-full w-full object-contain mix-blend-multiply transition-transform motion-safe:duration-200 motion-safe:group-hover:scale-105"
-          />
-        ) : (
-          <div
-            className="flex h-full items-center justify-center"
-            aria-label="Зураггүй бараа"
-          >
-            <Package className="h-12 w-12 text-slate-300" aria-hidden="true" />
-          </div>
-        )}
+      <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-slate-50">
+        <div className="absolute inset-0 p-4 sm:p-6">
+          {image && failedImage !== image ? (
+            <img
+              src={image}
+              alt={item.product.name}
+              loading="lazy"
+              decoding="async"
+              width={320}
+              height={240}
+              onError={() => setFailedImage(image)}
+              className="h-full w-full object-contain mix-blend-multiply transition-transform motion-safe:duration-200 motion-safe:group-hover:scale-105"
+            />
+          ) : (
+            <div
+              className="flex h-full items-center justify-center"
+              aria-label="Зураггүй бараа"
+            >
+              <Package
+                className="h-12 w-12 text-slate-300"
+                aria-hidden="true"
+              />
+            </div>
+          )}
+        </div>
         {selected && (
           <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full bg-slate-900 px-2 py-1 text-xs font-semibold text-white">
             <Check className="h-3 w-3" aria-hidden="true" />
@@ -65,7 +70,7 @@ export function WarehouseProductCard({
           {category || "Агуулахын бараа"}
         </p>
         <h3
-          className="line-clamp-2 min-h-10 text-sm font-semibold leading-5 text-slate-900"
+          className="line-clamp-2 h-10 text-sm font-semibold leading-5 text-slate-900"
           title={item.product.name}
         >
           {item.product.name}
@@ -87,7 +92,7 @@ export function WarehouseProductCard({
           </p>
         </div>
         {selected ? (
-          <div className="mt-4 flex items-center justify-between gap-1 rounded-xl bg-amber-50 p-1">
+          <div className="mt-4 flex h-12 shrink-0 items-center justify-between gap-1 rounded-xl bg-amber-50 p-1">
             <button
               type="button"
               aria-label={`${item.product.name} хасах`}
@@ -123,7 +128,7 @@ export function WarehouseProductCard({
             onClick={() => onAdd(item)}
             disabled={!available}
             aria-label={`${item.product.name} сагсанд нэмэх`}
-            className="mt-4 flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-2 text-sm font-semibold text-white transition-colors hover:bg-amber-500 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+            className="mt-4 flex h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-2 text-sm font-semibold text-white transition-colors hover:bg-amber-500 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
           >
             <Plus className="h-4 w-4" />
             Сагсанд нэмэх
