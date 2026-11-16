@@ -50,3 +50,16 @@ test("explicit terminal approval and preflight decline keep their existing behav
   assert.equal(androidPgwResultStatus({ status: "APPROVED", rrn: "bank-reference" }, attemptId), "APPROVED");
   assert.equal(androidPgwResultStatus({ status: "DECLINED", message: "Төлбөр эхлээгүй" }, attemptId), "DECLINED");
 });
+
+test("the observed -22 reply has the same cancellation safeguards", () => {
+  const reply = { ...cancelled, code: "-22", parsed: { ...cancelled.parsed, code: -22 } };
+  assert.equal(androidPgwResultStatus(reply, attemptId), "DECLINED");
+  for (const result of [
+    { ...reply, code: "-99" },
+    { ...reply, data: "another-attempt" },
+    { ...reply, terminal: "another-terminal" },
+    { ...reply, rrn: "bank-proof" },
+    { ...reply, parsed: { ...reply.parsed, code: 0 } },
+    { ...reply, parsed: { ...reply.parsed, succeed: true } },
+  ]) assert.equal(androidPgwResultStatus(result, attemptId), "PENDING");
+});

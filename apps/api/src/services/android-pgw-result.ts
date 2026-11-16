@@ -19,7 +19,7 @@ const hasBankEvidence = (value: Record<string, unknown>): boolean =>
 
 /**
  * Older Android PGW bridges label unrecognized negative terminal codes FAILED.
- * Recognize only the observed -21 cancellation, with the original attempt and
+ * Recognize only the observed -21/-22 cancellations, with the original attempt and
  * terminal response intact. A transport error or absence of RRN is not a decline.
  */
 export function hasAndroidPgwCancellation(result: unknown, attemptId: string): boolean {
@@ -27,7 +27,8 @@ export function hasAndroidPgwCancellation(result: unknown, attemptId: string): b
   const parsed = record(bridge?.parsed);
   if (!bridge || !parsed || bridge.provider !== "ANDROID_PGW" ||
       text(bridge.status).toUpperCase() !== "FAILED" || bridge.manualCard === true) return false;
-  if (text(bridge.code) !== "-21" || text(parsed.code) !== "-21" ||
+  const code = text(bridge.code);
+  if (!["-21", "-22"].includes(code) || text(parsed.code) !== code ||
       text(bridge.message) !== "Гүйлгээ цуцлагдсан" || text(parsed.desc) !== "Гүйлгээ цуцлагдсан") return false;
   if (!attemptId || text(bridge.data) !== attemptId ||
       (text(parsed.data) && text(parsed.data) !== attemptId)) return false;

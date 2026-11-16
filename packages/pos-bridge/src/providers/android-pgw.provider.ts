@@ -175,6 +175,16 @@ export const classifyPgwResponse = (response: PgwResponse): PgwDecision => {
   }
   if (/^\d+$/.test(code) && !/^0+$/.test(code)) return "DECLINED";
 
+  // These PGW cancellation responses have negative codes and no separate
+  // status field. Do not classify other negative/transport errors as final.
+  if (
+    ["-21", "-22"].includes(code) &&
+    responseMessage(response) === "Гүйлгээ цуцлагдсан"
+  ) {
+    return !responseRrn(response) && !responseApprovalCode(response) &&
+      !APPROVED_STATUS_VALUES.has(status) ? "DECLINED" : "UNKNOWN";
+  }
+
   if (code && /^0+$/.test(code)) return "APPROVED";
   if (APPROVED_STATUS_VALUES.has(status) || APPROVED_STATUS_VALUES.has(normalizedCode)) {
     return "APPROVED";
