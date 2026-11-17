@@ -31,3 +31,36 @@ test("remote duplicate Innova is shown once while other paid entries retain thei
   assert.equal(result.length, 2);
   assert.equal(result[1].href, "/mgl-club/companies/other");
 });
+
+test("admin-managed Innova name, logo, sector and city replace the published fallback consistently", () => {
+  const edited = {
+    ...innovaCompany,
+    id: "managed-innova",
+    businessName: "Иннова шинэ нэр",
+    logoUrl: "https://example.test/new-logo.webp",
+    city: "Дархан-Уул",
+    sector: "Барилга, үл хөдлөх",
+    offers: "Шинэ үйлчилгээ",
+  };
+  const result = goldCompanies(
+    [edited],
+    { ...filters, query: "шинэ нэр" },
+    edited,
+  );
+  assert.equal(result.length, 1);
+  assert.equal(result[0].member.logoUrl, edited.logoUrl);
+  assert.equal(result[0].member.businessName, edited.businessName);
+  assert.match(result[0].href, /\/innovallc$/);
+  assert.equal(
+    goldCompanies([], { ...filters, city: "Улаанбаатар" }, edited).length,
+    0,
+  );
+  assert.equal(
+    goldCompanies(
+      [],
+      { ...filters, city: "Дархан-Уул", sector: "Барилга, үл хөдлөх" },
+      edited,
+    ).length,
+    1,
+  );
+});

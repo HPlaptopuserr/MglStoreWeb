@@ -7,12 +7,14 @@ import {
 } from "lucide-react";
 import { MGL_CLUB_LOCATIONS, MGL_CLUB_SECTORS } from "@mgl/types";
 import { useClubWorkspace } from "./ClubWorkspaceProvider";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useClubDirectory } from "./useClubDirectory";
 import { goldCompanies } from "./gold-companies";
 import { ClubDemoLogos } from "./ClubDemoLogos";
 import { CompanyLogo } from "./CompanyLogo";
+import { API } from "@/lib/api";
+import { innovaCompany, type MglClubMember } from "@mgl/types";
 import styles from "./companies.module.css";
 
 export function ClubCompanies() {
@@ -20,7 +22,29 @@ export function ClubCompanies() {
   const { query, setQuery, sector, setSector, city, setCity } = filters;
   const [expanded, setExpanded] = useState(false);
   const directory = useClubDirectory(query, sector, city, "gold");
-  const companies = goldCompanies(directory.members, { query, sector, city });
+  const [innova, setInnova] = useState<MglClubMember>(innovaCompany);
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadFeaturedCompany() {
+      try {
+        const response = await fetch(`${API}/forms/mgl-club/sites/innovallc`, {
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+        const result: { member: MglClubMember } = await response.json();
+        if (!controller.signal.aborted) setInnova(result.member);
+      } catch {
+        /* The published default remains available when the API is unavailable. */
+      }
+    }
+    void loadFeaturedCompany();
+    return () => controller.abort();
+  }, []);
+  const companies = goldCompanies(
+    directory.members,
+    { query, sector, city },
+    innova,
+  );
   const showDemo =
     process.env.NODE_ENV !== "production" &&
     !directory.loading &&

@@ -1,5 +1,4 @@
 "use client";
-import Link from "next/link";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import {
   parseMglClubPost,
@@ -8,30 +7,53 @@ import {
   type MglClubPostInput,
 } from "@mgl/types";
 import { API, authFetch } from "@/lib/api";
-import { useAuth } from "@/lib/auth-context";
 import styles from "./company-blog.module.css";
 const emptyPost: MglClubPostInput = { title: "", body: "", published: false };
-export function CompanyBlogManager() {
-  const { user, loading: authLoading } = useAuth();
-  const userId = user?.id;
-  const [companies, setCompanies] = useState<MglClubMember[]>([]);
-  const [companyId, setCompanyId] = useState("");
+interface Props {
+  company: MglClubMember;
+  onDirtyChange: (dirty: boolean) => void;
+  onBusyChange: (busy: boolean) => void;
+}
+export function CompanyBlogManager({
+  company,
+  onDirtyChange,
+  onBusyChange,
+}: Props) {
   const [posts, setPosts] = useState<MglClubPost[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [postId, setPostId] = useState("");
   const [draft, setDraft] = useState<MglClubPostInput>(emptyPost);
-  const [loading, setLoading] = useState(false);
+  const [baseline, setBaseline] = useState<MglClubPostInput>(emptyPost);
+  const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [retry, setRetry] = useState(0);
+  const dirty =
+    draft.title !== baseline.title ||
+    draft.body !== baseline.body ||
+    draft.published !== baseline.published;
+  useEffect(() => {
+    onDirtyChange(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => {
+    onBusyChange(pending);
+    return () => onBusyChange(false);
+  }, [pending, onBusyChange]);
   const loadPosts = useCallback(
-    async (id: string, after?: string, signal?: AbortSignal) => {
+    async (after?: string, signal?: AbortSignal) => {
       const response = await authFetch(
-        `${API}/forms/mgl-club/my-companies/${id}/posts${after ? `?cursor=${encodeURIComponent(after)}` : ""}`,
+        `${API}/forms/mgl-club/my-companies/${company.id}/posts${after ? `?cursor=${encodeURIComponent(after)}` : ""}`,
         { signal },
       );
-      if (!response.ok) throw new Error("Нийтлэлүүдийг ачаалж чадсангүй.");
+      if (!response.ok)
+        throw new Error(
+          response.status === 401
+            ? "Нэвтрэх хугацаа дууссан байна. Дахин нэвтэрнэ үү."
+            : response.status === 403
+              ? "Нийтлэлийг зөвхөн систем админ удирдана."
+              : "Нийтлэлүүдийг ачаалж чадсангүй.",
+        );
       const page: { posts: MglClubPost[]; nextCursor: string | null } =
         await response.json();
       if (signal?.aborted) return;
@@ -40,56 +62,47 @@ export function CompanyBlogManager() {
       );
       setCursor(page.nextCursor);
     },
-    [],
+    [company.id],
   );
   useEffect(() => {
-    if (!userId) return;
     const controller = new AbortController();
-    async function load() {
-      setLoading(true);
-      setError("");
-      try {
-        const response = await authFetch(`${API}/forms/mgl-club/my-companies`, {
-          signal: controller.signal,
-        });
-        if (!response.ok) throw new Error("Байгууллагуудыг ачаалж чадсангүй.");
-        const data: { companies: MglClubMember[] } = await response.json();
-        if (controller.signal.aborted) return;
-        setCompanies(data.companies);
-        setCompanyId((previous) =>
-          data.companies.some((c) => c.id === previous)
-            ? previous
-            : data.companies[0]?.id || "",
-        );
-      } catch (cause: unknown) {
+    setLoading(true);
+    setError("");
+    void loadPosts(undefined, controller.signal)
+      .catch((cause: unknown) => {
         if (!controller.signal.aborted)
           setError(
-            cause instanceof Error ? cause.message : "Холболтын алдаа гарлаа.",
+            cause instanceof Error
+              ? cause.message
+              : "Нийтлэлүүдийг ачаалж чадсангүй.",
           );
-      } finally {
+      })
+      .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
-      }
-    }
-    void load();
+      });
     return () => controller.abort();
-  }, [userId, retry]);
-  useEffect(() => {
-    if (!companyId || !userId) return;
-    const controller = new AbortController();
-    void loadPosts(companyId, undefined, controller.signal).catch(() => {
-      if (!controller.signal.aborted)
-        setError("Нийтлэлүүдийг ачаалж чадсангүй.");
-    });
-    return () => controller.abort();
-  }, [companyId, loadPosts, userId, retry]);
+  }, [loadPosts, retry]);
+  function choosePost(post?: MglClubPost) {
+    if (
+      pending ||
+      (dirty && !window.confirm("Хадгалаагүй нийтлэлийн засвараа орхих уу?"))
+    )
+      return;
+    const next = post
+      ? { title: post.title, body: post.body, published: post.published }
+      : emptyPost;
+    setPostId(post?.id || "");
+    setDraft(next);
+    setBaseline(next);
+    setNotice("");
+    setError("");
+  }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const input = parseMglClubPost(draft);
-    if (!companyId || pending) return;
+    if (pending) return;
     if (!input) {
-      setError(
-        "Нийтлэлийн гарчиг, агуулгыг хоосон зайгаар бус, бүрэн бөглөнө үү.",
-      );
+      setError("Нийтлэлийн гарчиг, агуулгыг бөглөнө үү.");
       return;
     }
     setPending(true);
@@ -97,95 +110,61 @@ export function CompanyBlogManager() {
     setNotice("");
     try {
       const response = await authFetch(
-        `${API}/forms/mgl-club/my-companies/${companyId}/posts${postId ? `/${postId}` : ""}`,
+        `${API}/forms/mgl-club/my-companies/${company.id}/posts${postId ? `/${postId}` : ""}`,
         { method: postId ? "PATCH" : "POST", body: JSON.stringify(input) },
       );
       const result: { message?: string; post?: MglClubPost } =
         await response.json();
-      if (!response.ok)
+      if (!response.ok || !result.post)
         throw new Error(result.message || "Нийтлэл хадгалж чадсангүй.");
-      if (result.post) setPostId(result.post.id);
+      const saved = {
+        title: result.post.title,
+        body: result.post.body,
+        published: result.post.published,
+      };
+      setPostId(result.post.id);
+      setDraft(saved);
+      setBaseline(saved);
       setNotice(
         input.published
-          ? "Нийтлэлийг байгууллагын хуудсанд нийтэллээ."
+          ? "Нийтлэлийг нийтэллээ."
           : "Нооргийг хадгаллаа. Нийтэд харагдахгүй.",
       );
-      await loadPosts(companyId);
+      try {
+        await loadPosts();
+      } catch {
+        setError(
+          "Нийтлэл хадгалагдсан боловч жагсаалтыг шинэчилж чадсангүй. Дахин ачаална уу.",
+        );
+      }
     } catch (cause: unknown) {
       setError(
-        cause instanceof Error ? cause.message : "Нийтлэл хадгалж чадсангүй.",
+        cause instanceof Error
+          ? cause.message
+          : "Нийтлэл хадгалж чадсангүй. Бичсэн мэдээлэл хэвээр байна.",
       );
     } finally {
       setPending(false);
     }
   }
-  if (authLoading)
-    return (
-      <p role="status" className={styles.manager}>
-        Бүртгэлийг ачаалж байна…
-      </p>
-    );
-  if (!user)
-    return (
-      <section className={styles.manager}>
-        <h1>Байгууллагын удирдлага</h1>
-        <p>
-          Байгууллагын мэдээллийг удирдахын тулд систем админаар нэвтэрнэ үү.
-        </p>
-        <Link href="/mgl-club/profile">Миний клуб рүү нэвтрэх ↗</Link>
-      </section>
-    );
   return (
-    <section className={styles.manager}>
-      <Link href="/mgl-club/profile">← Миний клуб</Link>
-      <h1>Байгууллагын удирдлага</h1>
-      <p>
-        Байгууллагын мэдээ, бүтээгдэхүүн, үйлчилгээний шинэчлэлээ нийтлээрэй.
-      </p>
-      <div className={styles.toolbar}>
-        {!!companies.length && (
-          <label>
-            Байгууллага
-            <select
-              value={companyId}
-              disabled={pending}
-              onChange={(event) => {
-                setCompanyId(event.target.value);
-                setPostId("");
-                setDraft(emptyPost);
-                setPosts([]);
-                setCursor(null);
-                setError("");
-                setNotice("");
-              }}
-            >
-              {companies.map((company) => (
-                <option value={company.id} key={company.id}>
-                  {company.businessName}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-
-        {companyId && (
-          <p>
-            <Link href={`/mgl-club/site-builder/${companyId}`}>
-              Вэб танилцуулгын section-уудаа засах ↗
-            </Link>
-          </p>
-        )}
-        {companyId && (
-          <Link href={`/mgl-club/companies/${companyId}`}>
-            Байгууллагын хуудас үзэх ↗
-          </Link>
-        )}
+    <div className={styles.managerInner}>
+      <div className={styles.sectionIntro}>
+        <h2>Мэдээ, нийтлэл</h2>
+        <p>
+          {company.businessName} байгууллагын шинэ бүтээгдэхүүн, үйлчилгээ, үйл
+          ажиллагааны мэдээг оруулна.
+        </p>
       </div>
       {error && (
         <div role="alert" className={styles.error}>
-          {error}{" "}
-          <button type="button" onClick={() => setRetry((value) => value + 1)}>
-            Дахин ачаалах
+          <p>{error}</p>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => setRetry((value) => value + 1)}
+          >
+            Жагсаалт дахин ачаалах
           </button>
         </div>
       )}
@@ -194,123 +173,107 @@ export function CompanyBlogManager() {
           {notice}
         </p>
       )}
-      {loading && <p role="status">Байгууллагуудыг ачаалж байна…</p>}
-      {!loading && !companies.length && (
-        <p>
-          Одоогоор байгууллага бүртгэгдээгүй байна.{" "}
-          <Link href="/mgl-club/join">Байгууллага нэмэх</Link>
-        </p>
-      )}
-      {companyId && (
-        <div className={styles.workspace}>
-          <aside
-            className={styles.postList}
-            aria-label="Байгууллагын нийтлэлүүд"
-          >
+      <div className={styles.workspace}>
+        <aside className={styles.postList} aria-label="Байгууллагын нийтлэлүүд">
+          <button type="button" disabled={pending} onClick={() => choosePost()}>
+            + Шинэ нийтлэл
+          </button>
+          {loading && <p role="status">Нийтлэлүүдийг ачаалж байна…</p>}
+          {!loading && !error && !posts.length && (
+            <p className={styles.note}>Нийтлэл хараахан оруулаагүй байна.</p>
+          )}
+          {posts.map((post) => (
             <button
               type="button"
+              key={post.id}
               disabled={pending}
+              aria-pressed={postId === post.id}
+              onClick={() => choosePost(post)}
+            >
+              {post.title}
+              <span>{post.published ? "Нийтлэгдсэн" : "Ноорог"}</span>
+            </button>
+          ))}
+          {cursor && (
+            <button
+              type="button"
+              disabled={pending || loading}
               onClick={() => {
-                setPostId("");
-                setDraft(emptyPost);
-                setNotice("");
+                setPending(true);
+                void loadPosts(cursor)
+                  .catch((cause: unknown) =>
+                    setError(
+                      cause instanceof Error
+                        ? cause.message
+                        : "Нийтлэлүүдийг ачаалж чадсангүй.",
+                    ),
+                  )
+                  .finally(() => setPending(false));
               }}
             >
-              + Шинэ нийтлэл
+              Өмнөх нийтлэлүүд
             </button>
-            {posts.map((post) => (
-              <button
-                type="button"
-                key={post.id}
-                disabled={pending}
-                aria-pressed={postId === post.id}
-                onClick={() => {
-                  setPostId(post.id);
-                  setDraft({
-                    title: post.title,
-                    body: post.body,
-                    published: post.published,
-                  });
-                  setNotice("");
-                }}
-              >
-                {post.title}
-                <span>{post.published ? "Нийтлэгдсэн" : "Ноорог"}</span>
-              </button>
-            ))}
-            {cursor && (
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => {
-                  setPending(true);
-                  void loadPosts(companyId, cursor)
-                    .catch(() => setError("Нийтлэлүүдийг ачаалж чадсангүй."))
-                    .finally(() => setPending(false));
-                }}
-              >
-                Өмнөх нийтлэлүүд
-              </button>
-            )}
-          </aside>
-          <form className={styles.editor} onSubmit={save}>
-            <h2>{postId ? "Нийтлэл засах" : "Шинэ нийтлэл"}</h2>
-            <label>
-              Гарчиг
-              <input
-                type="text"
-                required
-                maxLength={160}
-                value={draft.title}
-                disabled={pending}
-                onChange={(event) =>
-                  setDraft({ ...draft, title: event.target.value })
-                }
-              />
-            </label>
-            <label>
-              Нийтлэлийн агуулга
-              <textarea
-                required
-                maxLength={12000}
-                value={draft.body}
-                disabled={pending}
-                onChange={(event) =>
-                  setDraft({ ...draft, body: event.target.value })
-                }
-              />
-            </label>
-            <label className={styles.checkbox}>
-              <input
-                type="checkbox"
-                checked={draft.published}
-                disabled={pending}
-                onChange={(event) =>
-                  setDraft({ ...draft, published: event.target.checked })
-                }
-              />
-              Нийтэд харагдуулах
-            </label>
-            <p className={styles.note}>
-              Сонголтыг унтрааж хадгалбал зөвхөн таны бүртгэлд ноорог болж
-              үлдэнэ.
-            </p>
-            <div className={styles.actions}>
-              <button
-                className={styles.primary}
-                type="submit"
-                disabled={pending}
-              >
-                {pending
-                  ? "Хадгалж байна…"
-                  : draft.published
-                    ? "Нийтлэх"
-                    : "Ноорог хадгалах"}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-    </section>
+          )}
+        </aside>
+        <form className={styles.editor} onSubmit={save}>
+          <h3>{postId ? "Нийтлэл засах" : "Шинэ нийтлэл"}</h3>
+          <label>
+            Гарчиг
+            <input
+              type="text"
+              required
+              maxLength={160}
+              value={draft.title}
+              disabled={pending}
+              onChange={(event) => {
+                setDraft({ ...draft, title: event.target.value });
+                setNotice("");
+              }}
+            />
+          </label>
+          <label>
+            Нийтлэлийн агуулга
+            <textarea
+              required
+              maxLength={12000}
+              value={draft.body}
+              disabled={pending}
+              onChange={(event) => {
+                setDraft({ ...draft, body: event.target.value });
+                setNotice("");
+              }}
+            />
+          </label>
+          <label className={styles.checkbox}>
+            <input
+              type="checkbox"
+              checked={draft.published}
+              disabled={pending}
+              onChange={(event) => {
+                setDraft({ ...draft, published: event.target.checked });
+                setNotice("");
+              }}
+            />
+            Нийтэд харагдуулах
+          </label>
+          <p className={styles.note}>
+            Сонголтыг унтрааж хадгалбал зөвхөн админд харагдах ноорог болно.
+          </p>
+          <div className={styles.actions}>
+            <button
+              className={styles.primary}
+              type="submit"
+              disabled={pending || !dirty}
+            >
+              {pending
+                ? "Хадгалж байна…"
+                : draft.published
+                  ? "Нийтлэх"
+                  : "Ноорог хадгалах"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

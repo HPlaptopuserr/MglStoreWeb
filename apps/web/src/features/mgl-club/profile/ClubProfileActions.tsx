@@ -75,12 +75,12 @@ export function ClubProfileActions() {
       </section>
       <section className={styles.business}>
         <div>
-          <h2>Байгууллагын вэб танилцуулга</h2>
-          <p>Section-уудаар зураг, тексттэй танилцуулга бэлдэж, нийтлээрэй.</p>
+          <h2>Байгууллагын мэдээлэл</h2>
+          <p>Систем админ байгууллагын нэр, лого, холбоо барих мэдээлэл, вэб танилцуулга, мэдээг эндээс удирдана.</p>
         </div>
         <ClubAdminContent>
           <Link className={styles.businessLink} href="/mgl-club/manage">
-            Танилцуулга удирдах <ArrowUpRight size={17} />
+            Байгууллага удирдах <ArrowUpRight size={17} />
           </Link>
         </ClubAdminContent>
       </section>

@@ -1,7 +1,7 @@
 "use client";
 import { CompanySiteUrlField } from "./CompanySiteUrlField";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { ArrowUp, ArrowDown, Plus, Trash2, Eye, Save } from "lucide-react";
 import {
   CLUB_SECTION_TYPES,
@@ -49,6 +49,31 @@ export function CompanySiteEditor({
     site.sections.find((s) => s.id === selected) || site.sections[0];
   const dirty = JSON.stringify(site) !== saved;
   const busy = pending || uploads > 0;
+  useEffect(() => {
+    if (!dirty && !busy) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty, busy]);
+  function guardReturn(event: MouseEvent<HTMLAnchorElement>) {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    )
+      return;
+    if (
+      busy ||
+      (dirty &&
+        !window.confirm("Хадгалаагүй танилцуулгын засвараа орхиод буцах уу?"))
+    )
+      event.preventDefault();
+  }
   function update(id: string, patch: Partial<ClubWebsiteSection>) {
     setSite((previous) => ({
       ...previous,
@@ -156,7 +181,9 @@ export function CompanySiteEditor({
     <div className={styles.builder}>
       <div className={styles.toolbar}>
         <div>
-          <Link href="/mgl-club/manage">← Миний байгууллагууд</Link>
+          <Link href="/mgl-club/manage" onClick={guardReturn}>
+            ← Миний байгууллагууд
+          </Link>
           <h1>
             {member.businessName} <span>Вэб танилцуулга</span>
           </h1>
@@ -570,8 +597,10 @@ export function CompanySiteEditor({
             {active.type === "news" && (
               <p className={styles.help}>
                 Нийтлэлүүдийг{" "}
-                <Link href="/mgl-club/manage">Байгууллагын блог</Link> хэсгээс
-                удирдана.
+                <Link href="/mgl-club/manage" onClick={guardReturn}>
+                  Байгууллагын блог
+                </Link>{" "}
+                хэсгээс удирдана.
               </p>
             )}
           </section>

@@ -80,3 +80,5 @@ export * from "./domain/restaurant-supply";
 export * from "./domain/recipe-consumption";
 export * from "./domain/mgl-club-website";
 export * from "./domain/mgl-club-site-url";
+
+export * from "./data/innova-company";

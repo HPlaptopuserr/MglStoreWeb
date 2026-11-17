@@ -172,3 +172,74 @@
     padding: 18px;
   }
 }
+
+.managerInner {
+  color: #21392b;
+}
+.sectionIntro {
+  margin-bottom: 24px;
+}
+.sectionIntro h2 {
+  margin: 0 0 10px;
+  font-size: 23px;
+  color: #183e2a;
+}
+.sectionIntro p {
+  margin: 0;
+  color: #64766b;
+  font-size: 14px;
+  line-height: 1.8;
+}
+.managerInner label {
+  display: grid;
+  gap: 8px;
+  color: #304b3a;
+  font-size: 14px;
+}
+.managerInner input[type="text"],
+.managerInner textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ccdbd0;
+  border-radius: 8px;
+  background: white;
+  font: inherit;
+}
+.managerInner textarea {
+  min-height: 260px;
+  resize: vertical;
+  line-height: 1.8;
+}
+.managerInner button {
+  min-height: 44px;
+  padding: 11px 16px;
+  border: 1px solid #cdded2;
+  border-radius: 8px;
+  background: white;
+  color: #0f3e2e;
+  font-size: 13px;
+}
+.managerInner button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.managerInner .primary {
+  background: #0f3e2e;
+  color: white;
+  border-color: #0f3e2e;
+}
+.managerInner .editor h3 {
+  margin: 0;
+  font-size: 19px;
+  color: #183e2a;
+}
+@media (max-width: 767px) {
+  .managerInner input[type="text"],
+  .managerInner textarea {
+    font-size: 16px;
+  }
+  .managerInner .postList {
+    max-height: 240px;
+    overflow-y: auto;
+  }
+}

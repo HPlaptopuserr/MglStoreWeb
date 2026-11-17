@@ -11,26 +11,29 @@ export interface GoldCompany {
 export function goldCompanies(
   members: readonly MglClubMember[],
   filters: { query: string; sector: string; city: string },
+  innova: MglClubMember = innovaCompany,
 ): GoldCompany[] {
   const query = filters.query.trim().toLowerCase();
   const showInnova =
-    (!filters.city || filters.city === innovaCompany.city) &&
-    (!filters.sector || filters.sector === innovaCompany.sector) &&
+    (!filters.city || filters.city === innova.city) &&
+    (!filters.sector || filters.sector === innova.sector) &&
     (!query ||
-      `${innovaCompany.businessName} innova innovallc ${innovaCompany.offers} ${innovaCompany.description}`
+      `${innova.businessName} innova innovallc ${innova.offers} ${innova.description}`
         .toLowerCase()
         .includes(query));
   const name = (value: string) =>
     value.trim().toLowerCase().replace(/\s+/g, " ");
   const result: GoldCompany[] = showInnova
-    ? [{ member: innovaCompany, href: `${companySiteOrigin}/innovallc` }]
+    ? [{ member: innova, href: `${companySiteOrigin}/innovallc` }]
     : [];
   return [
     ...result,
     ...members
       .filter(
         (member) =>
+          member.id !== innova.id &&
           member.id !== innovaCompany.id &&
+          name(member.businessName) !== name(innova.businessName) &&
           name(member.businessName) !== name(innovaCompany.businessName),
       )
       .map((member) => ({ member, href: `/mgl-club/companies/${member.id}` })),

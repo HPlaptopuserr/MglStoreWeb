@@ -17,9 +17,6 @@ interface CompanySite {
 export const getCompanySite = cache(
   async (slug: string): Promise<CompanySite | null> => {
     if (!isClubSiteSlug(slug)) return null;
-    if (process.env.NODE_ENV !== "production" && slug === "innovallc") {
-      return { member: innovaCompany, website: innovaWebsite, siteSlug: slug };
-    }
     const response = await fetch(
       `${businessApiBase}/api/forms/mgl-club/sites/${encodeURIComponent(slug)}`,
       {
@@ -28,12 +25,12 @@ export const getCompanySite = cache(
       },
     );
     if (response.status === 404) {
-    // The owner-provided Innova presentation is published with this release.
-    // A system-admin-managed record takes precedence once assigned this URL.
-    return slug === "innovallc"
-      ? { member: innovaCompany, website: innovaWebsite, siteSlug: slug }
-      : null;
-  }
+      // The owner-provided Innova presentation is published with this release.
+      // A system-admin-managed record takes precedence once assigned this URL.
+      return slug === "innovallc"
+        ? { member: innovaCompany, website: innovaWebsite, siteSlug: slug }
+        : null;
+    }
     if (!response.ok) throw new Error("Company site unavailable");
     return response.json() as Promise<CompanySite>;
   },

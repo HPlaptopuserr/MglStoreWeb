@@ -2,7 +2,11 @@ import { requireClubAdmin } from "./mgl-club-access";
 import { Router, type Request, type Router as ExpressRouter } from "express";
 import { rateLimit } from "express-rate-limit";
 import { prisma, type Prisma } from "@mgl/database";
-import { parseMglClubPost, parseMglClubProfile } from "@mgl/types";
+import {
+  isClubSiteSlug,
+  parseMglClubPost,
+  parseMglClubProfile,
+} from "@mgl/types";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 import { clubGoldTokenMatches } from "../../services/mgl-club-gold";
 
@@ -105,7 +109,15 @@ export function createClubPostsRouter(): ExpressRouter {
           const profile = parseMglClubProfile(row.data);
           if (!profile) return [];
           const { consent: _consent, ...member } = profile;
-          return [{ id: row.id, ...member }];
+          return [
+            {
+              id: row.id,
+              ...member,
+              siteSlug: isClubSiteSlug(jsonObject(row.data).clubSiteSlug)
+                ? jsonObject(row.data).clubSiteSlug
+                : null,
+            },
+          ];
         }),
       });
     } catch {

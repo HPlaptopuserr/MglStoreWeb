@@ -225,9 +225,11 @@ test("needs directory excludes blank needs and searches buying needs rather than
   assert.deepEqual(body.services, [{ sector: "Худалдаа", count: 15 }]);
 });
 
-test("gold logos require a settled gold invoice and unexpired six-month entitlement", async () => {
+test("gold logos allow an explicit admin selection or a settled unexpired gold invoice", async () => {
   stubQuery(async (query: Prisma.Sql) => {
     assert.ok(query.sql.includes('FROM "QPayInvoice"'));
+    assert.ok(query.sql.includes("clubFeaturedGold"));
+    assert.match(query.sql, /clubFeaturedGold' = 'true' OR EXISTS/);
     assert.ok(query.sql.includes("p.\"status\" = 'PAID'"));
     assert.ok(query.sql.includes('p."amount" = 1200000'));
     assert.ok(query.sql.includes("accessExpiresAt"));

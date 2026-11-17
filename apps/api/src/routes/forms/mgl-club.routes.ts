@@ -1,3 +1,4 @@
+import { createClubProfileRouter } from "./mgl-club-profile.routes";
 import { createClubSiteUrlRouter } from "./mgl-club-site-url.routes";
 import { requireClubAdmin } from "./mgl-club-access";
 import { randomBytes, createHash } from "node:crypto";
@@ -26,6 +27,7 @@ router.use(createClubGoldRouter());
 router.use(createClubPostsRouter());
 router.use(createClubWebsiteRouter());
 router.use(createClubSiteUrlRouter());
+router.use(createClubProfileRouter());
 const slug = "mgl-club";
 router.post(
   "/forms/mgl-club/responses",
@@ -153,14 +155,14 @@ router.get("/forms/mgl-club/members", async (req, res) => {
       Prisma.sql`r."data"->>'consent' = 'yes'`,
     ];
     if (scope === "gold") {
-      conditions.push(Prisma.sql`EXISTS (
+      conditions.push(Prisma.sql`(r."data"->>'clubFeaturedGold' = 'true' OR EXISTS (
         SELECT 1 FROM "QPayInvoice" p
         WHERE p."saleReference" = 'MGL_CLUB_GOLD:' || r."id"
         AND p."status" = 'PAID' AND p."amount" = 1200000
         AND p."paidAt" IS NOT NULL
         AND p."webhookPayload"->>'kind' = 'MGL_CLUB_GOLD'
         AND (p."webhookPayload"->>'accessExpiresAt' > to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
-      )`);
+      ))`);
       conditions.push(
         Prisma.sql`COALESCE(r."data"->>'isDemo', 'false') <> 'true'`,
       );

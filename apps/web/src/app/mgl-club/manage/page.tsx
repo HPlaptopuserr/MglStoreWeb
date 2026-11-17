@@ -1,10 +1,10 @@
 import { ClubAdminOnly } from "@/features/mgl-club/ClubAdminAccess";
-import { CompanyBlogManager } from "@/features/mgl-club/CompanyBlogManager";
-export const metadata = { title: "Байгууллагын блог удирдах • MGL CLUB" };
+import { CompanyAdminManager } from "@/features/mgl-club/CompanyAdminManager";
+export const metadata = { title: "Байгууллагын мэдээлэл удирдах • MGL CLUB" };
 export default function ManageCompanyPage() {
   return (
     <ClubAdminOnly>
-      <CompanyBlogManager />
+      <CompanyAdminManager />
     </ClubAdminOnly>
   );
 }

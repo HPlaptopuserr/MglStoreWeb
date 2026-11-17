@@ -4,14 +4,33 @@ import { authFetch, API } from "@/lib/api";
 import { CompanyLogo } from "./CompanyLogo";
 import styles from "./companies.module.css";
 
-export function ClubLogoField({ onBusy }: { onBusy: (busy: boolean) => void }) {
-  const [url, setUrl] = useState("");
+export function ClubLogoField({
+  onBusy,
+  value,
+  onChange,
+  disabled = false,
+  required = true,
+  id = "club-logo",
+}: {
+  onBusy: (busy: boolean) => void;
+  value?: string;
+  onChange?: (url: string) => void;
+  disabled?: boolean;
+  required?: boolean;
+  id?: string;
+}) {
+  const [localUrl, setLocalUrl] = useState("");
+  const url = value ?? localUrl;
+  function setUrl(next: string) {
+    setLocalUrl(next);
+    onChange?.(next);
+  }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function upload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
-    if (!file || busy) return;
+    if (!file || busy || disabled) return;
     setError("");
     if (
       !/^(image\/jpeg|image\/png|image\/webp)$/.test(file.type) ||
@@ -33,6 +52,10 @@ export function ClubLogoField({ onBusy }: { onBusy: (busy: boolean) => void }) {
         signal: AbortSignal.timeout(60000),
       });
       const data: unknown = await response.json();
+      if (response.status === 401)
+        throw new Error("Нэвтрэх хугацаа дууссан байна. Дахин нэвтэрнэ үү.");
+      if (response.status === 403)
+        throw new Error("Лого оруулах эрх зөвхөн систем админд нээлттэй.");
       if (
         !response.ok ||
         !data ||
@@ -42,8 +65,12 @@ export function ClubLogoField({ onBusy }: { onBusy: (busy: boolean) => void }) {
       )
         throw new Error("Лого хадгалахад алдаа гарлаа. Дахин оролдоно уу.");
       setUrl(data.url);
-    } catch {
-      setError("Лого оруулж чадсангүй. Холболтоо шалгаад дахин оролдоно уу.");
+    } catch (cause: unknown) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Лого оруулж чадсангүй. Холболтоо шалгаад дахин оролдоно уу.",
+      );
     } finally {
       setBusy(false);
       onBusy(false);
@@ -52,28 +79,32 @@ export function ClubLogoField({ onBusy }: { onBusy: (busy: boolean) => void }) {
   return (
     <div className={styles.upload}>
       <input type="hidden" name="logoUrl" value={url} />
-      <label htmlFor="club-logo">Байгууллагын лого *</label>
+      <label htmlFor={id}>Байгууллагын лого{required ? " *" : ""}</label>
       {url && (
         <div className={styles.preview}>
           <CompanyLogo name="Байгууллагын" url={url} />
         </div>
       )}
       <input
-        id="club-logo"
+        id={id}
         type="file"
-        required={!url}
+        required={required && !url}
         accept="image/jpeg,image/png,image/webp"
-        disabled={busy}
+        disabled={busy || disabled}
         onChange={upload}
-        aria-describedby="club-logo-help"
+        aria-describedby={`${id}-help`}
       />
-      <p id="club-logo-help">
+      <p id={`${id}-help`}>
         JPG, PNG, WebP · 5 MB хүртэл. Логоны харьцааг хэвээр хадгална.
       </p>
       {busy && <p role="status">Лого оруулж байна…</p>}
       {error && <p role="alert">{error}</p>}
       {url && (
-        <button type="button" disabled={busy} onClick={() => setUrl("")}>
+        <button
+          type="button"
+          disabled={busy || disabled}
+          onClick={() => setUrl("")}
+        >
           Лого хасах
         </button>
       )}
