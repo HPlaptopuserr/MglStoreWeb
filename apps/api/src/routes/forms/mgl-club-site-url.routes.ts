@@ -1,3 +1,7 @@
+import {
+  requirePaidClubWebsite,
+  ClubWebsiteAccessError,
+} from "../../services/mgl-club-website-access";
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma, type Prisma } from "@mgl/database";
 import {
@@ -71,6 +75,7 @@ export function createClubSiteUrlRouter(): ExpressRouter {
           });
           if (!row || !parseMglClubProfile(row.data))
             throw new UrlError(404, "Байгууллага олдсонгүй.");
+          await requirePaidClubWebsite(id, tx);
           const duplicate = await tx.formResponse.findFirst({
             where: {
               id: { not: id },
@@ -95,6 +100,10 @@ export function createClubSiteUrlRouter(): ExpressRouter {
         });
         return res.json({ siteSlug: slug });
       } catch (error: unknown) {
+        if (error instanceof ClubWebsiteAccessError)
+          return res
+            .status(403)
+            .json({ message: error.message, access: error.access });
         if (error instanceof UrlError)
           return res.status(error.status).json({ message: error.message });
         return res

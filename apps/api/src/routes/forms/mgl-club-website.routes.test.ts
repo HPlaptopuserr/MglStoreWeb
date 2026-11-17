@@ -6,6 +6,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import { prisma, type Prisma } from "@mgl/database";
 import { createClubSection, parseClubWebsite } from "@mgl/types";
+import { activeGoldInvoice } from "./mgl-club-gold.test-support";
 import { createClubWebsiteRouter } from "./mgl-club-website.routes";
 const id = "00000000-0000-4000-8000-000000000001";
 const token = jwt.sign(
@@ -57,9 +58,11 @@ afterEach(() => {
 });
 function database(data: Prisma.JsonObject = { ...baseData }) {
   stored = data;
+  stub(prisma.qPayInvoice, "findMany", async () => [activeGoldInvoice(id)]);
   stub(prisma, "$transaction", async (run: (tx: object) => Promise<unknown>) =>
     run({
       $queryRaw: async () => [],
+      qPayInvoice: { findMany: async () => prisma.qPayInvoice.findMany() },
       formResponse: {
         findFirst: async () => ({ id, data: stored }),
         update: async (args: { data: { data: Prisma.JsonObject } }) => {
@@ -181,4 +184,71 @@ test("website theme validates colors and survives draft publication", async () =
   const published = await write({ site: themed, version: 1 }, true);
   assert.equal(published.status, 200);
   assert.deepEqual(stored.websitePublished, themed);
+});
+
+test("unpaid or expired Gold access blocks draft saving and publication without changing existing published content", async () => {
+  const original = {
+    ...baseData,
+    websiteDraft: site as unknown as Prisma.JsonObject,
+    websitePublished: site as unknown as Prisma.JsonObject,
+    websiteVersion: 3,
+    clubFeaturedGold: true,
+    goldExpiresAt: "2099-01-01T00:00:00Z",
+  };
+  for (const candidates of [
+    [],
+    [
+      {
+        ...activeGoldInvoice(id),
+        webhookPayload: {
+          kind: "MGL_CLUB_GOLD",
+          accessExpiresAt: new Date(Date.now() - 1000).toISOString(),
+        },
+      },
+    ],
+  ]) {
+    database(original);
+    stub(prisma.qPayInvoice, "findMany", async () => candidates);
+    const input = {
+      site,
+      version: 3,
+      eligible: true,
+      membership: { eligible: true },
+      clubFeaturedGold: true,
+    };
+    assert.equal((await write(input)).status, 403);
+    assert.equal((await write(input, true)).status, 403);
+    assert.deepEqual(stored, original);
+  }
+});
+
+test("admins can inspect unpaid website drafts and access status without receiving editing rights", async () => {
+  database({
+    ...baseData,
+    websiteDraft: site as unknown as Prisma.JsonObject,
+    websitePublished: site as unknown as Prisma.JsonObject,
+    websiteVersion: 3,
+  });
+  stub(prisma.qPayInvoice, "findMany", async () => []);
+  const headers = { Authorization: `Bearer ${token}` };
+  const status = await fetch(base.replace(/\/website$/, "/website-access"), {
+    headers,
+  });
+  assert.equal(status.status, 200);
+  assert.match(status.headers.get("cache-control") || "", /no-store/);
+  const access: { eligible: boolean; status: string } = await status.json();
+  assert.equal(access.eligible, false);
+  assert.equal(access.status, "unpaid");
+  const read = await fetch(base, { headers });
+  assert.equal(read.status, 200);
+  const body: {
+    access: { eligible: boolean };
+    draft: unknown;
+    published: unknown;
+    version: number;
+  } = await read.json();
+  assert.equal(body.access.eligible, false);
+  assert.deepEqual(body.draft, site);
+  assert.deepEqual(body.published, site);
+  assert.equal(body.version, 3);
 });

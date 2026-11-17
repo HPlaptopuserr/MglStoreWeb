@@ -6,6 +6,7 @@ import express from "express";
 import jwt from "jsonwebtoken";
 import sharp from "sharp";
 import { prisma } from "@mgl/database";
+import { activeGoldInvoice } from "./mgl-club-gold.test-support";
 import { createClubWebsiteMediaRouter } from "./mgl-club-website-media.routes";
 const companyId = "00000000-0000-4000-8000-000000000001";
 const token = jwt.sign(
@@ -16,13 +17,22 @@ let server: Server,
   base: string,
   stored: Buffer | null,
   owner: string,
-  previous: unknown;
+  previous: unknown,
+  previousInvoices: unknown;
 beforeEach(async () => {
   stored = null;
+  previousInvoices = Reflect.get(prisma.qPayInvoice, "findMany");
+  Reflect.set(prisma.qPayInvoice, "findMany", async () => [
+    activeGoldInvoice(companyId),
+  ]);
   owner = "owner";
   previous = Reflect.get(prisma.formResponse, "findFirst");
   Reflect.set(prisma.formResponse, "findFirst", async () => ({
-    data: { ownerUserId: owner },
+    data: {
+      ownerUserId: owner,
+      clubFeaturedGold: true,
+      goldExpiresAt: "2099-01-01T00:00:00Z",
+    },
   }));
   const app = express();
   app.use(
@@ -39,6 +49,7 @@ beforeEach(async () => {
 });
 afterEach(async () => {
   Reflect.set(prisma.formResponse, "findFirst", previous);
+  Reflect.set(prisma.qPayInvoice, "findMany", previousInvoices);
   await new Promise<void>((resolve, reject) =>
     server.close((error) => (error ? reject(error) : resolve())),
   );
@@ -96,4 +107,28 @@ test("invalid image content never reaches storage", async () => {
   );
   assert.equal((await upload(Buffer.from("not an image"))).status, 400);
   assert.equal(stored, null);
+});
+
+test("unpaid and expired companies cannot upload website images even if their curated metadata claims Gold", async () => {
+  const image = await sharp({
+    create: { width: 40, height: 40, channels: 3, background: "#fff" },
+  })
+    .png()
+    .toBuffer();
+  for (const candidates of [
+    [],
+    [
+      {
+        ...activeGoldInvoice(companyId),
+        webhookPayload: {
+          kind: "MGL_CLUB_GOLD",
+          accessExpiresAt: new Date(Date.now() - 1000).toISOString(),
+        },
+      },
+    ],
+  ]) {
+    Reflect.set(prisma.qPayInvoice, "findMany", async () => candidates);
+    assert.equal((await upload(image)).status, 403);
+    assert.equal(stored, null);
+  }
 });

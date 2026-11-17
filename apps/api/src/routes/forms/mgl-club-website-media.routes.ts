@@ -1,3 +1,7 @@
+import {
+  requirePaidClubWebsite,
+  ClubWebsiteAccessError,
+} from "../../services/mgl-club-website-access";
 import { requireClubAdmin } from "./mgl-club-access";
 import { Router, type Router as ExpressRouter } from "express";
 import { rateLimit } from "express-rate-limit";
@@ -38,7 +42,12 @@ export function createClubWebsiteMediaRouter(
         const raw = row?.data;
         if (!raw || typeof raw !== "object" || Array.isArray(raw))
           return res.sendStatus(403);
-      } catch {
+        await requirePaidClubWebsite(id);
+      } catch (error: unknown) {
+        if (error instanceof ClubWebsiteAccessError)
+          return res
+            .status(403)
+            .json({ message: error.message, access: error.access });
         return res
           .status(503)
           .json({ message: "Байгууллагын эрхийг шалгаж чадсангүй." });

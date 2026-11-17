@@ -8,6 +8,8 @@ import {
   checkClubGoldInvoice,
   CLUB_GOLD_PRICE,
   createClubGoldInvoice,
+  createClubGoldInvoiceForAdmin,
+  checkClubGoldInvoiceForAdmin,
 } from "./mgl-club-gold";
 const restores: Array<() => void> = [];
 function stub(target: object, key: string, value: unknown) {
@@ -129,6 +131,115 @@ test("invalid capability stops invoice creation before contacting the provider",
     createClubGoldInvoice("registration", "wrong"),
     /Бүртгэлийн төлбөрийн холбоос/,
   );
+});
+
+test("admin checks scope invoices to the company and reject mismatched storage results without settlement", async () => {
+  let verified = false;
+  const original = globalThis.fetch;
+  restores.push(() => {
+    globalThis.fetch = original;
+  });
+  globalThis.fetch = async () => {
+    verified = true;
+    throw new Error("unexpected provider call");
+  };
+  for (const returned of [
+    null,
+    {
+      id: "invoice",
+      saleReference: "MGL_CLUB_GOLD:other-company",
+      status: "PENDING",
+      amount: CLUB_GOLD_PRICE,
+      webhookPayload: { kind: "MGL_CLUB_GOLD", providerInvoiceId: "provider" },
+    },
+  ]) {
+    stub(
+      prisma.qPayInvoice,
+      "findFirst",
+      async (args: { where: { id: string; saleReference: string } }) => {
+        assert.deepEqual(args.where, {
+          id: "invoice",
+          saleReference: "MGL_CLUB_GOLD:company",
+        });
+        return returned;
+      },
+    );
+    await assert.rejects(
+      checkClubGoldInvoiceForAdmin("company", "invoice"),
+      /Нэхэмжлэх олдсонгүй/,
+    );
+  }
+  assert.equal(verified, false);
+});
+
+test("admin invoice creation reuses a pending verified invoice without private capability or profile writes", async () => {
+  const env = { ...process.env };
+  restores.push(() => {
+    process.env = env;
+  });
+  Object.assign(process.env, {
+    SYSTEMQR_USERNAME: "qa",
+    SYSTEMQR_PASSWORD: "test",
+    ESIM_MINU_MERCHANT_CODE: "merchant",
+  });
+  const data = {
+    name: "Бат",
+    businessName: "Компани",
+    sector: "Худалдаа",
+    city: "Улаанбаатар",
+    description: "Танилцуулга",
+    offers: "Бараа",
+    phone: "99112233",
+    consent: "yes",
+    logoUrl:
+      "/api/forms/mgl-club/logos/00000000-0000-4000-8000-000000000000.webp",
+  };
+  stub(
+    prisma.formResponse,
+    "findFirst",
+    async (args: { where: { id: string } }) => {
+      assert.equal(args.where.id, "company");
+      return { data };
+    },
+  );
+  let wroteProfile = false;
+  stub(prisma.formResponse, "update", async () => {
+    wroteProfile = true;
+    throw new Error("unexpected profile mutation");
+  });
+  stub(prisma.qPayInvoice, "findFirst", async () => null);
+  const invoice = {
+    id: "invoice",
+    status: "PENDING",
+    amount: new Prisma.Decimal(CLUB_GOLD_PRICE),
+    qrText: "verified-qr",
+    expiresAt: new Date(Date.now() + 60000),
+    webhookPayload: {
+      kind: "MGL_CLUB_GOLD",
+      providerInvoiceId: "provider",
+      deepLinks: [],
+    },
+  };
+  stub(prisma, "$transaction", async (run: (tx: object) => Promise<unknown>) =>
+    run({
+      $queryRaw: async () => [],
+      qPayInvoice: {
+        findFirst: async (args: { where: { saleReference: string } }) => {
+          assert.equal(args.where.saleReference, "MGL_CLUB_GOLD:company");
+          return invoice;
+        },
+      },
+    }),
+  );
+  assert.deepEqual(await createClubGoldInvoiceForAdmin("company"), {
+    invoiceId: "invoice",
+    amount: CLUB_GOLD_PRICE,
+    qrText: "verified-qr",
+    expiresAt: invoice.expiresAt.toISOString(),
+    deepLinks: [],
+  });
+  assert.equal(wroteProfile, false);
+  assert.equal("paymentTokenHash" in data, false);
 });
 
 test("invoice creation fixes the price and eSIM account on the server", async () => {

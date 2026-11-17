@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   type ClubWebsite,
+  type ClubWebsiteAccess,
   type MglClubMember,
   parseClubWebsite,
 } from "@mgl/types";
@@ -22,6 +23,7 @@ export interface ClubWebsiteState {
   published: ClubWebsite | null;
   version: number;
   siteSlug?: string | null;
+  access?: ClubWebsiteAccess;
 }
 export function CompanySiteBuilder({ companyId }: { companyId: string }) {
   const { user, loading: authLoading } = useAuth();
@@ -60,6 +62,12 @@ export function CompanySiteBuilder({ companyId }: { companyId: string }) {
                 draft: withLocalWebsiteMedia(member, draft),
                 published: null,
                 version: 0,
+                access: {
+                  eligible: true,
+                  status: "active",
+                  expiresAt: null,
+                  message: "Локал туршилтын загвар. Төлбөрийн эрх олгохгүй.",
+                },
                 siteSlug:
                   companyId === "demo-company-innova" ? "innovallc" : null,
               },
@@ -101,7 +109,7 @@ export function CompanySiteBuilder({ companyId }: { companyId: string }) {
         <p>
           {authLoading
             ? "Бүртгэлийг ачаалж байна…"
-            : "Өөрийн байгууллагын танилцуулгыг засахын тулд нэвтэрнэ үү."}
+            : "Байгууллагын танилцуулгыг засахын тулд систем админаар нэвтэрнэ үү."}
         </p>
         {!authLoading && (
           <Link href="/mgl-club/profile">Миний клуб рүү нэвтрэх ↗</Link>
@@ -125,10 +133,10 @@ export function CompanySiteBuilder({ companyId }: { companyId: string }) {
         <Link href="/mgl-club/manage">Миний байгууллагууд</Link>
       </section>
     );
-  if (!loaded)
+  if (!loaded || loaded.member.id !== companyId)
     return (
       <p role="status" className={styles.message}>
-        Section-уудыг ачаалж байна…
+        Танилцуулгын мэдээлэл болон гишүүнчлэлийн эрхийг ачаалж байна…
       </p>
     );
   return (

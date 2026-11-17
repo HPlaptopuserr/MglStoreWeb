@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { QrGenerator } from "@mgl/ui";
-import { API } from "@/lib/api";
+import { API, authFetch } from "@/lib/api";
 import styles from "./companies.module.css";
 export interface ClubPaymentCredentials {
   registrationId: string;
@@ -15,17 +15,26 @@ interface Invoice {
   expiresAt: string;
   deepLinks: Array<{ name: string; link: string }>;
 }
+type PaymentProps = {
+  onPaid?: () => void;
+} & (
+  | { credentials: ClubPaymentCredentials; companyId?: never }
+  | { companyId: string; credentials?: never }
+);
 export function ClubGoldPayment({
   credentials,
-}: {
-  credentials: ClubPaymentCredentials;
-}) {
+  companyId,
+  onPaid,
+}: PaymentProps) {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [paid, setPaid] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [expired, setExpired] = useState(false);
-  const base = `${API}/forms/mgl-club/gold/${credentials.registrationId}`;
+  const base = companyId
+    ? `${API}/forms/mgl-club/my-companies/${companyId}`
+    : `${API}/forms/mgl-club/gold/${credentials?.registrationId}`;
+  const token = credentials?.paymentToken;
   useEffect(() => {
     if (!invoice || paid || expired) return;
     let stopped = false;
@@ -34,18 +43,21 @@ export function ClubGoldPayment({
       if (checking || document.hidden || !invoice) return;
       checking = true;
       try {
-        const response = await fetch(
-          `${base}/invoices/${invoice.invoiceId}/check`,
-          {
-            method: "POST",
-            headers: { Authorization: `Bearer ${credentials.paymentToken}` },
-          },
-        );
+        const response = companyId
+          ? await authFetch(
+              `${base}/gold-invoices/${invoice.invoiceId}/check`,
+              { method: "POST" },
+            )
+          : await fetch(`${base}/invoices/${invoice.invoiceId}/check`, {
+              method: "POST",
+              headers: { Authorization: `Bearer ${token}` },
+            });
         const data: { status?: string } = await response.json();
         if (!response.ok) throw new Error();
         if (!stopped) {
           setError("");
           setPaid(data.status === "PAID");
+          if (data.status === "PAID") onPaid?.();
           setExpired(data.status === "EXPIRED");
         }
       } catch {
@@ -61,15 +73,18 @@ export function ClubGoldPayment({
       stopped = true;
       window.clearInterval(timer);
     };
-  }, [invoice, paid, expired, base, credentials.paymentToken]);
+  }, [invoice, paid, expired, base, token, companyId, onPaid]);
   async function create() {
+    if (busy) return;
     setBusy(true);
     setError("");
     try {
-      const response = await fetch(`${base}/invoice`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${credentials.paymentToken}` },
-      });
+      const response = companyId
+        ? await authFetch(`${base}/gold-invoice`, { method: "POST" })
+        : await fetch(`${base}/invoice`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+          });
       const data: Invoice & { message?: string } = await response.json();
       if (!response.ok)
         throw new Error(data.message || "Нэхэмжлэх үүсгэж чадсангүй.");
@@ -90,13 +105,19 @@ export function ClubGoldPayment({
         <strong>1,200,000₮ · 6 сар</strong>
       </p>
       <p>
-        Төлбөр баталгаажмагц танай байгууллагын лого, нэр “Алтан гишүүд” хэсэгт
-        автоматаар харагдана.
+        Төлбөр баталгаажмагц Алтан гишүүнчлэл идэвхжиж, байгууллагын
+        танилцуулгын вэб бэлдэх болон нийтлэх эрх нээгдэнэ.
       </p>
       {paid ? (
         <div role="status">
           <p>Төлбөр баталгаажлаа. Алтан гишүүнчлэл идэвхжлээ!</p>
-          <Link href="/mgl-club">Алтан гишүүдийг харах ↗</Link>
+          {companyId ? (
+            <button type="button" onClick={onPaid}>
+              Танилцуулгын эрхийг шалгах
+            </button>
+          ) : (
+            <Link href="/mgl-club">Алтан гишүүдийг харах ↗</Link>
+          )}
         </div>
       ) : (
         <>

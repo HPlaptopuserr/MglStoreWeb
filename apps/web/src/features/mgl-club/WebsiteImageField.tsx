@@ -1,5 +1,5 @@
 "use client";
-import { isClubWebsiteImage } from "@mgl/types";
+import { isClubWebsiteImage, type ClubWebsiteAccess } from "@mgl/types";
 import { useState, type ChangeEvent } from "react";
 import { API, authFetch, resolveApiAssetUrl } from "@/lib/api";
 import Image from "next/image";
@@ -11,6 +11,8 @@ export function WebsiteImageField({
   onChange,
   onBusy,
   demo,
+  disabled = false,
+  onAccessDenied,
 }: {
   companyId: string;
   url: string;
@@ -18,13 +20,15 @@ export function WebsiteImageField({
   onChange: (patch: { imageUrl?: string; imageAlt?: string }) => void;
   onBusy: (busy: boolean) => void;
   demo: boolean;
+  disabled?: boolean;
+  onAccessDenied?: (access: ClubWebsiteAccess) => void;
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   async function upload(event: ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0];
     event.currentTarget.value = "";
-    if (!file || busy) return;
+    if (!file || busy || disabled) return;
     if (
       !["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
       file.size > 10 * 1024 * 1024
@@ -44,6 +48,18 @@ export function WebsiteImageField({
       );
       const data: unknown = await response.json();
       if (
+        response.status === 403 &&
+        data &&
+        typeof data === "object" &&
+        "access" in data &&
+        data.access &&
+        typeof data.access === "object" &&
+        "eligible" in data.access &&
+        data.access.eligible === false
+      ) {
+        onAccessDenied?.(data.access as ClubWebsiteAccess);
+      }
+      if (
         !response.ok ||
         !data ||
         typeof data !== "object" ||
@@ -61,17 +77,9 @@ export function WebsiteImageField({
   }
   return (
     <div className={styles.imageField}>
-      <label>
-        Зургийн холбоос
-        <input
-          type="text"
-          maxLength={500}
-          value={url}
-          disabled={busy}
-          placeholder="https://... эсвэл файл оруулах"
-          onChange={(e) => onChange({ imageUrl: e.target.value })}
-        />
-      </label>
+      <p>
+        Зургаа төхөөрөмжөөсөө сонгоно уу. JPG, PNG эсвэл WebP · 10 MB хүртэл.
+      </p>
       {url && isClubWebsiteImage(url) && (
         <div className={styles.imagePreview}>
           <Image
@@ -89,6 +97,7 @@ export function WebsiteImageField({
           <label>
             Иннова зургийн сан
             <select
+              disabled={busy || disabled}
               value=""
               onChange={(event) => {
                 const value = event.target.value;
@@ -117,6 +126,7 @@ export function WebsiteImageField({
         ) : demo ? (
           <button
             type="button"
+            disabled={busy || disabled}
             onClick={() =>
               onChange({
                 imageUrl: "/mgl-club/website-demo/produce.png",
@@ -132,7 +142,7 @@ export function WebsiteImageField({
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp"
-              disabled={busy}
+              disabled={busy || disabled}
               onChange={upload}
             />
           </label>
@@ -140,7 +150,7 @@ export function WebsiteImageField({
         {url && (
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || disabled}
             onClick={() => onChange({ imageUrl: "" })}
           >
             Зураг хасах
@@ -148,11 +158,12 @@ export function WebsiteImageField({
         )}
       </div>
       <label>
-        Зургийн тайлбар
+        Зурагт юу харагдаж байгааг товч бичих
         <input
           type="text"
           maxLength={200}
           value={alt}
+          disabled={busy || disabled}
           onChange={(e) => onChange({ imageAlt: e.target.value })}
         />
       </label>

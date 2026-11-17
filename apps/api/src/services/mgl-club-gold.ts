@@ -47,7 +47,11 @@ async function registration(id: string, token: string) {
   });
   if (!row || !clubGoldTokenMatches(token, object(row.data).paymentTokenHash))
     throw new ClubGoldError(404, "Бүртгэлийн төлбөрийн холбоос олдсонгүй.");
-  const profile = parseMglClubProfile(row.data);
+  validateGoldProfile(row.data);
+  return row;
+}
+function validateGoldProfile(data: Prisma.JsonValue) {
+  const profile = parseMglClubProfile(data);
   if (!profile)
     throw new ClubGoldError(400, "Байгууллагын мэдээллээ шалгана уу.");
   if (!profile.logoUrl)
@@ -55,21 +59,37 @@ async function registration(id: string, token: string) {
       400,
       "Алтан гишүүн болохын өмнө байгууллагын лого оруулна уу.",
     );
-  return row;
+}
+
+export async function createClubGoldInvoiceForAdmin(registrationId: string) {
+  const row = await prisma.formResponse.findFirst({
+    where: { id: registrationId, form: { slug: "mgl-club", isActive: true } },
+  });
+  if (!row) throw new ClubGoldError(404, "Байгууллага олдсонгүй.");
+  validateGoldProfile(row.data);
+  return createInvoice(registrationId);
 }
 export async function createClubGoldInvoice(
   registrationId: string,
   token: string,
 ) {
   await registration(registrationId, token);
+  return createInvoice(registrationId, { registrationId, token });
+}
+async function createInvoice(
+  registrationId: string,
+  credentials?: { registrationId: string; token: string },
+) {
   const config = esimMinuConfig();
   const saleReference = `MGL_CLUB_GOLD:${registrationId}`;
   const outstanding = await prisma.qPayInvoice.findFirst({
     where: { saleReference, status: "PENDING" },
     orderBy: { createdAt: "desc" },
   });
-  if (outstanding && object(outstanding.webhookPayload).providerInvoiceId)
-    await checkClubGoldInvoice(outstanding.id, { registrationId, token });
+  if (outstanding && object(outstanding.webhookPayload).providerInvoiceId) {
+    if (credentials) await checkClubGoldInvoice(outstanding.id, credentials);
+    else await checkClubGoldInvoiceForAdmin(registrationId, outstanding.id);
+  }
   const intent = await prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT "id" FROM "FormResponse" WHERE "id" = ${registrationId} FOR UPDATE`;
     const previous = await tx.qPayInvoice.findFirst({
@@ -172,17 +192,28 @@ export async function checkClubGoldInvoice(
 ) {
   if (credentials)
     await registration(credentials.registrationId, credentials.token);
+  return checkStoredInvoice(invoiceId, credentials?.registrationId);
+}
+export async function checkClubGoldInvoiceForAdmin(
+  registrationId: string,
+  invoiceId: string,
+) {
+  return checkStoredInvoice(invoiceId, registrationId);
+}
+async function checkStoredInvoice(invoiceId: string, registrationId?: string) {
   const invoice = await prisma.qPayInvoice.findFirst({
     where: {
       id: invoiceId,
-      ...(credentials
-        ? { saleReference: `MGL_CLUB_GOLD:${credentials.registrationId}` }
+      ...(registrationId
+        ? { saleReference: `MGL_CLUB_GOLD:${registrationId}` }
         : {}),
     },
   });
   const payload = object(invoice?.webhookPayload ?? null);
   if (
     !invoice ||
+    (registrationId &&
+      invoice.saleReference !== `MGL_CLUB_GOLD:${registrationId}`) ||
     payload.kind !== "MGL_CLUB_GOLD" ||
     Number(invoice.amount) !== CLUB_GOLD_PRICE
   )

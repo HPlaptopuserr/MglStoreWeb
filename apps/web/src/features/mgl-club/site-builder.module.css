@@ -397,3 +397,132 @@
   margin: 0;
   font-size: 12px;
 }
+
+.accessArea {
+  max-width: 1216px;
+  margin: 24px auto;
+  padding-inline: 24px;
+}
+.accessArea > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 12px;
+  color: #18583b;
+  font-size: 13px;
+  text-decoration: underline;
+}
+.workflow {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  max-width: 1168px;
+  margin: 24px auto;
+  padding: 16px 20px;
+  border: 1px solid #cdded2;
+  border-radius: 10px;
+  background: #edf6f0;
+  color: #2f6140;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.templatePicker {
+  max-width: 1168px;
+  margin: 24px auto;
+  padding: 20px;
+  border: 1px solid #d0dfd5;
+  border-radius: 12px;
+  background: #fff;
+}
+.templatePicker summary {
+  cursor: pointer;
+  min-height: 32px;
+  color: #28553b;
+  font-size: 15px;
+  font-weight: 650;
+}
+.templatePicker > p {
+  color: #6d8072;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.templateOptions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+.templateOptions button {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  gap: 12px;
+  min-height: 130px;
+  padding: 18px;
+  text-align: left;
+}
+.templateOptions strong {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.templateOptions span {
+  color: #718175;
+  font-size: 12px;
+  line-height: 1.8;
+}
+@media (max-width: 767px) {
+  .workflow,
+  .templatePicker {
+    margin-inline: 16px;
+  }
+  .workflow,
+  .templateOptions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .workflow {
+    gap: 8px;
+  }
+  .accessArea {
+    padding-inline: 16px;
+  }
+}
+
+.contactSummary {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid #d7e4da;
+  border-radius: 10px;
+  background: #f6faf7;
+}
+.contactSummary h3 {
+  margin: 0 0 16px;
+  color: #395f45;
+  font-size: 14px;
+}
+.contactSummary dl {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+.contactSummary dl > div {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr);
+  gap: 12px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.contactSummary dt {
+  color: #738679;
+}
+.contactSummary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.contactSummary a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: #215c3d;
+  font-size: 13px;
+  text-decoration: underline;
+}

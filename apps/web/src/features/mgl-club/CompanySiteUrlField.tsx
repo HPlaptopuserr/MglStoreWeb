@@ -1,7 +1,11 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
-import { CLUB_BUSINESS_SITE_ORIGIN, normalizeClubSiteSlug } from "@mgl/types";
+import {
+  CLUB_BUSINESS_SITE_ORIGIN,
+  normalizeClubSiteSlug,
+  type ClubWebsiteAccess,
+} from "@mgl/types";
 import { companySiteOrigin } from "@/lib/company-site-url";
 import { API, authFetch } from "@/lib/api";
 import styles from "./site-builder.module.css";
@@ -10,11 +14,13 @@ export function CompanySiteUrlField({
   initialSlug,
   demo,
   disabled,
+  onAccessDenied,
 }: {
   companyId: string;
   initialSlug?: string | null;
   demo: boolean;
   disabled: boolean;
+  onAccessDenied?: (access: ClubWebsiteAccess) => void;
 }) {
   const [slug, setSlug] = useState(initialSlug || "");
   const [saved, setSaved] = useState(initialSlug || "");
@@ -22,6 +28,7 @@ export function CompanySiteUrlField({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   async function save() {
+    if (disabled || busy || demo) return;
     const normalized = normalizeClubSiteSlug(slug);
     if (!normalized) {
       setError(
@@ -37,13 +44,17 @@ export function CompanySiteUrlField({
         `${API}/forms/mgl-club/my-companies/${companyId}/site-url`,
         { method: "PUT", body: JSON.stringify({ slug: normalized }) },
       );
-      const data: { siteSlug?: string; message?: string } =
-        await response.json();
+      const data: {
+        siteSlug?: string;
+        message?: string;
+        access?: ClubWebsiteAccess;
+      } = await response.json();
+      if (response.status === 403 && data.access) onAccessDenied?.(data.access);
       if (!response.ok || !data.siteSlug)
         throw new Error(data.message || "URL хадгалж чадсангүй.");
       setSaved(data.siteSlug);
       setSlug(data.siteSlug);
-      setNotice("Танилцуулгын URL хадгаллаа.");
+      setNotice("Танилцуулгын богино холбоос хадгаллаа.");
     } catch (cause: unknown) {
       setError(
         cause instanceof Error ? cause.message : "URL хадгалж чадсангүй.",
@@ -53,10 +64,13 @@ export function CompanySiteUrlField({
     }
   }
   return (
-    <section className={styles.urlSettings} aria-label="Танилцуулгын URL">
-      <h2>Танилцуулгын URL</h2>
+    <section
+      className={styles.urlSettings}
+      aria-label="Танилцуулгын богино холбоос"
+    >
+      <h2>Танилцуулгын богино холбоос</h2>
       <label>
-        URL-ийн нэр
+        Холбоосын нэр
         <input
           value={slug}
           maxLength={63}
@@ -77,7 +91,7 @@ export function CompanySiteUrlField({
           disabled={disabled || busy || slug === saved}
           onClick={() => void save()}
         >
-          {busy ? "Хадгалж байна…" : "URL хадгалах"}
+          {busy ? "Хадгалж байна…" : "Холбоос хадгалах"}
         </button>
       )}
       {saved && (

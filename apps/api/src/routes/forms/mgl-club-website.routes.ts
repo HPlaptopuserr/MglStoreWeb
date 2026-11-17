@@ -1,3 +1,8 @@
+import {
+  getClubWebsiteAccess,
+  requirePaidClubWebsite,
+  ClubWebsiteAccessError,
+} from "../../services/mgl-club-website-access";
 import { requireClubAdmin } from "./mgl-club-access";
 import {
   Router,
@@ -61,17 +66,40 @@ export function createClubWebsiteRouter(): ExpressRouter {
     res.setHeader("Cache-Control", "private, no-store");
     next();
   });
+  router.get(
+    "/forms/mgl-club/my-companies/:id/website-access",
+    requireAuth,
+    requireClubAdmin,
+    async (req, res) => {
+      res.setHeader("Cache-Control", "private, no-store");
+      try {
+        const row = await editableClubWebsiteCompany(String(req.params.id));
+        if (!row || !parseMglClubProfile(row.data))
+          return res.status(404).json({ message: "Байгууллага олдсонгүй." });
+        return res.json(await getClubWebsiteAccess(row.id));
+      } catch {
+        return res
+          .status(503)
+          .json({
+            message:
+              "Алтан гишүүнчлэлийн эрхийг шалгаж чадсангүй. Дахин оролдоно уу.",
+          });
+      }
+    },
+  );
   router.get(base, async (req, res) => {
     try {
       const row = await editableClubWebsiteCompany(String(req.params.id));
       const profile = row && parseMglClubProfile(row.data);
       if (!row || !profile) return res.sendStatus(403);
-      return res.json(
-        state(
+      const access = await getClubWebsiteAccess(row.id);
+      return res.json({
+        access,
+        ...state(
           clubWebsiteData(row.data),
           defaultClubWebsite({ ...profile, id: row.id }),
         ),
-      );
+      });
     } catch {
       return res
         .status(503)
@@ -91,7 +119,7 @@ export function createClubWebsiteRouter(): ExpressRouter {
     )
       return res.status(400).json({
         message:
-          "Section-уудын гарчиг, зураг, агуулга болон дарааллыг шалгана уу.",
+          "Хэсгүүдийн гарчиг, зураг, бичвэр болон дарааллыг шалгана уу.",
       });
     try {
       const result = await prisma.$transaction(async (tx) => {
@@ -100,6 +128,7 @@ export function createClubWebsiteRouter(): ExpressRouter {
           where: { id, form: { slug: "mgl-club", isActive: true } },
         });
         if (!row) throw new ClubWebsiteError(403, "Байгууллага олдсонгүй.");
+        await requirePaidClubWebsite(id, tx);
         const data = clubWebsiteData(row.data),
           current =
             typeof data.websiteVersion === "number" ? data.websiteVersion : 0;
@@ -112,7 +141,7 @@ export function createClubWebsiteRouter(): ExpressRouter {
         if (!draft)
           throw new ClubWebsiteError(
             400,
-            "Эхлээд section-уудаа ноорог болгон хадгална уу.",
+            "Эхлээд танилцуулгаа ноорог болгон хадгална уу.",
           );
         const updated = {
           ...data,
@@ -136,6 +165,10 @@ export function createClubWebsiteRouter(): ExpressRouter {
       });
       return res.json(result);
     } catch (error: unknown) {
+      if (error instanceof ClubWebsiteAccessError)
+        return res
+          .status(403)
+          .json({ message: error.message, access: error.access });
       if (error instanceof ClubWebsiteError)
         return res.status(error.status).json({ message: error.message });
       return res

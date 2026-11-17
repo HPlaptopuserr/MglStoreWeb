@@ -35,6 +35,12 @@ export interface ClubWebsite {
   theme?: ClubWebsiteTheme;
   sections: ClubWebsiteSection[];
 }
+export interface ClubWebsiteAccess {
+  eligible: boolean;
+  status: "active" | "unpaid" | "expired";
+  expiresAt: string | null;
+  message: string;
+}
 export function isClubWebsiteImage(value: string): boolean {
   if (!value) return true;
   if (

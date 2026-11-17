@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import type { MglClubMember } from "@mgl/types";
 import { API, authFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { CompanyWebsiteAccessPanel } from "./CompanyWebsiteAccessPanel";
 import { CompanyProfileEditor } from "./CompanyProfileEditor";
 import { CompanyBlogManager } from "./CompanyBlogManager";
 import styles from "./company-admin.module.css";
@@ -300,25 +301,10 @@ export function CompanyAdminManager() {
                     />
                   )}
                   {active === "website" && (
-                    <div className={styles.panel}>
-                      <h2>Зурагтай вэб танилцуулга</h2>
-                      <p>
-                        Бидний тухай, бүтээгдэхүүн, үйлдвэрлэл, гэрчилгээ,
-                        холбоо барих зэрэг хэсгийг зураг, тексттэй бэлдэнэ.
-                        Нооргийг хадгалж, бэлэн болсон үедээ нийтлээрэй.
-                      </p>
-                      <ol className={styles.steps}>
-                        <li>Хэсгүүдийн гарчиг, зураг, тайлбарыг засах</li>
-                        <li>Үндсэн өнгө, хэсгүүдийн дарааллыг тохируулах</li>
-                        <li>Богино URL сонгож, нооргоо хянаад нийтлэх</li>
-                      </ol>
-                      <Link
-                        className={styles.primaryLink}
-                        href={`/mgl-club/site-builder/${selected.id}`}
-                      >
-                        Вэб танилцуулга засах ↗
-                      </Link>
-                    </div>
+                    <CompanyWebsiteAccessPanel
+                      key={selected.id}
+                      company={selected}
+                    />
                   )}
                   {active === "news" && (
                     <CompanyBlogManager

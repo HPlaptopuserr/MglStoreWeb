@@ -1,7 +1,8 @@
 "use client";
+import { ClubGoldPayment } from "./ClubGoldPayment";
 import { CompanySiteUrlField } from "./CompanySiteUrlField";
 import Link from "next/link";
-import { useEffect, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { ArrowUp, ArrowDown, Plus, Trash2, Eye, Save } from "lucide-react";
 import {
   CLUB_SECTION_TYPES,
@@ -9,6 +10,7 @@ import {
   parseClubWebsite,
   type ClubSectionType,
   type ClubWebsite,
+  type ClubWebsiteAccess,
   type ClubWebsiteSection,
   type MglClubMember,
 } from "@mgl/types";
@@ -16,6 +18,12 @@ import { API, authFetch } from "@/lib/api";
 import type { ClubWebsiteState } from "./CompanySiteBuilder";
 import { CompanyWebsite } from "./CompanyWebsite";
 import { WebsiteImageField } from "./WebsiteImageField";
+import {
+  companyWebsiteTemplates,
+  makeCompanyWebsiteTemplate,
+  type CompanyWebsiteTemplateId,
+} from "./company-website-templates";
+import { WebsiteAccessSummary } from "./CompanyWebsiteAccessPanel";
 import { demoSiteKey } from "./website-template";
 import styles from "./site-builder.module.css";
 const labels: Record<ClubSectionType, string> = {
@@ -45,10 +53,72 @@ export function CompanySiteEditor({
     [uploads, setUploads] = useState(0),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  const [access, setAccess] = useState<ClubWebsiteAccess | null>(
+    initial.access || null,
+  );
+  const [accessChecking, setAccessChecking] = useState(false);
+  const refreshAccess = useCallback(async () => {
+    setAccessChecking(true);
+    try {
+      const response = await authFetch(
+        `${API}/forms/mgl-club/my-companies/${member.id}/website-access`,
+      );
+      if (!response.ok)
+        throw new Error(
+          response.status === 401
+            ? "Систем админ эрхээр дахин нэвтэрнэ үү."
+            : "Алтан гишүүнчлэлийн эрхийг шалгаж чадсангүй.",
+        );
+      const result: ClubWebsiteAccess = await response.json();
+      setAccess(result);
+      setError("");
+    } catch (cause: unknown) {
+      setAccess(null);
+      setError(
+        cause instanceof Error ? cause.message : "Холболтын алдаа гарлаа.",
+      );
+    } finally {
+      setAccessChecking(false);
+    }
+  }, [member.id]);
+  useEffect(() => {
+    if (!initial.access) void refreshAccess();
+  }, [initial.access, refreshAccess]);
+  const eligible = access?.eligible === true;
+  useEffect(() => {
+    if (!access?.eligible || !access.expiresAt) return;
+    const expires = new Date(access.expiresAt).getTime();
+    const expire = () =>
+      setAccess((previous) =>
+        previous
+          ? {
+              ...previous,
+              eligible: false,
+              status: "expired",
+              message:
+                "Алтан гишүүнчлэлийн хугацаа дууссан байна. Дахин идэвхжүүлсний дараа засвараа хадгална уу.",
+            }
+          : previous,
+      );
+    if (!Number.isFinite(expires)) {
+      expire();
+      return;
+    }
+    let timer: number | undefined;
+    function checkExpiry() {
+      const delay = expires - Date.now();
+      if (delay <= 0) expire();
+      else
+        timer = window.setTimeout(checkExpiry, Math.min(delay, 2_147_483_647));
+    }
+    checkExpiry();
+    return () => window.clearTimeout(timer);
+  }, [access]);
   const active =
     site.sections.find((s) => s.id === selected) || site.sections[0];
   const dirty = JSON.stringify(site) !== saved;
   const busy = pending || uploads > 0;
+  const editingDisabled = busy || accessChecking || !eligible;
   useEffect(() => {
     if (!dirty && !busy) return;
     const warn = (event: BeforeUnloadEvent) => {
@@ -103,10 +173,14 @@ export function CompanySiteEditor({
     });
   }
   async function saveDraft(): Promise<ClubWebsiteState | null> {
+    if (!eligible || accessChecking)
+      throw new Error(
+        "Танилцуулга хадгалахын тулд хүчинтэй Алтан гишүүнчлэл шаардлагатай.",
+      );
     const valid = parseClubWebsite(site);
     if (!valid) {
       setError(
-        "Section-уудын гарчиг, зургийн холбоос болон агуулгыг шалгана уу. 1 нүүр section, нийт 12 хүртэл section байж болно.",
+        "Хэсгүүдийн гарчиг, зураг болон бичвэрээ шалгана уу. Нэг нүүр хэсэгтэй, нийт 12 хүртэл хэсэг бэлдэж болно.",
       );
       return null;
     }
@@ -115,6 +189,7 @@ export function CompanySiteEditor({
         demoSiteKey(member.id, "draft"),
         JSON.stringify(valid),
       );
+      setSite(valid);
       setSaved(JSON.stringify(valid));
       return { draft: valid, published: null, version: 0 };
     }
@@ -125,14 +200,17 @@ export function CompanySiteEditor({
     const data: ClubWebsiteState & { message?: string } = await response
       .json()
       .catch(() => ({}));
-    if (!response.ok)
+    if (!response.ok) {
+      if (data.access) setAccess(data.access);
       throw new Error(data.message || "Ноорог хадгалж чадсангүй.");
+    }
     setVersion(data.version);
-    setSaved(JSON.stringify(valid));
+    setSite(data.draft);
+    setSaved(JSON.stringify(data.draft));
     return data;
   }
   async function save(publish: boolean) {
-    if (busy) return;
+    if (editingDisabled) return;
     setPending(true);
     setError("");
     setNotice("");
@@ -157,8 +235,10 @@ export function CompanySiteEditor({
           const data: ClubWebsiteState & { message?: string } = await response
             .json()
             .catch(() => ({}));
-          if (!response.ok)
+          if (!response.ok) {
+            if (data.access) setAccess(data.access);
             throw new Error(data.message || "Нийтэлж чадсангүй.");
+          }
           setVersion(data.version);
         }
       }
@@ -174,6 +254,22 @@ export function CompanySiteEditor({
     } finally {
       setPending(false);
     }
+  }
+  function chooseTemplate(id: CompanyWebsiteTemplateId) {
+    if (editingDisabled) return;
+    if (
+      !window.confirm(
+        "Одоогийн танилцуулгын хэсгүүдийг шинэ загвараар солих уу? Зураг, бичвэртэй одоогийн ноорог солигдоно. Хадгалах эсвэл нийтлэх хүртэл нийтийн хуудас өөрчлөгдөхгүй.",
+      )
+    )
+      return;
+    const next = makeCompanyWebsiteTemplate(id, member);
+    next.theme = site.theme;
+    setSite(next);
+    setSelected(next.sections[0].id);
+    setPreview(false);
+    setNotice("");
+    setError("");
   }
   const mediaBusy = (uploading: boolean) =>
     setUploads((n) => Math.max(0, n + (uploading ? 1 : -1)));
@@ -202,7 +298,7 @@ export function CompanySiteEditor({
             onClick={() => {
               if (!preview && !parseClubWebsite(site)) {
                 setError(
-                  "Урьдчилан харахын өмнө section-уудын гарчиг, зургийн холбоосоо шалгана уу.",
+                  "Урьдчилан харахын өмнө хэсгүүдийн гарчиг болон зургаа шалгана уу.",
                 );
                 return;
               }
@@ -214,7 +310,7 @@ export function CompanySiteEditor({
           </button>
           <button
             type="button"
-            disabled={busy}
+            disabled={editingDisabled}
             onClick={() => void save(false)}
           >
             <Save size={16} />
@@ -223,7 +319,7 @@ export function CompanySiteEditor({
           <button
             type="button"
             className={styles.primary}
-            disabled={busy}
+            disabled={editingDisabled}
             onClick={() => void save(true)}
           >
             {pending ? "Хадгалж байна…" : "Нийтлэх"}
@@ -233,11 +329,70 @@ export function CompanySiteEditor({
           </Link>
         </div>
       </div>
+      <div className={styles.accessArea}>
+        {accessChecking ? (
+          <p role="status">Алтан гишүүнчлэлийн эрхийг шалгаж байна…</p>
+        ) : access ? (
+          <WebsiteAccessSummary access={access} />
+        ) : (
+          <p role="alert">
+            Гишүүнчлэлийн эрх хараахан баталгаажаагүй тул засварлах үйлдлүүд
+            түгжээтэй байна. Буцаад эрхээ шалгана уу.
+          </p>
+        )}
+        {!eligible && (
+          <>
+            <p className={styles.help}>
+              Өмнө нийтэлсэн хуудас хэвээр харагдана. Энэ цонхны бичсэн ноорог
+              мөн хэвээр байна.
+            </p>
+            {access && !demo && (
+              <ClubGoldPayment companyId={member.id} onPaid={refreshAccess} />
+            )}
+            <button
+              type="button"
+              disabled={busy || accessChecking}
+              onClick={() => void refreshAccess()}
+            >
+              {accessChecking ? "Эрхийг шалгаж байна…" : "Эрхийг дахин шалгах"}
+            </button>
+          </>
+        )}
+      </div>
+      <div className={styles.workflow} aria-label="Танилцуулга бэлдэх дараалал">
+        <span>1. Загвар сонгох</span>
+        <span>2. Зураг, мэдээллээ бөглөх</span>
+        <span>3. Хянаад нийтлэх</span>
+      </div>
+      <details
+        className={styles.templatePicker}
+        open={!initial.published && initial.version === 0}
+      >
+        <summary>Бэлэн загвар сонгох / солих</summary>
+        <p>
+          Одоогийн зураг, мэдээлэл өөрчлөгдөхгүй. Загвар сонгоод солихыг
+          баталгаажуулсан үед л шинэ ноорог бэлдэнэ.
+        </p>
+        <div className={styles.templateOptions}>
+          {companyWebsiteTemplates.map((template) => (
+            <button
+              type="button"
+              key={template.id}
+              disabled={editingDisabled}
+              onClick={() => chooseTemplate(template.id)}
+            >
+              <strong>{template.title}</strong>
+              <span>{template.description}</span>
+            </button>
+          ))}
+        </div>
+      </details>
       <CompanySiteUrlField
         companyId={member.id}
         initialSlug={initial.siteSlug}
         demo={demo}
-        disabled={busy}
+        disabled={editingDisabled}
+        onAccessDenied={setAccess}
       />
       {error && (
         <p className={styles.error} role="alert">
@@ -265,7 +420,7 @@ export function CompanySiteEditor({
                   <button
                     type="button"
                     key={preset.color}
-                    disabled={busy}
+                    disabled={editingDisabled}
                     aria-pressed={
                       (site.theme?.primaryColor || "#0f3e2e") === preset.color
                     }
@@ -290,7 +445,7 @@ export function CompanySiteEditor({
                 <input
                   type="color"
                   value={site.theme?.primaryColor || "#0f3e2e"}
-                  disabled={busy}
+                  disabled={editingDisabled}
                   onChange={(event) => {
                     const primaryColor = event.target.value;
                     setSite((previous) => ({
@@ -310,7 +465,7 @@ export function CompanySiteEditor({
                 <input
                   type="color"
                   value={site.theme?.backgroundColor || "#ffffff"}
-                  disabled={busy}
+                  disabled={editingDisabled}
                   onChange={(event) => {
                     const backgroundColor = event.target.value;
                     setSite((previous) => ({
@@ -325,7 +480,7 @@ export function CompanySiteEditor({
                 />
               </label>
             </div>
-            <h2>Хуудасны section-ууд</h2>
+            <h2>Танилцуулгын хэсгүүд</h2>
             <p>Дарааллаар нь харагдана.</p>
             <ol>
               {site.sections.map((section, index) => (
@@ -337,7 +492,9 @@ export function CompanySiteEditor({
                   >
                     <span>{String(index + 1).padStart(2, "0")}</span>
                     <div>
-                      <strong>{section.title || "Гарчиггүй section"}</strong>
+                      <strong>
+                        {section.title || "Гарчиг оруулаагүй хэсэг"}
+                      </strong>
                       <small>{labels[section.type]}</small>
                     </div>
                   </button>
@@ -346,7 +503,7 @@ export function CompanySiteEditor({
             </ol>
             <h3>
               <Plus size={16} />
-              Section нэмэх
+              Хэсэг нэмэх
             </h3>
             <div className={styles.addTypes}>
               {CLUB_SECTION_TYPES.filter((type) => type !== "hero").map(
@@ -355,7 +512,7 @@ export function CompanySiteEditor({
                     type="button"
                     key={type}
                     disabled={
-                      busy ||
+                      editingDisabled ||
                       site.sections.length >= 12 ||
                       (type === "contact" &&
                         site.sections.some((s) => s.type === "contact"))
@@ -367,28 +524,33 @@ export function CompanySiteEditor({
                 ),
               )}
             </div>
-            <p>12 хүртэл section · No.01 нүүр section тогтмол.</p>
+            <p>12 хүртэл хэсэг нэмнэ. Нүүр хэсэг эхэндээ тогтмол байна.</p>
           </aside>
-          <section className={styles.editor} aria-label="Section засах">
+          <section
+            className={styles.editor}
+            aria-label="Танилцуулгын хэсэг засах"
+          >
             <div className={styles.editorHeading}>
               <div>
                 <p>{labels[active.type]}</p>
-                <h2>{active.title || "Гарчиггүй section"}</h2>
+                <h2>{active.title || "Гарчиг оруулаагүй хэсэг"}</h2>
               </div>
               <div className={styles.orderActions}>
                 <button
                   type="button"
-                  aria-label="Section дээш зөөх"
-                  disabled={busy || site.sections.indexOf(active) <= 1}
+                  aria-label="Хэсгийг дээш зөөх"
+                  disabled={
+                    editingDisabled || site.sections.indexOf(active) <= 1
+                  }
                   onClick={() => move(active.id, -1)}
                 >
                   <ArrowUp size={16} />
                 </button>
                 <button
                   type="button"
-                  aria-label="Section доош зөөх"
+                  aria-label="Хэсгийг доош зөөх"
                   disabled={
-                    busy ||
+                    editingDisabled ||
                     active.type === "hero" ||
                     site.sections.indexOf(active) === site.sections.length - 1
                   }
@@ -398,9 +560,15 @@ export function CompanySiteEditor({
                 </button>
                 <button
                   type="button"
-                  aria-label="Section хасах"
-                  disabled={busy || active.type === "hero"}
+                  aria-label="Хэсэг хасах"
+                  disabled={editingDisabled || active.type === "hero"}
                   onClick={() => {
+                    if (
+                      !window.confirm(
+                        "Энэ хэсэг болон доторх зураг, бичвэрийг нооргоос хасах уу?",
+                      )
+                    )
+                      return;
                     setSite((previous) => ({
                       ...previous,
                       sections: previous.sections.filter(
@@ -414,9 +582,9 @@ export function CompanySiteEditor({
                 </button>
               </div>
             </div>
-            <fieldset disabled={busy} className={styles.fields}>
+            <fieldset disabled={editingDisabled} className={styles.fields}>
               <label>
-                Жижиг гарчиг
+                Дээд жижиг гарчиг (заавал биш)
                 <input
                   type="text"
                   maxLength={80}
@@ -489,6 +657,8 @@ export function CompanySiteEditor({
                 onChange={(patch) => update(active.id, patch)}
                 onBusy={mediaBusy}
                 demo={demo}
+                disabled={editingDisabled}
+                onAccessDenied={setAccess}
               />
             )}
             {(["services", "stats", "gallery"].includes(active.type) ||
@@ -511,7 +681,7 @@ export function CompanySiteEditor({
                         type="text"
                         maxLength={160}
                         value={item.title}
-                        disabled={busy}
+                        disabled={editingDisabled}
                         onChange={(e) =>
                           update(active.id, {
                             items: active.items.map((v, i) =>
@@ -527,7 +697,7 @@ export function CompanySiteEditor({
                         rows={2}
                         maxLength={1000}
                         value={item.text}
-                        disabled={busy}
+                        disabled={editingDisabled}
                         onChange={(e) =>
                           update(active.id, {
                             items: active.items.map((v, i) =>
@@ -551,24 +721,28 @@ export function CompanySiteEditor({
                         }
                         onBusy={mediaBusy}
                         demo={demo}
+                        disabled={editingDisabled}
+                        onAccessDenied={setAccess}
                       />
                     )}
                     <button
                       type="button"
-                      disabled={busy}
+                      disabled={editingDisabled}
                       onClick={() =>
                         update(active.id, {
                           items: active.items.filter((_, i) => i !== index),
                         })
                       }
                     >
-                      Мөр хасах
+                      {active.type === "gallery"
+                        ? "Зургийг хасах"
+                        : "Мэдээллийг хасах"}
                     </button>
                   </div>
                 ))}
                 <button
                   type="button"
-                  disabled={busy || active.items.length >= 8}
+                  disabled={editingDisabled || active.items.length >= 8}
                   onClick={() =>
                     update(active.id, {
                       items: [
@@ -584,21 +758,55 @@ export function CompanySiteEditor({
                     })
                   }
                 >
-                  + Мөр нэмэх
+                  +{" "}
+                  {active.type === "gallery"
+                    ? "Зураг нэмэх"
+                    : active.type === "stats"
+                      ? "Тоон үзүүлэлт нэмэх"
+                      : "Бүтээгдэхүүн, үйлчилгээ нэмэх"}
                 </button>
               </div>
             )}
             {active.type === "contact" && (
-              <p className={styles.help}>
-                Утас, хаяг, цагийн хуваарь нь байгууллагын бүртгэлийн мэдээллээс
-                харагдана.
-              </p>
+              <div className={styles.contactSummary}>
+                <h3>Холбоо барих үндсэн мэдээлэл</h3>
+                <dl>
+                  <div>
+                    <dt>Утас</dt>
+                    <dd>{member.phone}</dd>
+                  </div>
+                  <div>
+                    <dt>Хаяг</dt>
+                    <dd>{member.address || member.city}</dd>
+                  </div>
+                  {member.workingHours && (
+                    <div>
+                      <dt>Ажиллах цаг</dt>
+                      <dd>{member.workingHours}</dd>
+                    </div>
+                  )}
+                  {member.website && (
+                    <div>
+                      <dt>Вэб / Facebook</dt>
+                      <dd>{member.website}</dd>
+                    </div>
+                  )}
+                </dl>
+                <p className={styles.help}>
+                  Эдгээрийг өөрчлөх бол байгууллагын үндсэн мэдээлэл хэсэгт
+                  засна. Энэ хэсгийн нэмэлт бичвэрийг дээрх талбаруудад
+                  бөглөөрэй.
+                </p>
+                <Link href="/mgl-club/manage" onClick={guardReturn}>
+                  Үндсэн мэдээлэл засах ↗
+                </Link>
+              </div>
             )}
             {active.type === "news" && (
               <p className={styles.help}>
                 Нийтлэлүүдийг{" "}
                 <Link href="/mgl-club/manage" onClick={guardReturn}>
-                  Байгууллагын блог
+                  Мэдээ, нийтлэл
                 </Link>{" "}
                 хэсгээс удирдана.
               </p>

@@ -10,6 +10,7 @@ import {
   isClubSiteSlug,
   normalizeClubSiteSlug,
 } from "@mgl/types";
+import { activeGoldInvoice } from "./mgl-club-gold.test-support";
 import { createClubSiteUrlRouter } from "./mgl-club-site-url.routes";
 const id = "00000000-0000-4000-8000-000000000001";
 const profile = {
@@ -108,6 +109,7 @@ test("reservation locks the URL name and company row before preserving private d
         queries.push({ sql: strings.join("?"), values });
         return [];
       },
+      qPayInvoice: { findMany: async () => [activeGoldInvoice(id)] },
       formResponse: {
         findFirst: async (args: { where: { id: unknown } }) =>
           typeof args.where.id === "string"
@@ -146,6 +148,7 @@ test("duplicate names return conflict without updating either company", async ()
   stub(prisma, "$transaction", async (run: (tx: object) => Promise<unknown>) =>
     run({
       $queryRaw: async () => [],
+      qPayInvoice: { findMany: async () => [activeGoldInvoice(id)] },
       formResponse: {
         findFirst: async () => ({ id, data: profile }),
         update: async () => {
@@ -194,4 +197,49 @@ test("missing or unpublished-consent profiles do not resolve", async () => {
   }));
   assert.equal((await fetch(`${base}/sites/innovallc`)).status, 404);
   assert.equal((await fetch(`${base}/sites/login`)).status, 404);
+});
+
+test("unpaid or expired Gold cannot reserve or change a company URL", async () => {
+  for (const candidates of [
+    [],
+    [
+      {
+        ...activeGoldInvoice(id),
+        webhookPayload: {
+          kind: "MGL_CLUB_GOLD",
+          accessExpiresAt: new Date(Date.now() - 1000).toISOString(),
+        },
+      },
+    ],
+  ]) {
+    let wrote = false;
+    stub(
+      prisma,
+      "$transaction",
+      async (run: (tx: object) => Promise<unknown>) =>
+        run({
+          $queryRaw: async () => [],
+          qPayInvoice: { findMany: async () => candidates },
+          formResponse: {
+            findFirst: async () => ({
+              id,
+              data: {
+                ...profile,
+                clubSiteSlug: "existing-url",
+                clubFeaturedGold: true,
+                goldExpiresAt: "2099-01-01T00:00:00Z",
+              },
+            }),
+            update: async () => {
+              wrote = true;
+            },
+          },
+        }),
+    );
+    const response = await save("new-company-url");
+    assert.equal(response.status, 403);
+    const body: { access: { eligible: boolean } } = await response.json();
+    assert.equal(body.access.eligible, false);
+    assert.equal(wrote, false);
+  }
 });
