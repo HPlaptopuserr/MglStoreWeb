@@ -1,4 +1,5 @@
 "use client";
+import { CompanyLogo } from "./CompanyLogo";
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
   MapPin,
@@ -104,7 +105,7 @@ export function MemberDialog({
           </button>
           <div className={styles.identityRow}>
             <div className={styles.monogram} aria-hidden="true">
-              {Array.from(business)[0]}
+              <CompanyLogo name={business} url={member.logoUrl} />
             </div>
             <div className={styles.identity}>
               <p className={styles.profileLabel}>

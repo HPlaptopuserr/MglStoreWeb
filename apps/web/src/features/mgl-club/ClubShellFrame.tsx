@@ -18,7 +18,14 @@ export function ClubShellFrame({
   embedded: boolean;
   total?: number | null;
 }) {
-  const joining = usePathname() === clubRoutes.join;
+  const pathname = usePathname();
+  const joining = pathname === clubRoutes.join;
+  if (pathname.startsWith("/mgl-club/companies/"))
+    return (
+      <div className={styles.page} data-company-site="true">
+        <main id="club-main">{children}</main>
+      </div>
+    );
   return (
     <div className={styles.page} data-embedded={embedded}>
       <a className={styles.skipLink} href="#club-main">

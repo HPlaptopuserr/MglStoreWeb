@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { LoaderCircle, LogOut, Network } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ClubProfileIdentity } from "./ClubProfileIdentity";
+import { ClubGoldResume } from "../ClubGoldResume";
 import { ClubProfileActions } from "./ClubProfileActions";
 import styles from "./club-profile.module.css";
 
@@ -64,6 +65,7 @@ export function ClubProfile() {
         </div>
         <div className={styles.contentColumn}>
           <ClubProfileActions />
+          <ClubGoldResume />
         </div>
       </div>
       {authOpen && !user && (

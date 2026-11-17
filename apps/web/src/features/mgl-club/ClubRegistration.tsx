@@ -1,6 +1,8 @@
 "use client";
 import { ArrowLeft, ArrowRight, Check, Info, LoaderCircle } from "lucide-react";
 import { mglClubFields } from "@mgl/types";
+import { useState } from "react";
+import { ClubLogoField } from "./ClubLogoField";
 import { RegistrationField } from "./RegistrationField";
 import { RegistrationProgress } from "./RegistrationProgress";
 import { RegistrationReview } from "./RegistrationReview";
@@ -15,6 +17,7 @@ export function ClubRegistration() {
     pending,
     error,
     complete,
+    paymentCredentials,
     review,
     formRef,
     headingRef,
@@ -25,13 +28,17 @@ export function ClubRegistration() {
     submit,
     clearFieldError,
   } = useClubRegistration();
-  if (complete) return <RegistrationSuccess />;
+  const [logoBusy, setLogoBusy] = useState(false);
+  if (complete) return <RegistrationSuccess credentials={paymentCredentials} />;
   return (
     <div className={styles.layout}>
       <RegistrationProgress step={step} pending={pending} onBackTo={goTo} />
       <form
         ref={formRef}
-        onSubmit={submit}
+        onSubmit={(event) => {
+          if (logoBusy) event.preventDefault();
+          else void submit(event);
+        }}
         onInput={clearFieldError}
         noValidate
         className={styles.form}
@@ -54,6 +61,12 @@ export function ClubRegistration() {
             {active.title}
           </h2>
           <p>{active.description}</p>
+          {step === 0 && (
+            <p>
+              Алтан гишүүнчлэл: 1,200,000₮ · 6 сар. Төлбөр баталгаажсаны дараа
+              байгууллагын нэр, лого нүүр хуудсанд харагдана.
+            </p>
+          )}
           {step < lastStep && (
             <span className={styles.requiredNote}>
               <b>*</b> Заавал бөглөх мэдээлэл
@@ -71,6 +84,7 @@ export function ClubRegistration() {
             className={styles.fields}
             aria-label={item.title}
           >
+            {index === 0 && <ClubLogoField onBusy={setLogoBusy} />}
             {item.fields.map((id) => {
               const field = mglClubFields.find((field) => field.id === id);
               return field ? (
@@ -115,7 +129,11 @@ export function ClubRegistration() {
               <ArrowLeft size={16} />
               Өмнөх
             </button>
-            <button type="submit" className={styles.primary} disabled={pending}>
+            <button
+              type="submit"
+              className={styles.primary}
+              disabled={pending || logoBusy}
+            >
               {pending ? (
                 <>
                   <LoaderCircle size={17} className={styles.spinner} />

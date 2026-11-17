@@ -30,7 +30,7 @@ export function MemberServices({ member }: { member: MglClubMember }) {
           {member.needs || "Одоогоор худалдан авах хэрэгцээ оруулаагүй байна."}
         </p>
       </section>
-      <details className={styles.aboutBusiness}>
+      <details open className={styles.aboutBusiness}>
         <summary>Бизнесийн тухай дэлгэрэнгүй</summary>
         <p>{member.description}</p>
       </details>

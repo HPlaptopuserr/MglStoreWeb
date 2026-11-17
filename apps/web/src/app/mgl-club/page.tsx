@@ -1,7 +1,7 @@
 import { getClubSummary } from "@/features/mgl-club/club-summary";
 import { ClubCommunitySections } from "@/features/mgl-club/ClubCommunitySections";
 import type { Metadata } from "next";
-import { ClubHero } from "@/features/mgl-club/ClubHero";
+import { ClubCompanies } from "@/features/mgl-club/ClubCompanies";
 import { ClubDirectory } from "@/features/mgl-club/ClubDirectory";
 import { ClubIntroduction } from "@/features/mgl-club/ClubIntroduction";
 export const metadata: Metadata = {
@@ -14,7 +14,7 @@ export default async function MglClubPage() {
   const summary = await getClubSummary();
   return (
     <>
-      <ClubHero summary={summary} />
+      <ClubCompanies />
       <ClubDirectory summary={summary} />
       <ClubIntroduction />
       <ClubCommunitySections />

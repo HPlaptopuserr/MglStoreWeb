@@ -24,6 +24,26 @@
     "./reel-upload": {
       "types": "./src/lib/reel-upload.ts",
       "default": "./src/lib/reel-upload.ts"
+    },
+    "./company-site": {
+      "types": "./src/company-site/index.ts",
+      "default": "./src/company-site/index.ts"
+    },
+    "./company-site/innova": {
+      "types": "./src/company-site/local-companies.ts",
+      "default": "./src/company-site/local-companies.ts"
+    },
+    "./company-site/CompanyMedia": {
+      "types": "./src/company-site/CompanyMedia.tsx",
+      "default": "./src/company-site/CompanyMedia.tsx"
+    },
+    "./company-site/CompanyLogo": {
+      "types": "./src/company-site/CompanyLogo.tsx",
+      "default": "./src/company-site/CompanyLogo.tsx"
+    },
+    "./company-site/CompanyBlog": {
+      "types": "./src/company-site/CompanyBlog.tsx",
+      "default": "./src/company-site/CompanyBlog.tsx"
     }
   },
   "scripts": {

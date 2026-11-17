@@ -1,3 +1,4 @@
+import { ClubAdminContent } from "./ClubAdminAccess";
 import Link from "next/link";
 import { ArrowUpRight, ShieldCheck } from "lucide-react";
 import styles from "./club-design.module.css";
@@ -29,9 +30,11 @@ export function ClubCommunitySections() {
               худалдан авалт
             </small>
           </div>
-          <Link href="/mgl-club/join">
-            Одоо бүртгүүлэх <ArrowUpRight size={17} />
-          </Link>
+          <ClubAdminContent>
+            <Link href="/mgl-club/join">
+              Одоо бүртгүүлэх <ArrowUpRight size={17} />
+            </Link>
+          </ClubAdminContent>
         </div>
       </section>
     </>

@@ -1,3 +1,4 @@
+import { ClubAdminContent } from "../ClubAdminAccess";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -66,9 +67,22 @@ export function ClubProfileActions() {
             танилцуулаарай.
           </p>
         </div>
-        <Link className={styles.businessLink} href={clubRoutes.join}>
-          Бизнесээ танилцуулах <ArrowUpRight size={17} aria-hidden="true" />
-        </Link>
+        <ClubAdminContent>
+          <Link className={styles.businessLink} href={clubRoutes.join}>
+            Бизнесээ танилцуулах <ArrowUpRight size={17} aria-hidden="true" />
+          </Link>
+        </ClubAdminContent>
+      </section>
+      <section className={styles.business}>
+        <div>
+          <h2>Байгууллагын вэб танилцуулга</h2>
+          <p>Section-уудаар зураг, тексттэй танилцуулга бэлдэж, нийтлээрэй.</p>
+        </div>
+        <ClubAdminContent>
+          <Link className={styles.businessLink} href="/mgl-club/manage">
+            Танилцуулга удирдах <ArrowUpRight size={17} />
+          </Link>
+        </ClubAdminContent>
       </section>
       <ProfileActionSection title="Клуб дотор" actions={exploreActions} />
       <ProfileActionSection

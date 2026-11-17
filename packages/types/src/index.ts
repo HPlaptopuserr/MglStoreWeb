@@ -69,3 +69,6 @@ export * from "./domain/card-payment-recovery";
 
 export * from "./domain/warehouse-viewer";
 export * from "./domain/warehouse-dispatch";
+
+export * from "./domain/mgl-club-website";
+export * from "./domain/mgl-club-site-url";

@@ -1691,3 +1691,8 @@
 .page[data-embedded="true"] :is(section, input)[id] {
   scroll-margin-top: 16px;
 }
+
+.page[data-company-site="true"] {
+  padding-bottom: 0;
+  background: #fff;
+}

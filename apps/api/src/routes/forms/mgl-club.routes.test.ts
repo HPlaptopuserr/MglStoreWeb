@@ -1,3 +1,4 @@
+import jwt from "jsonwebtoken";
 import assert from "node:assert/strict";
 import { after, afterEach, before, test } from "node:test";
 import type { AddressInfo } from "node:net";
@@ -57,7 +58,10 @@ afterEach(() => {
 const submit = (data: unknown) =>
   fetch(`${base}/responses`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${jwt.sign({ userId: "system-admin", role: "ADMIN", email: "admin@example.test" }, process.env.JWT_SECRET || "dev-secret-change-me")}`,
+    },
     body: JSON.stringify({ data }),
   });
 test("saves normalized profiles under an isolated club form", async () => {
@@ -70,7 +74,11 @@ test("saves normalized profiles under an isolated club form", async () => {
     "create",
     async (args: { data: { formId: string; data: unknown } }) => {
       assert.equal(args.data.formId, "club");
-      assert.deepEqual(args.data.data, profile);
+      const saved = args.data.data as Record<string, unknown>;
+      const { paymentTokenHash, ownerUserId, ...publicData } = saved;
+      assert.equal(ownerUserId, "system-admin");
+      assert.match(String(paymentTokenHash), /^[0-9a-f]{64}$/);
+      assert.deepEqual(publicData, profile);
       return {};
     },
   );
@@ -215,4 +223,66 @@ test("needs directory excludes blank needs and searches buying needs rather than
   assert.equal(body.members[0].needs, "Хүргэлт");
   assert.equal(body.members[0].isDemo, true);
   assert.deepEqual(body.services, [{ sector: "Худалдаа", count: 15 }]);
+});
+
+test("gold logos require a settled gold invoice and unexpired six-month entitlement", async () => {
+  stubQuery(async (query: Prisma.Sql) => {
+    assert.ok(query.sql.includes('FROM "QPayInvoice"'));
+    assert.ok(query.sql.includes("p.\"status\" = 'PAID'"));
+    assert.ok(query.sql.includes('p."amount" = 1200000'));
+    assert.ok(query.sql.includes("accessExpiresAt"));
+    assert.ok(query.sql.includes("MGL_CLUB_GOLD"));
+    assert.ok(query.sql.includes("'isDemo'"));
+    return [];
+  });
+  assert.equal((await fetch(`${base}/members?scope=gold`)).status, 200);
+});
+
+test("company pages only return consenting public profile fields", async () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  stub(prisma.formResponse, "findFirst", async () => ({
+    id,
+    data: { ...profile, ownerUserId: "private", paymentTokenHash: "secret" },
+  }));
+  const response = await fetch(`${base}/members/${id}`);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.member.businessName, profile.businessName);
+  assert.equal(body.member.ownerUserId, undefined);
+  assert.equal(body.member.paymentTokenHash, undefined);
+  stub(prisma.formResponse, "findFirst", async () => ({
+    id,
+    data: { ...profile, consent: "no" },
+  }));
+  assert.equal((await fetch(`${base}/members/${id}`)).status, 404);
+});
+
+test("company page exposes the published website and never the private draft", async () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  const section = {
+    id: "home",
+    type: "hero",
+    title: "Published",
+    eyebrow: "",
+    text: "",
+    imageUrl: "",
+    imageAlt: "",
+    layout: "image-right",
+    tone: "dark",
+    items: [],
+  };
+  stub(prisma.formResponse, "findFirst", async () => ({
+    id,
+    data: {
+      ...profile,
+      websiteDraft: { sections: [{ ...section, title: "Private draft" }] },
+      websitePublished: { sections: [section] },
+    },
+  }));
+  const response = await fetch(`${base}/members/${id}`);
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.website.sections[0].title, "Published");
+  assert.equal(body.member.websiteDraft, undefined);
+  assert.equal(JSON.stringify(body).includes("Private draft"), false);
 });

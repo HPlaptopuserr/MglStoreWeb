@@ -1,0 +1,174 @@
+.posts {
+  display: grid;
+  gap: 16px;
+}
+.note {
+  color: #7b837c;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.post {
+  padding: 22px;
+  border: 1px solid #e2e9e3;
+  border-radius: 12px;
+  background: white;
+}
+.post time {
+  display: block;
+  color: #859288;
+  font-size: 11px;
+  margin-bottom: 12px;
+}
+.post summary {
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 650;
+  color: #173f2d;
+  line-height: 1.6;
+}
+.post summary span {
+  float: right;
+  margin-left: 12px;
+}
+.post p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.9;
+  color: #55665b;
+}
+.posts button {
+  justify-self: start;
+  padding: 10px 14px;
+  border: 1px solid #cdded2;
+  border-radius: 8px;
+  background: white;
+  color: #0f3e2e;
+}
+.manager {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 40px 32px 64px;
+}
+.manager h1 {
+  color: #0f3e2e;
+  font-size: 30px;
+  margin-bottom: 12px;
+}
+.manager > p {
+  color: #64766b;
+  line-height: 1.8;
+}
+.manager a {
+  color: #0f5945;
+  text-decoration: underline;
+}
+.toolbar {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: end;
+  margin: 28px 0;
+}
+.manager label {
+  display: grid;
+  gap: 8px;
+  color: #304b3a;
+  font-size: 14px;
+}
+.manager input[type="text"],
+.manager textarea,
+.manager select {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ccdbd0;
+  border-radius: 8px;
+  background: white;
+  font: inherit;
+}
+.manager textarea {
+  min-height: 260px;
+  resize: vertical;
+  line-height: 1.7;
+}
+.manager button {
+  padding: 11px 16px;
+  border: 1px solid #cdded2;
+  border-radius: 8px;
+  background: white;
+  color: #0f3e2e;
+}
+.manager button:disabled {
+  opacity: 0.6;
+}
+.manager .primary {
+  background: #0f3e2e;
+  color: white;
+  border-color: #0f3e2e;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 24px;
+}
+.editor {
+  display: grid;
+  align-content: start;
+  gap: 20px;
+  background: #fff;
+  padding: 24px;
+  border: 1px solid #e1e9e3;
+  border-radius: 14px;
+}
+.editor h2 {
+  margin: 0;
+  font-size: 20px;
+  color: #0f3e2e;
+}
+.editor .checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.postList {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+.postList button {
+  display: grid;
+  gap: 8px;
+  text-align: left;
+}
+.postList button[aria-pressed="true"] {
+  background: #e5f3e9;
+  border-color: #87b597;
+}
+.postList span {
+  font-size: 11px;
+  color: #738379;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.error {
+  color: #a93232;
+  font-size: 14px;
+}
+.success {
+  color: #1c784a;
+  font-size: 14px;
+}
+@media (max-width: 767px) {
+  .manager {
+    padding: 28px 16px;
+  }
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .editor {
+    padding: 18px;
+  }
+}

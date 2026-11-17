@@ -1,3 +1,4 @@
+import { CompanyLogo } from "./CompanyLogo";
 import { MapPin, Pencil, CheckCircle2 } from "lucide-react";
 import { mglClubFields } from "@mgl/types";
 import {
@@ -16,7 +17,7 @@ export function RegistrationReview({
     <div className={styles.review}>
       <div className={styles.preview}>
         <span className={styles.previewIcon}>
-          {Array.from(values.businessName)[0]}
+          <CompanyLogo name={values.businessName} url={values.logoUrl} />
         </span>
         <div>
           <span className={styles.previewLabel}>

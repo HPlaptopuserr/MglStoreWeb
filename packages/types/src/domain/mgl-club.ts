@@ -128,7 +128,10 @@ export const mglClubFormFields = [
 ];
 
 export type MglClubField = (typeof mglClubFields)[number]["id"];
-export type MglClubProfile = Record<MglClubField, string> & { consent: "yes" };
+export type MglClubProfile = Record<MglClubField, string> & {
+  consent: "yes";
+  logoUrl?: string;
+};
 export type MglClubMember = Omit<MglClubProfile, "consent"> & {
   id: string;
   isDemo?: boolean;
@@ -203,7 +206,52 @@ export function parseMglClubProfile(input: unknown): MglClubProfile | null {
       return null;
     }
   }
+  const logoUrl = source.logoUrl;
+  if (logoUrl !== undefined && typeof logoUrl !== "string") return null;
+  if (typeof logoUrl === "string" && logoUrl) {
+    if (logoUrl.length > 500) return null;
+    if (!/^\/api\/forms\/mgl-club\/logos\/[0-9a-f-]{36}\.webp$/.test(logoUrl)) {
+      try {
+        const url = new URL(logoUrl);
+        if (url.protocol !== "https:" || url.username || url.password)
+          return null;
+      } catch {
+        return null;
+      }
+    }
+  }
   const location = normalizeMglClubLocation(data.city);
   if (!location) return null;
-  return { ...data, city: location, consent: "yes" };
+  return {
+    ...data,
+    city: location,
+    consent: "yes",
+    ...(logoUrl ? { logoUrl: String(logoUrl) } : {}),
+  };
+}
+
+export interface MglClubPostInput {
+  title: string;
+  body: string;
+  published: boolean;
+}
+export interface MglClubPost extends MglClubPostInput {
+  id: string;
+  companyId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+export function parseMglClubPost(input: unknown): MglClubPostInput | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const data = input as Record<string, unknown>;
+  if (
+    typeof data.title !== "string" ||
+    typeof data.body !== "string" ||
+    typeof data.published !== "boolean"
+  )
+    return null;
+  const title = data.title.trim(),
+    body = data.body.trim();
+  if (!title || title.length > 160 || !body || body.length > 12000) return null;
+  return { title, body, published: data.published };
 }

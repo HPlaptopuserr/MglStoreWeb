@@ -1,4 +1,5 @@
 "use client";
+import { isClubSiteSlug } from "@mgl/types";
 import { usePathname } from "next/navigation";
 import { MglAppBootLoader } from "@mgl/ui";
 import { WorkforceLoadingScreen } from "@/features/workforce/components/WorkforceLoadingScreen";
@@ -7,6 +8,7 @@ import "../../shared/ui/loading/digital-loading.css";
 
 export function BusinessLoading({ boot = false }: { boot?: boolean }) {
   const pathname = usePathname();
+  if (isClubSiteSlug(pathname.slice(1))) return null;
   if (pathname === "/attendance" || pathname.startsWith("/attendance/"))
     return boot ? null : <WorkforceLoadingScreen />;
   if (boot)

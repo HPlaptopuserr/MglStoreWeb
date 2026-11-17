@@ -1,0 +1,399 @@
+.builder {
+  background: #f1f4f0;
+  min-height: 80vh;
+  color: #20372a;
+}
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  padding: 24px 32px;
+  border-bottom: 1px solid #dce5dc;
+  background: white;
+}
+.toolbar a {
+  font-size: 12px;
+  color: #38724f;
+}
+.toolbar h1 {
+  margin: 10px 0 6px;
+  font-size: 21px;
+  font-weight: 650;
+}
+.toolbar h1 span {
+  font-size: 13px;
+  font-weight: 400;
+  margin-left: 12px;
+  color: #819083;
+}
+.toolbar p {
+  margin: 0;
+  font-size: 11px;
+  color: #7a8d7e;
+}
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.builder button,
+.message button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 13px;
+  border: 1px solid #cddbd0;
+  border-radius: 7px;
+  background: white;
+  color: #244e34;
+  font-size: 12px;
+  cursor: pointer;
+}
+.builder button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.builder .primary {
+  color: white;
+  border-color: #0f3e2e;
+  background: #0f3e2e;
+}
+.workspace {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 28px 32px 64px;
+  gap: 28px;
+}
+.sidebar h2 {
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+.sidebar > p,
+.help {
+  font-size: 11px;
+  color: #7e8b81;
+  line-height: 1.8;
+}
+.sidebar ol {
+  list-style: none;
+  padding: 0;
+  margin: 22px 0 30px;
+  display: grid;
+  gap: 8px;
+}
+.sidebar li button {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  gap: 12px;
+  padding: 14px 12px;
+}
+.sidebar li button[aria-pressed="true"] {
+  border-color: #4b8a60;
+  background: #e4f0e5;
+}
+.sidebar li button > span {
+  color: #8a9b8c;
+  font-size: 10px;
+}
+.sidebar strong {
+  display: block;
+  max-width: 205px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.sidebar small {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+  color: #7e9082;
+}
+.sidebar h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.addTypes {
+  display: grid;
+  gap: 6px;
+}
+.addTypes button {
+  justify-content: flex-start;
+}
+.editor {
+  align-self: start;
+  padding: 28px;
+  border: 1px solid #dce5dc;
+  border-radius: 10px;
+  background: white;
+  min-width: 0;
+}
+.editorHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+.editorHeading p {
+  font-size: 11px;
+  color: #8a998c;
+}
+.editorHeading h2 {
+  font-size: 20px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.orderActions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.orderActions button {
+  padding: 8px;
+}
+.fields {
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 20px;
+  margin: 0;
+  min-width: 0;
+}
+.editor label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: #55715d;
+  min-width: 0;
+}
+.editor :is(input[type="text"], textarea, select) {
+  width: 100%;
+  border: 1px solid #ccdbcd;
+  border-radius: 6px;
+  padding: 11px;
+  font: inherit;
+  background: white;
+  color: #24392a;
+  min-width: 0;
+}
+.editor textarea {
+  resize: vertical;
+  line-height: 1.8;
+}
+.twoFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.imageField {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e1e9e1;
+}
+.imageField p {
+  margin: 0;
+  font-size: 12px;
+}
+.imageActions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.imageActions label {
+  font-size: 11px;
+}
+.imagePreview {
+  max-width: 360px;
+  background: #edf2eb;
+  overflow: hidden;
+  border-radius: 6px;
+}
+.items {
+  display: grid;
+  gap: 20px;
+  margin-top: 28px;
+}
+.items h3 {
+  font-size: 14px;
+}
+.item {
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid #e1e9e1;
+  border-radius: 7px;
+}
+.item > button,
+.items > button {
+  justify-self: start;
+}
+.error,
+.notice {
+  padding: 14px 32px;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.8;
+}
+.error {
+  color: #ab3434;
+  background: #fff4f3;
+}
+.notice {
+  color: #287346;
+  background: #e5f2e6;
+}
+.message {
+  max-width: 850px;
+  padding: 64px 24px;
+  margin: auto;
+}
+.message h1 {
+  font-size: 28px;
+  color: #19412b;
+}
+.message p {
+  line-height: 1.9;
+  color: #708074;
+}
+.message a {
+  margin-left: 16px;
+  color: #2c7846;
+}
+@media (max-width: 767px) {
+  .toolbar {
+    padding: 20px 16px;
+  }
+  .toolbarActions {
+    gap: 6px;
+  }
+  .builder button {
+    font-size: 11px;
+    padding: 9px 10px;
+  }
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 20px 16px 40px;
+    gap: 20px;
+  }
+  .sidebar ol {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 12px;
+    margin-block: 16px;
+  }
+  .sidebar li {
+    min-width: 190px;
+  }
+  .addTypes {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .editor {
+    padding: 20px 16px;
+  }
+  .editorHeading {
+    flex-wrap: wrap;
+  }
+  .twoFields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.themePicker {
+  padding-bottom: 24px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid #d6e0d9;
+}
+.themePicker label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  color: #526b5a;
+  margin-top: 14px;
+}
+.themePicker input[type="color"] {
+  width: 48px;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid #c9d6cd;
+  border-radius: 5px;
+  background: white;
+  cursor: pointer;
+}
+.themePresets {
+  display: grid;
+  gap: 6px;
+}
+.themePresets button {
+  justify-content: flex-start;
+}
+.themePresets button[aria-pressed="true"] {
+  border-color: #5484b1;
+  background: #eaf1fa;
+}
+.themePresets span {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+}
+.urlSettings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 14px;
+  padding: 22px;
+  margin: 24px 0;
+  border: 1px solid #dce5ed;
+  background: #fff;
+  border-radius: 12px;
+}
+.urlSettings h2 {
+  width: 100%;
+  margin: 0;
+  font-size: 16px;
+}
+.urlSettings label {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+}
+.urlSettings input {
+  min-width: 220px;
+  padding: 10px;
+  border: 1px solid #c8d5df;
+  border-radius: 6px;
+  color: #17251d;
+}
+.urlSettings button {
+  padding: 10px 16px;
+  border-radius: 6px;
+  background: #0f3e2e;
+  color: white;
+}
+.urlSettings button:disabled {
+  opacity: 0.5;
+}
+.urlSettings a {
+  overflow-wrap: anywhere;
+  padding: 10px 0;
+  color: #005baa;
+  font-size: 13px;
+}
+.urlSettings p {
+  width: 100%;
+  margin: 0;
+  font-size: 12px;
+}

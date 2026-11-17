@@ -1,3 +1,4 @@
+import { protectClubFormMutation } from "./mgl-club-access";
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
 import { Permission } from "@mgl/types";
@@ -101,7 +102,7 @@ router.get("/admin/forms/:id", requireAuth, requirePlatformPermission(Permission
 });
 
 // ── Admin: update form ──
-router.put("/admin/forms/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_FORMS), async (req, res) => {
+router.put("/admin/forms/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_FORMS), protectClubFormMutation, async (req, res) => {
   try {
     const { title, description, fields, isActive } = req.body;
 
@@ -125,7 +126,7 @@ router.put("/admin/forms/:id", requireAuth, requirePlatformPermission(Permission
 });
 
 // ── Admin: delete form ──
-router.delete("/admin/forms/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_FORMS), async (req, res) => {
+router.delete("/admin/forms/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_FORMS), protectClubFormMutation, async (req, res) => {
   try {
     await prisma.form.delete({ where: { id: req.params.id } });
     res.json({ message: "Маягт устгагдлаа" });
@@ -136,7 +137,7 @@ router.delete("/admin/forms/:id", requireAuth, requirePlatformPermission(Permiss
 });
 
 // ── Admin: delete a single response ──
-router.delete("/admin/form-responses/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_FORMS), async (req, res) => {
+router.delete("/admin/form-responses/:id", requireAuth, requirePlatformPermission(Permission.MANAGE_FORMS), protectClubFormMutation, async (req, res) => {
   try {
     await prisma.formResponse.delete({ where: { id: req.params.id } });
     res.json({ message: "Хариулт устгагдлаа" });
@@ -174,6 +175,7 @@ router.get("/forms/:slug", async (req, res) => {
 
 // ── Public: submit response ──
 router.post("/forms/:slug/responses", async (req, res) => {
+  if (["mgl-club", "mgl-club-posts"].includes(String(req.params.slug))) return res.status(403).json({ message: "Байгууллагын мэдээллийг систем админ удирдана." });
   try {
     const form = await prisma.form.findUnique({
       where: { slug: req.params.slug },
