@@ -103,3 +103,18 @@ test("operating years use the start year and handle a newly started business", (
   assert.equal(getMglClubOperatingYears("2027", 2026), null);
   assert.equal(getMglClubOperatingYears("", 2026), null);
 });
+
+test("company logos are optional and only accept safe image locations", () => {
+  const logoUrl =
+    "/api/forms/mgl-club/logos/00000000-0000-4000-8000-000000000000.webp";
+  assert.equal(parseMglClubProfile({ ...valid, logoUrl })?.logoUrl, logoUrl);
+  assert.equal(parseMglClubProfile(valid)?.logoUrl, undefined);
+  for (const value of [
+    123,
+    "javascript:alert(1)",
+    "data:image/svg+xml,test",
+    "/other/path",
+    "https://user:pass@example.com/image.png",
+  ])
+    assert.equal(parseMglClubProfile({ ...valid, logoUrl: value }), null);
+});

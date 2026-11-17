@@ -53,7 +53,11 @@ export function useClubDirectory(
       } catch (cause) {
         if (!request.signal.aborted)
           setError(
-            cause instanceof Error ? cause.message : "Холболтын алдаа гарлаа.",
+            cause instanceof TypeError
+              ? "Мэдээлэлтэй холбогдож чадсангүй. Дахин оролдоно уу."
+              : cause instanceof Error
+                ? cause.message
+                : "Холболтын алдаа гарлаа.",
           );
       } finally {
         if (!request.signal.aborted) setLoading(false);

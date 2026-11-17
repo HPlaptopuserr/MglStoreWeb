@@ -33,17 +33,22 @@ export const registrationSteps = [
     fields: [],
   },
 ] as const satisfies readonly RegistrationStep[];
-export type RegistrationValues = Record<MglClubField, string>;
+export type RegistrationValues = Record<MglClubField, string> & {
+  logoUrl?: string;
+};
 export function readRegistrationValues(
   form: HTMLFormElement,
 ): RegistrationValues {
   const data = new FormData(form);
-  return Object.fromEntries(
-    mglClubFields.map((field) => [
-      field.id,
-      String(data.get(field.id) ?? "").trim(),
-    ]),
-  ) as RegistrationValues;
+  return {
+    logoUrl: String(data.get("logoUrl") ?? ""),
+    ...Object.fromEntries(
+      mglClubFields.map((field) => [
+        field.id,
+        String(data.get(field.id) ?? "").trim(),
+      ]),
+    ),
+  } as RegistrationValues;
 }
 export type RegistrationControl =
   | HTMLInputElement

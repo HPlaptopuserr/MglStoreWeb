@@ -1,4 +1,6 @@
 "use client";
+import { ClubAdminContent } from "./ClubAdminAccess";
+
 import { useState } from "react";
 import Link from "next/link";
 import {
@@ -68,11 +70,13 @@ export function ClubNeedsHub() {
               шууд санал болгоорой.
             </p>
           </div>
-          <Link className={styles.register} href="/mgl-club/join">
-            <Plus size={16} />
-            Хэрэгцээгээ бүртгүүлэх
-            <ArrowUpRight size={15} />
-          </Link>
+          <ClubAdminContent>
+            <Link className={styles.register} href="/mgl-club/join">
+              <Plus size={16} />
+              Хэрэгцээгээ бүртгүүлэх
+              <ArrowUpRight size={15} />
+            </Link>
+          </ClubAdminContent>
         </header>
         <div className={styles.guide}>
           <span>
@@ -156,7 +160,9 @@ export function ClubNeedsHub() {
               {query || city || sector ? (
                 <button onClick={reset}>Бүх хэрэгцээг харах</button>
               ) : (
-                <Link href="/mgl-club/join">Хэрэгцээгээ бүртгүүлэх</Link>
+                <ClubAdminContent>
+                  <Link href="/mgl-club/join">Хэрэгцээгээ бүртгүүлэх</Link>
+                </ClubAdminContent>
               )}
             </div>
           )}

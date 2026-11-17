@@ -1,13 +1,12 @@
 "use client";
+import { ClubAdminContent } from "./ClubAdminAccess";
+
 import { ClubDirectoryFilters } from "./ClubDirectoryFilters";
-import { useState } from "react";
 import Link from "next/link";
 import { UsersRound, ArrowDown, Zap, ArrowUpRight } from "lucide-react";
-import { type MglClubMember } from "@mgl/types";
 import { useClubWorkspace } from "./ClubWorkspaceProvider";
 import { ProvinceFilter } from "./ProvinceFilter";
 import { MemberGrid } from "./MemberGrid";
-import { MemberDialog } from "./MemberDialog";
 import { ClubNeedsHub } from "./ClubNeedsHub";
 import type { ClubSummary } from "./club-summary";
 import styles from "./club-design.module.css";
@@ -26,7 +25,6 @@ export function ClubDirectory({ summary }: { summary: ClubSummary }) {
     setVisibleCount,
     directory,
   } = listing;
-  const [selected, setSelected] = useState<MglClubMember | null>(null);
   const availableCount = directory.services.reduce(
     (total, group) =>
       total + (!sector || group.sector === sector ? group.count : 0),
@@ -142,10 +140,7 @@ export function ClubDirectory({ summary }: { summary: ClubSummary }) {
           </div>
         )}
         <div className={styles.members} aria-busy={directory.loading}>
-          <MemberGrid
-            members={directory.members.slice(0, visibleCount)}
-            onOpen={setSelected}
-          />
+          <MemberGrid members={directory.members.slice(0, visibleCount)} />
           {directory.loading && (
             <div className={styles.grid}>
               {[0, 1, 2].map((id) => (
@@ -164,9 +159,11 @@ export function ClubDirectory({ summary }: { summary: ClubSummary }) {
               <button className={styles.secondary} onClick={reset}>
                 Бүх гишүүдийг харах
               </button>
-              <Link className={styles.primary} href="/mgl-club/join">
-                Бизнесээ бүртгүүлэх ↗
-              </Link>
+              <ClubAdminContent>
+                <Link className={styles.primary} href="/mgl-club/join">
+                  Бизнесээ бүртгүүлэх ↗
+                </Link>
+              </ClubAdminContent>
             </div>
           )}
         {(directory.cursor || visibleCount < directory.members.length) && (
@@ -189,9 +186,6 @@ export function ClubDirectory({ summary }: { summary: ClubSummary }) {
         </p>
       </section>
       <ClubNeedsHub />
-      {selected && (
-        <MemberDialog member={selected} onClose={() => setSelected(null)} />
-      )}
     </>
   );
 }

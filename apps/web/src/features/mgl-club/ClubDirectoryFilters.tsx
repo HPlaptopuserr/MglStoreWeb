@@ -31,7 +31,7 @@ export function ClubDirectoryFilters({
           Үйлчилгээ, үйлчилгээ үзүүлэгчийн нэрээр хайх
         </span>
         <input
-          id="club-search"
+          id="club-directory-search"
           type="search"
           maxLength={160}
           value={query}

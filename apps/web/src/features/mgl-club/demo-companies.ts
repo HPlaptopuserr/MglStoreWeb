@@ -1,0 +1,100 @@
+import type { MglClubMember } from "@mgl/types";
+
+const names = [
+  "TAL",
+  "NUTAG",
+  "URGUU",
+  "KHANGAI",
+  "ALTAI",
+  "TENGER",
+  "GOBI",
+  "OYU",
+  "ERDENES",
+  "ULZII",
+  "NARAN",
+  "NOMAD",
+  "TULGA",
+  "TSELMEG",
+  "TSAST",
+  "KHURD",
+  "SOYOMBO",
+  "ORGIL",
+  "UNDRAA",
+  "HUNNU",
+  "DELGEREKH",
+  "ZAM",
+  "BULAG",
+  "ULAAN",
+  "TUGULDUR",
+  "MUNKH",
+  "OYUN",
+  "BAYAN",
+  "SAIN",
+  "ECO",
+  "SHINE",
+  "KHUR",
+  "TUYA",
+  "SULD",
+  "ERCHIM",
+  "GEREG",
+  "TUGS",
+  "UNUR",
+  "DALAI",
+  "KHAS",
+  "MANDAL",
+  "KHISHIG",
+  "TSETSEG",
+  "IDEA",
+  "GROW",
+  "UNITY",
+  "NORTH",
+  "GREEN",
+] as const;
+const services = [
+  {
+    sector: "Худалдаа",
+    offers: "Байгууллагын хангамж, бөөний худалдаа, бараа хүргэлт",
+    needs: "Тээвэр, агуулахын үйлчилгээний хамтрагч",
+  },
+  {
+    sector: "Үйлдвэрлэл",
+    offers: "Захиалгат бүтээгдэхүүн үйлдвэрлэл, сав баглаа боодол",
+    needs: "Түүхий эд болон сав баглаа боодлын нийлүүлэгч",
+  },
+  {
+    sector: "Мэдээллийн технологи",
+    offers: "Вэб сайт, онлайн дэлгүүр, программ хөгжүүлэлт",
+    needs: "Дизайн, контентын хамтын ажиллагаа",
+  },
+  {
+    sector: "Тээвэр, логистик",
+    offers: "Байгууллагын хүргэлт, ачаа тээвэр, түгээлт",
+    needs: "Аймаг, нийслэлийн худалдааны байгууллагуудтай хамтрах",
+  },
+] as const;
+
+/** Fictional profiles for the local logo preview; no paid membership is granted. */
+export const demoCompanies: MglClubMember[] = names.map(
+  (businessName, index) => {
+    const id = String(index + 1).padStart(2, "0");
+    const service = services[index % services.length];
+    return {
+      id: `demo-company-${id}`,
+      businessName,
+      name: `${businessName} · Загвар төлөөлөгч`,
+      logoUrl: `/mgl-club/demo-logos/${id}.svg`,
+      isDemo: true,
+      ...service,
+      city: "Улаанбаатар",
+      description: `${businessName} байгууллагын туршилтын танилцуулга. ${service.offers} чиглэлээр үйл ажиллагаа явуулдаг байгууллагын мэдээлэл хэрхэн харагдахыг үзүүлж байна. Энэ нь бодит байгууллагын мэдээлэл биш.`,
+      foundedYear: "2020",
+      teamSize: String(5 + (index % 12)),
+      role: "Байгууллагын төлөөлөгч",
+      address: "Улаанбаатар · Туршилтын хаяг",
+      workingHours: "Даваа–Баасан 09:00–18:00 (жишээ)",
+      serviceArea: "Улаанбаатар, орон нутаг (жишээ)",
+      phone: "",
+      website: "",
+    };
+  },
+);

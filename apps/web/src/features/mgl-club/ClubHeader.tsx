@@ -1,3 +1,6 @@
+"use client";
+import { isFullAdmin } from "@mgl/types";
+import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { ArrowUpRight, Search, UserRound, PlusCircle } from "lucide-react";
 import { clubRoutes } from "./club-routes";
@@ -10,6 +13,8 @@ export function ClubHeader({
   joining: boolean;
   total?: number | null;
 }) {
+  const { user } = useAuth();
+  const canManage = Boolean(user && isFullAdmin(user.role));
   return (
     <header className={styles.header}>
       <div className={styles.headerInner}>
@@ -30,10 +35,14 @@ export function ClubHeader({
             Миний клуб
           </Link>
           <Link
-            href={joining ? "/mgl-club" : "/mgl-club/join"}
+            href={
+              canManage && !joining
+                ? "/mgl-club/join"
+                : "/mgl-club#club-directory"
+            }
             className={styles.primary}
           >
-            {joining ? "Гишүүдийг харах" : "Клубт нэгдэх"}
+            {canManage && !joining ? "Байгууллага нэмэх" : "Гишүүдийг харах"}
             <ArrowUpRight size={16} />
           </Link>
         </div>
@@ -41,9 +50,11 @@ export function ClubHeader({
           <Link href="/mgl-club#club-search" aria-label="Үйлчилгээ хайх">
             <Search size={21} />
           </Link>
-          <Link href="/mgl-club/join" aria-label="Бизнесээ бүртгүүлэх">
-            <PlusCircle size={21} />
-          </Link>
+          {canManage && (
+            <Link href="/mgl-club/join" aria-label="Байгууллага нэмэх">
+              <PlusCircle size={21} />
+            </Link>
+          )}
           <Link href={clubRoutes.profile} aria-label="Миний клубийн профайл">
             <UserRound size={19} />
           </Link>

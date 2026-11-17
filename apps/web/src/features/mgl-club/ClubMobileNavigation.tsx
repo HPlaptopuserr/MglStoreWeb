@@ -1,4 +1,5 @@
 "use client";
+import { ClubAdminContent } from "./ClubAdminAccess";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -64,13 +65,15 @@ export function ClubMobileNavigation() {
       >
         <Handshake size={22} aria-hidden="true" /> Хэрэгцээ
       </Link>
-      <Link
-        href={clubRoutes.join}
-        prefetch
-        aria-current={pathname === clubRoutes.join ? "page" : undefined}
-      >
-        <PlusCircle size={22} aria-hidden="true" /> Нэгдэх
-      </Link>
+      <ClubAdminContent>
+        <Link
+          href={clubRoutes.join}
+          prefetch
+          aria-current={pathname === clubRoutes.join ? "page" : undefined}
+        >
+          <PlusCircle size={22} aria-hidden="true" /> Нэгдэх
+        </Link>
+      </ClubAdminContent>
       <Link
         href={clubRoutes.profile}
         prefetch

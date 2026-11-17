@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { parseMglClubProfile } from "@mgl/types";
+import type { ClubPaymentCredentials } from "./ClubGoldPayment";
+import { authFetch } from "@/lib/api";
 import { API } from "@/lib/api";
 import { useClubWorkspace } from "./ClubWorkspaceProvider";
 import {
@@ -15,6 +17,8 @@ export function useClubRegistration() {
   const [step, setStep] = useState(0);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [paymentCredentials, setPaymentCredentials] =
+    useState<ClubPaymentCredentials | null>(null);
   const [complete, setComplete] = useState(false);
   const [review, setReview] = useState<RegistrationValues | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -86,7 +90,7 @@ export function useClubRegistration() {
     setPending(true);
     setError("");
     try {
-      const response = await fetch(`${API}/forms/mgl-club/responses`, {
+      const response = await authFetch(`${API}/forms/mgl-club/responses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ data }),
@@ -100,6 +104,13 @@ export function useClubRegistration() {
           /* Keep a readable message for non-JSON server responses. */
         }
         throw new Error(message);
+      }
+      const receipt: ClubPaymentCredentials = await response.json();
+      setPaymentCredentials(receipt);
+      try {
+        sessionStorage.setItem("mgl-club-payment", JSON.stringify(receipt));
+      } catch {
+        /* Registration remains available without browser storage. */
       }
       setComplete(true);
       members.directory.retry();
@@ -132,6 +143,7 @@ export function useClubRegistration() {
     pending,
     error,
     complete,
+    paymentCredentials,
     review,
     formRef,
     headingRef,
