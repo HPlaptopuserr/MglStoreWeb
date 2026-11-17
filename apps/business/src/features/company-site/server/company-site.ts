@@ -27,7 +27,13 @@ export const getCompanySite = cache(
         signal: AbortSignal.timeout(8000),
       },
     );
-    if (response.status === 404) return null;
+    if (response.status === 404) {
+    // The owner-provided Innova presentation is published with this release.
+    // A system-admin-managed record takes precedence once assigned this URL.
+    return slug === "innovallc"
+      ? { member: innovaCompany, website: innovaWebsite, siteSlug: slug }
+      : null;
+  }
     if (!response.ok) throw new Error("Company site unavailable");
     return response.json() as Promise<CompanySite>;
   },
