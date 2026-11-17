@@ -10,6 +10,7 @@ import { useClubWorkspace } from "./ClubWorkspaceProvider";
 import { useState } from "react";
 import Link from "next/link";
 import { useClubDirectory } from "./useClubDirectory";
+import { goldCompanies } from "./gold-companies";
 import { ClubDemoLogos } from "./ClubDemoLogos";
 import { CompanyLogo } from "./CompanyLogo";
 import styles from "./companies.module.css";
@@ -19,11 +20,12 @@ export function ClubCompanies() {
   const { query, setQuery, sector, setSector, city, setCity } = filters;
   const [expanded, setExpanded] = useState(false);
   const directory = useClubDirectory(query, sector, city, "gold");
+  const companies = goldCompanies(directory.members, { query, sector, city });
   const showDemo =
     process.env.NODE_ENV !== "production" &&
     !directory.loading &&
     !directory.error &&
-    !directory.members.length &&
+    !companies.length &&
     !query &&
     !sector &&
     !city;
@@ -136,9 +138,9 @@ export function ClubCompanies() {
           </div>
         </div>
         <div className={styles.grid} aria-busy={directory.loading}>
-          {directory.members.map((member) => (
+          {companies.map(({ member, href }) => (
             <Link
-              href={`/mgl-club/companies/${member.id}`}
+              href={href}
               className={styles.tile}
               title={member.businessName}
               key={member.id}
@@ -166,7 +168,7 @@ export function ClubCompanies() {
         {!showDemo &&
           !directory.loading &&
           !directory.error &&
-          !directory.members.length && (
+          !companies.length && (
             <p className={styles.empty}>
               {query || sector || city
                 ? "Тохирох Алтан гишүүн олдсонгүй. Шүүлтүүрээ өөрчилж үзнэ үү."

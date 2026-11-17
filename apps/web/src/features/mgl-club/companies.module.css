@@ -341,3 +341,38 @@
   height: 100%;
   object-fit: contain;
 }
+
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .tile {
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 8px;
+    aspect-ratio: auto;
+    min-height: 120px;
+  }
+  .tile .logo {
+    width: 64px;
+    height: 64px;
+  }
+  .tile .name {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    clip-path: none;
+    white-space: normal;
+    text-align: center;
+    font-size: 12px;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+}
+@media (max-width: 380px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
