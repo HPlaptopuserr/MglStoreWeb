@@ -1,4 +1,4 @@
-import { Router, type Router as ExpressRouter } from "express";
+import { Router, type Request, type Router as ExpressRouter } from "express";
 import { prisma } from "@mgl/database";
 import { requireAuth, type AuthPayload } from "../../middleware/auth";
 
@@ -246,7 +246,7 @@ router.get("/org/join-request/pending", requireAuth, async (req, res) => {
 // PATCH /org/join-request/:requestId — approve or reject (OWNER/ADMIN)
 // ───────────────────────────────────────────────────────────────────────────
 router.patch("/org/join-request/:requestId", requireAuth, async (req, res) => {
-  const user = (req as any).user as AuthPayload;
+  const user = (req as Request & { user: AuthPayload }).user;
   const { requestId } = req.params;
   const { action, role, rejectedReason } = req.body as {
     action: "approve" | "reject";
@@ -292,7 +292,17 @@ router.patch("/org/join-request/:requestId", requireAuth, async (req, res) => {
       return res.json({ status: "REJECTED" });
     }
 
-    // Approve — check maxMembers
+    const memberKey = {
+      userId: joinRequest.userId,
+      organizationId: joinRequest.organizationId,
+    };
+    const existingMember = await prisma.organizationMember.findUnique({
+      where: { userId_organizationId: memberKey },
+      select: { isActive: true, deletedAt: true },
+    });
+    const alreadyActive = existingMember?.isActive === true && existingMember.deletedAt === null;
+
+    // An existing active member does not consume another membership slot.
     const org = await prisma.organization.findUnique({
       where: { id: joinRequest.organizationId },
       select: { maxMembers: true },
@@ -300,7 +310,7 @@ router.patch("/org/join-request/:requestId", requireAuth, async (req, res) => {
     const currentCount = await prisma.organizationMember.count({
       where: { organizationId: joinRequest.organizationId, isActive: true },
     });
-    if (org && currentCount >= org.maxMembers) {
+    if (!alreadyActive && org && currentCount >= org.maxMembers) {
       return res.status(400).json({
         message: `Гишүүдийн дээд хязгаар (${org.maxMembers}) хүрсэн байна`,
       });
@@ -308,23 +318,31 @@ router.patch("/org/join-request/:requestId", requireAuth, async (req, res) => {
 
     const targetRole = role === "ADMIN" ? "ADMIN" : "STAFF";
 
-    await prisma.$transaction(async (tx) => {
+    const approvedMember = await prisma.$transaction(async (tx) => {
       await tx.orgJoinRequest.update({
         where: { id: requestId },
         data: { status: "APPROVED" },
       });
 
-      await tx.organizationMember.create({
-        data: {
-          userId: joinRequest.userId,
-          organizationId: joinRequest.organizationId,
-          role: targetRole as any,
+      return tx.organizationMember.upsert({
+        where: { userId_organizationId: memberKey },
+        // Preserve active members' existing roles and capabilities. Restore an
+        // inactive membership in place so its ID and related records survive.
+        update: alreadyActive ? {} : {
+          isActive: true,
+          deletedAt: null,
+          role: targetRole,
+        },
+        create: {
+          ...memberKey,
+          role: targetRole,
           isActive: true,
         },
+        select: { role: true },
       });
     });
 
-    return res.json({ status: "APPROVED", role: targetRole });
+    return res.json({ status: "APPROVED", role: approvedMember.role });
   } catch (error) {
     console.error("handle join request error", error);
     return res.status(500).json({ message: "Хүсэлт шийдвэрлэхэд алдаа гарлаа" });
