@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
-import type { MglClubMember } from "@mgl/types";
+import { isFullAdmin, type MglClubMember } from "@mgl/types";
 import { API, authFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { ArrowRight, Globe2 } from "lucide-react";
@@ -30,11 +30,13 @@ const sections: { id: Section; label: string; detail: string }[] = [
 
 export function CompanyAdminManager() {
   const { user } = useAuth();
+  const canManageAll = Boolean(user && isFullAdmin(user.role));
   const [companies, setCompanies] = useState<ManagedCompany[]>([]);
   const [companyId, setCompanyId] = useState("");
   useEffect(() => {
-    if (window.location.hash === "#website") setActive("website");
-  }, []);
+    if (window.location.hash === "#website" && user && isFullAdmin(user.role))
+      setActive("website");
+  }, [user]);
   const [editorEpoch, setEditorEpoch] = useState(0);
   const [active, setActive] = useState<Section>("profile");
   const [dirty, setDirty] = useState(false);
@@ -64,7 +66,7 @@ export function CompanyAdminManager() {
             response.status === 401
               ? "Нэвтрэх хугацаа дууссан байна. Миний клуб хэсгээс дахин нэвтэрнэ үү."
               : response.status === 403
-                ? "Энэ хэсгийг зөвхөн систем админ ашиглана."
+                ? "Энэ байгууллагын мэдээллийг удирдах эрхгүй байна."
                 : "Байгууллагуудыг ачаалж чадсангүй.",
           );
         const result: { companies: ManagedCompany[] } = await response.json();
@@ -126,12 +128,13 @@ export function CompanyAdminManager() {
     if (!mayLeave()) event.preventDefault();
   }
   function changeSection(section: Section) {
+    if (section === "website" && !canManageAll) return;
     if (section === active || !mayLeave()) return;
     setDirty(false);
     setActive(section);
   }
   async function importInnova() {
-    if (!mayLeave()) return;
+    if (!canManageAll || !mayLeave()) return;
     setImporting(true);
     setError("");
     try {
@@ -182,11 +185,14 @@ export function CompanyAdminManager() {
       </Link>
       <div className={styles.titleRow}>
         <div>
-          <span className={styles.eyebrow}>Систем админы хэсэг</span>
+          <span className={styles.eyebrow}>
+            {canManageAll ? "Систем админы хэсэг" : "Миний байгууллагууд"}
+          </span>
           <h1>Байгууллагын удирдлага</h1>
           <p>
-            Байгууллагаа хайж сонгоод бүртгэлийн мэдээллийг засах эсвэл Алтан
-            гишүүний танилцуулгын вэбийг бэлдэнэ.
+            {canManageAll
+              ? "Байгууллагаа хайж сонгоод бүртгэлийн мэдээлэл, нийтлэл, танилцуулгын вэбийг удирдана."
+              : "Өөрийн байгууллагын бүртгэл, мэдээлэл болон нийтлэлээ эндээс удирдана."}
           </p>
         </div>
         <Link
@@ -220,7 +226,7 @@ export function CompanyAdminManager() {
         </div>
       ) : (
         <>
-          {!hasInnova && !error && (
+          {canManageAll && !hasInnova && !error && (
             <div className={styles.importNotice}>
               <div>
                 <strong>Инновагийн танилцуулгыг эндээс засах</strong>
@@ -286,7 +292,7 @@ export function CompanyAdminManager() {
                   </Link>
                 </div>
               )}
-              {selected && active !== "website" && (
+              {canManageAll && selected && active !== "website" && (
                 <button
                   type="button"
                   className={styles.createWebsite}
@@ -311,19 +317,21 @@ export function CompanyAdminManager() {
                 className={styles.tabs}
                 aria-label="Байгууллагын мэдээллийн хэсгүүд"
               >
-                {sections.map((section) => (
-                  <button
-                    type="button"
-                    disabled={locked}
-                    key={section.id}
-                    aria-pressed={active === section.id}
-                    aria-controls={`company-admin-${section.id}`}
-                    onClick={() => changeSection(section.id)}
-                  >
-                    <strong>{section.label}</strong>
-                    <span>{section.detail}</span>
-                  </button>
-                ))}
+                {sections
+                  .filter((section) => section.id !== "website" || canManageAll)
+                  .map((section) => (
+                    <button
+                      type="button"
+                      disabled={locked}
+                      key={section.id}
+                      aria-pressed={active === section.id}
+                      aria-controls={`company-admin-${section.id}`}
+                      onClick={() => changeSection(section.id)}
+                    >
+                      <strong>{section.label}</strong>
+                      <span>{section.detail}</span>
+                    </button>
+                  ))}
               </div>
               {selected && (
                 <section
@@ -341,7 +349,7 @@ export function CompanyAdminManager() {
                       onBusyChange={setBusy}
                     />
                   )}
-                  {active === "website" && (
+                  {canManageAll && active === "website" && (
                     <CompanyWebsiteAccessPanel
                       key={selected.id}
                       company={selected}
@@ -363,8 +371,9 @@ export function CompanyAdminManager() {
               <div className={styles.panel}>
                 <h2>Одоогоор байгууллага бүртгэгдээгүй байна</h2>
                 <p>
-                  Шинэ байгууллага нэмэх эсвэл Инновагийн нийтлэгдсэн
-                  танилцуулгыг удирдлагад нэмээрэй.
+                  {canManageAll
+                    ? "Шинэ байгууллага нэмэх эсвэл Инновагийн нийтлэгдсэн танилцуулгыг удирдлагад нэмээрэй."
+                    : "Байгууллагаа бүртгүүлээд өөрийн пост, мэдээ, нийтлэлээ нэмээрэй."}
                 </p>
                 <Link className={styles.primaryLink} href="/mgl-club/join">
                   Байгууллага нэмэх

@@ -1,5 +1,5 @@
 "use client";
-import { ClubAdminContent } from "./ClubAdminAccess";
+import { ClubSignedInContent } from "./ClubAdminAccess";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -65,7 +65,7 @@ export function ClubMobileNavigation() {
       >
         <Handshake size={22} aria-hidden="true" /> Хэрэгцээ
       </Link>
-      <ClubAdminContent>
+      <ClubSignedInContent>
         <Link
           href={clubRoutes.join}
           prefetch
@@ -73,7 +73,7 @@ export function ClubMobileNavigation() {
         >
           <PlusCircle size={22} aria-hidden="true" /> Нэгдэх
         </Link>
-      </ClubAdminContent>
+      </ClubSignedInContent>
       <Link
         href={clubRoutes.profile}
         prefetch

@@ -58,15 +58,77 @@ const endpoints = [
   ["POST", `/forms/mgl-club/my-companies/${id}/posts`],
   ["PATCH", `/forms/mgl-club/my-companies/${id}/posts/${id}`],
 ];
-test("anonymous users, company owners and sub-admins cannot enter any content management route", async () => {
+test("anonymous users cannot enter any company management route", async () => {
+  for (const [method, path] of endpoints) {
+    const response = await fetch(`${base}${path}`, { method });
+    assert.equal(response.status, 401, `${method} ${path}`);
+  }
+});
+test("company owners and subadmins cannot enter administrator website or billing routes", async () => {
+  const adminEndpoints = endpoints.filter(
+    ([, path]) =>
+      path.includes("/website") ||
+      path.includes("/site-url") ||
+      path.includes("/gold-invoice") ||
+      path.endsWith("/import-innova"),
+  );
   let accessed = false;
-  for (const key of ["findFirst", "findMany", "create", "update", "updateMany"])
-    stub(prisma.formResponse, key, async () => {
-      accessed = true;
-      throw new Error("unexpected storage access");
-    });
+  stub(prisma.formResponse, "findFirst", async () => {
+    accessed = true;
+    throw new Error("unexpected storage access");
+  });
   for (const role of [
-    null,
+    "CUSTOMER",
+    "ORG_ADMIN",
+    "OWNER",
+    "HR_ADMIN",
+    "CONTENT_ADMIN",
+    "PARTNER_ADMIN",
+  ])
+    for (const [method, path] of adminEndpoints) {
+      const response = await fetch(`${base}${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${token(role)}` },
+      });
+      assert.equal(response.status, 403, `${role} ${method} ${path}`);
+    }
+  assert.equal(accessed, false);
+});
+test("selfservice profile and posts requests cannot access another company", async () => {
+  stub(
+    prisma.formResponse,
+    "findFirst",
+    async (args: { where: { data: unknown } }) => {
+      assert.deepEqual(args.where.data, {
+        path: ["ownerUserId"],
+        equals: "company-owner",
+      });
+      return null;
+    },
+  );
+  for (const [method, path] of endpoints.filter(
+    ([, path]) => path.includes("/profile") || path.includes("/posts"),
+  )) {
+    const response = await fetch(`${base}${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token("CUSTOMER")}` },
+    });
+    assert.equal(response.status, 403, `${method} ${path}`);
+  }
+});
+test("each authenticated role lists only its own companies", async () => {
+  stub(
+    prisma.formResponse,
+    "findMany",
+    async (args: { where: { data: unknown } }) => {
+      assert.deepEqual(args.where.data, {
+        path: ["ownerUserId"],
+        equals: "company-owner",
+      });
+      return [];
+    },
+  );
+  for (const role of [
     "CUSTOMER",
     "ORG_ADMIN",
     "OWNER",
@@ -74,19 +136,12 @@ test("anonymous users, company owners and sub-admins cannot enter any content ma
     "CONTENT_ADMIN",
     "PARTNER_ADMIN",
   ]) {
-    for (const [method, path] of endpoints) {
-      const response = await fetch(`${base}${path}`, {
-        method,
-        headers: role ? { Authorization: `Bearer ${token(role)}` } : {},
-      });
-      assert.equal(
-        response.status,
-        role ? 403 : 401,
-        `${role} ${method} ${path}`,
-      );
-    }
+    const response = await fetch(`${base}/forms/mgl-club/my-companies`, {
+      headers: { Authorization: `Bearer ${token(role)}` },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { companies: [] });
   }
-  assert.equal(accessed, false);
 });
 test("both full administrator roles can list all companies independently of owner", async () => {
   stub(
@@ -94,7 +149,11 @@ test("both full administrator roles can list all companies independently of owne
     "findMany",
     async (args: { where: Record<string, unknown>; take?: number }) => {
       assert.equal(args.where.data, undefined);
-      assert.equal(args.take, undefined, "The admin selector must include companies beyond the most recent 100");
+      assert.equal(
+        args.take,
+        undefined,
+        "The admin selector must include companies beyond the most recent 100",
+      );
       return [];
     },
   );

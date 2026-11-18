@@ -1,5 +1,4 @@
 import { requireAuth } from "../../middleware/auth";
-import { requireClubAdmin } from "./mgl-club-access";
 import { Router, type Router as ExpressRouter } from "express";
 import { rateLimit } from "express-rate-limit";
 import multer from "multer";
@@ -39,7 +38,6 @@ export function createClubLogoRouter(
   router.post(
     "/forms/mgl-club/logos",
     requireAuth,
-    requireClubAdmin,
     rateLimit({
       windowMs: 60_000,
       limit: 10,

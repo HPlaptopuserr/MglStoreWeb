@@ -1,4 +1,7 @@
-import { requireClubAdmin } from "./mgl-club-access";
+import {
+  clubCompanyOwnershipWhere,
+  requireClubCompanyAccess,
+} from "./mgl-club-access";
 import { Router, type Request, type Router as ExpressRouter } from "express";
 import { rateLimit } from "express-rate-limit";
 import { prisma, type Prisma } from "@mgl/database";
@@ -74,19 +77,14 @@ async function posts(companyId: string, cursor: string, drafts: boolean) {
 }
 export function createClubPostsRouter(): ExpressRouter {
   const router = Router();
-  router.use(
-    `${base}/my-companies`,
-    requireAuth,
-    requireClubAdmin,
-    (_req, res, next) => {
-      res.setHeader("Cache-Control", "private, no-store");
-      next();
-    },
-  );
-  // Blog entries must pass administrator checks instead of the generic form endpoint.
+  router.use(`${base}/my-companies`, requireAuth, (_req, res, next) => {
+    res.setHeader("Cache-Control", "private, no-store");
+    next();
+  });
+  // Blog entries must pass company ownership checks instead of the generic form endpoint.
   router.post("/forms/mgl-club-posts/responses", (_req, res) =>
     res.status(403).json({
-      message: "Нийтлэлийг систем админы хэсгээс оруулна уу.",
+      message: "Нийтлэлийг өөрийн байгууллагын удирдлагын хэсгээс оруулна уу.",
     }),
   );
   const limit = rateLimit({
@@ -100,6 +98,7 @@ export function createClubPostsRouter(): ExpressRouter {
       const rows = await prisma.formResponse.findMany({
         where: {
           form: { slug: "mgl-club", isActive: true },
+          ...clubCompanyOwnershipWhere(req),
         },
         orderBy: { submittedAt: "desc" },
       });
@@ -128,7 +127,6 @@ export function createClubPostsRouter(): ExpressRouter {
   router.post(
     `${base}/members/:id/claim`,
     requireAuth,
-    requireClubAdmin,
     limit,
     async (req, res) => {
       const id = String(req.params.id),
@@ -192,6 +190,7 @@ export function createClubPostsRouter(): ExpressRouter {
   router.get(
     `${base}/my-companies/:id/posts`,
     requireAuth,
+    requireClubCompanyAccess,
     async (req, res) => {
       const id = String(req.params.id),
         cursor = typeof req.query.cursor === "string" ? req.query.cursor : "";
@@ -257,10 +256,17 @@ export function createClubPostsRouter(): ExpressRouter {
         .json({ message: "Нийтлэл хадгалж чадсангүй. Дахин оролдоно уу." });
     }
   }
-  router.post(`${base}/my-companies/:id/posts`, requireAuth, limit, save);
+  router.post(
+    `${base}/my-companies/:id/posts`,
+    requireAuth,
+    requireClubCompanyAccess,
+    limit,
+    save,
+  );
   router.patch(
     `${base}/my-companies/:id/posts/:postId`,
     requireAuth,
+    requireClubCompanyAccess,
     limit,
     save,
   );

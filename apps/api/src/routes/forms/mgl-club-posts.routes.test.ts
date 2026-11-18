@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { after, afterEach, before, test } from "node:test";
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -92,16 +93,23 @@ const customerToken = jwt.sign(
   { userId: "owner", email: "owner@example.test", role: "CUSTOMER" },
   process.env.JWT_SECRET || "dev-secret-change-me",
 );
-test("anonymous and company owners cannot publish", async () => {
+test("anonymous and unrelated accounts cannot publish", async () => {
   assert.equal(
     (await request(`/my-companies/${companyId}/posts`, input, "POST", false))
       .status,
     401,
   );
-  stub(prisma.formResponse, "findFirst", async () => ({
-    id: companyId,
-    data: { ...profile, ownerUserId: "someone-else" },
-  }));
+  stub(
+    prisma.formResponse,
+    "findFirst",
+    async (args: { where: { data: unknown } }) => {
+      assert.deepEqual(args.where.data, {
+        path: ["ownerUserId"],
+        equals: "owner",
+      });
+      return null;
+    },
+  );
   assert.equal(
     (
       await request(
@@ -224,7 +232,9 @@ test("another account cannot claim an owned company even with a registration tok
           data: {
             ...profile,
             ownerUserId: "another-owner",
-            paymentTokenHash: "0".repeat(64),
+            paymentTokenHash: createHash("sha256")
+              .update("a".repeat(64))
+              .digest("hex"),
           },
         }),
       },
@@ -247,4 +257,105 @@ test("generic public form submission cannot bypass company blog ownership", asyn
     body: JSON.stringify({ data: { ...input, companyId } }),
   });
   assert.equal(response.status, 403);
+});
+
+test("owners create their own posts while spoofed ownership and company fields are ignored", async () => {
+  stub(
+    prisma.formResponse,
+    "findFirst",
+    async (args: { where: { data?: unknown } }) => {
+      if (args.where.data)
+        assert.deepEqual(args.where.data, {
+          path: ["ownerUserId"],
+          equals: "owner",
+        });
+      return { id: companyId, data: profile };
+    },
+  );
+  stub(prisma.form, "upsert", async () => ({
+    id: "blog-form",
+    isActive: true,
+  }));
+  stub(
+    prisma.formResponse,
+    "create",
+    async (args: { data: { data: Record<string, unknown> } }) => {
+      assert.equal(args.data.data.companyId, companyId);
+      assert.equal(args.data.data.ownerUserId, undefined);
+      return { id: postId, submittedAt: new Date(), data: args.data.data };
+    },
+  );
+  const response = await request(
+    `/my-companies/${companyId}/posts`,
+    { ...input, companyId: "other-company", ownerUserId: "another-user" },
+    "POST",
+    customerToken,
+  );
+  assert.equal(response.status, 201);
+});
+test("owner edits cannot update a post belonging to another company", async () => {
+  stub(prisma.formResponse, "findFirst", async () => ({
+    id: companyId,
+    data: profile,
+  }));
+  stub(prisma.form, "upsert", async () => ({
+    id: "blog-form",
+    isActive: true,
+  }));
+  stub(
+    prisma.formResponse,
+    "updateMany",
+    async (args: { where: { data: unknown } }) => {
+      assert.deepEqual(args.where.data, {
+        path: ["companyId"],
+        equals: companyId,
+      });
+      return { count: 0 };
+    },
+  );
+  assert.equal(
+    (
+      await request(
+        `/my-companies/${companyId}/posts/${postId}`,
+        input,
+        "PATCH",
+        customerToken,
+      )
+    ).status,
+    404,
+  );
+});
+test("legacy claim assigns only the authenticated user and preserves stored company metadata", async () => {
+  const paymentToken = "a".repeat(64);
+  let updated = false;
+  stub(prisma, "$transaction", async (run: (tx: object) => Promise<unknown>) =>
+    run({
+      $queryRaw: async () => [],
+      formResponse: {
+        findFirst: async () => ({
+          data: {
+            ...profile,
+            paymentTokenHash: createHash("sha256")
+              .update(paymentToken)
+              .digest("hex"),
+            clubSiteSlug: "existing-company",
+          },
+        }),
+        update: async (args: { data: { data: Record<string, unknown> } }) => {
+          updated = true;
+          assert.equal(args.data.data.ownerUserId, "owner");
+          assert.equal(args.data.data.clubSiteSlug, "existing-company");
+          return {};
+        },
+      },
+    }),
+  );
+  const response = await request(
+    `/members/${companyId}/claim`,
+    { paymentToken, ownerUserId: "spoofed" },
+    "POST",
+    customerToken,
+  );
+  assert.equal(response.status, 200);
+  assert.equal(updated, true);
 });

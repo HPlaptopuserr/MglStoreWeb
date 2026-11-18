@@ -1,4 +1,4 @@
-import { ClubAdminContent } from "../ClubAdminAccess";
+import { ClubSignedInContent, ClubAdminContent } from "../ClubAdminAccess";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -67,26 +67,26 @@ export function ClubProfileActions() {
             гишүүдийн жагсаалтад пост болгон нэмнэ.
           </p>
         </div>
-        <ClubAdminContent>
+        <ClubSignedInContent>
           <Link className={styles.businessLink} href={clubRoutes.join}>
             Байгууллагын пост нэмэх{" "}
             <ArrowUpRight size={17} aria-hidden="true" />
           </Link>
-        </ClubAdminContent>
+        </ClubSignedInContent>
       </section>
       <section className={styles.business}>
         <div>
           <h2>Байгууллагын мэдээлэл</h2>
           <p>
-            Систем админ байгууллагын нэр, лого, холбоо барих мэдээлэл, вэб
-            танилцуулга, мэдээг эндээс удирдана.
+            Өөрийн байгууллагын нэр, лого, холбоо барих мэдээлэл болон мэдээ,
+            нийтлэлээ эндээс удирдана.
           </p>
         </div>
-        <ClubAdminContent>
+        <ClubSignedInContent>
           <Link className={styles.businessLink} href="/mgl-club/manage">
             Байгууллага удирдах <ArrowUpRight size={17} />
           </Link>
-        </ClubAdminContent>
+        </ClubSignedInContent>
       </section>
       <ClubAdminContent>
         <section className={styles.business}>
@@ -99,7 +99,7 @@ export function ClubProfileActions() {
             </p>
           </div>
           <Link className={styles.businessLink} href="/mgl-club/manage#website">
-            Байгууллага сонгож вэб үүсгэх <ArrowUpRight size={17} />
+            Байгууллагын вэб бэлдэх <ArrowUpRight size={17} />
           </Link>
         </section>
       </ClubAdminContent>

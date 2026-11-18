@@ -135,39 +135,33 @@ function database(data: Prisma.JsonObject, missing = false): DatabaseState {
   return state;
 }
 
-test("profile and Innova import management reject anonymous users, owners and sub-admins before storage", async () => {
+test("anonymous profile requests and nonadmin Innova imports stop before storage", async () => {
   let accessed = false;
-  for (const target of [prisma, prisma.formResponse, prisma.form]) {
+  for (const target of [prisma, prisma.formResponse, prisma.form])
     for (const key of target === prisma
       ? ["$transaction"]
-      : ["findFirst", "findMany", "findUnique", "create", "update", "upsert"]) {
+      : ["findFirst", "findMany", "findUnique", "create", "update", "upsert"])
       stub(target, key, async () => {
         accessed = true;
-        throw new Error("storage must not be accessed");
+        throw new Error("unexpected storage access");
       });
-    }
-  }
+  for (const [method, path, body] of [
+    ["GET", `/${id}/profile`, undefined],
+    ["PATCH", `/${id}/profile`, { data: profile, version: 0 }],
+    ["POST", "/import-innova", undefined],
+  ] as const)
+    assert.equal((await request(path, method, body, null)).status, 401);
   for (const role of [
-    null,
     "CUSTOMER",
     "OWNER",
     "CONTENT_ADMIN",
     "ORG_ADMIN",
     "HR_ADMIN",
-  ]) {
-    const auth = role ? token(role) : null;
-    for (const [method, path, body] of [
-      ["GET", `/${id}/profile`, undefined],
-      ["PATCH", `/${id}/profile`, { data: profile, version: 0 }],
-      ["POST", "/import-innova", undefined],
-    ] as const) {
-      assert.equal(
-        (await request(path, method, body, auth)).status,
-        role ? 403 : 401,
-        `${role}: ${method} ${path}`,
-      );
-    }
-  }
+  ])
+    assert.equal(
+      (await request("/import-innova", "POST", undefined, token(role))).status,
+      403,
+    );
   assert.equal(accessed, false);
 });
 

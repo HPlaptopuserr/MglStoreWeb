@@ -1,5 +1,4 @@
 "use client";
-import { isFullAdmin } from "@mgl/types";
 import { useAuth } from "@/lib/auth-context";
 import Link from "next/link";
 import { ArrowUpRight, Search, UserRound, PlusCircle } from "lucide-react";
@@ -14,7 +13,7 @@ export function ClubHeader({
   total?: number | null;
 }) {
   const { user } = useAuth();
-  const canManage = Boolean(user && isFullAdmin(user.role));
+  const canManage = Boolean(user);
   return (
     <header className={styles.header}>
       <div className={styles.headerInner}>

@@ -41,7 +41,11 @@ async function image() {
     .png()
     .toBuffer();
 }
-function upload(content: Buffer, mime = "image/png") {
+function upload(
+  content: Buffer,
+  mime = "image/png",
+  role: string | null = "ADMIN",
+) {
   const body = new FormData();
   body.append(
     "logo",
@@ -51,9 +55,11 @@ function upload(content: Buffer, mime = "image/png") {
   return fetch(base, {
     method: "POST",
     body,
-    headers: {
-      Authorization: `Bearer ${jwt.sign({ userId: "system-admin", role: "ADMIN", email: "admin@example.test" }, process.env.JWT_SECRET || "dev-secret-change-me")}`,
-    },
+    headers: role
+      ? {
+          Authorization: `Bearer ${jwt.sign({ userId: "test-user", role, email: "test@example.test" }, process.env.JWT_SECRET || "dev-secret-change-me")}`,
+        }
+      : {},
   });
 }
 
@@ -76,4 +82,21 @@ test("rejects invalid and oversized content before storage", async () => {
 test("returns a retryable storage failure", async () => {
   failStorage = true;
   assert.equal((await upload(await image())).status, 503);
+});
+
+test("logo upload requires authentication and accepts each signed-in role", async () => {
+  const content = await image();
+  assert.equal((await upload(content, "image/png", null)).status, 401);
+  assert.equal(stored, null);
+  for (const role of [
+    "CUSTOMER",
+    "OWNER",
+    "ORG_ADMIN",
+    "HR_ADMIN",
+    "CONTENT_ADMIN",
+    "PARTNER_ADMIN",
+    "ADMIN",
+    "SUPER_ADMIN",
+  ])
+    assert.equal((await upload(content, "image/png", role)).status, 201, role);
 });

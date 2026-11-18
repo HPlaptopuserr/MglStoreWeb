@@ -1,6 +1,5 @@
 import { createClubProfileRouter } from "./mgl-club-profile.routes";
 import { createClubSiteUrlRouter } from "./mgl-club-site-url.routes";
-import { requireClubAdmin } from "./mgl-club-access";
 import { randomBytes, createHash } from "node:crypto";
 import { createClubWebsiteRouter } from "./mgl-club-website.routes";
 import { createClubPostsRouter } from "./mgl-club-posts.routes";
@@ -33,7 +32,6 @@ const slug = "mgl-club";
 router.post(
   "/forms/mgl-club/responses",
   requireAuth,
-  requireClubAdmin,
   rateLimit({
     windowMs: 60_000,
     limit: 10,

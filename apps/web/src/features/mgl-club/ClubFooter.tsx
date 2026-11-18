@@ -1,4 +1,4 @@
-import { ClubAdminContent } from "./ClubAdminAccess";
+import { ClubSignedInContent } from "./ClubAdminAccess";
 import Link from "next/link";
 import { ClubBrand } from "./ClubBrand";
 import styles from "./club-design.module.css";
@@ -23,9 +23,9 @@ export function ClubFooter() {
           <h3>Клуб & Дүрэм</h3>
           <Link href="/mgl-club#about">Гишүүнчлэлийн зарчим</Link>
           <Link href="/mgl-club#benefits">Клубийн давуу тал</Link>
-          <ClubAdminContent>
+          <ClubSignedInContent>
             <Link href="/mgl-club/join">Бизнесээ бүртгүүлэх</Link>
-          </ClubAdminContent>
+          </ClubSignedInContent>
         </div>
         <div>
           <h3>Хамтдаа өсөцгөөе</h3>

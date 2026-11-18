@@ -10,7 +10,7 @@ import {
   type MglClubProfile,
 } from "@mgl/types";
 import { requireAuth } from "../../middleware/auth";
-import { requireClubAdmin } from "./mgl-club-access";
+import { requireClubAdmin, requireClubCompanyAccess } from "./mgl-club-access";
 
 const base = "/forms/mgl-club/my-companies";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -40,7 +40,7 @@ class ProfileError extends Error {
 
 export function createClubProfileRouter(): ExpressRouter {
   const router = Router();
-  router.use(base, requireAuth, requireClubAdmin, (_req, res, next) => {
+  router.use(base, requireAuth, (_req, res, next) => {
     res.setHeader("Cache-Control", "private, no-store");
     next();
   });
@@ -51,7 +51,7 @@ export function createClubProfileRouter(): ExpressRouter {
     legacyHeaders: false,
   });
 
-  router.get(`${base}/:id/profile`, async (req, res) => {
+  router.get(`${base}/:id/profile`, requireClubCompanyAccess, async (req, res) => {
     const id = String(req.params.id);
     if (!uuid.test(id))
       return res
@@ -75,7 +75,7 @@ export function createClubProfileRouter(): ExpressRouter {
     }
   });
 
-  router.patch(`${base}/:id/profile`, limit, async (req, res) => {
+  router.patch(`${base}/:id/profile`, requireClubCompanyAccess, limit, async (req, res) => {
     const id = String(req.params.id);
     const profile = parseMglClubProfile(req.body?.data);
     const revision: unknown = req.body?.version;
@@ -130,7 +130,7 @@ export function createClubProfileRouter(): ExpressRouter {
     }
   });
 
-  router.post(`${base}/import-innova`, limit, async (_req, res) => {
+  router.post(`${base}/import-innova`, requireClubAdmin, limit, async (_req, res) => {
     try {
       const result = await prisma.$transaction(async (tx) => {
         await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${"mgl-club-site:innovallc"}))`;

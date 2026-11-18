@@ -84,7 +84,7 @@ export function CompanySiteBuilder({ companyId }: { companyId: string }) {
         ]);
         if (siteResponse.status === 403)
           throw new Error(
-            "Байгууллагын мэдээллийг зөвхөн систем админ засах эрхтэй.",
+            "Байгууллагын танилцуулгын вэбийг зөвхөн систем админ засах эрхтэй.",
           );
         if (!profileResponse.ok || !siteResponse.ok)
           throw new Error("Байгууллагын танилцуулга ачаалж чадсангүй.");
@@ -109,7 +109,7 @@ export function CompanySiteBuilder({ companyId }: { companyId: string }) {
         <p>
           {authLoading
             ? "Бүртгэлийг ачаалж байна…"
-            : "Байгууллагын танилцуулгыг засахын тулд систем админаар нэвтэрнэ үү."}
+            : "Байгууллагын танилцуулгын вэбийг засахын тулд систем админаар нэвтэрнэ үү."}
         </p>
         {!authLoading && (
           <Link href="/mgl-club/profile">Миний клуб рүү нэвтрэх ↗</Link>

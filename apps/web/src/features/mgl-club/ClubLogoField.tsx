@@ -55,7 +55,9 @@ export function ClubLogoField({
       if (response.status === 401)
         throw new Error("Нэвтрэх хугацаа дууссан байна. Дахин нэвтэрнэ үү.");
       if (response.status === 403)
-        throw new Error("Лого оруулах эрх зөвхөн систем админд нээлттэй.");
+        throw new Error(
+          "Лого оруулахын тулд нэвтэрч, байгууллагынхаа эрхийг шалгана уу.",
+        );
       if (
         !response.ok ||
         !data ||

@@ -23,12 +23,41 @@ export function ClubAdminOnly({ children }: { children: ReactNode }) {
       <section className={styles.message}>
         <h1>Байгууллагын мэдээллийн удирдлага</h1>
         <p>
-          Мэдээлэл нэмэх, засах, зураг оруулах болон нийтлэх эрх зөвхөн систем
-          админд нээлттэй.
+          Байгууллагын танилцуулгын вэб бэлдэх, зураг оруулах болон нийтлэх эрх
+          зөвхөн систем админд нээлттэй.
         </p>
         {!user && (
           <Link href="/mgl-club/profile">Систем админаар нэвтрэх ↗</Link>
         )}
+        <Link href="/mgl-club">Байгууллагуудыг үзэх ↗</Link>
+      </section>
+    );
+  return children;
+}
+
+export function ClubSignedInContent({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  return !loading && user ? children : null;
+}
+
+export function ClubSignedInOnly({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading)
+    return (
+      <p role="status" className={styles.message}>
+        Бүртгэлийг шалгаж байна…
+      </p>
+    );
+  if (!user)
+    return (
+      <section className={styles.message}>
+        <h1>Байгууллагаа клубт таниулаарай</h1>
+        <p>
+          Нэвтэрч өөрийн байгууллагын пост, мэдээлэл болон нийтлэлээ нэмэх,
+          засах боломжтой. Төлбөр нь баталгаажсан Алтан гишүүний танилцуулгын
+          вэбийг систем админ бэлдэж нийтэлнэ.
+        </p>
+        <Link href="/mgl-club/profile">Нэвтрэх / бүртгүүлэх ↗</Link>
         <Link href="/mgl-club">Байгууллагуудыг үзэх ↗</Link>
       </section>
     );

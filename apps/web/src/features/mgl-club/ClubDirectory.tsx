@@ -1,5 +1,5 @@
 "use client";
-import { ClubAdminContent } from "./ClubAdminAccess";
+import { ClubSignedInContent } from "./ClubAdminAccess";
 
 import { ClubDirectoryFilters } from "./ClubDirectoryFilters";
 import Link from "next/link";
@@ -159,11 +159,11 @@ export function ClubDirectory({ summary }: { summary: ClubSummary }) {
               <button className={styles.secondary} onClick={reset}>
                 Бүх гишүүдийг харах
               </button>
-              <ClubAdminContent>
+              <ClubSignedInContent>
                 <Link className={styles.primary} href="/mgl-club/join">
                   Бизнесээ бүртгүүлэх ↗
                 </Link>
-              </ClubAdminContent>
+              </ClubSignedInContent>
             </div>
           )}
         {(directory.cursor || visibleCount < directory.members.length) && (
