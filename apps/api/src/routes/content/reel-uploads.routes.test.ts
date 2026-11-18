@@ -207,6 +207,20 @@ test("authenticated upload scopes private parts to their owner and queues only c
       ).status,
       202,
     );
+    const previous = current as ReelUploadSession | null;
+    assert.ok(previous);
+    current = { ...previous, status: "FAILED", attempts: 3 };
+    // Existing apps understand 410 at session creation and renew their retained mapping.
+    assert.equal(
+      (
+        await fetch(`${base}/reel-uploads`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(input),
+        })
+      ).status,
+      410,
+    );
   } finally {
     await discardParts(authorId, id, 2);
     await new Promise<void>((resolve, reject) =>

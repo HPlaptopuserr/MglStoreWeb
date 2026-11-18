@@ -127,9 +127,22 @@ export async function startReelUpload(authorId: string, input: NewReelUpload) {
             409,
           );
         }
+        // The old worker's exhausted FAILED session can safely restart: the route
+        // reconciles an already committed Reel before reaching this transaction.
+        if (existing.status === "FAILED" && existing.attempts >= 3) {
+          throw new ReelUploadError(
+            "Өмнөх боловсруулалт дууссангүй. Илгээлтийг шинээр эхлүүлнэ үү.",
+            410,
+          );
+        }
         if (
           existing.status !== "SUCCEEDED" &&
-          existing.expiresAt.getTime() <= Date.now()
+          existing.expiresAt.getTime() <= Date.now() &&
+          !(
+            existing.status === "PROCESSING" &&
+            existing.leaseUntil &&
+            existing.leaseUntil.getTime() > Date.now()
+          )
         ) {
           throw new ReelUploadError(
             "Илгээх хугацаа дууссан. Дахин видео сонгоно уу.",
@@ -178,6 +191,14 @@ export async function uploadStatus(session: UploadSession) {
     receivedParts: received,
     expiresAt: session.expiresAt.toISOString(),
     message: session.errorMessage,
+    expired:
+      session.status !== "SUCCEEDED" &&
+      session.expiresAt.getTime() <= Date.now() &&
+      !(
+        session.status === "PROCESSING" &&
+        session.leaseUntil &&
+        session.leaseUntil.getTime() > Date.now()
+      ),
     reelId: session.status === "SUCCEEDED" ? session.id : null,
   };
 }

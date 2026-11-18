@@ -160,17 +160,36 @@ test("portrait 4K 10-bit HEVC from a MOV is published as full-length 1080p H264"
   }
 });
 
-
 test("fractional durations over thirty seconds use a valid integer encoder timeout", async () => {
   assert.ok(ffmpegPath);
-  const folder = await fs.mkdtemp(path.join(os.tmpdir(), "mgl-fractional-video-"));
+  const folder = await fs.mkdtemp(
+    path.join(os.tmpdir(), "mgl-fractional-video-"),
+  );
   try {
     const source = path.join(folder, "fractional.mov");
-    await execute(ffmpegPath, [
-      "-nostdin", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-      "-i", "color=size=16x16:rate=30", "-t", "91.833333",
-      "-c:v", "libx264", "-threads", "1", "-movie_timescale", "30000", source,
-    ], { timeout: 30000 });
+    await execute(
+      ffmpegPath,
+      [
+        "-nostdin",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-f",
+        "lavfi",
+        "-i",
+        "color=size=16x16:rate=30",
+        "-t",
+        "91.833333",
+        "-c:v",
+        "libx264",
+        "-threads",
+        "1",
+        "-movie_timescale",
+        "30000",
+        source,
+      ],
+      { timeout: 30000 },
+    );
     const probe = await probeVideo(source);
     assert.ok(probe.duration > 30);
     assert.equal(Number.isInteger(probe.duration * 20 * 1000), false);

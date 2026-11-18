@@ -14,6 +14,7 @@ import { resolvePermissionsForOrg } from "../permission.service";
 import { assembleParts, discardParts } from "./staging";
 import { transcodeReel } from "./transcode";
 import { ReelUploadError } from "./policy";
+import { describeReelUploadFailure, type ReelUploadStage } from "./failure";
 
 const leaseMs = 15 * 60 * 1000;
 async function processUpload(session: ReelUploadSession, leaseToken: string) {
@@ -34,6 +35,7 @@ async function processUpload(session: ReelUploadSession, leaseToken: string) {
   }, 30000);
   heartbeat.unref();
   let stored: StoredReelVideo | undefined;
+  let stage: ReelUploadStage = "permissions";
   try {
     // Recheck author and organization permissions after a queued upload waits.
     const author = await prisma.user.findFirst({
@@ -58,6 +60,7 @@ async function processUpload(session: ReelUploadSession, leaseToken: string) {
     if (!existing) {
       const input = path.join(directory, "source");
       const output = path.join(directory, "video.mp4");
+      stage = "assembly";
       await assembleParts(
         session.authorId,
         session.id,
@@ -67,12 +70,14 @@ async function processUpload(session: ReelUploadSession, leaseToken: string) {
       );
       if ((await fs.stat(input)).size !== session.sizeBytes)
         throw new ReelUploadError("Видео хэсгүүд дутуу байна.");
+      stage = "transcode";
       const media = await transcodeReel(input, output, abort.signal);
       const stillOwned = await prisma.reelUploadSession.count({
         where: { id: session.id, leaseToken, status: "PROCESSING" },
       });
       if (!stillOwned || abort.signal.aborted)
         throw new Error("Upload lease lost");
+      stage = "storage";
       stored = await storeReelVideo({
         filePath: output,
         signal: abort.signal,
@@ -82,6 +87,7 @@ async function processUpload(session: ReelUploadSession, leaseToken: string) {
         organizationId: session.organizationId ?? undefined,
         private: session.visibility === "PRIVATE",
       });
+      stage = "commit";
       await createReel({
         id: session.id,
         authorId: session.authorId,
@@ -117,7 +123,16 @@ async function processUpload(session: ReelUploadSession, leaseToken: string) {
     await discardParts(session.authorId, session.id, session.partCount).catch(
       () => {},
     );
-  } catch (error) {
+  } catch (error: unknown) {
+    const failure = describeReelUploadFailure(error, stage);
+    console.error("[reel-upload] processing failed", {
+      uploadId: session.id,
+      stage,
+      attempt: session.attempts + 1,
+      errorName: failure.name,
+      code: failure.code,
+      retryable: failure.retryable,
+    });
     // Never remove a media object after an uncertain DB commit.
     const committed = await prisma.reel
       .findUnique({
@@ -139,12 +154,13 @@ async function processUpload(session: ReelUploadSession, leaseToken: string) {
       await prisma.reelUploadSession.updateMany({
         where: { id: session.id, leaseToken },
         data: {
-          status: "FAILED",
+          status:
+            failure.retryable && session.attempts + 1 < 3 ? "QUEUED" : "FAILED",
           leaseUntil: null,
           errorMessage:
-            error instanceof ReelUploadError
-              ? error.message
-              : "Видео боловсруулж чадсангүй. Дахин оролдоно уу.",
+            failure.retryable && session.attempts + 1 >= 3
+              ? "Видео боловсруулах үйлчилгээ түр боломжгүй байна. Дахин оролдоно уу."
+              : failure.message,
         },
       });
     }
