@@ -384,3 +384,93 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Keep mobile search and quick filters within one compact horizontal row. */
+@media (max-width: 767px) {
+  .section {
+    padding: 20px 16px 28px;
+  }
+  .searchArea {
+    margin-bottom: 22px;
+  }
+  .searchRow {
+    flex-direction: row;
+    gap: 8px;
+    align-items: stretch;
+  }
+  .companySearch {
+    padding: 0 10px;
+    gap: 7px;
+    border-radius: 10px;
+  }
+  .companySearch input {
+    height: 48px;
+    font-size: 16px;
+  }
+  .companySearch > svg {
+    width: 18px;
+    flex-shrink: 0;
+  }
+  .filterButton {
+    flex: 0 0 48px;
+    width: 48px;
+    min-height: 48px;
+    padding: 0;
+    border-radius: 10px;
+  }
+  .filterButton > span {
+    display: none;
+  }
+  .shortcuts {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 7px;
+    margin-top: 12px;
+    padding: 0 0 5px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+  .shortcuts button {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 8px 11px;
+    gap: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    box-shadow: none;
+    border: 1px solid #e6ede8;
+  }
+  .shortcuts button svg {
+    width: 15px;
+  }
+  .heading {
+    margin-bottom: 16px;
+  }
+  .heading h1 {
+    font-size: 19px;
+  }
+  .grid {
+    gap: 12px 8px;
+  }
+  .tile {
+    gap: 6px;
+    min-height: 110px;
+    padding: 8px 4px;
+  }
+  .filterPanel:not([hidden]) {
+    margin-top: 10px;
+    padding: 12px;
+    gap: 10px;
+  }
+  .filterPanel label {
+    min-width: 0;
+    flex-basis: 100%;
+    font-size: 12px;
+    gap: 5px;
+  }
+  .filterPanel :is(select, button) {
+    min-height: 44px;
+    font-size: 16px;
+  }
+}

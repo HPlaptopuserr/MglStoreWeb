@@ -1696,3 +1696,88 @@
   padding-bottom: 0;
   background: #fff;
 }
+
+.directoryFilterSummary {
+  display: none;
+}
+.directoryControls {
+  display: contents;
+}
+@media (max-width: 767px) {
+  .directoryFilterSummary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #dce7df;
+    border-radius: 10px;
+    color: #315e44;
+    background: #f5f9f6;
+    font-size: 13px;
+  }
+  .directoryControls {
+    display: none;
+  }
+  .filters[data-expanded="true"] .directoryControls {
+    display: grid;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .directoryControls .filterToggle {
+    display: none;
+  }
+  .directoryControls .search {
+    padding-right: 14px;
+  }
+  .directoryControls .search input {
+    height: 46px;
+  }
+  .filters[data-expanded="true"] .directoryControls .filterOptions {
+    margin-top: 0;
+  }
+  .bottomNav {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  }
+  .bottomNav a {
+    min-height: 44px;
+    gap: 3px;
+    font-size: 10px;
+    border-radius: 9px;
+  }
+}
+
+@media (max-width: 767px) {
+  .mobileMetrics {
+    display: block;
+    margin-bottom: 10px;
+  }
+  .mobileMetrics > div {
+    display: none;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: none;
+    text-align: left;
+  }
+  .mobileMetrics > div:first-child {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .mobileMetrics strong {
+    display: inline;
+    font-size: 12px;
+  }
+  .mobileMetrics span {
+    display: inline;
+    margin: 0;
+    font-size: 11px;
+    color: #708276;
+  }
+}

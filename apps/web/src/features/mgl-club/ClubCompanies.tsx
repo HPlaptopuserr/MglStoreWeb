@@ -65,7 +65,20 @@ export function ClubCompanies() {
       aria-labelledby="club-companies-title"
     >
       <div className={styles.section}>
-        <div className={styles.searchArea}>
+        <div
+          className={styles.searchArea}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && expanded) {
+              event.preventDefault();
+              setExpanded(false);
+              event.currentTarget
+                .querySelector<HTMLButtonElement>(
+                  'button[aria-controls="gold-company-filters"]',
+                )
+                ?.focus();
+            }
+          }}
+        >
           <div className={styles.searchRow}>
             <label className={styles.companySearch}>
               <span className={styles.name}>Байгууллага, үйлчилгээ хайх</span>
@@ -75,18 +88,20 @@ export function ClubCompanies() {
                 maxLength={160}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Та ямар байгууллага, үйлчилгээ хайж байна вэ?"
+                placeholder="Байгууллага, үйлчилгээ…"
               />
               <Search size={22} aria-hidden="true" />
             </label>
             <button
               type="button"
               className={styles.filterButton}
+              aria-label="Дэлгэрэнгүй шүүлтүүр"
               aria-expanded={expanded}
               aria-controls="gold-company-filters"
               onClick={() => setExpanded((value) => !value)}
             >
-              <SlidersHorizontal size={22} /> Дэлгэрэнгүй шүүлт
+              <SlidersHorizontal size={21} aria-hidden="true" />{" "}
+              <span>Дэлгэрэнгүй шүүлт</span>
             </button>
           </div>
           <div

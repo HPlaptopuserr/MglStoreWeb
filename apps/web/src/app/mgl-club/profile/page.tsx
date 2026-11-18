@@ -8,6 +8,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function ClubProfilePage() {
-  return <ClubProfile />;
+export default async function ClubProfilePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ signin?: string }>;
+}) {
+  const { signin } = await searchParams;
+  return <ClubProfile signIn={signin === "1"} />;
 }

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import { isFullAdmin, type MglClubMember } from "@mgl/types";
-import { API, authFetch } from "@/lib/api";
+import { API } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { ArrowRight, Globe2 } from "lucide-react";
 import { CompanyLogo } from "./CompanyLogo";
@@ -29,7 +29,7 @@ const sections: { id: Section; label: string; detail: string }[] = [
 ];
 
 export function CompanyAdminManager() {
-  const { user } = useAuth();
+  const { user, authFetch } = useAuth();
   const canManageAll = Boolean(user && isFullAdmin(user.role));
   const [companies, setCompanies] = useState<ManagedCompany[]>([]);
   const [companyId, setCompanyId] = useState("");
@@ -88,7 +88,7 @@ export function CompanyAdminManager() {
     }
     void load();
     return () => controller.abort();
-  }, [user?.id, retry]);
+  }, [user?.id, retry, authFetch]);
   useEffect(() => {
     if (!dirty) return;
     const warn = (event: BeforeUnloadEvent) => {

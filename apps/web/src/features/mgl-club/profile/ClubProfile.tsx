@@ -19,9 +19,9 @@ const ClubAuthDialog = dynamic(() => import("./ClubAuthDialog"), {
   ),
 });
 
-export function ClubProfile() {
+export function ClubProfile({ signIn = false }: { signIn?: boolean }) {
   const { user, loading, logout, refreshUser } = useAuth();
-  const [authOpen, setAuthOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(signIn);
   const userId = user?.id;
   useEffect(() => {
     if (userId) void refreshUser();

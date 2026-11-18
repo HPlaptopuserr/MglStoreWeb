@@ -1,4 +1,5 @@
 "use client";
+import { requestWithSession } from "./auth-request";
 
 import React, {
   createContext,
@@ -133,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const raw = localStorage.getItem(AUTH_USER_KEY);
-    if (raw) {
+    if (raw && getToken()) {
       try {
         const parsed = JSON.parse(raw) as AuthUser;
         if (parsed?.id) setUser(parsed);
@@ -165,36 +166,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const authFetch = useCallback(async (url: string, init?: RequestInit): Promise<Response> => {
-    const token = getToken();
-    const headers = new Headers(init?.headers);
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-    const isFormData =
-      typeof FormData !== "undefined" && init?.body instanceof FormData;
-    if (!headers.has("Content-Type") && init?.body && !isFormData) {
-      headers.set("Content-Type", "application/json");
-    }
-    let res: Response;
-    try {
-      res = await fetch(url, { ...init, headers });
-    } catch {
-      return new Response(
-        JSON.stringify({
-          message:
-            "API сервертэй холбогдож чадсангүй. Backend ажиллаж байгаа эсэхийг шалгана уу.",
-        }),
-        {
-          status: 503,
-          headers: { "Content-Type": "application/json" },
-        },
-      );
-    }
-    if (res.status === 401) {
-      // Token expired — auto logout
-      localStorage.removeItem(AUTH_TOKEN_KEY);
-      localStorage.removeItem(AUTH_USER_KEY);
-      setUser(null);
-    }
-    return res;
+    return requestWithSession(url, init, {
+      getToken,
+      onUnauthorized: () => {
+        localStorage.removeItem(AUTH_TOKEN_KEY);
+        localStorage.removeItem(AUTH_USER_KEY);
+        setUser(null);
+      },
+    });
   }, []);
 
   const login = useCallback(async (
@@ -283,19 +262,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshUser = useCallback(async () => {
     const token = getToken();
-    if (!token) return;
+    if (!token) {
+      setUser(null);
+      return;
+    }
     try {
-      const res = await fetch(`${API_BASE}/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok && (res.headers.get("content-type") || "").includes("application/json")) {
+      const res = await authFetch(`${API_BASE}/auth/me`);
+      if (res.ok && getToken() === token && (res.headers.get("content-type") || "").includes("application/json")) {
         const data = await res.json();
-        setUser(data);
+        if (getToken() === token) setUser(data);
       }
     } catch {
-      // silent fail
+      // Keep the current session during temporary connection failures.
     }
-  }, []);
+  }, [authFetch]);
 
   return (
     <AuthContext.Provider value={{ user, loading, login, register, logout, updateUser, refreshUser, authFetch }}>

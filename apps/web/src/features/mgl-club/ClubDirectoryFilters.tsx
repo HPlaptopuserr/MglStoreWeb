@@ -24,66 +24,92 @@ export function ClubDirectoryFilters({
 }: DirectoryFiltersProps) {
   const [expandedFilters, setExpandedFilters] = useState(false);
   return (
-    <div className={styles.filters} data-expanded={expandedFilters}>
-      <label className={styles.search}>
-        <Search size={20} />
-        <span className={styles.srOnly}>
-          Үйлчилгээ, үйлчилгээ үзүүлэгчийн нэрээр хайх
-        </span>
-        <input
-          id="club-directory-search"
-          type="search"
-          maxLength={160}
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          placeholder={
-            city
-              ? `${city}: ямар үйлчилгээ хэрэгтэй вэ?`
-              : "Үйлчилгээ, бизнесийн нэрээр хайх…"
-          }
-        />
-      </label>
+    <div
+      className={styles.filters}
+      data-expanded={expandedFilters}
+      onKeyDown={(event) => {
+        if (event.key === "Escape" && expandedFilters) {
+          event.preventDefault();
+          setExpandedFilters(false);
+          event.currentTarget
+            .querySelector<HTMLButtonElement>(
+              'button[aria-controls="club-directory-controls"]',
+            )
+            ?.focus();
+        }
+      }}
+    >
       <button
-        className={styles.filterToggle}
-        aria-label="Шүүлтүүрийн сонголтууд"
+        type="button"
+        className={styles.directoryFilterSummary}
         aria-expanded={expandedFilters}
-        aria-controls="club-filter-options"
+        aria-controls="club-directory-controls"
         onClick={() => setExpandedFilters((value) => !value)}
       >
-        <SlidersHorizontal size={19} />
+        <SlidersHorizontal size={18} aria-hidden="true" />
+        <span>
+          {query || sector ? "Хайлт, шүүлтүүр өөрчлөх" : "Хайлт, шүүлтүүр"}
+        </span>
       </button>
-      <div id="club-filter-options" className={styles.filterOptions}>
-        <label>
-          <span className={styles.srOnly}>Үйлчилгээний чиглэл</span>
-          <select
-            value={sector}
-            onChange={(event) => {
-              onSectorChange(event.target.value);
-            }}
-          >
-            <option value="">Бүх үйлчилгээ, салбар</option>
-            {MGL_CLUB_SECTORS.map((value) => (
-              <option key={value} value={value}>
-                {value}
-                {services.length
-                  ? ` (${services.find((service) => service.sector === value)?.count ?? 0})`
-                  : ""}
-              </option>
-            ))}
-          </select>
+      <div className={styles.directoryControls} id="club-directory-controls">
+        <label className={styles.search}>
+          <Search size={20} />
+          <span className={styles.srOnly}>
+            Үйлчилгээ, үйлчилгээ үзүүлэгчийн нэрээр хайх
+          </span>
+          <input
+            id="club-directory-search"
+            type="search"
+            maxLength={160}
+            value={query}
+            onChange={(event) => onQueryChange(event.target.value)}
+            placeholder={
+              city ? `${city}: үйлчилгээ хайх…` : "Байгууллага, үйлчилгээ…"
+            }
+          />
         </label>
-        <label>
-          <span className={styles.srOnly}>Хайлтын хамрах хүрээ</span>
-          <select
-            value={scope}
-            onChange={(event) => {
-              onScopeChange(event.target.value);
-            }}
-          >
-            <option value="services">Үйлчилгээ үзүүлэгч</option>
-            <option value="all">Үйлчилгээ ба худалдан авах хэрэгцээ</option>
-          </select>
-        </label>
+        <button
+          className={styles.filterToggle}
+          aria-label="Шүүлтүүрийн сонголтууд"
+          aria-expanded={expandedFilters}
+          aria-controls="club-filter-options"
+          onClick={() => setExpandedFilters((value) => !value)}
+        >
+          <SlidersHorizontal size={19} />
+        </button>
+        <div id="club-filter-options" className={styles.filterOptions}>
+          <label>
+            <span className={styles.srOnly}>Үйлчилгээний чиглэл</span>
+            <select
+              value={sector}
+              onChange={(event) => {
+                onSectorChange(event.target.value);
+              }}
+            >
+              <option value="">Бүх үйлчилгээ, салбар</option>
+              {MGL_CLUB_SECTORS.map((value) => (
+                <option key={value} value={value}>
+                  {value}
+                  {services.length
+                    ? ` (${services.find((service) => service.sector === value)?.count ?? 0})`
+                    : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className={styles.srOnly}>Хайлтын хамрах хүрээ</span>
+            <select
+              value={scope}
+              onChange={(event) => {
+                onScopeChange(event.target.value);
+              }}
+            >
+              <option value="services">Үйлчилгээ үзүүлэгч</option>
+              <option value="all">Үйлчилгээ ба худалдан авах хэрэгцээ</option>
+            </select>
+          </label>
+        </div>
       </div>
     </div>
   );
