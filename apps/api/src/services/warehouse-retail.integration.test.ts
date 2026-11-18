@@ -10,6 +10,7 @@ import {
 } from "@mgl/types";
 import {
   createRetailCheckout,
+  incomingRetailOrderWhere,
   createRetailInvoice,
   checkRetailPayment,
 } from "./warehouse-retail.service";
@@ -271,6 +272,70 @@ test(
         ).quantity,
         3,
       );
+      // Hypermarket is independent of the shared-store source selection.
+      const hypermarket = await prisma.warehouse.create({
+        data: {
+          name: "Хайпер Маркет",
+          address: "Test",
+          paymentAccountId: "test-account",
+        },
+      });
+      const hyperProduct = await prisma.product.create({
+        data: {
+          name: "Hypermarket test product",
+          price: 5000,
+          costPrice: 3000,
+          unit: "ш",
+          stock: 5,
+          managedByWarehouseId: hypermarket.id,
+          warehouseInventories: {
+            create: {
+              warehouseId: hypermarket.id,
+              quantity: 5,
+              showOnWeb: true,
+            },
+          },
+        },
+      });
+      await assert.rejects(
+        createRetailCheckout(buyer.id, payload(hyperProduct.id)),
+      );
+      await assert.rejects(
+        createRetailCheckout(buyer.id, payload(product.id), "hypermarket"),
+      );
+      const hyperOrder = await createRetailCheckout(
+        buyer.id,
+        payload(hyperProduct.id),
+        "hypermarket",
+      );
+      assert.equal(hyperOrder.warehouseId, hypermarket.id);
+      assert.equal(hyperOrder.merchantCode, "retail-merchant");
+      const hyperInvoice = await createRetailInvoice(hyperOrder.id, buyer.id);
+      assert.equal(hyperInvoice.qrText, "TEST-QR");
+      assert.ok(hyperInvoice.invoiceId);
+      const incoming = () =>
+        prisma.warehouseRetailOrder.findMany({
+          where: incomingRetailOrderWhere(hypermarket.id),
+        });
+      assert.equal((await incoming()).length, 1);
+      assert.equal(
+        (
+          await prisma.warehouseRetailOrder.findMany({
+            where: incomingRetailOrderWhere(foreignWarehouse.id),
+          })
+        ).length,
+        0,
+      );
+      await prisma.warehouseRetailOrder.update({
+        where: { id: hyperOrder.id },
+        data: { expiresAt: new Date(0) },
+      });
+      assert.equal((await incoming()).length, 0);
+      await prisma.warehouseRetailOrder.update({
+        where: { id: hyperOrder.id },
+        data: { paymentStatus: "PAID" },
+      });
+      assert.equal((await incoming()).length, 1);
     } finally {
       gateway.close();
       await prisma.$disconnect();

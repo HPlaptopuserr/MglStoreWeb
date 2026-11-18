@@ -15,21 +15,27 @@ export function useOnlineOrders(
   warehouseId: string,
 ) {
   const [orders, setOrders] = useState<OnlineOrder[]>([]);
+  const [attentionCount, setAttentionCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionOrderId, setActionOrderId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refresh = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError("");
     try {
       if (!warehouseId) {
         setOrders([]);
         return;
       }
-      const data = await fetchOnlineOrders({ status, search, warehouseId });
+      const [data, attention] = await Promise.all([
+        fetchOnlineOrders({ status, search, warehouseId }),
+        fetchOnlineOrders({ status: "CONFIRMED", warehouseId, limit: 1 }),
+      ]);
       setOrders(data.orders);
+      setAttentionCount(attention.total);
     } catch (requestError) {
+      setAttentionCount(null);
       setError(
         requestError instanceof Error
           ? requestError.message
@@ -42,11 +48,15 @@ export function useOnlineOrders(
 
   useEffect(() => {
     const timeout = window.setTimeout(() => void refresh(), 250);
-    return () => window.clearTimeout(timeout);
+    const interval = window.setInterval(() => void refresh(true), 15_000);
+    return () => {
+      window.clearTimeout(timeout);
+      window.clearInterval(interval);
+    };
   }, [refresh]);
 
   useEffect(() => {
-    const handleNewOrder = () => void refresh();
+    const handleNewOrder = () => void refresh(true);
     window.addEventListener(WAREHOUSE_ONLINE_ORDER_EVENT, handleNewOrder);
     return () =>
       window.removeEventListener(WAREHOUSE_ONLINE_ORDER_EVENT, handleNewOrder);
@@ -73,5 +83,5 @@ export function useOnlineOrders(
     [refresh],
   );
 
-  return { orders, loading, actionOrderId, error, refresh, advance };
+  return { orders, loading, actionOrderId, error, refresh, advance, attentionCount };
 }

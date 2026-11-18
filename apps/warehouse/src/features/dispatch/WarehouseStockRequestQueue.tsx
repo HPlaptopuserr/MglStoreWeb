@@ -24,11 +24,13 @@ import {
 interface WarehouseStockRequestQueueProps {
   warehouseId: string;
   onDecision: () => void;
+  onCountChange?: (count: number | null) => void;
 }
 
 export function WarehouseStockRequestQueue({
   warehouseId,
   onDecision,
+  onCountChange,
 }: WarehouseStockRequestQueueProps) {
   const [requests, setRequests] = useState<StockRequest[]>([]);
   const [filter, setFilter] = useState<StatusFilter>("ALL");
@@ -95,6 +97,10 @@ export function WarehouseStockRequestQueue({
   }, [load]);
 
   const counts = useMemo(() => countRequestsByStatus(requests), [requests]);
+  useEffect(() => {
+    if (!loading) onCountChange?.(error ? null : counts.PENDING);
+  }, [counts.PENDING, error, loading, onCountChange]);
+
   const pendingRequests = useMemo(
     () =>
       requests
@@ -170,7 +176,7 @@ export function WarehouseStockRequestQueue({
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-black text-slate-900">
-              Нийт захиалга, хүсэлт
+              Агуулахын хүсэлт
             </h2>
             {counts.PENDING > 0 && (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-black text-amber-700">
@@ -179,8 +185,7 @@ export function WarehouseStockRequestQueue({
             )}
           </div>
           <p className="mt-1 text-xs text-slate-500">
-            Захиалагч, төлбөр болон гүйцэтгэлийн төлөвийг нэг дороос хянах
-            жагсаалт.
+            Байгууллагын бараа татах хүсэлт, төлбөр болон гүйцэтгэлийн төлөв.
           </p>
         </div>
         <button

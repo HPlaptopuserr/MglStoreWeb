@@ -5,6 +5,9 @@ import { areWebProductsGloballyEnabled, getWebProductsEnabledOrganizationIds, MI
 import { reservedStock, stockAvailability } from '../../services/stock-reservation.service';
 import { productImageOrderBy } from '../../lib/product-images';
 
+import { getHypermarketWarehouse } from '../../services/hypermarket-warehouse.service';
+import { WarehouseRetailError } from '../../services/warehouse-retail.policy';
+
 const router: ExpressRouter = Router();
 
 // Customer catalog: no organization membership or employee permissions needed.
@@ -13,20 +16,7 @@ router.get('/store/hypermarket/products', async (req, res) => {
     const offset = Math.max(0, Math.min(100000, Number.parseInt(String(req.query.offset), 10) || 0));
     const limit = Math.max(1, Math.min(60, Number.parseInt(String(req.query.limit), 10) || 40));
     const search = String(req.query.search ?? '').trim().slice(0, 100);
-    const warehouses = await prisma.warehouse.findMany({
-      where: {
-        OR: [
-          { name: { equals: 'Hypermarket', mode: 'insensitive' } },
-          { name: { equals: 'Хайпер Маркет', mode: 'insensitive' } },
-        ],
-        deletedAt: null, isActive: true,
-      },
-      select: { id: true, name: true }, take: 2,
-    });
-    if (warehouses.length !== 1) {
-      return res.status(warehouses.length ? 409 : 404).json({ message: warehouses.length ? 'Hypermarket агуулахын тохиргоо давхардсан байна.' : 'Hypermarket агуулах олдсонгүй.' });
-    }
-    const warehouse = warehouses[0];
+    const warehouse = await getHypermarketWarehouse();
     const empty = { warehouse, products: [], total: 0, hasMore: false };
     if (!(await areWebProductsGloballyEnabled())) return res.json(empty);
     const organizationIds = await getWebProductsEnabledOrganizationIds();
@@ -65,6 +55,9 @@ router.get('/store/hypermarket/products', async (req, res) => {
       stock: fromPosStoredStockQuantity(stockAvailability(row.quantity, reserved.get(row.productId) ?? 0).quantity, row.product.unit),
     })), total, hasMore: offset + rows.length < total });
   } catch (error: unknown) {
+    if (error instanceof WarehouseRetailError) {
+      return res.status(error.status).json({ message: error.message });
+    }
     console.error('Hypermarket public catalog failed', error);
     return res.status(500).json({ message: 'Hypermarket-ийн барааг ачаалж чадсангүй.' });
   }

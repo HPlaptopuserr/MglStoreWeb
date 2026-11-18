@@ -9,6 +9,7 @@ interface RetailOrder {
   shippingAddress: string;
   note: string | null;
   status: string;
+  paymentStatus: string;
   total: number | string;
   createdAt: string;
   fulfillmentIssue: string | null;
@@ -28,9 +29,17 @@ const actions: Record<string, string> = {
   PREPARED: "Хүргэлтэд гаргах",
   SHIPPING: "Хүлээлгэн өгсөн",
 };
-export function RetailOrdersPanel({ warehouseId }: { warehouseId: string }) {
+export function RetailOrdersPanel({
+  warehouseId,
+  includePending = false,
+  onCountChange,
+}: {
+  warehouseId: string;
+  includePending?: boolean;
+  onCountChange?: (count: number | null) => void;
+}) {
   const [orders, setOrders] = useState<RetailOrder[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
   const load = useCallback(
@@ -40,11 +49,10 @@ export function RetailOrdersPanel({ warehouseId }: { warehouseId: string }) {
       setError("");
       try {
         const response = await wmsFetch(
-          `${API}/warehouse-retail-orders?warehouseId=${encodeURIComponent(warehouseId)}`,
+          `${API}/warehouse-retail-orders?warehouseId=${encodeURIComponent(warehouseId)}${includePending ? "&view=incoming" : ""}`,
           { signal },
         );
-        if (!response.ok)
-          throw new Error("Дундын дэлгүүрийн захиалгыг ачаалж чадсангүй.");
+        if (!response.ok) throw new Error("Аппын захиалгыг ачаалж чадсангүй.");
         const payload = (await response.json()) as RetailOrder[];
         if (!signal?.aborted) setOrders(payload);
       } catch (cause: unknown) {
@@ -54,18 +62,31 @@ export function RetailOrdersPanel({ warehouseId }: { warehouseId: string }) {
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [warehouseId],
+    [warehouseId, includePending],
   );
   useEffect(() => {
     setOrders([]);
     const controller = new AbortController();
     void load(controller.signal);
-    const timer = setInterval(() => void load(controller.signal), 30000);
+    const timer = setInterval(() => void load(controller.signal), 15000);
     return () => {
       clearInterval(timer);
       controller.abort();
     };
   }, [load]);
+  useEffect(() => {
+    if (!loading)
+      onCountChange?.(
+        error
+          ? null
+          : orders.filter(
+              (order) =>
+                order.status === "PENDING" ||
+                order.status === "CONFIRMED" ||
+                (order.paymentStatus === "PAID" && !!order.fulfillmentIssue),
+            ).length,
+      );
+  }, [orders, error, loading, onCountChange]);
   async function advance(id: string) {
     setPending(id);
     setError("");
@@ -91,16 +112,16 @@ export function RetailOrdersPanel({ warehouseId }: { warehouseId: string }) {
         <div>
           <h2 className="flex items-center gap-2 font-bold text-slate-900">
             <ShoppingBag size={19} className="text-orange-600" />
-            Дундын дэлгүүр · Худалдан авалт
+            Аппаас ирсэн захиалга
           </h2>
           <p className="mt-1 text-xs text-slate-500">
-            Агуулахын Minu дансаар төлөгдсөн хэрэглэгчийн захиалгууд
+            Хэрэглэгчийн захиалга · төлбөр, бараа, хүргэх хаяг
           </p>
         </div>
         <button
           disabled={loading}
           onClick={() => void load()}
-          aria-label="Худалдан авалт шинэчлэх"
+          aria-label="Аппын захиалга шинэчлэх"
           className="flex size-11 shrink-0 items-center justify-center rounded-xl hover:bg-slate-50 disabled:opacity-50"
         >
           {loading ? (
@@ -118,9 +139,14 @@ export function RetailOrdersPanel({ warehouseId }: { warehouseId: string }) {
           {error}
         </p>
       )}
+      {loading && !orders.length && (
+        <p role="status" className="py-8 text-center text-sm text-slate-500">
+          Захиалга ачаалж байна…
+        </p>
+      )}
       {!orders.length && !loading && !error && (
         <p className="py-8 text-center text-sm text-slate-400">
-          Төлөгдсөн худалдан авалт одоогоор алга.
+          Аппаас ирсэн захиалга одоогоор алга.
         </p>
       )}
       <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -131,8 +157,12 @@ export function RetailOrdersPanel({ warehouseId }: { warehouseId: string }) {
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-bold">{order.orderNumber}</h3>
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-                {statuses[order.status] || order.status}
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-bold ${order.paymentStatus === "PAID" ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"}`}
+              >
+                {order.paymentStatus === "PAID"
+                  ? statuses[order.status] || order.status
+                  : "Төлбөр хүлээж байна"}
               </span>
             </div>
             <p className="mt-2 text-xs text-slate-400">
@@ -157,11 +187,18 @@ export function RetailOrdersPanel({ warehouseId }: { warehouseId: string }) {
               {order.note && <p>{order.note}</p>}
               <p className="text-lg font-black text-slate-950">
                 {Number(order.total).toLocaleString("mn-MN")}₮{" "}
-                <span className="text-xs font-semibold text-emerald-600">
-                  Төлөгдсөн
+                <span
+                  className={`text-xs font-semibold ${order.paymentStatus === "PAID" ? "text-emerald-600" : "text-amber-700"}`}
+                >
+                  {order.paymentStatus === "PAID" ? "Төлөгдсөн" : "Төлөгдөөгүй"}
                 </span>
               </p>
             </div>
+            {order.paymentStatus !== "PAID" && (
+              <p className="mt-3 rounded-lg bg-amber-50 p-3 text-xs text-amber-800">
+                Төлбөр баталгаажсаны дараа захиалгыг бэлтгэнэ.
+              </p>
+            )}
             {order.fulfillmentIssue ? (
               <p
                 role="alert"
@@ -170,6 +207,7 @@ export function RetailOrdersPanel({ warehouseId }: { warehouseId: string }) {
                 {order.fulfillmentIssue}
               </p>
             ) : (
+              order.paymentStatus === "PAID" &&
               actions[order.status] && (
                 <button
                   disabled={pending === order.id}

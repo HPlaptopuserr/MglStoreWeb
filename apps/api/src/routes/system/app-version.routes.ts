@@ -1,6 +1,20 @@
 import { Router, type Router as ExpressRouter } from "express";
+import { getStoreIosVersion } from "../../services/store-app-version.service";
 
 const router: ExpressRouter = Router();
+
+router.get("/app-versions/mgl-store/ios", async (_req, res) => {
+  try {
+    const version = await getStoreIosVersion();
+    res.set("Cache-Control", "public, max-age=300");
+    return res.json(version);
+  } catch {
+    res.set("Cache-Control", "no-store");
+    return res
+      .status(503)
+      .json({ message: "Шинэ хувилбарыг шалгаж чадсангүй." });
+  }
+});
 
 const parseVersionCode = (value: string | undefined, fallback: number) => {
   const parsed = Number.parseInt(value ?? "", 10);
@@ -14,10 +28,7 @@ router.get("/app-versions/mgl-business/android", (_req, res) => {
   );
   const minimumVersionCode = Math.min(
     latestVersionCode,
-    parseVersionCode(
-      process.env.MGL_BUSINESS_ANDROID_MINIMUM_VERSION_CODE,
-      16,
-    ),
+    parseVersionCode(process.env.MGL_BUSINESS_ANDROID_MINIMUM_VERSION_CODE, 16),
   );
 
   res.set("Cache-Control", "public, max-age=300");

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { getHypermarketWarehouse } from "./hypermarket-warehouse.service";
 import { prisma, Prisma, InventoryReason } from "@mgl/database";
 import { toPosStoredStockQuantity } from "@mgl/types";
 import { readStoreMiniApps } from "./store-mini-app-settings";
@@ -23,7 +24,25 @@ export const retailOrderInclude = {
   items: true,
   warehouse: { select: { id: true, name: true, address: true, phone: true } },
 } satisfies Prisma.WarehouseRetailOrderInclude;
-export async function createRetailCheckout(customerId: string, body: unknown) {
+/** Paid orders remain actionable; unpaid orders appear only while their reservation is live. */
+export function incomingRetailOrderWhere(
+  warehouseId: string,
+  now = new Date(),
+): Prisma.WarehouseRetailOrderWhereInput {
+  return {
+    warehouseId,
+    OR: [
+      { paymentStatus: "PAID" },
+      { paymentStatus: "PENDING", status: "PENDING", expiresAt: { gt: now } },
+    ],
+  };
+}
+
+export async function createRetailCheckout(
+  customerId: string,
+  body: unknown,
+  catalog: "shared-store" | "hypermarket" = "shared-store",
+) {
   const input = parseRetailCheckout(body);
   const customer = await prisma.user.findFirst({
     where: { id: customerId, isActive: true, deletedAt: null },
@@ -38,10 +57,18 @@ export async function createRetailCheckout(customerId: string, body: unknown) {
     include: retailOrderInclude,
   });
   if (previous) return previous;
-  const { settings } = await readStoreMiniApps();
-  const config = settings["shared-store"];
-  if (!config.enabled || !(await areWebProductsGloballyEnabled()))
-    throw new WarehouseRetailError("Дундын дэлгүүр түр хаалттай байна.", 409);
+  if (!(await areWebProductsGloballyEnabled()))
+    throw new WarehouseRetailError("Барааны захиалга түр хаалттай байна.", 409);
+  let sourceIds: string[];
+  if (catalog === "hypermarket") {
+    sourceIds = [(await getHypermarketWarehouse()).id];
+  } else {
+    const { settings } = await readStoreMiniApps();
+    const config = settings["shared-store"];
+    if (!config.enabled)
+      throw new WarehouseRetailError("Дундын дэлгүүр түр хаалттай байна.", 409);
+    sourceIds = config.sourceIds;
+  }
   const order = await prisma.$transaction(
     async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${customerId}:${input.checkoutKey}`}, 0))`;
@@ -62,7 +89,7 @@ export async function createRetailCheckout(customerId: string, body: unknown) {
           ...MINI_APP_PRODUCT_STATE_FILTER,
           id: { in: input.lines.map((line) => line.productId) },
           organizationId: null,
-          managedByWarehouseId: { in: config.sourceIds },
+          managedByWarehouseId: { in: sourceIds },
           managedByWarehouse: {
             isActive: true,
             deletedAt: null,

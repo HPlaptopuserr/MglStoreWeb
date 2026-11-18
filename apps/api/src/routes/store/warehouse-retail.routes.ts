@@ -13,6 +13,7 @@ import {
   createRetailInvoice,
   checkRetailPayment,
   retailOrderInclude,
+  incomingRetailOrderWhere,
 } from "../../services/warehouse-retail.service";
 import { WarehouseRetailError } from "../../services/warehouse-retail.policy";
 import { StockMinuConfigurationError } from "../../services/stock-minu-payment.service";
@@ -54,6 +55,22 @@ router.post(
     try {
       res.setHeader("Cache-Control", "private, no-store");
       return res.json(await createRetailCheckout(actor(req).userId, req.body));
+    } catch (error: unknown) {
+      return failure(error, res);
+    }
+  },
+);
+// Hypermarket has its own catalog source; retail invoice/history routes remain shared.
+router.post(
+  "/store/hypermarket/checkout",
+  checkoutLimit,
+  requireAuth,
+  async (req, res) => {
+    try {
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.json(
+        await createRetailCheckout(actor(req).userId, req.body, "hypermarket"),
+      );
     } catch (error: unknown) {
       return failure(error, res);
     }
@@ -109,7 +126,10 @@ router.get("/warehouse-retail-orders", requireAuth, async (req, res) => {
     res.setHeader("Cache-Control", "private, no-store");
     return res.json(
       await prisma.warehouseRetailOrder.findMany({
-        where: { warehouseId, paymentStatus: "PAID" },
+        where:
+          req.query.view === "incoming"
+            ? incomingRetailOrderWhere(warehouseId)
+            : { warehouseId, paymentStatus: "PAID" },
         include: retailOrderInclude,
         orderBy: { createdAt: "desc" },
         take: 100,
