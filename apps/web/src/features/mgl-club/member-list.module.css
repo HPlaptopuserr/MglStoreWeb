@@ -45,6 +45,10 @@
   min-width: 0;
 }
 .title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   font-size: 17px;
   font-weight: 650;
   line-height: 1.45;
@@ -55,6 +59,11 @@
   font-size: 13px;
 }
 .offers {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  max-width: 100%;
   color: #454d47;
   line-height: 1.6;
   font-size: 14px;
