@@ -114,7 +114,7 @@ export async function transcodeReel(
       signal,
       timeout: Math.min(
         20 * 60 * 60 * 1000,
-        Math.max(10 * 60 * 1000, source.duration * 20 * 1000),
+        Math.max(10 * 60 * 1000, Math.ceil(source.duration * 20 * 1000)),
       ),
       maxBuffer: 1024 * 1024,
     },
