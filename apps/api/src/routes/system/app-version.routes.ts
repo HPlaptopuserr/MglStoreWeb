@@ -1,11 +1,27 @@
 import { Router, type Router as ExpressRouter } from "express";
-import { getStoreIosVersion } from "../../services/store-app-version.service";
+import {
+  getStoreIosVersion,
+  getBusinessIosVersion,
+} from "../../services/store-app-version.service";
 
 const router: ExpressRouter = Router();
 
 router.get("/app-versions/mgl-store/ios", async (_req, res) => {
   try {
     const version = await getStoreIosVersion();
+    res.set("Cache-Control", "public, max-age=300");
+    return res.json(version);
+  } catch {
+    res.set("Cache-Control", "no-store");
+    return res
+      .status(503)
+      .json({ message: "Шинэ хувилбарыг шалгаж чадсангүй." });
+  }
+});
+
+router.get("/app-versions/mgl-business/ios", async (_req, res) => {
+  try {
+    const version = await getBusinessIosVersion();
     res.set("Cache-Control", "public, max-age=300");
     return res.json(version);
   } catch {

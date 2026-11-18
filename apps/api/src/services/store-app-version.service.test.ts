@@ -51,3 +51,25 @@ test("failed lookups are retryable and do not advertise a fabricated release", a
   assert.equal((await lookup()).latestVersionName, "1.0.14");
   assert.equal(calls, 2);
 });
+
+test("Business lookup resolves its own listing and rejects the Store app", async () => {
+  const business = {
+    results: [
+      {
+        bundleId: "mn.mglbusiness.app",
+        trackId: 6797782780,
+        version: "1.0.53",
+      },
+    ],
+  };
+  const lookup = createStoreIosVersionLookup(async (url) => {
+    assert.match(String(url), /bundleId=mn.mglbusiness.app&country=mn$/);
+    return Response.json(business);
+  }, "business");
+  assert.deepEqual(await lookup(), {
+    latestVersionName: "1.0.53",
+    storeUrl: "https://apps.apple.com/mn/app/mgl-business/id6797782780",
+  });
+  assert.throws(() => parseStoreIosVersion(listing, "business"));
+  assert.throws(() => parseStoreIosVersion(business));
+});
