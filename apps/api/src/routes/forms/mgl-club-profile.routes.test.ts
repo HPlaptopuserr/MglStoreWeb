@@ -346,6 +346,7 @@ function importDatabase(
         ...values: unknown[]
       ) => {
         assert.match(strings.join("?"), /pg_advisory_xact_lock/);
+        assert.match(strings.join("?"), /SELECT 1 AS locked FROM/);
         state.locks.push(values);
         return [];
       },

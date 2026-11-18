@@ -92,8 +92,9 @@ test("both full administrator roles can list all companies independently of owne
   stub(
     prisma.formResponse,
     "findMany",
-    async (args: { where: Record<string, unknown> }) => {
+    async (args: { where: Record<string, unknown>; take?: number }) => {
       assert.equal(args.where.data, undefined);
+      assert.equal(args.take, undefined, "The admin selector must include companies beyond the most recent 100");
       return [];
     },
   );

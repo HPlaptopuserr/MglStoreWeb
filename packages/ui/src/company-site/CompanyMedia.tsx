@@ -7,11 +7,13 @@ export function CompanyMedia({
   alt,
   priority = false,
   fit = "cover",
+  intrinsic = false,
 }: {
   url: string;
   alt: string;
   priority?: boolean;
   fit?: "cover" | "contain";
+  intrinsic?: boolean;
 }) {
   const [failed, setFailed] = useState<string | null>(null);
   if (!url || failed === url) return null;
@@ -19,12 +21,17 @@ export function CompanyMedia({
     <Image
       src={url.startsWith("/api/") ? resolveApiAssetUrl(url) : url}
       alt={alt}
-      fill
+      {...(intrinsic ? { width: 1200, height: 900 } : { fill: true })}
       sizes="(max-width: 767px) 100vw, 70vw"
       priority={priority}
       unoptimized={!url.startsWith("/mgl-club/")}
       onError={() => setFailed(url)}
-      style={{ objectFit: fit }}
+      style={{
+        objectFit: fit,
+        ...(intrinsic
+          ? { width: "auto", maxWidth: "100%", height: "auto" }
+          : {}),
+      }}
     />
   );
 }

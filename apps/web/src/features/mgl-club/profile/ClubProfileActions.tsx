@@ -63,20 +63,24 @@ export function ClubProfileActions() {
           <span className={styles.eyebrow}>ТАНЫ БИЗНЕС · ТАНЫ БОЛОМЖ</span>
           <h2 id="club-business-title">Бизнесээ клубт таниулаарай</h2>
           <p>
-            Үйлчилгээ, бүтээгдэхүүн, хамтран ажиллах хэрэгцээгээ гишүүдэд
-            танилцуулаарай.
+            Нэр, лого, үйлчилгээ, утас болон хамтран ажиллах хэрэгцээгээ
+            гишүүдийн жагсаалтад пост болгон нэмнэ.
           </p>
         </div>
         <ClubAdminContent>
           <Link className={styles.businessLink} href={clubRoutes.join}>
-            Бизнесээ танилцуулах <ArrowUpRight size={17} aria-hidden="true" />
+            Байгууллагын пост нэмэх{" "}
+            <ArrowUpRight size={17} aria-hidden="true" />
           </Link>
         </ClubAdminContent>
       </section>
       <section className={styles.business}>
         <div>
           <h2>Байгууллагын мэдээлэл</h2>
-          <p>Систем админ байгууллагын нэр, лого, холбоо барих мэдээлэл, вэб танилцуулга, мэдээг эндээс удирдана.</p>
+          <p>
+            Систем админ байгууллагын нэр, лого, холбоо барих мэдээлэл, вэб
+            танилцуулга, мэдээг эндээс удирдана.
+          </p>
         </div>
         <ClubAdminContent>
           <Link className={styles.businessLink} href="/mgl-club/manage">
@@ -84,6 +88,21 @@ export function ClubProfileActions() {
           </Link>
         </ClubAdminContent>
       </section>
+      <ClubAdminContent>
+        <section className={styles.business}>
+          <div>
+            <h2>Алтан гишүүний танилцуулгын вэб</h2>
+            <p>
+              Байгууллагуудын жагсаалтаас сонгож, загварын дагуу зураг,
+              мэдээллийг нь оруулна. Төлбөр нь баталгаажсан Алтан гишүүнд
+              нээлттэй.
+            </p>
+          </div>
+          <Link className={styles.businessLink} href="/mgl-club/manage#website">
+            Байгууллага сонгож вэб үүсгэх <ArrowUpRight size={17} />
+          </Link>
+        </section>
+      </ClubAdminContent>
       <ProfileActionSection title="Клуб дотор" actions={exploreActions} />
       <ProfileActionSection
         title="Клубийн тухай"

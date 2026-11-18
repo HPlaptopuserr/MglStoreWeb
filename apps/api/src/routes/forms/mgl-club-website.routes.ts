@@ -78,12 +78,10 @@ export function createClubWebsiteRouter(): ExpressRouter {
           return res.status(404).json({ message: "Байгууллага олдсонгүй." });
         return res.json(await getClubWebsiteAccess(row.id));
       } catch {
-        return res
-          .status(503)
-          .json({
-            message:
-              "Алтан гишүүнчлэлийн эрхийг шалгаж чадсангүй. Дахин оролдоно уу.",
-          });
+        return res.status(503).json({
+          message:
+            "Алтан гишүүнчлэлийн эрхийг шалгаж чадсангүй. Дахин оролдоно уу.",
+        });
       }
     },
   );
@@ -118,11 +116,14 @@ export function createClubWebsiteRouter(): ExpressRouter {
       (!publish && !site)
     )
       return res.status(400).json({
-        message:
-          "Хэсгүүдийн гарчиг, зураг, бичвэр болон дарааллыг шалгана уу.",
+        message: "Хэсгүүдийн гарчиг, зураг, бичвэр болон дарааллыг шалгана уу.",
       });
     try {
       const result = await prisma.$transaction(async (tx) => {
+        const generatedSlug = `company-${id.toLowerCase()}`;
+        // Match manual URL reservation lock order before locking the company row.
+        if (publish)
+          await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`mgl-club-site:${generatedSlug}`}))`;
         await tx.$queryRaw`SELECT "id" FROM "FormResponse" WHERE "id" = ${id} FOR UPDATE`;
         const row = await tx.formResponse.findFirst({
           where: { id, form: { slug: "mgl-club", isActive: true } },
@@ -143,8 +144,27 @@ export function createClubWebsiteRouter(): ExpressRouter {
             400,
             "Эхлээд танилцуулгаа ноорог болгон хадгална уу.",
           );
+        let siteSlug = isClubSiteSlug(data.clubSiteSlug)
+          ? data.clubSiteSlug
+          : null;
+        if (publish && !siteSlug) {
+          const duplicate = await tx.formResponse.findFirst({
+            where: {
+              id: { not: id },
+              form: { slug: "mgl-club" },
+              data: { path: ["clubSiteSlug"], equals: generatedSlug },
+            },
+          });
+          if (duplicate && duplicate.id !== id)
+            throw new ClubWebsiteError(
+              409,
+              "Холбоосын нэр давхардсан байна. Тохиргооноос өөр холбоос сонгоно уу.",
+            );
+          siteSlug = generatedSlug;
+        }
         const updated = {
           ...data,
+          ...(siteSlug ? { clubSiteSlug: siteSlug } : {}),
           websiteVersion: current + 1,
           ...(publish
             ? {
@@ -158,6 +178,7 @@ export function createClubWebsiteRouter(): ExpressRouter {
           data: { data: updated },
         });
         return {
+          siteSlug,
           draft,
           published: publish ? draft : parseClubWebsite(data.websitePublished),
           version: current + 1,

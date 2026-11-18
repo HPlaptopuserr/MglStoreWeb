@@ -73,11 +73,27 @@ export function useClubDirectory(
     setServices([]);
     setCursor(null);
     setError("");
+    const refreshPublished = () => setRetry((value) => value + 1);
+    const refreshVisible = () => {
+      if (!document.hidden) void load();
+    };
+    const refreshOtherTab = (event: StorageEvent) => {
+      if (event.key === "mgl-club-company-published") refreshPublished();
+    };
+    window.addEventListener("mgl-club-company-published", refreshPublished);
+    window.addEventListener("storage", refreshOtherTab);
+    document.addEventListener("visibilitychange", refreshVisible);
     const timer = window.setTimeout(() => {
       void load();
     }, 300);
     return () => {
       window.clearTimeout(timer);
+      window.removeEventListener(
+        "mgl-club-company-published",
+        refreshPublished,
+      );
+      window.removeEventListener("storage", refreshOtherTab);
+      document.removeEventListener("visibilitychange", refreshVisible);
       controller.current?.abort();
     };
   }, [load, retry, enabled]);

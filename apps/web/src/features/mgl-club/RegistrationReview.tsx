@@ -22,7 +22,7 @@ export function RegistrationReview({
         <div>
           <span className={styles.previewLabel}>
             <CheckCircle2 size={12} />
-            ТАНЫ БИЗНЕСИЙН ТАНИЛЦУУЛГА
+            ЖАГСААЛТАД ХАРАГДАХ ПОСТ
           </span>
           <h3>{values.businessName}</h3>
           <p>

@@ -135,6 +135,7 @@ export type MglClubProfile = Record<MglClubField, string> & {
 export type MglClubMember = Omit<MglClubProfile, "consent"> & {
   id: string;
   isDemo?: boolean;
+  siteSlug?: string;
 };
 export interface MglClubServiceGroup {
   sector: string;

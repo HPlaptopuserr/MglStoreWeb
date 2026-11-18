@@ -252,3 +252,55 @@ test("admins can inspect unpaid website drafts and access status without receivi
   assert.deepEqual(body.published, site);
   assert.equal(body.version, 3);
 });
+
+test("publishing assigns a stable Business link and preserves an administrator-selected link", async () => {
+  database({
+    ...baseData,
+    websiteDraft: site as unknown as Prisma.JsonObject,
+    websiteVersion: 0,
+  });
+  const response = await write({ version: 0 }, true);
+  assert.equal(response.status, 200);
+  const result: { siteSlug: string } = await response.json();
+  assert.equal(result.siteSlug, `company-${id}`);
+  assert.equal(stored.clubSiteSlug, result.siteSlug);
+  assert.deepEqual(stored.websitePublished, site);
+  database({
+    ...baseData,
+    clubSiteSlug: "custom-company",
+    websiteDraft: site as unknown as Prisma.JsonObject,
+    websiteVersion: 0,
+  });
+  const custom = await write({ version: 0 }, true);
+  assert.equal(custom.status, 200);
+  assert.equal(
+    ((await custom.json()) as { siteSlug: string }).siteSlug,
+    "custom-company",
+  );
+});
+
+test("an occupied generated link blocks publication without overwriting content", async () => {
+  const original = {
+    ...baseData,
+    websiteDraft: site as unknown as Prisma.JsonObject,
+    websiteVersion: 0,
+  };
+  database(original);
+  stub(prisma, "$transaction", async (run: (tx: object) => Promise<unknown>) =>
+    run({
+      $queryRaw: async () => [],
+      qPayInvoice: { findMany: async () => [activeGoldInvoice(id)] },
+      formResponse: {
+        findFirst: async (args: { where: { id: unknown } }) =>
+          typeof args.where.id === "string"
+            ? { id, data: stored }
+            : { id: "other-company" },
+        update: async () => {
+          throw new Error("A conflicting link must not be published");
+        },
+      },
+    }),
+  );
+  assert.equal((await write({ version: 0 }, true)).status, 409);
+  assert.deepEqual(stored, original);
+});

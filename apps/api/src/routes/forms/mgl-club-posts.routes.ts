@@ -102,7 +102,6 @@ export function createClubPostsRouter(): ExpressRouter {
           form: { slug: "mgl-club", isActive: true },
         },
         orderBy: { submittedAt: "desc" },
-        take: 100,
       });
       return res.json({
         companies: rows.flatMap((row) => {

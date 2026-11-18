@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState, type MouseEvent } from "react";
 import type { MglClubMember } from "@mgl/types";
 import { API, authFetch } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { ArrowRight, Globe2 } from "lucide-react";
+import { CompanyLogo } from "./CompanyLogo";
+import { CompanyPicker } from "./CompanyPicker";
 import { CompanyWebsiteAccessPanel } from "./CompanyWebsiteAccessPanel";
 import { CompanyProfileEditor } from "./CompanyProfileEditor";
 import { CompanyBlogManager } from "./CompanyBlogManager";
@@ -14,13 +17,13 @@ type Section = "profile" | "website" | "news";
 const sections: { id: Section; label: string; detail: string }[] = [
   {
     id: "profile",
-    label: "Үндсэн мэдээлэл",
-    detail: "Нэр, лого, үйлчилгээ, холбоо барих",
+    label: "Бүртгэлийн мэдээлэл",
+    detail: "Жагсаалтын нэр, үйлчилгээ, холбоо барих",
   },
   {
     id: "website",
     label: "Вэб танилцуулга",
-    detail: "Зураг, хэсгүүд, өнгө, богино URL",
+    detail: "Алтан гишүүний зурагтай хувийн вэб",
   },
   { id: "news", label: "Мэдээ, нийтлэл", detail: "Байгууллагын шинэ мэдээлэл" },
 ];
@@ -29,6 +32,9 @@ export function CompanyAdminManager() {
   const { user } = useAuth();
   const [companies, setCompanies] = useState<ManagedCompany[]>([]);
   const [companyId, setCompanyId] = useState("");
+  useEffect(() => {
+    if (window.location.hash === "#website") setActive("website");
+  }, []);
   const [editorEpoch, setEditorEpoch] = useState(0);
   const [active, setActive] = useState<Section>("profile");
   const [dirty, setDirty] = useState(false);
@@ -179,8 +185,8 @@ export function CompanyAdminManager() {
           <span className={styles.eyebrow}>Систем админы хэсэг</span>
           <h1>Байгууллагын удирдлага</h1>
           <p>
-            Байгууллагаа сонгоод үндсэн мэдээлэл, зурагтай танилцуулга, мэдээг
-            нэг дор удирдана.
+            Байгууллагаа хайж сонгоод бүртгэлийн мэдээллийг засах эсвэл Алтан
+            гишүүний танилцуулгын вэбийг бэлдэнэ.
           </p>
         </div>
         <Link
@@ -234,38 +240,73 @@ export function CompanyAdminManager() {
           )}
           {companies.length ? (
             <>
+              <div className={styles.selectionHeading}>
+                <h2>
+                  <span>1</span> Байгууллагаа сонгох
+                </h2>
+                <small>{companies.length} бүртгэлтэй байгууллага</small>
+              </div>
               <div className={styles.companyBar}>
-                <label htmlFor="admin-company-select">
-                  Засах байгууллага
-                  <select
-                    id="admin-company-select"
-                    value={companyId}
-                    disabled={locked}
-                    onChange={(event) => {
-                      if (event.target.value !== companyId && mayLeave()) {
-                        setDirty(false);
-                        setCompanyId(event.target.value);
-                        setActive("profile");
-                      }
-                    }}
-                  >
-                    {companies.map((company) => (
-                      <option key={company.id} value={company.id}>
-                        {company.businessName}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {selected && (
+                <CompanyPicker
+                  companies={companies}
+                  value={companyId}
+                  disabled={locked}
+                  onChange={(id) => {
+                    if (id !== companyId && mayLeave()) {
+                      setDirty(false);
+                      setCompanyId(id);
+                      setActive((previous) =>
+                        previous === "website" ? "website" : "profile",
+                      );
+                    }
+                  }}
+                />
+              </div>
+              {selected && (
+                <div className={styles.selectedCompany}>
+                  <div className={styles.selectedLogo}>
+                    <CompanyLogo
+                      name={selected.businessName}
+                      url={selected.logoUrl}
+                    />
+                  </div>
+                  <div className={styles.selectedCopy}>
+                    <small>Сонгосон байгууллага</small>
+                    <strong>{selected.businessName}</strong>
+                    <span>
+                      {selected.sector} · {selected.city} · {selected.phone}
+                    </span>
+                  </div>
                   <Link
                     href={`/mgl-club/companies/${selected.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    Нийтийн хуудас үзэх ↗
+                    Нийтийн бүртгэл үзэх ↗
                   </Link>
-                )}
-              </div>
+                </div>
+              )}
+              {selected && active !== "website" && (
+                <button
+                  type="button"
+                  className={styles.createWebsite}
+                  disabled={locked}
+                  onClick={() => changeSection("website")}
+                >
+                  <Globe2 size={23} aria-hidden="true" />
+                  <span>
+                    <strong>Танилцуулгын вэб бэлдэх</strong>
+                    <small>
+                      Алтан гишүүнчлэлийн эрхээ шалгаад бэлэн загвараас эхэлнэ.
+                    </small>
+                  </span>
+                  <ArrowRight size={20} aria-hidden="true" />
+                </button>
+              )}
+              <p className={styles.registrationNote}>
+                Байгууллага бүртгэхэд танилцуулгын вэб автоматаар үүсэхгүй. Вэб
+                бэлдэх, нийтлэхийг тусад нь сонгоно.
+              </p>
               <div
                 className={styles.tabs}
                 aria-label="Байгууллагын мэдээллийн хэсгүүд"

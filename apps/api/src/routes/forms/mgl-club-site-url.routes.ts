@@ -39,11 +39,13 @@ export function createClubSiteUrlRouter(): ExpressRouter {
         },
       });
       const profile = row && parseMglClubProfile(row.data);
-      if (!row || !profile) return res.sendStatus(404);
+      const website =
+        row && parseClubWebsite(object(row.data).websitePublished);
+      if (!row || !profile || !website) return res.sendStatus(404);
       const { consent: _consent, ...member } = profile;
       return res.json({
         member: { id: row.id, ...member },
-        website: parseClubWebsite(object(row.data).websitePublished),
+        website,
         siteSlug: slug,
       });
     } catch {
@@ -68,7 +70,7 @@ export function createClubSiteUrlRouter(): ExpressRouter {
       try {
         await prisma.$transaction(async (tx) => {
           // Serialize reservations of the same name, including simultaneous requests for different companies.
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`mgl-club-site:${slug}`}))`;
+          await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${`mgl-club-site:${slug}`}))`;
           await tx.$queryRaw`SELECT "id" FROM "FormResponse" WHERE "id" = ${id} FOR UPDATE`;
           const row = await tx.formResponse.findFirst({
             where: { id, form: { slug: "mgl-club", isActive: true } },

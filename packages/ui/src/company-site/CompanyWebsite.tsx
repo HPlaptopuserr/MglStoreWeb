@@ -49,28 +49,16 @@ export function CompanyWebsite({
   clubHref?: string;
 }) {
   const name = member.businessName.replace(/^\[ТЕСТ\]\s*/u, "").trim();
-  const preferred = [
-    "about",
-    "advantages",
-    "production",
-    "certificates",
-    "contact",
+  const navigation = [
+    ...site.sections
+      .filter(
+        (section) => section.type !== "hero" && section.type !== "contact",
+      )
+      .slice(0, 4),
+    ...site.sections.filter((section) => section.type === "contact"),
   ];
-  const localNavigation = preferred
-    .map((id) => site.sections.find((section) => section.id === id))
-    .filter((section): section is ClubWebsiteSection => Boolean(section));
-  const navigation =
-    member.id === "demo-company-innova"
-      ? localNavigation
-      : [
-          ...site.sections
-            .filter(
-              (section) =>
-                section.type !== "hero" && section.type !== "contact",
-            )
-            .slice(0, 4),
-          ...site.sections.filter((section) => section.type === "contact"),
-        ];
+  const contact = site.sections.find((section) => section.type === "contact");
+  const heroDestination = contact || site.sections[1] || site.sections[0];
   return (
     <div
       className={styles.website}
@@ -126,6 +114,8 @@ export function CompanyWebsite({
           section={section}
           member={member}
           index={index}
+          heroHref={`#${anchor(heroDestination.id)}`}
+          hasContact={Boolean(contact)}
         />
       ))}
       <footer className={styles.siteFooter}>
@@ -140,10 +130,14 @@ function WebsiteSection({
   section: s,
   member,
   index,
+  heroHref,
+  hasContact,
 }: {
   section: ClubWebsiteSection;
   member: MglClubMember;
   index: number;
+  heroHref: string;
+  hasContact: boolean;
 }) {
   const header = (
     <>
@@ -157,25 +151,30 @@ function WebsiteSection({
   );
   if (s.type === "hero")
     return (
-      <section id={anchor(s.id)} className={styles.hero} data-tone={s.tone}>
+      <section
+        id={anchor(s.id)}
+        className={`${styles.hero} ${s.imageUrl && s.heroImageMode !== "background" ? styles.heroSplit : ""}`}
+        data-tone={s.tone}
+      >
         <div className={styles.heroMedia}>
-          <CompanyMedia url={s.imageUrl} alt={s.imageAlt} priority />
+          <CompanyMedia
+            url={s.imageUrl}
+            alt={s.imageAlt}
+            priority
+            fit={s.heroImageMode === "background" ? "cover" : "contain"}
+            intrinsic={s.heroImageMode !== "background"}
+          />
         </div>
         <div className={styles.heroShade} />
         <div className={styles.heroContent}>
           <p className={styles.eyebrow}>{s.eyebrow || member.sector}</p>
           <h1>{s.title}</h1>
           {s.text && <p>{s.text}</p>}
-          <a
-            className={styles.heroCta}
-            href={
-              member.id === "demo-company-innova"
-                ? `#${anchor("contact")}`
-                : "#company-sections-start"
-            }
-          >
-            {member.id === "demo-company-innova"
-              ? "Захиалга өгөх"
+          <a className={styles.heroCta} href={heroHref}>
+            {hasContact
+              ? s.imageUrl && s.heroImageMode !== "background"
+                ? "Холбоо барих"
+                : "Захиалга өгөх"
               : "Бидэнтэй танилцах"}{" "}
             <ArrowDown size={18} />
           </a>
@@ -185,7 +184,7 @@ function WebsiteSection({
     );
   const common = {
     id: anchor(s.id),
-    className: `${styles.section} ${s.tone === "dark" ? styles.dark : ""}`,
+    className: `${styles.section} ${s.tone === "dark" ? styles.dark : ""} ${s.type === "contact" ? styles.contactSection : ""}`,
   };
   if (s.type === "split")
     return (

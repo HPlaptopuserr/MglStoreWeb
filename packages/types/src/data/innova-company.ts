@@ -32,6 +32,7 @@ export const innovaWebsite: ClubWebsite = {
   sections: [
     {
       ...createClubSection("hero", "home"),
+      heroImageMode: "background",
       imageUrl: "/mgl-club/website-demo/innova-product-hero.png",
       imageAlt: "Иннова хөнгөн бетон блокны бүтээгдэхүүний дүрслэл",
       eyebrow: "ИННОВА ХХК · ЭКО ХӨНГӨН БЕТОН БЛОКНЫ ҮЙЛДВЭР",

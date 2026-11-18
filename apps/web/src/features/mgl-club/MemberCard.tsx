@@ -31,7 +31,7 @@ export function MemberCard({ member }: { member: MglClubMember }) {
             <MapPin size={13} aria-hidden="true" />
             {member.city}
           </span>
-          <span className={styles.action}>Танилцуулга үзэх</span>
+          <span className={styles.action}>Дэлгэрэнгүй үзэх</span>
         </span>
       </Link>
       {!member.isDemo && member.phone && (

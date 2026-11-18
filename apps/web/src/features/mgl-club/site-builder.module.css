@@ -3,14 +3,17 @@
   min-height: 80vh;
   color: #20372a;
 }
+.editorHeader {
+  background: #fff;
+  border-bottom: 1px solid #dce5dc;
+}
 .toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 20px;
-  padding: 24px 32px;
-  border-bottom: 1px solid #dce5dc;
+  gap: 12px;
+  padding: 14px 24px 6px;
   background: white;
 }
 .toolbar a {
@@ -18,7 +21,7 @@
   color: #38724f;
 }
 .toolbar h1 {
-  margin: 10px 0 6px;
+  margin: 5px 0 3px;
   font-size: 21px;
   font-weight: 650;
 }
@@ -164,13 +167,13 @@
   padding: 0;
   border: 0;
   display: grid;
-  gap: 20px;
+  gap: 12px;
   margin: 0;
   min-width: 0;
 }
 .editor label {
   display: grid;
-  gap: 8px;
+  gap: 4px;
   font-size: 12px;
   color: #55715d;
   min-width: 0;
@@ -179,7 +182,7 @@
   width: 100%;
   border: 1px solid #ccdbcd;
   border-radius: 6px;
-  padding: 11px;
+  padding: 8px 10px;
   font: inherit;
   background: white;
   color: #24392a;
@@ -187,18 +190,18 @@
 }
 .editor textarea {
   resize: vertical;
-  line-height: 1.8;
+  line-height: 1.55;
 }
 .twoFields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 12px;
 }
 .imageField {
   display: grid;
-  gap: 16px;
-  margin-top: 24px;
-  padding-top: 24px;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
   border-top: 1px solid #e1e9e1;
 }
 .imageField p {
@@ -273,7 +276,7 @@
 }
 @media (max-width: 767px) {
   .toolbar {
-    padding: 20px 16px;
+    padding: 12px 16px 6px;
   }
   .toolbarActions {
     gap: 6px;
@@ -525,4 +528,857 @@
   color: #215c3d;
   font-size: 13px;
   text-decoration: underline;
+}
+
+.editorSettings {
+  margin: 0;
+  border-bottom: 1px solid #d9e5dd;
+  background: #fff;
+}
+.editorSettings > summary {
+  padding: 15px 28px;
+  cursor: pointer;
+  color: #496b56;
+  font-size: 13px;
+}
+.editorSettings .workflow {
+  display: none;
+}
+.editorSplit {
+  display: grid;
+  grid-template-columns: minmax(360px, 0.85fr) minmax(0, 1.25fr);
+  gap: 16px;
+  max-width: 1800px;
+  padding: 16px;
+  margin: auto;
+  align-items: start;
+}
+.formPane {
+  min-width: 0;
+}
+.formPane .workspace {
+  display: block;
+  padding: 0;
+}
+.formPane .sidebar {
+  margin-bottom: 16px;
+}
+.formPane .themePicker {
+  padding: 0 0 14px;
+  margin: 0 0 14px;
+}
+.formPane .themePresets {
+  display: flex;
+  flex-wrap: wrap;
+}
+.formPane .themePicker label {
+  display: inline-flex;
+  margin: 10px 16px 0 0;
+}
+.formPane .sidebar > h2 {
+  margin-bottom: 5px;
+}
+.formPane .sidebar > p {
+  margin: 0;
+}
+.formPane .sidebar ol {
+  display: flex;
+  overflow-x: auto;
+  gap: 8px;
+  margin: 14px 0;
+  padding-bottom: 8px;
+}
+.formPane .sidebar li {
+  flex-shrink: 0;
+  max-width: 190px;
+}
+.formPane .sidebar li button {
+  min-height: 64px;
+  height: 100%;
+  padding: 10px 12px;
+}
+.formPane .sidebar strong {
+  font-size: 12px;
+}
+.formPane .sidebar h3 {
+  margin: 8px 0;
+}
+.formPane .addTypes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.formPane .addTypes button {
+  font-size: 11px;
+  padding: 7px 10px;
+}
+.formPane .editor {
+  padding: 16px;
+}
+.formPane .editorHeading {
+  margin-bottom: 14px;
+}
+.livePreview {
+  position: sticky;
+  top: 110px;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #cadbd0;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 8px 24px #284f3310;
+}
+.previewToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #dce6df;
+}
+.previewToolbar > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+.previewToolbar strong {
+  color: #2b573c;
+  font-size: 14px;
+}
+.previewToolbar span {
+  color: #819084;
+  font-size: 10px;
+  line-height: 1.5;
+}
+.previewDevices {
+  display: flex;
+  gap: 5px;
+}
+.previewDevices button[aria-pressed="true"] {
+  background: #e2f0e7;
+  border-color: #7ea98d;
+}
+.frameViewport {
+  display: grid;
+  align-items: center;
+  justify-content: center;
+  height: calc(100svh - 270px);
+  min-height: 430px;
+  padding: 0;
+  overflow: hidden;
+  background: #eaf0ec;
+}
+.frameSizer {
+  position: relative;
+  flex-shrink: 0;
+  background: #fff;
+  box-shadow: 0 4px 20px #23462e1c;
+}
+.frameSizer iframe {
+  position: absolute;
+  inset: 0;
+  max-width: none;
+  border: 0;
+  background: #fff;
+}
+.previewFootnote {
+  margin: 0;
+  padding: 7px 12px;
+  color: #728377;
+  font-size: 10px;
+  line-height: 1.7;
+}
+.mobileViewTabs {
+  display: none;
+}
+@media (max-width: 1100px) {
+  .editorSplit {
+    grid-template-columns: minmax(330px, 1fr) minmax(0, 1fr);
+    padding: 16px;
+    gap: 16px;
+  }
+  .formPane .editor {
+    padding: 18px;
+  }
+  .formPane .twoFields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 767px) {
+  .editorSplit {
+    display: block;
+    padding: 16px;
+  }
+  .mobileViewTabs {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+  }
+  .mobileViewTabs button {
+    flex: 1;
+    min-height: 44px;
+  }
+  .mobileViewTabs button[aria-pressed="true"] {
+    background: #e3f0e7;
+    border-color: #7da98b;
+  }
+  .toolbarActions {
+    width: 100%;
+  }
+  .toolbarActions > button {
+    min-height: 44px;
+  }
+  .livePreview {
+    position: static;
+  }
+  .builder[data-mobile-view="edit"] .livePreview {
+    display: none;
+  }
+  .builder[data-mobile-view="preview"] .formPane {
+    display: none;
+  }
+  .frameViewport {
+    height: calc(100svh - 330px);
+    min-height: 390px;
+  }
+  .editorSettings > summary {
+    padding-inline: 16px;
+  }
+}
+
+.sectionNavigation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px 14px;
+  padding: 6px 24px 12px;
+  background: #fff;
+}
+.sectionNavigation > h2 {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 12px;
+  color: #69816f;
+}
+.sectionNavigation ol {
+  display: flex;
+  overflow-x: auto;
+  gap: 7px;
+  margin: 0;
+  padding: 0 0 3px;
+}
+.sectionNavigation li {
+  flex: 0 0 auto;
+  max-width: 210px;
+}
+.sectionNavigation li button {
+  padding: 7px 11px;
+  min-height: 48px;
+}
+.sectionNavigation li strong {
+  font-size: 11px;
+  line-height: 1.4;
+}
+.sectionNavigation li small {
+  font-size: 10px;
+  margin-top: 1px;
+}
+.addSectionMenu {
+  position: relative;
+  align-self: center;
+}
+.addSectionMenu > summary {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 12px;
+  min-height: 44px;
+  border: 1px solid #cddbd0;
+  border-radius: 7px;
+  font-size: 12px;
+  color: #244e34;
+  cursor: pointer;
+  list-style: none;
+}
+.addSectionMenu > summary::-webkit-details-marker {
+  display: none;
+}
+.addSectionOptions {
+  position: absolute;
+  z-index: 20;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(330px, calc(100vw - 32px));
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #cddbd0;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px #284f3320;
+}
+.addSectionOptions .addTypes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.addSectionOptions p {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #7e8b81;
+  margin: 10px 0 0;
+}
+@media (max-width: 767px) {
+  .sectionNavigation {
+    padding: 10px 16px;
+    gap: 7px;
+  }
+  .sectionNavigation li {
+    max-width: 160px;
+  }
+  .sectionNavigation li button {
+    min-height: 44px;
+    padding: 7px 9px;
+  }
+  .addSectionMenu > summary {
+    padding: 9px;
+    white-space: nowrap;
+    font-size: 11px;
+  }
+}
+
+/* Expanded settings use the same compact controls as the editing workspace. */
+.settingsContent {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 1800px;
+  margin: 0 auto;
+  padding: 0 16px 16px;
+}
+.settingsContent .accessArea {
+  grid-column: 1 / -1;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.activeAccess {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 7px;
+  background: #edf6f0;
+  color: #326347;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.activeAccess span {
+  color: #6a8071;
+  font-size: 11px;
+}
+.settingsContent :is(.templatePicker, .themePicker, .urlSettings) {
+  max-width: none;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid #dce5df;
+  border-radius: 9px;
+  min-width: 0;
+  background: #fff;
+}
+.settingsContent :is(.templatePicker, .themePicker, .urlSettings) h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 650;
+  color: #315b40;
+}
+.settingsContent .templatePicker {
+  grid-column: 1 / -1;
+}
+.settingsContent .templatePicker > p {
+  margin: 5px 0 10px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.settingsContent .templateOptions {
+  margin: 0;
+  gap: 8px;
+}
+.settingsContent .templateOptions button {
+  min-height: 82px;
+  padding: 11px 13px;
+  gap: 5px;
+  background: #f9fbfa;
+}
+.settingsContent .templateOptions strong {
+  font-size: 12px;
+  line-height: 1.5;
+}
+.settingsContent .templateOptions span {
+  font-size: 11px;
+  line-height: 1.55;
+}
+.settingsContent .themePresets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0;
+}
+.settingsContent .themePresets button {
+  min-height: 38px;
+  padding: 7px 10px;
+  font-size: 11px;
+  gap: 7px;
+}
+.settingsContent .themePresets span {
+  display: block;
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  border-radius: 4px;
+}
+.settingsContent .themePicker label {
+  display: inline-flex;
+  justify-content: flex-start;
+  gap: 8px;
+  margin: 0 18px 0 0;
+  min-height: 38px;
+  font-size: 11px;
+}
+.settingsContent .themePicker input[type="color"] {
+  width: 40px;
+  height: 30px;
+}
+.settingsContent .urlSettings {
+  gap: 10px;
+  align-content: start;
+}
+.settingsContent .urlSettings label {
+  flex: 1 1 190px;
+  gap: 5px;
+  font-size: 11px;
+  min-width: 0;
+}
+.settingsContent .urlSettings input {
+  min-width: 0;
+  width: 100%;
+  padding: 9px;
+  font-size: 12px;
+}
+.settingsContent .urlSettings button {
+  min-height: 37px;
+  padding: 8px 12px;
+  font-size: 11px;
+}
+.settingsContent .urlSettings a {
+  padding: 0;
+  font-size: 11px;
+}
+.settingsContent .urlSettings p {
+  font-size: 11px;
+  line-height: 1.5;
+}
+@media (max-width: 767px) {
+  .settingsContent {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0 16px 14px;
+    gap: 10px;
+  }
+  .settingsContent .templateOptions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settingsContent .templateOptions button {
+    min-height: 64px;
+    padding: 10px;
+  }
+  .settingsContent .themePresets button {
+    min-height: 44px;
+  }
+  .settingsContent .themePicker label {
+    margin-right: 12px;
+  }
+  .settingsContent .urlSettings button {
+    min-height: 44px;
+  }
+}
+
+.productList {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+.productListHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.productListHeading h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.productListHeading > span {
+  font-size: 11px;
+  color: #7c8d80;
+}
+.productList > button {
+  justify-self: start;
+  min-height: 44px;
+}
+.productCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #dce5df;
+  border-radius: 9px;
+  background: #f9fbfa;
+  min-width: 0;
+}
+.productThumbnail {
+  width: 60px;
+  height: 60px;
+  flex: 0 0 60px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #eaf0ec;
+  color: #87998b;
+}
+.productThumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.productBrief {
+  flex: 1;
+  min-width: 0;
+}
+.productBrief strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.productBrief p {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin: 4px 0 0;
+  color: #7c8d80;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.productActions {
+  display: flex;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.productActions button {
+  min-height: 38px;
+  padding: 8px;
+}
+.productDialog {
+  position: fixed;
+  margin: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  width: min(580px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  background: #fff;
+  color: #20372a;
+  box-shadow: 0 24px 80px #18342433;
+}
+.productDialog::backdrop {
+  background: #142b2466;
+  backdrop-filter: blur(3px);
+}
+.productDialogForm {
+  margin: 0;
+}
+.productDialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #dce5df;
+}
+.productDialogHeader h2 {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.5;
+}
+.productDialogHeader p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #7c8d80;
+}
+.productDialogHeader button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.productDialog .productDialogBody {
+  padding: 18px 20px;
+  border: 0;
+  border-radius: 0;
+}
+.productDialog .imageField {
+  margin-top: 14px;
+  padding-top: 14px;
+}
+.productDialog .imagePreview {
+  max-width: 260px;
+}
+.productDialogFooter {
+  padding: 14px 20px;
+  border-top: 1px solid #dce5df;
+  background: #f8fbf9;
+}
+.productDialogFooter p {
+  margin: 0 0 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #7b8e81;
+}
+.productDialogFooter > div {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.productDialogFooter button {
+  min-height: 44px;
+}
+@media (max-width: 767px) {
+  .productCard {
+    flex-wrap: wrap;
+    gap: 9px;
+  }
+  .productActions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  .productActions button {
+    min-height: 44px;
+  }
+  .productDialogHeader {
+    padding: 14px 16px;
+  }
+  .productDialog .productDialogBody {
+    padding: 16px;
+  }
+  .productDialogFooter {
+    padding: 12px 16px;
+  }
+  .productDialogFooter > div > button {
+    flex: 1;
+  }
+}
+
+.publishResult {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 8px 16px 0;
+  padding: 8px 12px;
+  border: 1px solid #c6decd;
+  border-radius: 10px;
+  background: #f7fcf8;
+  color: #315f41;
+}
+.publishResult h2 {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.publishResult p {
+  flex-basis: 100%;
+  margin: 4px 0 0;
+  font-size: 11px;
+  line-height: 1.7;
+  color: #728a78;
+}
+.publishedUrl {
+  display: flex;
+  flex: 1 1 360px;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+}
+.publishedUrl input {
+  flex: 1 1 260px;
+  min-width: 0;
+  border: 1px solid #d0dfd4;
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 12px;
+  color: #2c573d;
+  background: #fff;
+}
+.publishedUrl a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: #0f3e2e;
+  color: #fff;
+  font-size: 12px;
+}
+.publishedUrl button {
+  min-height: 34px;
+  padding: 7px 10px;
+}
+.goldMembersLink {
+  display: inline-block;
+  font-size: 11px;
+  margin: 0;
+  white-space: nowrap;
+  color: #52765c;
+  text-decoration: underline;
+}
+@media (max-width: 767px) {
+  .publishResult {
+    padding: 8px 10px;
+  }
+  .publishedUrl input {
+    flex-basis: 100%;
+  }
+  .publishedUrl :is(a, button) {
+    min-height: 44px;
+    flex: 1;
+  }
+}
+
+/* The popup previews its own uncommitted product draft. */
+.productDialog {
+  width: min(960px, calc(100vw - 24px));
+  overflow: hidden;
+}
+.productDialogForm {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+}
+.productDialogHeader,
+.productDialogFooter {
+  flex: 0 0 auto;
+}
+.productDialogWorkspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-items: start;
+}
+.productDialog .productDialogBody {
+  min-width: 0;
+  padding: 18px 20px;
+}
+.productDraftPreview {
+  min-width: 0;
+  align-self: start;
+  position: sticky;
+  top: 0;
+  margin: 18px 18px 18px 0;
+  padding: 13px;
+  border: 1px solid #dce5df;
+  border-radius: 10px;
+  background: #f6f9f7;
+}
+.productDraftPreview > header {
+  margin-bottom: 12px;
+}
+.productDraftPreview > header strong {
+  font-size: 12px;
+  color: #365d43;
+}
+.productDraftPreview > header p {
+  margin: 4px 0 0;
+  color: #7a8f80;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.productPreviewCanvas {
+  padding: 20px;
+  border-radius: 6px;
+}
+.productPreviewCard {
+  min-width: 0;
+  border-top: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+  padding-top: 20px;
+}
+.productPreviewImage {
+  aspect-ratio: 4/3;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.productPreviewImage img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.productPreviewNumber {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 28px;
+  font-size: 12px;
+  opacity: 0.65;
+}
+.productPreviewCard h3 {
+  margin: 0 0 16px;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.productPreviewCard p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.9;
+  opacity: 0.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.productDraftPreview > .help {
+  margin: 10px 0 0;
+  font-size: 10px;
+}
+@media (max-width: 767px) {
+  .productDialogWorkspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .productDraftPreview {
+    position: static;
+    margin: 0 16px 16px;
+    padding: 12px;
+  }
+  .productPreviewCanvas {
+    padding: 16px;
+  }
+  .productPreviewCard h3 {
+    font-size: 20px;
+  }
+  .productPreviewNumber {
+    margin-bottom: 18px;
+  }
+  .productDialogHeader h2 {
+    font-size: 15px;
+  }
+  .productDialogFooter p {
+    font-size: 10px;
+    margin-bottom: 8px;
+  }
 }

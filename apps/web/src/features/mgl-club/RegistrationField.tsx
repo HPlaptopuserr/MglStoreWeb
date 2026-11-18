@@ -1,3 +1,4 @@
+import { normalizeRegistrationWebsite } from "./registration-website";
 import {
   MGL_CLUB_LOCATIONS,
   MGL_CLUB_SECTORS,
@@ -21,7 +22,7 @@ const placeholders: Partial<Record<MglClubField, string>> = {
   address: "Сум, баг, гудамж, байр…",
   workingHours: "Даваа–Баасан 09:00–18:00",
   serviceArea: "Аймаг, сум / онлайнаар / хүргэлтийн бүс…",
-  website: "https://example.com эсвэл сошиал хуудасны холбоос",
+  website: "mglbusiness.mn эсвэл Facebook хуудасны холбоос",
 };
 export function RegistrationField({ field }: { field: Field }) {
   const multiline = ["description", "offers", "needs"].includes(field.id);
@@ -74,15 +75,7 @@ export function RegistrationField({ field }: { field: Field }) {
           name={field.id}
           required={field.required}
           maxLength={field.maxLength}
-          type={
-            numeric
-              ? "number"
-              : field.id === "phone"
-                ? "tel"
-                : field.id === "website"
-                  ? "url"
-                  : "text"
-          }
+          type={numeric ? "number" : field.id === "phone" ? "tel" : "text"}
           min={numeric ? (field.id === "foundedYear" ? 1900 : 1) : undefined}
           max={
             numeric
@@ -93,7 +86,27 @@ export function RegistrationField({ field }: { field: Field }) {
           }
           step={numeric ? 1 : undefined}
           pattern={field.id === "phone" ? "[0-9]{8}" : undefined}
-          inputMode={numeric || field.id === "phone" ? "numeric" : undefined}
+          inputMode={
+            numeric || field.id === "phone"
+              ? "numeric"
+              : field.id === "website"
+                ? "url"
+                : undefined
+          }
+          autoCapitalize={field.id === "website" ? "none" : undefined}
+          onBlur={
+            field.id === "website"
+              ? (event) => {
+                  const normalized = normalizeRegistrationWebsite(
+                    event.currentTarget.value,
+                  );
+                  if (normalized !== null) {
+                    event.currentTarget.value = normalized;
+                    event.currentTarget.setCustomValidity("");
+                  }
+                }
+              : undefined
+          }
           autoComplete={
             field.id === "name"
               ? "name"

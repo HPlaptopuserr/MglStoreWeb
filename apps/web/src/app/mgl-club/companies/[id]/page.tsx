@@ -10,6 +10,7 @@ import { API } from "@/lib/api";
 import { localCompanies } from "@/features/mgl-club/local-companies";
 import { demoCompanies } from "@/features/mgl-club/demo-companies";
 import { CompanyDemoWebsite } from "@/features/mgl-club/CompanyDemoWebsite";
+import { CompanyListingDetail } from "@/features/mgl-club/CompanyListingDetail";
 import { CompanyWebsite } from "@/features/mgl-club/CompanyWebsite";
 export async function generateMetadata({
   params,
@@ -59,6 +60,11 @@ export default async function CompanyPage({
     website: ClubWebsite | null;
     siteSlug?: string | null;
   } = await response.json();
-  if (isClubSiteSlug(siteSlug)) redirect(`${companySiteOrigin}/${siteSlug}`);
-  return <CompanyWebsite member={member} site={website || undefined} />;
+  if (website && isClubSiteSlug(siteSlug))
+    redirect(`${companySiteOrigin}/${siteSlug}`);
+  return website ? (
+    <CompanyWebsite member={member} site={website} />
+  ) : (
+    <CompanyListingDetail member={member} />
+  );
 }

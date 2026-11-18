@@ -98,7 +98,7 @@ test("public listing selects consenting club profiles and never returns unknown 
   stubQuery(async (args: Prisma.Sql) => {
     assert.ok(args.values.includes("mgl-club"));
     assert.ok(args.values.includes("Худалдаа"));
-    assert.ok(args.values.includes("%Хүргэлт%"));
+    assert.ok(args.values.includes("%хүргэлт%"));
     assert.ok(args.sql.includes('"isActive" = TRUE'));
     assert.ok(args.sql.includes("'consent' = 'yes'"));
     assert.ok(args.sql.includes("LIMIT 25"));
@@ -238,6 +238,36 @@ test("gold logos allow an explicit admin selection or a settled unexpired gold i
     return [];
   });
   assert.equal((await fetch(`${base}/members?scope=gold`)).status, 200);
+});
+test("directory search expands Latin products and spoken company initials before pagination", async () => {
+  for (const [queryText, expected] of [
+    ["block", "%блок%"],
+    ["эм жи эл", "%mgl%"],
+  ]) {
+    stubQuery(async (query: Prisma.Sql) => {
+      assert.ok(query.values.includes(expected));
+      assert.ok(query.values.includes("offers"));
+      assert.ok(query.sql.includes("LIMIT 25"));
+      assert.ok(query.sql.includes("p.\"status\" = 'PAID'"));
+      return [];
+    });
+    assert.equal(
+      (
+        await fetch(
+          `${base}/members?scope=gold&q=${encodeURIComponent(queryText)}`,
+        )
+      ).status,
+      200,
+    );
+  }
+});
+test("expanded search still treats percent and underscore as literal characters", async () => {
+  stubQuery(async (query: Prisma.Sql) => {
+    assert.ok(query.values.includes("%50\\%\\_%"));
+    assert.ok(!query.values.includes("%50%_%"));
+    return [];
+  });
+  assert.equal((await fetch(`${base}/members?q=50%25_`)).status, 200);
 });
 
 test("company pages only return consenting public profile fields", async () => {

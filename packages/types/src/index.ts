@@ -82,3 +82,4 @@ export * from "./domain/mgl-club-website";
 export * from "./domain/mgl-club-site-url";
 
 export * from "./data/innova-company";
+export * from "./domain/mgl-club-search";

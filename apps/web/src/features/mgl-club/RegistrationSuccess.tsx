@@ -1,7 +1,4 @@
-import {
-  ClubGoldPayment,
-  type ClubPaymentCredentials,
-} from "./ClubGoldPayment";
+import type { ClubPaymentCredentials } from "./ClubGoldPayment";
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { ArrowUpRight, Check } from "lucide-react";
@@ -23,16 +20,20 @@ export function RegistrationSuccess({
           <Check size={30} />
         </span>
         <p className={styles.eyebrow}>БҮРТГЭЛ АМЖИЛТТАЙ</p>
-        <h1>Клубт тавтай морил!</h1>
+        <h1>Байгууллагын пост нийтлэгдлээ!</h1>
         <p>
-          Таны бизнесийн танилцуулга нийтлэгдлээ. Клубийн гишүүд бүтээгдэхүүн,
+          Таны байгууллага гишүүдийн жагсаалтад нэмэгдлээ. Гишүүд бүтээгдэхүүн,
           үйлчилгээг тань харж, тантай шууд холбогдох боломжтой боллоо.
         </p>
         <Link href="/mgl-club">
           Гишүүдийг харах <ArrowUpRight size={17} />
         </Link>
       </section>
-      {credentials && <ClubGoldPayment credentials={credentials} />}
+      {credentials && (
+        <Link href={`/mgl-club/companies/${credentials.registrationId}`}>
+          Нийтэлсэн постоо харах ↗
+        </Link>
+      )}
     </>
   );
 }

@@ -11,7 +11,16 @@ test("admin-selected Innova is visible before remote results and opens the Busin
   assert.match(result[0].href, /\/innovallc$/);
 });
 test("Innova respects search, location and sector filters", () => {
-  for (const query of ["INNOVA", "innovallc", "иннова", "бетон"])
+  for (const query of [
+    "INNOVA",
+    "innovallc",
+    "иннова",
+    "бетон",
+    "блок",
+    "block",
+    "blok",
+    "үйлдвэрлэл",
+  ])
     assert.equal(goldCompanies([], { ...filters, query }).length, 1);
   for (const mismatch of [
     { query: "аялал" },
@@ -63,4 +72,35 @@ test("admin-managed Innova name, logo, sector and city replace the published fal
     ).length,
     1,
   );
+});
+
+test("published Gold members open their own Business website link", () => {
+  const member = {
+    ...innovaCompany,
+    id: "another-company",
+    businessName: "Өөр байгууллага",
+    siteSlug: "another-company",
+  };
+  const result = goldCompanies([member], filters).find(
+    (entry) => entry.member.id === member.id,
+  );
+  assert.match(result?.href || "", /\/another-company$/);
+  assert.doesNotMatch(result?.href || "", /mgl-club\/companies/);
+});
+test("twenty or thirty distinct Gold members retain every company and website link", () => {
+  for (const count of [20, 30]) {
+    const members = Array.from({ length: count }, (_, index) => ({
+      ...innovaCompany,
+      id: `gold-${index}`,
+      businessName: `Байгууллага ${index + 1}`,
+      siteSlug: `gold-company-${index + 1}`,
+    }));
+    const result = goldCompanies(members, filters);
+    assert.equal(result.length, count + 1);
+    for (const member of members)
+      assert.match(
+        result.find((entry) => entry.member.id === member.id)?.href || "",
+        new RegExp(`/${member.siteSlug}$`),
+      );
+  }
 });

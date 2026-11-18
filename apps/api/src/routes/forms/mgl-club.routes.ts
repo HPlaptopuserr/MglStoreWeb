@@ -17,6 +17,7 @@ import {
   parseClubWebsite,
   isClubSiteSlug,
   normalizeMglClubLocation,
+  getClubSearchVariants,
 } from "@mgl/types";
 
 import { createClubLogoRouter } from "./mgl-club-logo.routes";
@@ -192,7 +193,9 @@ router.get("/forms/mgl-club/members", async (req, res) => {
     if (sector) conditions.push(Prisma.sql`r."data"->>'sector' = ${sector}`);
     if (cursor) conditions.push(Prisma.sql`r."id" > ${cursor}`);
     if (query) {
-      const pattern = `%${query.replace(/[\\%_]/g, (value) => `\\${value}`)}%`;
+      const patterns = getClubSearchVariants(query).map(
+        (variant) => `%${variant.replace(/[\\%_]/g, (value) => `\\${value}`)}%`,
+      );
       const fields =
         scope === "needs"
           ? ["name", "businessName", "city", "sector", "needs"]
@@ -207,8 +210,10 @@ router.get("/forms/mgl-club/members", async (req, res) => {
             ];
       conditions.push(
         Prisma.sql`(${Prisma.join(
-          fields.map(
-            (field) => Prisma.sql`r."data"->>${field} ILIKE ${pattern}`,
+          fields.flatMap((field) =>
+            patterns.map(
+              (pattern) => Prisma.sql`r."data"->>${field} ILIKE ${pattern}`,
+            ),
           ),
           " OR ",
         )})`,
@@ -243,7 +248,23 @@ router.get("/forms/mgl-club/members", async (req, res) => {
         typeof row.data === "object" &&
         !Array.isArray(row.data) &&
         row.data.isDemo === true;
-      return [{ id: row.id, ...member, ...(isDemo ? { isDemo: true } : {}) }];
+      const data =
+        row.data && typeof row.data === "object" && !Array.isArray(row.data)
+          ? row.data
+          : {};
+      const siteSlug =
+        isClubSiteSlug(data.clubSiteSlug) &&
+        parseClubWebsite(data.websitePublished)
+          ? data.clubSiteSlug
+          : null;
+      return [
+        {
+          id: row.id,
+          ...member,
+          ...(isDemo ? { isDemo: true } : {}),
+          ...(siteSlug ? { siteSlug } : {}),
+        },
+      ];
     });
     return res.json({
       members,

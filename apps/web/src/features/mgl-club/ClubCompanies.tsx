@@ -21,6 +21,7 @@ export function ClubCompanies() {
   const { members: filters } = useClubWorkspace();
   const { query, setQuery, sector, setSector, city, setCity } = filters;
   const [expanded, setExpanded] = useState(false);
+  const [expandedResults, setExpandedResults] = useState<string | null>(null);
   const directory = useClubDirectory(query, sector, city, "gold");
   const [innova, setInnova] = useState<MglClubMember>(innovaCompany);
   useEffect(() => {
@@ -45,6 +46,10 @@ export function ClubCompanies() {
     { query, sector, city },
     innova,
   );
+  const filterKey = JSON.stringify([query, sector, city]);
+  const showAll = expandedResults === filterKey;
+  const visibleCompanies = showAll ? companies : companies.slice(0, 12);
+  const hasHidden = companies.length > visibleCompanies.length;
   const showDemo =
     process.env.NODE_ENV !== "production" &&
     !directory.loading &&
@@ -161,21 +166,40 @@ export function ClubCompanies() {
             <h1 id="club-companies-title">Алтан гишүүд</h1>
           </div>
         </div>
-        <div className={styles.grid} aria-busy={directory.loading}>
-          {companies.map(({ member, href }) => (
-            <Link
-              href={href}
-              className={styles.tile}
-              title={member.businessName}
-              key={member.id}
-              aria-label={`${member.businessName}: танилцуулга үзэх`}
-            >
-              <span className={styles.logo}>
-                <CompanyLogo name={member.businessName} url={member.logoUrl} />
-              </span>
-              <span className={styles.name}>{member.businessName}</span>
-            </Link>
-          ))}
+        <div
+          id="gold-company-list"
+          className={styles.grid}
+          aria-busy={directory.loading}
+        >
+          {visibleCompanies.map(({ member, href }) => {
+            const service =
+              member.offers
+                .split(/[,;\n]+/)
+                .map((value) => value.trim())
+                .find(Boolean) || member.sector;
+            return (
+              <Link
+                href={href}
+                className={styles.tile}
+                title={`${member.businessName} /${service}/`}
+                key={member.id}
+                aria-label={`${member.businessName}, ${service}: танилцуулга үзэх`}
+              >
+                <span className={styles.logo}>
+                  <CompanyLogo
+                    name={member.businessName}
+                    url={member.logoUrl}
+                  />
+                </span>
+                <strong className={styles.companyName}>
+                  {member.businessName}
+                </strong>
+                {service && (
+                  <span className={styles.companyService}>/{service}/</span>
+                )}
+              </Link>
+            );
+          })}
         </div>
         {directory.loading && (
           <p role="status">Байгууллагуудыг ачаалж байна…</p>
@@ -199,7 +223,18 @@ export function ClubCompanies() {
                 : "Төлбөр нь баталгаажсан Алтан гишүүдийн лого энд харагдана."}
             </p>
           )}
-        {directory.cursor && (
+        {(hasHidden || showAll) && companies.length > 12 && (
+          <button
+            type="button"
+            className={styles.more}
+            aria-expanded={showAll}
+            aria-controls="gold-company-list"
+            onClick={() => setExpandedResults(showAll ? null : filterKey)}
+          >
+            {showAll ? "Хураах" : "Бусад алтан гишүүдийг харах"}
+          </button>
+        )}
+        {directory.cursor && !hasHidden && (
           <button
             type="button"
             className={styles.more}

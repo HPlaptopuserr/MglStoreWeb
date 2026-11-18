@@ -243,3 +243,11 @@ test("unpaid or expired Gold cannot reserve or change a company URL", async () =
     assert.equal(wrote, false);
   }
 });
+
+test("a reserved URL never publishes an unsaved or draft-only website", async () => {
+  stub(prisma.formResponse, "findFirst", async () => ({
+    id,
+    data: { ...profile, clubSiteSlug: "draft-only", websiteDraft: published },
+  }));
+  assert.equal((await fetch(`${base}/sites/draft-only`)).status, 404);
+});

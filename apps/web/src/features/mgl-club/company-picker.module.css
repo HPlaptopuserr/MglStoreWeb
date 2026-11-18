@@ -1,0 +1,142 @@
+.picker {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.picker label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 650;
+  color: #294c39;
+}
+.inputWrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0 14px;
+  border: 1px solid #abc9b8;
+  border-radius: 10px;
+  background: #fff;
+  color: #5a7c69;
+}
+.inputWrap:focus-within {
+  border-color: #3a8860;
+  box-shadow: 0 0 0 3px #e4f1e9;
+}
+.inputWrap > svg {
+  flex-shrink: 0;
+}
+.picker input {
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;
+  padding: 12px 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #173f2d;
+  font: inherit;
+  font-size: 16px;
+}
+.picker input:disabled {
+  cursor: not-allowed;
+}
+.picker .clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-height: 36px;
+  width: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #61796c;
+}
+.picker > p {
+  margin: 10px 0 0;
+  color: #73877a;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.dropdown {
+  position: absolute;
+  top: 86px;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #c0d6c9;
+  border-radius: 12px;
+  box-shadow: 0 16px 36px #173f2d24;
+}
+.dropdown > p {
+  padding: 12px 16px;
+  margin: 0;
+  border-bottom: 1px solid #edf2ee;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #64766b;
+  background: #f9fbf9;
+}
+.results {
+  max-height: 310px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.results button {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 66px;
+  text-align: left;
+  padding: 13px 42px 13px 16px;
+  border: 0;
+  border-bottom: 1px solid #eff3f0;
+  border-radius: 0;
+  background: #fff;
+  color: #284b37;
+}
+.results button strong {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.results button span {
+  font-size: 12px;
+  color: #768a7e;
+}
+.results button[data-active="true"] {
+  background: #edf6f0;
+}
+.results button[aria-selected="true"] {
+  box-shadow: inset 3px 0 #226d4c;
+}
+.selectedCheck {
+  position: absolute;
+  right: 16px;
+  top: 22px;
+  color: #226d4c;
+}
+@media (max-width: 767px) {
+  .dropdown {
+    top: 86px;
+  }
+  .results {
+    max-height: min(310px, 44svh);
+  }
+  .picker > p {
+    font-size: 11px;
+  }
+}
+
+.inputWrap:has(input:disabled) {
+  background: #f3f6f4;
+  color: #90a096;
+}

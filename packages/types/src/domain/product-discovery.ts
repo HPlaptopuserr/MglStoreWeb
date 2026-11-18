@@ -295,7 +295,7 @@ function withMongolianVowelVariants(value: string) {
   return [...variants];
 }
 
-function transliterateLatinTokenToCyrillic(token: string) {
+export function transliterateLatinTokenToCyrillic(token: string) {
   const normalized = normalizeDiscoveryText(token).replace(/\s+/g, "");
   if (!normalized || /[^\x00-\x7F]/.test(normalized)) return [];
 

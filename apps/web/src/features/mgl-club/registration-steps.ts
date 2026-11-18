@@ -1,3 +1,4 @@
+import { normalizeRegistrationWebsite } from "./registration-website";
 import { mglClubFields, type MglClubField } from "@mgl/types";
 
 interface RegistrationStep {
@@ -74,22 +75,12 @@ export function firstInvalidControl(
         "Тоог зөвхөн цифрээр, эхэнд нь 0 оруулахгүй бичнэ үү.",
       );
     if (control.name === "website" && control.value.trim()) {
-      try {
-        const url = new URL(control.value.trim());
-        if (
-          !["http:", "https:"].includes(url.protocol) ||
-          !url.hostname.includes(".") ||
-          url.username ||
-          url.password
-        )
-          control.setCustomValidity(
-            "https://example.com хэлбэрийн хүчинтэй холбоос оруулна уу.",
-          );
-      } catch {
+      const normalized = normalizeRegistrationWebsite(control.value);
+      if (normalized === null)
         control.setCustomValidity(
-          "https://example.com хэлбэрийн холбоос оруулна уу.",
+          "Зөв домэйн эсвэл вэб хуудасны холбоос оруулна уу. Жишээ: mglbusiness.mn",
         );
-      }
+      else control.value = normalized;
     }
     return !control.checkValidity();
   });

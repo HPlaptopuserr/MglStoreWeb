@@ -133,7 +133,7 @@ export function createClubProfileRouter(): ExpressRouter {
   router.post(`${base}/import-innova`, limit, async (_req, res) => {
     try {
       const result = await prisma.$transaction(async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${"mgl-club-site:innovallc"}))`;
+        await tx.$queryRaw`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtext(${"mgl-club-site:innovallc"}))`;
         const form = await tx.form.upsert({
           where: { slug: "mgl-club" },
           update: {},

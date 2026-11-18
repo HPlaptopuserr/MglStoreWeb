@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CLUB_BUSINESS_SITE_ORIGIN,
   normalizeClubSiteSlug,
@@ -9,6 +9,10 @@ import {
 import { companySiteOrigin } from "@/lib/company-site-url";
 import { API, authFetch } from "@/lib/api";
 import styles from "./site-builder.module.css";
+import {
+  COMPANY_SITE_URL_EVENT,
+  COMPANY_PUBLISHED_EVENT,
+} from "./CompanyPublishResult";
 export function CompanySiteUrlField({
   companyId,
   initialSlug,
@@ -27,6 +31,31 @@ export function CompanySiteUrlField({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  useEffect(() => {
+    const updatePublishedSlug = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail: unknown = event.detail;
+      if (
+        !detail ||
+        typeof detail !== "object" ||
+        !("companyId" in detail) ||
+        detail.companyId !== companyId ||
+        !("siteSlug" in detail) ||
+        typeof detail.siteSlug !== "string"
+      )
+        return;
+      const next = normalizeClubSiteSlug(detail.siteSlug);
+      if (!next) return;
+      setSlug((current) => (current === saved ? next : current));
+      setSaved(next);
+    };
+    window.addEventListener(COMPANY_PUBLISHED_EVENT, updatePublishedSlug);
+    window.addEventListener(COMPANY_SITE_URL_EVENT, updatePublishedSlug);
+    return () => {
+      window.removeEventListener(COMPANY_PUBLISHED_EVENT, updatePublishedSlug);
+      window.removeEventListener(COMPANY_SITE_URL_EVENT, updatePublishedSlug);
+    };
+  }, [companyId, saved]);
   async function save() {
     if (disabled || busy || demo) return;
     const normalized = normalizeClubSiteSlug(slug);
@@ -54,6 +83,11 @@ export function CompanySiteUrlField({
         throw new Error(data.message || "URL хадгалж чадсангүй.");
       setSaved(data.siteSlug);
       setSlug(data.siteSlug);
+      window.dispatchEvent(
+        new CustomEvent(COMPANY_SITE_URL_EVENT, {
+          detail: { companyId, siteSlug: data.siteSlug },
+        }),
+      );
       setNotice("Танилцуулгын богино холбоос хадгаллаа.");
     } catch (cause: unknown) {
       setError(

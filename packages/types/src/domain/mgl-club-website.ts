@@ -16,6 +16,7 @@ export interface ClubSectionItem {
   imageAlt: string;
 }
 export interface ClubWebsiteSection {
+  heroImageMode?: "split" | "background";
   id: string;
   type: ClubSectionType;
   title: string;
@@ -103,6 +104,12 @@ export function parseClubWebsite(input: unknown): ClubWebsite | null {
   for (const raw of input.sections as unknown[]) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const r = raw as Record<string, unknown>;
+    if (
+      r.heroImageMode !== undefined &&
+      r.heroImageMode !== "split" &&
+      r.heroImageMode !== "background"
+    )
+      return null;
     const id = text(r.id, 80),
       title = text(r.title, 160),
       eyebrow = text(r.eyebrow, 80),
@@ -154,6 +161,9 @@ export function parseClubWebsite(input: unknown): ClubWebsite | null {
     }
     ids.add(id);
     sections.push({
+      ...(r.heroImageMode
+        ? { heroImageMode: r.heroImageMode as "split" | "background" }
+        : {}),
       id,
       type: r.type as ClubSectionType,
       title,

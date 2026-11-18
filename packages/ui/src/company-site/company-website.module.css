@@ -1,7 +1,16 @@
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700;800;900&display=swap");
+
 .website {
   background: var(--site-background, #fff);
   color: var(--site-text, #17251d);
-  font-family: inherit;
+  font-family:
+    "Noto Sans",
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
 }
 .website *,
 .website *::before,
@@ -934,5 +943,121 @@
   .siteNav a {
     padding-inline: 2px;
     font-size: 10.5px;
+  }
+}
+
+/* Poster images remain intact beside the headline instead of behind it. */
+.hero.heroSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  grid-template-areas: "copy media";
+  gap: clamp(32px, 5vw, 72px);
+  min-height: 0;
+  padding: 56px max(40px, calc((100% - 1240px) / 2));
+}
+.heroSplit[data-tone="dark"] {
+  background:
+    radial-gradient(
+      ellipse at 85% 40%,
+      color-mix(in srgb, var(--site-primary) 50%, transparent),
+      transparent 65%
+    ),
+    var(--site-dark);
+}
+.heroSplit[data-tone="light"] {
+  background: linear-gradient(
+    110deg,
+    var(--site-background) 40%,
+    color-mix(in srgb, var(--site-primary) 5%, var(--site-background))
+  );
+}
+.heroSplit .heroContent {
+  grid-area: copy;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.heroSplit .heroMedia {
+  display: flex;
+  justify-content: center;
+  grid-area: media;
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  width: 100%;
+  background: transparent;
+  align-self: center;
+  overflow: hidden;
+  border-radius: 20px;
+}
+.heroSplit .heroMedia img {
+  display: block;
+  max-height: 480px;
+  object-position: center;
+  border-radius: 16px;
+}
+.heroSplit .heroShade,
+.heroSplit .heroIndex {
+  display: none;
+}
+.heroSplit h1 {
+  max-width: 100%;
+  margin: 18px 0;
+  font-size: clamp(30px, 3.5vw, 44px);
+  text-wrap: balance;
+  line-height: 1.15;
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  overflow-wrap: anywhere;
+}
+.heroSplit .eyebrow {
+  margin-bottom: 18px;
+  opacity: 0.75;
+}
+.heroSplit .heroContent > p:not(.eyebrow) {
+  margin: 0 0 24px;
+  line-height: 1.75;
+  font-size: 16px;
+}
+.heroSplit .heroCta {
+  min-height: 46px;
+  margin-top: 8px;
+  padding: 12px 20px;
+  gap: 20px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--site-ink);
+  font-weight: 600;
+}
+.heroSplit[data-tone="light"] .heroCta {
+  background: var(--site-primary);
+  color: #fff;
+}
+@media (max-width: 767px) {
+  .hero.heroSplit {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "copy" "media";
+    gap: 20px;
+    padding: 28px 20px;
+  }
+  .heroSplit h1 {
+    font-size: clamp(28px, 8vw, 38px);
+  }
+}
+
+/* Contact details use their content height instead of an empty full-screen chapter. */
+.section.contactSection {
+  min-height: 0;
+  padding: 40px 0;
+}
+.contactSection .contact {
+  align-items: start;
+  gap: 24px clamp(24px, 4vw, 64px);
+}
+@media (max-width: 767px) {
+  .section.contactSection {
+    padding: 28px 0;
   }
 }
