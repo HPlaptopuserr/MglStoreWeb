@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 
 import { useEffect, useState } from "react";
 import { Printer } from "lucide-react";
@@ -153,7 +154,7 @@ export function PadaanView({
 
         {d.note && (
           <div className="mt-4 text-sm text-slate-600">
-            <strong>Тэмдэглэл:</strong> {d.note}
+            <strong>Тэмдэглэл:</strong> {formatPaymentBranding(d.note)}
           </div>
         )}
 

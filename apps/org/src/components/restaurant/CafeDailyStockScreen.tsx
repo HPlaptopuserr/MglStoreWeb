@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 
 import { ProductHistoryTrigger } from "@mgl/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -971,7 +972,7 @@ export function CafeDailyStockScreen() {
                       {receipt.receivedBy}
                     </td>
                     <td className="max-w-xs px-4 py-4 text-sm font-semibold">
-                      {receipt.note || "—"}
+                      {formatPaymentBranding(receipt.note) || "—"}
                     </td>
                     <td className="px-4 py-4">
                       {receipt.voidedAt ? (

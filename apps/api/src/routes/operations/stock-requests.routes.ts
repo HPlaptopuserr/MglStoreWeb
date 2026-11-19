@@ -4287,7 +4287,7 @@ router.post(
       ) {
         return res.status(409).json({
           code: "STOCK_REQUEST_NOT_APPROVED",
-          message: "Админ зөвшөөрсний дараа QPay нэхэмжлэх нээгдэнэ",
+          message: "Админ зөвшөөрсний дараа Minu нэхэмжлэх нээгдэнэ",
         });
       }
 
@@ -4321,7 +4321,7 @@ router.post(
             method: PaymentMethod.QPAY,
             status: PaymentStatus.PENDING,
             transactionId,
-            note: "Local QPay төлбөр",
+            note: "Local Minu төлбөр",
           },
         });
         return res.json({
@@ -4386,7 +4386,7 @@ router.post(
       }
       return res
         .status(502)
-        .json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
+        .json({ message: "Minu нэхэмжлэх үүсгэхэд алдаа гарлаа" });
     }
   },
 );
@@ -4437,7 +4437,7 @@ router.post(
     }
 
     if (!payment.transactionId?.startsWith("DEV-QPAY-")) {
-      return res.status(400).json({ message: "Fake QPay нэхэмжлэх биш байна" });
+      return res.status(400).json({ message: "Fake Minu нэхэмжлэх биш байна" });
     }
     if (payment.status === PaymentStatus.CANCELLED) {
       return res.status(400).json({ message: "Цуцлагдсан төлбөр байна" });
@@ -4452,7 +4452,7 @@ router.post(
           paidAmount: payment.totalAmount,
           paidAt: confirmedAt,
           paymentMethod: PaymentMethod.QPAY,
-          note: "Local fake QPay баталгаажуулалт",
+          note: "Local fake Minu баталгаажуулалт",
         },
       });
       await tx.stockRequestPaymentEntry.update({
@@ -4616,7 +4616,7 @@ router.get(
             paidAt: confirmedAt,
             paymentMethod: PaymentMethod.QPAY,
             confirmedById: userId || null,
-            note: "QPay автомат баталгаажуулалт",
+            note: "Minu автомат баталгаажуулалт",
           },
         });
         await tx.stockRequestPaymentEntry.update({
@@ -4634,7 +4634,7 @@ router.get(
       console.error("qpay status check error", error);
       return res
         .status(500)
-        .json({ message: "QPay төлбөр шалгахад алдаа гарлаа" });
+        .json({ message: "Minu төлбөр шалгахад алдаа гарлаа" });
     }
   },
 );

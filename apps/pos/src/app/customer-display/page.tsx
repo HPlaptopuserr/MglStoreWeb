@@ -115,7 +115,7 @@ export default function CustomerDisplayPage() {
             <div className="flex flex-col justify-between rounded-3xl bg-slate-950 p-8 text-white">
               <div>
                 <p className="text-sm font-black uppercase tracking-[0.28em] text-amber-400">
-                  QPay төлбөр
+                  Minu төлбөр
                 </p>
                 <h2 className="mt-4 text-5xl font-black leading-tight tracking-tight">
                   QR код уншуулна уу
@@ -141,7 +141,7 @@ export default function CustomerDisplayPage() {
                 {qrSrc ? (
                   <img
                     src={qrSrc}
-                    alt="QPay QR"
+                    alt="Minu QR"
                     className="mx-auto h-[300px] w-[300px] rounded-2xl bg-white"
                   />
                 ) : (

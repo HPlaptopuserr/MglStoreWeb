@@ -6,7 +6,7 @@ const methods: Record<string, string> = {
   CASH: "Бэлэн",
   CARD: "Карт",
   QR: "QR",
-  QPAY: "QPay",
+  QPAY: "Minu",
   CREDIT: "Зээл",
   MIXED: "Холимог",
   TRANSFER: "Шилжүүлэг",

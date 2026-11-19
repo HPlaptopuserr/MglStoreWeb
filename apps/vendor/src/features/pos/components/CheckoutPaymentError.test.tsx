@@ -16,7 +16,7 @@ test("a declined card does not label a new cash or QR payment as failed", () => 
 test("uncertain bank payments and pending QR warnings cannot be hidden by changing method", () => {
   assert.ok(renderToStaticMarkup(<CheckoutPaymentError {...base} method="CASH" feedback={{ CARD: { kind: "unknown", message: base.message } }} />).includes(base.message));
   const html = renderToStaticMarkup(<CheckoutPaymentError {...base} method="CASH" hasPendingQPay />);
-  assert.ok(html.includes("QPay төлбөрийн анхааруулга"));
+  assert.ok(html.includes("Minu төлбөрийн анхааруулга"));
   assert.ok(html.includes("Гүйлгээ цуцалж, сагс цэвэрлэх"));
 });
 test("stock and checkout errors remain visible and idle state shows no stale alert", () => {

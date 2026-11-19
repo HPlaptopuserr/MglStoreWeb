@@ -298,7 +298,7 @@ export async function getVendorMerchantConfig(
 
     const selected = pickMerchantFields(org, channel);
 
-    console.log("[getVendorMerchantConfig] org QPay state:", {
+    console.log("[getVendorMerchantConfig] org Minu state:", {
       channel,
       qpayEnabled: selected.enabled,
       qpayMerchantId: selected.merchantId,
@@ -364,7 +364,7 @@ export async function getVendorMerchantConfig(
     // QPay authenticates as their own merchant → payments go to their registered bank account.
     if (selected.merchantId && orgMerchantKey) {
       console.log(
-        "[getVendorMerchantConfig] Using vendor-own QPay V2 credentials for:",
+        "[getVendorMerchantConfig] Using vendor-own Minu V2 credentials for:",
         selected.merchantId,
       );
       const merchantContext: QPayMerchantContext = {
@@ -470,12 +470,12 @@ export async function getVendorMerchantConfig(
 
     // Fall back to central credentials for explicitly supported platform flows.
     if (!centralClientId || !centralClientSecret) {
-      console.warn("[getVendorMerchantConfig] No QPay credentials configured");
+      console.warn("[getVendorMerchantConfig] No Minu credentials configured");
       return { success: true, config: null };
     }
 
     console.log(
-      "[getVendorMerchantConfig] Using central QPay V2 credentials, invoiceCode:",
+      "[getVendorMerchantConfig] Using central Minu V2 credentials, invoiceCode:",
       orgInvoiceCode || centralInvoiceCode,
     );
     const merchantContext: QPayMerchantContext = {
@@ -889,11 +889,11 @@ export async function registerVendorWithQPay(
         : await registerQPayMerchantPerson(params as QPayRegisterPersonParams);
 
     console.log(
-      "QPay registration raw response:",
+      "Minu registration raw response:",
       JSON.stringify(redactQPayRegistrationResponse(result.raw), null, 2),
     );
     console.log(
-      "QPay parsed → merchantId:",
+      "Minu parsed → merchantId:",
       result.merchantId,
       "| merchantKey:",
       result.merchantKey,
@@ -923,7 +923,7 @@ export async function registerVendorWithQPay(
 
     return {
       success: true,
-      message: "QPay мерчант амжилттай бүртгэгдлээ",
+      message: "Minu мерчант амжилттай бүртгэгдлээ",
       merchantId: result.merchantId,
       raw: result.raw,
     };
@@ -947,7 +947,7 @@ export async function registerVendorWithQPay(
       }
       return {
         success: false,
-        message: `Энэ регистрийн дугаараар QPay мерчант аль хэдийн бүртгэгдсэн. Recover автоматаар амжилтгүй боллоо — QPay-тай шууд холбогдоно уу.`,
+        message: `Энэ регистрийн дугаараар Minu мерчант аль хэдийн бүртгэгдсэн. Recover автоматаар амжилтгүй боллоо — Minu-тай шууд холбогдоно уу.`,
         alreadyRegistered: true,
       };
     }
@@ -959,7 +959,7 @@ export async function registerVendorWithQPay(
       return {
         success: false,
         message:
-          'QPay QuickQR бүртгэл энэ орчинд идэвхгүй байна. Minu Dynamic QR ашиглах бол "Данс аль хэдийн байна" хэсгээс "Minu Dynamic QR" сонгоод тухайн дэлгүүрийн merchantCode оруулна уу.',
+          'Minu QuickQR бүртгэл энэ орчинд идэвхгүй байна. Minu Dynamic QR ашиглах бол "Данс аль хэдийн байна" хэсгээс "Minu Dynamic QR" сонгоод тухайн дэлгүүрийн merchantCode оруулна уу.',
       };
     }
     return {
@@ -987,7 +987,7 @@ async function autoRecoverMerchant(
   ).trim();
 
   if (!quickqrBaseUrl || !masterUsername || !masterPassword) {
-    throw new Error("QPay QuickQR тохиргоо дутуу");
+    throw new Error("Minu QR тохиргоо дутуу");
   }
 
   const credentials = Buffer.from(
@@ -1001,7 +1001,7 @@ async function autoRecoverMerchant(
     },
     body: JSON.stringify({ terminal_id: terminalId }),
   });
-  if (!tokenRes.ok) throw new Error("QPay auth алдаа");
+  if (!tokenRes.ok) throw new Error("Minu auth алдаа");
   const { access_token } = (await tokenRes.json()) as { access_token: string };
 
   const listRes = await fetch(`${quickqrBaseUrl}/merchant/list`, {
@@ -1028,7 +1028,7 @@ async function autoRecoverMerchant(
     return reg === registerNumber.toLowerCase();
   });
 
-  if (!match) throw new Error(`"${registerNumber}" мерчант QPay-д олдсонгүй`);
+  if (!match) throw new Error(`"${registerNumber}" мерчант Minu-д олдсонгүй`);
 
   const merchantId = String(
     match.merchant_id || match.id || match.username || "",
@@ -1059,7 +1059,7 @@ async function autoRecoverMerchant(
   );
   return {
     success: true,
-    message: "QPay мерчант олдоод амжилттай холбогдлоо",
+    message: "Minu мерчант олдоод амжилттай холбогдлоо",
     merchantId,
   };
 }

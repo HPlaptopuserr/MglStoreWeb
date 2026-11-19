@@ -453,7 +453,7 @@ export function RestaurantQrMenuScreen({ token }: { token: string }) {
         setError(
           statusError instanceof Error
             ? statusError.message
-            : "QPay төлбөр шалгахад алдаа гарлаа",
+            : "Minu төлбөр шалгахад алдаа гарлаа",
         );
       } finally {
         if (!silent) setCheckingPayment(false);

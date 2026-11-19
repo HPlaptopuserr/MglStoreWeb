@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, Landmark, Loader2, Printer } from "lucide-react";
@@ -391,7 +392,7 @@ export function InvoiceView({
 
             {payment.note && (
               <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-                <strong>Тэмдэглэл:</strong> {payment.note}
+                <strong>Тэмдэглэл:</strong> {formatPaymentBranding(payment.note)}
               </div>
             )}
 

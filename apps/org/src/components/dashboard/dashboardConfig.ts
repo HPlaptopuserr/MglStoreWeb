@@ -67,7 +67,7 @@ export function getDashboardModules(
     return [
       {
         title: "Өөртөө үйлчлэх касс",
-        desc: "Зочин захиалгаа өөрөө үүсгэж, QPay эсвэл картаар төлнө.",
+        desc: "Зочин захиалгаа өөрөө үүсгэж, Minu эсвэл картаар төлнө.",
         href: "/dashboard/self-service",
         icon: MonitorSmartphone,
         enabled: true,
@@ -158,7 +158,7 @@ export function getDashboardModules(
       },
       {
         title: "Тохиргоо",
-        desc: `Касс, QPay, карт болон ${isCafe ? "кофе шопын" : "рестораны"} тохиргоог удирдана.`,
+        desc: `Касс, Minu, карт болон ${isCafe ? "кофе шопын" : "рестораны"} тохиргоог удирдана.`,
         href: "/dashboard/settings",
         icon: Settings,
         enabled: true,

@@ -166,7 +166,7 @@ export function SystemFinancialOverview({
               <BadgeCheck className="h-5 w-5" />
             </div>
             <p className="mt-3 text-xs font-black uppercase text-blue-700">
-              Provider-оор баталгаажсан QPay
+              Provider-оор баталгаажсан Minu
             </p>
             <p className="mt-1 text-xl font-black text-slate-950">
               {money(overview.verifiedQPay.amount)}

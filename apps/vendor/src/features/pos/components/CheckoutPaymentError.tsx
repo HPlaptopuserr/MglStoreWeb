@@ -29,9 +29,9 @@ export function CheckoutPaymentError(props: Props) {
       <p className="text-[10px] font-bold uppercase tracking-widest text-rose-700">
         {(props.confirmedPaid ?? 0) > 0 ? "Төлбөр батлагдсан — борлуулалт дуусаагүй"
           : props.unknownCardPayment ? "Картын төлбөрийн төлөв тодорхойгүй"
-          : props.hasPendingQPay ? "QPay төлбөрийн анхааруулга"
+          : props.hasPendingQPay ? "Minu төлбөрийн анхааруулга"
           : props.method === "CARD" ? "Картын төлбөр амжилтгүй"
-          : props.method === "QR" ? "QPay QR үүссэнгүй" : "Төлбөр амжилтгүй"}
+          : props.method === "QR" ? "Minu QR үүссэнгүй" : "Төлбөр амжилтгүй"}
       </p>
       <p className="mt-2 text-sm font-semibold text-rose-800">{props.message}</p>
       {((props.confirmedPaid ?? 0) > 0 || props.unknownCardPayment) && <p className="mt-2 text-sm text-rose-800">Төлбөрийг дахин авахгүй. Төлөвөө шалгаж, борлуулалтын бүртгэлийг дуусгана уу.</p>}

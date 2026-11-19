@@ -68,7 +68,7 @@ export function PosPaymentPanel({
               }`}
             >
               <Icon size={20} />
-              <span className="mt-1">{method.value === "QR" ? "QPay" : method.label}</span>
+              <span className="mt-1">{method.value === "QR" ? "Minu" : method.label}</span>
               <span className="text-[10px] font-bold opacity-70">
                 {PAYMENT_METHOD_SHORTCUTS[method.value]}
               </span>

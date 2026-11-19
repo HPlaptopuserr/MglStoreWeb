@@ -566,7 +566,7 @@ export default function UpgradePage() {
     : null;
   const pendingProviderLabel =
     status?.pendingInvoice?.paymentProvider === "QPAY"
-      ? "QPay"
+      ? "Minu"
       : "Minu Dynamic QR";
   const chosenPlan = selectedPlan
     ? plans.find((p) => p.id === selectedPlan)

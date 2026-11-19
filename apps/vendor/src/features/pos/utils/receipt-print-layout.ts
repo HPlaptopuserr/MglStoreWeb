@@ -14,7 +14,7 @@ const money = (value: number) =>
 const paymentLabels: Record<string, string> = {
   CASH: "Бэлэн",
   CARD: "Карт",
-  QPAY: "QPay",
+  QPAY: "Minu",
   QR: "QR",
   CREDIT: "Зээл",
   MIXED: "Хосолсон",

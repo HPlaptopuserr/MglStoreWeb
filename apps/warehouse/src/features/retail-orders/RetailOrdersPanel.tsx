@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 import { useCallback, useEffect, useState } from "react";
 import { Loader2, RefreshCw, ShoppingBag } from "lucide-react";
 import { API, wmsFetch } from "@/lib/api";
@@ -184,7 +185,7 @@ export function RetailOrdersPanel({
                 {order.phone}
               </a>
               <p>{order.shippingAddress}</p>
-              {order.note && <p>{order.note}</p>}
+              {order.note && <p>{formatPaymentBranding(order.note)}</p>}
               <p className="text-lg font-black text-slate-950">
                 {Number(order.total).toLocaleString("mn-MN")}₮{" "}
                 <span

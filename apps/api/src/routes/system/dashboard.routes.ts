@@ -1372,12 +1372,12 @@ router.get(
         },
         {
           id: "qpay-adoption",
-          label: "QPay идэвхжүүлэлт",
+          label: "Minu идэвхжүүлэлт",
           value: qpayAdoptionRate,
           unit: "%",
           trend: null,
           category: "Enablement",
-          description: "Идэвхтэй байгууллагаас QPay холбосон хувь.",
+          description: "Идэвхтэй байгууллагаас Minu холбосон хувь.",
         },
         {
           id: "subdomain-adoption",

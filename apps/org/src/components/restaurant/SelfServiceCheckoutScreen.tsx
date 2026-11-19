@@ -2013,7 +2013,7 @@ function SelfServiceCheckoutContent() {
               ? "Гэрээт хоолны захиалгыг бүртгэж чадсангүй."
               : paymentMethod === "CASH"
                 ? "Тест борлуулалт үүсгэж чадсангүй."
-                : "QPay төлбөр үүсгэж чадсангүй.";
+                : "Minu төлбөр үүсгэж чадсангүй.";
       const cardPaymentCancelled =
         paymentMethod === "CARD" &&
         errorMessage === CARD_PAYMENT_CANCELLED_MESSAGE;
@@ -2885,7 +2885,7 @@ function SelfServiceCheckoutContent() {
                     ? "Тест борлуулалт үүсгэх"
                     : paymentMethod === "CONTRACT"
                       ? "Сарын тооцоонд бүртгэх"
-                      : "QPay-аар төлөх"}
+                      : "Minu-аар төлөх"}
               </button>
               <div className="mt-2 flex items-center justify-center gap-2 text-[11px] font-bold text-slate-400">
                 <Check className="h-3.5 w-3.5" />
@@ -3219,7 +3219,7 @@ function SelfServiceCheckoutContent() {
                 }`}
               >
                 <QrCode className="h-6 w-6" />
-                QPay
+                Minu
               </button>
               <button
                 type="button"

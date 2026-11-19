@@ -124,7 +124,7 @@ export function ReceiptPreview({ receipt, register, onVoided, className = "" }: 
       receipt.paymentMethod === "CARD"
         ? "Картын мөнгийг terminal дээр буцаасан эсэхээ шалгана уу. "
         : receipt.paymentMethod === "QPAY" || receipt.paymentMethod === "QR"
-          ? "QPay/QR мөнгийг гараар эсвэл QPay талд буцаасан эсэхээ шалгана уу. "
+          ? "Minu/QR мөнгийг гараар эсвэл Minu талд буцаасан эсэхээ шалгана уу. "
           : "Бэлэн мөнгийг хэрэглэгчид буцааж өгсөн эсэхээ шалгана уу. ";
 
     if (!confirm(`${paymentWarning}Буцаалт бүртгэгдэж, барааны нөөц буцаж нэмэгдэнэ. Үргэлжлүүлэх үү?`)) {

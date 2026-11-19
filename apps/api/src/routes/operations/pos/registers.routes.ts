@@ -1012,12 +1012,12 @@ router.post("/admin/pos-registers", async (req, res) => {
   }
 
   if (qpayEnabled === true && (!normalizedQpayMerchantId || !normalizedQpayTerminalId)) {
-    return res.status(400).json({ message: "qpayEnabled=true үед qpayMerchantId, qpayTerminalId шаардлагатай" });
+    return res.status(400).json({ message: "Minu QR идэвхтэй үед мерчант болон терминалын мэдээлэл шаардлагатай" });
   }
 
   if (qpayEnabled === false && (normalizedQpayMerchantId || normalizedQpayTerminalId)) {
     return res.status(400).json({
-      message: "qpayEnabled=false үед qpayMerchantId, qpayTerminalId хоосон байх ёстой",
+      message: "Minu QR идэвхгүй үед мерчант болон терминалын мэдээллийг арилгана уу",
     });
   }
 
@@ -1302,7 +1302,7 @@ router.patch("/admin/pos-registers/:id", async (req, res) => {
     }
 
     if (nextQpayEnabled && (!nextQpayMerchantId || !nextQpayTerminalId)) {
-      return res.status(400).json({ message: "QPay идэвхтэй үед merchant болон terminal заавал байна" });
+      return res.status(400).json({ message: "Minu идэвхтэй үед merchant болон terminal заавал байна" });
     }
 
     const hasMinuCredentialInput = [minuAgentUsername, minuAgentPassword, minuAgentBranchId].some((value) =>

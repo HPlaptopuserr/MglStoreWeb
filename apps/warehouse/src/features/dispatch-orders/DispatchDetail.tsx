@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 
 import { useEffect, useState } from "react";
 import {
@@ -883,7 +884,7 @@ export function DispatchDetail({
 
       {d.request.note && (
         <div className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-          <strong>Тэмдэглэл:</strong> {d.request.note}
+          <strong>Тэмдэглэл:</strong> {formatPaymentBranding(d.request.note)}
         </div>
       )}
 

@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 
 import Link from "next/link";
 import workspaceStyles from "./RestaurantWorkspace.module.css";
@@ -295,8 +296,8 @@ const paymentOptions = [
   },
   {
     value: "QPAY",
-    label: "QPay",
-    action: "QPay нэхэмжлэх үүсгэх",
+    label: "Minu",
+    action: "Minu нэхэмжлэх үүсгэх",
     icon: QrCode,
     enabled: true,
   },
@@ -436,7 +437,7 @@ const getCreditSaleGroupKey = (credit: RestaurantCreditSale) =>
 
 const paymentMethodLabel = (method?: string | null) => {
   const normalized = String(method || "").toUpperCase();
-  if (normalized === "QPAY" || normalized === "QR") return "QPay";
+  if (normalized === "QPAY" || normalized === "QR") return "Minu";
   if (normalized === "CARD") return "Карт";
   if (normalized === "CREDIT") return "Зээл";
   if (normalized === "MIXED") return "Холимог";
@@ -2159,7 +2160,7 @@ function RestaurantPosContent() {
       sale.paymentMethod === "CARD"
         ? "Картын буцаалт хийсэн"
         : sale.paymentMethod === "QPAY"
-          ? "QPay буцаалт хийсэн"
+          ? "Minu буцаалт хийсэн"
           : "Бараа буцаалт";
     const reason = window.prompt(
       `Баримт цуцлах шалтгаанаа оруулна уу.\nReceipt: ${sale.receiptNo}`,
@@ -2171,7 +2172,7 @@ function RestaurantPosContent() {
       sale.paymentMethod === "CARD"
         ? "Картын мөнгийг terminal/provider талд буцаасан эсэхээ шалгана уу. "
         : sale.paymentMethod === "QPAY"
-          ? "QPay мөнгийг QPay талд эсвэл гараар буцаасан эсэхээ шалгана уу. "
+          ? "Minu мөнгийг Minu талд эсвэл гараар буцаасан эсэхээ шалгана уу. "
           : sale.paymentMethod === "CASH"
             ? "Бэлэн мөнгийг хэрэглэгчид буцааж өгсөн эсэхээ шалгана уу. "
             : "Төлбөрийн буцаалтаа шалгана уу. ";
@@ -2265,7 +2266,7 @@ function RestaurantPosContent() {
     setQpayFinalizing(true);
     setCheckoutSubmitting(true);
     setCheckoutError("");
-    setQpayMessage("QPay төлбөр баталгаажлаа. Борлуулалт бүртгэж байна...");
+    setQpayMessage("Minu төлбөр баталгаажлаа. Борлуулалт бүртгэж байна...");
     try {
       const receipt = await createRestaurantQPaySale({
         shiftId: shift.id,
@@ -2293,7 +2294,7 @@ function RestaurantPosContent() {
       const message =
         error instanceof Error
           ? error.message
-          : "QPay борлуулалт бүртгэхэд алдаа гарлаа";
+          : "Minu борлуулалт бүртгэхэд алдаа гарлаа";
       setQpayMessage(message);
       setCheckoutError(message);
     } finally {
@@ -2617,7 +2618,7 @@ function RestaurantPosContent() {
 
   const handleRegisterChange = (registerId: string) => {
     if (qpayPaymentActive) {
-      setCheckoutError("QPay төлбөрийн цонх нээлттэй байна. Эхлээд хаана уу.");
+      setCheckoutError("Minu төлбөрийн цонх нээлттэй байна. Эхлээд хаана уу.");
       return;
     }
     if (shift?.registerId && shift.registerId !== registerId) {
@@ -2983,7 +2984,7 @@ function RestaurantPosContent() {
       return;
     }
     if (qpayPending) {
-      setCheckoutError("QPay төлбөр хүлээгдэж байна.");
+      setCheckoutError("Minu төлбөр хүлээгдэж байна.");
       return;
     }
     if (ticketLines.some((line) => line.qty > line.available)) {
@@ -3048,7 +3049,7 @@ function RestaurantPosContent() {
           ebarimtBuyer,
           discountProfile: checkoutEmployeeDiscount,
         });
-        setQpayMessage("QPay QR уншуулж төлбөрөө төлнө үү.");
+        setQpayMessage("Minu QR уншуулж төлбөрөө төлнө үү.");
         return;
       }
 
@@ -3189,12 +3190,12 @@ function RestaurantPosContent() {
   const handleStartCreditQPay = async (credit: RestaurantCreditSale) => {
     if (!selectedRegister || !user.organizationId) {
       setCreditSalesError(
-        "QPay төлөлт үүсгэхийн тулд POS register сонгогдсон байх ёстой.",
+        "Minu төлөлт үүсгэхийн тулд POS register сонгогдсон байх ёстой.",
       );
       return;
     }
     if (qpayPaymentActive || creditQPayRepayment) {
-      setCreditSalesError("Өөр QPay төлбөр нээлттэй байна. Эхлээд хаана уу.");
+      setCreditSalesError("Өөр Minu төлбөр нээлттэй байна. Эхлээд хаана уу.");
       return;
     }
 
@@ -3220,14 +3221,14 @@ function RestaurantPosContent() {
         credits: [credit],
         invoice,
         amount: dueAmount,
-        note: `Restaurant credit QPay repayment ${credit.receiptNo}`,
+        note: `Restaurant credit Minu repayment ${credit.receiptNo}`,
       });
-      setCreditQPayMessage("QPay QR уншуулж зээлийн төлбөрөө төлнө үү.");
+      setCreditQPayMessage("Minu QR уншуулж зээлийн төлбөрөө төлнө үү.");
     } catch (error) {
       setCreditSalesError(
         error instanceof Error
           ? error.message
-          : "QPay төлөлт үүсгэхэд алдаа гарлаа",
+          : "Minu төлөлт үүсгэхэд алдаа гарлаа",
       );
     } finally {
       setCreditRepaymentId("");
@@ -3396,7 +3397,7 @@ function RestaurantPosContent() {
   ) => {
     if (!selectedRegister || !user.organizationId) {
       setCreditSalesError(
-        "QPay төлөлт үүсгэхийн тулд POS register сонгогдсон байх ёстой.",
+        "Minu төлөлт үүсгэхийн тулд POS register сонгогдсон байх ёстой.",
       );
       return;
     }
@@ -3405,7 +3406,7 @@ function RestaurantPosContent() {
       return;
     }
     if (qpayPaymentActive || creditQPayRepayment) {
-      setCreditSalesError("Өөр QPay төлбөр нээлттэй байна. Эхлээд хаана уу.");
+      setCreditSalesError("Өөр Minu төлбөр нээлттэй байна. Эхлээд хаана уу.");
       return;
     }
 
@@ -3431,14 +3432,14 @@ function RestaurantPosContent() {
         credits: group.credits,
         invoice,
         amount: dueAmount,
-        note: `Restaurant bulk credit QPay repayment ${group.borrowerName}`,
+        note: `Restaurant bulk credit Minu repayment ${group.borrowerName}`,
       });
-      setCreditQPayMessage("QPay QR уншуулж нийт зээлийн төлбөрөө төлнө үү.");
+      setCreditQPayMessage("Minu QR уншуулж нийт зээлийн төлбөрөө төлнө үү.");
     } catch (error) {
       setCreditSalesError(
         error instanceof Error
           ? error.message
-          : "QPay нийт төлөлт үүсгэхэд алдаа гарлаа",
+          : "Minu нийт төлөлт үүсгэхэд алдаа гарлаа",
       );
     } finally {
       setCreditRepaymentId("");
@@ -3452,7 +3453,7 @@ function RestaurantPosContent() {
     if (creditQPayFinalizing) return;
 
     setCreditQPayFinalizing(true);
-    setCreditQPayMessage("QPay төлбөр баталгаажлаа. Зээлийг хааж байна...");
+    setCreditQPayMessage("Minu төлбөр баталгаажлаа. Зээлийг хааж байна...");
     try {
       if (repayment.credits.length > 1) {
         await payRestaurantCreditSalesBulk({
@@ -3484,17 +3485,17 @@ function RestaurantPosContent() {
           ? `${repayment.credit.borrowerName} нийт ${repayment.credits.length} зээл`
           : `${repayment.credit.borrowerName} зээлийн`;
       setCreditRepaymentMessage(
-        `${repaymentLabel} QPay төлөлт ${formatMoney(repayment.amount)} амжилттай бүртгэгдлээ.`,
+        `${repaymentLabel} Minu төлөлт ${formatMoney(repayment.amount)} амжилттай бүртгэгдлээ.`,
       );
       setNotice(
-        `${repaymentLabel} QPay төлөлт ${formatMoney(repayment.amount)} амжилттай бүртгэгдлээ.`,
+        `${repaymentLabel} Minu төлөлт ${formatMoney(repayment.amount)} амжилттай бүртгэгдлээ.`,
       );
       void loadCreditSales();
     } catch (error) {
       setCreditQPayMessage(
         error instanceof Error
           ? error.message
-          : "QPay зээлийн төлөлт бүртгэхэд алдаа гарлаа",
+          : "Minu зээлийн төлөлт бүртгэхэд алдаа гарлаа",
       );
     } finally {
       setCreditQPayFinalizing(false);
@@ -3526,24 +3527,24 @@ function RestaurantPosContent() {
       );
 
       if (nextInvoice.status === "PAID") {
-        setCreditQPayMessage("QPay төлбөр баталгаажлаа.");
+        setCreditQPayMessage("Minu төлбөр баталгаажлаа.");
         if (creditQPayFinalizedInvoiceRef.current !== nextInvoice.invoiceId) {
           creditQPayFinalizedInvoiceRef.current = nextInvoice.invoiceId;
           await finalizeCreditQPayRepayment(repayment, nextInvoice);
         }
       } else if (nextInvoice.status === "EXPIRED") {
         setCreditQPayMessage(
-          "QPay invoice хугацаа дууссан байна. Дахин QPay үүсгэнэ үү.",
+          "Minu invoice хугацаа дууссан байна. Дахин Minu үүсгэнэ үү.",
         );
       } else {
-        setCreditQPayMessage("QPay төлбөр хүлээгдэж байна...");
+        setCreditQPayMessage("Minu төлбөр хүлээгдэж байна...");
       }
     } catch (error) {
       if (!options?.silent) {
         setCreditQPayMessage(
           error instanceof Error
             ? error.message
-            : "QPay төлбөр шалгахад алдаа гарлаа",
+            : "Minu төлбөр шалгахад алдаа гарлаа",
         );
       }
     } finally {
@@ -3594,22 +3595,22 @@ function RestaurantPosContent() {
       );
 
       if (nextInvoice.status === "PAID") {
-        setQpayMessage("QPay төлбөр баталгаажлаа.");
+        setQpayMessage("Minu төлбөр баталгаажлаа.");
         if (qpayFinalizedInvoiceRef.current !== nextInvoice.invoiceId) {
           qpayFinalizedInvoiceRef.current = nextInvoice.invoiceId;
           await finalizeQPayCheckout(checkout, nextInvoice);
         }
       } else if (nextInvoice.status === "EXPIRED") {
-        setQpayMessage("QPay invoice хугацаа дууссан байна. Дахин үүсгэнэ үү.");
+        setQpayMessage("Minu invoice хугацаа дууссан байна. Дахин үүсгэнэ үү.");
       } else {
-        setQpayMessage("QPay төлбөр хүлээгдэж байна...");
+        setQpayMessage("Minu төлбөр хүлээгдэж байна...");
       }
     } catch (error) {
       if (!options?.silent) {
         setQpayMessage(
           error instanceof Error
             ? error.message
-            : "QPay төлбөр шалгахад алдаа гарлаа",
+            : "Minu төлбөр шалгахад алдаа гарлаа",
         );
       }
     } finally {
@@ -5138,7 +5139,7 @@ function RestaurantPosContent() {
                             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-sky-300/40 bg-sky-300/10 px-3 text-xs font-black text-sky-100 transition hover:bg-sky-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-slate-700 disabled:text-slate-400"
                           >
                             <QrCode className="h-4 w-4" />
-                            Нийт QPay
+                            Нийт Minu
                           </button>
                         </div>
                       ) : null}
@@ -5280,14 +5281,14 @@ function RestaurantPosContent() {
                                     !user.organizationId
                                   }
                                   className="flex h-10 items-center justify-center gap-1.5 rounded-xl border border-sky-300/40 bg-sky-300/10 text-xs font-black text-sky-100 transition hover:bg-sky-300 hover:text-slate-950 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-slate-700 disabled:text-slate-400"
-                                  title="Зээлийн төлөлтийг QPay-р авах"
+                                  title="Зээлийн төлөлтийг Minu-р авах"
                                 >
                                   {payingThisCredit ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
                                   ) : (
                                     <QrCode className="h-4 w-4" />
                                   )}
-                                  QPay
+                                  Minu
                                 </button>
                               </div>
                             </div>
@@ -5309,10 +5310,10 @@ function RestaurantPosContent() {
             <div className="flex items-start justify-between gap-4 border-b border-white/10 p-6">
               <div className="min-w-0">
                 <p className="text-xs font-black uppercase tracking-wider text-sky-300">
-                  Credit QPay
+                  Credit Minu
                 </p>
                 <h3 className="mt-1 text-2xl font-black text-white">
-                  Зээлийн QPay төлөлт
+                  Зээлийн Minu төлөлт
                 </h3>
                 <p className="mt-2 truncate text-sm font-semibold text-slate-400">
                   {creditQPayRepayment.credit.borrowerName} ·{" "}
@@ -5340,7 +5341,7 @@ function RestaurantPosContent() {
                   {creditQPayRepayment.invoice.qrImage ? (
                     <img
                       src={`data:image/png;base64,${creditQPayRepayment.invoice.qrImage}`}
-                      alt="QPay QR"
+                      alt="Minu QR"
                       className="h-60 w-60 object-contain"
                     />
                   ) : creditQPayRepayment.invoice.qrText ? (
@@ -5428,7 +5429,7 @@ function RestaurantPosContent() {
                   }`}
                 >
                   {creditQPayMessage ||
-                    "QPay QR уншуулж зээлийн төлбөрөө төлнө үү."}
+                    "Minu QR уншуулж зээлийн төлбөрөө төлнө үү."}
                 </p>
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
@@ -6051,10 +6052,10 @@ function RestaurantPosContent() {
             <div className="flex items-start justify-between gap-4 border-b border-white/10 p-6">
               <div>
                 <p className="text-xs font-black uppercase tracking-wider text-sky-300">
-                  QPay payment
+                  Minu payment
                 </p>
                 <h3 className="mt-1 text-2xl font-black text-white">
-                  QPay төлбөр
+                  Minu төлбөр
                 </h3>
                 <p className="mt-2 text-sm font-semibold text-slate-400">
                   Ширээ {qpayCheckout.tableLabel} ·{" "}
@@ -6082,7 +6083,7 @@ function RestaurantPosContent() {
                   {qpayCheckout.invoice.qrImage ? (
                     <img
                       src={`data:image/png;base64,${qpayCheckout.invoice.qrImage}`}
-                      alt="QPay QR"
+                      alt="Minu QR"
                       className="h-60 w-60 object-contain"
                     />
                   ) : qpayCheckout.invoice.qrText ? (
@@ -6167,7 +6168,7 @@ function RestaurantPosContent() {
                         : "border-sky-300/30 bg-sky-300/10 text-sky-100"
                   }`}
                 >
-                  {qpayMessage || "QPay QR уншуулж төлбөрөө төлнө үү."}
+                  {qpayMessage || "Minu QR уншуулж төлбөрөө төлнө үү."}
                 </p>
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
@@ -6336,7 +6337,7 @@ function RestaurantPosContent() {
                   ["Нийт", shiftHistoryTotals.totalSales],
                   ["Бэлэн", shiftHistoryTotals.cashSales],
                   ["Карт", shiftHistoryTotals.cardSales],
-                  ["QPay", shiftHistoryTotals.qpaySales],
+                  ["Minu", shiftHistoryTotals.qpaySales],
                 ].map(([label, value]) => (
                   <div
                     key={String(label)}
@@ -6494,7 +6495,7 @@ function RestaurantPosContent() {
                             ],
                             ["Бэлэн", selectedShiftHistory.cashSales],
                             ["Карт", selectedShiftHistory.cardSales],
-                            ["QPay", selectedShiftHistory.qpaySales],
+                            ["Minu", selectedShiftHistory.qpaySales],
                             ["Зээл", selectedShiftHistory.creditSales],
                             ["Холимог", selectedShiftHistory.mixedSales],
                           ].map(([label, value]) => (
@@ -6545,7 +6546,7 @@ function RestaurantPosContent() {
                             Тэмдэглэл
                           </p>
                           <p className="mt-2 text-sm font-semibold text-slate-200">
-                            {selectedShiftHistory.note}
+                            {formatPaymentBranding(selectedShiftHistory.note)}
                           </p>
                         </div>
                       ) : null}
@@ -6634,7 +6635,7 @@ function RestaurantPosContent() {
                   ["Нийт", salesHistoryTotals.totalSales],
                   ["Бэлэн", salesHistoryTotals.cashSales],
                   ["Карт", salesHistoryTotals.cardSales],
-                  ["QPay", salesHistoryTotals.qpaySales],
+                  ["Minu", salesHistoryTotals.qpaySales],
                 ].map(([label, value]) => (
                   <div
                     key={String(label)}

@@ -48,7 +48,7 @@ export function createSalesHistoryDemo(now = new Date()): PosReceipt[] {
                 amount: total,
                 transactionId: `TEST-TXN-${index + 1}`,
                 invoiceId: `TEST-INV-${index + 1}`,
-                terminalId: index % 2 ? "TEST-TERMINAL-01" : "Хамаарахгүй (QPay)",
+                terminalId: index % 2 ? "TEST-TERMINAL-01" : "Хамаарахгүй (Minu)",
                 traceno: String(index + 1).padStart(6, "0"),
               },
             ],

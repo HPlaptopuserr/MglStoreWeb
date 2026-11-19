@@ -52,7 +52,7 @@ const API_PAGE_SIZE = 100;
 const paymentLabels: Record<string, string> = {
   CASH: "Бэлэн",
   CARD: "Карт",
-  QPAY: "QR",
+  QPAY: "Minu",
   QR: "QR",
   CREDIT: "Зээл",
   MIXED: "Холимог",

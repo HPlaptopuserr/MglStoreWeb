@@ -1,3 +1,4 @@
+import { formatPaymentBranding } from "@mgl/ui";
 import { ArrowRight, TrendingDown, TrendingUp } from "lucide-react";
 import { REASON_MAP, type LedgerEntry } from "./movement-ledger.model";
 
@@ -144,7 +145,7 @@ export function MovementItemsTable({ entries }: { entries: LedgerEntry[] }) {
                         Тэмдэглэл харах
                       </summary>
                       <p className="mt-2 break-words [overflow-wrap:anywhere]">
-                        {entry.note}
+                        {formatPaymentBranding(entry.note)}
                       </p>
                     </details>
                   ) : (
@@ -200,7 +201,7 @@ export function MovementItemsTable({ entries }: { entries: LedgerEntry[] }) {
                 <ArrowRight aria-hidden="true" className="h-3 w-3" />
               </summary>
               <p className="mt-2 break-words leading-5 [overflow-wrap:anywhere]">
-                {entry.note || "Тэмдэглэлгүй"}
+                {formatPaymentBranding(entry.note) || "Тэмдэглэлгүй"}
               </p>
               <p className="mt-1 break-all">
                 Бүртгэсэн:{" "}

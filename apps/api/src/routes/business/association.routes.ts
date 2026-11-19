@@ -567,7 +567,7 @@ async function finalizeAssociationMembershipPayment(
         paidAt,
         paymentReference: invoice.paymentId || invoice.id,
         paymentNote:
-          "QPay/SystemQR төлбөр баталгаажсан. Гишүүнчлэл автоматаар идэвхжив.",
+          "Minu төлбөр баталгаажсан. Гишүүнчлэл автоматаар идэвхжив.",
         status: ApprovalStatus.APPROVED,
         reviewedAt: new Date(),
       },
@@ -696,7 +696,7 @@ router.post("/association/register", async (req, res) => {
   return res.status(410).json({
     success: false,
     message:
-      "Гишүүнчлэлийн хүсэлт зөвхөн төлбөр баталгаажсаны дараа бүртгэгдэнэ. QPay төлбөрөөр үргэлжлүүлнэ үү.",
+      "Гишүүнчлэлийн хүсэлт зөвхөн төлбөр баталгаажсаны дараа бүртгэгдэнэ. Minu төлбөрөөр үргэлжлүүлнэ үү.",
   });
 });
 

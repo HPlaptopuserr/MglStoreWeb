@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 import { CheckCircle2, Clock3 } from "lucide-react";
 import type { CheckoutPaymentEntry } from "./PosCheckoutView";
 import { PAYMENT_METHODS } from "../constants/payment-methods";
@@ -54,7 +55,7 @@ export function CheckoutPaymentLedger({
               (entry.method === "CARD" || entry.method === "QR");
             const label =
               PAYMENT_METHODS.find((method) => method.value === entry.method)
-                ?.label || entry.method;
+                ?.label || formatPaymentBranding(entry.method);
             const Icon = entry.status === "confirmed" ? CheckCircle2 : Clock3;
             return (
               <li

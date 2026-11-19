@@ -7,7 +7,7 @@ const formatMoney = (value: number) =>
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   CASH: "Бэлэн мөнгө",
   CARD: "Карт",
-  QPAY: "QPay",
+  QPAY: "Minu",
   QR: "QR төлбөр",
   CREDIT: "Зээл",
   MIXED: "Хосолсон төлбөр",

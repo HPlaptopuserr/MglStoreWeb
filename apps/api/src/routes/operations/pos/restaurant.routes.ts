@@ -631,7 +631,7 @@ async function finalizePaidRestaurantQrInvoice(
     where: { id: invoiceId },
   });
   if (!invoice) {
-    throw Object.assign(new Error("QPay invoice олдсонгүй"), { status: 404 });
+    throw Object.assign(new Error("Minu invoice олдсонгүй"), { status: 404 });
   }
 
   const payload = readRestaurantQrOrderPayload(invoice.webhookPayload);
@@ -764,8 +764,8 @@ async function finalizePaidRestaurantQrInvoice(
   }
 
   const qrOrderNote = payload.note
-    ? `QR/QPay: ${payload.note}`
-    : "QR/QPay self-order";
+    ? `QR/Minu: ${payload.note}`
+    : "QR/Minu self-order";
   if (!ticket) {
     ticket = await tx.restaurantTicket.create({
       data: {
@@ -1440,7 +1440,7 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
         }, 0) * 100,
       ) / 100;
     if (!Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ message: "QPay amount буруу байна" });
+      return res.status(400).json({ message: "Minu amount буруу байна" });
     }
 
     const { systemQrConfig, merchantContext } =
@@ -1448,7 +1448,7 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
     if (!merchantContext && !systemQrConfig) {
       return res.status(400).json({
         message:
-          "QPay merchant тохиргоо дутуу байна. Байгууллагын тохиргоо дээр Minu Dynamic QR submerchant бүртгэнэ үү.",
+          "Minu merchant тохиргоо дутуу байна. Байгууллагын тохиргоо дээр Minu Dynamic QR submerchant бүртгэнэ үү.",
       });
     }
 
@@ -1578,7 +1578,7 @@ router.post("/restaurant/menu/:token/qpay/invoice", async (req, res) => {
     const message =
       error instanceof Error
         ? error.message
-        : "QPay invoice үүсгэхэд алдаа гарлаа";
+        : "Minu invoice үүсгэхэд алдаа гарлаа";
     return res.status(500).json({ message });
   }
 });
@@ -1590,19 +1590,19 @@ router.get(
       const qrToken = String(req.params.token || "").trim();
       const invoiceId = String(req.params.invoiceId || "").trim();
       if (!qrToken || !invoiceId) {
-        return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+        return res.status(404).json({ message: "Minu invoice олдсонгүй" });
       }
 
       const invoice = await prisma.qPayInvoice.findUnique({
         where: { id: invoiceId },
       });
       if (!invoice) {
-        return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+        return res.status(404).json({ message: "Minu invoice олдсонгүй" });
       }
 
       const payload = readRestaurantQrOrderPayload(invoice.webhookPayload);
       if (!payload || payload.qrToken !== qrToken) {
-        return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+        return res.status(404).json({ message: "Minu invoice олдсонгүй" });
       }
 
       let current = invoice;
@@ -1724,7 +1724,7 @@ router.get(
           current.status === PosQPayStatus.PAID && ticket
             ? "Төлбөр амжилттай. Захиалга касс болон гал тогоо руу илгээгдлээ."
             : current.status === PosQPayStatus.EXPIRED
-              ? "QPay invoice хугацаа дууссан байна."
+              ? "Minu invoice хугацаа дууссан байна."
               : "Төлбөр хүлээгдэж байна.",
       });
     } catch (error) {
@@ -1735,7 +1735,7 @@ router.get(
       console.error("restaurant qpay status error", error);
       return res
         .status(500)
-        .json({ message: "QPay статус авахад алдаа гарлаа" });
+        .json({ message: "Minu статус авахад алдаа гарлаа" });
     }
   },
 );

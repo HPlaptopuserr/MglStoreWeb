@@ -2023,7 +2023,7 @@ router.post("/store/qpay/callback", async (req: Request, res: Response) => {
       order,
       payment.id,
       paymentCheck.payload,
-      "QPay callback — төлбөр амжилттай",
+      "Minu callback — төлбөр амжилттай",
     );
 
     return res.json({ message: "success" });

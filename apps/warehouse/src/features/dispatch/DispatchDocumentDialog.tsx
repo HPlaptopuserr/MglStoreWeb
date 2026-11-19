@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 import { useEffect, useId, useState } from "react";
 import { Loader2, Printer } from "lucide-react";
 import type { WarehouseDispatchDocument } from "@mgl/types";
@@ -169,7 +170,7 @@ export function DispatchDocumentDialog({
             )}
             {data.note && (
               <p className="mt-2 whitespace-pre-wrap text-sm">
-                Тэмдэглэл: {data.note}
+                Тэмдэглэл: {formatPaymentBranding(data.note)}
               </p>
             )}
             <footer className="signatures mt-8 grid grid-cols-2 gap-6 border-t border-slate-200 pt-5 text-xs text-slate-500">

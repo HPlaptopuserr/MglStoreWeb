@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
@@ -518,7 +519,7 @@ export default function ReportsPage() {
           <td style="font-family:monospace">${entry.product.sku || ""}</td>
           <td>${entry.reason}</td>
           <td style="text-align:right;font-weight:bold;color:${chg > 0 ? "#16a34a" : "#dc2626"}">${chg > 0 ? "+" : ""}${chg.toLocaleString()}</td>
-          <td>${entry.note || ""}</td>
+          <td>${formatPaymentBranding(entry.note)}</td>
           <td>${entry.createdBy?.profile?.fullName || entry.createdBy?.email || ""}</td>
         </tr>`;
         })
@@ -1150,7 +1151,7 @@ export default function ReportsPage() {
                             </span>
                           </td>
                           <td className="px-3 py-2.5 text-xs text-slate-400">
-                            {entry.note || "—"}
+                            {formatPaymentBranding(entry.note) || "—"}
                           </td>
                           <td className="px-3 py-2.5 text-xs text-slate-500">
                             {entry.createdBy?.profile?.fullName ||

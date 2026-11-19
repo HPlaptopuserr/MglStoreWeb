@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import { ArrowLeft, Loader2, Printer } from "lucide-react";
@@ -281,7 +282,7 @@ export function WarehouseReceiptPrintView({
 
         {receipt.note && (
           <p className="border-t border-slate-200 py-4 text-sm">
-            <strong>Тэмдэглэл:</strong> {receipt.note}
+            <strong>Тэмдэглэл:</strong> {formatPaymentBranding(receipt.note)}
           </p>
         )}
         {receipt.status === "CANCELLED" && (

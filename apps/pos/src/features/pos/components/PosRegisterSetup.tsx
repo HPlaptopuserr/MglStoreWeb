@@ -85,7 +85,7 @@ export function PosRegisterPicker({
               ) : null}
               {register.qpayEnabled ? (
                 <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold text-sky-700">
-                  QPay
+                  Minu
                 </span>
               ) : null}
             </div>
@@ -204,7 +204,7 @@ export function PosRegisterSetupPanel({
         <div className="flex items-center justify-between gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
           <div className="flex items-center gap-2 text-xs text-slate-600">
             <Info size={13} className="shrink-0 text-slate-400" />
-            <span>QPay төлбөр:</span>
+            <span>Minu төлбөр:</span>
             {registerConfig?.effectiveQpayEnabled ? (
               <span className="font-semibold text-emerald-600">Идэвхтэй</span>
             ) : (
@@ -215,7 +215,7 @@ export function PosRegisterSetupPanel({
             href={`${vendorPortalUrl}/profile?tab=qpay`}
             className="shrink-0 text-xs font-semibold text-violet-600 hover:underline"
           >
-            QPay тохиргоо →
+            Minu тохиргоо →
           </a>
         </div>
 

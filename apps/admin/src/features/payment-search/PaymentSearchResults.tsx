@@ -1,3 +1,4 @@
+import { formatPaymentBranding } from "@mgl/ui";
 import type { PaymentSearchResponse } from "@mgl/types";
 
 const currency = new Intl.NumberFormat("mn-MN", { maximumFractionDigits: 2 });
@@ -66,7 +67,7 @@ export function PaymentSearchResults({
               </p>
               <p className="mt-1 text-xs text-slate-500">
                 {payment.status === "PAID" ? "Төлөгдсөн" : payment.status} ·{" "}
-                {payment.method}
+                {formatPaymentBranding(payment.method)}
               </p>
             </div>
           </div>

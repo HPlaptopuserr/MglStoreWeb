@@ -58,7 +58,7 @@ function getContextIdentity(context?: QPayMerchantContext): {
     context?.merchantKey || `default:${username}:${terminalId || "no-terminal"}`;
 
   if (!username || !password) {
-    throw new Error("QPay credentials are not configured");
+    throw new Error("Minu credentials are not configured");
   }
 
   return { cacheKey, username, password, terminalId };
@@ -73,7 +73,7 @@ async function fetchNewToken(
   const credentials = Buffer.from(`${username}:${password}`).toString("base64");
   const bodyPayload = terminalId ? JSON.stringify({ terminal_id: terminalId }) : undefined;
 
-  console.log(`[QPay] Fetching new token from ${baseUrl}/auth/token`, {
+  console.log(`[Minu] Fetching new token from ${baseUrl}/auth/token`, {
     username,
     hasPassword: !!password,
     terminalId,
@@ -90,12 +90,12 @@ async function fetchNewToken(
 
   if (!res.ok) {
     const errText = await res.text();
-    console.error(`[QPay] Token fetch failed (${res.status}):`, errText, {
+    console.error(`[Minu] Token fetch failed (${res.status}):`, errText, {
       username,
       baseUrl,
       terminalId,
     });
-    throw new Error(`QPay auth failed: ${res.status} - ${errText}`);
+    throw new Error(`Minu auth failed: ${res.status} - ${errText}`);
   }
 
   const data = (await res.json()) as {
@@ -105,7 +105,7 @@ async function fetchNewToken(
     refresh_token: string;
   };
 
-  console.log(`[QPay] Token fetched successfully, expires in ${data.expires_in}s`);
+  console.log(`[Minu] Token fetched successfully, expires in ${data.expires_in}s`);
   return {
     token: data.access_token,
     expiresAt: Date.now() + data.expires_in * 1000,
@@ -149,7 +149,7 @@ async function authorizedFetch(
 
   // 401 → cache арилгаж нэг удаа retry
   if (res.status === 401) {
-    console.warn("QPay 401 — cache арилгаж дахин оролдож байна:", cacheKey);
+    console.warn("Minu 401 — cache арилгаж дахин оролдож байна:", cacheKey);
     tokenCache.delete(cacheKey);
     const retryToken = await getAccessToken(context);
     return paymentProviderFetch(url, {
@@ -191,7 +191,7 @@ export async function createQPayInvoice(params: {
   const { invoiceCode: defaultInvoiceCode, publicUrl } = env();
 
   if (!publicUrl || publicUrl === "https://api.mglstore.mn") {
-    console.warn("[QPay] API_PUBLIC_URL may not be configured correctly:", publicUrl);
+    console.warn("[Minu] API_PUBLIC_URL may not be configured correctly:", publicUrl);
   }
 
   const callbackPath = params.callbackConfig?.path || "/api/store/qpay/callback";
@@ -204,7 +204,7 @@ export async function createQPayInvoice(params: {
   }
 
   const callbackUrl = `${publicUrl}${callbackPath}?${callbackQuery.toString()}`;
-  console.log("[QPay] callbackUrl:", callbackUrl, "length:", callbackUrl.length);
+  console.log("[Minu] callbackUrl:", callbackUrl, "length:", callbackUrl.length);
 
   // ── QuickQR branch ──────────────────────────────────────────
   // QuickQR uses merchant_id + bank_accounts instead of invoice_code
@@ -266,22 +266,22 @@ export async function createQPayInvoice(params: {
 
   if (!invoiceCode) {
     const { clientId } = env();
-    console.error("[QPay] Missing invoice code configuration", {
+    console.error("[Minu] Missing invoice code configuration", {
       QPAY_INVOICE_CODE: process.env.QPAY_INVOICE_CODE,
       clientId,
       hasContext: !!params.merchantContext,
       contextInvoiceCode: params.merchantContext?.invoiceCode,
     });
-    throw new Error("QPay invoice code (QPAY_INVOICE_CODE) is not configured in environment variables");
+    throw new Error("Minu QR төлбөрийн тохиргоо дутуу байна");
   }
 
   const { clientId, clientSecret } = env();
   if (!clientId || !clientSecret) {
-    console.error("[QPay] Missing credentials", {
+    console.error("[Minu] Missing credentials", {
       hasClientId: !!clientId,
       hasClientSecret: !!clientSecret,
     });
-    throw new Error("QPay credentials (QPAY_CLIENT_ID, QPAY_CLIENT_SECRET) are not configured");
+    throw new Error("Minu төлбөрийн нэвтрэх тохиргоо дутуу байна");
   }
 
   const body = {
@@ -293,7 +293,7 @@ export async function createQPayInvoice(params: {
     callback_url: callbackUrl,
   };
 
-  console.log("[QPay] Sending invoice creation request", {
+  console.log("[Minu] Sending invoice creation request", {
     baseUrl,
     invoiceCode,
     orderId: params.orderId,
@@ -313,16 +313,16 @@ export async function createQPayInvoice(params: {
 
   if (!res.ok) {
     const errBody = await res.text();
-    console.error("QPay create invoice failed:", res.status, errBody, {
+    console.error("Minu create invoice failed:", res.status, errBody, {
       baseUrl,
       invoiceCode,
       orderId: params.orderId,
     });
-    throw new Error(`QPay create invoice failed: ${res.status} - ${errBody}`);
+    throw new Error(`Minu create invoice failed: ${res.status} - ${errBody}`);
   }
 
   const data = (await res.json()) as Record<string, unknown>;
-  console.log("[QPay] Invoice created successfully", { invoice_id: data.invoice_id });
+  console.log("[Minu] Invoice created successfully", { invoice_id: data.invoice_id });
   return {
     invoice_id: String(data.invoice_id || data.id || ""),
     qr_text: String(data.qr_text || ""),
@@ -345,7 +345,7 @@ async function getMasterToken(): Promise<string> {
 
   if (!quickqrBaseUrl || !username || !password) {
     throw new Error(
-      "QPay QuickQR master тохиргоо дутуу байна. QPAY_QUICKQR_BASE_URL, QPAY_QUICKQR_MASTER_USERNAME, QPAY_QUICKQR_MASTER_PASSWORD env-үүдийг API дээр тохируулна уу.",
+      "Minu QuickQR master тохиргоо дутуу байна. QPAY_QUICKQR_BASE_URL, QPAY_QUICKQR_MASTER_USERNAME, QPAY_QUICKQR_MASTER_PASSWORD env-үүдийг API дээр тохируулна уу.",
     );
   }
 
@@ -428,7 +428,7 @@ export async function registerQPayMerchantCompany(
   if (!res.ok) {
     const errBody = await res.text();
     // Detect already-registered and throw typed error
-    console.error("QPay company register error body:", errBody);
+    console.error("Minu company register error body:", errBody);
     try {
       const parsed = JSON.parse(errBody);
       const errStr = JSON.stringify(parsed).toLowerCase();
@@ -443,12 +443,12 @@ export async function registerQPayMerchantCompany(
     } catch (e) {
       if (e instanceof QPayAlreadyRegisteredError) throw e;
     }
-    throw new Error(`QPay register company failed: ${res.status} ${errBody}`);
+    throw new Error(`Minu register company failed: ${res.status} ${errBody}`);
   }
 
   const raw = (await res.json()) as Record<string, unknown>;
-  console.log("QPay company registration response keys:", Object.keys(raw));
-  console.log("QPay company registration raw:", JSON.stringify(redactQPayRegistrationResponse(raw)));
+  console.log("Minu company registration response keys:", Object.keys(raw));
+  console.log("Minu company registration raw:", JSON.stringify(redactQPayRegistrationResponse(raw)));
   return {
     raw,
     merchantId: String(raw.merchant_id || raw.username || raw.id || ""),
@@ -471,7 +471,7 @@ export async function registerQPayMerchantPerson(
 
   if (!res.ok) {
     const errBody = await res.text();
-    console.error("QPay person register error body:", errBody);
+    console.error("Minu person register error body:", errBody);
     try {
       const parsed = JSON.parse(errBody);
       const errStr = JSON.stringify(parsed).toLowerCase();
@@ -486,12 +486,12 @@ export async function registerQPayMerchantPerson(
     } catch (e) {
       if (e instanceof QPayAlreadyRegisteredError) throw e;
     }
-    throw new Error(`QPay register person failed: ${res.status} ${errBody}`);
+    throw new Error(`Minu register person failed: ${res.status} ${errBody}`);
   }
 
   const raw = (await res.json()) as Record<string, unknown>;
-  console.log("QPay person registration response keys:", Object.keys(raw));
-  console.log("QPay person registration raw:", JSON.stringify(redactQPayRegistrationResponse(raw)));
+  console.log("Minu person registration response keys:", Object.keys(raw));
+  console.log("Minu person registration raw:", JSON.stringify(redactQPayRegistrationResponse(raw)));
   return {
     raw,
     merchantId: String(raw.merchant_id || raw.username || raw.id || ""),
@@ -591,8 +591,8 @@ export async function cancelQPayInvoice(
 
   if (!res.ok) {
     const errorBody = await res.text();
-    console.error("QPay invoice cancel failed:", res.status, errorBody);
-    throw new Error(`QPay invoice cancel failed: ${res.status}`);
+    console.error("Minu invoice cancel failed:", res.status, errorBody);
+    throw new Error(`Minu invoice cancel failed: ${res.status}`);
   }
 }
 
@@ -621,8 +621,8 @@ export async function checkQPayPayment(
 
   if (!res.ok) {
     const errBody = await res.text();
-    console.error("QPay payment check failed:", res.status, errBody);
-    throw new Error(`QPay payment check failed: ${res.status}`);
+    console.error("Minu payment check failed:", res.status, errBody);
+    throw new Error(`Minu payment check failed: ${res.status}`);
   }
 
   const raw = (await res.json()) as Record<string, unknown>;

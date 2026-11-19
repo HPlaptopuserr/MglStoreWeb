@@ -5,3 +5,4 @@ export {
   compressImageForUpload,
   type ImageCompressionOptions,
 } from "./image-processing";
+export { formatPaymentBranding } from "./payment-branding";

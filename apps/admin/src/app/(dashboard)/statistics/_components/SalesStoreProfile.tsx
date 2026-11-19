@@ -83,10 +83,10 @@ export function SalesStoreProfile({
       <StoreInfoGroup
         title="Төлбөрийн холболт"
         fields={[
-          ["QPay", enabledLabel(p.qpayEnabled)],
-          ["QPay холбосон", storeDate(p.qpayConnectedAt)],
-          ["Вэб QPay", enabledLabel(p.webQpayEnabled)],
-          ["Вэб QPay холбосон", storeDate(p.webQpayConnectedAt)],
+          ["Minu", enabledLabel(p.qpayEnabled)],
+          ["Minu холбосон", storeDate(p.qpayConnectedAt)],
+          ["Вэб Minu", enabledLabel(p.webQpayEnabled)],
+          ["Вэб Minu холбосон", storeDate(p.webQpayConnectedAt)],
           ["Minu агент", enabledLabel(p.minuAgentEnabled)],
           ["Minu холбосон", storeDate(p.minuAgentConnectedAt)],
         ]}

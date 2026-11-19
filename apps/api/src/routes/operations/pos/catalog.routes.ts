@@ -1259,7 +1259,7 @@ router.post("/pos/credit-sales/pay-bulk", async (req, res) => {
       [
         cleanOptionalText(req.body.note),
         `Bulk credit count: ${credits.length}`,
-        qpayInvoiceId ? `QPay invoice: ${qpayInvoiceId}` : null,
+        qpayInvoiceId ? `Minu invoice: ${qpayInvoiceId}` : null,
         cardAttemptId ? `Card attempt: ${cardAttemptId}` : null,
       ]
         .filter(Boolean)
@@ -1270,25 +1270,25 @@ router.post("/pos/credit-sales/pay-bulk", async (req, res) => {
       async (tx: Prisma.TransactionClient) => {
         if (paymentMethod === PaymentMethod.QPAY) {
           if (!qpayInvoiceId)
-            throw toApiError(400, "QPay төлөлтөд invoiceId шаардлагатай");
+            throw toApiError(400, "Minu төлөлтөд invoiceId шаардлагатай");
           const invoice = await tx.qPayInvoice.findUnique({
             where: { id: qpayInvoiceId },
           });
-          if (!invoice) throw toApiError(404, "QPay invoice олдсонгүй");
+          if (!invoice) throw toApiError(404, "Minu invoice олдсонгүй");
           if (invoice.status !== PosQPayStatus.PAID)
-            throw toApiError(409, "QPay төлбөр баталгаажаагүй байна");
+            throw toApiError(409, "Minu төлбөр баталгаажаагүй байна");
           if (invoice.saleReference || invoice.consumedAt)
-            throw toApiError(409, "QPay invoice аль хэдийн ашиглагдсан байна");
+            throw toApiError(409, "Minu invoice аль хэдийн ашиглагдсан байна");
           if (
             !invoice.organizationId ||
             invoice.organizationId !== organizationId
           ) {
-            throw toApiError(400, "QPay invoice байгууллага зөрүүтэй байна");
+            throw toApiError(400, "Minu invoice байгууллага зөрүүтэй байна");
           }
           if (!moneyMatches(Number(invoice.amount), paidAmount)) {
             throw toApiError(
               400,
-              "QPay invoice дүн төлсөн дүнтэй таарахгүй байна",
+              "Minu invoice дүн төлсөн дүнтэй таарахгүй байна",
             );
           }
           await tx.qPayInvoice.update({
@@ -1496,7 +1496,7 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
     const paymentNote =
       [
         cleanOptionalText(req.body.note),
-        qpayInvoiceId ? `QPay invoice: ${qpayInvoiceId}` : null,
+        qpayInvoiceId ? `Minu invoice: ${qpayInvoiceId}` : null,
         cardAttemptId ? `Card attempt: ${cardAttemptId}` : null,
       ]
         .filter(Boolean)
@@ -1507,25 +1507,25 @@ router.post("/pos/credit-sales/:id/pay", async (req, res) => {
       async (tx: Prisma.TransactionClient) => {
         if (paymentMethod === PaymentMethod.QPAY) {
           if (!qpayInvoiceId)
-            throw toApiError(400, "QPay төлөлтөд invoiceId шаардлагатай");
+            throw toApiError(400, "Minu төлөлтөд invoiceId шаардлагатай");
           const invoice = await tx.qPayInvoice.findUnique({
             where: { id: qpayInvoiceId },
           });
-          if (!invoice) throw toApiError(404, "QPay invoice олдсонгүй");
+          if (!invoice) throw toApiError(404, "Minu invoice олдсонгүй");
           if (invoice.status !== PosQPayStatus.PAID)
-            throw toApiError(409, "QPay төлбөр баталгаажаагүй байна");
+            throw toApiError(409, "Minu төлбөр баталгаажаагүй байна");
           if (invoice.saleReference || invoice.consumedAt)
-            throw toApiError(409, "QPay invoice аль хэдийн ашиглагдсан байна");
+            throw toApiError(409, "Minu invoice аль хэдийн ашиглагдсан байна");
           if (
             !invoice.organizationId ||
             invoice.organizationId !== creditSale.organizationId
           ) {
-            throw toApiError(400, "QPay invoice байгууллага зөрүүтэй байна");
+            throw toApiError(400, "Minu invoice байгууллага зөрүүтэй байна");
           }
           if (!moneyMatches(Number(invoice.amount), paidAmount)) {
             throw toApiError(
               400,
-              "QPay invoice дүн төлсөн дүнтэй таарахгүй байна",
+              "Minu invoice дүн төлсөн дүнтэй таарахгүй байна",
             );
           }
           await tx.qPayInvoice.update({

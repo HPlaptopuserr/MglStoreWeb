@@ -420,7 +420,7 @@ export function PosRegistersSection({
       (!form.qpayMerchantId.trim() || !form.qpayTerminalId.trim())
     ) {
       setError(
-        "QPay идэвхтэй үед Merchant ID болон Terminal ID заавал бөглөнө үү.",
+        "Minu идэвхтэй үед Merchant ID болон Terminal ID заавал бөглөнө үү.",
       );
       return;
     }
@@ -707,12 +707,12 @@ export function PosRegistersSection({
                           )}
                           {r.qpayEnabled ? (
                             <span className="inline-flex items-center gap-1 rounded-lg bg-sky-50 px-2 py-0.5 text-xs font-semibold text-sky-700">
-                              <QrCode size={11} /> QPay
+                              <QrCode size={11} /> Minu
                               {r.qpayMerchantId ? ` · ${r.qpayMerchantId}` : ""}
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-lg bg-slate-100 px-2 py-0.5 text-xs text-slate-400">
-                              <QrCode size={11} /> QPay идэвхгүй
+                              <QrCode size={11} /> Minu идэвхгүй
                             </span>
                           )}
                           {r.ebarimtPosNo && (
@@ -1106,7 +1106,7 @@ export function PosRegistersSection({
                     />
                   </div>
                   <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
-                    <QrCode size={14} /> QPay идэвхжүүлэх
+                    <QrCode size={14} /> Minu идэвхжүүлэх
                   </span>
                 </label>
                 {form.qpayEnabled && (
@@ -1119,7 +1119,7 @@ export function PosRegistersSection({
                         className={INPUT}
                       />
                     </Field>
-                    <Field label="QPay Terminal ID">
+                    <Field label="Minu Terminal ID">
                       <input
                         value={form.qpayTerminalId}
                         onChange={(e) => set("qpayTerminalId", e.target.value)}

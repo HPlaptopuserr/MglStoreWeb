@@ -2608,7 +2608,7 @@ router.post(
       console.error("mgl-services qpay create error", error);
       res.status(500).json({
         success: false,
-        message: error.message || "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа",
+        message: error.message || "Minu нэхэмжлэх үүсгэхэд алдаа гарлаа",
       });
     }
   },

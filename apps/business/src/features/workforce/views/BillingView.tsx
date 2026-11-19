@@ -305,7 +305,7 @@ export function BillingView({
             <Image
               className="wf-qr-image"
               src={`data:image/png;base64,${invoice.invoice.qr_image}`}
-              alt="QPay төлбөрийн QR"
+              alt="Minu төлбөрийн QR"
               width={240}
               height={240}
             />

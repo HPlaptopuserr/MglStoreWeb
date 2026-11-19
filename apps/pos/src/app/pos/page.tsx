@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -666,8 +667,8 @@ export default function PosDemoPage() {
       setScanStatus(qpayPaid ? "success" : "idle");
       setScanMessage(
         qpayPaid
-          ? "QPay төлбөр хүлээн авсан. “Гүйлгээ батлах” товчийг дарна уу."
-          : "Өмнөх QPay төлбөрийг сэргээж, төлөвийг шалгаж байна...",
+          ? "Minu төлбөр хүлээн авсан. “Гүйлгээ батлах” товчийг дарна уу."
+          : "Өмнөх Minu төлбөрийг сэргээж, төлөвийг шалгаж байна...",
       );
     }
     setCheckoutRecoveryScope(organizationId);
@@ -2132,7 +2133,7 @@ export default function PosDemoPage() {
         autoFinalizeRetryTimerRef.current = window.setTimeout(() => {
           autoFinalizeRetryTimerRef.current = null;
           setScanStatus("idle");
-          setScanMessage(`QPay борлуулалтыг дахин баталгаажуулж байна (${retryNumber}/3)...`);
+          setScanMessage(`Minu борлуулалтыг дахин баталгаажуулж байна (${retryNumber}/3)...`);
           setAutoCheckoutActive(true);
         }, retryDelay);
       }
@@ -2331,7 +2332,7 @@ export default function PosDemoPage() {
     if (safeAmount <= 0) return;
 
     try {
-      startProgressTicker("QPay төлбөр хүлээж байна");
+      startProgressTicker("Minu төлбөр хүлээж байна");
       const invoice = await createQPayInvoice({
         amount: safeAmount,
         registerId: registerConfig?.id,
@@ -2368,13 +2369,13 @@ export default function PosDemoPage() {
       setQpayModal(modalPayload);
       setPaymentEntries(nextPaymentEntries);
       setScanStatus("idle");
-      setScanMessage("QPay invoice үүслээ. Баталгаажилт хүлээж байна");
+      setScanMessage("Minu invoice үүслээ. Баталгаажилт хүлээж байна");
     } catch (error) {
       console.warn("QPay invoice create failed", error);
       clearProgressTicker();
       setAutoCheckoutActive(false);
       setScanStatus("not-found");
-      setScanMessage(error instanceof Error ? error.message : "QPay invoice үүсгэхэд алдаа гарлаа");
+      setScanMessage(error instanceof Error ? error.message : "Minu invoice үүсгэхэд алдаа гарлаа");
     }
   };
 
@@ -2397,11 +2398,11 @@ export default function PosDemoPage() {
 
         clearProgressTicker();
         setScanStatus("success");
-        setScanMessage("QPay төлбөр хүлээн авлаа. “Гүйлгээ батлах” товчийг дарна уу.");
-        showSuccessOverlay("QPay төлбөр хүлээн авлаа");
+        setScanMessage("Minu төлбөр хүлээн авлаа. “Гүйлгээ батлах” товчийг дарна уу.");
+        showSuccessOverlay("Minu төлбөр хүлээн авлаа");
       } catch {
         setScanStatus("not-found");
-        setScanMessage("QPay баталгаажуулахад алдаа гарлаа");
+        setScanMessage("Minu баталгаажуулахад алдаа гарлаа");
       }
     })();
   };
@@ -2636,8 +2637,8 @@ export default function PosDemoPage() {
               }
               clearProgressTicker();
               setScanStatus("success");
-              setScanMessage("QPay төлбөр хүлээн авлаа. “Гүйлгээ батлах” товчийг дарна уу.");
-              showSuccessOverlay("QPay төлбөр хүлээн авлаа");
+              setScanMessage("Minu төлбөр хүлээн авлаа. “Гүйлгээ батлах” товчийг дарна уу.");
+              showSuccessOverlay("Minu төлбөр хүлээн авлаа");
             }
 
             if (status.status === "EXPIRED") {
@@ -2647,7 +2648,7 @@ export default function PosDemoPage() {
               }
               clearProgressTicker();
               setScanStatus("not-found");
-              setScanMessage("QPay invoice хугацаа дууссан");
+              setScanMessage("Minu invoice хугацаа дууссан");
             }
           } catch {
             // Keep polling; transient network errors should not break checkout flow.
@@ -3127,7 +3128,7 @@ export default function PosDemoPage() {
                 {[
                   ["Бэлэн", selectedShiftHistory.cashSales],
                   ["Карт", selectedShiftHistory.cardSales],
-                  ["QPay", selectedShiftHistory.qpaySales],
+                  ["Minu", selectedShiftHistory.qpaySales],
                   ["Зээл", selectedShiftHistory.creditSales],
                   ["Холимог баримт", selectedShiftHistory.mixedSales],
                 ].map(([label, amount]) => (
@@ -3169,7 +3170,7 @@ export default function PosDemoPage() {
                         <div>
                           <p className="font-bold text-slate-800">#{receipt.receiptNo}</p>
                           <p className="text-[11px] text-slate-500">
-                            {formatDateTime(receipt.createdAt)} · {receipt.paymentMethod}
+                            {formatDateTime(receipt.createdAt)} · {formatPaymentBranding(receipt.paymentMethod)}
                           </p>
                         </div>
                         <p className="font-black text-slate-900">{formatMoney(receipt.grandTotal)}</p>
@@ -3782,7 +3783,7 @@ export default function PosDemoPage() {
               )}
               {registerConfig?.effectiveQpayEnabled && (
                 <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700">
-                  QPay
+                  Minu
                 </span>
               )}
             </div>

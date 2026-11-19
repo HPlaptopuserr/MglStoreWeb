@@ -1,7 +1,8 @@
+import { formatPaymentBranding } from "@mgl/ui";
 import type { PaymentLogEntry } from "./stock-request.model";
 
 const methodNames: Record<string, string> = {
-  BANK_TRANSFER: "Дансаар", CARD: "Картаар", CASH: "Бэлнээр", QPAY: "QPay", CREDIT: "Зээлээр",
+  BANK_TRANSFER: "Дансаар", CARD: "Картаар", CASH: "Бэлнээр", QPAY: "Minu", CREDIT: "Зээлээр",
 };
 
 export function PaymentConfirmationLog({ entries = [], onDownload }: {
@@ -21,7 +22,7 @@ export function PaymentConfirmationLog({ entries = [], onDownload }: {
             </div>
             <p className="text-slate-700">Баталсан: {entry.confirmedBy?.profile?.fullName || entry.confirmedBy?.email || "Систем / хэрэглэгчийн мэдээлэл байхгүй"}</p>
             {entry.transactionId && <p className="break-all text-slate-500">Гүйлгээ: {entry.transactionId}</p>}
-            {entry.note && <p className="whitespace-pre-wrap break-words text-slate-600">{entry.note}</p>}
+            {entry.note && <p className="whitespace-pre-wrap break-words text-slate-600">{formatPaymentBranding(entry.note)}</p>}
             {receipt && <button type="button" onClick={() => onDownload(receipt.id, receipt.name)} className="break-all text-left text-indigo-700 underline underline-offset-2 hover:text-indigo-900">Баримт татах: {receipt.name}</button>}
           </li>;
         })}

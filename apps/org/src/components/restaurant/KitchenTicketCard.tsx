@@ -1,3 +1,4 @@
+import { formatPaymentBranding } from "@mgl/ui";
 import { Check, ChefHat, Clock3, Loader2, Play } from "lucide-react";
 import { isKitchenQueueStatus } from "@mgl/types";
 import type { RestaurantKitchenTicket } from "@/lib/restaurant-pos-api";
@@ -96,7 +97,7 @@ export function KitchenTicketCard({
             <div className={styles.itemContent}>
               <p className={styles.itemName}>{item.name}</p>
               {item.note ? (
-                <p className={styles.itemNote}>{item.note}</p>
+                <p className={styles.itemNote}>{formatPaymentBranding(item.note)}</p>
               ) : null}
             </div>
           </li>

@@ -671,7 +671,7 @@ router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, 
     const masterPassword = (process.env.QPAY_QUICKQR_MASTER_PASSWORD || "").trim();
 
     if (!quickqrBaseUrl || !masterUsername || !masterPassword) {
-      return res.status(503).json({ success: false, message: "QPay тохиргоо дутуу байна" });
+      return res.status(503).json({ success: false, message: "Minu тохиргоо дутуу байна" });
     }
 
     // Get master token
@@ -684,7 +684,7 @@ router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, 
     });
 
     if (!tokenRes.ok) {
-      return res.status(502).json({ success: false, message: "QPay auth алдаа гарлаа" });
+      return res.status(502).json({ success: false, message: "Minu auth алдаа гарлаа" });
     }
 
     const { access_token } = await tokenRes.json() as { access_token: string };
@@ -699,7 +699,7 @@ router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, 
     if (!listRes.ok) {
       return res.status(404).json({
         success: false,
-        message: "QPay мерчант жагсаалт авахэд алдаа гарлаа. QPay-тай шууд холбоо бариарай.",
+        message: "Minu мерчант жагсаалт авахэд алдаа гарлаа. Minu-тай шууд холбоо бариарай.",
       });
     }
 
@@ -718,7 +718,7 @@ router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, 
     if (!match) {
       return res.status(404).json({
         success: false,
-        message: `"${registerNumber}" регистрийн дугааратай мерчант QPay системд олдсонгүй.`,
+        message: `"${registerNumber}" регистрийн дугааратай мерчант Minu системд олдсонгүй.`,
       });
     }
 
@@ -727,7 +727,7 @@ router.get("/vendor/merchant/recover/:registerNumber", requireAuth, async (req, 
 
 
     if (!merchantId) {
-      return res.status(404).json({ success: false, message: "Мерчант ID олдсонгүй — QPay-тай холбоо барина уу" });
+      return res.status(404).json({ success: false, message: "Мерчант ID олдсонгүй — Minu-тай холбоо барина уу" });
     }
 
     await prisma.organization.update({

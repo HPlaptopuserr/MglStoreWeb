@@ -652,7 +652,7 @@ export function OrgMerchantSettings() {
             Minu Dynamic QR submerchant
           </h3>
           <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-slate-600">
-            Restaurant QR menu-ийн QPay төлбөр энэ org-level submerchant-ийг
+            Restaurant QR menu-ийн Minu төлбөр энэ org-level submerchant-ийг
             ашиглана. POS register дээр merchant тохируулах шаардлагагүй.
           </p>
         </div>
@@ -1122,7 +1122,7 @@ export function OrgMerchantSettings() {
               className={inputClass}
             />
           </Field>
-          <Field label="QPay дээр харагдах нэр">
+          <Field label="Minu дээр харагдах нэр">
             <input
               value={merchantName}
               onChange={(event) => {

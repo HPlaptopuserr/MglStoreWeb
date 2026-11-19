@@ -242,7 +242,9 @@ export function printThermalPosReceipt(
           : "Бэлэн"
         : normalizedPaymentMethod === "CREDIT"
           ? "Зээл"
-          : "QR";
+          : normalizedPaymentMethod === "QPAY"
+            ? "Minu"
+            : "QR";
   const lineRows = receipt.lines
     .map(
       (line) => `

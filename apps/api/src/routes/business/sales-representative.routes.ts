@@ -693,7 +693,7 @@ async function confirmRepresentativeQPayEntry(
           paymentMethod: PaymentMethod.QPAY,
           confirmedById: null,
           confirmedAt,
-          note: "Дэлгүүрийн QPay төлбөр — автоматаар баталгаажсан",
+          note: "Дэлгүүрийн Minu төлбөр — автоматаар баталгаажсан",
         },
       });
       await tx.stockRequestPaymentEntry.update({
@@ -737,7 +737,7 @@ router.post(
     )
       return res.status(409).json({
         code: "STOCK_REQUEST_NOT_APPROVED",
-        message: "Админ зөвшөөрсний дараа QPay нэхэмжлэх нээгдэнэ",
+        message: "Админ зөвшөөрсний дараа Minu нэхэмжлэх нээгдэнэ",
       });
     if (payment.status === PaymentStatus.PAID)
       return res.status(409).json({ message: "Төлбөр аль хэдийн төлөгдсөн" });
@@ -763,7 +763,7 @@ router.post(
           method: PaymentMethod.QPAY,
           status: PaymentStatus.PENDING,
           transactionId,
-          note: "Local QPay хэсэгчилсэн төлбөр",
+          note: "Local Minu хэсэгчилсэн төлбөр",
         },
       });
       void prisma.auditLog.create({
@@ -853,7 +853,7 @@ router.post(
         return res.status(409).json({ message: error.message });
       return res
         .status(502)
-        .json({ message: "QPay нэхэмжлэх үүсгэхэд алдаа гарлаа" });
+        .json({ message: "Minu нэхэмжлэх үүсгэхэд алдаа гарлаа" });
     }
   },
 );
@@ -1000,7 +1000,7 @@ router.get(
       console.error("sales representative qpay status error", error);
       return res
         .status(502)
-        .json({ message: "QPay төлбөр шалгахад алдаа гарлаа" });
+        .json({ message: "Minu төлбөр шалгахад алдаа гарлаа" });
     }
   },
 );

@@ -1744,20 +1744,20 @@ router.post("/pos/sales", async (req, res) => {
             where: { id: invoiceId },
           });
           if (!invoice)
-            throw toApiError(404, `QPay invoice олдсонгүй: ${invoiceId}`);
+            throw toApiError(404, `Minu invoice олдсонгүй: ${invoiceId}`);
           if (invoice.status !== PosQPayStatus.PAID) {
-            throw toApiError(409, `QPay invoice ${invoiceId} paid биш байна`);
+            throw toApiError(409, `Minu invoice ${invoiceId} paid биш байна`);
           }
           if (invoice.saleReference || invoice.consumedAt) {
             throw toApiError(
               409,
-              `QPay invoice ${invoiceId} аль хэдийн ашиглагдсан байна`,
+              `Minu invoice ${invoiceId} аль хэдийн ашиглагдсан байна`,
             );
           }
           if (!moneyMatches(Number(invoice.amount), qpayLine.amount)) {
             throw toApiError(
               400,
-              `QPay invoice ${invoiceId} amount зөрүүтэй байна`,
+              `Minu invoice ${invoiceId} amount зөрүүтэй байна`,
             );
           }
           if (
@@ -1767,7 +1767,7 @@ router.post("/pos/sales", async (req, res) => {
           ) {
             throw toApiError(
               400,
-              `QPay invoice ${invoiceId} register зөрүүтэй байна`,
+              `Minu invoice ${invoiceId} register зөрүүтэй байна`,
             );
           }
           if (
@@ -1776,7 +1776,7 @@ router.post("/pos/sales", async (req, res) => {
           ) {
             throw toApiError(
               400,
-              `QPay invoice ${invoiceId} organization зөрүүтэй байна`,
+              `Minu invoice ${invoiceId} organization зөрүүтэй байна`,
             );
           }
         }

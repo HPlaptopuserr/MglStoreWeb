@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 
 import { useEffect, useMemo, useState } from "react";
 import { QrGenerator } from "@mgl/ui";
@@ -36,7 +37,7 @@ const paymentMethodCopy: Record<
 > = {
   CASH: "Бэлэн",
   CARD: "Карт",
-  QPAY: "QPay",
+  QPAY: "Minu",
   CREDIT: "Зээл",
 };
 
@@ -86,7 +87,7 @@ function qpayStatusCopy(status: RestaurantCustomerDisplayPayload["qpay"]) {
 
 function paymentMethodLabel(method?: string | null) {
   const normalized = String(method || "").toUpperCase();
-  if (normalized === "QPAY" || normalized === "QR") return "QPay";
+  if (normalized === "QPAY" || normalized === "QR") return "Minu";
   if (normalized === "CARD") return "Карт";
   if (normalized === "CREDIT") return "Зээл";
   return "Бэлэн";
@@ -236,7 +237,7 @@ export function RestaurantCustomerDisplayScreen() {
                         </p>
                         {line.note ? (
                           <p className="mt-2 rounded-xl bg-amber-300/10 px-3 py-2 text-sm font-bold text-amber-100">
-                            {line.note}
+                            {formatPaymentBranding(line.note)}
                           </p>
                         ) : null}
                       </div>
@@ -297,7 +298,7 @@ export function RestaurantCustomerDisplayScreen() {
               <div className="flex shrink-0 items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.22em] text-sky-300">
-                    QPay
+                    Minu
                   </p>
                   <h2 className="mt-1 text-3xl font-black">Төлбөр</h2>
                 </div>
@@ -320,7 +321,7 @@ export function RestaurantCustomerDisplayScreen() {
                     // eslint-disable-next-line @next/next/no-img-element -- QPay returns a short-lived base64 QR image; next/image optimization is not useful here.
                     <img
                       src={qpayQrSrc}
-                      alt="QPay QR"
+                      alt="Minu QR"
                       className="h-56 w-56 object-contain"
                     />
                   ) : payload.qpay.qrText ? (

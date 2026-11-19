@@ -10,7 +10,7 @@ export function MerchantChannelCard({ channel }: { channel: MerchantDiagnosticsC
         <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${channel.connected ? "bg-emerald-100 text-emerald-800" : "bg-slate-200 text-slate-600"}`}>{channel.connected ? "Холболт бүртгэлтэй" : "Идэвхгүй"}</span>
       </div>
       <dl className="mt-4 space-y-3 text-sm">
-        <div><dt className="text-xs text-slate-500">Үйлчилгээ</dt><dd className="mt-0.5 font-medium">{channel.provider === "MINU" ? "Minu Dynamic QR" : channel.provider === "QPAY" ? "QPay" : "Сонгоогүй"}</dd></div>
+        <div><dt className="text-xs text-slate-500">Үйлчилгээ</dt><dd className="mt-0.5 font-medium">{channel.provider === "MINU" ? "Minu Dynamic QR" : channel.provider === "QPAY" ? "Minu" : "Сонгоогүй"}</dd></div>
         <div><dt className="text-xs text-slate-500">Merchant code / ID</dt><dd className="mt-0.5 select-all break-all font-mono text-slate-800">{channel.merchantId || "—"}</dd></div>
         <div><dt className="text-xs text-slate-500">Холбосон огноо</dt><dd className="mt-0.5">{formatMerchantDate(channel.connectedAt)}</dd></div>
         <div><dt className="text-xs text-slate-500">Нэвтрэх тохиргооны бүртгэл</dt><dd className="mt-0.5">{channel.credentialsConfigured ? "Хадгалсан утга байна" : "Хадгалсан утга байхгүй"}</dd></div>

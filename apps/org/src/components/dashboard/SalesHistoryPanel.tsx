@@ -18,8 +18,8 @@ import {
 const paymentLabels: Record<string, string> = {
   CASH: "Бэлэн",
   CARD: "Карт",
-  QPAY: "QPay",
-  QR: "QPay",
+  QPAY: "Minu",
+  QR: "Minu",
   CREDIT: "Зээл",
   MIXED: "Холимог",
 };

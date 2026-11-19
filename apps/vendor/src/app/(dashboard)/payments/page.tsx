@@ -276,7 +276,7 @@ export default function PaymentsPage() {
           setPayError(
             "message" in qpayBody && qpayBody.message
               ? qpayBody.message
-              : "QPay нэхэмжлэх үүсгэж чадсангүй",
+              : "Minu нэхэмжлэх үүсгэж чадсангүй",
           );
           return;
         }
@@ -360,7 +360,7 @@ export default function PaymentsPage() {
         message?: string;
       };
       if (!response.ok || body.status !== "PAID") {
-        setPayError(body.message || "Fake QPay төлбөр баталгаажсангүй");
+        setPayError(body.message || "Fake Minu төлбөр баталгаажсангүй");
         return;
       }
       setPaySuccess(true);
@@ -867,7 +867,7 @@ export default function PaymentsPage() {
                               : selectedPayment.paymentMethod === "BANK"
                                 ? "Банк шилжүүлэг"
                                 : selectedPayment.paymentMethod === "QPAY"
-                                  ? "QPay"
+                                  ? "Minu"
                                   : selectedPayment.paymentMethod}
                           </p>
                         </div>
@@ -1025,8 +1025,8 @@ export default function PaymentsPage() {
                       <div>
                         <p className="text-sm font-bold text-slate-900">
                           {qpayInvoice.devMode
-                            ? "Local fake QPay"
-                            : "QPay QR уншуулж төлнө үү"}
+                            ? "Local fake Minu"
+                            : "Minu QR уншуулж төлнө үү"}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
                           {qpayInvoice.devMode
@@ -1039,7 +1039,7 @@ export default function PaymentsPage() {
                         {qpayInvoice.qrImage ? (
                           <img
                             src={`data:image/png;base64,${qpayInvoice.qrImage}`}
-                            alt="QPay төлбөрийн QR код"
+                            alt="Minu төлбөрийн QR код"
                             className="h-full w-full object-contain"
                           />
                         ) : qpayInvoice.qrText ? (
@@ -1047,7 +1047,7 @@ export default function PaymentsPage() {
                             value={qpayInvoice.qrText}
                             size={208}
                             level="M"
-                            aria-label="Local fake QPay QR код"
+                            aria-label="Local fake Minu QR код"
                           />
                         ) : (
                           <p className="text-sm text-slate-500">QR үүссэнгүй</p>
@@ -1094,7 +1094,7 @@ export default function PaymentsPage() {
                           <Loader2
                             className={`h-4 w-4 ${checkingQpay ? "animate-spin" : ""}`}
                           />
-                          QPay төлбөр шалгаж байна
+                          Minu төлбөр шалгаж байна
                         </div>
                       )}
                       <button
@@ -1131,7 +1131,7 @@ export default function PaymentsPage() {
                               },
                               {
                                 value: "QPAY",
-                                label: "QPay",
+                                label: "Minu",
                                 icon: Smartphone,
                                 color: "violet",
                               },

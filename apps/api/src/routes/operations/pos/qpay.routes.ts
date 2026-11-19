@@ -228,10 +228,10 @@ router.post(["/pos/payments/qpay/invoice", "/pos/payments/systemqr/invoice"], as
   const registerId: string | null = req.body?.registerId || null;
   const bodyOrganizationId: string | null = req.body?.organizationId || null;
 
-  console.log("[QPay invoice] amount:", amount, "registerId:", registerId, "orgId:", bodyOrganizationId);
+  console.log("[Minu invoice] amount:", amount, "registerId:", registerId, "orgId:", bodyOrganizationId);
 
   if (!Number.isFinite(amount) || amount <= 0) {
-    return res.status(400).json({ message: "QPay amount буруу байна" });
+    return res.status(400).json({ message: "Minu amount буруу байна" });
   }
 
   try {
@@ -331,7 +331,7 @@ router.post(["/pos/payments/qpay/invoice", "/pos/payments/systemqr/invoice"], as
     const requiresSystemQr = req.path === "/pos/payments/systemqr/invoice" || req.body?.provider === "SYSTEMQR";
     const organizationMerchant = requiresSystemQr || usesOrganizationMerchant(req.body);
     if (organizationMerchant) registerQpayConfig = null;
-    console.log("[QPay invoice] registerQpayConfig:", JSON.stringify(registerQpayConfig));
+    console.log("[Minu invoice] registerQpayConfig:", JSON.stringify(registerQpayConfig));
 
     const systemQrConfig = await resolveSystemQrConfig(effectiveOrganizationId, registerQpayConfig);
 
@@ -347,12 +347,12 @@ router.post(["/pos/payments/qpay/invoice", "/pos/payments/systemqr/invoice"], as
         ? buildQPayMerchantContextFromPosRegister(registerQpayConfig)
         : null;
 
-    console.log("[QPay invoice] merchantContext from register:", merchantContext ? "set" : "null");
+    console.log("[Minu invoice] merchantContext from register:", merchantContext ? "set" : "null");
 
     // Fall back to organization-level QPay config when register has no config
     if (!merchantContext && !systemQrConfig && effectiveOrganizationId) {
       const orgRes = await getVendorMerchantConfig(effectiveOrganizationId, "POS", { allowCentralFallback: !organizationMerchant });
-      console.log("[QPay invoice] organization configuration available:", Boolean(orgRes.config));
+      console.log("[Minu invoice] organization configuration available:", Boolean(orgRes.config));
       merchantContext = orgRes.config ?? null;
     }
 
@@ -361,7 +361,7 @@ router.post(["/pos/payments/qpay/invoice", "/pos/payments/systemqr/invoice"], as
       const orgRes = await getVendorMerchantConfig(effectiveOrganizationId, "POS", { allowCentralFallback: !organizationMerchant });
       if (orgRes.config?.bankAccounts?.length) {
         merchantContext = { ...merchantContext, bankAccounts: orgRes.config.bankAccounts };
-        console.log("[QPay invoice] Merged org bank accounts into context:", orgRes.config.bankAccounts.length);
+        console.log("[Minu invoice] Merged org bank accounts into context:", orgRes.config.bankAccounts.length);
       }
     }
 
@@ -369,7 +369,7 @@ router.post(["/pos/payments/qpay/invoice", "/pos/payments/systemqr/invoice"], as
 
     if (!merchantContext && !systemQrConfig) {
       return res.status(400).json({
-        message: "QPay merchant тохиргоо дутуу байна. Тохиргоо хуудаснаас QPay дансаа холбоно уу.",
+        message: "Minu merchant тохиргоо дутуу байна. Тохиргоо хуудаснаас Minu дансаа холбоно уу.",
       });
     }
 
@@ -493,7 +493,7 @@ router.post(["/pos/payments/qpay/invoice", "/pos/payments/systemqr/invoice"], as
     }
   } catch (error) {
     console.error("qpay invoice create error", error);
-    const msg = error instanceof Error ? error.message : "QPay invoice үүсгэхэд алдаа гарлаа";
+    const msg = error instanceof Error ? error.message : "Minu invoice үүсгэхэд алдаа гарлаа";
     return res.status(500).json({ message: msg });
   }
 });
@@ -505,7 +505,7 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
   const id = String(req.body?.invoiceId || "").trim();
   const requireProviderCancellation = req.body?.requireProviderCancellation === true;
   if (!id) {
-    return res.status(400).json({ message: "QPay invoiceId шаардлагатай" });
+    return res.status(400).json({ message: "Minu invoiceId шаардлагатай" });
   }
 
   try {
@@ -522,7 +522,7 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
       },
     });
     if (!invoice) {
-      return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+      return res.status(404).json({ message: "Minu invoice олдсонгүй" });
     }
     if (
       actor.role !== "ADMIN" &&
@@ -531,7 +531,7 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
     ) {
       return res
         .status(403)
-        .json({ message: "Өөр байгууллагын QPay invoice цуцлах боломжгүй" });
+        .json({ message: "Өөр байгууллагын Minu invoice цуцлах боломжгүй" });
     }
     if (invoice.status === PosQPayStatus.PAID) {
       return res
@@ -707,7 +707,7 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
     const message =
       error instanceof Error
         ? error.message
-        : "QPay invoice цуцлахад алдаа гарлаа";
+        : "Minu invoice цуцлахад алдаа гарлаа";
     return res.status(502).json({ message });
   }
 });
@@ -732,9 +732,9 @@ router.get(["/pos/payments/qpay/status/:invoiceId", "/pos/payments/systemqr/stat
         },
       },
     });
-    if (!invoice) return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+    if (!invoice) return res.status(404).json({ message: "Minu invoice олдсонгүй" });
     if (actor.role !== "ADMIN" && invoice.organizationId && !(await hasOrgMembership(actor.id, invoice.organizationId))) {
-      return res.status(403).json({ message: "Өөр байгууллагын QPay invoice харах боломжгүй" });
+      return res.status(403).json({ message: "Өөр байгууллагын Minu invoice харах боломжгүй" });
     }
 
     // Routine POS polling reads local state because providers can throttle
@@ -802,7 +802,7 @@ router.get(["/pos/payments/qpay/status/:invoiceId", "/pos/payments/systemqr/stat
     });
   } catch (error) {
     console.error("qpay status error", error);
-    return res.status(500).json({ message: "QPay статус авахад алдаа гарлаа" });
+    return res.status(500).json({ message: "Minu статус авахад алдаа гарлаа" });
   }
 });
 
@@ -817,7 +817,7 @@ router.post("/pos/payments/qpay/confirm", async (req, res) => {
   const id = String(req.body?.invoiceId || "");
   try {
     const invoice = await prisma.qPayInvoice.findUnique({ where: { id } });
-    if (!invoice) return res.status(404).json({ message: "QPay invoice олдсонгүй" });
+    if (!invoice) return res.status(404).json({ message: "Minu invoice олдсонгүй" });
     if (invoice.status !== PosQPayStatus.PENDING) {
       return res.status(400).json({ message: `Invoice статус нь ${invoice.status} байна` });
     }
@@ -839,7 +839,7 @@ router.post("/pos/payments/qpay/confirm", async (req, res) => {
     });
   } catch (error) {
     console.error("qpay confirm error", error);
-    return res.status(500).json({ message: "QPay confirm хийхэд алдаа гарлаа" });
+    return res.status(500).json({ message: "Minu confirm хийхэд алдаа гарлаа" });
   }
 });
 

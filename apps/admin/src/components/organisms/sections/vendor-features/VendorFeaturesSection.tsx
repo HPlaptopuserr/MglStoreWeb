@@ -495,7 +495,7 @@ export function VendorFeaturesSection() {
                           POS Register
                         </h3>
                         <p className="mt-1 text-xs font-semibold text-slate-500">
-                          Касс, терминал, QPay болон eBarimt
+                          Касс, терминал, Minu болон eBarimt
                         </p>
                       </div>
                     </div>

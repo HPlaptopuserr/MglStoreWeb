@@ -1,3 +1,4 @@
+import { formatPaymentBranding } from "@mgl/ui";
 import { useMemo, useState } from "react";
 import {
   Download,
@@ -58,7 +59,7 @@ const TRANSACTION_METHOD_LABEL: Record<string, string> = {
   BANK_TRANSFER: "Данс",
   ONLINE: "Online",
   POS: "POS",
-  QPAY: "QR төлбөр",
+  QPAY: "Minu",
 };
 
 type TransactionFilter = "all" | "orders" | "access" | "paid" | "pending";
@@ -430,7 +431,7 @@ export function AccountLibraryPanel({
                     >
                       <div className="min-w-0">
                         <p className="line-clamp-1 text-sm font-bold text-slate-900">
-                          {entry.description}
+                          {formatPaymentBranding(entry.description)}
                         </p>
                         <p className="mt-1 text-xs font-semibold text-slate-400">
                           {new Date(entry.date).toLocaleString("mn-MN")}
@@ -523,7 +524,7 @@ export function AccountLibraryPanel({
                             {transaction.title}
                           </p>
                           <p className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500">
-                            {transaction.description}
+                            {formatPaymentBranding(transaction.description)}
                           </p>
                           <div className="mt-1 flex flex-wrap gap-2 text-[11px] font-semibold text-slate-400">
                             <span>

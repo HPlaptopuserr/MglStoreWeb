@@ -7,7 +7,7 @@ export const dispatchPaymentMethods = [
   { value: "CASH", label: "Бэлэн" },
   { value: "BANK_TRANSFER", label: "Банкны шилжүүлэг" },
   { value: "CARD", label: "Карт" },
-  { value: "QPAY", label: "QPay" },
+  { value: "QPAY", label: "Minu" },
   { value: "OTHER", label: "Бусад" },
 ] as const satisfies ReadonlyArray<{
   value: WarehouseDispatchPaymentMethod;

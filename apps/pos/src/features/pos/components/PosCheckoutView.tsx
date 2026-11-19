@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 
 import { useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
@@ -113,7 +114,7 @@ export type CheckoutLoyaltyRedeemSession = {
 const PAYMENT_OPTIONS: { value: PaymentMethod; label: string }[] = [
   { value: "CASH", label: "Бэлэн" },
   { value: "CARD", label: "Карт" },
-  { value: "QR", label: "QPay" },
+  { value: "QR", label: "Minu" },
   { value: "CREDIT", label: "Зээл" },
 ];
 
@@ -408,7 +409,7 @@ export function PosCheckoutView({
               className="rounded-xl bg-amber-500 px-3 py-3 text-xs font-black text-black hover:bg-amber-400 disabled:opacity-40 max-[1500px]:py-2.5 max-[1180px]:text-[11px] [@media(max-height:850px)]:py-2"
             >
               {paymentMethod === "QR"
-                ? `QPay ₮${paymentAmount.toLocaleString()}`
+                ? `Minu ₮${paymentAmount.toLocaleString()}`
                 : `${PAYMENT_OPTIONS.find((item) => item.value === paymentMethod)?.label || "Төлбөр"} ₮${paymentAmount.toLocaleString()}`}
             </button>
             <button
@@ -483,7 +484,7 @@ export function PosCheckoutView({
             </p>
             {pendingTotal > 0 && (
               <p className="mt-1 text-xs text-zinc-400">
-                Хүлээгдэж буй QPay: ₮{pendingTotal.toLocaleString()}
+                Хүлээгдэж буй Minu: ₮{pendingTotal.toLocaleString()}
               </p>
             )}
           </div>
@@ -525,7 +526,7 @@ export function PosCheckoutView({
                   {qpayModal.qrImage ? (
                     <img
                       src={`data:image/png;base64,${qpayModal.qrImage}`}
-                      alt="QPay QR"
+                      alt="Minu QR"
                       className="h-full w-full object-contain"
                     />
                   ) : (
@@ -541,7 +542,7 @@ export function PosCheckoutView({
                 </div>
                 <div className="min-w-0 text-center xl:text-left">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-amber-300">
-                    QPay QR
+                    Minu QR
                   </p>
                   <p className="mt-1 text-3xl font-black text-amber-400">
                     ₮{qpayModal.amount.toLocaleString()}
@@ -569,7 +570,7 @@ export function PosCheckoutView({
                 <p className="text-[10px] font-bold uppercase tracking-widest text-rose-300">
                   {paymentMethod === "CARD"
                     ? "Картын төлбөр амжилтгүй"
-                    : "QPay QR үүссэнгүй"}
+                    : "Minu QR үүссэнгүй"}
                 </p>
                 <p className="mt-2 text-sm font-semibold text-rose-100">
                   {statusMessage}
@@ -586,7 +587,7 @@ export function PosCheckoutView({
                 />
                 <div>
                   <p className="text-sm font-black text-emerald-200">
-                    QPay төлбөр хүлээн авлаа
+                    Minu төлбөр хүлээн авлаа
                   </p>
                   <p className="mt-1 text-xs font-semibold leading-5 text-emerald-100/80">
                     {remaining <= 0
@@ -616,7 +617,7 @@ export function PosCheckoutView({
                     <p className="text-xs font-semibold text-zinc-300">
                       {entry.method === "CREDIT" && entry.credit
                         ? `Зээл • ${entry.credit.borrowerName}${entry.credit.employeeName ? ` • ${entry.credit.employeeName}` : ""} • ₮${entry.amount.toLocaleString()}`
-                        : `${entry.method} • ₮${entry.amount.toLocaleString()}`}
+                        : `${formatPaymentBranding(entry.method)} • ₮${entry.amount.toLocaleString()}`}
                     </p>
                     <div className="flex items-center gap-2">
                       {entry.status === "pending" && entry.method === "QR" ? (
@@ -625,7 +626,7 @@ export function PosCheckoutView({
                           onClick={() => onMarkQPayPaid(entry.id)}
                           className="rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-bold text-white hover:bg-emerald-500"
                         >
-                          QPay батлах
+                          Minu батлах
                         </button>
                       ) : entry.status === "pending" ? (
                         <span className="text-[10px] font-bold text-amber-400">

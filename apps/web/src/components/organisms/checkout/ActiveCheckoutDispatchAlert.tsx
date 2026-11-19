@@ -88,7 +88,7 @@ export function ActiveCheckoutDispatchAlert() {
           <span className="mt-0.5 hidden truncate text-xs font-bold opacity-70 sm:block">
             {isReady
               ? "Дарж төлбөрөө үргэлжлүүлнэ үү."
-              : "Дарж QPay төлбөрөө үргэлжлүүлж болно."}
+              : "Дарж Minu төлбөрөө үргэлжлүүлж болно."}
           </span>
         </span>
         <Navigation size={16} className="shrink-0 opacity-70 md:size-[18px]" />

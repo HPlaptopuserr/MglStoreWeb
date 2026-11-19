@@ -41,7 +41,7 @@ export const ONLINE_ORDER_ACTION: Partial<
 export function formatPaymentMethod(method: string | null): string {
   if (!method) return "Төлбөрийн суваг бүртгэгдээгүй";
   const labels: Record<string, string> = {
-    QPAY: "QPay",
+    QPAY: "Minu",
     CASH: "Бэлэн мөнгө",
     CARD: "Карт",
     BANK_TRANSFER: "Банкны шилжүүлэг",

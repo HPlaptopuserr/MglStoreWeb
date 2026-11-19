@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 import { Loader2, X } from "lucide-react";
 import type { PosShiftHistoryItem } from "../types/shift.types";
 import type { PosReceipt } from "../types/receipt.types";
@@ -277,7 +278,7 @@ export function ShiftHistoryPanel({
                           </p>
                           <p className="text-[11px] text-slate-500">
                             {formatDateTime(receipt.createdAt)} ·{" "}
-                            {receipt.paymentMethod}
+                            {formatPaymentBranding(receipt.paymentMethod)}
                           </p>
                         </div>
                         <p className="font-black text-slate-900">

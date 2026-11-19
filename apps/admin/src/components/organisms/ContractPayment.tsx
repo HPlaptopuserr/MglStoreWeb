@@ -33,7 +33,7 @@ function PaymentQr({ data }: { data: QPayData }) {
     return (
       <img
         src={source}
-        alt="QPay төлбөрийн QR код"
+        alt="Minu төлбөрийн QR код"
         className="h-52 w-52 rounded-xl border-2 border-neutral-200 shadow-sm"
       />
     );

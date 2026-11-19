@@ -1,4 +1,5 @@
 "use client";
+import { formatPaymentBranding } from "@mgl/ui";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RequestAttentionBanner } from "./RequestAttentionBanner";
@@ -376,7 +377,7 @@ export function WarehouseStockRequestQueue({
 
               {selected.note && (
                 <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
-                  {selected.note}
+                  {formatPaymentBranding(selected.note)}
                 </div>
               )}
 
