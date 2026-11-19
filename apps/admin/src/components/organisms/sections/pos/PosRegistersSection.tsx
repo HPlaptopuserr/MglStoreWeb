@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { API, adminFetch } from "@/lib/api";
 import { OrgSearchDropdown } from "@/components/molecules/OrgSearchDropdown";
+import { BranchNameEditor } from "./BranchNameEditor";
 
 /* ─── types ──────────────────────────────────────────────────────────── */
 type Org = { id: string; name: string; slug: string };
@@ -876,6 +877,19 @@ export function PosRegistersSection({
                     className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
                   />
                 </div>
+                {branches.filter((branch) => branch.id === form.branchId).map((branch) => (
+                  <BranchNameEditor
+                    key={`${activeOrgId}:${branch.id}`}
+                    organizationId={activeOrgId}
+                    branch={branch}
+                    onSaved={(updated) => {
+                      setBranches((current) => current.map((item) => item.id === updated.id ? { ...item, name: updated.name } : item));
+                      setRegisters((current) => current.map((register) => register.branchId === updated.id
+                        ? { ...register, branch: { ...register.branch, name: updated.name } }
+                        : register));
+                    }}
+                  />
+                ))}
                 {branches.length === 0 && !quickBranchOpen && (
                   <div className="mt-1.5 flex items-center gap-2">
                     <p className="text-xs text-amber-600">

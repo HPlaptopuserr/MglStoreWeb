@@ -2384,6 +2384,41 @@ router.get("/admin/branches", requireAuth, async (req, res) => {
   }
 });
 
+router.patch(
+  "/partners/:id/branches/:branchId/name",
+  requireAuth,
+  requirePlatformPermission(Permission.MANAGE_ORGANIZATIONS),
+  async (req, res) => {
+    const rawName: unknown = req.body?.name;
+    if (typeof rawName !== "string" || !rawName.trim() || rawName.trim().length > 200) {
+      return res.status(400).json({ message: "Салбарын нэр 1–200 тэмдэгт байна." });
+    }
+    const name = rawName.trim();
+    const { id: organizationId, branchId } = req.params;
+    try {
+      const branch = await prisma.branch.findFirst({
+        where: { id: branchId, organizationId, deletedAt: null, organization: { deletedAt: null } },
+        select: { id: true },
+      });
+      if (!branch) return res.status(404).json({ message: "Салбар олдсонгүй." });
+      const duplicate = await prisma.branch.findFirst({
+        where: { organizationId, deletedAt: null, id: { not: branchId }, name: { equals: name, mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (duplicate) return res.status(409).json({ message: "Энэ байгууллагад ижил нэртэй салбар байна." });
+      const updated = await prisma.branch.update({
+        where: { id: branchId, organizationId, deletedAt: null },
+        data: { name },
+        select: { id: true, name: true },
+      });
+      return res.json(updated);
+    } catch (error: unknown) {
+      console.error("rename branch error", error);
+      return res.status(500).json({ message: "Салбарын нэр хадгалахад алдаа гарлаа." });
+    }
+  },
+);
+
 router.get("/branches/map", async (_req, res) => {
   try {
     const branches = await prisma.branch.findMany({
