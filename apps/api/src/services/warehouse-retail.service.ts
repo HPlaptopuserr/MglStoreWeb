@@ -203,12 +203,18 @@ export async function createRetailInvoice(orderId: string, customerId: string) {
         include: retailOrderInclude,
       });
       if (!order) throw new WarehouseRetailError("Захиалга олдсонгүй.", 404);
-      if (order.paymentStatus === "PAID" || order.invoiceId) return order;
+      if (order.paymentStatus === "PAID") return order;
+      if (order.status === "CANCELLED")
+        throw new WarehouseRetailError(
+          "Захиалга цуцлагдсан тул төлбөр хийх боломжгүй.",
+          409,
+        );
       if (order.expiresAt <= new Date())
         throw new WarehouseRetailError(
           "Төлбөрийн хугацаа дууссан. Шинэ захиалга үүсгэнэ үү.",
           409,
         );
+      if (order.invoiceId) return order;
       const account = await paymentAccount(order.merchantCode);
       const invoice = await createSystemQrInvoice(
         {

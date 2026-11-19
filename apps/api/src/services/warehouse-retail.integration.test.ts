@@ -15,6 +15,7 @@ import {
   checkRetailPayment,
 } from "./warehouse-retail.service";
 import { canReserveStock, reservedStock } from "./stock-reservation.service";
+import { WarehouseRetailError } from "./warehouse-retail.policy";
 const url = new URL(process.env.DATABASE_URL || "http://disabled");
 const enabled =
   process.env.WAREHOUSE_RETAIL_INTEGRATION === "1" &&
@@ -313,6 +314,21 @@ test(
       const hyperInvoice = await createRetailInvoice(hyperOrder.id, buyer.id);
       assert.equal(hyperInvoice.qrText, "TEST-QR");
       assert.ok(hyperInvoice.invoiceId);
+      const preparedInvoiceCalls = invoiceCalls;
+      await prisma.warehouseRetailOrder.update({
+        where: { id: hyperOrder.id },
+        data: { status: "CANCELLED" },
+      });
+      await assert.rejects(
+        createRetailInvoice(hyperOrder.id, buyer.id),
+        (error: unknown) =>
+          error instanceof WarehouseRetailError && error.status === 409,
+        "a cancelled order must not return a cached payable invoice",
+      );
+      await prisma.warehouseRetailOrder.update({
+        where: { id: hyperOrder.id },
+        data: { status: "PENDING" },
+      });
       const incoming = () =>
         prisma.warehouseRetailOrder.findMany({
           where: incomingRetailOrderWhere(hypermarket.id),
@@ -331,11 +347,23 @@ test(
         data: { expiresAt: new Date(0) },
       });
       assert.equal((await incoming()).length, 0);
+      await assert.rejects(
+        createRetailInvoice(hyperOrder.id, buyer.id),
+        (error: unknown) =>
+          error instanceof WarehouseRetailError && error.status === 409,
+        "an expired reservation must not return a cached payable invoice",
+      );
+      assert.equal(invoiceCalls, preparedInvoiceCalls);
       await prisma.warehouseRetailOrder.update({
         where: { id: hyperOrder.id },
         data: { paymentStatus: "PAID" },
       });
       assert.equal((await incoming()).length, 1);
+      assert.equal(
+        (await createRetailInvoice(hyperOrder.id, buyer.id)).paymentStatus,
+        "PAID",
+        "an already paid order remains reconciled after reservation expiry",
+      );
     } finally {
       gateway.close();
       await prisma.$disconnect();
