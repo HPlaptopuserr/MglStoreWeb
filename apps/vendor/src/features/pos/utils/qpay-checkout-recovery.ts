@@ -67,9 +67,11 @@ export function parseQPayCheckoutSnapshot(snapshot: string, registerId?: string)
   try {
     const parsed = JSON.parse(snapshot) as Partial<QPayCheckoutRecovery>;
     if (registerId && parsed.registerId && parsed.registerId !== registerId) return null;
+    // Register-scoped recovery must never attach old money to an unrelated basket.
+    if (registerId && parsed.cart === undefined) return null;
     if (parsed.cart !== undefined && (!Array.isArray(parsed.cart) || !parsed.cart.length || !parsed.cart.every(isCartLine))) return null;
-    const paymentEntries = Array.isArray(parsed.paymentEntries)
-      ? parsed.paymentEntries.filter(isPaymentEntry)
+    const paymentEntries = Array.isArray(parsed.paymentEntries) && parsed.paymentEntries.every(isPaymentEntry)
+      ? parsed.paymentEntries
       : [];
     const updatedAt = Number(parsed.updatedAt || 0);
     const qpayModalExpiry = Date.parse(
@@ -139,7 +141,11 @@ export function saveQPayCheckoutRecovery(
     const saved = existing?.paymentEntries.find(item => item.id === entry.id);
     return saved?.status === "confirmed" ? saved : entry;
   });
-  window.localStorage.setItem(storageKey(organizationId, recovery.registerId), JSON.stringify({ ...recovery, paymentEntries, updatedAt: Date.now() }));
+  const snapshot = JSON.stringify({ ...recovery, paymentEntries, updatedAt: Date.now() });
+  if (!parseQPayCheckoutSnapshot(snapshot, recovery.registerId)) {
+    throw new Error("Сагсны төлбөр сэргээх мэдээлэл бүрэн бус байна. Төлбөр эхлээгүй; сагсаа шалгана уу.");
+  }
+  window.localStorage.setItem(storageKey(organizationId, recovery.registerId), snapshot);
   if (recovery.registerId && loadQPayCheckoutRecovery(organizationId)?.clientSaleId === recovery.clientSaleId) {
     window.localStorage.removeItem(storageKey(organizationId));
   }
@@ -176,4 +182,108 @@ export async function restoreDeferredQPayCheckout(organizationId: string, recove
   window.localStorage.removeItem(key);
   try { await claimQPayCheckoutRecovery(organizationId, recovery); }
   catch (error) { window.localStorage.setItem(key, "1"); throw error; }
+}
+
+export type QPayCheckoutArchiveRequest = {
+  snapshot: string;
+  reason: "INVALID_SNAPSHOT" | "EMPTY_CART_PAYMENT";
+  clientSaleId: string | null;
+};
+
+export type QPayCheckoutArchiveNotice = Omit<QPayCheckoutArchiveRequest, "snapshot"> & {
+  archiveId: string;
+  archivedAt: number;
+};
+
+const archiveNoticeKey = (organizationId: string, registerId: string) =>
+  `${storageKey(organizationId, registerId)}:archive-notice`;
+
+export function readQPayCheckoutArchiveNotice(
+  organizationId: string,
+  registerId: string,
+): QPayCheckoutArchiveNotice | null {
+  if (typeof window === "undefined" || !organizationId.trim() || !registerId) return null;
+  try {
+    const raw = window.localStorage.getItem(archiveNoticeKey(organizationId, registerId));
+    if (!raw) return null;
+    const notice: unknown = JSON.parse(raw);
+    if (!notice || typeof notice !== "object") return null;
+    const value = notice as Record<string, unknown>;
+    if (typeof value.archiveId !== "string" || !value.archiveId ||
+        (value.reason !== "INVALID_SNAPSHOT" && value.reason !== "EMPTY_CART_PAYMENT") ||
+        typeof value.archivedAt !== "number" || !Number.isFinite(value.archivedAt) ||
+        (value.clientSaleId !== null && typeof value.clientSaleId !== "string")) return null;
+    return {
+      archiveId: value.archiveId, reason: value.reason,
+      archivedAt: value.archivedAt, clientSaleId: value.clientSaleId,
+    };
+  } catch { return null; }
+}
+
+/**
+ * Detach an unreadable checkout only after the server has durably saved its
+ * exact bytes. Money and payment references are never interpreted or cancelled
+ * here. Both a local backup and a persistent review notice survive browser reload.
+ */
+export async function archiveBlockedQPayCheckoutRecovery(
+  organizationId: string,
+  registerId: string,
+  archive: (request: QPayCheckoutArchiveRequest) => Promise<{ archiveId: string }>,
+): Promise<boolean> {
+  if (typeof window === "undefined" || !organizationId.trim() || !registerId) return false;
+
+  const operation = async (): Promise<boolean> => {
+    const scopedKey = storageKey(organizationId, registerId);
+    const legacyKey = storageKey(organizationId);
+    const scoped = window.localStorage.getItem(scopedKey);
+    const sourceKey = scoped !== null ? scopedKey : legacyKey;
+    const snapshot = scoped ?? window.localStorage.getItem(legacyKey);
+    if (snapshot === null || parseQPayCheckoutSnapshot(snapshot, registerId)) return false;
+
+    let decoded: Record<string, unknown> | null = null;
+    try {
+      const value: unknown = JSON.parse(snapshot);
+      if (value && typeof value === "object" && !Array.isArray(value)) decoded = value as Record<string, unknown>;
+    } catch { /* The raw, malformed bytes are still archived without alteration. */ }
+    if (decoded?.registerId && decoded.registerId !== registerId) {
+      throw new Error("Өмнөх төлбөр өөр кассанд хамаарч байна. Кассын тохиргоогоо шалгана уу.");
+    }
+    const clientSaleId = typeof decoded?.clientSaleId === "string" && decoded.clientSaleId
+      ? decoded.clientSaleId : null;
+    const reason = Array.isArray(decoded?.cart) && decoded.cart.length === 0
+      ? "EMPTY_CART_PAYMENT" : "INVALID_SNAPSHOT";
+    const acknowledgement = await archive({ snapshot, reason, clientSaleId });
+    if (!acknowledgement || typeof acknowledgement.archiveId !== "string" || !acknowledgement.archiveId.trim()) {
+      throw new Error("Өмнөх төлбөрийн мэдээлэл серверт хадгалагдсан нь баталгаажаагүй. Дахин шалгана уу.");
+    }
+    if (window.localStorage.getItem(sourceKey) !== snapshot ||
+        (sourceKey === legacyKey && window.localStorage.getItem(scopedKey) !== null)) {
+      throw new Error("Кассын төлбөрийн мэдээлэл өөрчлөгдсөн байна. Хуудсаа шинэчилж шалгана уу.");
+    }
+
+    const backupKey = `${scopedKey}:archived:${acknowledgement.archiveId}`;
+    const previousBackup = window.localStorage.getItem(backupKey);
+    if (previousBackup !== null && previousBackup !== snapshot) {
+      throw new Error("Өмнөх төлбөрийн нөөц хуулбарын дугаар зөрүүтэй байна. Төлбөрийн мэдээлэл өөрчлөгдөөгүй.");
+    }
+    window.localStorage.setItem(backupKey, snapshot);
+    if (window.localStorage.getItem(backupKey) !== snapshot) {
+      throw new Error("Өмнөх төлбөрийн нөөц хуулбарыг баталгаажуулж чадсангүй.");
+    }
+    if (clientSaleId) window.localStorage.setItem(`${scopedKey}:deferred:${clientSaleId}`, "1");
+    const notice: QPayCheckoutArchiveNotice = {
+      archiveId: acknowledgement.archiveId, reason, clientSaleId, archivedAt: Date.now(),
+    };
+    window.localStorage.setItem(archiveNoticeKey(organizationId, registerId), JSON.stringify(notice));
+    window.localStorage.removeItem(sourceKey);
+    if (window.localStorage.getItem(sourceKey) !== null) {
+      throw new Error("Өмнөх төлбөрийн мэдээллийг тусад нь шилжүүлж чадсангүй. Дахин шалгана уу.");
+    }
+    return true;
+  };
+
+  if (typeof navigator !== "undefined" && navigator.locks) {
+    return navigator.locks.request(storageKey(organizationId, registerId), operation);
+  }
+  return operation();
 }
