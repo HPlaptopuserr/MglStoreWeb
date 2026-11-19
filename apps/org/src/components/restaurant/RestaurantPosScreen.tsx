@@ -630,6 +630,7 @@ function RestaurantPosContent() {
   const [drawerSummary, setDrawerSummary] = useState<CashDrawerSummary | null>(
     null,
   );
+  const drawerRequestId = useRef(0);
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [drawerError, setDrawerError] = useState("");
   const [shiftNote, setShiftNote] = useState("");
@@ -925,7 +926,9 @@ function RestaurantPosContent() {
     ? countedCashTotal
     : Number(closingCash) || 0;
   const expectedCashPreview =
-    drawerSummary?.expectedCash ?? shift?.expectedCash ?? 0;
+    (drawerSummary?.shift.id === shift?.id
+      ? drawerSummary?.expectedCash
+      : undefined) ?? shift?.expectedCash ?? 0;
   const closingDifferencePreview = roundMoney(
     closingCashPreview - expectedCashPreview,
   );
@@ -1108,14 +1111,20 @@ function RestaurantPosContent() {
   const refreshCashDrawerSummary = useCallback(
     async (signal?: AbortSignal) => {
       if (!shift?.id) return null;
+      const requestId = ++drawerRequestId.current;
       setDrawerLoading(true);
       setDrawerError("");
       try {
         const summary = await getRestaurantCashDrawerSummary(shift.id, signal);
+        if (signal?.aborted || requestId !== drawerRequestId.current) return null;
         setDrawerSummary(summary);
         return summary;
       } catch (error) {
-        if (error instanceof DOMException && error.name === "AbortError") {
+        if (
+          signal?.aborted ||
+          requestId !== drawerRequestId.current ||
+          (error instanceof DOMException && error.name === "AbortError")
+        ) {
           return null;
         }
         setDrawerError(
@@ -1125,7 +1134,7 @@ function RestaurantPosContent() {
         );
         return null;
       } finally {
-        setDrawerLoading(false);
+        if (requestId === drawerRequestId.current) setDrawerLoading(false);
       }
     },
     [shift?.id],
@@ -1240,6 +1249,32 @@ function RestaurantPosContent() {
       window.removeEventListener("online", refreshSetup);
     };
   }, [loadPosSetup, registers.length, setupLoading]);
+
+  useEffect(() => {
+    setDrawerSummary(null);
+    setDrawerError("");
+    setDrawerLoading(false);
+    if (!shiftMatchesRegister) return;
+
+    const controller = new AbortController();
+    const refresh = () => {
+      if (document.visibilityState === "visible") {
+        void refreshCashDrawerSummary(controller.signal);
+      }
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 15_000);
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [shiftMatchesRegister, refreshCashDrawerSummary]);
 
   useEffect(() => {
     if (!showCloseShift || !shift?.id) return;
@@ -2190,7 +2225,7 @@ function RestaurantPosContent() {
     try {
       const result = await voidRestaurantSale(sale.id, reason.trim());
       setNotice(result.message || `Баримт ${sale.receiptNo} цуцлагдлаа.`);
-      await loadSalesHistory();
+      await Promise.all([loadSalesHistory(), refreshCashDrawerSummary()]);
     } catch (error) {
       setSalesHistoryError(
         error instanceof Error ? error.message : "Баримт цуцлахад алдаа гарлаа",
@@ -2250,7 +2285,7 @@ function RestaurantPosContent() {
     );
     setPaymentDialogOpen(false);
     queueReceiptPrint(finalReceipt, receiptContext);
-    await Promise.all([loadMenu(), loadTables()]);
+    await Promise.all([loadMenu(), loadTables(), refreshCashDrawerSummary()]);
   };
 
   const finalizeQPayCheckout = async (
@@ -3166,6 +3201,7 @@ function RestaurantPosContent() {
         shiftId: shift.id,
         note: `Restaurant credit repayment ${credit.receiptNo}`,
       });
+      void refreshCashDrawerSummary();
       setCreditSales((current) =>
         current.filter((item) => item.id !== credit.id),
       );
@@ -3314,6 +3350,7 @@ function RestaurantPosContent() {
         shiftId: shift.id,
         note: `Restaurant bulk credit cash repayment ${group.borrowerName}`,
       });
+      void refreshCashDrawerSummary();
       const paidCreditIds = new Set(group.credits.map((credit) => credit.id));
       setCreditSales((current) =>
         current.filter((item) => !paidCreditIds.has(item.id)),
@@ -3849,7 +3886,7 @@ function RestaurantPosContent() {
       <div className={`${workspaceStyles.grid} bg-[#051424]`}>
         <main className={workspaceStyles.catalog}>
           <header className="shrink-0 rounded-xl border border-[#273647] bg-[#010f1f] p-3 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <div className="flex min-w-0 items-center gap-3">
                 <Link
                   href={cashierOnly ? "/dashboard/supply" : "/dashboard"}
@@ -3877,7 +3914,38 @@ function RestaurantPosContent() {
                 </div>
               </div>
 
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div
+                  className="flex min-h-10 items-center gap-3 rounded-lg border border-[#3d484f] bg-[#122131] px-3 py-2"
+                  aria-busy={drawerLoading}
+                >
+                  <Banknote aria-hidden="true" className="h-5 w-5 shrink-0 text-emerald-300" />
+                  <div>
+                    <p className="text-[10px] font-bold text-[#bcc8d1]">Касс дахь бэлэн</p>
+                    <p className={`text-sm font-black tabular-nums ${drawerError ? "text-amber-200" : "text-emerald-300"}`}>
+                      {!shiftMatchesRegister
+                        ? "Ээлж хаалттай"
+                        : drawerError
+                          ? "Дүн авахад алдаа гарлаа"
+                          : drawerSummary && drawerSummary.shift.id === shift?.id
+                            ? formatMoney(drawerSummary.expectedCash)
+                            : "Ачаалж байна…"}
+                    </p>
+                    <p className="text-[10px] text-[#bcc8d1]">Нээлттэй ээлжийн тооцоолсон үлдэгдэл</p>
+                  </div>
+                  {shiftMatchesRegister && (
+                    <button
+                      type="button"
+                      onClick={() => void refreshCashDrawerSummary()}
+                      disabled={drawerLoading}
+                      aria-label="Кассын бэлэн мөнгөний дүн шинэчлэх"
+                      title={drawerError || "Бэлэн мөнгөний дүн шинэчлэх"}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#bcc8d1] hover:bg-[#273647] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300 disabled:opacity-40"
+                    >
+                      <RefreshCw aria-hidden="true" className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
 
               {features.restaurantPos && <button
                 type="button"
