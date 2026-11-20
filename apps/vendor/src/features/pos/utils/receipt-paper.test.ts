@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  readReceiptCompact,
+  saveReceiptCompact,
   readReceiptPageMode,
   readReceiptPaperWidth,
   saveReceiptPageMode,
@@ -22,6 +24,9 @@ test("receipt preferences persist and blocked storage retains the selected sessi
     },
   });
   try {
+    assert.equal(readReceiptCompact(), false);
+    saveReceiptCompact(true);
+    assert.equal(readReceiptCompact(), true);
     assert.equal(readReceiptPaperWidth(), 58);
     assert.equal(readReceiptPageMode(), "receipt");
     saveReceiptPaperWidth(80);

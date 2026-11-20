@@ -3,7 +3,7 @@ import { escapeHtml, formatPriceMarkup } from "./html";
 
 /** Physical units keep the roll preview and the printed price tag identical. */
 export function thermalLabelCss(layout: LabelPrintLayout): string {
-  const scale = Math.min(1.25, layout.labelHeight / 44);
+  const scale = layout.compact ? 1 : Math.min(1.25, layout.labelHeight / 44);
   return `
     .thermal-label {
       width: 100%; max-width: ${layout.labelWidth}mm; height: ${layout.labelHeight}mm;
@@ -24,6 +24,16 @@ export function thermalLabelCss(layout: LabelPrintLayout): string {
     .thermal-code { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: ${1.1 * scale}mm; min-height: ${12.5 * scale}mm; padding: 0 ${0.8 * scale}mm; }
     .thermal-code .barcode-svg { width: 100%; height: ${8.5 * scale}mm; display: block; }
     .thermal-code .barcode-text, .thermal-code .code-value { max-width: 100%; font-size: ${2.3 * scale}mm; line-height: 1; font-weight: 500; letter-spacing: ${0.13 * scale}mm; }
+    ${
+      layout.compact
+        ? `
+      .thermal-label { height: auto; justify-content: flex-start; gap: .7mm; padding: .8mm 1mm; overflow: visible; }
+      .thermal-name { height: auto; }
+      .thermal-price-row { min-height: 0; padding-bottom: .6mm; }
+      .thermal-code { min-height: 0; gap: .6mm; }
+    `
+        : ""
+    }
   `;
 }
 

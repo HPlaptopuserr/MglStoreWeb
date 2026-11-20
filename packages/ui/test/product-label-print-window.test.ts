@@ -14,6 +14,7 @@ function createPrintWindow(readyState: DocumentReadyState = "loading") {
     closed: false,
     document: {
       readyState,
+      querySelector: () => null,
       fonts: { ready: fontsReady },
       body: {
         getBoundingClientRect: () => {
@@ -85,4 +86,27 @@ test("closing a print window during preparation prevents a print call", async ()
   fixture.resolveFonts();
   await printing;
   assert.deepEqual(fixture.calls, []);
+});
+
+test("compact rolls use measured content length while legacy pages stay untouched", async () => {
+  const { fitCompactLabelPage } =
+    await import("../src/organisms/product-label-print/print-window");
+  const style = { textContent: "" };
+  const roll = {
+    dataset: { fitRollWidth: "58", pageMode: "receipt" },
+    getBoundingClientRect: () => ({ height: 128 }),
+  };
+  const document = {
+    querySelector: () => roll,
+    getElementById: () => style,
+  } as unknown as Document;
+  assert.equal(fitCompactLabelPage(document), 128);
+  assert.equal(style.textContent, "@page { size: 58mm 35mm; margin: 0; }");
+  roll.dataset.pageMode = "printer";
+  fitCompactLabelPage(document);
+  assert.equal(style.textContent, "@page { size: auto; margin: 0; }");
+  assert.equal(
+    fitCompactLabelPage({ querySelector: () => null } as unknown as Document),
+    null,
+  );
 });

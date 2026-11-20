@@ -231,3 +231,14 @@ test("printer-managed thermal pages retain visible label and barcode markup", ()
   const sheet = buildLabelDocument([label], settings({ thermalPageMode: "printer" }));
   assert.match(sheet, /@page \{ size: 297mm 210mm/);
 });
+
+test("compact thermal layout is opt-in and does not affect sheet layouts", () => {
+  const compact = settings({ paperPreset: "THERMAL", thermalCompact: true });
+  assert.equal(calculatePrintLayout(compact).compact, true);
+  assert.equal(calculatePrintLayout({ ...compact, thermalHeight: 24, margin: 4 }).fitsOnPage, true);
+  const html = buildLabelDocument([label], compact);
+  assert.match(html, /data-fit-roll-width="58"/);
+  assert.match(html, /height: auto; justify-content: flex-start/);
+  assert.doesNotMatch(buildLabelDocument([label], settings({ paperPreset: "THERMAL" })), /data-fit-roll-width/);
+  assert.equal(calculatePrintLayout(settings({ thermalCompact: true })).compact, false);
+});

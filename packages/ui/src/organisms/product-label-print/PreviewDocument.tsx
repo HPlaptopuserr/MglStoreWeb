@@ -1,5 +1,7 @@
 import { memo, useCallback, useLayoutEffect, useRef } from "react";
 
+import { fitCompactLabelPage } from "./print-window";
+
 const PREVIEW_SHELL =
   '<!doctype html><html lang="mn"><head><meta charset="utf-8"></head><body></body></html>';
 
@@ -9,6 +11,7 @@ interface PreviewDocumentProps {
   width: number;
   height: number;
   scale: number;
+  onContentHeightChange?: (height: number) => void;
 }
 
 /** Keep the browsing context alive while editing; changing srcDoc reloads and flashes white. */
@@ -18,6 +21,7 @@ export const PreviewDocument = memo(function PreviewDocument({
   width,
   height,
   scale,
+  onContentHeightChange,
 }: PreviewDocumentProps) {
   const frame = useRef<HTMLIFrameElement>(null);
   const loaded = useRef(false);
@@ -42,7 +46,9 @@ export const PreviewDocument = memo(function PreviewDocument({
         target.importNode(node, true),
       ),
     );
-  }, [html]);
+    const compactHeight = fitCompactLabelPage(target);
+    if (compactHeight !== null) onContentHeightChange?.(compactHeight);
+  }, [html, onContentHeightChange]);
 
   useLayoutEffect(updateDocument, [updateDocument]);
 

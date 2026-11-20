@@ -190,7 +190,7 @@ export function ProductLabelPrintDialog({
             <p className="mt-1 text-xs font-semibold text-slate-500">
               {selectedLabelCount} шошго ·{" "}
               {printLayout.thermal
-                ? `${selectedLabelCount ? printLayout.documentHeight : 0} мм рулон`
+                ? printLayout.compact ? "Агуулгын уртаар" : `${selectedLabelCount ? printLayout.documentHeight : 0} мм рулон`
                 : `${pageCount} хуудас`}
             </p>
           </div>

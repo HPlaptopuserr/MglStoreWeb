@@ -135,14 +135,14 @@ export function buildLabelDocument(
   if (!layout.fitsOnPage)
     throw new Error("Шошго цаасны хэвлэх талбайд багтахгүй байна.");
   const pageMarkup = layout.thermal
-    ? `<section class="thermal-roll">${labels.map((label) => `<div class="roll-item">${renderThermalLabel(label, MGL_LABEL_LOGO_SVG, renderBarcodeMarkup(label.code))}</div>`).join("")}</section>`
+    ? `<section class="thermal-roll"${layout.compact ? ` data-fit-roll-width="${layout.paperWidth}" data-page-mode="${settings.thermalPageMode ?? "receipt"}"` : ""}>${labels.map((label) => `<div class="roll-item">${renderThermalLabel(label, MGL_LABEL_LOGO_SVG, renderBarcodeMarkup(label.code))}</div>`).join("")}</section>`
     : chunkLabels(labels, layout.labelsPerPage).map(renderPrintPage).join("");
   return `
     <!doctype html><html lang="mn">
       <head>
         <meta charset="utf-8" /><title>MGL price labels</title>
+        <style id="label-page-size">@page { size: ${layout.thermal && settings.thermalPageMode === "printer" ? "auto" : `${layout.paperWidth}mm ${layout.documentHeight}mm`}; margin: ${layout.thermal ? 0 : settings.margin}mm; }</style>
         <style>
-          @page { size: ${layout.thermal && settings.thermalPageMode === "printer" ? "auto" : `${layout.paperWidth}mm ${layout.documentHeight}mm`}; margin: ${layout.thermal ? 0 : settings.margin}mm; }
           * { box-sizing: border-box; }
           html {
             print-color-adjust: exact;
@@ -210,6 +210,7 @@ export function buildLabelDocument(
               .roll-item + .roll-item::before { content: ""; position: absolute; top: -${settings.gap / 2}mm; left: 0; right: 0; border-top: 0.2mm dashed #cbd5e1; }
             }
             ${thermalLabelCss(layout)}
+            ${layout.compact ? `.roll-item { height: auto; padding: 1mm; }` : ""}
           `
               : ""
           }

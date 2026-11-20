@@ -10,6 +10,7 @@ type ThermalPrintDocumentOptions = {
   extraCss?: string;
   paperWidthMm?: ReceiptPaperWidth;
   pageMode?: ReceiptPageMode;
+  compact?: boolean;
   target?: "iframe" | "window";
 };
 
@@ -24,6 +25,7 @@ export function printThermalDocument({
   paperWidthMm = readReceiptPaperWidth(),
   pageMode = readReceiptPageMode(),
   target = "iframe",
+  compact = false,
 }: ThermalPrintDocumentOptions): boolean {
   if (typeof window === "undefined") return false;
 
@@ -57,10 +59,10 @@ export function printThermalDocument({
           }
           const height = popup.document.body.getBoundingClientRect().height;
           const mm = Math.max(
-            MINIMUM_RECEIPT_HEIGHT_MM,
+            compact ? 0 : MINIMUM_RECEIPT_HEIGHT_MM,
             Math.ceil(
               (height * MILLIMETERS_PER_INCH) / SCREEN_DPI +
-                RECEIPT_BOTTOM_FEED_MM,
+                (compact ? 1 : RECEIPT_BOTTOM_FEED_MM),
             ),
           );
           const style = popup.document.getElementById("thermal-page-size");
@@ -102,7 +104,7 @@ export function printThermalDocument({
           body {
             color: #111;
             font-family: ui-monospace, "Cascadia Mono", "Courier New", monospace;
-            padding: 2mm 5mm;
+            padding: ${compact ? "1mm 3mm" : "2mm 5mm"};
           }
           pre {
             margin: 0;

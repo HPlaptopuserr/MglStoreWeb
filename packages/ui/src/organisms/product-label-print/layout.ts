@@ -35,6 +35,7 @@ export interface LabelPrintSettings {
   labelHeight: number;
   customPaperWidth: number;
   customPaperHeight: number;
+  thermalCompact?: boolean;
   thermalPageMode?: "receipt" | "printer";
   thermalWidth: number;
   thermalHeight: number;
@@ -56,8 +57,13 @@ export const DEFAULT_PRINT_SETTINGS: LabelPrintSettings = {
 };
 export function calculatePrintLayout(settings: LabelPrintSettings) {
   const thermal = settings.paperPreset === "THERMAL";
+  const compact = thermal && settings.thermalCompact === true;
+  const margin = compact ? 1 : settings.margin;
   const preset = thermal
-    ? { width: settings.thermalWidth, height: settings.thermalHeight }
+    ? {
+        width: settings.thermalWidth,
+        height: compact ? 50 : settings.thermalHeight,
+      }
     : settings.paperPreset === "CUSTOM"
       ? { width: settings.customPaperWidth, height: settings.customPaperHeight }
       : PAPER_PRESETS[settings.paperPreset as keyof typeof PAPER_PRESETS];
@@ -67,8 +73,8 @@ export function calculatePrintLayout(settings: LabelPrintSettings) {
     settings.orientation === "landscape";
   const paperWidth = landscape ? preset.height : preset.width;
   const paperHeight = landscape ? preset.width : preset.height;
-  const printableWidth = Math.max(0, paperWidth - settings.margin * 2);
-  const printableHeight = Math.max(0, paperHeight - settings.margin * 2);
+  const printableWidth = Math.max(0, paperWidth - margin * 2);
+  const printableHeight = Math.max(0, paperHeight - margin * 2);
   const labelWidth = thermal ? printableWidth : settings.labelWidth;
   const labelHeight = thermal ? printableHeight : settings.labelHeight;
   const columns = thermal
@@ -103,13 +109,14 @@ export function calculatePrintLayout(settings: LabelPrintSettings) {
     labelsPerPage: columns * rows,
     fitsOnPage:
       valid &&
-      settings.margin >= 0 &&
+      margin >= 0 &&
       settings.gap >= 0 &&
       labelWidth >= 20 &&
       labelHeight >= 20 &&
       labelWidth <= printableWidth &&
       labelHeight <= printableHeight,
     thermal,
+    compact,
   };
 }
 export type LabelPrintLayout = ReturnType<typeof calculatePrintLayout>;

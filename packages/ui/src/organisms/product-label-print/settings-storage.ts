@@ -25,6 +25,8 @@ export function readLabelPrintSettings(): LabelPrintSettings {
     )
       return DEFAULT_PRINT_SETTINGS;
     if (
+      (candidate.thermalCompact !== undefined &&
+        typeof candidate.thermalCompact !== "boolean") ||
       !["A4", "A5", "LETTER", "CUSTOM", "THERMAL"].includes(
         candidate.paperPreset,
       ) ||

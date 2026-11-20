@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { buildLabelDocument } from "./document";
 import { PreviewDocument } from "./PreviewDocument";
@@ -15,6 +15,10 @@ export function PaperPreview({
   labels: ProductLabelValue[];
   settings: LabelPrintSettings;
 }) {
+  const [measured, setMeasured] = useState<{
+    html: string;
+    height: number;
+  } | null>(null);
   const [page, setPage] = useState(0);
   const [containerWidth, setContainerWidth] = useState(300);
   const container = useRef<HTMLDivElement>(null);
@@ -58,7 +62,23 @@ export function PaperPreview({
     return () => observer.disconnect();
   }, []);
   const widthPx = (layout.paperWidth * 96) / 25.4;
-  const heightPx = (layout.documentHeight * 96) / 25.4;
+  const heightPx =
+    layout.compact && measured?.html === html
+      ? measured.height
+      : (layout.documentHeight * 96) / 25.4;
+  const onContentHeightChange = useCallback(
+    (height: number) => {
+      setMeasured((current) =>
+        current?.html === html && current.height === height
+          ? current
+          : { html, height },
+      );
+    },
+    [html],
+  );
+  const documentHeight = layout.compact
+    ? Math.ceil((heightPx * 25.4) / 96 + 0.5)
+    : layout.documentHeight;
   const scale = Math.min(1.4, Math.max(0.05, (containerWidth - 24) / widthPx));
   return (
     <section
@@ -69,7 +89,7 @@ export function PaperPreview({
         <h4 className="text-sm font-black text-slate-950">Загвар</h4>
         <p className="mt-1 text-xs text-slate-500">
           {layout.thermal ? "Кассын цаас" : settings.paperPreset} ·{" "}
-          {layout.paperWidth} × {layout.documentHeight} мм
+          {layout.paperWidth} × {documentHeight} мм
           {layout.thermal && " · Доошоо цуваа"}
           {!layout.thermal &&
             ` · ${settings.orientation === "portrait" ? "Босоо" : "Хэвтээ"}`}
@@ -96,6 +116,7 @@ export function PaperPreview({
                   width={widthPx}
                   height={heightPx}
                   scale={scale}
+                  onContentHeightChange={onContentHeightChange}
                 />
                 {!layout.thermal && (
                   <div
@@ -113,9 +134,14 @@ export function PaperPreview({
                 )}
               </div>
               <p className="mt-3 text-center text-[10px] text-slate-500">
-                {layout.thermal ? "Нийт урт" : "Өндөр"} {layout.documentHeight}{" "}
-                мм · Шошго {Number(layout.labelWidth.toFixed(1))} ×{" "}
-                {Number(layout.labelHeight.toFixed(1))} мм
+                {layout.thermal ? "Нийт урт" : "Өндөр"} {documentHeight} мм
+                {!layout.compact && (
+                  <>
+                    {" "}
+                    · Шошго {Number(layout.labelWidth.toFixed(1))} ×{" "}
+                    {Number(layout.labelHeight.toFixed(1))} мм
+                  </>
+                )}
               </p>
             </>
           ) : (

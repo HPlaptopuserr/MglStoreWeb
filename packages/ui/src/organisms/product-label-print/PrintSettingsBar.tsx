@@ -71,10 +71,33 @@ export function PrintSettingsBar({
         </SettingsField>
         {thermal ? (
           <>
+            <label className="flex h-10 items-center gap-2 text-xs font-bold text-slate-700">
+              <input
+                type="checkbox"
+                checked={settings.thermalCompact === true}
+                onChange={(event) =>
+                  onChange({
+                    ...settings,
+                    thermalCompact: event.target.checked,
+                    thermalPageMode: event.target.checked
+                      ? "receipt"
+                      : settings.thermalPageMode,
+                  })
+                }
+              />
+              Илүү зайг багасгах
+            </label>
             <SettingsField label="Цаасны хэмжээний горим">
-              <select value={settings.thermalPageMode ?? "receipt"}
-                onChange={(event) => update("thermalPageMode", event.target.value === "printer" ? "printer" : "receipt")}
-                className={selectClass}>
+              <select
+                value={settings.thermalPageMode ?? "receipt"}
+                onChange={(event) =>
+                  update(
+                    "thermalPageMode",
+                    event.target.value === "printer" ? "printer" : "receipt",
+                  )
+                }
+                className={selectClass}
+              >
                 <option value="receipt">Шошгоны нийт уртаар</option>
                 <option value="printer">Принтерийн цаасны тохиргоогоор</option>
               </select>
@@ -104,13 +127,19 @@ export function PrintSettingsBar({
               max={120}
               onChange={(value) => update("thermalWidth", value)}
             />
-            <SettingsNumberField
-              label="Нэг шошгоны цаасны урт"
-              value={settings.thermalHeight}
-              min={24}
-              max={300}
-              onChange={(value) => update("thermalHeight", value)}
-            />
+            {settings.thermalCompact ? (
+              <p className="text-xs text-slate-600">
+                Урт нь агуулгаар · Зах 1 мм
+              </p>
+            ) : (
+              <SettingsNumberField
+                label="Нэг шошгоны цаасны урт"
+                value={settings.thermalHeight}
+                min={24}
+                max={300}
+                onChange={(value) => update("thermalHeight", value)}
+              />
+            )}
           </>
         ) : (
           <>
@@ -210,13 +239,15 @@ export function PrintSettingsBar({
             onChange={(value) => update("gap", value)}
           />
         )}
-        <SettingsNumberField
-          label="Зах"
-          value={settings.margin}
-          min={0}
-          max={20}
-          onChange={(value) => update("margin", value)}
-        />
+        {!(thermal && settings.thermalCompact) && (
+          <SettingsNumberField
+            label="Зах"
+            value={settings.margin}
+            min={0}
+            max={20}
+            onChange={(value) => update("margin", value)}
+          />
+        )}
         <p
           role="status"
           className={`ml-auto rounded-lg px-3 py-2 text-xs font-bold ${layout.fitsOnPage ? "bg-sky-100 text-sky-800" : "bg-rose-100 text-rose-700"}`}
@@ -231,9 +262,10 @@ export function PrintSettingsBar({
       {thermal && (
         <p className="mt-3 text-xs leading-5 text-slate-500">
           Хэвлэх цонхноос кассын принтерээ сонгож, дээрх цаасны хэмжээтэй
-          тааруулна уу. POS-H58 дээр 58 мм сонгоно. Масштаб 100%, захгүй, толгой/хөл хэсэггүй хэвлэнэ. Хоосон гарвал принтерийн цаасны тохиргооны горимыг сонгоно уу. Цаасны урт нь
-          нэг шошгонд зарцуулах урт; сонгосон бүх шошго доошоо дараалан нэг
-          рулон дээр хэвлэгдэнэ.
+          тааруулна уу. POS-H58 дээр 58 мм сонгоно. Масштаб 100%, захгүй,
+          толгой/хөл хэсэггүй хэвлэнэ. Хоосон гарвал принтерийн цаасны
+          тохиргооны горимыг сонгоно уу. Цаасны урт нь нэг шошгонд зарцуулах
+          урт; сонгосон бүх шошго доошоо дараалан нэг рулон дээр хэвлэгдэнэ.
         </p>
       )}
     </div>

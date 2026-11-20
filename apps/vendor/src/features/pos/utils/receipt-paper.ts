@@ -55,3 +55,25 @@ export function saveReceiptPageMode(mode: ReceiptPageMode) {
     // Printing remains available when browser storage is disabled.
   }
 }
+
+const RECEIPT_COMPACT_STORAGE_KEY = "mgl_receipt_compact";
+let sessionCompact: boolean | undefined;
+
+export function readReceiptCompact(): boolean {
+  if (sessionCompact !== undefined) return sessionCompact;
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(RECEIPT_COMPACT_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+export function saveReceiptCompact(compact: boolean): void {
+  sessionCompact = compact;
+  try {
+    window.localStorage.setItem(RECEIPT_COMPACT_STORAGE_KEY, String(compact));
+  } catch {
+    /* Keep the current selection when storage is unavailable. */
+  }
+}
