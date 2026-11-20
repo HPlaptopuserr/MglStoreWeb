@@ -228,3 +228,41 @@ test("public new-product searches preserve newest order instead of reordering by
   const page = await response.json() as ProductPage;
   assert.deepEqual(page.products.map((product) => product.name), ["Latte 2026", "Latte"]);
 });
+
+
+test("recommended feed prioritizes connected sellers before pagination without exposing connection data", async () => {
+  stub(prisma.siteSetting, "findUnique", async () => ({ value: "true" }));
+  stub(prisma.siteSetting, "findMany", async () => ["ready", "other"].map((id) => ({ key: `web-products-enabled-${id}`, value: "true" })));
+  stub(prisma.organization, "findMany", async () => [
+    { id: "ready", email: "shop@example.com", phone: "99112233", qpayEnabled: true, qpayMerchantId: "private-merchant" },
+    { id: "other", email: null, phone: null },
+  ]);
+  const ready = { ...products[0], id: "connected-product", organization: { id: "ready", name: "Ready" }, images: [{ id: "photo", url: "/photo.jpg" }] };
+  const other = { ...products[1], id: "other-product", marketplacePriority: 100, organization: { id: "other", name: "Other" }, images: ready.images };
+  stub(prisma.product, "count", async () => 2);
+  stub(prisma.orderItem, "groupBy", async () => []);
+  stub(prisma.productInteraction, "groupBy", async () => []);
+  stub(prisma.product, "findMany", async (args: Prisma.ProductFindManyArgs) => {
+    assert.equal(args.skip, undefined);
+    assert.ok(Array.isArray(args.where?.AND));
+    const scope = args.where.AND[1]?.organizationId;
+    assert.ok(scope && typeof scope === "object");
+    if (scope.in) {
+      assert.deepEqual(scope.in, ["ready"]);
+      assert.equal(args.take, 10_000);
+      return [ready];
+    }
+    assert.deepEqual(scope.notIn, ["ready"]);
+    assert.equal(args.take, 9_999);
+    return [other];
+  });
+  for (const [offset, expected] of [[0, ready.id], [1, other.id]] as const) {
+    const response = await fetch(`${base}/products?sort=recommended&meta=1&limit=1&offset=${offset}`);
+    assert.equal(response.status, 200);
+    const page = await response.json() as ProductPage;
+    assert.deepEqual(page.products.map(({ id }) => id), [expected]);
+    assert.equal(page.total, 2);
+    assert.ok(!JSON.stringify(page).includes("private-merchant"));
+    assert.ok(!JSON.stringify(page).includes("shop@example.com"));
+  }
+});

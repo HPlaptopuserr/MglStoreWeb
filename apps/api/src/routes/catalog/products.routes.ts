@@ -110,7 +110,11 @@ import {
   resolveBusinessCategoryIdFromChoices,
 } from "../../lib/excel-import";
 import { TtlCache } from "../../lib/ttl-cache";
-import { orderRecommendedProductFeed } from "../../services/product-feed-ordering.service";
+import {
+  hasConnectedStorefront,
+  orderRecommendedProductFeed,
+  storefrontConnectionSelect,
+} from "../../services/product-feed-ordering.service";
 import {
   invalidatePublicProductListCache,
   productListCache,
@@ -1074,6 +1078,7 @@ router.get("/products/organization-catalog", optionalAuth, async (req, res) => {
       },
       orderBy: { name: "asc" },
       select: {
+        ...storefrontConnectionSelect,
         id: true,
         name: true,
         logoUrl: true,
@@ -1094,67 +1099,73 @@ router.get("/products/organization-catalog", optionalAuth, async (req, res) => {
     });
 
     const rows = await Promise.all(
-      organizations.map(async (organization) => {
-        const products = await prisma.product.findMany({
-          where: {
-            organizationId: organization.id,
-            ...PUBLIC_PRODUCT_STATE_FILTER,
-          },
-          orderBy: [{ marketplacePriority: "desc" }, { createdAt: "desc" }],
-          take: limit,
-          include: {
-            images: {
-              select: { id: true, url: true },
-              orderBy: productImageOrderBy(),
-              take: 1,
+      [...organizations]
+        .sort(
+          (a, b) =>
+            Number(hasConnectedStorefront(b)) -
+            Number(hasConnectedStorefront(a)),
+        )
+        .map(async (organization) => {
+          const products = await prisma.product.findMany({
+            where: {
+              organizationId: organization.id,
+              ...PUBLIC_PRODUCT_STATE_FILTER,
             },
-            businessCategory: {
-              select: {
-                id: true,
-                name: true,
-                slug: true,
-                parent: { select: { id: true, name: true, slug: true } },
+            orderBy: [{ marketplacePriority: "desc" }, { createdAt: "desc" }],
+            take: limit,
+            include: {
+              images: {
+                select: { id: true, url: true },
+                orderBy: productImageOrderBy(),
+                take: 1,
+              },
+              businessCategory: {
+                select: {
+                  id: true,
+                  name: true,
+                  slug: true,
+                  parent: { select: { id: true, name: true, slug: true } },
+                },
+              },
+              organization: {
+                select: {
+                  id: true,
+                  name: true,
+                  logoUrl: true,
+                  rating: true,
+                  reviewCount: true,
+                  soldCount: true,
+                },
+              },
+              discounts: {
+                where: { isActive: true, validUntil: { gte: new Date() } },
+                select: { percent: true, validUntil: true },
+                take: 1,
               },
             },
+          });
+          const preorderCapacityByProductId = await getPreorderCapacityProgress(
+            prisma,
+            products,
+          );
+          return {
             organization: {
-              select: {
-                id: true,
-                name: true,
-                logoUrl: true,
-                rating: true,
-                reviewCount: true,
-                soldCount: true,
-              },
+              id: organization.id,
+              name: organization.name,
+              logoUrl: organization.logoUrl,
+              rating: organization.rating,
+              reviewCount: organization.reviewCount,
+              soldCount: organization.soldCount,
+              customerCount: organization.customerCount,
+              productCount: organization._count.products,
             },
-            discounts: {
-              where: { isActive: true, validUntil: { gte: new Date() } },
-              select: { percent: true, validUntil: true },
-              take: 1,
-            },
-          },
-        });
-        const preorderCapacityByProductId = await getPreorderCapacityProgress(
-          prisma,
-          products,
-        );
-        return {
-          organization: {
-            id: organization.id,
-            name: organization.name,
-            logoUrl: organization.logoUrl,
-            rating: organization.rating,
-            reviewCount: organization.reviewCount,
-            soldCount: organization.soldCount,
-            customerCount: organization.customerCount,
-            productCount: organization._count.products,
-          },
-          products: products.map((product) => ({
-            ...product,
-            stock: fromPosStoredStockQuantity(product.stock, product.unit),
-            ...preorderCapacityByProductId.get(product.id),
-          })),
-        };
-      }),
+            products: products.map((product) => ({
+              ...product,
+              stock: fromPosStoredStockQuantity(product.stock, product.unit),
+              ...preorderCapacityByProductId.get(product.id),
+            })),
+          };
+        }),
     );
 
     return res.json({ organizations: rows });
@@ -1446,79 +1457,125 @@ router.get("/products", optionalAuth, async (req, res) => {
               : offset + limit
         : 0;
 
-    const products = await prisma.product.findMany({
-      where: catalogSearchPage
-        ? { AND: [where, { id: { in: catalogSearchPage.ids } }] }
-        : where,
-      orderBy:
-        sort === "price_asc"
-          ? [
-              { images: { _count: "desc" } },
-              { marketplacePriority: "desc" },
-              { price: "asc" },
-            ]
-          : sort === "price_desc"
+    const connectedOrganizationIds = new Set<string>(
+      useRecommendationRanking
+        ? (
+            await prisma.organization.findMany({
+              where: { deletedAt: null, status: "ACTIVE" },
+              select: { id: true, ...storefrontConnectionSelect },
+            })
+          )
+            .filter(hasConnectedStorefront)
+            .map(({ id }) => id)
+        : [],
+    );
+    const findProducts = (
+      candidateWhere: Prisma.ProductWhereInput,
+      take = productCandidateLimit,
+    ) =>
+      prisma.product.findMany({
+        where: candidateWhere,
+        orderBy:
+          sort === "price_asc"
             ? [
                 { images: { _count: "desc" } },
                 { marketplacePriority: "desc" },
-                { price: "desc" },
+                { price: "asc" },
               ]
-            : sort === "name_asc"
+            : sort === "price_desc"
               ? [
                   { images: { _count: "desc" } },
                   { marketplacePriority: "desc" },
-                  { name: "asc" },
+                  { price: "desc" },
                 ]
-              : sort === "discount"
+              : sort === "name_asc"
                 ? [
                     { images: { _count: "desc" } },
                     { marketplacePriority: "desc" },
-                    { discounts: { _count: "desc" } },
-                    { createdAt: "desc" },
+                    { name: "asc" },
                   ]
-                : [
-                    { createdAt: "desc" },
-                    { marketplacePriority: "desc" },
-                    { id: "asc" },
-                  ],
-      ...(useDatabasePagination ? { skip: offset } : {}),
-      ...(!catalogSearchPage && productCandidateLimit > 0
-        ? { take: productCandidateLimit }
-        : {}),
-      include: {
-        images: {
-          select: { id: true, url: true },
-          orderBy: productImageOrderBy(),
-          take: 1,
-        },
-        supplierDocument: {
-          select: { frontImageUrl: true, backImageUrl: true },
-        },
-        businessCategory: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            parent: { select: { id: true, name: true, slug: true } },
+                : sort === "discount"
+                  ? [
+                      { images: { _count: "desc" } },
+                      { marketplacePriority: "desc" },
+                      { discounts: { _count: "desc" } },
+                      { createdAt: "desc" },
+                    ]
+                  : [
+                      { createdAt: "desc" },
+                      { marketplacePriority: "desc" },
+                      { id: "asc" },
+                    ],
+        ...(useDatabasePagination ? { skip: offset } : {}),
+        ...(!catalogSearchPage && take > 0 ? { take } : {}),
+        include: {
+          images: {
+            select: { id: true, url: true },
+            orderBy: productImageOrderBy(),
+            take: 1,
+          },
+          supplierDocument: {
+            select: { frontImageUrl: true, backImageUrl: true },
+          },
+          businessCategory: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+              parent: { select: { id: true, name: true, slug: true } },
+            },
+          },
+          organization: {
+            select: {
+              id: true,
+              name: true,
+              logoUrl: true,
+              rating: true,
+              reviewCount: true,
+              soldCount: true,
+            },
+          },
+          discounts: {
+            where: { isActive: true, validUntil: { gte: new Date() } },
+            select: { percent: true, validUntil: true },
+            take: 1,
           },
         },
-        organization: {
-          select: {
-            id: true,
-            name: true,
-            logoUrl: true,
-            rating: true,
-            reviewCount: true,
-            soldCount: true,
-          },
-        },
-        discounts: {
-          where: { isActive: true, validUntil: { gte: new Date() } },
-          select: { percent: true, validUntil: true },
-          take: 1,
-        },
-      },
-    });
+      });
+
+    // Fetch connected sellers first so the candidate cap cannot exclude them.
+    const connectedProducts =
+      useRecommendationRanking && connectedOrganizationIds.size > 0
+        ? await findProducts({
+            AND: [
+              where,
+              { organizationId: { in: [...connectedOrganizationIds] } },
+            ],
+          })
+        : [];
+    const remainingCandidateLimit =
+      productCandidateLimit - connectedProducts.length;
+    const otherProducts =
+      productCandidateLimit > 0 && remainingCandidateLimit <= 0
+        ? []
+        : await findProducts(
+            catalogSearchPage
+              ? { AND: [where, { id: { in: catalogSearchPage.ids } }] }
+              : useRecommendationRanking && connectedOrganizationIds.size > 0
+                ? {
+                    AND: [
+                      where,
+                      {
+                        organizationId: {
+                          notIn: [...connectedOrganizationIds],
+                        },
+                      },
+                    ],
+                  }
+                : where,
+            remainingCandidateLimit,
+          );
+    const products = [...connectedProducts, ...otherProducts];
 
     if (compact) {
       const totalCount = await totalCountPromise;
@@ -1758,17 +1815,23 @@ router.get("/products", optionalAuth, async (req, res) => {
       });
 
     if (useRecommendationRanking) {
-      response = orderRecommendedProductFeed(response, (product) =>
-        productRecommendationScore(
-          product,
-          {
-            purchasedQuantity:
-              purchasedQuantityByProductId.get(product.id) || 0,
-            recentInteractions:
-              recentInteractionsByProductId.get(product.id) || 0,
-          },
-          recommendationSeed,
-        ),
+      response = orderRecommendedProductFeed(
+        response,
+        (product) =>
+          productRecommendationScore(
+            product,
+            {
+              purchasedQuantity:
+                purchasedQuantityByProductId.get(product.id) || 0,
+              recentInteractions:
+                recentInteractionsByProductId.get(product.id) || 0,
+            },
+            recommendationSeed,
+          ),
+        (product) =>
+          connectedOrganizationIds.has(
+            product.organizationId ?? product.organization?.id ?? "",
+          ),
       );
     }
 

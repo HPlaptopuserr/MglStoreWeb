@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { orderRecommendedProductFeed } from "./product-feed-ordering.service";
+import {
+  hasConnectedStorefront,
+  orderRecommendedProductFeed,
+} from "./product-feed-ordering.service";
 
 type Product = {
   id: string;
@@ -77,4 +80,70 @@ test("falls back without dropping products when diversity is impossible", () => 
     ),
     ["a", "b"],
   );
+});
+
+test("connected storefronts precede marketplace priority and diversity alternatives", () => {
+  const products: Product[] = [
+    {
+      id: "other",
+      marketplacePriority: 100,
+      organizationId: "other",
+      businessCategoryId: "other",
+      rank: 100,
+    },
+    {
+      id: "ready-a",
+      marketplacePriority: 0,
+      organizationId: "ready",
+      businessCategoryId: "same",
+      rank: 2,
+    },
+    {
+      id: "ready-b",
+      marketplacePriority: 0,
+      organizationId: "ready",
+      businessCategoryId: "same",
+      rank: 1,
+    },
+  ];
+  const ordered = orderRecommendedProductFeed(
+    products,
+    (p) => p.rank,
+    (p) => p.organizationId === "ready",
+  );
+  assert.deepEqual(
+    ordered.map((p) => p.id),
+    ["ready-a", "ready-b", "other"],
+  );
+  assert.equal(products[0].id, "other", "input remains unchanged");
+});
+
+test("storefront connection requires email, phone and an enabled seller merchant", () => {
+  const connected = {
+    email: "shop@example.com",
+    phone: "99112233",
+    qpayEnabled: true,
+    qpayMerchantId: "seller",
+  };
+  assert.equal(hasConnectedStorefront(connected), true);
+  assert.equal(
+    hasConnectedStorefront({
+      email: connected.email,
+      phone: connected.phone,
+      webQpayEnabled: true,
+      webQpayMerchantId: "web-seller",
+    }),
+    true,
+  );
+  for (const incomplete of [
+    { ...connected, email: null },
+    { ...connected, email: "   " },
+    { ...connected, phone: "  " },
+    { ...connected, qpayEnabled: false },
+    { ...connected, qpayMerchantId: null },
+    { ...connected, qpayMerchantId: " " },
+    {},
+  ]) {
+    assert.equal(hasConnectedStorefront(incomplete), false);
+  }
 });

@@ -1,3 +1,33 @@
+export type StorefrontConnection = {
+  email?: string | null;
+  phone?: string | null;
+  qpayEnabled?: boolean;
+  qpayMerchantId?: string | null;
+  webQpayEnabled?: boolean;
+  webQpayMerchantId?: string | null;
+};
+
+/** Checkout accepts a seller-owned merchant connected through POS or WEB. */
+export function hasConnectedStorefront(
+  organization: StorefrontConnection,
+): boolean {
+  return Boolean(
+    organization.email?.trim() &&
+    organization.phone?.trim() &&
+    ((organization.qpayEnabled && organization.qpayMerchantId?.trim()) ||
+      (organization.webQpayEnabled && organization.webQpayMerchantId?.trim())),
+  );
+}
+
+export const storefrontConnectionSelect = {
+  email: true,
+  phone: true,
+  qpayEnabled: true,
+  qpayMerchantId: true,
+  webQpayEnabled: true,
+  webQpayMerchantId: true,
+} as const;
+
 export type FeedProduct = {
   id: string;
   marketplacePriority?: number | null;
@@ -28,15 +58,19 @@ function categoryId(product: FeedProduct): string | null {
 /**
  * Produces a stable marketplace feed while preventing a single merchant or
  * top-level category from occupying consecutive positions when an alternative
- * is available. Marketplace priority remains the primary ordering signal.
+ * is available. Connected storefronts come first, followed by marketplace priority.
  */
 export function orderRecommendedProductFeed<T extends FeedProduct>(
   products: T[],
   score: (product: T) => number,
+  isConnected: (product: T) => boolean = () => false,
 ): T[] {
   const remaining: ScoredFeedProduct<T>[] = products
     .map((product) => ({ product, score: score(product) }))
     .sort((left, right) => {
+      const connectionDifference =
+        Number(isConnected(right.product)) - Number(isConnected(left.product));
+      if (connectionDifference !== 0) return connectionDifference;
       const priorityDifference =
         (right.product.marketplacePriority ?? 0) -
         (left.product.marketplacePriority ?? 0);
@@ -51,8 +85,11 @@ export function orderRecommendedProductFeed<T extends FeedProduct>(
 
   while (remaining.length > 0) {
     const highestPriority = remaining[0].product.marketplacePriority ?? 0;
+    const connected = isConnected(remaining[0].product);
     const samePriorityCount = remaining.findIndex(
-      ({ product }) => (product.marketplacePriority ?? 0) !== highestPriority,
+      ({ product }) =>
+        isConnected(product) !== connected ||
+        (product.marketplacePriority ?? 0) !== highestPriority,
     );
     const searchLimit =
       samePriorityCount === -1 ? remaining.length : samePriorityCount;
