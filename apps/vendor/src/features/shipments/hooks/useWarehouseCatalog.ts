@@ -19,6 +19,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 interface UseWarehouseCatalogOptions {
   user: StockRequestUser | null;
+  selectedWarehouse: SupplyWarehouse | null;
+  setSelectedWarehouse: React.Dispatch<
+    React.SetStateAction<SupplyWarehouse | null>
+  >;
   setViewMode: React.Dispatch<React.SetStateAction<StockRequestView>>;
   setCart: React.Dispatch<React.SetStateAction<StockRequestCartItem[]>>;
   warehouses: SupplyWarehouse[];
@@ -27,14 +31,13 @@ interface UseWarehouseCatalogOptions {
 
 export function useWarehouseCatalog({
   user,
+  selectedWarehouse,
+  setSelectedWarehouse,
   setViewMode,
   setCart,
   warehouses,
   viewMode,
 }: UseWarehouseCatalogOptions) {
-  const [selectedWarehouse, setSelectedWarehouse] =
-    useState<SupplyWarehouse | null>(null);
-
   const [warehouseProducts, setWarehouseProducts] = useState<
     WarehouseInventoryItem[]
   >([]);
@@ -226,7 +229,13 @@ export function useWarehouseCatalog({
         },
       );
       if (suggestedCart.length) {
-        setCart(suggestedCart);
+        setCart((current) => [
+          ...current,
+          ...suggestedCart.filter(
+            (suggestion) =>
+              !current.some((item) => item.productId === suggestion.productId),
+          ),
+        ]);
         setViewMode("cart");
       }
     }

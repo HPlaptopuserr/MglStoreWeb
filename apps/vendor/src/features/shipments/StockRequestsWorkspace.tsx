@@ -20,6 +20,7 @@ import { useStockRequestPayments } from "./hooks/useStockRequestPayments";
 import { useStockRequestSubmission } from "./hooks/useStockRequestSubmission";
 import { useWarehouseCatalog } from "./hooks/useWarehouseCatalog";
 import type {
+  SupplyWarehouse,
   StockRequestSection,
   StockRequestView,
   WarehouseInventoryItem,
@@ -27,7 +28,9 @@ import type {
 
 export function StockRequestsWorkspace() {
   const data = useStockRequestData();
-  const cart = useStockRequestCart();
+  const [selectedWarehouse, setSelectedWarehouse] =
+    useState<SupplyWarehouse | null>(null);
+  const cart = useStockRequestCart(data.user, selectedWarehouse?.id ?? null);
   const [viewMode, setViewMode] = useState<StockRequestView>("warehouses");
   const documents = useStockRequestDocuments({
     setRequests: data.setRequests,
@@ -35,6 +38,8 @@ export function StockRequestsWorkspace() {
   });
   const catalog = useWarehouseCatalog({
     user: data.user,
+    selectedWarehouse,
+    setSelectedWarehouse,
     warehouses: data.warehouses,
     setCart: cart.setCart,
     viewMode,
@@ -69,6 +74,14 @@ export function StockRequestsWorkspace() {
   };
   const navigation = (
     <>
+      {cart.storageError && (
+        <p
+          role="alert"
+          className="rounded-xl bg-amber-50 p-4 text-sm text-amber-900"
+        >
+          {cart.storageError}
+        </p>
+      )}
       {data.error && (
         <div
           role="alert"
@@ -169,7 +182,7 @@ export function StockRequestsWorkspace() {
         successDialog={
           <StockOrderSuccessDialog
             {...submission}
-            totalCartItems={cart.totalCartItems}
+            totalCartItems={submission.submittedQuantity}
           />
         }
       />

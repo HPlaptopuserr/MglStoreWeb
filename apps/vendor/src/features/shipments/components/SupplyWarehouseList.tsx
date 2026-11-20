@@ -1,6 +1,6 @@
 "use client";
-import type { StockRequestUser } from "@/features/shipments/types/stock-request.types";
 
+import type { StockRequestUser } from "@/features/shipments/types/stock-request.types";
 import { LowStockSuggestions } from "@/features/shipments/components/LowStockSuggestions";
 import type {
   OutstandingPaymentSummary,
@@ -10,8 +10,10 @@ import type {
 } from "@/features/shipments/types/stock-request.types";
 import {
   AlertCircle,
+  ArrowRight,
   ChevronRight,
   CreditCard,
+  MapPin,
   Phone,
   Warehouse as WarehouseIcon,
 } from "lucide-react";
@@ -43,38 +45,40 @@ export function SupplyWarehouseList({
   enterWarehouse,
 }: SupplyWarehouseListProps) {
   return (
-    <div className="space-y-6 p-2">
-      <div>
-        <h1 className="text-3xl font-black tracking-tight text-slate-900">
-          Бараа таталтын удирдлага
-        </h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Бараа сонгохоос төлбөр, хүргэлт хүртэл нэг урсгалаар удирдана.
-        </p>
-      </div>
+    <div className="mx-auto max-w-7xl space-y-5 pb-8">
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold tracking-wide text-amber-700">
+            НИЙЛҮҮЛЭЛТ
+          </p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">
+            Бараа таталтын удирдлага
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Нийлүүлэгчээ сонгож, дэлгүүрийнхээ барааг нэг дор захиалаарай.
+          </p>
+        </div>
+      </header>
 
       {navigation}
 
-      <div className="flex items-start gap-3 rounded-2xl bg-amber-50 p-4">
-        <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-        <p className="text-sm font-medium text-amber-800">
-          Агуулах руу орж бараагаа сонгоод захиалга илгээнэ. Админ зөвшөөрснөөр
-          бараа татах боломжтой.
-        </p>
-      </div>
-
       {(outstandingPayments?.count ?? 0) > 0 && (
-        <div className="flex flex-col gap-4 rounded-2xl border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 rounded-2xl border border-rose-200 bg-rose-50/70 p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+            <AlertCircle
+              aria-hidden="true"
+              className="mt-0.5 size-5 shrink-0 text-rose-600"
+            />
             <div>
-              <p className="text-sm font-bold text-red-900">
+              <p className="text-sm font-semibold text-rose-950">
                 Өмнөх төлбөрийн үлдэгдэл байна
               </p>
-              <p className="mt-1 text-sm text-red-700">
-                {outstandingPayments?.count} нэхэмжлэхийн нийт үлдэгдэл{" "}
-                {(outstandingPayments?.totalUnpaid ?? 0).toLocaleString()}₮.
-                Бараа үзэх боломжтой. Шинэ захиалга илгээхийн өмнө төлбөрөө
+              <p className="mt-1 text-sm leading-6 text-rose-800">
+                {outstandingPayments?.count} нэхэмжлэх ·{" "}
+                <strong className="font-semibold tabular-nums">
+                  {(outstandingPayments?.totalUnpaid ?? 0).toLocaleString()} ₮
+                </strong>
+                . Бараа үзэх боломжтой. Шинэ захиалга илгээхийн өмнө төлбөрөө
                 төлнө үү.
               </p>
             </div>
@@ -82,70 +86,124 @@ export function SupplyWarehouseList({
           <button
             type="button"
             onClick={() => setViewMode("payments")}
-            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 text-sm font-semibold text-rose-800 transition-colors hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2"
           >
-            <CreditCard className="h-4 w-4" />
+            <CreditCard aria-hidden="true" className="size-4" />
             Төлбөр төлөх
           </button>
         </div>
       )}
+
+      <section
+        aria-labelledby="supply-warehouse-heading"
+        className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2
+              id="supply-warehouse-heading"
+              className="text-base font-bold text-slate-950"
+            >
+              Нийлүүлэгч агуулах сонгох
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              Каталогоос бараагаа сонгоод, хүргэлтийн мэдээллээ оруулж хүсэлт
+              илгээнэ.
+            </p>
+          </div>
+          <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold tabular-nums text-slate-600">
+            {warehouses.length} агуулах
+          </span>
+        </div>
+
+        {warehouses.length === 0 ? (
+          <div className="mt-5 flex flex-col items-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-5 py-12 text-center">
+            <span className="flex size-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-400">
+              <WarehouseIcon aria-hidden="true" className="size-6" />
+            </span>
+            <h3 className="mt-4 text-sm font-semibold text-slate-800">
+              Одоогоор идэвхтэй төв агуулах алга байна
+            </h3>
+            <p className="mt-1 max-w-sm text-sm leading-6 text-slate-500">
+              Агуулахын мэдээлэл нэмэгдсэний дараа энд харагдана. Админтай
+              холбогдоно уу.
+            </p>
+          </div>
+        ) : (
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {warehouses.map((warehouse) => {
+              const location = [warehouse.city, warehouse.district]
+                .filter(Boolean)
+                .join(", ");
+              return (
+                <button
+                  type="button"
+                  key={warehouse.id}
+                  onClick={() => void enterWarehouse(warehouse)}
+                  className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-5 text-left transition-colors hover:border-amber-400 hover:bg-amber-50/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <span className="flex size-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-inset ring-amber-100">
+                      <WarehouseIcon aria-hidden="true" className="size-5" />
+                    </span>
+                    <ChevronRight
+                      aria-hidden="true"
+                      className="mt-1 size-4 text-slate-400 group-hover:text-amber-600"
+                    />
+                  </div>
+                  <h3 className="mt-4 break-words text-base font-bold text-slate-950">
+                    {warehouse.name}
+                  </h3>
+                  <div className="mt-3 flex-1 space-y-2 text-xs leading-5 text-slate-500">
+                    {(location || warehouse.address) && (
+                      <p className="flex items-start gap-2">
+                        <MapPin
+                          aria-hidden="true"
+                          className="mt-0.5 size-3.5 shrink-0"
+                        />
+                        <span>{location || warehouse.address}</span>
+                      </p>
+                    )}
+                    {warehouse.address &&
+                      location &&
+                      warehouse.address !== location && (
+                        <p className="pl-5.5">{warehouse.address}</p>
+                      )}
+                    {warehouse.phone && (
+                      <p className="flex items-center gap-2 tabular-nums">
+                        <Phone
+                          aria-hidden="true"
+                          className="size-3.5 shrink-0"
+                        />
+                        {warehouse.phone}
+                      </p>
+                    )}
+                  </div>
+                  <div className="mt-5 flex items-center justify-between gap-3 border-t border-slate-100 pt-4 text-sm font-semibold text-amber-700">
+                    <span>Бараа сонгох</span>
+                    <ArrowRight aria-hidden="true" className="size-4" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <p className="flex items-start gap-2 px-1 text-xs leading-5 text-slate-500">
+        <AlertCircle
+          aria-hidden="true"
+          className="mt-0.5 size-4 shrink-0 text-slate-400"
+        />
+        Захиалга илгээсний дараа админ хянаж зөвшөөрнө. Явцыг “Захиалгын түүх”
+        хэсгээс харна.
+      </p>
 
       {user?.organizationId && (outstandingPayments?.count ?? 0) === 0 && (
         <LowStockSuggestions
           organizationId={user.organizationId}
           onEnterWarehouse={enterWarehouseById}
         />
-      )}
-
-      {warehouses.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-white py-16">
-          <div className="mb-4 rounded-full bg-slate-100 p-4">
-            <WarehouseIcon className="h-8 w-8 text-slate-300" />
-          </div>
-          <p className="text-lg font-semibold text-slate-600">
-            Одоогоор идэвхтэй төв агуулах алга байна
-          </p>
-          <p className="mt-1 text-sm text-slate-400">
-            Дахин оролдох эсвэл админтай холбогдоно уу
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {warehouses.map((warehouse) => (
-            <button
-              type="button"
-              key={warehouse.id}
-              onClick={() => void enterWarehouse(warehouse)}
-              className="group rounded-2xl border border-slate-200 bg-white p-5 text-left transition-all hover:border-amber-400 hover:shadow-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
-            >
-              <div className="flex items-start gap-4">
-                <div className="rounded-xl bg-[#FFAD02]/10 p-3 transition-all group-hover:bg-[#FFAD02] group-hover:shadow-lg group-hover:shadow-[#FFAD02]/30">
-                  <WarehouseIcon className="h-6 w-6 text-[#FFAD02] transition-colors group-hover:text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-slate-900 group-hover:text-[#FFAD02]">
-                    {warehouse.name}
-                  </h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    {warehouse.city}, {warehouse.district}
-                  </p>
-                  {warehouse.phone && (
-                    <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-slate-400">
-                      <Phone className="h-3 w-3" />
-                      {warehouse.phone}
-                    </p>
-                  )}
-                </div>
-                <ChevronRight className="h-5 w-5 text-slate-300 transition-all group-hover:translate-x-1 group-hover:text-[#FFAD02]" />
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-100">
-                <p className="text-xs font-medium text-[#FFAD02]">
-                  Бараа сонгох →
-                </p>
-              </div>
-            </button>
-          ))}
-        </div>
       )}
     </div>
   );

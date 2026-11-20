@@ -34,6 +34,7 @@ export function useStockRequestSubmission({
   clearCart,
 }: UseStockRequestSubmissionOptions) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittedQuantity, setSubmittedQuantity] = useState(0);
 
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
@@ -79,6 +80,9 @@ export function useStockRequestSubmission({
         }
         throw new Error(responseBody.message || "Failed");
       }
+      setSubmittedQuantity(cart.reduce((sum, item) => sum + item.quantity, 0));
+      clearCart();
+      setShowConfirmModal(false);
       setShowOrderSuccessModal(true);
     } catch (error: unknown) {
       alert(
@@ -95,11 +99,11 @@ export function useStockRequestSubmission({
     destination: "browse" | "requests" = "browse",
   ) => {
     setShowOrderSuccessModal(false);
-    clearCart();
     void refreshStockRequests();
     setViewMode(destination);
   };
   return {
+    submittedQuantity,
     isSubmitting,
     showConfirmModal,
     setShowConfirmModal,

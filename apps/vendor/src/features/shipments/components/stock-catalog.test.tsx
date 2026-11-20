@@ -3,6 +3,8 @@ import test from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { WarehouseProductCard } from "./WarehouseProductCard";
 import { StockRequestWorkflowNav } from "./StockRequestWorkflowNav";
+import { commitStockRequestQuantity } from "./StockRequestQuantityInput";
+import { StockRequestCheckout } from "./StockRequestCheckout";
 import { StockOrderSuccessDialog } from "./StockOrderSuccessDialog";
 import { WarehouseProductCatalog } from "./WarehouseProductCatalog";
 import type { WarehouseInventoryItem } from "../types/stock-request.types";
@@ -235,4 +237,118 @@ test("order confirmation offers returning to products as well as order history",
   );
   assert.match(html, /Агуулахын бараа үргэлжлүүлэн үзэх/);
   assert.match(html, /Захиалгын түүх харах/);
+});
+
+const cartLine = {
+  productId: item.product.id,
+  quantity: 2,
+  name: item.product.name,
+  sku: item.product.sku,
+  price: item.product.price,
+  available: item.quantity,
+  image: null,
+};
+
+function renderCheckout(
+  overrides: Partial<ComponentProps<typeof StockRequestCheckout>> = {},
+) {
+  return renderToStaticMarkup(
+    <StockRequestCheckout
+      setViewMode={noop}
+      selectedWarehouse={{
+        id: "w",
+        name: "Төв агуулах",
+        city: "УБ",
+        district: "",
+        address: "",
+        phone: null,
+      }}
+      totalCartItems={2}
+      cart={[cartLine]}
+      updateCartQuantity={noop}
+      totalCartAmount={25000}
+      user={null}
+      deliveryAddress="БЗД 26-р хороо, ХОТХОН 217-р байр, 302 тоот"
+      deliveryPhone="99112233"
+      setDeliveryAddress={noop}
+      setDeliveryPhone={noop}
+      note=""
+      setNote={noop}
+      setShowConfirmModal={noop}
+      isSubmitting={false}
+      confirmationDialog={null}
+      successDialog={null}
+      {...overrides}
+    />,
+  );
+}
+
+test("saved carts explain device persistence without hiding the checkout action", () => {
+  const html = renderCatalog({ cart: [cartLine], totalCartItems: 2 });
+  assert.match(html, /Сагс энэ төхөөрөмж дээр хадгалагдана/);
+  assert.match(html, /aria-label="Сагс харах, 2 ширхэг бараа"/);
+});
+
+test("checkout has labeled quantity and removal controls and a complete delivery summary", () => {
+  const html = renderCheckout();
+  assert.match(html, /aria-label="Туршилтын бараа-ийн тоо хэмжээ"/);
+  assert.match(html, /aria-label="Туршилтын бараа-ийг сагснаас хасах"/);
+  assert.match(html, /БЗД 26-р хороо, ХОТХОН 217-р байр, 302 тоот/);
+  assert.match(html, /99112233/);
+  assert.match(html, /<aside[^>]*aria-labelledby="checkout-summary-title"/);
+  assert.match(html, /Захиалга баталгаажуулах/);
+  assert.doesNotMatch(
+    html,
+    /<button[^>]*disabled=""[^>]*>Захиалга баталгаажуулах/,
+  );
+});
+
+test("checkout prevents proceeding without an address and keeps storage failures visible", () => {
+  const html = renderCheckout({
+    deliveryAddress: "",
+    storageError: "Сагс хадгалагдсангүй",
+  });
+  assert.match(html, /role="alert"[^>]*>Сагс хадгалагдсангүй/);
+  assert.match(html, /Хүргэлтийн хаягаа сонгоно уу/);
+  assert.match(html, /<button[^>]*disabled=""[^>]*>Захиалга баталгаажуулах/);
+});
+
+test("successful submission dialog remains visible after the persisted cart is cleared", () => {
+  const html = renderCheckout({
+    cart: [],
+    totalCartItems: 0,
+    successDialog: (
+      <StockOrderSuccessDialog
+        showOrderSuccessModal
+        totalCartItems={2}
+        finishSuccessfulOrder={noop}
+      />
+    ),
+  });
+  assert.match(html, /Захиалга амжилттай илгээгдлээ/);
+  assert.match(html, /2 ширхэг/);
+});
+
+test("quantity editing preserves the cart on blank, zero and invalid whole-number input", () => {
+  for (const text of [
+    "",
+    "   ",
+    "0",
+    "-1",
+    "1.5",
+    "1e2",
+    "NaN",
+    "Infinity",
+    "9007199254740992",
+  ]) {
+    assert.equal(commitStockRequestQuantity(text, 7, 50), 7, text);
+  }
+  assert.equal(commitStockRequestQuantity("3", 7, 0), 7);
+});
+
+test("quantity editing accepts a complete value and caps it at available stock", () => {
+  assert.equal(commitStockRequestQuantity("25", 7, 50), 25);
+  assert.equal(commitStockRequestQuantity(" 12 ", 7, 50), 12);
+  assert.equal(commitStockRequestQuantity("99", 7, 50), 50);
+  assert.equal(commitStockRequestQuantity("1", 7, 50), 1);
 });

@@ -20,6 +20,7 @@ import {
   Package,
   Search,
   ShoppingCart,
+  Warehouse,
   X,
 } from "lucide-react";
 import type * as React from "react";
@@ -108,13 +109,17 @@ export function WarehouseProductCatalog({
   const childCategories = selectedCategory
     ? categories.filter((category) => category.parentId === selectedCategory)
     : [];
+  const cartAmount = cart.reduce(
+    (total, item) => total + Number(item.price) * item.quantity,
+    0,
+  );
   return (
-    <div className="min-h-screen space-y-4 bg-slate-50 pb-28">
+    <div className="min-h-screen space-y-5 bg-slate-50 pb-28">
       {navigation}
       {(outstandingPayments?.count ?? 0) > 0 && (
         <div
           role="status"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-950"
         >
           <p>
             Төлбөрийн үлдэгдэл:{" "}
@@ -132,89 +137,117 @@ export function WarehouseProductCatalog({
           </button>
         </div>
       )}
-      {/* Header */}
-      <div className="sticky top-0 z-20 bg-white border-b border-slate-100 shadow-sm">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-3">
+      <section
+        aria-label="Агуулахын каталогийн удирдлага"
+        className="rounded-2xl border border-slate-200 bg-white shadow-sm"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-4 sm:px-5">
+          <div className="flex min-w-0 items-center gap-3">
             <button
+              type="button"
               aria-label="Агуулахын жагсаалт руу буцах"
               onClick={exitWarehouse}
-              className="rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-600 transition hover:border-amber-300 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
             >
-              <ArrowLeft className="h-5 w-5" />
+              <ArrowLeft className="size-4" aria-hidden="true" />
             </button>
-            <div>
-              <h1 className="font-bold text-slate-900">
+            <span className="hidden size-10 shrink-0 items-center justify-center rounded-xl bg-amber-50 text-amber-600 sm:flex">
+              <Warehouse className="size-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                Нийлүүлэгч агуулах
+              </p>
+              <h1 className="truncate text-base font-bold text-slate-950 sm:text-lg">
                 {selectedWarehouse.name}
               </h1>
-              <p className="text-xs text-slate-500">{selectedWarehouse.city}</p>
+              <p className="mt-0.5 truncate text-xs text-slate-500">
+                {[selectedWarehouse.city, selectedWarehouse.district]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
             </div>
           </div>
           <button
+            type="button"
             aria-label={`Сагс харах, ${totalCartItems} ширхэг бараа`}
             onClick={() => setViewMode("cart")}
-            className="relative rounded-xl bg-[#FFAD02] p-3 text-white shadow-lg shadow-[#FFAD02]/30"
+            className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-slate-900 px-3 text-sm font-semibold text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 sm:px-4"
           >
-            <ShoppingCart className="h-5 w-5" />
-            {totalCartItems > 0 && (
-              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-xs font-bold text-white">
-                {totalCartItems}
-              </span>
-            )}
+            <ShoppingCart className="size-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Сагс</span>
+            <span className="flex min-w-6 items-center justify-center rounded-md bg-white/15 px-1.5 py-0.5 text-xs tabular-nums">
+              {totalCartItems}
+            </span>
           </button>
         </div>
-
-        {/* Search */}
-        <div className="px-4 pb-3">
+        <div className="grid gap-3 px-4 py-4 sm:px-5 lg:grid-cols-[1fr_auto]">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search
+              className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+              aria-hidden="true"
+            />
             <input
-              type="text"
+              type="search"
               aria-label="Агуулахын бараа хайх"
-              placeholder="Нэр, SKU, баркодоор хайх..."
+              placeholder="Барааны нэр, SKU эсвэл баркод…"
               value={productSearch}
-              onChange={(e) => {
-                setProductSearch(e.target.value);
+              onChange={(event) => {
+                setProductSearch(event.target.value);
                 setSelectedCategory(null);
               }}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-12 text-sm focus:border-[#FFAD02] focus:bg-white focus:outline-none"
+              className="min-h-11 w-full rounded-xl border border-slate-200 bg-slate-50 pl-10 pr-11 text-sm text-slate-900 transition placeholder:text-slate-400 focus:border-amber-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-100"
             />
             {productSearch && (
               <button
                 type="button"
                 aria-label="Хайлт цэвэрлэх"
                 onClick={() => setProductSearch("")}
-                className="absolute right-1 top-1/2 -translate-y-1/2 rounded-lg p-2 text-slate-500 hover:bg-slate-200 focus-visible:ring-2 focus-visible:ring-amber-500"
+                className="absolute right-1 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-amber-500"
               >
-                <X className="h-4 w-4" aria-hidden="true" />
+                <X className="size-4" aria-hidden="true" />
               </button>
             )}
           </div>
+          <label className="flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 text-xs font-medium text-slate-500">
+            Эрэмбэлэх
+            <select
+              value={productSort}
+              onChange={(event) =>
+                setProductSort(
+                  event.target.value === "name" ? "name" : "topSelling",
+                )
+              }
+              className="min-h-10 min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+            >
+              <option value="topSelling">Их борлуулалттай эхэнд</option>
+              <option value="name">Нэрээр</option>
+            </select>
+          </label>
           {productSearch && (
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="text-xs text-slate-500 lg:col-span-2">
               Сонгосон агуулахын бүх ангиллаас хайж байна.
             </p>
           )}
         </div>
-
         {/* Categories */}
         {categories.length > 0 && (
           <nav
             aria-label="Барааны ангилал"
-            className="max-h-[40vh] space-y-3 overflow-y-auto px-4 pb-3"
+            className="space-y-3 border-t border-slate-100 px-4 py-3 sm:px-5"
           >
-            <p className="text-xs text-slate-500">
+            <p className="sr-only">
               Ангиллаа сонгоод хэрэгтэй бараагаа үзээрэй.
             </p>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex gap-2 overflow-x-auto pb-1">
               <button
                 type="button"
                 aria-pressed={!selectedCategory}
                 onClick={() => setSelectedCategory(null)}
-                className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
+                className={`min-h-9 shrink-0 rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
                   !selectedCategory
-                    ? "bg-[#FFAD02] text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                    ? "border-slate-900 bg-slate-900 text-white"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50"
                 }`}
               >
                 Бүгд
@@ -228,10 +261,10 @@ export function WarehouseProductCatalog({
                     setProductSearch("");
                     setSelectedCategory(cat.id);
                   }}
-                  className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-all ${
+                  className={`min-h-9 shrink-0 rounded-lg border px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
                     categoryPath[0]?.id === cat.id
-                      ? "bg-[#FFAD02] text-white"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-amber-300 hover:bg-amber-50"
                   }`}
                 >
                   {cat.name}{" "}
@@ -285,32 +318,15 @@ export function WarehouseProductCatalog({
             )}
           </nav>
         )}
-      </div>
+      </section>
 
       {/* Products Grid */}
-      <div className="p-4">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-slate-500">
-            {productSort === "topSelling"
-              ? "Сүүлийн 90 хоногийн сүлжээний дууссан борлуулалтаар эрэмбэлэв."
-              : "Барааны нэрийн дарааллаар эрэмбэлэв."}
-          </p>
-          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-            Эрэмбэлэх
-            <select
-              value={productSort}
-              onChange={(event) =>
-                setProductSort(
-                  event.target.value === "name" ? "name" : "topSelling",
-                )
-              }
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
-            >
-              <option value="topSelling">Их борлуулалттай эхэнд</option>
-              <option value="name">Нэрээр</option>
-            </select>
-          </label>
-        </div>
+      <div className="space-y-4">
+        <p className="text-xs leading-5 text-slate-500">
+          {productSort === "topSelling"
+            ? "Сүүлийн 90 хоногийн сүлжээний дууссан борлуулалтаар эрэмбэлэв."
+            : "Барааны нэрийн дарааллаар эрэмбэлэв."}
+        </p>
         {!productSearch &&
           !selectedCategory &&
           !productsLoading &&
@@ -340,10 +356,10 @@ export function WarehouseProductCatalog({
                 key={index}
                 className="overflow-hidden rounded-2xl border border-slate-100 bg-white p-3"
               >
-                <div className="aspect-square animate-pulse rounded-xl bg-slate-100" />
-                <div className="mt-3 h-3 w-4/5 animate-pulse rounded bg-slate-100" />
-                <div className="mt-2 h-3 w-2/5 animate-pulse rounded bg-slate-100" />
-                <div className="mt-4 h-9 animate-pulse rounded-xl bg-slate-100" />
+                <div className="aspect-square animate-pulse motion-reduce:animate-none rounded-xl bg-slate-100" />
+                <div className="mt-3 h-3 w-4/5 animate-pulse motion-reduce:animate-none rounded bg-slate-100" />
+                <div className="mt-2 h-3 w-2/5 animate-pulse motion-reduce:animate-none rounded bg-slate-100" />
+                <div className="mt-4 h-9 animate-pulse motion-reduce:animate-none rounded-xl bg-slate-100" />
               </div>
             ))}
           </div>
@@ -388,9 +404,9 @@ export function WarehouseProductCatalog({
             )}
           </div>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-bold text-slate-900">
+              <h2 className="text-base font-bold text-slate-950">
                 {productSearch
                   ? "Хайлтын үр дүн"
                   : (selectedCategory &&
@@ -412,7 +428,7 @@ export function WarehouseProductCatalog({
                 )}
                 <span
                   role="status"
-                  className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-slate-600 ring-1 ring-slate-200"
+                  className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold tabular-nums text-slate-600"
                 >
                   {productsTotal.toLocaleString()} бараа
                 </span>
@@ -429,7 +445,7 @@ export function WarehouseProductCatalog({
             >
               {productsLoadingMore ? (
                 <div className="flex items-center gap-2 text-sm font-bold text-slate-500">
-                  <Loader2 className="h-5 w-5 animate-spin text-[#FFAD02]" />
+                  <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none text-[#FFAD02]" />
                   Бараа ачаалж байна…
                 </div>
               ) : productsHasMore ? (
@@ -450,25 +466,35 @@ export function WarehouseProductCatalog({
         )}
       </div>
 
-      {/* Bottom Cart Bar */}
       {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-200 bg-white p-3 shadow-lg md:left-64">
-          <button
-            aria-label={`Сагс харах, ${totalCartItems} ширхэг бараа`}
-            onClick={() => setViewMode("cart")}
-            className="flex w-full items-center justify-between rounded-xl bg-[#FFAD02] px-4 py-2.5 text-white shadow-md shadow-[#FFAD02]/20"
-          >
-            <div className="flex items-center gap-2">
-              <ShoppingCart className="h-4 w-4" />
-              <span className="text-sm font-semibold">
-                {totalCartItems} бараа
+        <div className="pointer-events-none fixed bottom-4 left-4 right-4 z-30 md:left-64 md:px-4">
+          <div className="pointer-events-auto mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-xl shadow-slate-900/10 sm:px-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="hidden size-10 items-center justify-center rounded-xl bg-amber-50 text-amber-700 sm:flex">
+                <ShoppingCart className="size-5" aria-hidden="true" />
               </span>
+              <div className="min-w-0">
+                <p className="text-xs text-slate-500">
+                  {cart.length} нэр төрөл · {totalCartItems.toLocaleString()}{" "}
+                  ширхэг
+                </p>
+                <p className="mt-0.5 text-base font-bold tabular-nums text-slate-950">
+                  {cartAmount.toLocaleString()} ₮
+                </p>
+                <p className="mt-1 text-[11px] leading-4 text-slate-500">
+                  Сагс энэ төхөөрөмж дээр хадгалагдана.
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs">Сагс харах</span>
-              <ChevronRight className="h-4 w-4" />
-            </div>
-          </button>
+            <button
+              type="button"
+              aria-label={`Сагс харах, ${totalCartItems} ширхэг бараа`}
+              onClick={() => setViewMode("cart")}
+              className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-amber-400 px-4 text-sm font-bold text-slate-950 transition hover:bg-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2"
+            >
+              Сагс харах <ChevronRight className="size-4" aria-hidden="true" />
+            </button>
+          </div>
         </div>
       )}
     </div>
