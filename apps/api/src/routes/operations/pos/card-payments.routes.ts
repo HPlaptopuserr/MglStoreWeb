@@ -1,3 +1,4 @@
+import { isMissingCardRequestArchived, lockCardRequest } from "./missing-card-attempt-archive";
 import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
 import { isDatabaseUnavailable } from "../../../lib/database-availability";
 import { retryDisconnectedRead } from "../../../lib/retry-disconnected-read";
@@ -416,6 +417,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
         // Database lock also covers requests from other tabs and API instances.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${effectiveOrganizationId}:${effectiveTerminalId}`}, 0))`;
       }
+      await lockCardRequest(tx, attemptId);
       const existing = await tx.cardPaymentAttempt.findUnique({ where: { id: attemptId } });
       if (existing) {
         attemptExists = true;
@@ -426,6 +428,9 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
         const savedCheckout = checkoutFromPayload(existing.providerPayload);
         if (checkout && (!savedCheckout || !sameCheckout(checkout, savedCheckout))) throw toApiError(409, "Төлбөртэй сагсны мэдээлэл өөрчлөгдсөн байна");
         return { attempt: existing, isNew: false };
+      }
+      if (await isMissingCardRequestArchived(tx, attemptId)) {
+        throw toApiError(409, "Энэ картын хүсэлт серверт үүсээгүй нь шалгагдаж, тусад нь хадгалагдсан байна. Хуучин хүсэлтээр дахин төлбөр эхлүүлэхгүй.");
       }
       if (manualCardAttempt) {
         const pending = await tx.cardPaymentAttempt.findFirst({ where: {

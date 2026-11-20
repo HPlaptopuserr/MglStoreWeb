@@ -30,6 +30,8 @@ export type QPayCheckoutRecovery = {
 const storageKey = (organizationId: string, registerId?: string) =>
   `${STORAGE_PREFIX}:${organizationId.trim()}${registerId ? `:${registerId}` : ""}`;
 
+export { storageKey as checkoutRecoveryStorageKey };
+
 const isPaymentEntry = (value: unknown): value is CheckoutPaymentEntry => {
   if (!value || typeof value !== "object") return false;
   const entry = value as CheckoutPaymentEntry;

@@ -1,5 +1,7 @@
 "use client";
 import { readPosFiscalTaxTotals } from "@mgl/types";
+import { PosApiError, posRequest } from "@/features/pos/api/_pos-client";
+import { archiveMissingCardCheckout, canArchiveMissingCardCheckout, readMissingCardArchiveNotice, type MissingCardArchiveNotice } from "@/features/pos/utils/missing-card-checkout";
 import { cardPaymentFailureMessage, cardPaymentOutcome, cardRequestFailureIsDefinitive } from "@/features/pos/utils/card-payment-outcome";
 import { effectiveCardProvider } from "@/features/pos/utils/card-register-provider";
 import { paymentRequestId } from "@/features/pos/utils/payment-request-id";
@@ -557,6 +559,8 @@ export default function PosDemoPage() {
   const [paymentFeedback, setPaymentFeedback] = useState<PaymentFeedback>({});
   const clearPaymentFeedback = (method: PaymentMethod) => setPaymentFeedback(previous => previous[method] ? { ...previous, [method]: undefined } : previous);
   const cardStatusChecksRef = useRef(new Set<string>());
+  const [missingCardAttemptIds, setMissingCardAttemptIds] = useState<string[]>([]);
+  const [missingCardArchiveNotice, setMissingCardArchiveNotice] = useState<MissingCardArchiveNotice | null>(null);
 
   const [checkoutRecoveryScope, setCheckoutRecoveryScope] = useState("");
   const [listMode, setListMode] = useState<PosListMode>("products");
@@ -693,6 +697,13 @@ export default function PosDemoPage() {
     window.addEventListener("online", retry);
     return () => { stopped = true; window.clearInterval(timer); window.removeEventListener("online", retry); };
   }, [organizationId, posEnabled]);
+
+  useEffect(() => {
+    setMissingCardAttemptIds([]);
+    if (!organizationId || !registerConfig?.id) { setMissingCardArchiveNotice(null); return; }
+    try { setMissingCardArchiveNotice(readMissingCardArchiveNotice(organizationId, registerConfig.id)); }
+    catch { setMissingCardArchiveNotice(null); }
+  }, [organizationId, registerConfig?.id]);
 
   const shiftRegisterMismatch = Boolean(
     shift?.registerId &&
@@ -2986,6 +2997,7 @@ export default function PosDemoPage() {
     try {
       const attempt = await getCardAttemptStatus(entry.attemptId, signal);
       if (signal?.aborted || deferringCheckoutRef.current || originalSaleId !== clientSaleIdRef.current) return false;
+      setMissingCardAttemptIds(previous => previous.includes(entry.attemptId!) ? previous.filter(attemptId => attemptId !== entry.attemptId) : previous);
       const outcome = cardPaymentOutcome(attempt.status, attempt.message);
       if (outcome === "confirmed") {
         clearPaymentFeedback("CARD");
@@ -3008,7 +3020,15 @@ export default function PosDemoPage() {
         setPaymentFeedback(previous => ({ ...previous, CARD: { kind: "unknown", message: "Банкны төлөвийг автоматаар шалгаж байна. Төлсөн бол дахин карт уншуулахгүй хүлээнэ үү." } }));
       }
       return outcome !== "pending";
-    } catch {
+    } catch (error: unknown) {
+      if (!signal?.aborted && error instanceof PosApiError && error.status === 404) {
+        setMissingCardAttemptIds(previous => previous.includes(entry.attemptId!) ? previous : [...previous, entry.attemptId!]);
+        const message = "Картын хүсэлтийн дугаар серверт олдсонгүй. Сагс цэвэрлэх товчоор мэдээллээ тусад нь хадгалж кассаа чөлөөлж болно. Төлсөн бол дахин төлөхгүй, тулгаж шалгуулна уу.";
+        setPaymentFeedback(previous => ({ ...previous, CARD: { kind: "unknown", message } }));
+        setScanStatus("not-found");
+        setScanMessage(message);
+        return true;
+      }
       if (!signal?.aborted) {
         setPaymentFeedback(previous => ({ ...previous, CARD: { kind: "unknown", message: "Холболт сэргэхэд картын төлөвийг автоматаар дахин шалгана. Төлсөн бол дахин төлөхгүй." } }));
       }
@@ -3067,6 +3087,44 @@ export default function PosDemoPage() {
   };
 
   const cancelCheckoutAndClearCart = async () => {
+    if (!cardPaymentRunRef.current && !isCardProcessing && !deferringCheckoutRef.current &&
+        registerConfig?.id && clientSaleIdRef.current && canArchiveMissingCardCheckout(paymentEntries, missingCardAttemptIds)) {
+      if (!window.confirm("Серверт олдоогүй картын хүсэлт болон сагсны мэдээллийг тусад нь хадгалж, кассаа чөлөөлөх үү? Энэ нь банкны гүйлгээг цуцлахгүй. Төлсөн бол дахин төлүүлэхгүйгээр тулгаж шалгана.")) return;
+      const saleId = clientSaleIdRef.current;
+      deferringCheckoutRef.current = true;
+      setDeferringCheckout(true);
+      try {
+        const notice = await archiveMissingCardCheckout({ organizationId, registerId: registerConfig.id,
+          clientSaleId: saleId, missingIds: missingCardAttemptIds,
+          archive: request => posRequest<{ archiveId: string }>("/pos/payments/recovery/archive", {
+            method: "POST", signal: AbortSignal.timeout(20_000),
+            body: { organizationId, registerId: registerConfig.id, ...request },
+          }),
+        });
+        if (clientSaleIdRef.current !== saleId) return;
+        setMissingCardArchiveNotice(notice);
+        setMissingCardAttemptIds([]);
+        clearProgressTicker();
+        setAutoCheckoutActive(false);
+        setPaymentEntries([]);
+        setPaymentFeedback({});
+        setQpayModal(null);
+        setLoyalty(initialLoyaltyState);
+        setLoyaltyRedeemSession(null);
+        setSelectedCreditRepayment(null);
+        setCustomerDisplaySuccess(null);
+        setCashChangeReceipt(null);
+        clientSaleIdRef.current = null;
+        dispatch({ type: "clear-cart" });
+        setView("register");
+        setScanStatus("idle");
+        setScanMessage(`Өмнөх сагс тусад нь хадгалагдаж, касс чөлөөлөгдлөө. Төлсөн бол дахин төлүүлэхгүй. Лавлах дугаар: ${notice.archiveId}`);
+      } catch (error: unknown) {
+        setScanStatus("not-found");
+        setScanMessage(error instanceof Error ? error.message : "Сагсны мэдээллийг найдвартай хадгалж чадсангүй. Мэдээллийг хэвээр үлдээлээ.");
+      } finally { deferringCheckoutRef.current = false; setDeferringCheckout(false); }
+      return;
+    }
     if (cardPaymentRunRef.current || unresolvedCardPayment) {
       setScanStatus("idle");
       setScanMessage("Картын төлбөрийн төлөвийг шалгаж байна. Төлбөр батлагдаагүй байхад сагсыг цуцлах боломжгүй.");
@@ -3650,6 +3708,10 @@ export default function PosDemoPage() {
   return (
     <>
       <MobileBlock />
+      {missingCardArchiveNotice && <div role="status" className="mx-4 my-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+        <p className="font-semibold">Өмнөх сагс, картын хүсэлтийг тусад нь хадгалсан.</p>
+        <p className="mt-1">Банкнаас мөнгө гарсан бол дахин төлүүлэхгүйгээр тулгаж шалгуулна уу. Лавлах дугаар: {missingCardArchiveNotice.archiveId}</p>
+      </div>}
       {registerConfig && <EbarimtVatRecoveryNotice register={registerConfig}
         idle={view === "register" && state.cart.length === 0 && paymentEntries.length === 0 && !pendingEbarimtSale && !checkoutStarting && !autoFinalizing && !checkingEbarimt} />}
       {organizationId && <EbarimtAttachmentRecoveryNotice key={organizationId} organizationId={organizationId} onOpenHistory={() => { void reloadReceiptHistory(); setSalesHistoryOpen(true); }} />}
@@ -4971,6 +5033,7 @@ export default function PosDemoPage() {
               }
               onClear={() => {
                 if (
+                  canArchiveMissingCardCheckout(paymentEntries, missingCardAttemptIds) ||
                   qpayCreatingRef.current ||
                   paymentEntries.some(
                     (item) => item.method === "QR" && item.invoiceId,

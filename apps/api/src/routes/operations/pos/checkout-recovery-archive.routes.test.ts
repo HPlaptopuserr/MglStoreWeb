@@ -49,6 +49,11 @@ beforeEach(() => {
   stub(prisma.posRegister, "findUnique", async () => ({ organizationId: registerOrg, deletedAt: null, isActive: true, activationStatus: "APPROVED" }));
   stub(prisma, "$transaction", async (run: (tx: typeof prisma) => Promise<unknown>) => run(prisma));
   stub(prisma, "$executeRaw", async () => 1);
+  stub(prisma, "$queryRaw", async () => []);
+  stub(prisma.cardPaymentAttempt, "findFirst", async () => null);
+  stub(prisma.qPayInvoice, "findFirst", async () => null);
+  stub(prisma.posSaleIdempotency, "findFirst", async () => null);
+
   stub(prisma.auditLog, "findFirst", async () => existingArchive);
   stub(prisma.auditLog, "create", async ({ data }: { data: Record<string, unknown> }) => {
     if (archiveFails) throw new Error("Database unavailable");
@@ -108,4 +113,73 @@ test("storage failure returns no acknowledgement so the browser retains its slot
   const response = await post();
   assert.equal(response.status, 503);
   assert.equal("archiveId" in await response.json(), false);
+});
+
+const missingId = "2e23d295-d49d-4ac7-ac9b-91e30dff2b81";
+const missingSnapshot = {
+  registerId: body.registerId, clientSaleId: "missing-checkout", cart: [{ productId: "preserved" }],
+  paymentEntries: [{ method: "CARD", status: "pending", amount: 25100, attemptId: missingId }],
+};
+const missingBody = { ...body, reason: "MISSING_CARD_ATTEMPT", clientSaleId: "missing-checkout", snapshot: JSON.stringify(missingSnapshot) };
+
+test("missing card attempt archives exact evidence and IDs only after globally checking absence", async () => {
+  const queries: unknown[] = [];
+  stub(prisma.cardPaymentAttempt, "findFirst", async (query: unknown) => { queries.push(query); return null; });
+  const response = await post(missingBody);
+  assert.equal(response.status, 200);
+  assert.deepEqual(queries[0], { where: { id: { in: [missingId] } }, select: { id: true } });
+  const meta = writes[0]?.meta as Record<string, unknown>;
+  assert.equal(meta.snapshot, missingBody.snapshot);
+  assert.equal(meta.reason, "MISSING_CARD_ATTEMPT");
+  assert.deepEqual(meta.missingAttemptIds, [missingId]);
+  assert.equal(meta.financialStateUnchanged, true);
+  assert.equal(meta.reviewRequired, true);
+});
+
+test("an existing card attempt in any scope or any related money evidence prevents detachment", async () => {
+  const targets = [prisma.cardPaymentAttempt, prisma.qPayInvoice, prisma.posSaleIdempotency];
+  for (const target of targets) {
+    const original: unknown = Reflect.get(target, "findFirst");
+    Reflect.set(target, "findFirst", async () => ({ id: "existing-real-evidence" }));
+    try { assert.equal((await post(missingBody)).status, 409); }
+    finally { Reflect.set(target, "findFirst", original); }
+  }
+  assert.equal(writes.length, 0);
+});
+
+test("missing attempt reason rejects confirmed, cash, QR, duplicate and mismatched snapshots", async () => {
+  const entry = missingSnapshot.paymentEntries[0];
+  for (const snapshot of [
+    { ...missingSnapshot, registerId: "other-register" },
+    { ...missingSnapshot, clientSaleId: "other-checkout" },
+    { ...missingSnapshot, paymentEntries: [] },
+    { ...missingSnapshot, paymentEntries: [{ ...entry, status: "confirmed" }] },
+    { ...missingSnapshot, paymentEntries: [{ ...entry, method: "CASH" }] },
+    { ...missingSnapshot, paymentEntries: [{ ...entry, method: "QR" }] },
+    { ...missingSnapshot, paymentEntries: [entry, entry] },
+    { ...missingSnapshot, paymentEntries: [{ ...entry, attemptId: "" }] },
+    { ...missingSnapshot, paymentEntries: [{ ...entry, amount: 0 }] },
+  ]) assert.equal((await post({ ...missingBody, snapshot: JSON.stringify(snapshot) })).status, 400);
+  assert.equal((await post({ ...missingBody, snapshot: "malformed" })).status, 400);
+  assert.equal(writes.length, 0);
+});
+
+test("missing request storage failure retains active slot and replay reuses acknowledgement", async () => {
+  archiveFails = true;
+  assert.equal((await post(missingBody)).status, 503);
+  archiveFails = false;
+  existingArchive = { id: "durable-missing-proof" };
+  const response = await post(missingBody);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { archiveId: "durable-missing-proof" });
+  assert.equal(writes.length, 0);
+});
+
+test("a different real card tied through checkout identity also prevents missing-request detachment", async () => {
+  stub(prisma.cardPaymentAttempt, "findFirst", async ({ where }: { where: Record<string, unknown> }) =>
+    "id" in where ? null : { id: "another-attempt-for-this-checkout" },
+  );
+  const response = await post(missingBody);
+  assert.equal(response.status, 409);
+  assert.equal(writes.length, 0);
 });
