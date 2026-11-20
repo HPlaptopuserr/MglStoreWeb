@@ -1,4 +1,5 @@
 "use client";
+import { DispatchReceiptStatus } from "./DispatchReceiptStatus";
 import { useState } from "react";
 import { FileText, Loader2, RefreshCw, Search } from "lucide-react";
 import { dispatchPaymentLabel } from "./dispatch-payment";
@@ -135,7 +136,8 @@ export function DispatchHistory({
                       · {item.totalQuantity.toLocaleString()} ш
                     </p>
                   </div>
-                  <div className="text-right">
+                  <div className="space-y-2 text-right">
+                    <DispatchReceiptStatus document={item} />
                     <p className="text-sm font-bold text-slate-900">
                       {dispatchMoney(item.totalAmount)}
                     </p>

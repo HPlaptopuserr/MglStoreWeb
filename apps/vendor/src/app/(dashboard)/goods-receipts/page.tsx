@@ -1,5 +1,6 @@
 "use client";
 
+import { IncomingWarehouseDispatches } from "@/features/receive/IncomingWarehouseDispatches";
 import { useReceiptDraft } from "@/features/receive/useReceiptDraft";
 import { receiptItemPayload } from "@/features/receive/receipt-item-payload";
 import { parseVendorSessionUser } from "@/features/session/vendor-session.model";
@@ -577,6 +578,8 @@ export default function GoodsReceiptsPage() {
         </button>
       </div>
 
+      <IncomingWarehouseDispatches onAccepted={() => void loadData()} />
+
       {(draftStatus || offline) && (
         <div
           role="status"
@@ -619,11 +622,12 @@ export default function GoodsReceiptsPage() {
         <div className="rounded-3xl border border-amber-200 bg-amber-50 p-8 text-center">
           <PackageCheck className="mx-auto h-10 w-10 text-amber-500" />
           <h2 className="mt-3 text-lg font-black text-amber-950">
-            Идэвхтэй POS касс олдсонгүй
+            Гараар орлогодох POS касс олдсонгүй
           </h2>
           <p className="mx-auto mt-1 max-w-lg text-sm text-amber-800">
-            Барааг аль салбарын борлуулах үлдэгдэлд нэмэхийг тогтоохын тулд
-            идэвхтэй POS касс шаардлагатай.
+            Гараар орлогын баримт үүсгэхэд бараа хүлээн авах салбарын
+            идэвхтэй POS касс шаардлагатай. Агуулахаас ирсэн падааныг дээрх
+            хэсгээс кассгүйгээр тулгаж зөвшөөрч болно.
           </p>
           <Link
             href="/pos"

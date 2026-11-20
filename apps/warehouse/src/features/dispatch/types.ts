@@ -1,4 +1,5 @@
 export interface DispatchDestination {
+  recipientOrganizationId: string | null;
   storeName: string;
   address: string;
   recipientName: string;
@@ -30,4 +31,14 @@ export interface DispatchStore {
     id: string;
     name: string;
   };
+}
+
+export interface DispatchVendor {
+  id: string;
+  name: string;
+  contactName: string | null;
+  contactPhone: string | null;
+  address: string | null;
+  lat: number | null;
+  lng: number | null;
 }

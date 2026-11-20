@@ -503,6 +503,7 @@ model BusinessCategory {
 }
 
 model Organization {
+  incomingManualDispatches WarehouseManualDispatch[] @relation("ManualDispatchRecipient")
   supplyMonths RestaurantSupplyMonth[]
   groupCompanies GroupCompany[]
   headedGroups OrganizationGroup[] @relation("GroupHeadCompany")
@@ -2291,6 +2292,10 @@ enum WarehouseDispatchPaymentMethod {
 /// A transactional, operator-created dispatch to an arbitrary destination.
 /// Unlike StockDispatch this does not require a vendor stock request.
 model WarehouseManualDispatch {
+  recipientOrganizationId String?
+  acceptedAt DateTime?
+  acceptedById String?
+  recipientOrganization Organization? @relation("ManualDispatchRecipient", fields: [recipientOrganizationId], references: [id], onDelete: Restrict)
   paymentStatus  WarehouseDispatchPaymentStatus?
   paymentMethod  WarehouseDispatchPaymentMethod?
   paymentNote    String?
@@ -2313,12 +2318,15 @@ model WarehouseManualDispatch {
   createdBy      User                          @relation("WarehouseManualDispatchCreatedBy", fields: [createdById], references: [id])
   items          WarehouseManualDispatchItem[]
 
+  @@index([recipientOrganizationId, createdAt])
   @@index([warehouseId, createdAt])
   @@index([createdById])
   @@index([address])
 }
 
 model WarehouseManualDispatchItem {
+  productSnapshot Json?
+  receivedProductId String?
   productName String?
   productSku  String?
   unitPrice   Decimal? @db.Decimal(18, 2)

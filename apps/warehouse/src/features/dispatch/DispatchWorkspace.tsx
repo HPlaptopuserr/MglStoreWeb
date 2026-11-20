@@ -39,7 +39,10 @@ export function DispatchWorkspace({
         >
           <p className="flex items-center gap-2 text-sm font-semibold text-emerald-800">
             <CheckCircle2 className="size-5 shrink-0" />
-            {state.created.dispatchNumber} падан үүсэж, бараа гарлаа.
+            {state.created.dispatchNumber}{" "}
+            {state.created.recipientOrganizationId
+              ? "падан илгээгдлээ. Дэлгүүрийн эзний зөвшөөрлийг хүлээж байна."
+              : "падан үүсэж, бараа гарлаа."}
           </p>
           <button
             type="button"
@@ -194,6 +197,13 @@ export function DispatchWorkspace({
               )}
             </div>
             <p>Баталгаажуулахад агуулахын үлдэгдэл хасагдана.</p>
+            {state.destination.recipientOrganizationId && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                Падан дэлгүүрийн эзэнд очно. Эзэн барааны нэр, тоо ширхгийг
+                тулгаж зөвшөөрсний дараа өөрийн бүтээгдэхүүн болон үлдэгдэлд
+                бүртгэнэ.
+              </p>
+            )}
             <div className="flex gap-3">
               <button
                 type="button"

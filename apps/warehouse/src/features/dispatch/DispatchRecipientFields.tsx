@@ -20,6 +20,7 @@ export function DispatchRecipientFields({
         Дэлгүүрийн нэр <span className="text-red-500">*</span>
         <input
           required
+          readOnly={Boolean(value.recipientOrganizationId)}
           value={value.storeName}
           maxLength={160}
           onChange={(event) => {

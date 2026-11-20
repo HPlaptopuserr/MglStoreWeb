@@ -11,6 +11,7 @@ import type { DispatchDestination } from "./types";
 import { createDispatch } from "./dispatch-api";
 
 const emptyDestination = (): DispatchDestination => ({
+  recipientOrganizationId: null,
   storeName: "",
   recipientName: "",
   recipientPhone: "",

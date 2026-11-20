@@ -71,6 +71,7 @@ export function parseManualDispatch(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new ManualDispatchError("Гаргалтын мэдээлэл буруу байна.");
   const body = value as Record<string, unknown>;
+  const recipientOrganizationId = text(body.recipientOrganizationId, 100);
   const storeName = text(body.storeName, 160);
   const recipientName = text(body.recipientName, 160);
   const recipientPhone = text(body.recipientPhone, 40);
@@ -80,7 +81,11 @@ export function parseManualDispatch(value: unknown) {
   // The deployed Warehouse client sends an address and pin without storeName.
   const legacyAddress =
     body.storeName === undefined && address && lat !== null && lng !== null;
-  if (!legacyAddress && (!storeName || !recipientName || !recipientPhone))
+  if (
+    !recipientOrganizationId &&
+    !legacyAddress &&
+    (!storeName || !recipientName || !recipientPhone)
+  )
     throw new ManualDispatchError(
       "Дэлгүүрийн нэр, хүлээн авагчийн нэр болон утсаа оруулна уу.",
     );
@@ -130,6 +135,7 @@ export function parseManualDispatch(value: unknown) {
   if (new Set(items.map((item) => item.productId)).size !== items.length)
     throw new ManualDispatchError("Нэг барааг давхар оруулах боломжгүй.");
   return {
+    recipientOrganizationId,
     storeName: storeName || (legacyAddress ? recipientName || address : null),
     recipientName,
     recipientPhone,

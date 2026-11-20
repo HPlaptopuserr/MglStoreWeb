@@ -9,6 +9,9 @@ export type WarehouseDispatchPaymentMethod =
 export interface WarehouseDispatchDocument {
   id: string;
   dispatchNumber: string;
+  recipientOrganizationId?: string | null;
+  receiptStatus?: "PENDING" | "ACCEPTED" | null;
+  acceptedAt?: string | null;
   storeName: string | null;
   recipientName: string | null;
   recipientPhone: string | null;
@@ -30,6 +33,7 @@ export interface WarehouseDispatchDocument {
     productId: string;
     name: string;
     sku: string | null;
+    unit?: string | null;
     quantity: number;
     unitPrice: string | null;
     totalAmount: string | null;

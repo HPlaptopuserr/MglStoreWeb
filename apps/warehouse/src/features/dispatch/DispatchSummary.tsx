@@ -42,7 +42,9 @@ export function DispatchSummary({
       <div className="border-b border-slate-100 bg-slate-50 p-5">
         <h2 className="font-bold text-slate-950">Шалгаж баталгаажуулах</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Баталгаажмагц падан үүсэж, агуулахын үлдэгдэл хасагдана.
+          {destination.recipientOrganizationId
+            ? "Падан дэлгүүрт илгээгдэж, агуулахын үлдэгдэл хасагдана. Эзэн зөвшөөрсний дараа дэлгүүрийн үлдэгдэлд орно."
+            : "Баталгаажмагц падан үүсэж, агуулахын үлдэгдэл хасагдана."}
         </p>
       </div>
       <div className="space-y-4 p-5">
@@ -115,7 +117,9 @@ export function DispatchSummary({
             ? "Бүртгэж байна…"
             : step === 1
               ? "Дараах · Хүлээн авагч"
-              : "Падан үүсгэж бараа гаргах"}
+              : destination.recipientOrganizationId
+                ? "Падан илгээж бараа гаргах"
+                : "Падан үүсгэж бараа гаргах"}
         </button>
       </div>
     </aside>

@@ -14,6 +14,7 @@ import {
 import { printWarehouseDocument } from "@/features/documents/warehouse-document.print";
 import { dispatchEndpoint, dispatchRequest } from "./dispatch-api";
 import { dispatchPaymentLabel } from "./dispatch-payment";
+import { DispatchReceiptStatus } from "./DispatchReceiptStatus";
 import { dispatchDate } from "./dispatch-format";
 
 export function DispatchDocumentDialog({
@@ -106,6 +107,9 @@ export function DispatchDocumentDialog({
               number={data.dispatchNumber}
               date={new Date(data.createdAt)}
             />
+            <div className="my-4">
+              <DispatchReceiptStatus document={data} detailed />
+            </div>
             <WarehouseDocumentInfoGrid>
               <WarehouseDocumentInfoCard
                 label="Илгээгч агуулах"
