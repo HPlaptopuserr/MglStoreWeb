@@ -14,6 +14,7 @@ import {
   type ProductLabelDraft,
   type ProductLabelProduct,
 } from "./product-label-print/layout";
+import { readLabelPrintSettings, saveLabelPrintSettings } from "./product-label-print/settings-storage";
 import { printProductLabels } from "./product-label-print/document";
 import { PrintSettingsBar } from "./product-label-print/PrintSettingsBar";
 import { ProductPicker } from "./product-label-print/ProductPicker";
@@ -44,6 +45,8 @@ export function ProductLabelPrintDialog({
   const [printSettings, setPrintSettings] = useState<LabelPrintSettings>(
     DEFAULT_PRINT_SETTINGS,
   );
+
+  useEffect(() => { setPrintSettings(readLabelPrintSettings()); }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -242,6 +245,7 @@ export function ProductLabelPrintDialog({
           }}
           onChange={(settings) => {
             setPrintSettings(settings);
+            saveLabelPrintSettings(settings);
             setPrintError("");
           }}
         />

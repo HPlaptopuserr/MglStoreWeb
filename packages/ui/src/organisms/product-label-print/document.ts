@@ -142,7 +142,7 @@ export function buildLabelDocument(
       <head>
         <meta charset="utf-8" /><title>MGL price labels</title>
         <style>
-          @page { size: ${layout.paperWidth}mm ${layout.documentHeight}mm; margin: ${layout.thermal ? 0 : settings.margin}mm; }
+          @page { size: ${layout.thermal && settings.thermalPageMode === "printer" ? "auto" : `${layout.paperWidth}mm ${layout.documentHeight}mm`}; margin: ${layout.thermal ? 0 : settings.margin}mm; }
           * { box-sizing: border-box; }
           html {
             print-color-adjust: exact;
@@ -200,9 +200,10 @@ export function buildLabelDocument(
           ${
             layout.thermal
               ? `
-            html, body { width: ${layout.paperWidth}mm; }
+            html { width: 100%; }
+            body { width: 100%; max-width: ${layout.paperWidth}mm; }
             body { color: #111; }
-            .thermal-roll { display: flex; flex-direction: column; gap: ${settings.gap}mm; width: ${layout.paperWidth}mm; }
+            .thermal-roll { display: flex; flex-direction: column; gap: ${settings.gap}mm; width: 100%; max-width: ${layout.paperWidth}mm; }
             .roll-item { height: ${layout.paperHeight}mm; padding: ${settings.margin}mm; flex-shrink: 0; break-inside: avoid; page-break-inside: avoid; }
             @media screen {
               .roll-item { position: relative; }

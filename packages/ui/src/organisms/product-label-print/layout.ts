@@ -35,6 +35,7 @@ export interface LabelPrintSettings {
   labelHeight: number;
   customPaperWidth: number;
   customPaperHeight: number;
+  thermalPageMode?: "receipt" | "printer";
   thermalWidth: number;
   thermalHeight: number;
   margin: number;
@@ -47,7 +48,8 @@ export const DEFAULT_PRINT_SETTINGS: LabelPrintSettings = {
   labelHeight: 67.3,
   customPaperWidth: 210,
   customPaperHeight: 297,
-  thermalWidth: 80,
+  thermalWidth: 58,
+  thermalPageMode: "receipt",
   thermalHeight: 50,
   margin: 4,
   gap: 0,

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { ReceiptPrinterSettings } from "./ReceiptPrinterSettings";
 import type { PosReceipt } from "../types/receipt.types";
 import { printReceipt } from "../utils/print-receipt";
 import {
@@ -28,6 +29,7 @@ export function ReceiptPrintNotice({ receipt, onDismiss }: {
   return <aside role="status" className="fixed right-4 top-4 z-[140] max-w-sm rounded-xl border border-blue-200 bg-white p-4 text-slate-900 shadow-xl">
     <p className="font-semibold">Борлуулалт бүртгэгдлээ · {receipt.receiptNo}</p>
     <p className="mt-1 text-sm text-slate-600">Хэвлэх цонх нээгдээгүй бол доорх товчийг дарна уу.</p>
+    <ReceiptPrinterSettings />
     <div className="mt-3 flex flex-wrap gap-2">
       <select
         value={paperWidthMm}

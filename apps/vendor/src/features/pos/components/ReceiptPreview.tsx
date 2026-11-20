@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ReceiptPrinterSettings } from "./ReceiptPrinterSettings";
 import { Loader2, Printer, RotateCcw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { PosReceipt } from "../types/receipt.types";
@@ -213,6 +214,8 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
             : saleVoidResult.message || "Системийн буцаалт амжилтгүй"}
         </div>
       )}
+
+      <ReceiptPrinterSettings />
 
       {canPreviewDemo && (
         <label className="mt-3 flex items-center gap-2 rounded-lg bg-amber-50 p-3 text-xs font-semibold text-amber-900">

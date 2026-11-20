@@ -1,7 +1,15 @@
+import {
+  readReceiptPageMode,
+  readReceiptPaperWidth,
+  type ReceiptPageMode,
+  type ReceiptPaperWidth,
+} from "./receipt-paper";
+
 type ThermalPrintDocumentOptions = {
   bodyHtml: string;
   extraCss?: string;
-  paperWidthMm?: number;
+  paperWidthMm?: ReceiptPaperWidth;
+  pageMode?: ReceiptPageMode;
 };
 
 const SCREEN_DPI = 96;
@@ -12,7 +20,8 @@ const RECEIPT_BOTTOM_FEED_MM = 4;
 export function printThermalDocument({
   bodyHtml,
   extraCss = "",
-  paperWidthMm = 58,
+  paperWidthMm = readReceiptPaperWidth(),
+  pageMode = readReceiptPageMode(),
 }: ThermalPrintDocumentOptions): boolean {
   if (typeof window === "undefined") return false;
 
@@ -21,10 +30,13 @@ export function printThermalDocument({
   const frame = document.createElement("iframe");
   frame.title = "Баримт хэвлэх";
   frame.setAttribute("aria-hidden", "true");
-  frame.style.cssText = "position:fixed;left:-10000px;top:0;width:420px;height:760px;border:0;";
+  frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${paperWidthMm}mm;height:760px;border:0;`;
   document.body.appendChild(frame);
   const popup = frame.contentWindow;
-  if (!popup) { frame.remove(); return false; }
+  if (!popup) {
+    frame.remove();
+    return false;
+  }
   let started = false;
   const cleanup = () => frame.remove();
   const startPrint = () => {
@@ -33,12 +45,26 @@ export function printThermalDocument({
     void popup.document.fonts.ready.then(() => {
       popup.requestAnimationFrame(() => {
         const height = popup.document.body.getBoundingClientRect().height;
-        const mm = Math.max(MINIMUM_RECEIPT_HEIGHT_MM,
-          Math.ceil(height * MILLIMETERS_PER_INCH / SCREEN_DPI + RECEIPT_BOTTOM_FEED_MM));
+        const mm = Math.max(
+          MINIMUM_RECEIPT_HEIGHT_MM,
+          Math.ceil(
+            (height * MILLIMETERS_PER_INCH) / SCREEN_DPI +
+              RECEIPT_BOTTOM_FEED_MM,
+          ),
+        );
         const style = popup.document.getElementById("thermal-page-size");
-        if (style) style.textContent = `@page { size: ${paperWidthMm}mm ${mm}mm; margin: 0; }`;
+        if (style)
+          style.textContent =
+            pageMode === "printer"
+              ? "@page { size: auto; margin: 0; }"
+              : `@page { size: ${paperWidthMm}mm ${mm}mm; margin: 0; }`;
         popup.addEventListener("afterprint", cleanup, { once: true });
-        try { popup.focus(); popup.print(); } catch { cleanup(); }
+        try {
+          popup.focus();
+          popup.print();
+        } catch {
+          cleanup();
+        }
         // Do not close after 500ms: some devices open the print dialog asynchronously.
       });
     });
@@ -53,12 +79,12 @@ export function printThermalDocument({
         <style id="thermal-page-size"></style>
         <style>
           * { box-sizing: border-box; }
-          html, body { margin: 0; padding: 0; width: ${paperWidthMm}mm; }
+          html { margin: 0; padding: 0; }
+          body { margin: 0; width: 100%; max-width: ${paperWidthMm}mm; }
           body {
             color: #111;
             font-family: ui-monospace, "Cascadia Mono", "Courier New", monospace;
             padding: 2mm 5mm;
-            overflow: hidden;
           }
           pre {
             margin: 0;

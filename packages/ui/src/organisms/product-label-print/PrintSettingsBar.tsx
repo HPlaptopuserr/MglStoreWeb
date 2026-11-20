@@ -71,6 +71,14 @@ export function PrintSettingsBar({
         </SettingsField>
         {thermal ? (
           <>
+            <SettingsField label="Цаасны хэмжээний горим">
+              <select value={settings.thermalPageMode ?? "receipt"}
+                onChange={(event) => update("thermalPageMode", event.target.value === "printer" ? "printer" : "receipt")}
+                className={selectClass}>
+                <option value="receipt">Шошгоны нийт уртаар</option>
+                <option value="printer">Принтерийн цаасны тохиргоогоор</option>
+              </select>
+            </SettingsField>
             <SettingsField label="Рулоны хэмжээ">
               <select
                 value={
@@ -223,7 +231,7 @@ export function PrintSettingsBar({
       {thermal && (
         <p className="mt-3 text-xs leading-5 text-slate-500">
           Хэвлэх цонхноос кассын принтерээ сонгож, дээрх цаасны хэмжээтэй
-          тааруулна уу. Масштаб 100%, толгой/хөл хэсэггүй хэвлэнэ. Цаасны урт нь
+          тааруулна уу. POS-H58 дээр 58 мм сонгоно. Масштаб 100%, захгүй, толгой/хөл хэсэггүй хэвлэнэ. Хоосон гарвал принтерийн цаасны тохиргооны горимыг сонгоно уу. Цаасны урт нь
           нэг шошгонд зарцуулах урт; сонгосон бүх шошго доошоо дараалан нэг
           рулон дээр хэвлэгдэнэ.
         </p>

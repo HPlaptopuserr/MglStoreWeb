@@ -11,21 +11,51 @@ test("async receipt printing supports 58 mm and 80 mm without a popup", async ()
   let documentMarkup = "";
   const pageStyle = { textContent: "" };
   const frame = {
-    title: "", style: { cssText: "" }, onload: undefined as (() => void) | undefined,
-    setAttribute() {}, remove() { removed = true; },
+    title: "",
+    style: { cssText: "" },
+    onload: undefined as (() => void) | undefined,
+    setAttribute() {},
+    remove() {
+      removed = true;
+    },
     contentWindow: {
-      document: { fonts: { ready: Promise.resolve() }, readyState: "complete",
+      document: {
+        fonts: { ready: Promise.resolve() },
+        readyState: "complete",
         body: { getBoundingClientRect: () => ({ height: 300 }) },
-        getElementById: () => pageStyle, write(value: string) { documentMarkup = value; }, close() {} },
-      requestAnimationFrame(callback: () => void) { callback(); },
-      addEventListener(name: string, callback: () => void) { if (name === "afterprint") afterPrint = callback; },
-      focus() {}, print() { prints++; },
+        getElementById: () => pageStyle,
+        write(value: string) {
+          documentMarkup = value;
+        },
+        close() {},
+      },
+      requestAnimationFrame(callback: () => void) {
+        callback();
+      },
+      addEventListener(name: string, callback: () => void) {
+        if (name === "afterprint") afterPrint = callback;
+      },
+      focus() {},
+      print() {
+        prints++;
+      },
     },
   };
-  Object.defineProperty(globalThis, "window", { configurable: true, value: { open() { throw new Error("Popup blocked"); } } });
-  Object.defineProperty(globalThis, "document", { configurable: true, value: {
-    createElement: () => frame, body: { appendChild() {} },
-  } });
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      open() {
+        throw new Error("Popup blocked");
+      },
+    },
+  });
+  Object.defineProperty(globalThis, "document", {
+    configurable: true,
+    value: {
+      createElement: () => frame,
+      body: { appendChild() {} },
+    },
+  });
   try {
     assert.equal(printThermalDocument({ bodyHtml: "receipt" }), true);
     frame.onload?.();
@@ -33,22 +63,45 @@ test("async receipt printing supports 58 mm and 80 mm without a popup", async ()
     assert.equal(prints, 1);
     assert.equal(removed, false);
     assert.match(pageStyle.textContent, /size: 58mm/);
-    assert.match(documentMarkup, /width: 58mm/);
+    assert.match(documentMarkup, /max-width: 58mm/);
+    assert.match(frame.style.cssText, /width:58mm/);
+    assert.doesNotMatch(documentMarkup, /overflow: hidden/);
     assert.match(documentMarkup, /padding: 2mm 5mm/);
     afterPrint?.();
     assert.equal(removed, true);
 
     removed = false;
-    assert.equal(printThermalDocument({ bodyHtml: "receipt", paperWidthMm: 80 }), true);
+    assert.equal(
+      printThermalDocument({ bodyHtml: "receipt", paperWidthMm: 80 }),
+      true,
+    );
     frame.onload?.();
     await Promise.resolve();
     assert.equal(prints, 2);
     assert.match(pageStyle.textContent, /size: 80mm/);
-    assert.match(documentMarkup, /width: 80mm/);
+    assert.match(documentMarkup, /max-width: 80mm/);
+    assert.match(frame.style.cssText, /width:80mm/);
+    afterPrint?.();
+    assert.equal(removed, true);
+    removed = false;
+    assert.equal(
+      printThermalDocument({
+        bodyHtml: "receipt",
+        paperWidthMm: 58,
+        pageMode: "printer",
+      }),
+      true,
+    );
+    await Promise.resolve();
+    assert.equal(prints, 3);
+    assert.equal(pageStyle.textContent, "@page { size: auto; margin: 0; }");
     afterPrint?.();
     assert.equal(removed, true);
   } finally {
-    for (const [name, descriptor] of [["window", oldWindow], ["document", oldDocument]] as const) {
+    for (const [name, descriptor] of [
+      ["window", oldWindow],
+      ["document", oldDocument],
+    ] as const) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);
       else Reflect.deleteProperty(globalThis, name);
     }

@@ -221,3 +221,13 @@ test("missing wholesale never falls back to retail or silently prints zero", () 
     "0₮",
   );
 });
+
+test("printer-managed thermal pages retain visible label and barcode markup", () => {
+  const html = buildLabelDocument([label], settings({ paperPreset: "THERMAL", thermalWidth: 58, thermalPageMode: "printer" }));
+  assert.match(html, /@page \{ size: auto; margin: 0mm;/);
+  assert.match(html, /class="thermal-name"/);
+  assert.match(html, /class="barcode-svg"/);
+  assert.match(html, /width: 100%; max-width: 58mm/);
+  const sheet = buildLabelDocument([label], settings({ thermalPageMode: "printer" }));
+  assert.match(sheet, /@page \{ size: 297mm 210mm/);
+});

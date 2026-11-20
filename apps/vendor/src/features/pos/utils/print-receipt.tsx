@@ -53,7 +53,7 @@ export function printReceipt(
     bodyHtml: `${options.demo ? '<p style="text-align:center;font-weight:bold">ТЕСТ БАРИМТ — eBarimt-д бүртгэгдэхгүй</p>' : ""}${receiptPrintLayout(receipt)}${qrMarkup ? `<div class="ebarimt-qr">${qrTitle}${qrMarkup}</div>` : ""}${receiptPrintFooter}`,
     extraCss: `${receiptPrintCss}
       .ebarimt-qr { margin-top: 1.5mm; text-align: center; }
-      .ebarimt-qr svg { width: 42mm; height: 42mm; }
+      .ebarimt-qr svg { width: 42mm; max-width: 100%; height: auto; }
       .ebarimt-qr-title { margin: 0 0 2mm; font-family: sans-serif; font-size: 9pt; font-weight: 700; }
     `,
     paperWidthMm,

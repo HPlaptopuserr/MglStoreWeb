@@ -6,7 +6,7 @@ export function thermalLabelCss(layout: LabelPrintLayout): string {
   const scale = Math.min(1.25, layout.labelHeight / 44);
   return `
     .thermal-label {
-      width: ${layout.labelWidth}mm; height: ${layout.labelHeight}mm;
+      width: 100%; max-width: ${layout.labelWidth}mm; height: ${layout.labelHeight}mm;
       display: flex; flex-direction: column; justify-content: space-between;
       padding: ${1.1 * scale}mm ${1.2 * scale}mm;
       overflow: hidden; color: #111; background: #fff;
