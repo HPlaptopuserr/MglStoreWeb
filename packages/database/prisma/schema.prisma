@@ -153,6 +153,13 @@ model Profile {
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+/// Maintained by the Profile phone trigger, including legacy duplicate counts.
+/// Do not write reservations directly from application code.
+model ProfilePhoneReservation {
+  phoneNumber  String @id
+  profileCount Int
+}
+
 model DeliveryDriverProfile {
   userId                   String    @id
   nationalId               String?
