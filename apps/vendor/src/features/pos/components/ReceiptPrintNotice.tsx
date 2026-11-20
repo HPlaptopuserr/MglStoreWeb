@@ -42,10 +42,11 @@ export function ReceiptPrintNotice({ receipt, onDismiss }: {
         <option value={58}>58 мм</option>
         <option value={80}>80 мм</option>
       </select>
+      <button type="button" onClick={() => printReceipt(receipt, { paperWidthMm })} className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700">Баримт хэвлэх</button>
       <button type="button" onClick={() => {
         const opened = printReceipt(receipt, { paperWidthMm, target: "window" });
         setPrintError(opened ? "" : "Баримтын цонх нээгдсэнгүй. Энэ сайтад popup цонх зөвшөөрнө үү.");
-      }} className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-700">Тусдаа цонхоор хэвлэх</button>
+      }} className="rounded-lg border px-4 py-2 font-semibold hover:bg-slate-50">Тусдаа цонхоор хэвлэх</button>
       <button type="button" onClick={onDismiss} className="rounded-lg border px-4 py-2 hover:bg-slate-100">Хаах</button>
     </div>
   </aside>;

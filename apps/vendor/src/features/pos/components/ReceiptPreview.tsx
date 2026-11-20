@@ -53,7 +53,7 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
       ? displayReceipt.ebarimt.qrData
       : "";
 
-  const handlePrint = () => {
+  const handleWindowPrint = () => {
     const opened = printReceipt(displayReceipt, { demo: showingDemo, paperWidthMm, target: "window" });
     setPrintError(opened ? "" : "Баримтын цонх нээгдсэнгүй. Энэ сайтад popup цонх зөвшөөрөөд дахин хэвлэнэ үү.");
   };
@@ -172,10 +172,17 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
           </label>
           <button
             type="button"
-            onClick={handlePrint}
+            onClick={() => printReceipt(displayReceipt, { demo: showingDemo, paperWidthMm })}
             className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
           >
             <Printer className="h-3.5 w-3.5" />
+            Хэвлэх
+          </button>
+          <button
+            type="button"
+            onClick={handleWindowPrint}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
             Тусдаа цонхоор хэвлэх
           </button>
           {allowReturns && !isVoided && cardLine && !terminalVoidResult?.succeed && (
