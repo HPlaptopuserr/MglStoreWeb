@@ -1,3 +1,4 @@
+import { receiptTaxTotal } from "./receipt-tax";
 import type { PosReceipt } from "../types/receipt.types";
 import { formatPosQuantity } from "@mgl/types";
 
@@ -33,7 +34,7 @@ export function formatReceipt(receipt: PosReceipt): string {
   const footer = [
     "--------------------------------",
     `Барааны дүн: ${formatMoney(receipt.subTotal)}`,
-    `Татвар: ${formatMoney(receipt.taxTotal)}`,
+    `Татвар: ${formatMoney(receiptTaxTotal(receipt))}`,
     receipt.discountTotal
       ? `Хөнгөлөлт: -${formatMoney(receipt.discountTotal)}`
       : "",

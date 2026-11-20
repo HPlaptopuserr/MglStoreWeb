@@ -1,3 +1,5 @@
+import qpayRoutes from "./qpay.routes";
+import { parseCardCheckout, reserveCardCheckout } from "../../../services/pos-card-checkout";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createServer, type Server } from "node:http";
@@ -63,6 +65,9 @@ test(
     let insufficientFunds = false;
     let terminalRefusal: string | undefined;
     let invoiceCalls = 0;
+    let qrInvoiceCalls = 0;
+    let qrProviderPaid = false;
+    let qrCreationFails = false;
     let loginUnavailable = false;
     let loseInvoiceResponse = false;
     let delayInvoiceResponse = false;
@@ -72,6 +77,14 @@ test(
     provider.use(express.json());
     provider.use((req, res) => {
       providerCalls.push(req.path);
+      if (req.path === "/login") return res.json({ status: "000", entity: "qr-test-token" });
+      if (req.path === "/subMerchant/createInvoice") {
+        qrInvoiceCalls++;
+        if (qrCreationFails) return res.status(503).json({ status: "503", message: "provider unavailable" });
+        return res.json({ status: "000", entity: { invoiceNumber: `provider-${req.body.referenceNumber}`, mainQr: "qr-test", deeplinkList: [] } });
+      }
+      if (req.path === "/subMerchant/checkInvoice") return res.json({ status: "000", entity: { status: qrProviderPaid ? "000" : null, invoiceNumber: req.body.invoiceNumber } });
+      if (req.path.endsWith("/cancelQr")) return res.json({ status: "000" });
       if (req.path === "/agent/login")
         return loginUnavailable ? res.status(503).json({ message: "Login unavailable" })
           : res.json({ status: "000", entity: "test-token" });
@@ -107,6 +120,7 @@ test(
     app.use(recoveryRoutes);
     app.use(deferredRoutes);
     app.use(cardRoutes);
+    app.use(qpayRoutes);
     app.use(salesRoutes);
     app.use(registerRoutes);
     const server = createServer(app);
@@ -1386,6 +1400,131 @@ test(
           paymentBreakdown: [{ method: "CARD", amount: 25_000_000, attemptId: f.body.attemptId }, { method: "CASH", amount: 25_000_000 }] }) });
         assert.equal(result.status, 201, await result.text());
         assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
+      });
+      await t.test("a frozen paid QR reserves its basket, commits once and releases inventory", async () => {
+        const f = await fixture();
+        const checkout = parseCardCheckout(f.body.checkout);
+        const qr = await prisma.$transaction(async tx => {
+          await reserveCardCheckout(tx, { checkout, organizationId: organization.id, registerId: f.register.id,
+            amount: f.body.amount, cashierId: user.id });
+          return tx.qPayInvoice.create({ data: { organizationId: organization.id, registerId: f.register.id,
+            initiatedById: user.id, amount: f.body.amount, qrText: "test-qr", status: "PAID",
+            paidAt: new Date(), expiresAt: new Date(Date.now() + 60_000),
+            webhookPayload: { provider: "QPAY", checkout: JSON.parse(JSON.stringify(checkout)) },
+          } });
+        });
+        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
+        const body = { ...f.sale, paymentMethod: "QR", paymentBreakdown: [{ method: "QR", amount: f.body.amount, invoiceId: qr.id }] };
+        const submit = () => fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify(body) });
+        const tampered = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify({ ...body, clientSaleId: "stolen-qr-basket" }) });
+        assert.equal(tampered.status, 409, await tampered.clone().text());
+        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
+        assert.equal((await prisma.qPayInvoice.findUniqueOrThrow({ where: { id: qr.id } })).status, "PAID");
+        const first = await submit();
+        assert.equal(first.status, 201, await first.clone().text());
+        const receipt = await first.json() as { id: string; receiptNo: string };
+        const second = await submit();
+        assert.equal(second.status, 200, await second.clone().text());
+        assert.equal((await second.json() as { id: string }).id, receipt.id);
+        assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: f.product.id } })).stock, 0);
+        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 0);
+        assert.equal((await prisma.qPayInvoice.findUniqueOrThrow({ where: { id: qr.id } })).saleReference, receipt.receiptNo);
+      });
+
+      await t.test("declining a partial card preserves a paid QR basket reservation", async () => {
+        const f = await fixture();
+        f.body.amount = 25_000_000;
+        paid = false;
+        assert.equal((await f.authorize()).status, 201);
+        await prisma.qPayInvoice.create({ data: { organizationId: organization.id, registerId: f.register.id,
+          amount: 25_000_000, qrText: "paid-partial-qr", status: "PAID", paidAt: new Date(),
+          expiresAt: new Date(Date.now() + 60_000),
+          webhookPayload: { provider: "QPAY", checkout: JSON.parse(JSON.stringify(f.body.checkout)) },
+        } });
+        terminalDeclined = true;
+        try { await f.status(); } finally { terminalDeclined = false; paid = true; }
+        assert.equal((await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: f.body.attemptId } })).status, "DECLINED");
+        assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
+      });
+      await t.test("QR endpoint preserves unknown creation and handles expired late-paid invoices without another charge", async () => {
+        const envKeys = ["SYSTEMQR_BASE_URL", "SYSTEMQR_DEEPLINK_URL", "SYSTEMQR_USERNAME", "SYSTEMQR_PASSWORD"] as const;
+        const previous = envKeys.map(key => process.env[key]);
+        process.env.SYSTEMQR_BASE_URL = process.env.MINU_AGENT_BASE_URL;
+        process.env.SYSTEMQR_DEEPLINK_URL = process.env.MINU_AGENT_BASE_URL;
+        process.env.SYSTEMQR_USERNAME = "qr-integration";
+        process.env.SYSTEMQR_PASSWORD = "qr-integration-password";
+        const configure = async (registerId: string) => prisma.posRegister.update({ where: { id: registerId }, data: {
+          qpayEnabled: true, qpayMerchantId: `qr-${registerId}`, qpayTerminalId: "SYSTEMQR",
+        } });
+        try {
+          const f = await fixture();
+          await configure(f.register.id);
+          const requestId = crypto.randomUUID();
+          const body = { requestId, organizationId: organization.id, registerId: f.register.id, amount: f.body.amount, checkout: f.body.checkout };
+          const create = (payload: unknown = body) => fetch(`${base}/pos/payments/qpay/invoice`, { method: "POST", headers, body: JSON.stringify(payload) });
+          const concurrent = await Promise.all([create(), create()]);
+          assert.deepEqual(concurrent.map(response => response.status).sort(), [200, 201]);
+          for (const response of concurrent) assert.equal((await response.json() as { invoiceId: string }).invoiceId, requestId);
+          const before = qrInvoiceCalls;
+          assert.equal((await create()).status, 200);
+          assert.equal(qrInvoiceCalls, before, "retry must use original provider invoice");
+          await prisma.qPayInvoice.update({ where: { id: requestId }, data: { expiresAt: new Date(Date.now() - 1000) } });
+          const poll = () => fetch(`${base}/pos/payments/qpay/status/${requestId}?refresh=1`, { headers });
+          assert.equal((await (await poll()).json() as { status: string }).status, "EXPIRED");
+          assert.equal(await prisma.posCardStockReservation.count({ where: { productId: f.product.id } }), 1);
+          const other = await create({ ...body, requestId: crypto.randomUUID() });
+          assert.equal(other.status, 409, await other.clone().text());
+          assert.equal(qrInvoiceCalls, before, "expired unresolved QR cannot dispatch another payment");
+          qrProviderPaid = true;
+          assert.equal((await (await poll()).json() as { status: string }).status, "PAID");
+          const sale = await fetch(`${base}/pos/sales`, { method: "POST", headers, body: JSON.stringify({ ...f.sale,
+            paymentMethod: "QR", paymentBreakdown: [{ method: "QR", amount: f.body.amount, invoiceId: requestId }],
+          }) });
+          assert.equal(sale.status, 201, await sale.clone().text());
+          assert.equal(qrInvoiceCalls, before);
+          const g = await fixture();
+          await configure(g.register.id);
+          const unknownId = crypto.randomUUID();
+          qrCreationFails = true;
+          const failed = await create({ ...body, requestId: unknownId, registerId: g.register.id, checkout: g.body.checkout });
+          assert.equal(failed.status, 500);
+          const stored = await prisma.qPayInvoice.findUniqueOrThrow({ where: { id: unknownId } });
+          assert.equal(stored.status, "PENDING");
+          assert.equal(stored.consumedAt, null);
+          const status = await fetch(`${base}/pos/payments/qpay/status/${unknownId}?refresh=1`, { headers });
+          assert.equal((await status.json() as { recoveryRequired: boolean }).recoveryRequired, true);
+          assert.equal(await prisma.posCardStockReservation.count({ where: { productId: g.product.id } }), 1);
+          const cancelUnknown = await fetch(`${base}/pos/payments/qpay/cancel`, { method: "POST", headers,
+            body: JSON.stringify({ invoiceId: unknownId, requireProviderCancellation: true }) });
+          assert.equal(cancelUnknown.status, 400);
+          assert.equal(await prisma.posCardStockReservation.count({ where: { productId: g.product.id } }), 1);
+          qrCreationFails = false; qrProviderPaid = false;
+          const h = await fixture();
+          await configure(h.register.id);
+          h.body.amount = 25_000_000;
+          assert.equal((await h.authorize()).status, 201);
+          await h.status();
+          const partialId = crypto.randomUUID();
+          const partial = await create({ ...body, requestId: partialId, registerId: h.register.id, amount: 25_000_000, checkout: h.body.checkout });
+          assert.equal(partial.status, 201, await partial.clone().text());
+          const cancelled = await fetch(`${base}/pos/payments/qpay/cancel`, { method: "POST", headers,
+            body: JSON.stringify({ invoiceId: partialId, requireProviderCancellation: true }) });
+          assert.equal(cancelled.status, 200, await cancelled.clone().text());
+          assert.equal(await prisma.posCardStockReservation.count({ where: { productId: h.product.id } }), 1,
+            "cancelled unpaid QR cannot release the approved card basket");
+          const i = await fixture();
+          await configure(i.register.id);
+          paid = false;
+          assert.equal((await i.authorize()).status, 201);
+          const callsBeforePending = qrInvoiceCalls;
+          const blocked = await create({ ...body, requestId: crypto.randomUUID(), registerId: i.register.id, checkout: i.body.checkout });
+          assert.equal(blocked.status, 409, await blocked.clone().text());
+          assert.equal(qrInvoiceCalls, callsBeforePending, "unknown card cannot be followed by another QR charge");
+          paid = true;
+        } finally {
+          qrCreationFails = false; qrProviderPaid = false;
+          envKeys.forEach((key, index) => { if (previous[index] === undefined) delete process.env[key]; else process.env[key] = previous[index]; });
+        }
       });
     } finally {
       if (previousMinuUrl === undefined) delete process.env.MINU_AGENT_BASE_URL;

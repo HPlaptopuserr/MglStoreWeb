@@ -34,3 +34,23 @@ test("compatible API receives the same recovery ID and structured config error s
     assert.equal(calls, 2);
   } finally { globalThis.fetch = original; }
 });
+
+test("QR baskets require API reservation support before dispatch", async () => {
+  const original = globalThis.fetch;
+  const calls: string[] = [];
+  const checkout = { clientSaleId: "sale", branchId: "branch", shiftId: "shift", lines: [{ productId: "product", qty: 1, unitPrice: 100, taxRate: 0, priceType: "UNIT" as const, discountAmount: 0 }] };
+  globalThis.fetch = async (_url, init) => {
+    calls.push(init?.method || "GET");
+    return Response.json({ paymentRecoveryVersion: 1 });
+  };
+  try {
+    await assert.rejects(createQPayInvoice({ amount: 100, checkout }), (error: unknown) => error instanceof PosApiError && error.code === "PAYMENT_NOT_STARTED");
+    assert.deepEqual(calls, ["GET"]);
+    globalThis.fetch = async (_url, init) => {
+      if (init?.method !== "POST") return Response.json({ paymentRecoveryVersion: 1, qrCheckoutVersion: 1 });
+      assert.deepEqual(JSON.parse(String(init.body)).checkout, checkout);
+      return Response.json({ invoiceId: "invoice" });
+    };
+    assert.equal((await createQPayInvoice({ amount: 100, checkout })).invoiceId, "invoice");
+  } finally { globalThis.fetch = original; }
+});

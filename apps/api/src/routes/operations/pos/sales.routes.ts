@@ -1,3 +1,7 @@
+import { readPosFiscalTaxTotals } from "@mgl/types";
+import { fiscalAmountError, fiscalIdentityConflict } from "./fiscal-amount-validation";
+import { generatePosReceiptNumber } from "./pos-receipt-number";
+import { calculatePosInclusiveVat, calculatePosLineAmounts } from "@mgl/types";
 import { capturePosRecipeSnapshots } from "../../../services/pos-recipe-snapshot.service";
 import { calculateRestaurantSelectedUnitDiscount } from "@mgl/types";
 import {
@@ -7,7 +11,7 @@ import {
   buildCreditBorrowerKey,
 } from "@mgl/types";
 import { parseCreditWorkDetails } from "./credit-work-details";
-import { checkoutFromPayload, sameCheckout, type CardCheckout } from "../../../services/pos-card-checkout";
+import { checkoutFromPayload, isQrCancellationConfirmed, sameCheckout, type CardCheckout } from "../../../services/pos-card-checkout";
 import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
 import { assertProductInventoryOwnership } from "../../../services/warehouse-product-ownership";
 import { resolvePosDiscountProfileType } from "./discount-profile";
@@ -469,6 +473,7 @@ const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) => {
   const metadata = readEbarimtMetadata(sale.ebarimtPayload);
   return {
     status: sale.ebarimtStatus,
+    ...(sale.ebarimtStatus === "SUCCESS" ? readPosFiscalTaxTotals(sale.ebarimtPayload) : {}),
     billId: sale.ebarimtBillId,
     receiptId: sale.ebarimtReceiptId,
     qrData: sale.ebarimtQrData,
@@ -1038,7 +1043,7 @@ router.post("/pos/sales", async (req, res) => {
     }
 
     const productIds = Array.from(qtyByProduct.keys());
-    const receiptNo = `POS-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${Date.now().toString().slice(-6)}`;
+    const receiptNo = generatePosReceiptNumber();
 
     if (restaurantTicketId) {
       const [ticketForPackaging, productsForPackaging] = await Promise.all([
@@ -1103,22 +1108,12 @@ router.post("/pos/sales", async (req, res) => {
       }
     }
 
-    const preLineTotals = effectiveLines.map((line) => {
-      const qty = Number(line.qty || 0);
-      const unitPrice = Number(line.unitPrice || 0);
-      const discount = Number(line.discountAmount || 0) * qty;
-      return { subTotal: unitPrice * qty, discountTotal: discount };
-    });
-    const preSubTotal = preLineTotals.reduce(
-      (sum, line) => sum + line.subTotal,
-      0,
-    );
-    const preDiscountTotal = preLineTotals.reduce(
-      (sum, line) => sum + line.discountTotal,
-      0,
-    );
+    const preLineTotals = effectiveLines.map((line) => calculatePosLineAmounts({
+      unitPrice: Number(line.unitPrice || 0), qty: Number(line.qty || 0),
+      discountAmount: Number(line.discountAmount || 0),
+    }));
     const expectedGrandTotal = roundMoney(
-      preSubTotal - preDiscountTotal + packagingFee,
+      preLineTotals.reduce((sum, line) => sum + line.lineTotal, 0) + packagingFee,
     );
     const paymentTotal = roundMoney(
       normalizedPayments.reduce(
@@ -1142,6 +1137,11 @@ router.post("/pos/sales", async (req, res) => {
     const creditLines = normalizedPayments.filter(
       (item) => item.method === PaymentMethod.CREDIT,
     );
+    if (creditLines.length > 1) {
+      return res.status(400).json({
+        message: "Нэг борлуулалтад нэг зээлдэгчийн нэг зээлийн төлөлт бүртгэнэ. Зээлийн мөрүүдээ нэгтгэнэ үү.",
+      });
+    }
     const creditPrincipal = roundMoney(
       creditLines.reduce((sum, item) => sum + Number(item.amount || 0), 0),
     );
@@ -1308,6 +1308,17 @@ router.post("/pos/sales", async (req, res) => {
           ],
         } });
         if (unresolvedCard) throw toApiError(409, "Энэ сагсны картын төлбөр бүртгэлтэй. Давхар төлбөр бүртгэхгүй.");
+        const suppliedQrIds = normalizedPayments.filter(line => line.method === PaymentMethod.QPAY)
+          .map(line => String(line.invoiceId || ""));
+        const otherQrPayments = await tx.qPayInvoice.findMany({ where: {
+          organizationId: effectiveOrganizationId, consumedAt: null, saleReference: null,
+          status: { in: [PosQPayStatus.PENDING, PosQPayStatus.PAID, PosQPayStatus.EXPIRED] },
+          NOT: { id: { in: suppliedQrIds } },
+          webhookPayload: { path: ["checkout", "clientSaleId"], equals: clientSaleId },
+        }, select: { status: true, webhookPayload: true } });
+        if (otherQrPayments.some(invoice => invoice.status !== PosQPayStatus.EXPIRED || !isQrCancellationConfirmed(invoice.webhookPayload))) {
+          throw toApiError(409, "Энэ сагсны QR төлбөрийн эцсийн төлөв баталгаажаагүй байна. Төлбөрийг тулгаж шалгана уу.");
+        }
         await assertProductInventoryOwnership(tx, productIds);
 
         const resolvedShiftId = String(body.shiftId || "").trim();
@@ -1748,6 +1759,14 @@ router.post("/pos/sales", async (req, res) => {
           if (invoice.status !== PosQPayStatus.PAID) {
             throw toApiError(409, `Minu invoice ${invoiceId} paid биш байна`);
           }
+          const frozen = checkoutFromPayload(invoice.webhookPayload);
+          if (frozen) {
+            const submitted = { clientSaleId, branchId: body.branchId!, shiftId: activeShift.id, lines: effectiveLines };
+            if (!sameCheckout(frozen, submitted)) {
+              throw toApiError(409, "Борлуулалтын сагс QR төлбөр эхэлсэн сагстай таарахгүй байна");
+            }
+            cardCheckout = frozen;
+          }
           if (invoice.saleReference || invoice.consumedAt) {
             throw toApiError(
               409,
@@ -1938,14 +1957,16 @@ router.post("/pos/sales", async (req, res) => {
           const taxType = product?.taxType || "VAT_ABLE";
           const taxRate = taxType === "VAT_ABLE" ? 10 : 0;
           const cityTaxRate = Number(product?.cityTaxRate || 0);
-          const subTotal = unitPrice * qty;
-          const discountTotal = discount * qty;
-          const taxable = Math.max(0, subTotal - discountTotal);
-          const taxAmount =
-            taxRate > 0 ? taxable * (taxRate / (100 + taxRate)) : 0;
-          const cityTaxAmount =
-            cityTaxRate > 0 ? taxable * (cityTaxRate / (100 + cityTaxRate)) : 0;
-          const lineTotal = taxable;
+          const { subTotal, discountTotal, lineTotal } = calculatePosLineAmounts({
+            unitPrice, qty, discountAmount: discount,
+          });
+          const taxable = lineTotal;
+          const cityTaxAmount = roundMoney(
+            cityTaxRate > 0 ? taxable * (cityTaxRate / (100 + cityTaxRate)) : 0,
+          );
+          const taxAmount = calculatePosInclusiveVat(
+            [{ totalAmount: taxable, totalCityTax: cityTaxAmount }], true, taxType,
+          ).totalVAT;
           const totalProductQty = qtyByProduct.get(line.productId) || qty;
           const allocatedCost = allocatedCostByProduct.get(line.productId);
           const fallbackUnitCost =
@@ -1964,6 +1985,7 @@ router.post("/pos/sales", async (req, res) => {
             productBarcode: product?.barcode || null,
             qty,
             unitPrice,
+            subTotal,
             priceType,
             taxAmount,
             taxType,
@@ -1981,19 +2003,20 @@ router.post("/pos/sales", async (req, res) => {
         });
 
         const subTotal = lineDetails.reduce(
-          (sum, line) => sum + line.unitPrice * line.qty,
+          (sum, line) => sum + line.subTotal,
           0,
         );
-        const taxTotal = lineDetails.reduce(
-          (sum, line) => sum + line.taxAmount,
-          0,
-        );
-        const discountTotal = saleLines.reduce(
-          (sum, line) =>
-            sum + Number(line.discountAmount || 0) * Number(line.qty || 0),
-          0,
-        );
-        const grandTotal = subTotal - discountTotal;
+        const taxGroups = new Map<string, { totalAmount: number; totalCityTax: number }[]>();
+        for (const line of lineDetails) {
+          const group = taxGroups.get(line.taxType) || [];
+          group.push({ totalAmount: line.lineTotal, totalCityTax: line.cityTaxAmount });
+          taxGroups.set(line.taxType, group);
+        }
+        const taxTotal = roundMoney(Array.from(taxGroups, ([taxType, items]) =>
+          calculatePosInclusiveVat(items, true, taxType).totalVAT,
+        ).reduce((sum, amount) => sum + amount, 0));
+        const discountTotal = roundMoney(lineDetails.reduce((sum, line) => sum + line.discount, 0));
+        const grandTotal = roundMoney(lineDetails.reduce((sum, line) => sum + line.lineTotal, 0));
 
         const paymentMethodSummary = (() => {
           const methods = Array.from(
@@ -2591,6 +2614,7 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
         organizationId: true,
         receiptNo: true,
         ebarimtPayload: true,
+        grandTotal: true,
         ebarimtStatus: true,
         ebarimtBillId: true,
         ebarimtReceiptId: true,
@@ -2616,6 +2640,10 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
 
     // A late failure or duplicate browser response must never erase a fiscal success.
     if (sale.ebarimtStatus === "SUCCESS") {
+      if (fiscalIdentityConflict(req.body, sale)) {
+        return res.status(409).json({ code: "FISCAL_IDENTITY_MISMATCH",
+          message: "Өөр дугаартай eBarimt өмнө нь хадгалагдсан байна. Хоёр баримтыг тулгаж шалгана уу. Давхар баримт үүсгэхгүй." });
+      }
       return res.json({ ebarimt: mapEbarimtReceipt(sale) });
     }
 
@@ -2641,6 +2669,10 @@ router.post("/pos/sales/:id/ebarimt", async (req, res) => {
     const status =
       cleanText(body.status)?.toUpperCase() ||
       (body.error ? "FAILED" : "SUCCESS");
+    if (status === "SUCCESS") {
+      const amountError = fiscalAmountError(body.payload, Number(sale.grandTotal));
+      if (amountError) return res.status(409).json({ code: "FISCAL_AMOUNT_MISMATCH", message: amountError });
+    }
     const requestedReceiptType = cleanText(body.receiptType)?.toUpperCase();
     const receiptType =
       requestedReceiptType === "B2B" || requestedReceiptType === "B2C"

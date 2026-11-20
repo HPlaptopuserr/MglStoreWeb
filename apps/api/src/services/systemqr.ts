@@ -63,6 +63,7 @@ interface SystemQrCreateInvoiceParams {
 interface SystemQrCheckInvoiceParams {
   merchantCode: string;
   invoiceNumber: string;
+  expectedAmount?: number;
 }
 
 interface SystemQrCancelInvoiceParams {
@@ -607,7 +608,7 @@ export async function checkSystemQrPayment(
   const { deeplinkBaseUrl } = systemQrEnv();
 
   try {
-    const data = await fetchSystemQrJsonWithTokenRetry<any>(
+    const data = await fetchSystemQrJsonWithTokenRetry<{ status?: string; entity?: { status?: string | null; invoiceNumber?: unknown; merchantCode?: unknown; amount?: unknown } | null }>(
       (token) =>
         paymentProviderFetch(`${deeplinkBaseUrl}/subMerchant/checkInvoice`, {
           method: "POST",
@@ -633,12 +634,20 @@ export async function checkSystemQrPayment(
     // According to docs, entity.status = null (pending), "000" (success), "00x" (failed)
     const entity = data.entity;
     if (data.status === "000" && entity?.status === "000") {
+      // Some provider versions echo identity/amount; contradictory evidence
+      // must never settle a different local invoice.
+      if ((entity.invoiceNumber !== undefined && String(entity.invoiceNumber) !== params.invoiceNumber) ||
+          (entity.merchantCode !== undefined && String(entity.merchantCode) !== params.merchantCode) ||
+          (params.expectedAmount !== undefined && entity.amount !== undefined &&
+            (!Number.isFinite(Number(entity.amount)) || Math.round(Number(entity.amount) * 100) !== Math.round(params.expectedAmount * 100)))) {
+        throw new Error("SystemQR төлбөрийн нэхэмжлэл эсвэл дүн зөрүүтэй байна");
+      }
       return { paid: true };
     }
 
     return { paid: false };
-  } catch (error: any) {
-    console.error("SystemQR checkInvoice error:", error.message);
+  } catch (error: unknown) {
+    console.error("SystemQR checkInvoice error:", error instanceof Error ? error.message : "Unknown provider error");
     throw error;
   }
 }

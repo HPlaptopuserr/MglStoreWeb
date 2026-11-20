@@ -1,3 +1,4 @@
+import { receiptTaxTotal } from "./receipt-tax";
 import type { PosReceipt } from "@mgl/types";
 import { formatPosQuantity } from "@mgl/types";
 
@@ -36,7 +37,7 @@ export function receiptPrintLayout(receipt: PosReceipt) {
     <header><h1>${escape(receipt.branchName)}</h1><p>${receiptTitle}</p></header>
     <section class="metadata">${pair("Баримт №", receipt.receiptNo)}${pair("Огноо", date)}${pair("Кассчин", receipt.registerName ? `${receipt.cashierName} · ${receipt.registerName}` : receipt.cashierName)}</section>
     <table><colgroup><col style="width:40%"><col style="width:12%"><col style="width:23%"><col style="width:25%"></colgroup><thead><tr><th>Бараа</th><th>Тоо</th><th>Үнэ</th><th>Дүн</th></tr></thead><tbody>${receipt.lines.map((line) => `<tr><td><b>${escape(line.name)}</b></td><td data-label="Тоо">${escape(formatPosQuantity(line.qty, line.measureUnit))}</td><td data-label="Үнэ">${money(line.unitPrice)}</td><td data-label="Дүн">${money(line.lineTotal)}</td></tr>`).join("")}</tbody></table>
-    <section class="totals">${pair("Барааны дүн", money(receipt.subTotal))}${receipt.discountTotal ? pair("Хөнгөлөлт", `−${money(receipt.discountTotal)}`) : ""}${pair("Татвар", money(receipt.taxTotal))}${pair("НИЙТ ДҮН", money(receipt.grandTotal), "grand-total")}</section>
+    <section class="totals">${pair("Барааны дүн", money(receipt.subTotal))}${receipt.discountTotal ? pair("Хөнгөлөлт", `−${money(receipt.discountTotal)}`) : ""}${pair("Татвар", money(receiptTaxTotal(receipt)))}${pair("НИЙТ ДҮН", money(receipt.grandTotal), "grand-total")}</section>
     <section class="payments">${payments.map((item) => pair(paymentLabels[item.method] || item.method, money(item.amount)) + (item.method === "CASH" && item.cash ? pair("Авсан мөнгө", money(item.cash.receivedAmount)) + pair("Хариулт", money(item.cash.changeAmount)) : "")).join("")}</section>
     ${ebarimt?.status === "SUCCESS" ? `<section class="tax-info">${ebarimt.customerRegNo ? pair("Байгууллагын РД", ebarimt.customerRegNo) : ""}${ebarimt.customerTin ? pair("Байгууллагын TIN", ebarimt.customerTin) : ""}${ebarimt.lottery ? pair("Сугалаа", ebarimt.lottery) : ""}${ebarimt.billId || ebarimt.receiptId ? pair("ДДТД", ebarimt.billId || ebarimt.receiptId || "") : ""}</section>` : ""}
     </article>`;

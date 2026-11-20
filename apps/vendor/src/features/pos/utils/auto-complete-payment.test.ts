@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canAutoCompletePayment } from "./auto-complete-payment";
+import { canAutoCompletePayment, canResumePaidCheckout } from "./auto-complete-payment";
 import { paymentMethodForKey } from "../constants/payment-methods";
 
 for (const status of ["confirmed", "pending"] as const) {
@@ -72,4 +72,11 @@ test("cashier keyboard mapping stays identical across register and checkout", ()
   assert.equal(paymentMethodForKey("F8"), "CREDIT");
   assert.equal(paymentMethodForKey("F2"), undefined);
   assert.equal(paymentMethodForKey("Enter"), undefined);
+});
+
+test("restored bank payments resume only when a complete basket can finalize", () => {
+  assert.equal(canResumePaidCheckout({ hasConfirmedBankPayment: true, canFinalizeSale: true, hasBasket: true }), true);
+  assert.equal(canResumePaidCheckout({ hasConfirmedBankPayment: true, canFinalizeSale: false, hasBasket: true }), false);
+  assert.equal(canResumePaidCheckout({ hasConfirmedBankPayment: false, canFinalizeSale: true, hasBasket: true }), false);
+  assert.equal(canResumePaidCheckout({ hasConfirmedBankPayment: true, canFinalizeSale: true, hasBasket: false }), false);
 });

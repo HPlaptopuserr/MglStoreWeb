@@ -16,3 +16,13 @@ test("print layout escapes data, preserves totals and formats local date", () =>
   assert.ok(html.includes("Хариулт"));
   assert.ok(html.includes("TEST-EBARIMT-1"));
 });
+
+test("thermal print uses fiscal tax including explicit zero without changing historical sale totals", () => {
+  const receipt = createSalesHistoryDemo(new Date("2026-09-29T04:00:00Z"))[0];
+  receipt.taxTotal = 1000;
+  receipt.ebarimt = { status: "SUCCESS", totalVAT: 0, totalCityTax: 0 };
+  assert.match(receiptPrintLayout(receipt), /<span>Татвар<\/span><strong>₮0<\/strong>/);
+  receipt.ebarimt = { status: "SUCCESS", totalVAT: 100, totalCityTax: 20 };
+  assert.match(receiptPrintLayout(receipt), /<span>Татвар<\/span><strong>₮120<\/strong>/);
+  assert.equal(receipt.taxTotal, 1000);
+});

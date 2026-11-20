@@ -25,6 +25,8 @@ before(async () => {
 after(async () => { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); });
 afterEach(() => { while (restores.length) restores.pop()?.(); });
 beforeEach(() => {
+  stub(prisma, '$transaction', async (operation: (tx: typeof prisma) => Promise<unknown>) => operation(prisma));
+  stub(prisma, '$queryRaw', async () => []);
   stub(prisma.user, 'findUnique', async () => ({ id: 'owner', role: 'USER', isActive: true, deletedAt: null }));
   stub(prisma.organizationMember, 'findFirst', async () => ({ organizationId: 'org', role: 'OWNER', capabilities: [] }));
   stub(prisma.organizationMember, 'count', async () => 1);

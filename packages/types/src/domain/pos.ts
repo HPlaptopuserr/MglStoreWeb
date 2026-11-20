@@ -462,6 +462,8 @@ export interface PosReceipt {
   status?: string;
   voidedAt?: string | null;
   ebarimt?: {
+    totalVAT?: number;
+    totalCityTax?: number;
     status?: string | null;
     billId?: string | null;
     receiptId?: string | null;

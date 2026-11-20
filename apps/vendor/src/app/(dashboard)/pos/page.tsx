@@ -1,4 +1,5 @@
 "use client";
+import { readPosFiscalTaxTotals } from "@mgl/types";
 import { cardPaymentFailureMessage, cardPaymentOutcome, cardRequestFailureIsDefinitive } from "@/features/pos/utils/card-payment-outcome";
 import { effectiveCardProvider } from "@/features/pos/utils/card-register-provider";
 import { paymentRequestId } from "@/features/pos/utils/payment-request-id";
@@ -21,10 +22,13 @@ import { VendorNavigationActions } from "@/features/session/VendorNavigationActi
 import { assertRetailCheckoutContext } from "@/features/pos/utils/retail-register-policy";
 import { getCreditList } from "@/features/pos/api/get-credit-list";
 import { fetchOrgRegisters } from "@/features/pos/api/register";
+import { EbarimtAttachmentRecoveryNotice } from "@/features/pos/components/EbarimtAttachmentRecoveryNotice";
+import { ebarimtLoyaltyPaymentBlocker } from "@/features/pos/utils/ebarimt-loyalty-policy";
+import { issueRecoverableEbarimt, acknowledgeEbarimtAttachment, retryEbarimtAttachments, hasPendingEbarimtIssue, hasDurableEbarimtPayload } from "@/features/pos/utils/ebarimt-attachment-recovery";
 import { receiptAction } from "@/features/pos/utils/receipt-flow";
 import { ReceiptBuyerChoice } from "@/features/pos/components/ReceiptBuyerChoice";
 import { checkoutFinalizationBlocker } from "@/features/pos/utils/checkout-finalization";
-import { canAutoCompletePayment } from "@/features/pos/utils/auto-complete-payment";
+import { canAutoCompletePayment, canResumePaidCheckout } from "@/features/pos/utils/auto-complete-payment";
 import { useEventCallback } from "@/features/pos/hooks/useEventCallback";
 import { canSwitchAfterQrCancellation } from "@/features/pos/utils/payment-method-switch";
 import { usePaymentMethodSwitch } from "@/features/pos/hooks/usePaymentMethodSwitch";
@@ -286,6 +290,7 @@ const initialLoyaltyState: CheckoutLoyaltyState = {
 function mapEbarimtPayload(payload: AttachEbarimtPayload): NonNullable<PosReceipt["ebarimt"]> {
   return {
     status: payload.status,
+    ...(payload.status === "SUCCESS" ? readPosFiscalTaxTotals(payload.payload) : {}),
     billId: payload.billId ?? null,
     receiptId: payload.receiptId ?? null,
     qrData: payload.qrData ?? null,
@@ -672,6 +677,23 @@ export default function PosDemoPage() {
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
   const { shift, blockingShift, ready: shiftReady, error: shiftError, loading: shiftLoading, load: loadShift, open: openShift, close: closeShiftFn, closeBlocking } = useCurrentShift(registerConfig?.id);
   const unknownBarcode = useUnknownBarcodeRegistration();
+  useEffect(() => {
+    if (!organizationId || !posEnabled) return;
+    let stopped = false;
+    let running = false;
+    const retry = async () => {
+      if (stopped || running) return;
+      running = true;
+      try { await retryEbarimtAttachments(organizationId, attachEbarimtReceipt); }
+      catch (error: unknown) { console.warn("Fiscal attachment recovery unavailable", error); }
+      finally { running = false; }
+    };
+    void retry();
+    const timer = window.setInterval(() => { void retry(); }, 30_000);
+    window.addEventListener("online", retry);
+    return () => { stopped = true; window.clearInterval(timer); window.removeEventListener("online", retry); };
+  }, [organizationId, posEnabled]);
+
   const shiftRegisterMismatch = Boolean(
     shift?.registerId &&
       registerConfig?.id &&
@@ -700,7 +722,7 @@ export default function PosDemoPage() {
       const qpayPaid = recovery.paymentEntries.some(
         (entry) => entry.method === "QR" && entry.status === "confirmed",
       );
-      restoredCardAutoFinalizeRef.current = recovery.paymentEntries.some(entry => entry.method === "CARD" && entry.status === "confirmed");
+      restoredCardAutoFinalizeRef.current = qpayPaid || recovery.paymentEntries.some(entry => entry.method === "CARD" && entry.status === "confirmed" && getEffectiveCardProvider(registerConfig) === "MINU_AGENT");
       setAutoCheckoutActive(false);
       setScanStatus(qpayPaid ? "success" : "idle");
       setScanMessage(
@@ -1773,10 +1795,10 @@ export default function PosDemoPage() {
   const selectedByCode = productCatalog.findProduct?.(lastScannedCode) ?? null;
 
   useEffect(() => {
-    if (!restoredCardAutoFinalizeRef.current || !canFinalizeSale || getEffectiveCardProvider(registerConfig) !== "MINU_AGENT") return;
+    if (!canResumePaidCheckout({ hasConfirmedBankPayment: restoredCardAutoFinalizeRef.current, canFinalizeSale, hasBasket: state.cart.length > 0 })) return;
     restoredCardAutoFinalizeRef.current = false;
     setAutoCheckoutActive(true);
-  }, [canFinalizeSale, registerConfig]);
+  }, [canFinalizeSale, registerConfig, state.cart.length]);
 
   const attachRecoveredCard = (payment: VerifiedCardRecovery) => {
     if (!registerConfig || !shift || selectedCreditRepayment || paymentEntries.length > 0 || !state.cart.length || Math.round(payment.amount * 100) !== Math.round(totals.grandTotal * 100)) {
@@ -2220,8 +2242,11 @@ export default function PosDemoPage() {
     processScan(code);
   };
 
-  const completePaidSale = (finalReceipt: PosReceipt, finalMessage: string, isCreditSale: boolean) => {
-    clearQPayCheckoutRecovery(organizationId, registerConfig?.id, clientSaleIdRef.current ?? undefined, true);
+  const completePaidSale = (finalReceipt: PosReceipt, finalMessage: string, isCreditSale: boolean, preserveRecovery = false) => {
+    if (!preserveRecovery) {
+      try { clearQPayCheckoutRecovery(organizationId, registerConfig?.id, clientSaleIdRef.current ?? undefined, true); }
+      catch (error: unknown) { console.warn("Sale recorded; checkout recovery cleanup failed", error); }
+    }
     setPendingEbarimtSale(null);
     setCompanyReceipt(false);
     setQpayModal(null);
@@ -2307,25 +2332,24 @@ export default function PosDemoPage() {
       setScanStatus("idle");
       setScanMessage(mode === "B2B" ? "Байгууллагын eBarimt баримт үүсгэж байна..." : "Хувь хүний eBarimt баримт үүсгэж байна...");
       ebarimtAttempted = true;
-      const ebarimtPayload = await issueLocalEbarimtReceipt(
-        pending.receipt,
-        pending.paymentBreakdown,
-        registerConfig,
-        buyer,
-      );
+      const ebarimtPayload = await issueRecoverableEbarimt(organizationId, pending.receipt.id,
+        beforeDispatch => issueLocalEbarimtReceipt(pending.receipt, pending.paymentBreakdown, registerConfig, buyer, beforeDispatch), undefined, pending.receipt.receiptNo);
       finalReceipt = { ...pending.receipt, ebarimt: mapEbarimtPayload(ebarimtPayload) };
       try {
         const saved = await attachEbarimtReceipt(pending.receipt.id, ebarimtPayload);
+        acknowledgeEbarimtAttachment(organizationId, pending.receipt.id);
         finalReceipt = { ...pending.receipt, ebarimt: saved.ebarimt || finalReceipt.ebarimt };
       } catch (saveError) {
         console.warn("eBarimt receipt created locally but failed to attach to sale", saveError);
       }
       startEbarimtSendDataSync(`sale ${pending.receipt.receiptNo}`);
       const label = mode === "B2B" ? "байгууллагын eBarimt" : "хувь хүний eBarimt";
-      completePaidSale(finalReceipt, `Төлбөр болон ${label} баримт амжилттай.${pending.loyaltyMessage}`, pending.isCreditSale);
+      const attachmentPending = hasPendingEbarimtIssue(organizationId, pending.receipt.id);
+      const preserveRecovery = attachmentPending && !hasDurableEbarimtPayload(organizationId, pending.receipt.id);
+      completePaidSale(finalReceipt, `Төлбөр болон ${label} баримт амжилттай.${pending.loyaltyMessage}${attachmentPending ? " Баримтын серверийн хадгалалт хүлээгдэж байна." : ""}`, pending.isCreditSale, preserveRecovery);
       resetEbarimtBuyerDialog();
-    } catch (ebarimtError: any) {
-      const errorMessage = ebarimtError?.message || "eBarimt баримт үүсгэхэд алдаа гарлаа";
+    } catch (ebarimtError: unknown) {
+      const errorMessage = ebarimtError instanceof Error ? ebarimtError.message : "eBarimt баримт үүсгэхэд алдаа гарлаа";
       setEbarimtBuyerError(errorMessage);
       finalReceipt = {
         ...pending.receipt,
@@ -2479,7 +2503,13 @@ export default function PosDemoPage() {
             : ` M Point +${receipt.loyalty.earnedPoints.toLocaleString("mn-MN")} орлоо.`
           : "";
 
-      const receiptFlow = receiptAction({ enabled: effectiveEbarimtEnabled, creditSale: isCreditSale, companyReceipt });
+      let preserveRecovery = false;
+      const receiptFlow = receipt.ebarimt?.status === "SUCCESS"
+        ? "NONE"
+        : hasPendingEbarimtIssue(organizationId, receipt.id)
+          ? "ISSUE_PERSONAL"
+          : receiptAction({ enabled: effectiveEbarimtEnabled, creditSale: isCreditSale, companyReceipt });
+      if (receipt.ebarimt?.status === "SUCCESS") acknowledgeEbarimtAttachment(organizationId, receipt.id);
       if (receiptFlow === "ASK_COMPANY") {
         setAutoCheckoutActive(false);
         setPendingEbarimtSale({
@@ -2503,18 +2533,22 @@ export default function PosDemoPage() {
         try {
           setScanStatus("idle");
           setScanMessage("eBarimt баримт үүсгэж байна...");
-          const ebarimtPayload = await issueLocalEbarimtReceipt(receipt, paymentBreakdown, registerConfig);
+          const ebarimtPayload = await issueRecoverableEbarimt(organizationId, receipt.id,
+            beforeDispatch => issueLocalEbarimtReceipt(receipt, paymentBreakdown, registerConfig, { type: "B2C" }, beforeDispatch), undefined, receipt.receiptNo);
           finalReceipt = { ...receipt, ebarimt: mapEbarimtPayload(ebarimtPayload) };
           try {
             const saved = await attachEbarimtReceipt(receipt.id, ebarimtPayload);
+            acknowledgeEbarimtAttachment(organizationId, receipt.id);
             finalReceipt = { ...receipt, ebarimt: saved.ebarimt || finalReceipt.ebarimt };
           } catch (saveError) {
             console.warn("eBarimt receipt created locally but failed to attach to sale", saveError);
           }
           startEbarimtSendDataSync(`sale ${receipt.receiptNo}`);
-          finalMessage = `Төлбөр болон eBarimt баримт амжилттай.${loyaltyMessage}`;
-        } catch (ebarimtError: any) {
-          const errorMessage = ebarimtError?.message || "eBarimt баримт үүсгэхэд алдаа гарлаа";
+          const attachmentPending = hasPendingEbarimtIssue(organizationId, receipt.id);
+          preserveRecovery = attachmentPending && !hasDurableEbarimtPayload(organizationId, receipt.id);
+          finalMessage = `Төлбөр болон eBarimt баримт амжилттай.${loyaltyMessage}${attachmentPending ? " Баримтын серверийн хадгалалт хүлээгдэж байна." : ""}`;
+        } catch (ebarimtError: unknown) {
+          const errorMessage = ebarimtError instanceof Error ? ebarimtError.message : "eBarimt баримт үүсгэхэд алдаа гарлаа";
           finalReceipt = {
             ...receipt,
             ebarimt: {
@@ -2533,10 +2567,10 @@ export default function PosDemoPage() {
         finalMessage = `Төлбөр амжилттай.${loyaltyMessage}`;
       }
 
-      completePaidSale(finalReceipt, finalMessage, isCreditSale);
-    } catch (e: any) {
-      const message = e?.message || "Гүйлгээ батлах үед алдаа гарлаа.";
-      const status = Number(e?.status || 0);
+      completePaidSale(finalReceipt, finalMessage, isCreditSale, preserveRecovery);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : "Гүйлгээ батлах үед алдаа гарлаа.";
+      const status = Number(e && typeof e === "object" && "status" in e ? e.status : 0);
       const shouldRetry =
         confirmedPayments.some((payment) => payment.method === "QR" || (payment.method === "CARD" && getEffectiveCardProvider(registerConfig) === "MINU_AGENT")) &&
         (status === 0 || status === 408 || status === 429 || status >= 500) &&
@@ -2567,6 +2601,9 @@ export default function PosDemoPage() {
   };
 
   const addPaymentEntry = async (method: PaymentMethod, amount: number, credit?: SaleCreditPaymentMeta, cash?: CashPaymentDetails) => {
+    const fiscalBlocker = ebarimtLoyaltyPaymentBlocker({ enabled: effectiveEbarimtEnabled && method !== "CREDIT", redeemedPoints: appliedLoyaltyRedeem });
+    if (fiscalBlocker) { setScanStatus("not-found"); setScanMessage(fiscalBlocker); if (method === "CASH") throw new Error(fiscalBlocker); return; }
+
     if (deferringCheckoutRef.current || qpayCreatingRef.current || cardPaymentRunRef.current || paymentEntries.some(item => item.status === "pending")) {
       setScanMessage("Хүлээгдэж буй төлбөрөө эхлээд баталгаажуулна уу. Дараагийн хэсгийг дараа нь төлнө.");
       return;
@@ -2823,6 +2860,13 @@ export default function PosDemoPage() {
   const qpayCreatingRef = useRef(false);
   const [qpayCreating, setQpayCreating] = useState(false);
   const requestQPay = async (amount: number) => {
+    const fiscalPaymentBlocker = ebarimtLoyaltyPaymentBlocker({ enabled: effectiveEbarimtEnabled, redeemedPoints: loyalty.mode === "REDEEM" ? appliedLoyaltyRedeem : 0 });
+    if (fiscalPaymentBlocker) {
+      setScanStatus("not-found");
+      setScanMessage(fiscalPaymentBlocker);
+      return;
+    }
+
     if (qpayCreatingRef.current || cardPaymentRunRef.current || paymentEntries.some(item => item.status === "pending")) return;
     const safeAmount = roundMoney(Math.max(0, Math.min(amount, remaining)));
     if (safeAmount <= 0) return;
@@ -2843,6 +2887,13 @@ export default function PosDemoPage() {
         amount: safeAmount,
         registerId: registerConfig?.id,
         organizationId,
+        ...(!selectedCreditRepayment ? { checkout: {
+          clientSaleId: clientSaleIdRef.current,
+          branchId: registerConfig?.branchId ?? "",
+          shiftId: shift?.id ?? "",
+          lines: state.cart.map(line => ({ productId: line.productId, qty: line.qty,
+            unitPrice: line.unitPrice, priceType: line.priceType, discountAmount: line.discountAmount, taxRate: line.taxRate })),
+        } } : {}),
       });
       if (!clientSaleIdRef.current) {
         clientSaleIdRef.current = `sale-${Date.now()}-${Math.floor(Math.random() * 100000)}`;
@@ -2896,7 +2947,7 @@ export default function PosDemoPage() {
         const invoice = await getQPayInvoiceStatus(id);
         if (invoice.status !== "PAID") {
           setScanStatus("idle");
-          setScanMessage("Төлбөр хараахан баталгаажаагүй байна. Төлсөн бол дахин төлөхгүй хүлээнэ үү.");
+          setScanMessage(invoice.recoveryMessage || "Төлбөр хараахан баталгаажаагүй байна. Төлсөн бол дахин төлөхгүй хүлээнэ үү.");
           return;
         }
 
@@ -3433,6 +3484,12 @@ export default function PosDemoPage() {
             if (refreshProvider) lastProviderCheck.set(invoiceId, Date.now());
             const status = await getQPayInvoiceStatus(invoiceId, controller.signal, refreshProvider);
             if (controller.signal.aborted) return;
+            if (status.recoveryRequired) {
+              setScanStatus("not-found");
+              setScanMessage(status.recoveryMessage || "QR төлбөрийн банкны хариуг тулгаж шалгуулна уу. Дахин төлөхгүй.");
+              return;
+            }
+
 
             if (status.status === "PENDING" && status.qrText && !qpayModal) {
               setQpayModal({ open: true, invoiceId, amount: status.amount, qrText: status.qrText, qrImage: status.qrImage || "", expiresAt: status.expiresAt });
@@ -3595,6 +3652,7 @@ export default function PosDemoPage() {
       <MobileBlock />
       {registerConfig && <EbarimtVatRecoveryNotice register={registerConfig}
         idle={view === "register" && state.cart.length === 0 && paymentEntries.length === 0 && !pendingEbarimtSale && !checkoutStarting && !autoFinalizing && !checkingEbarimt} />}
+      {organizationId && <EbarimtAttachmentRecoveryNotice key={organizationId} organizationId={organizationId} onOpenHistory={() => { void reloadReceiptHistory(); setSalesHistoryOpen(true); }} />}
       <ReceiptPrintNotice receipt={printableReceipt} onDismiss={() => setPrintableReceipt(null)} />
       <CashChangeNotice receipt={cashChangeReceipt} onDismiss={() => { setCashChangeReceipt(null); setCustomerDisplaySuccess(null); }} />
       {pendingEbarimtSale && (

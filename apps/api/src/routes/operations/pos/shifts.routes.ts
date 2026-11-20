@@ -1,3 +1,4 @@
+import { loadUnsettledShiftPayments } from "./unsettled-shift-payments";
 import { Router, type Router as ExpressRouter } from "express";
 import {
   prisma,
@@ -533,6 +534,22 @@ router.post("/pos/shifts/close", async (req, res) => {
         if (!shift) throw toApiError(404, "Ээлж олдсонгүй");
         if (shift.status !== ShiftStatus.OPEN) {
           throw toApiError(409, "Ээлж аль хэдийн хаагдсан");
+        }
+
+        if (shift.mode === "RETAIL" && shift.registerId) {
+          const unresolved = await loadUnsettledShiftPayments(tx, {
+            id: shift.id,
+            organizationId: shift.organizationId,
+            registerId: shift.registerId,
+            cashierId: shift.cashierId,
+            openedAt: shift.openedAt,
+          });
+          if (unresolved.cardCount || unresolved.qrCount) {
+            throw toApiError(
+              409,
+              `Энэ ээлжид борлуулалттай холбогдоогүй картын ${unresolved.cardCount}, QR ${unresolved.qrCount} төлбөр байна. Төлөвийг шалгаж, борлуулалтаа дуусгах эсвэл төлөгдөөгүй төлбөрийг баталгаатай цуцалсны дараа ээлжээ хаана уу.`,
+            );
+          }
         }
 
         if (

@@ -30,6 +30,9 @@ export type EbarimtInfo = {
 };
 
 type EbarimtReceiptContent = {
+  totalAmount?: number | string;
+  totalVAT?: number | string;
+  totalCityTax?: number | string;
   id?: string;
   billId?: string;
   ddtd?: string;
@@ -568,11 +571,17 @@ function buildPayments(
     payments.length > 0
       ? payments
       : [{ method: receipt.paymentMethod, amount: receipt.grandTotal }];
-  return source.map((item) => ({
-    code: paymentCode(item.method),
-    status: "PAID",
-    paidAmount: money(item.amount),
-  }));
+  const result: EbarimtPayment[] = source.map((item) => {
+    if (!Number.isFinite(item.amount) || item.amount < 0) throw new Error("eBarimt төлбөрийн дүн буруу байна.");
+    return { code: paymentCode(item.method), status: "PAID", paidAmount: money(item.amount) };
+  });
+  const paidCents = result.reduce((sum, item) => sum + Math.round(item.paidAmount * 100), 0);
+  const totalCents = Math.round(receipt.grandTotal * 100);
+  if (!Number.isSafeInteger(totalCents) || totalCents < 0 || paidCents !== totalCents ||
+      (payments.length === 0 && Number(receipt.loyalty?.redeemedPoints || 0) > 0)) {
+    throw new Error("eBarimt нийт дүн болон төлбөрийн задаргаа зөрүүтэй байна. M Point ашигласан бол татварын төлбөрийн ангиллыг баталгаажуулна уу. Давхар төлбөр авахгүй.");
+  }
+  return result;
 }
 
 function makeBillIdSuffix(receiptNo: string) {
@@ -715,6 +724,7 @@ export async function issueLocalEbarimtReceipt(
   payments: SalePaymentLine[],
   register?: RegisterConfig | null,
   buyer: EbarimtBuyer = { type: "B2C" },
+  beforeDispatch?: () => void,
 ): Promise<AttachEbarimtPayload> {
   const baseUrl = getRegisterPosApiUrl(register);
   const info = await fetchLocalPosApi<EbarimtInfo>(
@@ -835,6 +845,11 @@ export async function issueLocalEbarimtReceipt(
     payments: buildPayments(receipt, payments),
   };
 
+  const itemTotalCents = receiptGroups.reduce((sum, group) => sum + Math.round(group.totalAmount * 100), 0);
+  if (itemTotalCents !== Math.round(payload.totalAmount * 100)) {
+    throw new Error("eBarimt барааны нийлбэр болон борлуулалтын нийт дүн зөрүүтэй байна. Борлуулалтын баримтаа шалгана уу.");
+  }
+  beforeDispatch?.();
   const raw = await fetchLocalPosApi<
     EbarimtWrapperResponse | EbarimtReceiptContent
   >(
@@ -852,6 +867,14 @@ export async function issueLocalEbarimtReceipt(
     throw new Error(
       content.message || "eBarimt баримт SUCCESS төлөвтэй ирсэнгүй",
     );
+  }
+
+  for (const field of ["totalAmount", "totalVAT", "totalCityTax"] as const) {
+    const reported = content[field];
+    if (reported !== undefined && (!Number.isFinite(Number(reported)) || String(reported).trim() === "" ||
+        Math.round(Number(reported) * 100) !== Math.round(payload[field] * 100))) {
+      throw new Error(`eBarimt хариуны ${field} дүн борлуулалтын илгээсэн дүнтэй зөрүүтэй байна. PosAPI дээр өмнөх баримтыг шалгана уу; дахин баримт үүсгэхгүй.`);
+    }
   }
 
   const firstReceipt = Array.isArray(content.receipts)
@@ -902,6 +925,7 @@ export async function attachEbarimtReceipt(
     {
       method: "POST",
       body: payload,
+      signal: AbortSignal.timeout(15_000),
     },
   );
 }

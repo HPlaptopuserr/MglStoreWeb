@@ -55,5 +55,6 @@ export function createSale(payload: SalePayload): Promise<PosReceipt> {
   return posRequest<PosReceipt>("/pos/sales", {
     method: "POST",
     body: safePayload,
+    signal: AbortSignal.timeout(60_000),
   });
 }

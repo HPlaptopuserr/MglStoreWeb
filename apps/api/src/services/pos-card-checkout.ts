@@ -1,5 +1,5 @@
 import { Prisma } from "@mgl/database";
-import { normalizePosMeasureUnit, toPosStoredStockQuantity } from "@mgl/types";
+import { calculatePosLineAmounts, normalizePosMeasureUnit, toPosStoredStockQuantity } from "@mgl/types";
 import { lockOrganizationInventory } from "./vendor-inventory-warehouse.service";
 import { assertProductInventoryOwnership } from "./warehouse-product-ownership";
 
@@ -86,7 +86,7 @@ export function checkoutFromPayload(
     !payload ||
     typeof payload !== "object" ||
     Array.isArray(payload) ||
-    payload.provider !== "MINU_AGENT" ||
+    !["MINU_AGENT", "QPAY", "SYSTEMQR"].includes(String(payload.provider)) ||
     !payload.checkout
   )
     return null;
@@ -132,6 +132,7 @@ export async function reserveCardCheckout(
     where: { id: registerId },
     select: { branchId: true, mode: true },
   });
+  await tx.$queryRaw`SELECT "id" FROM "PosShift" WHERE "id" = ${checkout.shiftId} FOR UPDATE`;
   const shift = await tx.posShift.findFirst({
     where: {
       id: checkout.shiftId,
@@ -160,14 +161,26 @@ export async function reserveCardCheckout(
       },
     },
   });
-  const frozen = previous
-    ? checkoutFromPayload(previous.providerPayload)
-    : null;
-  const unresolved = await tx.cardPaymentAttempt.findFirst({ where: {
-    organizationId, status: { in: ["PENDING", "FAILED"] }, consumedAt: null,
+  const unresolvedCard = await tx.cardPaymentAttempt.count({ where: {
+    organizationId, consumedAt: null, status: { in: ["PENDING", "FAILED"] },
     providerPayload: { path: ["checkout", "clientSaleId"], equals: checkout.clientSaleId },
   } });
-  if (unresolved) fail("Энэ сагсны өмнөх картын төлбөр шалгагдаж байна. Дахин төлбөр авахгүй.");
+  if (unresolvedCard) fail("Энэ сагсны картын төлбөрийн төлөв тодорхойгүй байна. Эхлээд ижил гүйлгээний төлөвийг шалгана уу.");
+  const previousQr = await tx.qPayInvoice.findFirst({ where: {
+    organizationId, registerId, consumedAt: null,
+    webhookPayload: { path: ["checkout", "clientSaleId"], equals: checkout.clientSaleId },
+  } });
+  const frozen = (previous ? checkoutFromPayload(previous.providerPayload) : null) ??
+    (previousQr ? checkoutFromPayload(previousQr.webhookPayload) : null);
+  const unresolvedQr = await tx.qPayInvoice.findMany({ where: {
+    organizationId, consumedAt: null, status: { in: ["PENDING", "EXPIRED"] },
+    webhookPayload: { path: ["checkout", "clientSaleId"], equals: checkout.clientSaleId },
+  }, select: { webhookPayload: true } });
+  if (unresolvedQr.some(invoice => {
+    const payload = invoice.webhookPayload;
+    return !payload || typeof payload !== "object" || Array.isArray(payload) ||
+      !isQrCancellationConfirmed(payload);
+  })) fail("Энэ сагсны QR төлбөрийн төлөв тодорхойгүй байна. Эхлээд ижил нэхэмжлэлээ шалгана уу.");
   if (frozen && !sameCheckout(frozen, checkout))
     fail("Төлбөртэй сагсны мэдээлэл өөрчлөгдсөн байна");
   const ids = checkout.lines.map((l) => l.productId).sort();
@@ -239,7 +252,7 @@ export async function reserveCardCheckout(
       fail(
         `"${product.name}" барааны боломжит нөөц хүрэлцэхгүй. Төлбөр эхлээгүй.`,
       );
-    total += (line.unitPrice - (line.discountAmount ?? 0)) * line.qty;
+    total += calculatePosLineAmounts(line).lineTotal;
     await tx.posCardStockReservation.upsert({
       where: {
         organizationId_clientSaleId_productId: {
@@ -270,9 +283,41 @@ export async function reserveCardCheckout(
     },
     _sum: { amount: true },
   });
+  const paidQr = await tx.qPayInvoice.aggregate({ where: {
+    organizationId, status: "PAID", consumedAt: null,
+    webhookPayload: { path: ["checkout", "clientSaleId"], equals: checkout.clientSaleId },
+  }, _sum: { amount: true } });
   if (
-    Math.round((Number(approved._sum.amount ?? 0) + amount) * 100) >
+    Math.round((Number(approved._sum.amount ?? 0) + Number(paidQr._sum.amount ?? 0) + amount) * 100) >
     Math.round(total * 100)
   )
     fail("Картын төлбөр сагсны нийт дүнгээс их байна");
+}
+
+/** Retain inventory while any bank request can still settle this basket. */
+export async function releaseResolvedCheckoutReservation(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  clientSaleId: string,
+): Promise<void> {
+  await lockOrganizationInventory(tx, organizationId);
+  const cards = await tx.cardPaymentAttempt.count({ where: {
+    organizationId, consumedAt: null, status: { in: ["PENDING", "APPROVED", "FAILED"] },
+    providerPayload: { path: ["checkout", "clientSaleId"], equals: clientSaleId },
+  } });
+  const invoices = await tx.qPayInvoice.findMany({ where: {
+    organizationId, consumedAt: null,
+    webhookPayload: { path: ["checkout", "clientSaleId"], equals: clientSaleId },
+  }, select: { status: true, webhookPayload: true } });
+  const unresolvedQr = invoices.some(invoice => {
+    const payload = invoice.webhookPayload;
+    return invoice.status === "PAID" || !payload || typeof payload !== "object" ||
+      Array.isArray(payload) || !isQrCancellationConfirmed(payload);
+  });
+  if (!cards && !unresolvedQr) await tx.posCardStockReservation.deleteMany({ where: { organizationId, clientSaleId } });
+}
+
+export function isQrCancellationConfirmed(payload: Prisma.JsonValue): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  return payload.providerCancellationConfirmed === true || (!payload.checkout && payload.providerCancellationConfirmed !== false && Boolean(payload.cancelledAt));
 }

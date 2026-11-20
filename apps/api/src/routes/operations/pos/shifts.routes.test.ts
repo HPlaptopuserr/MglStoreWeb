@@ -580,3 +580,23 @@ test("explicit retail shift context keeps the mode filter", async () => {
   assert.equal(response.status, 200);
   assert.equal((shifts.mock.calls[0]?.arguments[0] as Prisma.PosShiftFindManyArgs).where?.mode, "RETAIL");
 });
+
+for (const counts of [
+  { cardCount: 1n, qrCount: 0n },
+  { cardCount: 0n, qrCount: 2n },
+]) {
+  test(`retail shift closure preserves unresolved bank payments (${counts.cardCount} card, ${counts.qrCount} QR)`, async () => {
+    stub(prisma, "$queryRaw", async (query: TemplateStringsArray) =>
+      query.join("").includes('FROM "CardPaymentAttempt"') ? [counts] : [],
+    );
+    const update = stub(prisma.posShift, "update", async () => {
+      throw new Error("An unsettled shift must remain open");
+    });
+    const response = await close({ shiftId: shift.id, closingCash: 1000, note: "Reconcile shift" });
+    assert.equal(response.status, 409);
+    const body: unknown = await response.json();
+    assert.ok(body && typeof body === "object" && "message" in body);
+    assert.match(String(body.message), /борлуулалттай холбогдоогүй/);
+    assert.equal(update.mock.callCount(), 0);
+  });
+}

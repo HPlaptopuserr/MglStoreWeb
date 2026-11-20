@@ -45,3 +45,11 @@ test("receipt preserves minor units", () => {
     /НИЙТ ДҮН: ₮0.25/,
   );
 });
+
+test("successful non-VAT fiscal receipts print actual zero tax rather than the sale estimate", () => {
+  const fiscalReceipt = { ...receipt, taxTotal: 1409.09, ebarimt: { status: "SUCCESS", totalVAT: 0, totalCityTax: 0 } };
+  assert.match(formatReceipt(fiscalReceipt), /Татвар: ₮0\n/);
+  assert.equal(fiscalReceipt.taxTotal, 1409.09);
+  assert.match(formatReceipt({ ...fiscalReceipt, ebarimt: { status: "SUCCESS", totalVAT: 100, totalCityTax: 20 } }), /Татвар: ₮120\n/);
+  assert.match(formatReceipt({ ...fiscalReceipt, ebarimt: { status: "FAILED", totalVAT: 0 } }), /Татвар: ₮1,409.09/);
+});

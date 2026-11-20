@@ -22,3 +22,10 @@ export function canAutoCompletePayment({
     Math.round(amount * 100) === Math.round(remaining * 100)
   );
 }
+
+/** Resumption only finalizes saved funds; it never dispatches a bank request. */
+export function canResumePaidCheckout({
+  hasConfirmedBankPayment, canFinalizeSale, hasBasket,
+}: { hasConfirmedBankPayment: boolean; canFinalizeSale: boolean; hasBasket: boolean }): boolean {
+  return hasConfirmedBankPayment && canFinalizeSale && hasBasket;
+}

@@ -1,3 +1,4 @@
+import { readPosFiscalTaxTotals } from "@mgl/types";
 import { vendorProductReadScope } from "../../../services/warehouse-product-scope";
 import { readCashPayment } from "@mgl/types";
 import { Router, type Router as ExpressRouter } from "express";
@@ -134,6 +135,7 @@ const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) => {
   const metadata = readEbarimtMetadata(sale.ebarimtPayload);
   return {
     status: sale.ebarimtStatus,
+    ...(sale.ebarimtStatus === "SUCCESS" ? readPosFiscalTaxTotals(sale.ebarimtPayload) : {}),
     billId: sale.ebarimtBillId,
     receiptId: sale.ebarimtReceiptId,
     qrData: sale.ebarimtQrData,

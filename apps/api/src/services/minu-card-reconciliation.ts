@@ -2,7 +2,8 @@ import { prisma, PosPaymentStatus, type Prisma } from "@mgl/database";
 import type { CardPaymentAttempt } from "@prisma/client";
 import { getMinuAgentContextForRegister } from "./minu-register-context";
 import { checkMinuAgentTransaction, type MinuTxnResult } from "./minu-pos-agent";
-import { checkoutFromPayload } from "./pos-card-checkout";
+import { checkoutFromPayload, releaseResolvedCheckoutReservation } from "./pos-card-checkout";
+import { lockOrganizationInventory } from "./vendor-inventory-warehouse.service";
 
 export function minuCardInvoice(attempt: CardPaymentAttempt): string | null {
   const payload = attempt.providerPayload;
@@ -50,8 +51,9 @@ async function reconcileAttempt(attempt: CardPaymentAttempt) {
     await prisma.$transaction(async (tx) => {
       if (attempt.organizationId)
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${attempt.organizationId}:${attempt.terminalId}`}, 0))`;
+      if (checkout && attempt.organizationId) await lockOrganizationInventory(tx, attempt.organizationId);
       // A late pending/declined response must never overwrite approval or consumption.
-      await tx.cardPaymentAttempt.updateMany({
+      const changed = await tx.cardPaymentAttempt.updateMany({
         where: {
           id: attempt.id,
           updatedAt: attempt.updatedAt,
@@ -69,31 +71,8 @@ async function reconcileAttempt(attempt: CardPaymentAttempt) {
         },
         data,
       });
-      if (result.declined && checkout && attempt.organizationId) {
-        const unresolved = await tx.cardPaymentAttempt.count({
-          where: {
-            organizationId: attempt.organizationId,
-            status: {
-              in: [
-                PosPaymentStatus.PENDING,
-                PosPaymentStatus.APPROVED,
-                PosPaymentStatus.FAILED,
-              ],
-            },
-            consumedAt: null,
-            providerPayload: {
-              path: ["checkout", "clientSaleId"],
-              equals: checkout.clientSaleId,
-            },
-          },
-        });
-        if (!unresolved)
-          await tx.posCardStockReservation.deleteMany({
-            where: {
-              organizationId: attempt.organizationId!,
-              clientSaleId: checkout.clientSaleId,
-            },
-          });
+      if (changed.count && result.declined && checkout && attempt.organizationId) {
+        await releaseResolvedCheckoutReservation(tx, attempt.organizationId, checkout.clientSaleId);
       }
     });
   }

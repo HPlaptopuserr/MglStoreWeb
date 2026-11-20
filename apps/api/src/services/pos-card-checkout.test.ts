@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseCardCheckout, sameCheckout } from "./pos-card-checkout";
+import { parseCardCheckout, sameCheckout, checkoutFromPayload, isQrCancellationConfirmed } from "./pos-card-checkout";
 
 const checkout = {
   clientSaleId: "sale",
@@ -51,4 +51,21 @@ test("the frozen basket binds sale identity, shift, prices, quantities and disco
     }),
     false,
   );
+});
+
+test("bank snapshots recognize QR providers and retain the same frozen checkout contract", () => {
+  const snapshot = JSON.parse(JSON.stringify(checkout));
+  for (const provider of ["QPAY", "SYSTEMQR", "MINU_AGENT"]) {
+    assert.deepEqual(checkoutFromPayload({ provider, checkout: snapshot }), parseCardCheckout(checkout));
+  }
+  assert.equal(checkoutFromPayload({ provider: "UNKNOWN", checkout: snapshot }), null);
+});
+
+test("new QR basket release requires explicit provider cancellation proof", () => {
+  const snapshot = JSON.parse(JSON.stringify(checkout));
+  assert.equal(isQrCancellationConfirmed({ checkout: snapshot, cancelledAt: "now", providerCancellationConfirmed: false }), false);
+  assert.equal(isQrCancellationConfirmed({ checkout: snapshot, cancelledAt: "now" }), false);
+  assert.equal(isQrCancellationConfirmed({ checkout: snapshot, providerCancellationConfirmed: true }), true);
+  assert.equal(isQrCancellationConfirmed({ cancelledAt: "legacy" }), true);
+  assert.equal(isQrCancellationConfirmed({ cancelledAt: "legacy", providerCancellationConfirmed: false }), false);
 });

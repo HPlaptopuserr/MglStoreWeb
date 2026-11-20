@@ -1,3 +1,4 @@
+import type { SalePayload } from "../types/pos.types";
 import { requirePaymentRecoverySupport } from "./payment-capabilities";
 import type { QPayInvoice } from "@mgl/types";
 import { posRequest } from "./_pos-client";
@@ -6,16 +7,18 @@ export type { QPayInvoice, QPayInvoiceStatus } from "@mgl/types";
 
 export async function createQPayInvoice(payload: {
   requestId?: string;
+  checkout?: { clientSaleId: string; branchId: string; shiftId: string; lines: SalePayload["lines"] };
   amount: number;
   registerId?: string;
   organizationId?: string;
 }): Promise<QPayInvoice> {
-  await requirePaymentRecoverySupport();
+  await requirePaymentRecoverySupport(Boolean(payload.checkout));
   return posRequest<QPayInvoice>("/pos/payments/qpay/invoice", {
     signal: AbortSignal.timeout(90_000),
     method: "POST",
     body: {
       requestId: payload.requestId,
+      checkout: payload.checkout,
       amount: payload.amount,
       registerId: payload.registerId || null,
       organizationId: payload.organizationId || null,
@@ -23,7 +26,7 @@ export async function createQPayInvoice(payload: {
   });
 }
 
-export function getQPayInvoiceStatus(invoiceId: string, signal?: AbortSignal, refreshProvider = true): Promise<QPayInvoice> {
+export function getQPayInvoiceStatus(invoiceId: string, signal?: AbortSignal, refreshProvider = true): Promise<QPayInvoice & { recoveryRequired?: boolean; recoveryMessage?: string }> {
   const timeout = AbortSignal.timeout(70_000);
   return posRequest<QPayInvoice>(`/pos/payments/qpay/status/${encodeURIComponent(invoiceId)}?refresh=${refreshProvider ? "1" : "0"}`, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
 }

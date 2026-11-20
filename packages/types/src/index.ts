@@ -83,3 +83,9 @@ export * from "./domain/mgl-club-site-url";
 
 export * from "./data/innova-company";
 export * from "./domain/mgl-club-search";
+
+export * from "./domain/pos-inclusive-tax";
+
+export * from "./domain/pos-line-amounts";
+
+export { readPosFiscalTaxTotals } from "./domain/pos-fiscal-tax";
