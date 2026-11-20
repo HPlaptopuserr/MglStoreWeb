@@ -352,3 +352,17 @@ test("quantity editing accepts a complete value and caps it at available stock",
   assert.equal(commitStockRequestQuantity("99", 7, 50), 50);
   assert.equal(commitStockRequestQuantity("1", 7, 50), 1);
 });
+
+test("selected product cards expose a keyboard editable numeric quantity", () => {
+  const html = renderToStaticMarkup(
+    <WarehouseProductCard
+      item={item}
+      cartQty={12}
+      onAdd={noop}
+      onQuantityChange={noop}
+    />,
+  );
+  assert.match(html, /aria-label="Туршилтын бараа-ийн тоо хэмжээ"/);
+  assert.match(html, /type="number"/);
+  assert.match(html, /value="12"/);
+});

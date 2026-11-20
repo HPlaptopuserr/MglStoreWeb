@@ -72,6 +72,8 @@ export type WarehouseInventoryItem = {
     id: string;
     name: string;
     sku: string | null;
+    barcode?: string | null;
+    barcodeAliases?: string[];
     price: string;
     images: { url: string }[];
     category: { id: string; name: string } | null;

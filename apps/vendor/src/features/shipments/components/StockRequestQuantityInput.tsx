@@ -20,12 +20,14 @@ export function StockRequestQuantityInput({
   quantity,
   available,
   disabled,
+  compact = false,
   onCommit,
 }: {
   name: string;
   quantity: number;
   available: number;
   disabled: boolean;
+  compact?: boolean;
   onCommit: (quantity: number) => void;
 }) {
   const [text, setText] = useState(String(quantity));
@@ -52,7 +54,7 @@ export function StockRequestQuantityInput({
           event.currentTarget.blur();
         }
       }}
-      className="h-10 w-11 min-w-0 border-x border-slate-200 bg-transparent text-center text-sm font-semibold tabular-nums text-slate-900 outline-none focus:bg-amber-50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      className={`${compact ? "h-9 w-10" : "h-10 w-11"} min-w-0 border-x border-slate-200 bg-transparent text-center text-sm font-semibold tabular-nums text-slate-900 outline-none focus:bg-amber-50 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none`}
     />
   );
 }

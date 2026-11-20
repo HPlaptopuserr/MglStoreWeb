@@ -270,3 +270,17 @@ test("best sellers are ranked before pagination, with stable ties and unsold pro
   assert.equal(first.hasMore, true);
   assert.equal(second.hasMore, false);
 });
+
+test("barcode searches preserve leading zeroes and include alternate barcode identities", () => {
+  const where = shoppingSearchProductWhere("  0001234567890  ");
+  assert.deepEqual(where.AND, [
+    {
+      OR: [
+        { name: { contains: "0001234567890", mode: "insensitive" } },
+        { sku: { contains: "0001234567890", mode: "insensitive" } },
+        { barcode: { contains: "0001234567890", mode: "insensitive" } },
+        { barcodeAliases: { has: "0001234567890" } },
+      ],
+    },
+  ]);
+});

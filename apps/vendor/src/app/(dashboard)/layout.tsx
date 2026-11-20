@@ -141,6 +141,8 @@ export default function VendorDashboardLayout({
       <VendorNavigationActionsProvider actions={isPosRoute ? selector : null}>
         <DashboardLayout
           variant="vendor"
+          compact={pathname === "/shipments"}
+          headerTitle={pathname === "/shipments" ? "Бараа таталт" : undefined}
           onSignOut={logout}
           userName={name}
           userEmail={user.email || ""}

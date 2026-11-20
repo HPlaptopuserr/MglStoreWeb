@@ -4,16 +4,25 @@ import { usePathname } from "next/navigation";
 import { Bell, Menu } from "lucide-react";
 
 interface VendorHeaderProps {
+  compact?: boolean;
+  title?: string;
   onMenuToggle?: () => void;
   notificationComponent?: React.ReactNode;
 }
 
-export function VendorHeader({ onMenuToggle, notificationComponent }: VendorHeaderProps) {
+export function VendorHeader({
+  compact = false,
+  title,
+  onMenuToggle,
+  notificationComponent,
+}: VendorHeaderProps) {
   const pathname = usePathname();
   const isProfilePage = pathname === "/profile";
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-slate-200 bg-white/90 px-3 backdrop-blur sm:h-16 sm:px-6">
+    <header
+      className={`sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/90 px-3 backdrop-blur ${compact ? "h-12 sm:px-4" : "h-14 sm:h-16 sm:px-6"}`}
+    >
       <div className="flex flex-1 items-center gap-3">
         {/* Hamburger — mobile only */}
         <button
@@ -25,7 +34,10 @@ export function VendorHeader({ onMenuToggle, notificationComponent }: VendorHead
         </button>
 
         <div className="flex-1">
-          {isProfilePage && (
+          {title && (
+            <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
+          )}
+          {!title && isProfilePage && (
             <h2 className="text-lg font-bold text-slate-900">Миний профайл</h2>
           )}
         </div>

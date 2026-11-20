@@ -68,6 +68,8 @@ test(
     const product = await prisma.product.create({
       data: {
         name: key,
+        barcode: "0001234567890",
+        barcodeAliases: ["0009876543210"],
         price: 100,
         stock: 20,
         managedByWarehouseId: central.id,
@@ -126,6 +128,28 @@ test(
       for (const hidden of [internal, inactive, deleted])
         assert.ok(!sourceIds.includes(hidden.id));
       assert.equal((await request(productsPath(central.id))).status, 200);
+      for (const barcode of ["0001234567890", "0009876543210"]) {
+        const response = await request(
+          `${productsPath(central.id)}&sort=topSelling&search=${barcode}`,
+        );
+        assert.equal(response.status, 200);
+        const found = (await response.json()) as {
+          items: Array<{ product: { id: string; barcode: string } }>;
+        };
+        assert.deepEqual(
+          found.items.map((item) => item.product.id),
+          [product.id],
+        );
+        assert.equal(found.items[0].product.barcode, "0001234567890");
+      }
+      const missingBarcode = await request(
+        `${productsPath(central.id)}&search=9999999999999`,
+      );
+      assert.equal(missingBarcode.status, 200);
+      assert.deepEqual(
+        ((await missingBarcode.json()) as { items: unknown[] }).items,
+        [],
+      );
       assert.equal(
         (await request(productsPath(central.id, other.id))).status,
         403,

@@ -46,7 +46,7 @@ export function StockRequestWorkflowNav({
   return (
     <nav
       aria-label="Бараа таталтын үндсэн хэсгүүд"
-      className="grid grid-cols-3 gap-1 rounded-2xl border border-slate-200 bg-white p-1.5"
+      className="flex flex-wrap items-center gap-1 border-b border-slate-200 pb-2"
     >
       {items.map((item) => {
         const Icon = item.icon;
@@ -57,14 +57,14 @@ export function StockRequestWorkflowNav({
             type="button"
             aria-current={isActive ? "page" : undefined}
             onClick={() => onNavigate(item.key)}
-            className={`relative flex min-h-14 items-center justify-center gap-2 rounded-xl px-2 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 sm:justify-start sm:gap-3 sm:px-4 ${
+            className={`relative flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 ${
               isActive
                 ? "bg-amber-50 text-slate-950 ring-1 ring-inset ring-amber-200/70"
                 : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
             }`}
           >
             <span
-              className={`hidden size-9 shrink-0 items-center justify-center rounded-xl sm:flex ${
+              className={`hidden size-6 shrink-0 items-center justify-center rounded-md sm:flex ${
                 isActive
                   ? "bg-amber-100 text-amber-700"
                   : item.warning
@@ -78,9 +78,7 @@ export function StockRequestWorkflowNav({
               <span className="block text-center text-xs font-semibold leading-5 sm:text-left sm:text-sm">
                 {item.label}
               </span>
-              <span className="mt-0.5 hidden text-xs leading-4 text-slate-500 md:block">
-                {item.description}
-              </span>
+              <span className="sr-only">{item.description}</span>
             </span>
             {item.count > 0 && (
               <span

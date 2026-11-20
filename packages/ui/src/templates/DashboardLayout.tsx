@@ -8,6 +8,8 @@ import { VendorHeader } from "../organisms/VendorHeader";
 
 export interface DashboardLayoutProps extends Partial<SidebarProps> {
   children: ReactNode;
+  compact?: boolean;
+  headerTitle?: string;
   variant: "admin" | "vendor";
   userName?: string;
   userEmail?: string;
@@ -27,6 +29,8 @@ export interface DashboardLayoutProps extends Partial<SidebarProps> {
 
 export function DashboardLayout({
   children,
+  compact = false,
+  headerTitle,
   variant,
   userName,
   userRole,
@@ -93,6 +97,8 @@ export function DashboardLayout({
       <div className="flex min-h-dvh min-w-0 flex-1 flex-col bg-slate-50">
         {isVendor && !isVendorPosRoute && (
           <VendorHeader
+            compact={compact}
+            title={headerTitle}
             onMenuToggle={() => setMobileMenuOpen((o) => !o)}
             notificationComponent={notificationComponent}
           />
@@ -104,14 +110,16 @@ export function DashboardLayout({
               ? "px-4 pt-6 pb-10 sm:px-10 sm:pt-8"
               : isVendorPosRoute
                 ? "px-1.5 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))]"
-                : "px-3 pt-4 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-6"
+                : compact
+                  ? "px-3 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-4"
+                  : "px-3 pt-4 pb-[max(2rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-6"
           }`}
         >
           <div
             className={`${
               isAdmin
                 ? "max-w-7xl"
-                : isVendorPosRoute
+                : isVendorPosRoute || compact
                   ? "max-w-none"
                   : "max-w-6xl"
             } mx-auto w-full min-w-0`}
