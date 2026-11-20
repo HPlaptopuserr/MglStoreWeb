@@ -59,7 +59,7 @@ export function printReceipt(
   const paperWidthMm = options.paperWidthMm ?? readReceiptPaperWidth();
   const compact = readReceiptCompact();
   return printThermalDocument({
-    bodyHtml: `${options.demo ? '<p style="text-align:center;font-weight:bold">ТЕСТ БАРИМТ — eBarimt-д бүртгэгдэхгүй</p>' : ""}${receiptPrintLayout(receipt)}${qrMarkup ? `<div class="ebarimt-qr">${qrTitle}${qrMarkup}</div>` : ""}${receiptPrintFooter}`,
+    bodyHtml: `<div class="receipt-document">${options.demo ? '<p style="text-align:center;font-weight:bold">ТЕСТ БАРИМТ — eBarimt-д бүртгэгдэхгүй</p>' : ""}${receiptPrintLayout(receipt)}${qrMarkup ? `<div class="ebarimt-qr">${qrTitle}${qrMarkup}</div>` : ""}${receiptPrintFooter}</div>`,
     extraCss: `${receiptPrintCss}
       ${
         compact

@@ -32,7 +32,7 @@ export function ReceiptPrinterSettings() {
           }}
           className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs focus:border-blue-500"
         >
-          <option value="receipt">Баримтын уртаар</option>
+          <option value="receipt">Баримтын уртаар · Нэг хуудас</option>
           <option value="printer">Принтерийн цаасны тохиргоогоор</option>
         </select>
       </label>
@@ -53,8 +53,9 @@ export function ReceiptPrinterSettings() {
       </label>
       <p>
         Илүү зай гарвал «Баримтын уртаар» горим болон «Илүү зайг багасгах»-ыг
-        сонгоно уу. Принтерийн цаасны горим нь драйвер тусгай хэмжээг хүлээн
-        авахгүй үед хэрэглэнэ.
+        сонгоно уу. QR тусдаа хуудас руу тасарвал «Баримтын уртаар» горимыг
+        сонгоно. Принтерийн цаасны горим драйверийн хуудасны уртаар тасарч
+        болно.
       </p>
       <p>
         Хэвлэх цонхонд: зөв принтер, 58/80 мм цаас, 100% хэмжээ, захгүй (None),

@@ -57,20 +57,57 @@ export function printThermalDocument({
             cleanup();
             return;
           }
-          const height = popup.document.body.getBoundingClientRect().height;
-          const mm = Math.max(
-            compact ? 0 : MINIMUM_RECEIPT_HEIGHT_MM,
-            Math.ceil(
-              (height * MILLIMETERS_PER_INCH) / SCREEN_DPI +
-                (compact ? 1 : RECEIPT_BOTTOM_FEED_MM),
-            ),
-          );
-          const style = popup.document.getElementById("thermal-page-size");
-          if (style)
-            style.textContent =
-              pageMode === "printer"
-                ? "@page { size: auto; margin: 0; }"
-                : `@page { size: ${paperWidthMm}mm ${mm}mm; margin: 0; }`;
+          const fitPage = () => {
+            // Chromium fires beforeprint before switching to print media.
+            // Measure with our inline print rules active, then restore screen media.
+            const printRules = Array.from(popup.document.styleSheets ?? [])
+              .flatMap((sheet) => Array.from(sheet.cssRules))
+              .filter(
+                (rule): rule is CSSMediaRule =>
+                  rule.type === 4 &&
+                  (rule as CSSMediaRule).media.mediaText === "print",
+              );
+            printRules.forEach((rule) => {
+              rule.media.mediaText = "all";
+            });
+            try {
+              const table =
+                popup.document.querySelector?.<HTMLTableElement>(
+                  ".receipt table",
+                );
+              if (table?.parentElement) {
+                table.classList.remove("receipt-stacked-table");
+                if (
+                  table.getBoundingClientRect().width >
+                  table.parentElement.getBoundingClientRect().width + 0.5
+                ) {
+                  table.classList.add("receipt-stacked-table");
+                }
+              }
+              const height = popup.document.body.getBoundingClientRect().height;
+              const mm = Math.max(
+                compact ? 0 : MINIMUM_RECEIPT_HEIGHT_MM,
+                Math.ceil(
+                  (height * MILLIMETERS_PER_INCH) / SCREEN_DPI +
+                    (compact ? 1 : RECEIPT_BOTTOM_FEED_MM),
+                ),
+              );
+              const style = popup.document.getElementById("thermal-page-size");
+              if (style)
+                style.textContent =
+                  pageMode === "printer"
+                    ? "@page { size: auto; margin: 0; }"
+                    : `@page { size: ${paperWidthMm}mm ${mm}mm; margin: 0; }`;
+            } finally {
+              printRules.forEach((rule) => {
+                rule.media.mediaText = "print";
+              });
+            }
+          };
+          fitPage();
+          // Print-media rules can change line wrapping.
+          // Refit the full receipt, including QR, before the browser paginates it.
+          popup.addEventListener("beforeprint", fitPage);
           if (frame)
             popup.addEventListener("afterprint", cleanup, { once: true });
           popup.document
@@ -124,7 +161,7 @@ export function printThermalDocument({
           }
         </style>
       </head>
-      <body>${bodyHtml}${target === "window" ? '<aside class="thermal-print-controls"><button id="thermal-print-again" type="button">Дахин хэвлэх</button><p>Энэ цонхыг хэвлэлт дуусах хүртэл нээлттэй байлгана уу.</p></aside>' : ""}</body>
+      <body data-thermal-page-mode="${pageMode}">${bodyHtml}${target === "window" ? '<aside class="thermal-print-controls"><button id="thermal-print-again" type="button">Дахин хэвлэх</button><p>Энэ цонхыг хэвлэлт дуусах хүртэл нээлттэй байлгана уу.</p></aside>' : ""}</body>
     </html>
   `);
   popup.document.close();
