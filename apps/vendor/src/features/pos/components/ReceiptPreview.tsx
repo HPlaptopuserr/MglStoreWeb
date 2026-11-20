@@ -27,6 +27,7 @@ type Props = {
 };
 
 export function ReceiptPreview({ receipt, register, onVoided, allowReturns = true, className = "" }: Props) {
+  const [printError, setPrintError] = useState("");
   const [terminalVoiding, setTerminalVoiding] = useState(false);
   const [terminalVoidResult, setTerminalVoidResult] = useState<{ succeed: boolean; message?: string } | null>(null);
   const [saleVoiding, setSaleVoiding] = useState(false);
@@ -52,7 +53,10 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
       ? displayReceipt.ebarimt.qrData
       : "";
 
-  const handlePrint = () => printReceipt(displayReceipt, { demo: showingDemo, paperWidthMm });
+  const handlePrint = () => {
+    const opened = printReceipt(displayReceipt, { demo: showingDemo, paperWidthMm, target: "window" });
+    setPrintError(opened ? "" : "Баримтын цонх нээгдсэнгүй. Энэ сайтад popup цонх зөвшөөрөөд дахин хэвлэнэ үү.");
+  };
 
   const handlePaperWidthChange = (width: ReceiptPaperWidth) => {
     setPaperWidthMm(width);
@@ -172,7 +176,7 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
             className="flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-50"
           >
             <Printer className="h-3.5 w-3.5" />
-            Хэвлэх
+            Тусдаа цонхоор хэвлэх
           </button>
           {allowReturns && !isVoided && cardLine && !terminalVoidResult?.succeed && (
             <button
@@ -215,6 +219,7 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
         </div>
       )}
 
+      {printError && <p role="alert" className="mt-2 text-xs text-rose-700">{printError}</p>}
       <ReceiptPrinterSettings />
 
       {canPreviewDemo && (

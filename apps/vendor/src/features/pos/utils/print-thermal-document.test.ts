@@ -23,10 +23,12 @@ test("async receipt printing supports 58 mm and 80 mm without a popup", async ()
         fonts: { ready: Promise.resolve() },
         readyState: "complete",
         body: { getBoundingClientRect: () => ({ height: 300 }) },
-        getElementById: () => pageStyle,
+        getElementById: (id: string) =>
+          id === "thermal-page-size" ? pageStyle : null,
         write(value: string) {
           documentMarkup = value;
         },
+        open() {},
         close() {},
       },
       requestAnimationFrame(callback: () => void) {
@@ -105,5 +107,62 @@ test("async receipt printing supports 58 mm and 80 mm without a popup", async ()
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);
       else Reflect.deleteProperty(globalThis, name);
     }
+  }
+});
+
+test("manual receipts print in a visible window that remains available for retries", async () => {
+  const oldWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const events: string[] = [];
+  let printCount = 0;
+  let markup = "";
+  let retry: (() => void) | undefined;
+  const pageStyle = { textContent: "" };
+  const popup = {
+    closed: false,
+    document: {
+      readyState: "complete",
+      fonts: { ready: Promise.resolve() },
+      body: { getBoundingClientRect: () => ({ height: 300 }) },
+      getElementById: (id: string) => id === "thermal-page-size" ? pageStyle : {
+        addEventListener: (_name: string, callback: () => void) => { retry = callback; },
+      },
+      open() {},
+      write(value: string) { markup = value; },
+      close() {},
+    },
+    addEventListener: (name: string) => { events.push(name); },
+    requestAnimationFrame: (callback: () => void) => { events.push("frame"); callback(); },
+    focus() {},
+    print() { printCount++; },
+    close() { throw new Error("Manual print windows must remain open"); },
+  };
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {
+    open: (_url: string, target: string) => { assert.equal(target, "_blank"); return popup; },
+  } });
+  try {
+    assert.equal(printThermalDocument({ bodyHtml: "RECEIPT", paperWidthMm: 58, pageMode: "printer", target: "window" }), true);
+    await Promise.resolve();
+    assert.equal(printCount, 1);
+    assert.equal(events.filter(event => event === "frame").length, 2);
+    assert.ok(!events.includes("afterprint"));
+    assert.match(markup, /thermal-print-again/);
+    assert.match(markup, /display: none !important/);
+    assert.equal(pageStyle.textContent, "@page { size: auto; margin: 0; }");
+    retry?.();
+    assert.equal(printCount, 2);
+  } finally {
+    if (oldWindow) Object.defineProperty(globalThis, "window", oldWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("blocked manual print windows return a failure for the caller to show", () => {
+  const oldWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { open: () => null } });
+  try {
+    assert.equal(printThermalDocument({ bodyHtml: "RECEIPT", target: "window" }), false);
+  } finally {
+    if (oldWindow) Object.defineProperty(globalThis, "window", oldWindow);
+    else Reflect.deleteProperty(globalThis, "window");
   }
 });

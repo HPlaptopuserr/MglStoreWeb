@@ -39,9 +39,13 @@ const renderEbarimtQrMarkup = (value?: string | null) => {
 /** Shared by checkout completion and receipt-history reprints. */
 export function printReceipt(
   receipt: PosReceipt,
-  options: { demo?: boolean; paperWidthMm?: ReceiptPaperWidth } = {},
+  options: {
+    demo?: boolean;
+    paperWidthMm?: ReceiptPaperWidth;
+    target?: "iframe" | "window";
+  } = {},
 ) {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined") return false;
   const qrData =
     receipt.ebarimt?.status === "SUCCESS" ? receipt.ebarimt.qrData : null;
   const qrMarkup = renderEbarimtQrMarkup(qrData);
@@ -49,7 +53,7 @@ export function printReceipt(
     ? '<p class="ebarimt-qr-title">ТЕСТ QR — eBarimt-д бүртгэгдэхгүй</p>'
     : "";
   const paperWidthMm = options.paperWidthMm ?? readReceiptPaperWidth();
-  printThermalDocument({
+  return printThermalDocument({
     bodyHtml: `${options.demo ? '<p style="text-align:center;font-weight:bold">ТЕСТ БАРИМТ — eBarimt-д бүртгэгдэхгүй</p>' : ""}${receiptPrintLayout(receipt)}${qrMarkup ? `<div class="ebarimt-qr">${qrTitle}${qrMarkup}</div>` : ""}${receiptPrintFooter}`,
     extraCss: `${receiptPrintCss}
       .ebarimt-qr { margin-top: 1.5mm; text-align: center; }
@@ -57,5 +61,6 @@ export function printReceipt(
       .ebarimt-qr-title { margin: 0 0 2mm; font-family: sans-serif; font-size: 9pt; font-weight: 700; }
     `,
     paperWidthMm,
+    target: options.target,
   });
 }

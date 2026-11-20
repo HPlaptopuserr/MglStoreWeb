@@ -10,6 +10,7 @@ type ThermalPrintDocumentOptions = {
   extraCss?: string;
   paperWidthMm?: ReceiptPaperWidth;
   pageMode?: ReceiptPageMode;
+  target?: "iframe" | "window";
 };
 
 const SCREEN_DPI = 96;
@@ -22,60 +23,77 @@ export function printThermalDocument({
   extraCss = "",
   paperWidthMm = readReceiptPaperWidth(),
   pageMode = readReceiptPageMode(),
+  target = "iframe",
 }: ThermalPrintDocumentOptions): boolean {
   if (typeof window === "undefined") return false;
 
-  // Async payment completion may no longer have browser user activation.
-  // A same-origin iframe does not depend on permission to open popups.
-  const frame = document.createElement("iframe");
-  frame.title = "Баримт хэвлэх";
-  frame.setAttribute("aria-hidden", "true");
-  frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${paperWidthMm}mm;height:760px;border:0;`;
-  document.body.appendChild(frame);
-  const popup = frame.contentWindow;
+  // Automatic checkout prints cannot rely on popup user activation.
+  // Manual prints use a visible, retained window for driver compatibility.
+  const frame = target === "iframe" ? document.createElement("iframe") : null;
+  if (frame) {
+    frame.title = "Баримт хэвлэх";
+    frame.setAttribute("aria-hidden", "true");
+    frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${paperWidthMm}mm;height:760px;border:0;`;
+    document.body.appendChild(frame);
+  }
+  const popup = frame
+    ? frame.contentWindow
+    : window.open("", "_blank", "width=480,height=800");
   if (!popup) {
-    frame.remove();
+    frame?.remove();
     return false;
   }
   let started = false;
-  const cleanup = () => frame.remove();
+  const cleanup = () => frame?.remove();
   const startPrint = () => {
     if (started) return;
     started = true;
     void popup.document.fonts.ready.then(() => {
       popup.requestAnimationFrame(() => {
-        const height = popup.document.body.getBoundingClientRect().height;
-        const mm = Math.max(
-          MINIMUM_RECEIPT_HEIGHT_MM,
-          Math.ceil(
-            (height * MILLIMETERS_PER_INCH) / SCREEN_DPI +
-              RECEIPT_BOTTOM_FEED_MM,
-          ),
-        );
-        const style = popup.document.getElementById("thermal-page-size");
-        if (style)
-          style.textContent =
-            pageMode === "printer"
-              ? "@page { size: auto; margin: 0; }"
-              : `@page { size: ${paperWidthMm}mm ${mm}mm; margin: 0; }`;
-        popup.addEventListener("afterprint", cleanup, { once: true });
-        try {
-          popup.focus();
-          popup.print();
-        } catch {
-          cleanup();
-        }
-        // Do not close after 500ms: some devices open the print dialog asynchronously.
+        popup.requestAnimationFrame(() => {
+          if (popup.closed) {
+            cleanup();
+            return;
+          }
+          const height = popup.document.body.getBoundingClientRect().height;
+          const mm = Math.max(
+            MINIMUM_RECEIPT_HEIGHT_MM,
+            Math.ceil(
+              (height * MILLIMETERS_PER_INCH) / SCREEN_DPI +
+                RECEIPT_BOTTOM_FEED_MM,
+            ),
+          );
+          const style = popup.document.getElementById("thermal-page-size");
+          if (style)
+            style.textContent =
+              pageMode === "printer"
+                ? "@page { size: auto; margin: 0; }"
+                : `@page { size: ${paperWidthMm}mm ${mm}mm; margin: 0; }`;
+          if (frame)
+            popup.addEventListener("afterprint", cleanup, { once: true });
+          popup.document
+            .getElementById("thermal-print-again")
+            ?.addEventListener("click", () => popup.print());
+          try {
+            popup.focus();
+            popup.print();
+          } catch {
+            cleanup();
+          }
+          // Keep manual documents alive for system-dialog printing and retries.
+        });
       });
     });
   };
-  frame.onload = startPrint;
+  popup.document.open();
+  if (frame) frame.onload = startPrint;
+  else popup.addEventListener("load", startPrint, { once: true });
   popup.document.write(`
     <!doctype html>
     <html>
       <head>
         <meta charset="utf-8" />
-        <title></title>
+        <title>MGL - Баримт хэвлэх</title>
         <style id="thermal-page-size"></style>
         <style>
           * { box-sizing: border-box; }
@@ -94,14 +112,17 @@ export function printThermalDocument({
             font-size: 10pt;
             line-height: 1.25;
           }
+          .thermal-print-controls { position: fixed; top: 8px; right: 8px; max-width: 180px; padding: 8px; background: #fff; border: 1px solid #aaa; font: 12px Arial, sans-serif; }
+          .thermal-print-controls button { padding: 8px; cursor: pointer; }
           ${extraCss}
           @media print {
+            .thermal-print-controls { display: none !important; }
             html, body { min-height: 0 !important; height: auto !important; }
             body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
           }
         </style>
       </head>
-      <body>${bodyHtml}</body>
+      <body>${bodyHtml}${target === "window" ? '<aside class="thermal-print-controls"><button id="thermal-print-again" type="button">Дахин хэвлэх</button><p>Энэ цонхыг хэвлэлт дуусах хүртэл нээлттэй байлгана уу.</p></aside>' : ""}</body>
     </html>
   `);
   popup.document.close();
