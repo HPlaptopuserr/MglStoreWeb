@@ -481,6 +481,112 @@ async function assertRecipientOwner(
   return organizationId;
 }
 
+function parseSalePrices(
+  value: unknown,
+  itemIds: string[],
+): Map<string, Prisma.Decimal> {
+  if (!Array.isArray(value) || value.length !== itemIds.length)
+    throw new ManualDispatchError("Бараа бүрийн зарах үнийг оруулна уу.");
+  const prices = new Map<string, Prisma.Decimal>();
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object")
+      throw new ManualDispatchError("Зарах үнийн мэдээлэл буруу байна.");
+    const { itemId, salePrice } = entry as Record<string, unknown>;
+    if (
+      typeof itemId !== "string" ||
+      !itemIds.includes(itemId) ||
+      prices.has(itemId) ||
+      typeof salePrice !== "string" ||
+      !/^\d{1,16}(?:\.\d{1,2})?$/.test(salePrice) ||
+      !new Prisma.Decimal(salePrice).greaterThan(0) ||
+      new Prisma.Decimal(salePrice).greaterThan(1_000_000_000)
+    )
+      throw new ManualDispatchError(
+        "Бараа бүрд тэгээс их, зөв зарах үнэ оруулна уу.",
+      );
+    prices.set(itemId, new Prisma.Decimal(salePrice));
+  }
+  return prices;
+}
+
+async function vendorDocument(
+  tx: Prisma.TransactionClient,
+  record: DispatchRecord,
+) {
+  const products = await tx.product.findMany({
+    where: {
+      organizationId: record.recipientOrganizationId,
+      deletedAt: null,
+      ...vendorProductReadScope(),
+      id: {
+        in: record.items.flatMap((item) =>
+          item.receivedProductId ? [item.receivedProductId] : [],
+        ),
+      },
+    },
+    select: { id: true, price: true },
+  });
+  const prices = new Map(
+    products.map((product) => [product.id, product.price.toFixed(2)]),
+  );
+  const document = serialize(record);
+  document.items = document.items.map((item, index) => ({
+    ...item,
+    salePrice: prices.get(record.items[index].receivedProductId ?? "") ?? null,
+  }));
+  return document;
+}
+
+export async function updateVendorDispatchSalePrices(
+  actor: Actor,
+  id: string,
+  organizationId: unknown,
+  salePrices: unknown,
+) {
+  return prisma.$transaction(
+    async (tx) => {
+      const recipientOrganizationId = await assertRecipientOwner(
+        tx,
+        actor,
+        organizationId,
+      );
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${recipientOrganizationId}))`;
+      await lockOrganizationInventory(tx, recipientOrganizationId);
+      const dispatch = await tx.warehouseManualDispatch.findFirst({
+        where: { id, recipientOrganizationId },
+        include: documentInclude,
+      });
+      if (!dispatch) throw new ManualDispatchError("Падан олдсонгүй.", 404);
+      if (!dispatch.acceptedAt)
+        throw new ManualDispatchError("Эхлээд падааныг хүлээн авна уу.", 409);
+      const prices = parseSalePrices(
+        salePrices,
+        dispatch.items.map((item) => item.id),
+      );
+      for (const item of dispatch.items) {
+        if (!item.receivedProductId)
+          throw new ManualDispatchError(
+            "Хүлээн авсан барааны холболт олдсонгүй.",
+            409,
+          );
+        const result = await tx.product.updateMany({
+          where: {
+            id: item.receivedProductId,
+            organizationId: recipientOrganizationId,
+            deletedAt: null,
+            ...vendorProductReadScope(),
+          },
+          data: { price: prices.get(item.id)! },
+        });
+        if (result.count !== 1)
+          throw new ManualDispatchError("Дэлгүүрийн бараа олдсонгүй.", 409);
+      }
+      return vendorDocument(tx, dispatch);
+    },
+    { timeout: 30000, maxWait: 10000 },
+  );
+}
+
 export async function listVendorManualDispatches(
   actor: Actor,
   query: Record<string, unknown>,
@@ -514,7 +620,9 @@ export async function listVendorManualDispatches(
         page,
         pageSize,
         totalPages: Math.max(1, Math.ceil(total / pageSize)),
-        items: records.map(serialize),
+        items: await Promise.all(
+          records.map((record) => vendorDocument(tx, record)),
+        ),
       };
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
@@ -525,6 +633,7 @@ export async function acceptVendorManualDispatch(
   actor: Actor,
   id: string,
   organizationId: unknown,
+  salePrices?: unknown,
 ): Promise<WarehouseDispatchDocument> {
   return prisma.$transaction(
     async (tx) => {
@@ -542,7 +651,11 @@ export async function acceptVendorManualDispatch(
         include: documentInclude,
       });
       if (!dispatch) throw new ManualDispatchError("Падан олдсонгүй.", 404);
-      if (dispatch.acceptedAt) return serialize(dispatch);
+      if (dispatch.acceptedAt) return vendorDocument(tx, dispatch);
+      const prices = parseSalePrices(
+        salePrices,
+        dispatch.items.map((item) => item.id),
+      );
       for (const item of dispatch.items) {
         const snapshot = readSnapshot(item.productSnapshot);
         if (!snapshot)
@@ -588,7 +701,7 @@ export async function acceptVendorManualDispatch(
               unit: snapshot.unit,
               masterProductId: snapshot.masterProductId,
               description: snapshot.description,
-              price: item.unitPrice ?? 0,
+              price: prices.get(item.id)!,
               costPrice: item.unitPrice,
               taxType: snapshot.taxType,
               cityTaxRate: snapshot.cityTaxRate,
@@ -599,13 +712,14 @@ export async function acceptVendorManualDispatch(
                 : {}),
             },
           }));
-        if (
-          existing &&
-          (!existing.isActive || existing.supplyType !== "IN_STOCK")
-        )
+        if (existing)
           await tx.product.update({
             where: { id: existing.id },
-            data: { isActive: true, supplyType: "IN_STOCK" },
+            data: {
+              isActive: true,
+              supplyType: "IN_STOCK",
+              price: prices.get(item.id)!,
+            },
           });
         const warehouseId = await resolveProductInventoryWarehouse(
           tx,
@@ -634,7 +748,7 @@ export async function acceptVendorManualDispatch(
         data: { acceptedAt: new Date(), acceptedById: actor.userId },
         include: documentInclude,
       });
-      return serialize(accepted);
+      return vendorDocument(tx, accepted);
     },
     { timeout: 30000, maxWait: 10000 },
   );

@@ -29,6 +29,7 @@ export function IncomingWarehouseDispatches({
   const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const [acceptingId, setAcceptingId] = useState("");
   const submittingRef = useRef(false);
   useEffect(() => {
@@ -77,20 +78,47 @@ export function IncomingWarehouseDispatches({
     return () => controller.abort();
   }, [load]);
 
-  const accept = async (id: string) => {
+  const accept = async (
+    id: string,
+    salePrices: Array<{ itemId: string; salePrice: string }>,
+    updatePrices = false,
+  ) => {
     if (submittingRef.current) return;
     submittingRef.current = true;
     setAcceptingId(id);
     setError("");
+    setSuccess("");
     try {
       const accepted = await readResponse<WarehouseDispatchDocument>(
         await authFetch(
-          `${API}/vendor/manual-dispatches/${encodeURIComponent(id)}/accept`,
-          { method: "POST", body: JSON.stringify({ organizationId }) },
+          `${API}/vendor/manual-dispatches/${encodeURIComponent(id)}/${updatePrices ? "sale-prices" : "accept"}`,
+          {
+            method: updatePrices ? "PATCH" : "POST",
+            body: JSON.stringify({ organizationId, salePrices }),
+          },
         ),
       );
+      const pricesBySource = new Map(
+        accepted.items.map((item) => [item.productId, item.salePrice]),
+      );
       setDocuments((current) =>
-        current.map((document) => (document.id === id ? accepted : document)),
+        current.map((document) =>
+          document.id === id
+            ? accepted
+            : {
+                ...document,
+                items: document.items.map((item) =>
+                  pricesBySource.has(item.productId)
+                    ? { ...item, salePrice: pricesBySource.get(item.productId) }
+                    : item,
+                ),
+              },
+        ),
+      );
+      setSuccess(
+        updatePrices
+          ? "Зарах үнэ бүтээгдэхүүнд хадгалагдлаа. Үлдэгдэл өөрчлөгдөөгүй."
+          : "Падааны бараа хүлээн авч, зарах үнийг хадгаллаа.",
       );
       notifyProductCatalogChanged(organizationId);
       onAccepted();
@@ -146,6 +174,14 @@ export function IncomingWarehouseDispatches({
           Шинэчлэх
         </button>
       </div>
+      {success && (
+        <p
+          role="status"
+          className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800"
+        >
+          {success}
+        </p>
+      )}
       {error && (
         <div
           role="alert"
@@ -178,7 +214,7 @@ export function IncomingWarehouseDispatches({
             key={document.id}
             document={document}
             submitting={Boolean(acceptingId)}
-            onAccept={() => void accept(document.id)}
+            onAccept={(prices) => void accept(document.id, prices)}
           />
         ))}
       {!loading && accepted.length > 0 && (
@@ -189,10 +225,13 @@ export function IncomingWarehouseDispatches({
           <div className="mt-4 space-y-4">
             {accepted.map((document) => (
               <IncomingDispatchReview
-                key={document.id}
+                key={`${document.id}:${document.items.map((item) => item.salePrice ?? "").join(",")}`}
                 document={document}
-                submitting={false}
+                submitting={Boolean(acceptingId)}
                 onAccept={() => {}}
+                onSavePrices={(prices) =>
+                  void accept(document.id, prices, true)
+                }
               />
             ))}
           </div>

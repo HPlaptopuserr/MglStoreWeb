@@ -7,6 +7,7 @@ import {
   searchDispatchVendors,
   listVendorManualDispatches,
   acceptVendorManualDispatch,
+  updateVendorDispatchSalePrices,
 } from "../../services/warehouse-manual-dispatch.service";
 
 const database = new URL(process.env.DATABASE_URL || "http://disabled");
@@ -158,9 +159,29 @@ test(
           barcode: `changed-${marker}`,
         },
       });
+      const prices = (record: typeof dispatch, salePrice = "250") =>
+        record.items.map((item) => ({ itemId: item.id, salePrice }));
+      await assert.rejects(
+        acceptVendorManualDispatch(actor(owner), dispatch.id, organizationId),
+        { status: 400 },
+      );
+      await assert.rejects(
+        acceptVendorManualDispatch(
+          actor(owner),
+          dispatch.id,
+          organizationId,
+          prices(dispatch, "0"),
+        ),
+        { status: 400 },
+      );
       const accepted = await Promise.all(
         [1, 2, 3].map(() =>
-          acceptVendorManualDispatch(actor(owner), dispatch.id, organizationId),
+          acceptVendorManualDispatch(
+            actor(owner),
+            dispatch.id,
+            organizationId,
+            prices(dispatch),
+          ),
         ),
       );
       assert.ok(
@@ -173,7 +194,52 @@ test(
         where: { organizationId },
       });
       assert.equal(adopted.name, "Snapshot product");
-      assert.equal(adopted.price.toString(), "125");
+      assert.equal(adopted.price.toString(), "250");
+      assert.equal(adopted.costPrice?.toString(), "125");
+      assert.equal(accepted[0].items[0]?.salePrice, "250.00");
+      await assert.rejects(
+        updateVendorDispatchSalePrices(
+          actor(staff),
+          dispatch.id,
+          organizationId,
+          prices(dispatch),
+        ),
+        { status: 403 },
+      );
+      await assert.rejects(
+        updateVendorDispatchSalePrices(
+          actor(outsider),
+          dispatch.id,
+          orgs[2],
+          prices(dispatch),
+        ),
+        { status: 404 },
+      );
+      const repriced = await updateVendorDispatchSalePrices(
+        actor(owner),
+        dispatch.id,
+        organizationId,
+        prices(dispatch, "300"),
+      );
+      assert.equal(repriced.items[0]?.salePrice, "300.00");
+      assert.equal(repriced.totalAmount, dispatch.totalAmount);
+      assert.equal(
+        (await prisma.product.findUniqueOrThrow({ where: { id: adopted.id } }))
+          .stock,
+        4,
+      );
+      await acceptVendorManualDispatch(
+        actor(owner),
+        dispatch.id,
+        organizationId,
+        prices(dispatch, "999"),
+      );
+      assert.equal(
+        (
+          await prisma.product.findUniqueOrThrow({ where: { id: adopted.id } })
+        ).price.toString(),
+        "300",
+      );
       assert.equal(adopted.stock, 4);
       assert.equal(
         (await prisma.product.findUniqueOrThrow({ where: { id: product.id } }))
@@ -193,7 +259,18 @@ test(
         ...draft,
         requestId: randomUUID(),
       });
-      await acceptVendorManualDispatch(actor(owner), second.id, organizationId);
+      await acceptVendorManualDispatch(
+        actor(owner),
+        second.id,
+        organizationId,
+        prices(second, "350"),
+      );
+      assert.equal(
+        (
+          await prisma.product.findUniqueOrThrow({ where: { id: adopted.id } })
+        ).price.toString(),
+        "350",
+      );
       assert.equal(
         await prisma.product.count({ where: { organizationId } }),
         1,
@@ -249,7 +326,12 @@ test(
         data: { unit: "kg" },
       });
       await assert.rejects(
-        acceptVendorManualDispatch(actor(owner), third.id, organizationId),
+        acceptVendorManualDispatch(
+          actor(owner),
+          third.id,
+          organizationId,
+          prices(third),
+        ),
         { status: 409 },
       );
       assert.equal(

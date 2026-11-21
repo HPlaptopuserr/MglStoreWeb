@@ -14,6 +14,7 @@ import {
   searchDispatchVendors,
   listVendorManualDispatches,
   acceptVendorManualDispatch,
+  updateVendorDispatchSalePrices,
   getManualDispatch,
   listManualDispatches,
 } from "../../services/warehouse-manual-dispatch.service";
@@ -116,6 +117,21 @@ router.post(
         actor(req),
         String(req.params.id),
         req.body?.organizationId,
+        req.body?.salePrices,
+      ),
+    ),
+  ),
+);
+router.patch(
+  "/vendor/manual-dispatches/:id/sale-prices",
+  requireAuth,
+  handle(async (req, res) =>
+    res.json(
+      await updateVendorDispatchSalePrices(
+        actor(req),
+        String(req.params.id),
+        req.body?.organizationId,
+        req.body?.salePrices,
       ),
     ),
   ),

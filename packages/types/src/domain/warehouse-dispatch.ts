@@ -34,6 +34,7 @@ export interface WarehouseDispatchDocument {
     name: string;
     sku: string | null;
     barcode?: string | null;
+    salePrice?: string | null;
     unit?: string | null;
     quantity: number;
     unitPrice: string | null;

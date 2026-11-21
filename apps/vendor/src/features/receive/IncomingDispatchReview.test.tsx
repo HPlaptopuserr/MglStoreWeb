@@ -62,6 +62,9 @@ test("pending padan shows product identity and prices and requires explicit revi
   assert.match(html, /Баркод: 0001234567890/);
   assert.match(html, /Тоо/);
   assert.match(html, /Нэгж үнэ/);
+  assert.match(html, /Зарах үнэ/);
+  assert.match(html, /aria-label="Сүү зарах үнэ"/);
+  assert.match(html, /Бараа бүрийн зарах үнийг/);
   assert.match(html, /type="checkbox"/);
   assert.match(html, /disabled=""/);
   assert.match(html, /Зөвшөөрч, бүтээгдэхүүнд бүртгэх/);
@@ -95,4 +98,25 @@ test("missing barcode is explicit and never substitutes the SKU", () => {
   );
   assert.match(html, /Баркод: Бүртгэлгүй/);
   assert.doesNotMatch(html, /Баркод: MILK-1/);
+});
+
+test("accepted padan allows sale price correction without receiving stock again", () => {
+  const html = renderToStaticMarkup(
+    <IncomingDispatchReview
+      document={{
+        ...document,
+        receiptStatus: "ACCEPTED",
+        items: document.items.map((item) => ({
+          ...item,
+          salePrice: "3000.00",
+        })),
+      }}
+      submitting={false}
+      onAccept={() => {}}
+      onSavePrices={() => {}}
+    />,
+  );
+  assert.match(html, /value="3000.00"/);
+  assert.match(html, /Зарах үнэ хадгалах/);
+  assert.doesNotMatch(html, /type="checkbox"/);
 });

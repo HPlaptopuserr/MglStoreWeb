@@ -4,6 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import type { WarehouseDispatchDocument } from "@mgl/types";
+import {
+  calculateDispatchSalePrices,
+  MAX_DISPATCH_SALE_PRICE,
+} from "./dispatch-sale-prices";
 
 const money = (value: string | null) =>
   value === null ? "—" : `${Number(value).toLocaleString("mn-MN")} ₮`;
@@ -12,13 +16,35 @@ export function IncomingDispatchReview({
   document,
   submitting,
   onAccept,
+  onSavePrices,
 }: {
   document: WarehouseDispatchDocument;
   submitting: boolean;
-  onAccept: () => void;
+  onAccept: (prices: Array<{ itemId: string; salePrice: string }>) => void;
+  onSavePrices?: (prices: Array<{ itemId: string; salePrice: string }>) => void;
 }) {
   const [reviewed, setReviewed] = useState(false);
+  const [markup, setMarkup] = useState("");
+  const calculatedPrices = calculateDispatchSalePrices(document.items, markup);
   const accepted = document.receiptStatus === "ACCEPTED";
+  const [salePrices, setSalePrices] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      document.items.map((item) => [item.id, item.salePrice ?? ""]),
+    ),
+  );
+  const prices = document.items.map((item) => ({
+    itemId: item.id,
+    salePrice: (salePrices[item.id] ?? "").trim(),
+  }));
+  const validPrices = prices.every(
+    ({ salePrice }) =>
+      /^\d{1,16}(?:\.\d{1,2})?$/.test(salePrice) &&
+      Number(salePrice) > 0 &&
+      Number(salePrice) <= MAX_DISPATCH_SALE_PRICE,
+  );
+  const pricesChanged = document.items.some(
+    (item) => Number(salePrices[item.id]) !== Number(item.salePrice),
+  );
   return (
     <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 p-4 sm:p-5">
@@ -58,8 +84,61 @@ export function IncomingDispatchReview({
           <p className="sm:col-span-2">Тэмдэглэл: {document.note}</p>
         )}
       </div>
+      {!accepted && (
+        <fieldset
+          disabled={submitting}
+          className="mx-4 mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-cyan-100 bg-cyan-50/50 p-3 sm:mx-5"
+        >
+          <div className="min-w-48 flex-1">
+            <label
+              htmlFor={`markup-${document.id}`}
+              className="block text-sm font-semibold text-slate-800"
+            >
+              Нэгдсэн нэмэгдэл · 1–100%
+            </label>
+            <p className="mt-1 text-xs text-slate-600">
+              Агуулахын нэгж үнэ дээр нэмэгдэл тооцно. Дараа нь мөр бүрийн зарах
+              үнийг гараар засаж болно.
+            </p>
+          </div>
+          <div>
+            <label htmlFor={`markup-${document.id}`} className="sr-only">
+              Зарах үнийн нэмэгдэл (%)
+            </label>
+            <input
+              id={`markup-${document.id}`}
+              aria-label="Зарах үнийн нэмэгдэл (%)"
+              type="text"
+              inputMode="numeric"
+              placeholder="1–100%"
+              value={markup}
+              onChange={(event) => setMarkup(event.target.value)}
+              className="h-10 w-24 rounded-lg border border-slate-300 bg-white px-3 text-right tabular-nums focus:outline-2 focus:outline-cyan-700"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={!calculatedPrices || submitting}
+            onClick={() => {
+              if (calculatedPrices) {
+                setSalePrices(calculatedPrices);
+                setReviewed(false);
+              }
+            }}
+            className="min-h-10 rounded-lg bg-cyan-700 px-4 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:opacity-50"
+          >
+            Бүх бараанд тооцох
+          </button>
+          {markup && !calculatedPrices && (
+            <p role="status" className="w-full text-xs text-amber-800">
+              1–100 хүртэл бүхэл хувь оруулна уу. Нэгж үнэ байхгүй бараанд зарах
+              үнийг гараар оруулна.
+            </p>
+          )}
+        </fieldset>
+      )}
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[480px] text-left text-sm">
+        <table className="w-full min-w-[640px] text-left text-sm">
           <caption className="sr-only">
             {document.dispatchNumber} падааны бараа
           </caption>
@@ -73,6 +152,9 @@ export function IncomingDispatchReview({
               </th>
               <th scope="col" className="px-3 py-3 text-right">
                 Нэгж үнэ
+              </th>
+              <th scope="col" className="px-3 py-3 text-right">
+                Зарах үнэ
               </th>
               <th scope="col" className="px-4 py-3 text-right sm:px-5">
                 Дүн
@@ -97,6 +179,24 @@ export function IncomingDispatchReview({
                 <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">
                   {money(item.unitPrice)}
                 </td>
+                <td className="px-3 py-3 text-right">
+                  <input
+                    aria-label={`${item.name} зарах үнэ`}
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Үнэ оруулах"
+                    disabled={submitting}
+                    value={salePrices[item.id] ?? ""}
+                    onChange={(event) => {
+                      setReviewed(false);
+                      setSalePrices((current) => ({
+                        ...current,
+                        [item.id]: event.target.value,
+                      }));
+                    }}
+                    className="h-10 w-32 rounded-lg border border-slate-300 px-2 text-right tabular-nums focus:outline-2 focus:outline-cyan-700 disabled:opacity-50"
+                  />
+                </td>
                 <td className="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums sm:px-5">
                   {money(item.totalAmount)}
                 </td>
@@ -119,6 +219,26 @@ export function IncomingDispatchReview({
             Нийт: {money(document.totalAmount)}
           </strong>
         </div>
+        <p className="text-xs text-slate-600">
+          Нэгж үнэ нь агуулахаас авсан өртөг. Зарах үнэ нь дэлгүүрийн борлуулах
+          үнэ бөгөөд бүтээгдэхүүнд хадгалагдана.
+        </p>
+        {accepted && onSavePrices && (
+          <button
+            type="button"
+            disabled={submitting || !validPrices || !pricesChanged}
+            onClick={() => onSavePrices(prices)}
+            className="min-h-11 rounded-xl bg-cyan-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50"
+          >
+            {submitting ? "Хадгалж байна…" : "Зарах үнэ хадгалах"}
+          </button>
+        )}
+        {!validPrices && (
+          <p className="text-sm text-amber-800">
+            Бараа бүрийн зарах үнийг тэгээс их, 1,000,000,000₮-өөс хэтрэхгүй
+            дүнгээр оруулна уу.
+          </p>
+        )}
         {accepted ? (
           <div
             role="status"
@@ -152,8 +272,8 @@ export function IncomingDispatchReview({
             </p>
             <button
               type="button"
-              disabled={!reviewed || submitting}
-              onClick={onAccept}
+              disabled={!reviewed || submitting || !validPrices}
+              onClick={() => onAccept(prices)}
               className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-700 px-4 py-2 text-sm font-bold text-white hover:bg-cyan-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
             >
               {submitting && (

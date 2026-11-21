@@ -175,84 +175,88 @@ export default function GoodsReceiptsPage() {
     getReceiptDraftScope,
   );
 
-  const loadData = useCallback(async () => {
-    const organizationId = getOrganizationId();
-    if (!organizationId) {
-      setLoadError("Байгууллагын мэдээлэл олдсонгүй. Дахин нэвтэрнэ үү.");
-      setLoading(false);
-      return;
-    }
+  const loadData = useCallback(
+    async ({ background = false }: { background?: boolean } = {}) => {
+      const organizationId = getOrganizationId();
+      if (!organizationId) {
+        setLoadError("Байгууллагын мэдээлэл олдсонгүй. Дахин нэвтэрнэ үү.");
+        setLoading(false);
+        return;
+      }
 
-    setLoading(true);
-    setLoadError("");
-    try {
-      const productParams = new URLSearchParams({
-        organizationId,
-        includeInactive: "1",
-        includeExpiredInventory: "1",
-      });
-      const [registerResponse, productResponse] = await Promise.all([
-        authFetch(`${API}/pos/registers/mine?mode=RETAIL`, {
-          cache: "no-store",
-        }),
-        authFetch(`${API}/products?${productParams.toString()}`, {
-          cache: "no-store",
-        }),
-      ]);
-      const registerData = await readJson<PosRegisterOption[]>(
-        registerResponse,
-        "POS кассын жагсаалт авахад алдаа гарлаа",
-      );
-      const productData = await readJson<
-        ProductOption[] | { products?: ProductOption[] }
-      >(productResponse, "Барааны жагсаалт авахад алдаа гарлаа");
+      if (!background) setLoading(true);
+      setLoadError("");
+      try {
+        const productParams = new URLSearchParams({
+          organizationId,
+          includeInactive: "1",
+          includeExpiredInventory: "1",
+        });
+        const [registerResponse, productResponse] = await Promise.all([
+          authFetch(`${API}/pos/registers/mine?mode=RETAIL`, {
+            cache: "no-store",
+          }),
+          authFetch(`${API}/products?${productParams.toString()}`, {
+            cache: "no-store",
+          }),
+        ]);
+        const registerData = await readJson<PosRegisterOption[]>(
+          registerResponse,
+          "POS кассын жагсаалт авахад алдаа гарлаа",
+        );
+        const productData = await readJson<
+          ProductOption[] | { products?: ProductOption[] }
+        >(productResponse, "Барааны жагсаалт авахад алдаа гарлаа");
 
-      const nextRegisters = Array.isArray(registerData) ? registerData : [];
-      const rawProducts = Array.isArray(productData)
-        ? productData
-        : Array.isArray(productData.products)
-          ? productData.products
-          : [];
-      const nextProducts = rawProducts.filter(
-        (product) =>
-          product.isActive !== false && product.supplyType !== "CHINA_PREORDER",
-      );
+        const nextRegisters = Array.isArray(registerData) ? registerData : [];
+        const rawProducts = Array.isArray(productData)
+          ? productData
+          : Array.isArray(productData.products)
+            ? productData.products
+            : [];
+        const nextProducts = rawProducts.filter(
+          (product) =>
+            product.isActive !== false &&
+            product.supplyType !== "CHINA_PREORDER",
+        );
 
-      setRegisters(nextRegisters);
-      setProducts(nextProducts);
-      const productsById = new Map(
-        nextProducts.map((product) => [product.id, product]),
-      );
-      setLines((current) =>
-        current.map((line) => {
-          const product = productsById.get(line.product.id);
-          if (!product) return line;
-          return {
-            ...line,
-            product: { ...line.product, ...product },
-            salePrice:
-              line.salePrice.trim() ||
-              receiptSalePrice(product, line.unitCost, ""),
-          };
-        }),
-      );
-      setSelectedRegisterId((current) => {
-        const stored = localStorage.getItem(SELECTED_REGISTER_KEY) || "";
-        const candidate = current || stored;
-        return nextRegisters.some((register) => register.id === candidate)
-          ? candidate
-          : nextRegisters[0]?.id || "";
-      });
-    } catch (error) {
-      setLoadError(
-        error instanceof Error
-          ? error.message
-          : "Хүлээн авалтын мэдээлэл ачаалахад алдаа гарлаа",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+        setRegisters(nextRegisters);
+        setProducts(nextProducts);
+        const productsById = new Map(
+          nextProducts.map((product) => [product.id, product]),
+        );
+        setLines((current) =>
+          current.map((line) => {
+            const product = productsById.get(line.product.id);
+            if (!product) return line;
+            return {
+              ...line,
+              product: { ...line.product, ...product },
+              salePrice:
+                line.salePrice.trim() ||
+                receiptSalePrice(product, line.unitCost, ""),
+            };
+          }),
+        );
+        setSelectedRegisterId((current) => {
+          const stored = localStorage.getItem(SELECTED_REGISTER_KEY) || "";
+          const candidate = current || stored;
+          return nextRegisters.some((register) => register.id === candidate)
+            ? candidate
+            : nextRegisters[0]?.id || "";
+        });
+      } catch (error) {
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Хүлээн авалтын мэдээлэл ачаалахад алдаа гарлаа",
+        );
+      } finally {
+        if (!background) setLoading(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     void loadData();
@@ -578,7 +582,10 @@ export default function GoodsReceiptsPage() {
         </button>
       </div>
 
-      <IncomingWarehouseDispatches onAccepted={() => void loadData()} />
+      {/* Keep the accepted padan and current history page mounted while refreshing stock. */}
+      <IncomingWarehouseDispatches
+        onAccepted={() => void loadData({ background: true })}
+      />
 
       {(draftStatus || offline) && (
         <div
@@ -625,9 +632,9 @@ export default function GoodsReceiptsPage() {
             Гараар орлогодох POS касс олдсонгүй
           </h2>
           <p className="mx-auto mt-1 max-w-lg text-sm text-amber-800">
-            Гараар орлогын баримт үүсгэхэд бараа хүлээн авах салбарын
-            идэвхтэй POS касс шаардлагатай. Агуулахаас ирсэн падааныг дээрх
-            хэсгээс кассгүйгээр тулгаж зөвшөөрч болно.
+            Гараар орлогын баримт үүсгэхэд бараа хүлээн авах салбарын идэвхтэй
+            POS касс шаардлагатай. Агуулахаас ирсэн падааныг дээрх хэсгээс
+            кассгүйгээр тулгаж зөвшөөрч болно.
           </p>
           <Link
             href="/pos"
