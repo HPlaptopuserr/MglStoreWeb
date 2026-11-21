@@ -15,6 +15,7 @@ export interface CardTerminalProvider {
    * Resolves with the result once the terminal confirms or declines.
    */
   charge(params: ChargeParams): Promise<ChargeResult>;
+  command?(params: TerminalCommand): Promise<ChargeResult>;
 }
 
 export type ChargeParams = {
@@ -35,4 +36,12 @@ export type ProviderHealth = {
   ok: boolean;
   message?: string;
   [key: string]: unknown;
+};
+
+export type TerminalCommand = {
+  operation: "void" | "settlement" | "cancel";
+  requestId: string;
+  terminalId: string;
+  rrn?: string;
+  attemptId?: string;
 };

@@ -4,9 +4,10 @@ import type {
   ChargeParams,
   ChargeResult,
   ProviderHealth,
+  TerminalCommand,
 } from "./provider.interface";
 
-type AndroidPgwConfig = {
+export type AndroidPgwConfig = {
   path: string;
   baudRate: number;
   dataBits: 5 | 6 | 7 | 8;
@@ -19,7 +20,18 @@ type AndroidPgwConfig = {
   appendCrlf: boolean;
 };
 
-export type PgwResponse = Record<string, string | number | boolean | null>;
+export type PgwValue =
+  | string
+  | number
+  | boolean
+  | null
+  | PgwValue[]
+  | { [key: string]: PgwValue };
+export type PgwResponse = Record<string, PgwValue>;
+export type PgwTransport = (
+  command: string,
+  timeoutMs: number,
+) => Promise<string>;
 
 type PgwDecision = "APPROVED" | "DECLINED" | "UNKNOWN";
 
@@ -29,7 +41,9 @@ const intEnv = (name: string, fallback: number) => {
 };
 
 const boolEnv = (name: string, fallback = false) => {
-  const value = String(process.env[name] ?? "").trim().toLowerCase();
+  const value = String(process.env[name] ?? "")
+    .trim()
+    .toLowerCase();
   if (!value) return fallback;
   return ["1", "true", "yes", "y", "on"].includes(value);
 };
@@ -39,7 +53,9 @@ const parseDataBits = (value: number): AndroidPgwConfig["dataBits"] =>
     ? (value as AndroidPgwConfig["dataBits"])
     : 8;
 
-const parseStopBits = (value: string | undefined): AndroidPgwConfig["stopBits"] => {
+const parseStopBits = (
+  value: string | undefined,
+): AndroidPgwConfig["stopBits"] => {
   if (value === "1.5") return 1.5;
   if (value === "2") return 2;
   return 1;
@@ -53,7 +69,9 @@ const parseParity = (value: string | undefined): AndroidPgwConfig["parity"] => {
 };
 
 const buildConfig = (): AndroidPgwConfig => ({
-  path: String(process.env.ANDROID_PGW_PORT || process.env.ANDROID_PGW_PATH || "").trim(),
+  path: String(
+    process.env.ANDROID_PGW_PORT || process.env.ANDROID_PGW_PATH || "",
+  ).trim(),
   baudRate: intEnv("ANDROID_PGW_BAUD_RATE", 9600),
   dataBits: parseDataBits(intEnv("ANDROID_PGW_DATA_BITS", 8)),
   stopBits: parseStopBits(process.env.ANDROID_PGW_STOP_BITS),
@@ -66,51 +84,86 @@ const buildConfig = (): AndroidPgwConfig => ({
 });
 
 const escapeValue = (value: string | number | boolean) => {
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "number" || typeof value === "boolean")
+    return String(value);
   if (/^[A-Za-z0-9._:-]+$/.test(value)) return value;
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 };
 
 const buildPgwCommand = (fields: Record<string, string | number | boolean>) =>
   `<{${Object.entries(fields)
-    .map(([key, value]) => `${key}:${escapeValue(value)}`)
+    .map(
+      ([key, value]) =>
+        `${key}:${["rrn", "vendingCancel"].includes(key) ? JSON.stringify(String(value)) : escapeValue(value)}`,
+    )
     .join(",")}}>`;
 
-const parseValue = (value: string): string | number | boolean | null => {
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.toLowerCase() === "null") return null;
-  if (trimmed.toLowerCase() === "true") return true;
-  if (trimmed.toLowerCase() === "false") return false;
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
-  return trimmed.replace(/^"(.*)"$/, "$1");
-};
-
+// Split only top-level fields: settlement includes JSON arrays and nested objects.
 export const parsePgwResponse = (raw: string): PgwResponse => {
   const body = raw
     .trim()
     .replace(/^</, "")
     .replace(/>$/, "")
+    .trim()
     .replace(/^\{/, "")
     .replace(/\}$/, "");
-
-  const result: PgwResponse = {};
-  const pairPattern = /"?([A-Za-z][A-Za-z0-9_]*)"?\s*:\s*("(?:\\.|[^"])*"|[^,}]*)/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = pairPattern.exec(body))) {
-    result[match[1]] = parseValue(match[2]);
+  const fields: string[] = [];
+  let start = 0;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let i = 0; i < body.length; i += 1) {
+    const char = body[i];
+    if (quoted) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') quoted = false;
+    } else if (char === '"') quoted = true;
+    else if (char === "[" || char === "{") depth += 1;
+    else if (char === "]" || char === "}") depth -= 1;
+    else if (char === "," && depth === 0) {
+      fields.push(body.slice(start, i));
+      start = i + 1;
+    }
   }
-
+  if (quoted || depth !== 0) return {};
+  fields.push(body.slice(start));
+  const result: PgwResponse = {};
+  for (const field of fields) {
+    const match = field.match(
+      /^\s*"?([A-Za-z][A-Za-z0-9_]*)"?\s*:\s*([\s\S]*)$/,
+    );
+    if (!match) continue;
+    const [, key, value] = match;
+    const trimmed = value.trim();
+    // Preserve leading zeros and long reference numbers without numeric rounding.
+    const identifier =
+      /^(rrn|data|terminal|terminalid|merchantid|appcode|traceno|pan)$/i.test(
+        key,
+      );
+    if (identifier && !trimmed.startsWith('"'))
+      result[key] = !trimmed || trimmed === "null" ? null : trimmed;
+    else {
+      try {
+        result[key] = JSON.parse(trimmed) as PgwValue;
+      } catch {
+        result[key] = trimmed;
+      }
+    }
+  }
   return result;
 };
 
-const normalizeResponseKey = (key: string) => key.replace(/[^a-z0-9]/gi, "").toLowerCase();
+const normalizeResponseKey = (key: string) =>
+  key.replace(/[^a-z0-9]/gi, "").toLowerCase();
 
 const responseValue = (response: PgwResponse, ...aliases: string[]) => {
   const entries = Object.entries(response);
   for (const alias of aliases) {
     const normalizedAlias = normalizeResponseKey(alias);
-    const match = entries.find(([key]) => normalizeResponseKey(key) === normalizedAlias);
+    const match = entries.find(
+      ([key]) => normalizeResponseKey(key) === normalizedAlias,
+    );
     if (match) return match[1];
   }
   return null;
@@ -120,16 +173,44 @@ const responseText = (response: PgwResponse, ...aliases: string[]) =>
   String(responseValue(response, ...aliases) ?? "").trim();
 
 const responseCode = (response: PgwResponse) =>
-  responseText(response, "code", "response", "responseCode", "respCode", "resultCode");
+  responseText(
+    response,
+    "code",
+    "response",
+    "responseCode",
+    "respCode",
+    "resultCode",
+  );
 
 const responseMessage = (response: PgwResponse) =>
-  responseText(response, "desc", "description", "message", "responseMessage", "errorMessage");
+  responseText(
+    response,
+    "desc",
+    "description",
+    "message",
+    "responseMessage",
+    "errorMessage",
+  );
 
 const responseRrn = (response: PgwResponse) =>
-  responseText(response, "rrn", "invoice", "traceNo", "systemRef", "transactionId");
+  responseText(
+    response,
+    "rrn",
+    "invoice",
+    "traceNo",
+    "systemRef",
+    "transactionId",
+  );
 
 const responseApprovalCode = (response: PgwResponse) =>
-  responseText(response, "appCode", "approvalCode", "approveCode", "authCode", "authorizationCode");
+  responseText(
+    response,
+    "appCode",
+    "approvalCode",
+    "approveCode",
+    "authCode",
+    "authorizationCode",
+  );
 
 const responseTerminal = (response: PgwResponse) =>
   responseText(response, "terminal", "terminalId", "tid");
@@ -168,33 +249,106 @@ export const classifyPgwResponse = (response: PgwResponse): PgwDecision => {
     "approved",
   ).toUpperCase();
 
-  // An explicit failure always wins, even when a declined response happens to
-  // include a trace/reference number.
-  if (DECLINED_STATUS_VALUES.has(status) || DECLINED_STATUS_VALUES.has(normalizedCode)) {
-    return "DECLINED";
+  // Terminal storage/transport errors and duplicate responses cannot prove no debit.
+  if (
+    [
+      "-1",
+      "-2",
+      "-3",
+      "-4",
+      "-6",
+      "-7",
+      "-8",
+      "-9",
+      "-10",
+      "-11",
+      "-12",
+      "-13",
+      "-14",
+      "-19",
+      "50",
+      "52",
+      "5",
+      "909",
+      "903",
+      "912",
+      "913",
+    ].includes(code)
+  )
+    return "UNKNOWN";
+  const approved = APPROVED_STATUS_VALUES.has(status);
+  const declined = DECLINED_STATUS_VALUES.has(status);
+  if (code && /^0+$/.test(code)) return declined ? "UNKNOWN" : "APPROVED";
+  if (["-21", "-22"].includes(code)) {
+    return responseRrn(response) || responseApprovalCode(response) || approved
+      ? "UNKNOWN"
+      : "DECLINED";
   }
-  if (/^\d+$/.test(code) && !/^0+$/.test(code)) return "DECLINED";
-
-  if (code && /^0+$/.test(code)) return "APPROVED";
-  if (APPROVED_STATUS_VALUES.has(status) || APPROVED_STATUS_VALUES.has(normalizedCode)) {
+  if (
+    [
+      "-5",
+      "-20",
+      "-23",
+      "-25",
+      "-26",
+      "-27",
+      "-28",
+      "-29",
+      "-33",
+      "-34",
+      "-36",
+      "-37",
+      "-39",
+      "-41",
+      "101",
+      "104",
+      "105",
+      "106",
+      "109",
+      "110",
+      "111",
+      "116",
+      "117",
+      "119",
+      "120",
+      "123",
+      "125",
+      "126",
+      "127",
+      "128",
+      "200",
+      "201",
+      "202",
+      "203",
+      "204",
+      "205",
+      "206",
+      "207",
+      "920",
+    ].includes(code)
+  )
+    return approved ? "UNKNOWN" : "DECLINED";
+  if (code) return "UNKNOWN";
+  // Legacy classifier callers may receive explicit textual status fields. The
+  // documented serial purchase path additionally requires a code and correlation.
+  if (declined || DECLINED_STATUS_VALUES.has(normalizedCode)) return "DECLINED";
+  if (approved || APPROVED_STATUS_VALUES.has(normalizedCode)) return "APPROVED";
+  if (responseRrn(response) && responseApprovalCode(response))
     return "APPROVED";
-  }
-
-  // Some Android PGW releases omit the response code on a successful sale,
-  // but still return both the retrieval reference and bank approval code.
-  if (responseRrn(response) && responseApprovalCode(response)) return "APPROVED";
-
   return "UNKNOWN";
 };
 
 const normalizeFrame = (value: string) => value.trim().replace(/\s+/g, "");
 
-export const completePgwFrames = (raw: string) => raw.match(/<[\s\S]*?>/g) || [];
+export const completePgwFrames = (raw: string) =>
+  raw.match(/<[\s\S]*?>/g) || [];
 
 export const terminalResultFrame = (raw: string, command: string) => {
   const normalizedCommand = normalizeFrame(command);
   const responseFrames = completePgwFrames(raw).filter(
-    (frame) => normalizeFrame(frame) !== normalizedCommand,
+    (frame) =>
+      normalizeFrame(frame) !== normalizedCommand &&
+      !("vendingCancel" in parsePgwResponse(frame)),
   );
   return responseFrames.at(-1) || "";
 };
@@ -204,7 +358,9 @@ const withoutCommandEcho = (raw: string, command: string) => {
   return completePgwFrames(raw)
     .reduce(
       (remaining, frame) =>
-        normalizeFrame(frame) === normalizedCommand ? remaining.replace(frame, "") : remaining,
+        normalizeFrame(frame) === normalizedCommand
+          ? remaining.replace(frame, "")
+          : remaining,
       raw,
     )
     .trim();
@@ -234,7 +390,9 @@ const hasTerminalResponse = (raw: string) => {
     upper.includes("DECLIN") ||
     upper.includes("FAILED") ||
     upper.includes("ERROR") ||
-    /\b(code|response_?code|resp_?code|result_?code|status|result|rrn|app_?code)\s*:/i.test(text)
+    /\b(code|response_?code|resp_?code|result_?code|status|result|rrn|app_?code)\s*:/i.test(
+      text,
+    )
   );
 };
 
@@ -242,25 +400,42 @@ export class AndroidPgwProvider implements CardTerminalProvider {
   private readonly config: AndroidPgwConfig;
   private activePath: string | null = null;
   private commandQueue: Promise<void> = Promise.resolve();
+  private cancelActive: (() => Promise<void>) | null = null;
+  private activeAttemptId: string | null = null;
 
-  constructor(config: AndroidPgwConfig = buildConfig()) {
+  constructor(
+    config: AndroidPgwConfig = buildConfig(),
+    private readonly transport?: PgwTransport,
+  ) {
     this.config = config;
   }
 
   async health(): Promise<ProviderHealth> {
     try {
-      const raw = await this.sendCommand(buildPgwCommand({ connection: "check" }), this.config.healthTimeoutMs, true);
-      const connected = raw.toUpperCase().includes("CONNECTED");
+      const command = buildPgwCommand({ connection: "check" });
+      const raw = await this.sendCommand(
+        command,
+        this.config.healthTimeoutMs,
+        true,
+      );
+      const connected = /^CONNECTED$/i.test(
+        withoutCommandEcho(raw, command).trim(),
+      );
       return {
         ok: connected,
-        message: connected ? "Android PGW terminal connected" : "Android PGW terminal did not return CONNECTED",
+        message: connected
+          ? "Android PGW terminal connected"
+          : "Android PGW terminal did not return CONNECTED",
         serialPath: this.activePath || this.config.path || "auto",
         raw,
       };
     } catch (error) {
       return {
         ok: false,
-        message: error instanceof Error ? error.message : "Android PGW terminal health check failed",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Android PGW terminal health check failed",
         serialPath: this.activePath || this.config.path || "auto",
       };
     }
@@ -268,46 +443,140 @@ export class AndroidPgwProvider implements CardTerminalProvider {
 
   async charge(params: ChargeParams): Promise<ChargeResult> {
     const amount = Math.round(params.amount * this.config.amountMultiplier);
-    const command = buildPgwCommand({
-      amount,
-      data: params.attemptId,
+    if (!Number.isSafeInteger(amount) || amount <= 0)
+      throw new Error("Invalid PGW amount");
+    return this.runExclusive(async () => {
+      this.activeAttemptId = params.attemptId;
+      try {
+        const raw = await this.executeCommand(
+          buildPgwCommand({ amount, data: params.attemptId }),
+          this.config.timeoutMs,
+        );
+        const parsed = parsePgwResponse(raw);
+        const returnedAmount = responseValue(parsed, "amount");
+        const terminal = responseTerminal(parsed);
+        const candidate = classifyPgwResponse(parsed);
+        const hasApprovalFields =
+          candidate !== "APPROVED" ||
+          (returnedAmount !== null && Boolean(terminal));
+        const matches =
+          hasApprovalFields &&
+          responseText(parsed, "data") === params.attemptId &&
+          (returnedAmount === null || Number(returnedAmount) === amount) &&
+          (!terminal ||
+            params.terminalId === "terminal-1" ||
+            terminal === params.terminalId);
+        const decision =
+          matches && responseCode(parsed) !== "" ? candidate : "UNKNOWN";
+        return this.result(
+          raw,
+          parsed,
+          decision,
+          matches ? undefined : "Terminal response does not match this payment",
+        );
+      } finally {
+        this.activeAttemptId = null;
+      }
     });
+  }
 
-    const raw = await this.sendCommand(command, this.config.timeoutMs, true);
-    const parsed = parsePgwResponse(raw);
-    const code = responseCode(parsed);
-    const decision = classifyPgwResponse(parsed);
-    const rrn = responseRrn(parsed);
-    const terminal = responseTerminal(parsed);
-    const parsedKeys = Object.keys(parsed).join(", ") || "none";
-    const message =
-      responseMessage(parsed) ||
-      (decision === "APPROVED"
-        ? "Approved"
-        : decision === "DECLINED"
-          ? `Declined${code ? ` (${code})` : ""}`
-          : `Terminal result was not recognized (fields: ${parsedKeys})`);
+  async command(params: TerminalCommand): Promise<ChargeResult> {
+    if (params.operation === "cancel") {
+      if (
+        !params.attemptId ||
+        params.attemptId !== this.activeAttemptId ||
+        !this.cancelActive
+      )
+        return {
+          status: "FAILED",
+          message:
+            "No matching active terminal payment; verify the original payment",
+        };
+      // Write to the open purchase connection rather than queueing behind it.
+      // This acknowledgement never declares the original purchase declined.
+      await this.cancelActive();
+      return {
+        status: "FAILED",
+        message: "Cancellation requested; await the original terminal result",
+      };
+    }
+    if (params.operation === "void" && !/^\d{1,32}$/.test(params.rrn || ""))
+      throw new Error("A bank RRN is required");
+    return this.runExclusive(async () => {
+      const fields: Record<string, string | number | boolean> =
+        params.operation === "void"
+          ? { void: true, rrn: params.rrn!, data: params.requestId }
+          : { settlement: true, data: params.requestId };
+      const raw = await this.executeCommand(
+        buildPgwCommand(fields),
+        this.config.timeoutMs,
+      );
+      const parsed = parsePgwResponse(raw);
+      const returnedData = responseText(parsed, "data");
+      const terminal = responseText(parsed, "terminal", "terminalID");
+      // Settlement's documented response does not contain data.
+      const matches =
+        (params.operation === "settlement"
+          ? !returnedData || returnedData === params.requestId
+          : returnedData === params.requestId) &&
+        (!terminal ||
+          params.terminalId === "terminal-1" ||
+          terminal === params.terminalId);
+      return this.result(
+        raw,
+        parsed,
+        matches && responseCode(parsed) !== ""
+          ? classifyPgwResponse(parsed)
+          : "UNKNOWN",
+      );
+    });
+  }
 
+  private result(
+    raw: string,
+    parsed: PgwResponse,
+    decision: PgwDecision,
+    message?: string,
+  ): ChargeResult {
     return {
       status: decision === "UNKNOWN" ? "FAILED" : decision,
-      transactionId: rrn || String(parsed.data ?? params.attemptId),
-      message,
+      transactionId: responseRrn(parsed) || undefined,
+      message:
+        message ||
+        responseMessage(parsed) ||
+        (decision === "UNKNOWN"
+          ? "Terminal result requires verification"
+          : decision),
       provider: "ANDROID_PGW",
       raw,
-      code,
-      rrn: rrn || null,
-      terminal: terminal || null,
-      appCode: parsed.appCode ?? null,
+      code: responseCode(parsed),
+      rrn: responseRrn(parsed) || null,
+      terminal: responseTerminal(parsed) || null,
+      appCode: responseApprovalCode(parsed) || null,
       entryMode: parsed.entryMode ?? null,
       pan: parsed.pan ?? null,
-      amount: parsed.amount ?? amount,
-      data: parsed.data ?? params.attemptId,
+      amount: parsed.amount ?? null,
+      data: parsed.data ?? null,
       parsed,
     };
   }
 
-  private async sendCommand(command: string, timeoutMs: number, allowDiscovery = false): Promise<string> {
-    return this.runExclusive(() => this.sendCommandUnlocked(command, timeoutMs, allowDiscovery));
+  private executeCommand(command: string, timeoutMs: number): Promise<string> {
+    return this.transport
+      ? this.transport(command, timeoutMs)
+      : this.sendCommandUnlocked(command, timeoutMs, true);
+  }
+
+  private async sendCommand(
+    command: string,
+    timeoutMs: number,
+    allowDiscovery = false,
+  ): Promise<string> {
+    return this.runExclusive(() =>
+      this.transport
+        ? this.transport(command, timeoutMs)
+        : this.sendCommandUnlocked(command, timeoutMs, allowDiscovery),
+    );
   }
 
   private async runExclusive<T>(operation: () => Promise<T>): Promise<T> {
@@ -325,11 +594,20 @@ export class AndroidPgwProvider implements CardTerminalProvider {
     }
   }
 
-  private async sendCommandUnlocked(command: string, timeoutMs: number, allowDiscovery = false): Promise<string> {
+  private async sendCommandUnlocked(
+    command: string,
+    timeoutMs: number,
+    allowDiscovery = false,
+  ): Promise<string> {
     const configuredPath = this.normalizedConfiguredPath();
-    const firstPath = this.activePath || configuredPath || (allowDiscovery ? await this.discoverConnectedPath() : "");
+    const firstPath =
+      this.activePath ||
+      configuredPath ||
+      (allowDiscovery ? await this.discoverConnectedPath() : "");
     if (!firstPath) {
-      throw new Error("ANDROID_PGW_PORT is required, or set ANDROID_PGW_PORT=auto to discover the terminal");
+      throw new Error(
+        "ANDROID_PGW_PORT is required, or set ANDROID_PGW_PORT=auto to discover the terminal",
+      );
     }
 
     try {
@@ -337,12 +615,20 @@ export class AndroidPgwProvider implements CardTerminalProvider {
       this.activePath = firstPath;
       return raw;
     } catch (error) {
-      if (!allowDiscovery || !this.isPortMissingError(error)) {
+      if (
+        configuredPath ||
+        !allowDiscovery ||
+        !this.isPortMissingError(error)
+      ) {
         throw error;
       }
       this.activePath = null;
       const discoveredPath = await this.discoverConnectedPath(firstPath);
-      const raw = await this.sendCommandToPath(discoveredPath, command, timeoutMs);
+      const raw = await this.sendCommandToPath(
+        discoveredPath,
+        command,
+        timeoutMs,
+      );
       this.activePath = discoveredPath;
       return raw;
     }
@@ -361,18 +647,24 @@ export class AndroidPgwProvider implements CardTerminalProvider {
   private async discoverConnectedPath(excludePath?: string): Promise<string> {
     const ports = await SerialPort.list();
     const candidates = ports
-      .map((port: any) => port.path)
+      .map((port) => port.path)
       .filter((path: string) => path && path !== excludePath);
 
     if (!candidates.length) {
-      throw new Error("No Android PGW serial ports detected. Reconnect USB and check Windows Device Manager.");
+      throw new Error(
+        "No Android PGW serial ports detected. Reconnect USB and check Windows Device Manager.",
+      );
     }
 
     const checkCommand = buildPgwCommand({ connection: "check" });
     for (const path of candidates) {
       try {
-        const raw = await this.sendCommandToPath(path, checkCommand, this.config.healthTimeoutMs);
-        if (raw.toUpperCase().includes("CONNECTED")) {
+        const raw = await this.sendCommandToPath(
+          path,
+          checkCommand,
+          this.config.healthTimeoutMs,
+        );
+        if (/^CONNECTED$/i.test(raw.trim())) {
           return path;
         }
       } catch {
@@ -380,14 +672,21 @@ export class AndroidPgwProvider implements CardTerminalProvider {
       }
     }
 
-    throw new Error(`Android PGW terminal was not found on detected ports: ${candidates.join(", ")}`);
+    throw new Error(
+      `Android PGW terminal was not found on detected ports: ${candidates.join(", ")}`,
+    );
   }
 
-  private async sendCommandToPath(path: string, command: string, timeoutMs: number): Promise<string> {
+  private async sendCommandToPath(
+    path: string,
+    command: string,
+    timeoutMs: number,
+  ): Promise<string> {
     const payload = this.config.appendCrlf ? `${command}\r\n` : command;
 
     return new Promise<string>((resolve, reject) => {
       const chunks: Buffer[] = [];
+      let bufferedBytes = 0;
       let settled = false;
       let idleTimer: NodeJS.Timeout | null = null;
 
@@ -403,6 +702,7 @@ export class AndroidPgwProvider implements CardTerminalProvider {
       const finish = (error?: Error, value?: string) => {
         if (settled) return;
         settled = true;
+        this.cancelActive = null;
         clearTimeout(timer);
         if (idleTimer) clearTimeout(idleTimer);
         // Keep the error listener attached while/after close. On Windows the
@@ -421,14 +721,27 @@ export class AndroidPgwProvider implements CardTerminalProvider {
       };
 
       const timer = setTimeout(() => {
-        finish(new Error(`Android PGW terminal response timed out after ${timeoutMs}ms`));
+        finish(
+          new Error(
+            `Android PGW terminal response timed out after ${timeoutMs}ms`,
+          ),
+        );
       }, timeoutMs);
 
       port.on("data", (chunk: Buffer) => {
+        bufferedBytes += chunk.length;
+        if (bufferedBytes > 256_000) {
+          finish(
+            new Error(
+              "PGW response exceeds maximum size; verify original operation",
+            ),
+          );
+          return;
+        }
         chunks.push(chunk);
         const current = Buffer.concat(chunks).toString("utf8");
-        if (current.toUpperCase().includes("CONNECTED")) {
-          finish(undefined, current.trim());
+        if (/^CONNECTED$/i.test(withoutCommandEcho(current, command).trim())) {
+          finish(undefined, withoutCommandEcho(current, command).trim());
           return;
         }
 
@@ -449,19 +762,33 @@ export class AndroidPgwProvider implements CardTerminalProvider {
             const buffered = Buffer.concat(chunks).toString("utf8");
             finish(
               undefined,
-              terminalResultFrame(buffered, command) || withoutCommandEcho(buffered, command),
+              terminalResultFrame(buffered, command) ||
+                withoutCommandEcho(buffered, command),
             );
           }, this.config.responseIdleMs);
         }
       });
 
-      port.on("error", (error: Error | null | undefined) => finish(error || undefined));
+      port.on("error", (error: Error | null | undefined) =>
+        finish(error || undefined),
+      );
 
       port.open((openError: Error | null | undefined) => {
         if (openError) {
           finish(openError);
           return;
         }
+        if (this.activeAttemptId)
+          this.cancelActive = () =>
+            new Promise<void>((done, fail) => {
+              port.write(buildPgwCommand({ vendingCancel: "1" }), (error) =>
+                error
+                  ? fail(error)
+                  : port.drain((drainError) =>
+                      drainError ? fail(drainError) : done(),
+                    ),
+              );
+            });
         port.write(payload, (writeError: Error | null | undefined) => {
           if (writeError) {
             finish(writeError);

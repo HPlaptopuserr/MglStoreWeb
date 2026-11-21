@@ -1,0 +1,169 @@
+name: PAX A35 Windows bridge prerelease
+
+on:
+  push:
+    branches: [codex/pax-a35-deploy-20261121]
+    paths:
+      - packages/pos-bridge/**
+      - .github/workflows/pos-bridge-windows.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pax-a35-bridge-20261121
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: pax-a35-bridge-20261121
+
+jobs:
+  package:
+    if: github.ref == 'refs/heads/codex/pax-a35-deploy-20261121'
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.30.2
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install bridge dependencies
+        run: pnpm install --frozen-lockfile --filter @mgl/pos-bridge...
+      - name: Type-check bridge
+        run: pnpm --filter @mgl/pos-bridge type-check
+      - name: Test protocol pairing and durable retries
+        run: pnpm --filter @mgl/pos-bridge test
+      - name: Build Windows native distribution and installer
+        run: pnpm --filter @mgl/pos-bridge package:windows
+      - name: Validate distribution and smoke-test bundled runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $OutputRoot = "C:\tmp\mgl-pos-bridge-release"
+          $Zip = Join-Path $OutputRoot "mgl-pos-bridge-android-pgw.zip"
+          $Exe = Join-Path $OutputRoot "MGL-POS-Bridge-android-pgw-Installer.exe"
+          foreach ($File in @($Zip, $Exe)) {
+            if (-not (Test-Path -LiteralPath $File -PathType Leaf) -or (Get-Item -LiteralPath $File).Length -lt 1024) {
+              throw "Required Windows release asset was not generated: $File"
+            }
+          }
+          $Header = [System.IO.File]::ReadAllBytes($Exe)
+          if ($Header[0] -ne 0x4d -or $Header[1] -ne 0x5a) { throw "Installer is not a Windows executable" }
+
+          $SmokeDir = Join-Path $env:RUNNER_TEMP "pgw-distribution-smoke"
+          Expand-Archive -LiteralPath $Zip -DestinationPath $SmokeDir -Force
+          foreach ($RelativePath in @("runtime\node.exe", "dist\index.js", "dist\pair.js", "pair-bridge.cmd", "create-pairing-shortcut.ps1", "install-android-pgw.cmd")) {
+            if (-not (Test-Path -LiteralPath (Join-Path $SmokeDir $RelativePath) -PathType Leaf)) {
+              throw "Incomplete distribution: $RelativePath"
+            }
+          }
+          $Listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+          $Listener.Start()
+          $Port = $Listener.LocalEndpoint.Port
+          $Listener.Stop()
+          $env:BRIDGE_PORT = [string]$Port
+          $env:BRIDGE_PROVIDER = "mock"
+          $env:BRIDGE_SHARED_SECRET = ""
+          $env:BRIDGE_STARTUP_HEALTH_CHECK = "false"
+          $env:BRIDGE_DATA_DIR = Join-Path $env:RUNNER_TEMP ("pgw-mock-journal-" + [guid]::NewGuid().ToString("N"))
+          $Stdout = Join-Path $env:RUNNER_TEMP "pgw-smoke.stdout.log"
+          $Stderr = Join-Path $env:RUNNER_TEMP "pgw-smoke.stderr.log"
+          $BridgeProcess = $null
+          try {
+            $BridgeProcess = Start-Process -FilePath (Join-Path $SmokeDir "runtime\node.exe") -ArgumentList @("dist\index.js") -WorkingDirectory $SmokeDir -RedirectStandardOutput $Stdout -RedirectStandardError $Stderr -PassThru
+            $Deadline = (Get-Date).AddSeconds(30)
+            $Ready = $false
+            while ((Get-Date) -lt $Deadline) {
+              if ($BridgeProcess.HasExited) { throw "Packaged bridge stopped before health became ready" }
+              try {
+                $Health = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 2
+                if ($Health.ok -and $Health.provider -eq "mock" -and $Health.port -eq $Port) {
+                  $Ready = $true
+                  break
+                }
+              } catch { }
+              Start-Sleep -Milliseconds 250
+            }
+            if (-not $Ready) { throw "Packaged bridge failed mock health smoke test" }
+            Write-Host "Bundled Windows Node and serialport dependency loaded; mock health passed. No serial scan or bank transaction was performed."
+          } catch {
+            if (Test-Path -LiteralPath $Stderr) { Get-Content -LiteralPath $Stderr }
+            throw
+          } finally {
+            if ($BridgeProcess -and -not $BridgeProcess.HasExited) {
+              Stop-Process -Id $BridgeProcess.Id -Force
+              Wait-Process -Id $BridgeProcess.Id -Timeout 10 -ErrorAction SilentlyContinue
+            }
+          }
+
+          $Checksums = foreach ($File in @($Zip, $Exe)) {
+            $Hash = (Get-FileHash -LiteralPath $File -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$Hash  $([System.IO.Path]::GetFileName($File))"
+          }
+          $Checksums | Set-Content -LiteralPath (Join-Path $OutputRoot "SHA256SUMS.txt") -Encoding ascii
+          @"
+          Windows bridge prerelease for Admin PAX A35 one-time pairing.
+
+          Source commit: $env:GITHUB_SHA
+          Build: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
+
+          Built and unit-tested on Windows with Node 22. The extracted distribution's bundled runtime passed mock health; no physical terminal was scanned or charged. Actual bank USB driver and PAX hardware acceptance remain required. This release does not claim Windows 7 support.
+
+          Finish pending transactions before upgrading. Preserve the local payment journal. The installer creates the Desktop shortcut PAX A35 holboh and prompts for the Admin pairing link unless a valid pairing already exists. The cloud deployment does not update cashier PCs automatically.
+          "@ | Set-Content -LiteralPath (Join-Path $OutputRoot "RELEASE-NOTES.md") -Encoding utf8
+      - name: Retain verified Windows assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: pax-a35-windows-assets
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            C:\tmp\mgl-pos-bridge-release\mgl-pos-bridge-android-pgw.zip
+            C:\tmp\mgl-pos-bridge-release\MGL-POS-Bridge-android-pgw-Installer.exe
+            C:\tmp\mgl-pos-bridge-release\SHA256SUMS.txt
+            C:\tmp\mgl-pos-bridge-release\RELEASE-NOTES.md
+
+  publish:
+    if: github.ref == 'refs/heads/codex/pax-a35-deploy-20261121'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: pax-a35-windows-assets
+          path: verified-windows-assets
+      - name: Publish immutable prerelease assets
+        working-directory: verified-windows-assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check SHA256SUMS.txt
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" --silent 2>tag-check.err; then
+            echo "::error::Release tag already exists; refusing to replace installer assets."
+            exit 1
+          fi
+          case "$(cat tag-check.err)" in
+            *"HTTP 404"*) ;;
+            *) cat tag-check.err; exit 1 ;;
+          esac
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "PAX A35 Windows bridge 2026-11-21" \
+            --notes-file RELEASE-NOTES.md \
+            --prerelease \
+            mgl-pos-bridge-android-pgw.zip \
+            MGL-POS-Bridge-android-pgw-Installer.exe \
+            SHA256SUMS.txt
