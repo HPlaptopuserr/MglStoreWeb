@@ -75,6 +75,8 @@ export interface QPayInvoice {
 export type CardAttemptStatus = "PENDING" | "APPROVED" | "DECLINED" | "FAILED";
 
 export interface CardAttempt {
+  bridgeRequestSignature?: string;
+  bridgeUrl?: string | null;
   attemptId: string;
   amount: number;
   terminalId: string;
@@ -113,6 +115,8 @@ export interface RegisterConfig {
   cardEnabled: boolean;
   hasOwnCardTerminal?: boolean;
   cardFlowVersion?: 2;
+  /** Explicit opt-in to Admin-managed pairing; missing means the legacy bridge. */
+  bridgePairingRequired?: boolean;
   /** The register's own selection; inherited terminal metadata does not change it. */
   cardPaymentMode?: "MANUAL" | "API";
   cardProviderType: string | null;

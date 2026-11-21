@@ -1213,6 +1213,7 @@ model PosRegister {
   rejectReason        String?
   reviewedAt          DateTime?
   reviewedById        String?
+  bridgeBinding       PosBridgeBinding?
   cardAttempts        CardPaymentAttempt[]
   branch              Branch               @relation(fields: [branchId], references: [id])
   organization        Organization         @relation(fields: [organizationId], references: [id])
@@ -5094,4 +5095,29 @@ model StoreOwnerProPayment {
 
   @@index([userId, status, accessExpiresAt])
   @@index([userId, status, invoiceExpiresAt])
+}
+
+// Pairing material never appears in register DTOs. Child keys are derived from
+// the existing API authentication key plus a random, register-scoped salt.
+model PosBridgeBinding {
+  id                       String      @id @default(uuid())
+  registerId               String      @unique
+  credentialSalt           String?
+  deviceId                 String?
+  pairingCodeHash          String?     @unique
+  pairingExpiresAt         DateTime?
+  pairedAt                 DateTime?
+  revokedAt                DateTime?
+  lastSeenAt               DateTime?
+  lastHeartbeatAt          DateTime?
+  terminalConnected        Boolean     @default(false)
+  terminalId               String?
+  serialPath               String?
+  bridgeVersion            String?
+  lastError                String?
+  activeCommandId          String?
+  hasUnresolvedOperation   Boolean     @default(false)
+  createdAt                DateTime    @default(now())
+  updatedAt                DateTime    @updatedAt
+  register                 PosRegister @relation(fields: [registerId], references: [id], onDelete: Cascade)
 }

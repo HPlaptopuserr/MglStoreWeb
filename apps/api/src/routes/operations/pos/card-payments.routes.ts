@@ -1,3 +1,6 @@
+import { attemptBridgeKey, BridgePairingError, lockBridgeRegister, registerBridgeKey } from "../../../services/pos-bridge-keys";
+import androidPgwRoutes from "./android-pgw.routes";
+import { readSignedBridgeResult, signBridgePayload } from "../../../services/android-pgw-bridge";
 import { isMissingCardRequestArchived, lockCardRequest } from "./missing-card-attempt-archive";
 import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
 import { isDatabaseUnavailable } from "../../../lib/database-availability";
@@ -35,6 +38,7 @@ import {
 } from "./_shared";
 
 const router: ExpressRouter = Router();
+router.use(androidPgwRoutes);
 const LOCAL_BRIDGE_CARD_PROVIDERS = new Set(["ANDROID_PGW", "QPOSLANE", "GANTIGO", "IDPAY"]);
 const CLOUD_CARD_PROVIDERS = new Set(["MINU_AGENT", "PUSH_ECR"]);
 
@@ -122,6 +126,8 @@ type CardAttemptResponseSource = {
   message: string | null;
   createdAt: Date;
   updatedAt: Date;
+  providerPayload?: unknown;
+  registerId?: string | null;
 };
 
 const matchesRestaurantSaleIdentity = (payload: Prisma.JsonValue, value: unknown): boolean => {
@@ -148,7 +154,16 @@ const pushEcrConfigError = () => {
   return "";
 };
 
-const toCardAttemptResponse = (attempt: CardAttemptResponseSource) => ({
+const toCardAttemptResponse = async (attempt: CardAttemptResponseSource) => {
+  const payload = attempt.providerPayload as Prisma.JsonObject | null;
+  // Enrollment is opt-in. Existing Vendor/Org/POS clients do not relay request
+  // signatures and must keep their deployed bridge protocol until paired.
+  const secret = payload?.bridgeBindingId && payload.mode === "client-bridge" && attempt.status === PosPaymentStatus.PENDING
+    ? await attemptBridgeKey(attempt) : "";
+  return ({
+  ...(secret && (attempt.providerPayload as Prisma.JsonObject | null)?.mode === "client-bridge" && attempt.status === PosPaymentStatus.PENDING ? {
+    bridgeRequestSignature: signBridgePayload(JSON.stringify({ attemptId: attempt.id, amount: Number(attempt.amount), terminalId: attempt.terminalId }), secret),
+  } : {}),
   attemptId: attempt.id,
   amount: Number(attempt.amount),
   terminalId: attempt.terminalId,
@@ -159,6 +174,7 @@ const toCardAttemptResponse = (attempt: CardAttemptResponseSource) => ({
   createdAt: attempt.createdAt.toISOString(),
   updatedAt: attempt.updatedAt.toISOString(),
 });
+};
 
 router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"], async (req, res) => {
   const standaloneCards = req.path.endsWith("/authorize-v2");
@@ -252,7 +268,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
     });
   }
 
-  if (usesLocalBridge && isProdLikeEnv && !bridgeSharedSecret && !clientBridge) {
+  if (usesLocalBridge && isProdLikeEnv && !bridgeSharedSecret && !clientBridge && !(isAndroidPgw && registerId)) {
     return res.status(500).json({
       message: "POS bridge shared secret тохируулаагүй байна",
     });
@@ -309,7 +325,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
             const saved = checkoutFromPayload(existing.providerPayload);
             if (!saved || !sameCheckout(saved, parseCardCheckout(req.body.checkout))) throw toApiError(409, "Төлбөртэй сагсны мэдээлэл өөрчлөгдсөн байна");
           }
-          return res.json(toCardAttemptResponse(existing));
+          return res.json(await toCardAttemptResponse(existing));
         }
       }
 
@@ -413,6 +429,16 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
       }
     }
     const created = await prisma.$transaction(async tx => {
+      let bridgeBindingId: string | null = null;
+      if (isAndroidPgw && registerId) {
+        await lockBridgeRegister(tx, registerId);
+        const key = await registerBridgeKey(registerId, tx);
+        if (!key.secret && isProdLikeEnv && !clientBridge) throw toApiError(503, "POS bridge shared secret тохируулаагүй байна");
+        bridgeBindingId = key.bindingId;
+        if (bridgeBindingId && (!clientBridge || effectiveBridgeUrl !== inheritedTerminalBridgeUrl))
+          throw toApiError(422, "Vendor кассын шинэ bridge холболтыг ашиглана уу");
+      }
+
       if (!manualCardAttempt && isMinuAgent) {
         // Database lock also covers requests from other tabs and API instances.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${effectiveOrganizationId}:${effectiveTerminalId}`}, 0))`;
@@ -431,6 +457,13 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
       }
       if (await isMissingCardRequestArchived(tx, attemptId)) {
         throw toApiError(409, "Энэ картын хүсэлт серверт үүсээгүй нь шалгагдаж, тусад нь хадгалагдсан байна. Хуучин хүсэлтээр дахин төлбөр эхлүүлэхгүй.");
+      }
+      if (bridgeBindingId && registerId) {
+        const binding = await tx.posBridgeBinding.findUnique({ where: { id: bridgeBindingId } });
+        const unresolved = await tx.cardPaymentAttempt.findFirst({ where: { registerId, consumedAt: null,
+          status: { in: [PosPaymentStatus.PENDING, PosPaymentStatus.FAILED] } }, select: { id: true } });
+        if (binding?.activeCommandId || binding?.hasUnresolvedOperation || unresolved)
+          throw toApiError(409, "Терминалын өмнөх төлбөр эсвэл үйлдлийг эхлээд шалгана уу");
       }
       if (manualCardAttempt) {
         const pending = await tx.cardPaymentAttempt.findFirst({ where: {
@@ -504,6 +537,8 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
               branchId: minuAgentContext?.branchId || null,
               ...(saleIdentity ? { saleIdentity } : {}),
               ...(checkout ? { checkout: JSON.parse(JSON.stringify(checkout)) as Prisma.InputJsonValue } : {}),
+            } : usesLocalBridge && clientBridge ? {
+              provider: "ANDROID_PGW", mode: "client-bridge", terminalId, ...(bridgeBindingId ? { bridgeBindingId } : {}),
             } : undefined,
       },
       });
@@ -511,7 +546,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
     }, { timeout: 30_000 });
     const { attempt } = created;
     attemptExists = true;
-    if (!created.isNew) return res.json(toCardAttemptResponse(attempt));
+    if (!created.isNew) return res.json(await toCardAttemptResponse(attempt));
 
     void prisma.auditLog.create({
       data: {
@@ -522,18 +557,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
       },
     });
 
-    if (!manualCardAttempt && usesLocalBridge && clientBridge) {
-      await prisma.cardPaymentAttempt.update({
-        where: { id: attempt.id },
-        data: {
-          providerPayload: {
-            provider: "ANDROID_PGW",
-            mode: "client-bridge",
-            terminalId,
-          } as object,
-        },
-      });
-    } else if (!manualCardAttempt && usesLocalBridge) {
+    if (!manualCardAttempt && usesLocalBridge && !clientBridge) {
       // Forward to local bridge; bridge translates to terminal native protocol.
       void (async () => {
         try {
@@ -732,7 +756,7 @@ router.post(["/pos/payments/card/authorize", "/pos/payments/card/authorize-v2"],
       }, 1800);
     }
 
-    return res.status(201).json(toCardAttemptResponse(attempt));
+    return res.status(201).json(await toCardAttemptResponse(attempt));
   } catch (error) {
     console.error("card authorize error", error);
     const failure = error as Partial<ApiError>;
@@ -763,16 +787,31 @@ router.post(["/pos/payments/card/client-bridge-result", "/pos/payments/card/clie
     }
 
     if (attempt.status !== PosPaymentStatus.PENDING) {
-      return res.json(toCardAttemptResponse(attempt));
+      return res.json(await toCardAttemptResponse(attempt));
     }
 
-    const bridgeData = result as Record<string, unknown>;
+    let bridgeData = result as Record<string, unknown>;
     const originalPayload = attempt.providerPayload as Prisma.JsonObject | null;
     if (originalPayload?.mode !== "client-bridge" || originalPayload.provider !== "ANDROID_PGW") {
       return res.status(403).json({ message: "Энэ төлбөр локал bridge-ийн хүсэлт биш байна" });
     }
     if (bridgeData.manualCard === true) {
       return res.status(422).json({ code: "CARD_MANUAL_FALLBACK_FORBIDDEN", message: "API төлбөрийг гараар төлсөн гэж автоматаар бүртгэх боломжгүй. Терминалын төлөвийг шалгана уу." });
+    }
+    // Only explicit enrollment opts a register's attempts into mandatory proof.
+    if (originalPayload.bridgeBindingId) {
+      const resultSecret = await attemptBridgeKey(attempt);
+      // A browser may report a transport failure, but can never declare bank success/decline.
+      if (!req.body?.bridgeResponse && ["PENDING", "DECLINED"].includes(String(bridgeData.status))) {
+        return res.json(await toCardAttemptResponse(attempt));
+      }
+      try {
+        bridgeData = readSignedBridgeResult(req.body?.bridgeResponse, req.body?.bridgeSignature, resultSecret);
+        if (bridgeData.provider !== "ANDROID_PGW" || bridgeData.attemptId !== attempt.id || Number(bridgeData.requestAmount) !== Number(attempt.amount) ||
+            bridgeData.requestedTerminalId !== attempt.terminalId) throw new Error("Terminal result belongs to a different payment");
+      } catch (error: unknown) {
+        return res.status(422).json({ message: error instanceof Error ? error.message : "Invalid signed result" });
+      }
     }
     const newStatus = androidPgwResultStatus(bridgeData, attempt.id);
     const transactionId = firstString(
@@ -785,6 +824,12 @@ router.post(["/pos/payments/card/client-bridge-result", "/pos/payments/card/clie
     const traceNo = firstString(bridgeData.traceno, bridgeData.traceNo, bridgeData.rrn, bridgeData.RRN);
     const message = firstString(bridgeData.message, bridgeData.desc, bridgeData.description);
 
+    const providerPayload: Record<string, unknown> = { ...originalPayload, ...bridgeData, provider: "ANDROID_PGW", mode: "client-bridge" };
+    // Enrollment metadata belongs to the stored server attempt, never a browser
+    // relay or terminal result. Legacy clients cannot opt themselves into pairing.
+    if (originalPayload.bridgeBindingId) providerPayload.bridgeBindingId = originalPayload.bridgeBindingId;
+    else delete providerPayload.bridgeBindingId;
+
     await prisma.cardPaymentAttempt.updateMany({
       where: { id: attempt.id, status: PosPaymentStatus.PENDING, consumedAt: null, saleReference: null },
       data: {
@@ -792,17 +837,13 @@ router.post(["/pos/payments/card/client-bridge-result", "/pos/payments/card/clie
         transactionId: transactionId || null,
         traceno: traceNo || null,
         message: message || null,
-        providerPayload: {
-          ...originalPayload,
-          ...bridgeData,
-          provider: "ANDROID_PGW",
-          mode: "client-bridge",
-        } as object,
+        providerPayload: providerPayload as object,
       },
     });
     const updated = await prisma.cardPaymentAttempt.findUniqueOrThrow({ where: { id: attempt.id } });
-    return res.json(toCardAttemptResponse(updated));
+    return res.json(await toCardAttemptResponse(updated));
   } catch (error) {
+    if (error instanceof BridgePairingError) return res.status(error.status).json({ message: error.message });
     console.error("client bridge result error", error);
     return res.status(500).json({ message: "Card terminal үр дүн хадгалахад алдаа гарлаа" });
   }
@@ -1030,6 +1071,7 @@ router.get("/pos/payments/card/status/:attemptId", async (req, res) => {
         : freshAttempt.message;
 
     return res.json({
+      ...await toCardAttemptResponse(freshAttempt),
       attemptId: freshAttempt.id,
       amount: Number(freshAttempt.amount),
       terminalId: freshAttempt.terminalId,

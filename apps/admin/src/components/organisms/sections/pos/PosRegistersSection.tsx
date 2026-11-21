@@ -18,6 +18,7 @@ import {
 import { API, adminFetch } from "@/lib/api";
 import { OrgSearchDropdown } from "@/components/molecules/OrgSearchDropdown";
 import { BranchNameEditor } from "./BranchNameEditor";
+import { PaxA35Connection } from "./PaxA35Connection";
 
 /* ─── types ──────────────────────────────────────────────────────────── */
 type Org = { id: string; name: string; slug: string };
@@ -823,6 +824,22 @@ export function PosRegistersSection({
                       </button>
                     </div>
                   </div>
+                  {r.mode === "RETAIL" && (
+                    <PaxA35Connection
+                      registerId={r.id}
+                      registerName={r.name}
+                      eligible={r.isActive && r.activationStatus === "APPROVED"}
+                      cardEnabled={r.cardEnabled}
+                      cardProviderType={r.cardProviderType}
+                      onConfigured={() => setRegisters(current => current.map(register => register.id === r.id ? {
+                        ...register,
+                        cardEnabled: true,
+                        cardProviderType: "ANDROID_PGW",
+                        cardTerminalId: null,
+                        terminalBridgeUrl: "http://127.0.0.1:7420",
+                      } : register))}
+                    />
+                  )}
                 </div>
               ))}
             </div>

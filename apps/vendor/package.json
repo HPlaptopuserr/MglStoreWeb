@@ -8,7 +8,7 @@
     "start": "next start -H 0.0.0.0",
     "lint": "eslint .",
     "type-check": "next typegen && tsc --noEmit",
-    "test": "tsx --test 'src/**/*.test.ts' 'src/**/*.test.tsx'"
+    "test": "tsx --require ./test/register-css.cjs --test 'src/**/*.test.ts' 'src/**/*.test.tsx'"
   },
   "dependencies": {
     "@mgl/types": "workspace:*",

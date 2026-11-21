@@ -5,6 +5,7 @@ import {
   clientBridgeFailureResult,
   ClientBridgeNotStartedError,
   createCardAttempt,
+  getCardAttemptStatus,
   submitClientBridgeResult,
 } from "./card-terminal";
 import { cardPaymentOutcome } from "../utils/card-payment-outcome";
@@ -38,6 +39,84 @@ test("versioned card requests never fall back to a legacy bank endpoint on an ol
     assert.ok(calls[2].endsWith("/pos/payments/card/authorize"));
   } finally {
     globalThis.fetch = previous;
+  }
+});
+
+test("unenrolled tills retain the legacy health then unsigned charge contract", async () => {
+  const oldFetch = globalThis.fetch;
+  const oldWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { setTimeout, clearTimeout },
+  });
+  try {
+    for (const signingEnabled of [undefined, false, true]) {
+      const calls: Array<{ url: string; init?: RequestInit }> = [];
+      globalThis.fetch = async (url, init) => {
+        calls.push({ url: String(url), init });
+        if (String(url).endsWith("/health"))
+          return Response.json({
+            ok: true,
+            provider: "android-pgw",
+            signingEnabled,
+          });
+        assert.ok(String(url).endsWith("/charge"));
+        assert.equal(
+          new Headers(init?.headers).has("x-mgl-bridge-signature"),
+          false,
+        );
+        assert.deepEqual(JSON.parse(String(init?.body)), {
+          attemptId: "legacy-attempt",
+          amount: 12500,
+          terminalId: "terminal-1",
+        });
+        return Response.json({
+          status: "APPROVED",
+          rrn: "legacy-bank-reference",
+        });
+      };
+      const result = await chargeClientBridge({
+        bridgeUrl: "http://127.0.0.1:7420",
+        attemptId: "legacy-attempt",
+        amount: 12500,
+        terminalId: "terminal-1",
+      });
+      assert.equal(result.status, "APPROVED");
+      assert.equal(result.rrn, "legacy-bank-reference");
+      assert.deepEqual(
+        calls.map((call) => call.url),
+        ["http://127.0.0.1:7420/health", "http://127.0.0.1:7420/charge"],
+      );
+    }
+  } finally {
+    globalThis.fetch = oldFetch;
+    if (oldWindow) Object.defineProperty(globalThis, "window", oldWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("legacy status reads never probe bridge journal endpoints or resend a purchase", async () => {
+  const oldFetch = globalThis.fetch;
+  const calls: string[] = [];
+  const original = {
+    attemptId: "legacy-attempt",
+    status: "PENDING",
+    amount: 12500,
+    terminalId: "terminal-1",
+    bridgeUrl: "http://127.0.0.1:7420",
+  };
+  try {
+    globalThis.fetch = async (url) => {
+      calls.push(String(url));
+      assert.ok(
+        String(url).endsWith("/pos/payments/card/status/legacy-attempt"),
+      );
+      return Response.json(original);
+    };
+    assert.deepEqual(await getCardAttemptStatus("legacy-attempt"), original);
+    assert.equal(calls.length, 1);
+  } finally {
+    globalThis.fetch = oldFetch;
   }
 });
 
@@ -114,17 +193,14 @@ test("bridge failures never approve payment and distinguish not-started from an 
       calls.push(String(url));
       throw new TypeError("Failed to fetch");
     };
-    await assert.rejects(
-      chargeClientBridge(payload),
-      (error: unknown) => {
-        assert.ok(error instanceof ClientBridgeNotStartedError);
-        const result = clientBridgeFailureResult(error);
-        assert.equal(result.status, "DECLINED");
-        assert.equal(result.manualCard, undefined);
-        assert.equal(cardPaymentOutcome("DECLINED", result.message), "failed");
-        return true;
-      },
-    );
+    await assert.rejects(chargeClientBridge(payload), (error: unknown) => {
+      assert.ok(error instanceof ClientBridgeNotStartedError);
+      const result = clientBridgeFailureResult(error);
+      assert.equal(result.status, "DECLINED");
+      assert.equal(result.manualCard, undefined);
+      assert.equal(cardPaymentOutcome("DECLINED", result.message), "failed");
+      return true;
+    });
     assert.deepEqual(calls, ["http://127.0.0.1:8787/health"]);
     calls.length = 0;
     globalThis.fetch = async (url) => {
@@ -133,18 +209,15 @@ test("bridge failures never approve payment and distinguish not-started from an 
         return Response.json({ ok: true, provider: "android-pgw" });
       throw new TypeError("Failed to fetch");
     };
-    await assert.rejects(
-      chargeClientBridge(payload),
-      (error: unknown) => {
-        assert.ok(error instanceof Error);
-        assert.ok(!(error instanceof ClientBridgeNotStartedError));
-        const result = clientBridgeFailureResult(error);
-        assert.equal(result.status, "PENDING");
-        assert.equal(result.manualCard, undefined);
-        assert.equal(cardPaymentOutcome("PENDING", result.message), "pending");
-        return true;
-      },
-    );
+    await assert.rejects(chargeClientBridge(payload), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.ok(!(error instanceof ClientBridgeNotStartedError));
+      const result = clientBridgeFailureResult(error);
+      assert.equal(result.status, "PENDING");
+      assert.equal(result.manualCard, undefined);
+      assert.equal(cardPaymentOutcome("PENDING", result.message), "pending");
+      return true;
+    });
     assert.equal(
       calls.length,
       2,
@@ -156,14 +229,11 @@ test("bridge failures never approve payment and distinguish not-started from an 
       calls.push(String(url));
       return Response.json({ ok: false, message: "No serial connection" });
     };
-    await assert.rejects(
-      chargeClientBridge(payload),
-      (error: unknown) => {
-        assert.ok(error instanceof ClientBridgeNotStartedError);
-        assert.equal(clientBridgeFailureResult(error).status, "DECLINED");
-        return true;
-      },
-    );
+    await assert.rejects(chargeClientBridge(payload), (error: unknown) => {
+      assert.ok(error instanceof ClientBridgeNotStartedError);
+      assert.equal(clientBridgeFailureResult(error).status, "DECLINED");
+      return true;
+    });
     assert.equal(calls.length, 1);
     const abort = new AbortController();
     abort.abort();
