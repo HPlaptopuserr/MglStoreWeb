@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Search,
   Building2,
@@ -62,6 +62,7 @@ export default function PartnersPage() {
   const [deleteReason, setDeleteReason] = useState("");
   const [apiCategories, setApiCategories] = useState<ApiCategory[]>([]);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const createDialogRef = useRef<HTMLDialogElement>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
   const [createForm, setCreateForm] =
@@ -75,6 +76,29 @@ export default function PartnersPage() {
   } | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+
+  const closeCreateModal = () => {
+    setCreateModalOpen(false);
+    setCreateError("");
+    setCreateLoginAccount(null);
+    setCreateForm(EMPTY_CREATE_FORM);
+  };
+
+  useEffect(() => {
+    if (!createModalOpen) return;
+    const dialog = createDialogRef.current;
+    const previousActiveElement = document.activeElement;
+    dialog?.showModal();
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      dialog?.close();
+      document.body.style.overflow = previousOverflow;
+      if (previousActiveElement instanceof HTMLElement) {
+        previousActiveElement.focus();
+      }
+    };
+  }, [createModalOpen]);
 
   const handleDelete = async (partner: Partner) => {
     if (!deleteReason.trim() || deleteReason.trim().length < 5) {
@@ -287,33 +311,47 @@ export default function PartnersPage() {
       )}
 
       {createModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl">
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h3 className="text-xl font-bold text-slate-900">
+        <dialog
+          ref={createDialogRef}
+          aria-labelledby="create-organization-title"
+          aria-describedby="create-organization-description"
+          onCancel={(event) => {
+            event.preventDefault();
+            closeCreateModal();
+          }}
+          className="fixed inset-0 m-auto max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] min-w-0 max-w-4xl overflow-y-auto overscroll-contain rounded-2xl bg-white p-4 text-slate-800 shadow-xl backdrop:bg-black/50 sm:p-6"
+        >
+          <div className="min-w-0">
+            <div className="mb-5 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3
+                  id="create-organization-title"
+                  className="text-xl font-bold text-slate-900"
+                >
                   Байгууллага бүртгэх
                 </h3>
-                <p className="text-sm text-slate-500">
+                <p
+                  id="create-organization-description"
+                  className="text-sm text-slate-500"
+                >
                   Байгууллагын контакт болон vendor login owner user-ийг тусад
                   нь бүртгэнэ.
                 </p>
               </div>
               <button
-                onClick={() => {
-                  setCreateModalOpen(false);
-                  setCreateError("");
-                  setCreateLoginAccount(null);
-                  setCreateForm(EMPTY_CREATE_FORM);
-                }}
-                className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                onClick={closeCreateModal}
+                aria-label="Хаах"
+                className="shrink-0 rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               >
                 <X size={18} />
               </button>
             </div>
 
             {createError && (
-              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div
+                role="alert"
+                className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+              >
                 {createError}
               </div>
             )}
@@ -333,7 +371,7 @@ export default function PartnersPage() {
                     </p>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 [&>*]:min-w-0">
                   <div>
                     <label className="mb-1 block text-sm font-medium text-slate-700">
                       Байгууллагын нэр *
@@ -346,7 +384,7 @@ export default function PartnersPage() {
                           name: e.target.value,
                         }))
                       }
-                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className="w-full min-w-0 max-w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                     />
                   </div>
                   <div>
@@ -362,7 +400,7 @@ export default function PartnersPage() {
                         }))
                       }
                       placeholder="Жишээ: 89123581"
-                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className="w-full min-w-0 max-w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                     />
                   </div>
                   <div>
@@ -377,7 +415,7 @@ export default function PartnersPage() {
                           type: e.target.value,
                         }))
                       }
-                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className="w-full min-w-0 max-w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                     >
                       <option value="SUPPLIER">SUPPLIER</option>
                       <option value="SERVICE_PROVIDER">SERVICE_PROVIDER</option>
@@ -396,7 +434,7 @@ export default function PartnersPage() {
                         }))
                       }
                       placeholder="Хоосон бол автоматаар үүсгэнэ"
-                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className="w-full min-w-0 max-w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -411,7 +449,7 @@ export default function PartnersPage() {
                           businessCategory: e.target.value,
                         }))
                       }
-                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className="w-full min-w-0 max-w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                     >
                       <option value="">Сонгоогүй</option>
                       {apiCategories.map((cat) => (
@@ -434,7 +472,7 @@ export default function PartnersPage() {
                         }))
                       }
                       rows={3}
-                      className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className="w-full min-w-0 max-w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                     />
                   </div>
                 </div>
@@ -481,7 +519,7 @@ export default function PartnersPage() {
                     <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-700">
                       Personal account-аас татсан login
                     </p>
-                    <div className="mt-2 grid gap-2 text-sm font-semibold text-slate-700 md:grid-cols-3">
+                    <div className="mt-2 grid min-w-0 grid-cols-1 gap-2 break-words text-sm font-semibold text-slate-700 md:grid-cols-3 [&>*]:min-w-0">
                       <span>{createForm.ownerName || "Нэргүй хэрэглэгч"}</span>
                       <span>{createForm.ownerEmail || "Email байхгүй"}</span>
                       <span>{createForm.ownerPhone || "Утас байхгүй"}</span>
@@ -506,7 +544,7 @@ export default function PartnersPage() {
                             }))
                           }
                           placeholder="Хариуцсан хүний нэр"
-                          className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                          className="w-full min-w-0 max-w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                         />
                       </div>
                       <div>
@@ -523,7 +561,7 @@ export default function PartnersPage() {
                             }))
                           }
                           placeholder="owner@company.mn"
-                          className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                          className="w-full min-w-0 max-w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                         />
                       </div>
                       <div>
@@ -539,7 +577,7 @@ export default function PartnersPage() {
                             }))
                           }
                           placeholder="Login хийх утас"
-                          className="w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
+                          className="w-full min-w-0 max-w-full rounded-xl border border-emerald-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500"
                         />
                       </div>
                     </div>
@@ -553,14 +591,9 @@ export default function PartnersPage() {
               </div>
             </div>
 
-            <div className="mt-6 flex gap-3">
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <button
-                onClick={() => {
-                  setCreateModalOpen(false);
-                  setCreateError("");
-                  setCreateLoginAccount(null);
-                  setCreateForm(EMPTY_CREATE_FORM);
-                }}
+                onClick={closeCreateModal}
                 className="flex-1 rounded-xl bg-slate-100 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-200"
               >
                 Болих
@@ -575,7 +608,7 @@ export default function PartnersPage() {
               </button>
             </div>
           </div>
-        </div>
+        </dialog>
       )}
 
       <div className="w-full">

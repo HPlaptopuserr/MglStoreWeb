@@ -160,7 +160,7 @@ export function VendorLoginAccountSelector({
         </span>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-5">
+      <div className="grid min-w-0 grid-cols-1 gap-3 md:grid-cols-5 [&>*]:min-w-0">
         <div className="md:col-span-2">
           <label className="mb-1 block text-xs font-black uppercase tracking-[0.14em] text-slate-500">
             Personal account хайх
@@ -193,7 +193,7 @@ export function VendorLoginAccountSelector({
                   onSelectedAccountChange(null);
                   setSearch("");
                 }}
-                className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
                 aria-label="Сонгосон хэрэглэгч цэвэрлэх"
               >
                 <X size={14} />

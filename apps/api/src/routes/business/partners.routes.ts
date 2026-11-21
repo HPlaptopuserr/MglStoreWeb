@@ -34,6 +34,11 @@ import { QUALITY_SETTINGS_PREFIX, qualityOrganizationKey, isOrganizationQualityE
 
 import { validateBusinessAppControlPatch } from "../../services/business-app-control-validation";
 
+import {
+  getAdminOrganizationConflictMessage,
+  saveAdminOrganizationOwnerProfile,
+} from "../../services/admin-organization-owner-profile";
+
 import merchantDiagnosticsRouter from "./merchant-diagnostics.routes";
 
 import appControlMembersRouter from "./app-control-members.routes";
@@ -1215,29 +1220,11 @@ router.post(
               select: { id: true },
             });
 
-            await tx.profile.upsert({
-              where: { userId: existingUser.id },
-              update: {
-                fullName:
-                  ownerName?.trim() ||
-                  existingUser.profile?.fullName ||
-                  name.trim(),
-                phoneNumber:
-                  ownerPhone?.trim() ||
-                  existingUser.profile?.phoneNumber ||
-                  null,
-              },
-              create: {
-                userId: existingUser.id,
-                fullName:
-                  ownerName?.trim() ||
-                  existingUser.profile?.fullName ||
-                  name.trim(),
-                phoneNumber:
-                  ownerPhone?.trim() ||
-                  existingUser.profile?.phoneNumber ||
-                  null,
-              },
+            await saveAdminOrganizationOwnerProfile(tx, existingUser.id, {
+              fullName:
+                ownerName?.trim() || existingUser.profile?.fullName || name.trim(),
+              phoneNumber:
+                ownerPhone?.trim() || existingUser.profile?.phoneNumber || null,
             });
 
             await tx.organizationMember.create({
@@ -1367,17 +1354,9 @@ router.post(
                 },
               });
 
-          await tx.profile.upsert({
-            where: { userId: user.id },
-            update: {
-              fullName: ownerName?.trim() || name.trim(),
-              phoneNumber: ownerPhone?.trim() || null,
-            },
-            create: {
-              userId: user.id,
-              fullName: ownerName?.trim() || name.trim(),
-              phoneNumber: ownerPhone?.trim() || null,
-            },
+          await saveAdminOrganizationOwnerProfile(tx, user.id, {
+            fullName: ownerName?.trim() || name.trim(),
+            phoneNumber: ownerPhone?.trim() || null,
           });
 
           if (inviteToken && inviteTokenExpiresAt) {
@@ -1415,6 +1394,10 @@ router.post(
       });
     } catch (error) {
       console.error("create admin organization error", error);
+      const conflictMessage = getAdminOrganizationConflictMessage(error);
+      if (conflictMessage) {
+        return res.status(409).json({ message: conflictMessage });
+      }
       return res
         .status(500)
         .json({ message: "Байгууллага үүсгэхэд алдаа гарлаа" });
