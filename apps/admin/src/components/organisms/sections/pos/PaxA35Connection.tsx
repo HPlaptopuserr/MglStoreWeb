@@ -4,6 +4,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   ChevronDown,
   Copy,
+  Download,
   Link2,
   Loader2,
   RefreshCw,
@@ -287,6 +288,23 @@ export function PaxA35Connection({
                 уу.
               </p>
             )}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-violet-100 bg-white p-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-slate-700">
+                  Анхны суулгалт · Windows 10/11
+                </p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Эхлээд кассын компьютерт суулгагчаа ажиллуулаад, дараа нь
+                  доорх алхмаар холбоно.
+                </p>
+              </div>
+              <a
+                href="https://github.com/HPlaptopuserr/MglStoreWeb/releases/download/pax-a35-bridge-20261121/MGL-POS-Bridge-android-pgw-Installer.exe"
+                className={`${button} border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100`}
+              >
+                <Download size={14} aria-hidden="true" /> Windows суулгагч татах
+              </a>
+            </div>
             <ol className="list-decimal space-y-1.5 pl-5 leading-5">
               <li>
                 Энд холбох код үүсгээд <strong>Холбох холбоос хуулах</strong>{" "}
@@ -302,7 +320,6 @@ export function PaxA35Connection({
               </li>
             </ol>
             <p className="text-[11px] text-slate-500">
-              Анх удаа ашиглахдаа кассын холболтын суулгагчийг ажиллуулна.
               A35-ийг USB-ээр холбоод, банкны Android PGW програм болон
               шаардлагатай driver-ийг бэлэн болгоно.
             </p>
