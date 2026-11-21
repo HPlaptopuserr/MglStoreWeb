@@ -27,7 +27,9 @@ const documentInclude = {
   },
   items: {
     orderBy: { id: "asc" },
-    include: { product: { select: { name: true, sku: true, unit: true } } },
+    include: {
+      product: { select: { name: true, sku: true, unit: true, barcode: true } },
+    },
   },
 } satisfies Prisma.WarehouseManualDispatchInclude;
 type DispatchRecord = Prisma.WarehouseManualDispatchGetPayload<{
@@ -67,16 +69,20 @@ function serialize(record: DispatchRecord): WarehouseDispatchDocument {
     warehouse: record.warehouse,
     totalQuantity: record.items.reduce((sum, item) => sum + item.quantity, 0),
     totalAmount: hasPrices ? total.toFixed(2) : null,
-    items: record.items.map((item) => ({
-      id: item.id,
-      productId: item.productId,
-      name: item.productName ?? item.product.name,
-      sku: item.productName !== null ? item.productSku : item.product.sku,
-      unit: readSnapshot(item.productSnapshot)?.unit ?? item.product.unit,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice?.toFixed(2) ?? null,
-      totalAmount: item.unitPrice?.times(item.quantity).toFixed(2) ?? null,
-    })),
+    items: record.items.map((item) => {
+      const snapshot = readSnapshot(item.productSnapshot);
+      return {
+        id: item.id,
+        productId: item.productId,
+        name: item.productName ?? item.product.name,
+        sku: item.productName !== null ? item.productSku : item.product.sku,
+        barcode: snapshot ? snapshot.barcode : item.product.barcode,
+        unit: snapshot?.unit ?? item.product.unit,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice?.toFixed(2) ?? null,
+        totalAmount: item.unitPrice?.times(item.quantity).toFixed(2) ?? null,
+      };
+    }),
   };
 }
 

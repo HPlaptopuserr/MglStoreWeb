@@ -35,6 +35,7 @@ const document: WarehouseDispatchDocument = {
       productId: "product-1",
       name: "Сүү",
       sku: "MILK-1",
+      barcode: "0001234567890",
       quantity: 3,
       unit: "ш",
       unitPrice: "2000",
@@ -57,7 +58,8 @@ test("pending padan shows product identity and prices and requires explicit revi
   const html = render("PENDING");
   assert.match(html, /PAD-001/);
   assert.match(html, /Сүү/);
-  assert.match(html, /MILK-1/);
+  assert.match(html, /SKU: MILK-1/);
+  assert.match(html, /Баркод: 0001234567890/);
   assert.match(html, /Тоо/);
   assert.match(html, /Нэгж үнэ/);
   assert.match(html, /type="checkbox"/);
@@ -78,4 +80,19 @@ test("in-flight acceptance keeps review checkbox disabled", () => {
   const html = render("PENDING", true);
   assert.match(html, /type="checkbox" disabled=""/);
   assert.match(html, /Бүртгэж байна/);
+});
+
+test("missing barcode is explicit and never substitutes the SKU", () => {
+  const html = renderToStaticMarkup(
+    <IncomingDispatchReview
+      document={{
+        ...document,
+        items: document.items.map((item) => ({ ...item, barcode: null })),
+      }}
+      submitting={false}
+      onAccept={() => {}}
+    />,
+  );
+  assert.match(html, /Баркод: Бүртгэлгүй/);
+  assert.doesNotMatch(html, /Баркод: MILK-1/);
 });

@@ -66,7 +66,7 @@ export function IncomingDispatchReview({
           <thead className="border-y border-slate-100 bg-slate-50 text-xs text-slate-500">
             <tr>
               <th scope="col" className="px-4 py-3 sm:px-5">
-                Бараа / SKU
+                Бараа / SKU / Баркод
               </th>
               <th scope="col" className="px-3 py-3 text-right">
                 Тоо
@@ -85,7 +85,10 @@ export function IncomingDispatchReview({
                 <th scope="row" className="px-4 py-3 font-medium sm:px-5">
                   <span className="block text-slate-900">{item.name}</span>
                   <span className="text-xs font-normal text-slate-500">
-                    {item.sku || "Кодгүй"}
+                    SKU: {item.sku || "—"}
+                  </span>
+                  <span className="block break-all text-xs font-normal tabular-nums text-slate-600">
+                    Баркод: {item.barcode || "Бүртгэлгүй"}
                   </span>
                 </th>
                 <td className="whitespace-nowrap px-3 py-3 text-right tabular-nums">

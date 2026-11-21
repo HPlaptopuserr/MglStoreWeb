@@ -111,6 +111,7 @@ test(
       );
       assert.equal(dispatch.storeName, `vendor-${marker}`);
       assert.equal(dispatch.receiptStatus, "PENDING");
+      assert.equal(dispatch.items[0]?.barcode, marker);
       assert.equal(
         dispatch.recipientName,
         "forged",
@@ -151,7 +152,11 @@ test(
       );
       await prisma.product.update({
         where: { id: product.id },
-        data: { name: "Later renamed", price: 999 },
+        data: {
+          name: "Later renamed",
+          price: 999,
+          barcode: `changed-${marker}`,
+        },
       });
       const accepted = await Promise.all(
         [1, 2, 3].map(() =>
@@ -160,6 +165,9 @@ test(
       );
       assert.ok(
         accepted.every((record) => record.receiptStatus === "ACCEPTED"),
+      );
+      assert.ok(
+        accepted.every((record) => record.items[0]?.barcode === marker),
       );
       const adopted = await prisma.product.findFirstOrThrow({
         where: { organizationId },
@@ -196,12 +204,48 @@ test(
         8,
       );
       // Any line conflict must roll back the entire receipt and leave it pending.
+      const additionalSource = await prisma.product.create({
+        data: {
+          name: "Rollback product",
+          managedByWarehouseId: warehouse.id,
+          price: 50,
+          sku: `rollback-${marker}`,
+          unit: "ш",
+          stock: 10,
+          warehouseInventories: {
+            create: { warehouseId: warehouse.id, quantity: 10 },
+          },
+        },
+      });
+      const additionalVendorProduct = await prisma.product.create({
+        data: {
+          organizationId,
+          name: "Existing rollback product",
+          sku: `WD-${additionalSource.id}`,
+          price: 50,
+          unit: "ш",
+          stock: 0,
+        },
+      });
       const third = await createManualDispatch(actor(operator), warehouse.id, {
         ...draft,
         requestId: randomUUID(),
+        items: [
+          ...draft.items,
+          { productId: additionalSource.id, quantity: 2 },
+        ],
       });
+      const receiptLines = await prisma.warehouseManualDispatchItem.findMany({
+        where: { dispatchId: third.id },
+        orderBy: { id: "asc" },
+      });
+      // Fail on the last line, after the first line has attempted a stock credit.
+      const conflictingVendorProductId =
+        receiptLines[1].productId === product.id
+          ? adopted.id
+          : additionalVendorProduct.id;
       await prisma.product.update({
-        where: { id: adopted.id },
+        where: { id: conflictingVendorProductId },
         data: { unit: "kg" },
       });
       await assert.rejects(
@@ -220,6 +264,29 @@ test(
         (await prisma.product.findUniqueOrThrow({ where: { id: adopted.id } }))
           .stock,
         8,
+      );
+      assert.equal(
+        (
+          await prisma.product.findUniqueOrThrow({
+            where: { id: additionalVendorProduct.id },
+          })
+        ).stock,
+        0,
+      );
+      assert.equal(
+        await prisma.warehouseManualDispatchItem.count({
+          where: { dispatchId: third.id, receivedProductId: { not: null } },
+        }),
+        0,
+      );
+      assert.equal(
+        await prisma.inventoryLedger.count({
+          where: {
+            referenceId: third.id,
+            referenceType: "WAREHOUSE_DISPATCH_RECEIPT",
+          },
+        }),
+        0,
       );
     } finally {
       const internal = await prisma.warehouseOrganization.findMany({

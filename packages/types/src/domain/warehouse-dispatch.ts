@@ -33,6 +33,7 @@ export interface WarehouseDispatchDocument {
     productId: string;
     name: string;
     sku: string | null;
+    barcode?: string | null;
     unit?: string | null;
     quantity: number;
     unitPrice: string | null;
