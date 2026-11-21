@@ -45,8 +45,11 @@ function Assert-SafeOutputPath {
   param([string]$PathToCheck)
 
   $fullPath = [System.IO.Path]::GetFullPath($PathToCheck)
-  if (-not $fullPath.StartsWith($PackageDirPath, [System.StringComparison]::OrdinalIgnoreCase) -and
-      -not $fullPath.StartsWith((Resolve-Path "C:\tmp").Path, [System.StringComparison]::OrdinalIgnoreCase)) {
+  $PackageRoot = $PackageDirPath.TrimEnd('\') + '\'
+  $TempRoot = [System.IO.Path]::GetFullPath("C:\tmp").TrimEnd('\') + '\'
+  if (-not ($fullPath.Equals($PackageDirPath, [System.StringComparison]::OrdinalIgnoreCase) -or
+      $fullPath.StartsWith($PackageRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+      $fullPath.StartsWith($TempRoot, [System.StringComparison]::OrdinalIgnoreCase))) {
     throw "Output path must be inside the pos-bridge package directory or C:\tmp. Got: $fullPath"
   }
 }
@@ -99,6 +102,8 @@ Copy-Item -LiteralPath (Join-Path $PackageDir "package.json") -Destination $OutD
 Copy-Item -LiteralPath (Join-Path $PackageDir "check-bridge-ready.ps1") -Destination $OutDir -Force
 Copy-Item -LiteralPath (Join-Path $PackageDir "dist") -Destination $OutDir -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $PackageDir "install-android-pgw.cmd") -Destination $OutDir -Force
+Copy-Item -LiteralPath (Join-Path $PackageDir "pair-bridge.cmd") -Destination $OutDir -Force
+Copy-Item -LiteralPath (Join-Path $PackageDir "create-pairing-shortcut.ps1") -Destination $OutDir -Force
 Copy-Item -LiteralPath (Join-Path $PackageDir "register-startup-task.ps1") -Destination $OutDir -Force
 Copy-Item -LiteralPath (Join-Path $PackageDir "start-windows.cmd") -Destination $OutDir -Force
 Copy-Item -LiteralPath (Join-Path $PackageDir "start-windows-task.ps1") -Destination $OutDir -Force

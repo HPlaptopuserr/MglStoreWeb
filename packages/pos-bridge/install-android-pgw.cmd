@@ -42,6 +42,22 @@ if not defined IS_INSTALLED (
     echo [SETUP] Target: %INSTALL_DIR%
     echo.
 
+    rem Check the installed data directory before stopping an old bridge. A
+    rem pending journal must survive and the running payment must not be killed.
+    if exist "%INSTALL_DIR%" if exist "%~dp0dist\pair.js" (
+      set "SAFE_NODE=%~dp0runtime\node.exe"
+      if not exist "!SAFE_NODE!" set "SAFE_NODE=node"
+      pushd "%INSTALL_DIR%"
+      "!SAFE_NODE!" "%~dp0dist\pair.js" --check-safe
+      set "SAFE_RESULT=!ERRORLEVEL!"
+      popd
+      if not "!SAFE_RESULT!"=="0" (
+        echo [ERROR] Pending terminal operation. Resolve it before upgrading.
+        if not defined NO_PAUSE pause
+        exit /b 1
+      )
+    )
+
     if exist "%~dp0stop-installed-bridge.ps1" (
       echo [SETUP] Huuchin bridge process-iig zogsooj baina...
       powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-installed-bridge.ps1" -BridgeDir "%INSTALL_DIR%"
@@ -98,6 +114,7 @@ if exist "%NODE_EXE%" (
     if not defined NO_PAUSE pause
     exit /b 1
   )
+  set "NODE_EXE=node"
   echo [OK] System Node.js baina.
 )
 
@@ -106,6 +123,7 @@ if not exist "bridge.env" (
   (
     echo BRIDGE_PROVIDER=android-pgw
     echo BRIDGE_PORT=7420
+    echo BRIDGE_SHARED_SECRET=
     echo ANDROID_PGW_PORT=auto
     echo ANDROID_PGW_AMOUNT_MULTIPLIER=100
     echo ANDROID_PGW_BAUD_RATE=9600
@@ -190,6 +208,27 @@ if not exist "check-bridge-ready.ps1" (
   exit /b 1
 )
 
+if not exist "create-pairing-shortcut.ps1" (
+  echo [ERROR] create-pairing-shortcut.ps1 oldsongui.
+  if not defined NO_PAUSE pause
+  exit /b 1
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0create-pairing-shortcut.ps1" -BridgeDir "%CD%"
+if errorlevel 1 (
+  echo [ERROR] Desktop holboh icon uusgej chadsangui.
+  if not defined NO_PAUSE pause
+  exit /b 1
+)
+
+echo [SETUP] Admin PAX A35 holboltiin kodiig shalgaj baina...
+"%NODE_EXE%" "%CD%\dist\pair.js" --if-needed
+if errorlevel 1 (
+  echo [ERROR] Admin deer shine holboh kod uusgeed Desktop deerh PAX A35 holboh icon-iig ajilluulna uu.
+  if not defined NO_PAUSE pause
+  exit /b 1
+)
+
 echo [SETUP] Windows Scheduled Task uusgeed bridge-iig asaaj baina...
 if defined NO_START (
   powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0register-startup-task.ps1" -BridgeDir "%CD%"
@@ -206,6 +245,7 @@ echo.
 echo [OK] Suulgalt duuslaa.
 echo [OK] PC login hiisnii daraa bridge automataar asna.
 echo [OK] Bridge untrah uyd Windows dahin asaah gej oroldono.
+echo [INFO] Desktop deerh PAX A35 holboh icon-oos Admin holboosiig neg udaa paste hiij holbono.
 echo [OK] Health URL: http://127.0.0.1:7420/health
 echo.
 

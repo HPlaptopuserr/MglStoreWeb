@@ -8,7 +8,8 @@
     "start": "node dist/index.js",
     "dev": "ts-node src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "test": "node --test -r ts-node/register src/providers/android-pgw.provider.test.ts",
+    "test": "node --test -r ts-node/register src/providers/android-pgw.provider.test.ts src/operation-journal.test.ts src/bridge-pairing.test.ts",
+    "test:serial": "pnpm build && python3 scripts/test-serial.py",
     "package:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-windows.ps1",
     "type-check": "tsc --noEmit"
   },

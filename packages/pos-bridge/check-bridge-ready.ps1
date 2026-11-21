@@ -26,36 +26,35 @@ if (Test-Path -LiteralPath $EnvPath) {
   }
 }
 
-function Test-BridgeListening {
+function Test-BridgeReady {
   param([int]$Port)
-
-  $Client = New-Object System.Net.Sockets.TcpClient
   try {
-    $Async = $Client.BeginConnect("127.0.0.1", $Port, $null, $null)
-    if (-not $Async.AsyncWaitHandle.WaitOne(500)) {
+    $Health = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 5
+    if (-not $Health.ok -or $Health.provider -ne "android-pgw") {
+      Write-Host "[WAIT] Android PGW terminal not ready: $($Health.message)"
       return $false
     }
-
-    $Client.EndConnect($Async)
+    if (-not $Health.signingEnabled) {
+      Write-Host "[ERROR] Set bridge.env BRIDGE_SHARED_SECRET to match API POS_BRIDGE_SHARED_SECRET."
+      return $false
+    }
     return $true
   } catch {
     return $false
-  } finally {
-    $Client.Close()
   }
 }
 
 $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
 while ((Get-Date) -lt $Deadline) {
-  if (Test-BridgeListening -Port $BridgePort) {
-    Write-Host "[OK] Bridge listening: http://127.0.0.1:$BridgePort"
+  if (Test-BridgeReady -Port $BridgePort) {
+    Write-Host "[OK] Signed Android PGW bridge and terminal ready: http://127.0.0.1:$BridgePort"
     exit 0
   }
 
   Start-Sleep -Seconds 1
 }
 
-Write-Host "[ERROR] Bridge listening oldsongui: http://127.0.0.1:$BridgePort"
+Write-Host "[ERROR] Android PGW terminal/signing not ready: http://127.0.0.1:$BridgePort"
 Write-Host "[INFO] Log file: $LogPath"
 
 if (Test-Path -LiteralPath $LogPath) {

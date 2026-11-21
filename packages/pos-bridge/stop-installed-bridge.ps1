@@ -1,7 +1,8 @@
 param(
   [string]$TaskName = "MGL POS Bridge",
   [Parameter(Mandatory = $true)]
-  [string]$BridgeDir
+  [string]$BridgeDir,
+  [switch]$PreserveCaller
 )
 
 $ErrorActionPreference = "Stop"
@@ -20,6 +21,15 @@ try {
 $ProcessNames = @("cmd.exe", "node.exe", "powershell.exe", "pwsh.exe")
 $Stopped = 0
 $StoppedProcessIds = @{}
+$CallerProcessId = 0
+if ($PreserveCaller) {
+  try {
+    $SelfProcess = Get-WmiObject Win32_Process -Filter "ProcessId=$PID" -ErrorAction Stop
+    $CallerProcessId = [int]$SelfProcess.ParentProcessId
+  } catch {
+    # When WMI is unavailable the extended scan below is unavailable too.
+  }
+}
 
 # The packaged bridge uses runtime\node.exe. Get-Process can identify it by
 # executable path without requiring WMI/CIM permissions.
@@ -54,6 +64,7 @@ try {
   $Processes = @(Get-WmiObject Win32_Process -ErrorAction Stop)
   foreach ($Process in $Processes) {
     if ($Process.ProcessId -eq $PID -or
+        ($PreserveCaller -and $Process.ProcessId -eq $CallerProcessId) -or
         $StoppedProcessIds.ContainsKey([int]$Process.ProcessId) -or
         $ProcessNames -notcontains $Process.Name) {
       continue
