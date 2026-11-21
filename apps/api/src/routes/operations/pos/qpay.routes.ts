@@ -1,3 +1,5 @@
+import type { QPayInvoice as QPayInvoiceResponse } from "@mgl/types";
+import type { CardCheckout } from "../../../services/pos-card-checkout";
 import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
 import { parseCardCheckout, checkoutFromPayload, sameCheckout, reserveCardCheckout, releaseResolvedCheckoutReservation, isQrCancellationConfirmed } from "../../../services/pos-card-checkout";
 import { canSimulateLocalPosPayment } from "../../../services/local-pos-payment-simulation";
@@ -34,6 +36,11 @@ import {
   type AuthUser, type ApiError, type SaleLineInput, type SalePaymentLineInput,
   type CreateSaleBody, type PushEcrPurchaseResponse, toApiError, parseAuthClaims, runtimeEnv,
 } from "./_shared";
+
+type RecoverableQPayInvoice = QPayInvoiceResponse & {
+  providerCancellationConfirmed?: boolean;
+  checkout: CardCheckout;
+};
 
 const router: ExpressRouter = Router();
 
@@ -531,11 +538,53 @@ router.post(["/pos/payments/qpay/invoice", "/pos/payments/systemqr/invoice"], as
   } catch (error) {
     console.error("qpay invoice create error", error);
     const msg = error instanceof Error ? error.message : "Minu invoice үүсгэхэд алдаа гарлаа";
-    const domainError = error as { status?: number; message?: string };
-    if (!invoicePersisted && domainError.status && domainError.message) {
-      return res.status(domainError.status).json({ message: domainError.message, code: "PAYMENT_NOT_STARTED" });
+    const domainError = error as { status?: number; message?: string; code?: string };
+    if (domainError.status && domainError.message) {
+      return res.status(domainError.status).json({ message: domainError.message,
+        ...(domainError.code ? { code: domainError.code } : !invoicePersisted ? { code: "PAYMENT_NOT_STARTED" } : {}),
+      });
     }
     return res.status(500).json({ message: msg });
+  }
+});
+
+router.get("/pos/payments/qpay/recovery", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+  const registerId = typeof req.query.registerId === "string" ? req.query.registerId.trim() : "";
+  const clientSaleId = typeof req.query.clientSaleId === "string" ? req.query.clientSaleId.trim() : "";
+  if (!registerId || !clientSaleId || registerId.length > 200 || clientSaleId.length > 200) {
+    return res.status(400).json({ message: "Касс болон сагсны дугаар шаардлагатай" });
+  }
+  try {
+    const register = await prisma.posRegister.findUnique({ where: { id: registerId }, select: { organizationId: true } });
+    if (!register) return res.status(404).json({ message: "POS register олдсонгүй" });
+    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, register.organizationId))) {
+      return res.status(403).json({ message: "Өөр байгууллагын төлбөр сэргээх боломжгүй" });
+    }
+    const saved = await prisma.qPayInvoice.findMany({ where: {
+      organizationId: register.organizationId, registerId, consumedAt: null,
+      status: { in: [PosQPayStatus.PENDING, PosQPayStatus.EXPIRED, PosQPayStatus.PAID] },
+      webhookPayload: { path: ["checkout", "clientSaleId"], equals: clientSaleId },
+    }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+    const invoices = saved.flatMap<RecoverableQPayInvoice>(invoice => {
+      const checkout = checkoutFromPayload(invoice.webhookPayload);
+      if (!checkout || checkout.clientSaleId !== clientSaleId ||
+          (invoice.status !== PosQPayStatus.PAID && isQrCancellationConfirmed(invoice.webhookPayload))) return [];
+      const payload = invoice.webhookPayload as Record<string, unknown>;
+      return [{ invoiceId: invoice.id, amount: Number(invoice.amount), status: invoice.status,
+        qrText: invoice.qrText, qrImage: typeof payload.qrImage === "string" ? payload.qrImage : "",
+        expiresAt: invoice.expiresAt.toISOString(), createdAt: invoice.createdAt.toISOString(),
+        ...(invoice.paidAt ? { paidAt: invoice.paidAt.toISOString() } : {}),
+        ...(typeof payload.providerCancellationConfirmed === "boolean" ? { providerCancellationConfirmed: payload.providerCancellationConfirmed } : {}),
+        checkout,
+      }];
+    });
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ invoices });
+  } catch (error: unknown) {
+    console.error("qpay checkout recovery error", error);
+    return res.status(500).json({ message: "QR төлбөрийн эх нэхэмжлэлийг сэргээж чадсангүй. Дахин төлөхгүйгээр шалгана уу." });
   }
 });
 
@@ -544,7 +593,7 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
   if (!actor) return;
 
   const id = String(req.body?.invoiceId || "").trim();
-  const requireProviderCancellation = req.body?.requireProviderCancellation === true;
+  const requestedProviderCancellation = req.body?.requireProviderCancellation === true;
   if (!id) {
     return res.status(400).json({ message: "Minu invoiceId шаардлагатай" });
   }
@@ -574,6 +623,9 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
         .status(403)
         .json({ message: "Өөр байгууллагын Minu invoice цуцлах боломжгүй" });
     }
+    const checkout = checkoutFromPayload(invoice.webhookPayload);
+    // Frozen retail baskets remain attached until provider cancellation is proved.
+    const requireProviderCancellation = requestedProviderCancellation || Boolean(checkout);
     if (invoice.status === PosQPayStatus.PAID) {
       return res
         .status(409)
@@ -697,7 +749,6 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
     }
 
     const checkoutReleasedAt = new Date();
-    const checkout = checkoutFromPayload(invoice.webhookPayload);
     const updated = await prisma.$transaction(async tx => {
       if (checkout && invoice.organizationId) await lockOrganizationInventory(tx, invoice.organizationId);
       const updated = await tx.qPayInvoice.updateMany({
@@ -839,8 +890,11 @@ router.get(["/pos/payments/qpay/status/:invoiceId", "/pos/payments/systemqr/stat
       }
     }
 
+    const currentPayload = current.webhookPayload as Record<string, unknown> | null;
     return res.json({
       invoiceId: current.id,
+      ...(typeof currentPayload?.providerCancellationConfirmed === "boolean"
+        ? { providerCancellationConfirmed: currentPayload.providerCancellationConfirmed } : {}),
       ...(!String((current.webhookPayload as Record<string, unknown> | null)?.providerInvoiceId || "").trim() && current.status !== PosQPayStatus.PAID ? {
         recoveryRequired: true,
         recoveryMessage: "QR үүсгэх хүсэлтийн банкны хариу дутуу байна. Дахин төлбөр үүсгэхгүй; нэхэмжлэлийн дугаараар банкны төлөвийг тулгаж шалгуулна уу.",

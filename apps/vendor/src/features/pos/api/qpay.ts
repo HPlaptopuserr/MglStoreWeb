@@ -1,3 +1,4 @@
+import type { RecoverableQPayInvoice } from "../utils/qpay-server-recovery";
 import type { SalePayload } from "../types/pos.types";
 import { requirePaymentRecoverySupport } from "./payment-capabilities";
 import type { QPayInvoice } from "@mgl/types";
@@ -26,7 +27,7 @@ export async function createQPayInvoice(payload: {
   });
 }
 
-export function getQPayInvoiceStatus(invoiceId: string, signal?: AbortSignal, refreshProvider = true): Promise<QPayInvoice & { recoveryRequired?: boolean; recoveryMessage?: string }> {
+export function getQPayInvoiceStatus(invoiceId: string, signal?: AbortSignal, refreshProvider = true): Promise<QPayInvoice & { recoveryRequired?: boolean; recoveryMessage?: string; providerCancellationConfirmed?: boolean }> {
   const timeout = AbortSignal.timeout(70_000);
   return posRequest<QPayInvoice>(`/pos/payments/qpay/status/${encodeURIComponent(invoiceId)}?refresh=${refreshProvider ? "1" : "0"}`, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
 }
@@ -42,4 +43,9 @@ export function cancelQPayInvoice(invoiceId: string, requireProviderCancellation
   return posRequest<QPayInvoice>("/pos/payments/qpay/cancel", {
     method: "POST", body: { invoiceId, requireProviderCancellation }, signal: AbortSignal.timeout(90_000),
   });
+}
+
+export function getQPayCheckoutRecovery(registerId: string, clientSaleId: string, signal?: AbortSignal): Promise<{ invoices: RecoverableQPayInvoice[] }> {
+  const timeout = AbortSignal.timeout(15_000);
+  return posRequest(`/pos/payments/qpay/recovery?${new URLSearchParams({ registerId, clientSaleId })}`, { signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
 }

@@ -16,8 +16,8 @@ export interface CardCheckout {
   shiftId: string;
   lines: CardCheckoutLine[];
 }
-function fail(message: string): never {
-  throw { status: 409, message };
+function fail(message: string, code?: string): never {
+  throw { status: 409, message, ...(code ? { code } : {}) };
 }
 
 export function parseCardCheckout(value: unknown): CardCheckout {
@@ -180,7 +180,7 @@ export async function reserveCardCheckout(
     const payload = invoice.webhookPayload;
     return !payload || typeof payload !== "object" || Array.isArray(payload) ||
       !isQrCancellationConfirmed(payload);
-  })) fail("Энэ сагсны QR төлбөрийн төлөв тодорхойгүй байна. Эхлээд ижил нэхэмжлэлээ шалгана уу.");
+  })) fail("Энэ сагсны QR төлбөрийн төлөв тодорхойгүй байна. Эхлээд ижил нэхэмжлэлээ шалгана уу.", "QPAY_CHECKOUT_RECONCILIATION_REQUIRED");
   if (frozen && !sameCheckout(frozen, checkout))
     fail("Төлбөртэй сагсны мэдээлэл өөрчлөгдсөн байна");
   const ids = checkout.lines.map((l) => l.productId).sort();

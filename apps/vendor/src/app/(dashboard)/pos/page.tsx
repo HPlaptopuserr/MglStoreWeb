@@ -4,6 +4,7 @@ import { PosApiError, posRequest } from "@/features/pos/api/_pos-client";
 import { archiveMissingCardCheckout, canArchiveMissingCardCheckout, readMissingCardArchiveNotice, type MissingCardArchiveNotice } from "@/features/pos/utils/missing-card-checkout";
 import { cardPaymentFailureMessage, cardPaymentOutcome, cardRequestFailureIsDefinitive } from "@/features/pos/utils/card-payment-outcome";
 import { effectiveCardProvider } from "@/features/pos/utils/card-register-provider";
+import { isDefinitiveQPayCreationFailure, planQPayServerRecovery, qpayCheckoutFingerprint, saveQPayCheckoutAnchor, loadQPayCheckoutAnchor, clearQPayCheckoutAnchor, type QPayCheckoutScope } from "@/features/pos/utils/qpay-server-recovery";
 import { paymentRequestId } from "@/features/pos/utils/payment-request-id";
 import { clientBridgeFailureResult } from "@/features/pos/api/card-terminal";
 import type { PaymentFeedback } from "@/features/pos/types/payment-status.types";
@@ -15,9 +16,9 @@ import { printReceipt as printSaleReceipt } from "@/features/pos/utils/print-rec
 import { EbarimtVatRecoveryNotice } from "@/features/pos/components/EbarimtVatRecoveryNotice";
 import { ReceiptPrintNotice } from "@/features/pos/components/ReceiptPrintNotice";
 import { reconcilePaymentEntry } from "@/features/pos/utils/reconcile-payment-entry";
-import { canClearCheckoutAfterCancelFailure } from "@/features/pos/utils/qpay-cancel-policy";
+import { isQPayCancellationConfirmed, type QPayCancellationProof, canClearCheckoutAfterCancelFailure } from "@/features/pos/utils/qpay-cancel-policy";
 import { hasProtectedCheckoutPayment, hasUnresolvedCardPayment } from "@/features/pos/utils/checkout-cart-guard";
-import { cancelQPayInvoice } from "@/features/pos/api/qpay";
+import { getQPayCheckoutRecovery, cancelQPayInvoice } from "@/features/pos/api/qpay";
 
 import { normalizeCashPayment, summarizeCashPayments, type CashPaymentDetails } from "@mgl/types";
 import { VendorNavigationActions } from "@/features/session/VendorNavigationActions";
@@ -157,6 +158,8 @@ import {
   isCustomerDisplayThemeId,
 } from "@/features/pos";
 import {
+  acknowledgeUnstartedQPayRecovery,
+  acknowledgeCancelledQPayRecovery,
   clearQPayCheckoutRecovery,
   claimQPayCheckoutRecovery,
   hasCheckoutPaymentEvidence,
@@ -652,6 +655,7 @@ export default function PosDemoPage() {
   const keyBufferRef = useRef("");
   const lastKeyTsRef = useRef(0);
   const clientSaleIdRef = useRef<string | null>(null);
+  const qrCheckedEmptyScopeRef = useRef<string | null>(null);
   const deferringCheckoutRef = useRef(false);
   const [deferringCheckout, setDeferringCheckout] = useState(false);
   const deferredCards = useDeferredCardCheckouts(registerConfig?.id);
@@ -680,6 +684,8 @@ export default function PosDemoPage() {
   const { state, totals, addProduct, dispatch } = usePosCart(recoveryScope || undefined);
   const { loading: saleLoading, submitSale, lastReceipt, error: saleError } = useCreateSale();
   const { shift, blockingShift, ready: shiftReady, error: shiftError, loading: shiftLoading, load: loadShift, open: openShift, close: closeShiftFn, closeBlocking } = useCurrentShift(registerConfig?.id);
+  const qrRecoveryContextRef = useRef({ organizationId, registerId: registerConfig?.id, branchId: registerConfig?.branchId, shiftId: shift?.id, cart: state.cart });
+  qrRecoveryContextRef.current = { organizationId, registerId: registerConfig?.id, branchId: registerConfig?.branchId, shiftId: shift?.id, cart: state.cart };
   const unknownBarcode = useUnknownBarcodeRegistration();
   useEffect(() => {
     if (!organizationId || !posEnabled) return;
@@ -1833,7 +1839,15 @@ export default function PosDemoPage() {
 
 
   const blockQPayCartMutation = () => {
-    if (!deferringCheckoutRef.current && !showCardRecovery && !qpayCreatingRef.current && !cardPaymentRunRef.current && !hasProtectedCheckoutPayment(paymentEntries)) return false;
+    if (!deferringCheckoutRef.current && !showCardRecovery && !qpayCreatingRef.current && !cardPaymentRunRef.current && !hasProtectedCheckoutPayment(paymentEntries)) {
+      if (clientSaleIdRef.current && state.cart.length && registerConfig?.id && !selectedCreditRepayment && qrCheckedEmptyScopeRef.current !== qpayCheckoutFingerprint(buildQrCheckoutScope(clientSaleIdRef.current))) {
+        void recoverMissingQrBeforeAction().then(recovered => {
+          if (!recovered) { setScanStatus("idle"); setScanMessage("Өмнөх QR төлбөр үлдээгүйг шалгалаа. Сагсны өөрчлөлтөө дахин хийнэ үү."); }
+        }).catch((error: unknown) => { setScanStatus("not-found"); setScanMessage(error instanceof Error ? error.message : "Өмнөх QR төлбөрийг шалгаж чадсангүй. Сагсыг өөрчлөөгүй."); });
+        return true;
+      }
+      return false;
+    }
     setScanStatus("not-found");
     setScanMessage("Төлбөртэй сагсыг өөрчлөх боломжгүй. Төлбөрийн төлөвөө шалгаж, борлуулалтаа дуусгана уу.");
     return true;
@@ -2255,7 +2269,10 @@ export default function PosDemoPage() {
 
   const completePaidSale = (finalReceipt: PosReceipt, finalMessage: string, isCreditSale: boolean, preserveRecovery = false) => {
     if (!preserveRecovery) {
-      try { clearQPayCheckoutRecovery(organizationId, registerConfig?.id, clientSaleIdRef.current ?? undefined, true); }
+      try {
+        clearQPayCheckoutRecovery(organizationId, registerConfig?.id, clientSaleIdRef.current ?? undefined, true);
+        if (registerConfig?.id && clientSaleIdRef.current) clearQPayCheckoutAnchor(organizationId, registerConfig.id, clientSaleIdRef.current);
+      }
       catch (error: unknown) { console.warn("Sale recorded; checkout recovery cleanup failed", error); }
     }
     setPendingEbarimtSale(null);
@@ -2627,6 +2644,16 @@ export default function PosDemoPage() {
 
     const safeAmount = roundMoney(Math.max(0, Math.min(amount, remaining)));
     if (safeAmount <= 0) return;
+    try {
+      if (await recoverMissingQrBeforeAction()) {
+        if (method === "CASH") throw new Error("Өмнөх QR нэхэмжлэлийг сэргээв. Дахин төлбөр авахгүй; төлөвийг шалгана уу.");
+        return;
+      }
+    } catch (error: unknown) {
+      setScanStatus("not-found"); setScanMessage(error instanceof Error ? error.message : "Өмнөх QR төлбөрийг шалгаж чадсангүй.");
+      if (method === "CASH") throw error;
+      return;
+    }
     const confirmedCash = normalizeCashPayment(method, safeAmount, cash);
     clearPaymentFeedback(method);
 
@@ -2868,6 +2895,74 @@ export default function PosDemoPage() {
     ]);
   };
 
+  const qrServerRecoveryInFlightRef = useRef(false);
+  const buildQrCheckoutScope = (clientSaleId: string): QPayCheckoutScope => ({
+    clientSaleId, branchId: registerConfig?.branchId || "", shiftId: shift?.id || "",
+    lines: state.cart.map(line => ({ productId: line.productId, qty: line.qty, unitPrice: line.unitPrice, priceType: line.priceType, discountAmount: line.discountAmount })),
+  });
+  const recoverServerQPay = useEventCallback(async (scope: QPayCheckoutScope, existing: CheckoutPaymentEntry[], signal?: AbortSignal): Promise<boolean> => {
+    if (!registerConfig?.id) throw new Error("QR төлбөр сэргээхийн өмнө кассаа сонгоно уу.");
+    const registerId = registerConfig.id;
+    const response = await getQPayCheckoutRecovery(registerId, scope.clientSaleId, signal);
+    const current = qrRecoveryContextRef.current;
+    if (signal?.aborted || current.organizationId !== organizationId || current.registerId !== registerId || clientSaleIdRef.current !== scope.clientSaleId ||
+        qpayCheckoutFingerprint(scope) !== qpayCheckoutFingerprint({ clientSaleId: scope.clientSaleId, branchId: current.branchId || "", shiftId: current.shiftId || "", lines: current.cart })) return true;
+    const recovery = planQPayServerRecovery(scope, response.invoices, existing);
+    if (recovery.invoices.length === 0 || recovery.invoices.every(invoice => invoice.status === "PAID" && existing.some(entry => entry.method === "QR" && entry.invoiceId === invoice.invoiceId && entry.status === "confirmed"))) return false;
+    const pending = recovery.invoices.find(invoice => invoice.status === "PENDING" && invoice.qrText && Date.parse(invoice.expiresAt) > Date.now());
+    const modal = pending ? { open: true, invoiceId: pending.invoiceId, amount: pending.amount, qrText: pending.qrText, qrImage: pending.qrImage || "", expiresAt: pending.expiresAt } : null;
+    saveQPayCheckoutRecovery(organizationId, { registerId, cart: state.cart, clientSaleId: scope.clientSaleId, paymentEntries: recovery.entries, qpayModal: modal, loyalty, loyaltyRedeemSession });
+    saveQPayCheckoutAnchor(organizationId, registerId, scope);
+    setPaymentEntries(recovery.entries);
+    setQpayModal(modal);
+    setPaymentMethod("QR");
+    setView("checkout");
+    restoredCardAutoFinalizeRef.current = recovery.entries.some(entry => entry.method === "QR" && entry.status === "confirmed");
+    setScanStatus("idle");
+    setScanMessage("Өмнөх QR нэхэмжлэлийг сэргээв. Дахин төлбөр үүсгээгүй. Төлөв шалгах эсвэл банкны цуцлалтыг дахин шалгана уу.");
+    return true;
+  });
+
+  const recoverMissingQrBeforeAction = async (): Promise<boolean> => {
+    if (selectedCreditRepayment || !registerConfig?.id || !shift?.id || !state.cart.length || paymentEntries.some(entry => entry.method === "QR")) return false;
+    const basket = { branchId: registerConfig.branchId || "", shiftId: shift.id, lines: state.cart };
+    const saved = loadQPayCheckoutAnchor(organizationId, registerConfig.id, basket);
+    const clientSaleId = clientSaleIdRef.current || saved?.clientSaleId;
+    if (!clientSaleId) return false;
+    if (qrServerRecoveryInFlightRef.current) throw new Error("Өмнөх QR нэхэмжлэлийн төлөвийг шалгаж байна. Түр хүлээнэ үү.");
+    clientSaleIdRef.current = clientSaleId;
+    qrServerRecoveryInFlightRef.current = true;
+    try {
+      const scope = { ...basket, clientSaleId };
+      const recovered = await recoverServerQPay(scope, paymentEntries);
+      if (!recovered) {
+        qrCheckedEmptyScopeRef.current = qpayCheckoutFingerprint(scope);
+        clearQPayCheckoutAnchor(organizationId, registerConfig.id, clientSaleId);
+      }
+      return recovered;
+    } finally { qrServerRecoveryInFlightRef.current = false; }
+  };
+
+  useEffect(() => {
+    if (!organizationId || !registerConfig?.id || !shift?.id || checkoutRecoveryScope !== recoveryScope || !state.cart.length || paymentEntries.length > 0) return;
+    const controller = new AbortController();
+    void (async () => {
+      if (qrServerRecoveryInFlightRef.current) return;
+      qrServerRecoveryInFlightRef.current = true;
+      try {
+        const basket = { branchId: registerConfig.branchId || "", shiftId: shift.id, lines: state.cart };
+        const anchor = loadQPayCheckoutAnchor(organizationId, registerConfig.id, basket);
+        const clientSaleId = clientSaleIdRef.current || anchor?.clientSaleId;
+        if (!clientSaleId) return;
+        clientSaleIdRef.current = clientSaleId;
+        await recoverServerQPay({ ...basket, clientSaleId }, [], controller.signal);
+      } catch (error: unknown) {
+        if (!controller.signal.aborted) { setScanStatus("not-found"); setScanMessage(error instanceof Error ? error.message : "Өмнөх QR төлбөрийг шалгаж чадсангүй. Дахин төлөхгүй."); }
+      } finally { qrServerRecoveryInFlightRef.current = false; }
+    })();
+    return () => controller.abort();
+  }, [organizationId, registerConfig?.id, shift?.id, checkoutRecoveryScope, recoveryScope, state.cart, paymentEntries.length, recoverServerQPay]);
+
   const qpayCreatingRef = useRef(false);
   const [qpayCreating, setQpayCreating] = useState(false);
   const requestQPay = async (amount: number) => {
@@ -2885,7 +2980,23 @@ export default function PosDemoPage() {
     qpayCreatingRef.current = true;
     setQpayCreating(true);
     const requestId = crypto.randomUUID();
-    clientSaleIdRef.current ||= crypto.randomUUID();
+    const basket = { branchId: registerConfig?.branchId || "", shiftId: shift?.id || "", lines: state.cart };
+    let checkoutScope: QPayCheckoutScope;
+    try {
+      if (!registerConfig?.id) throw new Error("QR төлбөр эхлүүлэхийн өмнө кассаа сонгоно уу.");
+      const anchor = selectedCreditRepayment ? null : loadQPayCheckoutAnchor(organizationId, registerConfig.id, basket);
+      clientSaleIdRef.current ||= anchor?.clientSaleId || crypto.randomUUID();
+      checkoutScope = buildQrCheckoutScope(clientSaleIdRef.current);
+      if (!selectedCreditRepayment && await recoverServerQPay(checkoutScope, paymentEntries)) return;
+      if (!selectedCreditRepayment) saveQPayCheckoutAnchor(organizationId, registerConfig.id, checkoutScope);
+    } catch (error: unknown) {
+      setScanStatus("not-found");
+      setScanMessage(error instanceof Error ? error.message : "Өмнөх QR нэхэмжлэлээ шалгаж чадсангүй. Шинэ төлбөр эхлээгүй.");
+      return;
+    } finally { qpayCreatingRef.current = false; setQpayCreating(false); }
+    qrCheckedEmptyScopeRef.current = null;
+    qpayCreatingRef.current = true;
+    setQpayCreating(true);
     const pendingEntry: CheckoutPaymentEntry = { id: requestId, invoiceId: requestId, method: "QR", amount: safeAmount, status: "pending" };
     const pendingEntries = [...paymentEntries, pendingEntry];
 
@@ -2935,7 +3046,24 @@ export default function PosDemoPage() {
       setAutoCheckoutActive(false);
       setScanStatus("not-found");
       const status = error && typeof error === "object" && "status" in error ? Number(error.status) : 0;
-      if ((error && typeof error === "object" && "code" in error && error.code === "PAYMENT_NOT_STARTED") || [400, 401, 403, 404, 422].includes(status)) {
+      if (status === 409 && clientSaleIdRef.current && !selectedCreditRepayment) {
+        try {
+          if (await recoverServerQPay(checkoutScope, paymentEntries)) return;
+        } catch (recoveryError: unknown) {
+          setScanMessage(recoveryError instanceof Error ? recoveryError.message : "Өмнөх QR нэхэмжлэлийн төлөв тодорхойгүй. Дахин төлбөр үүсгэхгүй.");
+          return;
+        }
+      }
+      if (isDefinitiveQPayCreationFailure(error)) {
+        try {
+          if (registerConfig?.id && clientSaleIdRef.current) {
+            acknowledgeUnstartedQPayRecovery(organizationId, registerConfig.id, clientSaleIdRef.current, requestId, error);
+            if (!paymentEntries.some(entry => entry.method === "QR")) clearQPayCheckoutAnchor(organizationId, registerConfig.id, clientSaleIdRef.current);
+          }
+        } catch (storageError: unknown) {
+          setScanMessage(storageError instanceof Error ? storageError.message : "QR хүсэлт эхлээгүй ч сэргээх мэдээллийг цэвэрлэж чадсангүй. Мэдээллийг хэвээр үлдээлээ.");
+          return;
+        }
         setPaymentEntries(prev => prev.filter(item => item.id !== requestId));
         setPaymentFeedback(previous => ({ ...previous, QR: { kind: "failed", message: error instanceof Error ? error.message : "QR нэхэмжлэл үүсээгүй. Тохиргоогоо шалгана уу." } }));
       } else {
@@ -3053,7 +3181,12 @@ export default function PosDemoPage() {
     paymentRemovalRef.current.add(id);
     try {
       if (target.method === "QR" && target.invoiceId) {
-        await cancelQPayInvoice(target.invoiceId);
+        const cancellation = await cancelQPayInvoice(target.invoiceId, true);
+        if (!isQPayCancellationConfirmed(cancellation)) throw new Error("QR цуцлалтыг банк баталгаажуулаагүй. Нэхэмжлэлийг хэвээр үлдээлээ.");
+        if (registerConfig?.id && clientSaleIdRef.current) {
+          acknowledgeCancelledQPayRecovery(organizationId, registerConfig.id, clientSaleIdRef.current, target.invoiceId, cancellation);
+          if (!paymentEntries.some(entry => entry.method === "QR" && entry.id !== target.id)) clearQPayCheckoutAnchor(organizationId, registerConfig.id, clientSaleIdRef.current);
+        }
       }
       setPaymentEntries(prev => prev.filter(item => item.id !== id));
       if (target.invoiceId === qpayModal?.invoiceId) setQpayModal(null);
@@ -3065,7 +3198,9 @@ export default function PosDemoPage() {
     } finally { paymentRemovalRef.current.delete(id); }
   };
 
-  const resetPaymentEntries = () => {
+  const resetPaymentEntries = async () => {
+    try { if (await recoverMissingQrBeforeAction()) return; }
+    catch (error: unknown) { setScanStatus("not-found"); setScanMessage(error instanceof Error ? error.message : "Өмнөх QR төлбөрийг шалгаж чадсангүй. Мэдээллийг хэвээр үлдээлээ."); return; }
     if (cardPaymentRunRef.current || unresolvedCardPayment) {
       setScanMessage("Картын төлбөрийн төлөвийг шалгаж байна. Төлбөртэй сагсыг цэвэрлэх боломжгүй.");
       return;
@@ -3083,10 +3218,13 @@ export default function PosDemoPage() {
     setQpayModal(null);
     setLoyaltyRedeemSession(null);
     setCustomerDisplaySuccess(null);
+    if (registerConfig?.id && clientSaleIdRef.current) clearQPayCheckoutAnchor(organizationId, registerConfig.id, clientSaleIdRef.current);
     clientSaleIdRef.current = null;
   };
 
   const cancelCheckoutAndClearCart = async () => {
+    try { if (await recoverMissingQrBeforeAction()) return; }
+    catch (error: unknown) { setScanStatus("not-found"); setScanMessage(error instanceof Error ? error.message : "Өмнөх QR төлбөрийг шалгаж чадсангүй. Сагсыг хэвээр үлдээлээ."); return; }
     if (!cardPaymentRunRef.current && !isCardProcessing && !deferringCheckoutRef.current &&
         registerConfig?.id && clientSaleIdRef.current && canArchiveMissingCardCheckout(paymentEntries, missingCardAttemptIds)) {
       if (!window.confirm("Серверт олдоогүй картын хүсэлт болон сагсны мэдээллийг тусад нь хадгалж, кассаа чөлөөлөх үү? Энэ нь банкны гүйлгээг цуцлахгүй. Төлсөн бол дахин төлүүлэхгүйгээр тулгаж шалгана.")) return;
@@ -3170,10 +3308,12 @@ export default function PosDemoPage() {
 
     try {
       for (const invoiceId of pendingQpayIds) {
-        await cancelQPayInvoice(invoiceId);
+        const cancellation = await cancelQPayInvoice(invoiceId, true);
+        if (!isQPayCancellationConfirmed(cancellation)) throw new Error("QR цуцлалтыг банк баталгаажуулаагүй байна.");
+        if (registerConfig?.id && clientSaleIdRef.current) acknowledgeCancelledQPayRecovery(organizationId, registerConfig.id, clientSaleIdRef.current, invoiceId, cancellation);
       }
     } catch (error) {
-      const recheckedStatuses: string[] = [];
+      const recheckedStatuses: QPayCancellationProof[] = [];
       let recheckFailed = false;
 
       for (const invoiceId of pendingQpayIds) {
@@ -3198,7 +3338,7 @@ export default function PosDemoPage() {
             return;
           }
 
-          recheckedStatuses.push(invoice.status);
+          recheckedStatuses.push(invoice);
         } catch {
           recheckFailed = true;
         }
@@ -3227,7 +3367,8 @@ export default function PosDemoPage() {
     setLoyaltyRedeemSession(null);
     setCustomerDisplaySuccess(null);
     setCashChangeReceipt(null);
-    clearQPayCheckoutRecovery(organizationId, registerConfig?.id, clientSaleIdRef.current ?? undefined);
+    clearQPayCheckoutRecovery(organizationId, registerConfig?.id, clientSaleIdRef.current ?? undefined, false, pendingQpayIds.length > 0);
+    if (registerConfig?.id && clientSaleIdRef.current) clearQPayCheckoutAnchor(organizationId, registerConfig.id, clientSaleIdRef.current);
     clientSaleIdRef.current = null;
     dispatch({ type: "clear-cart" });
     setView("register");
@@ -3371,6 +3512,10 @@ export default function PosDemoPage() {
         if (!canSwitchAfterQrCancellation(cancelled)) {
           throw new Error("QR цуцлалтыг банк баталгаажуулаагүй тул өөр төлбөр эхлүүлэхгүй. Төлөвөө шалгана уу.");
         }
+        if (registerConfig?.id && clientSaleIdRef.current) {
+          acknowledgeCancelledQPayRecovery(organizationId, registerConfig.id, clientSaleIdRef.current, entry.invoiceId, cancelled);
+          if (!paymentEntries.some(item => item.method === "QR" && item.id !== entry.id)) clearQPayCheckoutAnchor(organizationId, registerConfig.id, clientSaleIdRef.current);
+        }
         setPaymentEntries(previous => previous.filter(item => item.id !== entry.id || item.status === "confirmed"));
         setQpayModal(current => current?.invoiceId === entry.invoiceId ? null : current);
         clearPaymentFeedback("QR");
@@ -3403,7 +3548,10 @@ export default function PosDemoPage() {
   const handlePaymentMethodChange = (method: PaymentMethod) => {
     if (method === paymentMethod && !methodSwitch.pending) return;
     if (selectedCreditRepayment && method === "CREDIT") return;
-    void methodSwitch.request(method);
+    void (async () => {
+      try { if (await recoverMissingQrBeforeAction()) return; await methodSwitch.request(method); }
+      catch (error: unknown) { setScanStatus("not-found"); setScanMessage(error instanceof Error ? error.message : "Өмнөх QR төлбөрийг шалгаж чадсангүй. Шинэ төлбөр эхлээгүй."); }
+    })();
   };
   usePendingCardPayments(paymentEntries,
     !isCardProcessing && !deferringCheckout,

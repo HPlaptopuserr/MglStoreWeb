@@ -1,3 +1,5 @@
+import { isDefinitiveQPayCreationFailure } from "./qpay-server-recovery";
+import { isQPayCancellationConfirmed, type QPayCancellationProof } from "./qpay-cancel-policy";
 import type {
   CheckoutLoyaltyRedeemSession,
   CheckoutLoyaltyState,
@@ -156,11 +158,12 @@ export async function claimQPayCheckoutRecovery(organizationId: string, recovery
   }
 }
 
-export function clearQPayCheckoutRecovery(organizationId: string, registerId?: string, clientSaleId?: string, saleCompleted = false) {
+export function clearQPayCheckoutRecovery(organizationId: string, registerId?: string, clientSaleId?: string, saleCompleted = false, providerCancellationConfirmed = false) {
   if (typeof window === "undefined" || !organizationId.trim()) return;
   const saved = loadQPayCheckoutRecovery(organizationId, registerId);
   if (registerId && (!clientSaleId || saved?.clientSaleId !== clientSaleId)) return;
   if (registerId && !saleCompleted && saved?.paymentEntries.some(entry => entry.status === "confirmed" && (entry.method === "CARD" || entry.method === "QR"))) return;
+  if (!saleCompleted && !providerCancellationConfirmed && saved?.paymentEntries.some(entry => entry.method === "QR" && entry.invoiceId)) return;
   window.localStorage.removeItem(storageKey(organizationId, registerId));
 }
 
@@ -178,4 +181,26 @@ export async function restoreDeferredQPayCheckout(organizationId: string, recove
   window.localStorage.removeItem(key);
   try { await claimQPayCheckoutRecovery(organizationId, recovery); }
   catch (error) { window.localStorage.setItem(key, "1"); throw error; }
+}
+
+/** Remove the original reference only after the provider explicitly confirms cancellation. */
+export function acknowledgeCancelledQPayRecovery(organizationId: string, registerId: string, clientSaleId: string, invoiceId: string, proof: QPayCancellationProof) {
+  if (!isQPayCancellationConfirmed(proof)) throw new Error("QR цуцлалтыг банк баталгаажуулаагүй байна.");
+  const saved = loadQPayCheckoutRecovery(organizationId, registerId);
+  if (!saved || saved.clientSaleId !== clientSaleId) return;
+  const paymentEntries = saved.paymentEntries.filter(entry => entry.invoiceId !== invoiceId && entry.id !== invoiceId);
+  if (hasCheckoutPaymentEvidence(paymentEntries)) {
+    window.localStorage.setItem(storageKey(organizationId, registerId), JSON.stringify({ ...saved, paymentEntries, qpayModal: saved.qpayModal?.invoiceId === invoiceId ? null : saved.qpayModal, updatedAt: Date.now() }));
+  } else clearQPayCheckoutRecovery(organizationId, registerId, clientSaleId, false, true);
+}
+
+/** A newly generated request may be discarded only when the server says no payment started. */
+export function acknowledgeUnstartedQPayRecovery(organizationId: string, registerId: string, clientSaleId: string, requestId: string, failure: unknown) {
+  if (!isDefinitiveQPayCreationFailure(failure)) throw new Error("QR үүсээгүй нь баталгаажаагүй байна.");
+  const saved = loadQPayCheckoutRecovery(organizationId, registerId);
+  if (!saved || saved.clientSaleId !== clientSaleId) return;
+  if (saved.paymentEntries.some(entry => entry.id === requestId && entry.status === "confirmed")) throw new Error("Баталгаажсан төлбөрийг устгахгүй.");
+  const paymentEntries = saved.paymentEntries.filter(entry => entry.id !== requestId);
+  if (hasCheckoutPaymentEvidence(paymentEntries)) window.localStorage.setItem(storageKey(organizationId, registerId), JSON.stringify({ ...saved, paymentEntries, updatedAt: Date.now() }));
+  else clearQPayCheckoutRecovery(organizationId, registerId, clientSaleId, false, true);
 }
