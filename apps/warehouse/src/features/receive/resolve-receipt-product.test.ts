@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   findReceiptProduct,
   resolveReceiptItem,
+  reconcileReceiptProducts,
   type ReceiptProductIdentity,
 } from "./resolve-receipt-product";
 import type { ReceiveItem } from "./receipt-types";
@@ -116,5 +117,59 @@ test("master identity must agree and a name-only draft skips lookup", async () =
       },
     ),
     null,
+  );
+});
+
+test("legacy store product is reconciled to the warehouse barcode without losing entered quantities or costs", async () => {
+  const legacy = {
+    ...item,
+    productId: "old-store-product",
+    barcode: "001234",
+    draftProduct: undefined,
+    unit: "ш",
+  };
+  const [resolved] = await reconcileReceiptProducts(
+    "/warehouses/local/products",
+    [legacy],
+    async (url) => {
+      assert.equal(
+        new URL(url, "http://localhost").searchParams.get("barcode"),
+        "001234",
+      );
+      return Response.json([product]);
+    },
+  );
+  assert.equal(resolved.productId, product.id);
+  assert.equal(resolved.quantity, 14);
+  assert.equal(resolved.cost, 3200);
+  assert.equal(resolved.batchNumber, "LOT-1");
+});
+
+test("unresolved and ambiguous legacy products stop before a receipt is posted", async () => {
+  const legacy = { ...item, barcode: "001234", draftProduct: undefined };
+  for (const matches of [[], [product, { ...product, id: "duplicate" }]])
+    await assert.rejects(
+      reconcileReceiptProducts("/products", [legacy], async () =>
+        Response.json(matches),
+      ),
+      /холбож чадсангүй/,
+    );
+  await assert.rejects(
+    reconcileReceiptProducts("/products", [legacy], async () =>
+      Response.json([{ ...product, unit: "kg" }]),
+    ),
+    /нэгж зөрж/,
+  );
+});
+
+test("reconciliation rejects two draft rows resolving to one warehouse product", async () => {
+  const legacy = { ...item, barcode: "001234", draftProduct: undefined };
+  await assert.rejects(
+    reconcileReceiptProducts(
+      "/products",
+      [legacy, { ...legacy, productId: "other" }],
+      async () => Response.json([product]),
+    ),
+    /давхардсан/,
   );
 });

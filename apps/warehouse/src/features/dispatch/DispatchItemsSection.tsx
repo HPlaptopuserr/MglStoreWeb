@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Minus, PackageMinus, Plus, Trash2 } from "lucide-react";
 import { ProductThumbnail } from "@/features/inventory/ProductThumbnail";
+import { DispatchQuantityInput } from "./DispatchQuantityInput";
 import {
   WarehouseProductSearch,
   type WarehouseInventorySearchItem,
@@ -152,19 +153,14 @@ export function DispatchItemsSection({
                       >
                         <Minus className="h-3.5 w-3.5" />
                       </button>
-                      <input
-                        aria-label={`${item.name} гаргах тоо`}
-                        type="number"
-                        min={1}
-                        max={item.available}
-                        value={item.quantity}
-                        onChange={(event) =>
-                          onQuantityChange(
-                            item.productId,
-                            Number.parseInt(event.target.value, 10) || 1,
-                          )
+                      <DispatchQuantityInput
+                        key={item.quantity}
+                        name={item.name}
+                        quantity={item.quantity}
+                        available={item.available}
+                        onCommit={(quantity) =>
+                          onQuantityChange(item.productId, quantity)
                         }
-                        className={`h-8 w-14 border-0 bg-transparent text-center text-sm font-bold outline-none ${overStock ? "text-red-600" : "text-slate-900"}`}
                       />
                       <button
                         type="button"

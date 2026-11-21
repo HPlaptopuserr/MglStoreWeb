@@ -21,6 +21,7 @@ interface Props {
   totalQuantity: number;
   totalCost: number;
   submitting: boolean;
+  progress?: string;
   locked: boolean;
   error: string;
   onSubmit: () => void;
@@ -36,6 +37,7 @@ export function WarehouseReceiptWizard({
   totalQuantity,
   totalCost,
   submitting,
+  progress,
   locked,
   error,
   onSubmit,
@@ -102,7 +104,7 @@ export function WarehouseReceiptWizard({
       lineCount={lineCount}
       quantityLabel={`${totalQuantity.toLocaleString("mn-MN")} ш`}
       totalCost={totalCost}
-      error={error}
+      error={undefined}
       updatesSalePrice={false}
       showSummary={step === 2}
       guidance={
@@ -147,6 +149,22 @@ export function WarehouseReceiptWizard({
         >
           Алхам {step + 1} / 3 · {steps[step]}
         </h2>
+        {progress && (
+          <p
+            role="status"
+            className="mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-800"
+          >
+            {progress}
+          </p>
+        )}
+        {error && (
+          <p
+            role="alert"
+            className="mt-3 rounded-lg bg-rose-50 p-3 text-sm font-semibold text-rose-800"
+          >
+            {error}
+          </p>
+        )}
         {step === 1 && (
           <p className="mt-2 text-sm text-slate-500">
             Эдгээр мэдээлэл заавал биш. Баримтгүй бол шууд дараагийн алхамд

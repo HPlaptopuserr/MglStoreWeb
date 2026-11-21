@@ -3,6 +3,7 @@ import { TransferInbox } from "@/features/transfers/TransferInbox";
 import {
   findReceiptProduct,
   resolveReceiptItem,
+  reconcileReceiptProducts,
   type ReceiptProductIdentity,
 } from "@/features/receive/resolve-receipt-product";
 import { nextNum, skuPrefix } from "@/lib/sku";
@@ -93,6 +94,8 @@ export default function ReceivePage() {
   const [submitError, setSubmitError] = useState("");
   const [savedReceiptNumber, setSavedReceiptNumber] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savePhase, setSavePhase] = useState("");
+  const submittingReceipt = useRef(false);
   const [saved, setSaved] = useState(false);
   const [activeView, setActiveView] = useState<"create" | "history">("history");
   const [hasStartedReceipt, setHasStartedReceipt] = useState(false);
@@ -405,8 +408,16 @@ export default function ReceivePage() {
 
   // ───── Submit one atomic goods receipt ─────
   const handleSubmit = async () => {
-    if (!selectedWarehouseId || items.length === 0 || !supplier.trim()) return;
+    if (
+      submittingReceipt.current ||
+      !selectedWarehouseId ||
+      items.length === 0 ||
+      !supplier.trim()
+    )
+      return;
+    submittingReceipt.current = true;
     setSaving(true);
+    setSavePhase("Барааны бүртгэлийг шалгаж байна…");
     setSaved(false);
     setSubmitError("");
 
@@ -414,7 +425,12 @@ export default function ReceivePage() {
       let receiptId = pendingReceiptId;
       let receiptNumber = "";
       if (!receiptId) {
-        const resolvedItems = [...items];
+        const resolvedItems = await reconcileReceiptProducts(
+          `${API}/warehouses/${encodeURIComponent(selectedWarehouseId)}/products`,
+          items,
+          wmsFetch,
+        );
+        setItems(resolvedItems);
         for (const item of resolvedItems) {
           if (
             item.draftProduct &&
@@ -459,9 +475,7 @@ export default function ReceivePage() {
                   masterProductId: draftProduct.masterProductId,
                   description: draftProduct.description,
                   businessCategoryId: draftProduct.businessCategoryId,
-                  images: draftProduct.imageUrl
-                    ? [draftProduct.imageUrl]
-                    : [],
+                  images: draftProduct.imageUrl ? [draftProduct.imageUrl] : [],
                   price: Number(draftProduct.price),
                   costPrice: item.cost,
                   quantity: 0,
@@ -522,6 +536,7 @@ export default function ReceivePage() {
             throw new Error(failure.message || "Нэмэлт баркод хадгалагдсангүй");
           }
         }
+        setSavePhase("Орлогын ноорог хадгалж байна…");
         const response = await wmsFetch(`${API}/warehouse-goods-receipts`, {
           method: "POST",
           body: JSON.stringify({
@@ -551,6 +566,7 @@ export default function ReceivePage() {
       }
 
       if (receiptFiles.length > 0) {
+        setSavePhase("Падааны хавсралт хадгалж байна…");
         const body = new FormData();
         receiptFiles.forEach((file) => body.append("files", file));
         const uploadResponse = await wmsFetch(
@@ -564,6 +580,7 @@ export default function ReceivePage() {
           );
       }
 
+      setSavePhase("Үлдэгдэлд бүртгэж баталгаажуулж байна…");
       const confirmResponse = await wmsFetch(
         `${API}/warehouse-goods-receipts/${receiptId}/confirm`,
         { method: "PATCH" },
@@ -588,9 +605,16 @@ export default function ReceivePage() {
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       setSubmitError(
-        err instanceof Error ? err.message : "Хадгалахад алдаа гарлаа",
+        err instanceof DOMException &&
+          ["TimeoutError", "AbortError"].includes(err.name)
+          ? "Холболтын хугацаа хэтэрлээ. Ноорог хадгалагдсан. Орлогын түүхээс баримт бүртгэгдсэн эсэхийг шалгаад үргэлжлүүлнэ үү."
+          : err instanceof Error
+            ? err.message
+            : "Хадгалахад алдаа гарлаа",
       );
     } finally {
+      submittingReceipt.current = false;
+      setSavePhase("");
       setSaving(false);
     }
   };
@@ -603,7 +627,10 @@ export default function ReceivePage() {
             Агуулахаас ирсэн шилжүүлэг хүлээн авах
           </summary>
           <div className="mt-5">
-            <TransferInbox key={selectedWarehouseId} warehouseId={selectedWarehouseId} />
+            <TransferInbox
+              key={selectedWarehouseId}
+              warehouseId={selectedWarehouseId}
+            />
           </div>
         </details>
       )}
@@ -697,6 +724,7 @@ export default function ReceivePage() {
             }}
             warehouseId={selectedWarehouseId}
             submitting={saving}
+            progress={savePhase}
             locked={Boolean(pendingReceiptId)}
             lineCount={items.length}
             totalQuantity={totalQuantity}
