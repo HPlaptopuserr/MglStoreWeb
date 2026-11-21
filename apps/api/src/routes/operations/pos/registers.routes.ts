@@ -282,8 +282,12 @@ router.get("/pos/register-config", async (req, res) => {
         terminalBridgeUrl: register.terminalBridgeUrl,
       },
     });
+    const bridgePairingRequired = register.cardProviderType === "ANDROID_PGW" && Boolean(await prisma.posBridgeBinding.findUnique({
+      where: { registerId: register.id }, select: { id: true },
+    }));
     return res.json({
       ...safeRegister,
+      bridgePairingRequired,
       cardFlowVersion: 2,
       cardPaymentMode: register.cardEnabled ? "API" : "MANUAL",
       cardEnabled: register.cardEnabled || effectiveCardTerminal.cardEnabled,

@@ -1,3 +1,4 @@
+import bridgePairingRoutes from "./bridge-pairing.routes";
 import checkoutRecoveryArchiveRoutes from "./checkout-recovery-archive.routes";
 import ebarimtVatRecoveryRoutes from "./ebarimt-vat-recovery.routes";
 import quickRestockRoutes from "./quick-restock.routes";
@@ -23,6 +24,7 @@ import creditCustomersRoutes from "./credit-customers.routes";
 import incomingDispatchesRoutes from "./incoming-dispatches.routes";
 
 const router: ExpressRouter = Router();
+router.use(bridgePairingRoutes);
 router.use(checkoutRecoveryArchiveRoutes);
 router.use(ebarimtVatRecoveryRoutes);
 router.use(incomingDispatchesRoutes);

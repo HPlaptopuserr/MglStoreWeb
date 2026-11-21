@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { closeShiftWithSettlement } from "../api/close-shift-with-settlement";
+import { closeShiftWithSettlement, type ShiftTerminal } from "../api/close-shift-with-settlement";
 import { openShift } from "../api/open-shift";
 import type { CashDenominationCount, PosShift } from "../types/shift.types";
 import { posRequest } from "../api/_pos-client";
@@ -111,7 +111,7 @@ export function useCurrentShift(registerId?: string) {
       shiftId: string,
       closingCash: number,
       note?: string,
-      terminalId?: string,
+      terminalId?: ShiftTerminal,
       cashCount?: CashDenominationCount[],
     ) => {
       if (pending.current) throw new Error("Ээлжийн үйлдэл боловсруулж байна.");
@@ -144,7 +144,7 @@ export function useCurrentShift(registerId?: string) {
     (
       closingCash: number,
       note?: string,
-      terminalId?: string,
+      terminalId?: ShiftTerminal,
       cashCount?: CashDenominationCount[],
     ) => {
       if (!shift) throw new Error("Нээлттэй ээлж алга.");
@@ -158,7 +158,7 @@ export function useCurrentShift(registerId?: string) {
       shiftId: string,
       closingCash: number,
       note: string,
-      terminalId?: string,
+      terminalId?: ShiftTerminal,
     ) => {
       if (!blockingShift?.canClose || blockingShift.id !== shiftId)
         throw new Error("Энэ ээлжийг хаах эрхгүй.");

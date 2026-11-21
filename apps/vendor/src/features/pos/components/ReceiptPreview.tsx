@@ -6,6 +6,8 @@ import { Loader2, Printer, RotateCcw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import type { PosReceipt } from "../types/receipt.types";
 import type { RegisterConfig } from "../types/pos.types";
+import { usesPairedAndroidPgwCommands } from "../utils/card-terminal-operations";
+import { runAndroidPgwCommand } from "../api/android-pgw";
 import { voidPushEcr } from "../api/payments";
 import { returnLocalEbarimtReceipt, sendLocalEbarimtData } from "../api/ebarimt";
 import { voidSale } from "../api/void-sale";
@@ -39,7 +41,15 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
     setPaperWidthMm(readReceiptPaperWidth());
   }, []);
 
+  useEffect(() => {
+    setTerminalVoidResult(null);
+    setSaleVoidResult(null);
+  }, [receipt?.id]);
+
   if (!receipt) return null;
+  const isPgw = usesPairedAndroidPgwCommands(register);
+  const pgwPayments = receipt.paymentBreakdown?.filter(payment => payment.method === "CARD" && payment.attemptId) || [];
+  const needsPgwVoid = Boolean(isPgw && pgwPayments.length);
 
   const cardLine = receipt.paymentBreakdown?.find(
     (payment) => payment.method === "CARD" && payment.traceno && payment.terminalId,
@@ -64,21 +74,29 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
   };
 
   const handleTerminalVoid = async () => {
-    if (!cardLine?.traceno || !cardLine?.terminalId) return;
+    if (isPgw && !needsPgwVoid) {
+      setTerminalVoidResult({ succeed: false, message: "PGW төлбөрийн ID олдсонгүй. Банкны баримттай тулгаж буцаана уу." });
+      return;
+    }
+    if (!needsPgwVoid && (!cardLine?.traceno || !cardLine?.terminalId)) return;
     if (!confirm(`Картын terminal буцаалт хийх үү?\nБаримтын дугаар: ${receipt.receiptNo}`)) return;
 
     setTerminalVoiding(true);
     setTerminalVoidResult(null);
     try {
-      const result = await voidPushEcr({
-        terminalId: cardLine.terminalId,
-        traceno: cardLine.traceno,
-      });
-      setTerminalVoidResult(result);
-    } catch (error: any) {
+      if (needsPgwVoid && register) {
+        for (const payment of pgwPayments) {
+          const result = await runAndroidPgwCommand({ operation: "void", registerId: register.id, attemptId: payment.attemptId });
+          if (!result.succeed) { setTerminalVoidResult(result); return; }
+        }
+        setTerminalVoidResult({ succeed: true });
+      } else if (cardLine?.terminalId && cardLine.traceno) {
+        setTerminalVoidResult(await voidPushEcr({ terminalId: cardLine.terminalId, traceno: cardLine.traceno }));
+      }
+    } catch (error: unknown) {
       setTerminalVoidResult({
         succeed: false,
-        message: error?.message || "Terminal буцаалт хийхэд алдаа гарлаа",
+        message: error instanceof Error ? error.message : "Terminal буцаалт хийхэд алдаа гарлаа",
       });
     } finally {
       setTerminalVoiding(false);
@@ -86,6 +104,10 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
   };
 
   const handleSaleVoid = async () => {
+    if (needsPgwVoid && !terminalVoidResult?.succeed) {
+      setSaleVoidResult({ succeed: false, message: "Эхлээд картын terminal буцаалтыг баталгаажуулна уу" });
+      return;
+    }
     const reason = window.prompt(
       `Буцаалт хийх шалтгаанаа оруулна уу.\nБаримтын дугаар: ${receipt.receiptNo}`,
       cardLine ? "Картын буцаалт хийсэн" : "Бараа буцаалт",
@@ -118,16 +140,16 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
         syncedMessage = ebarimtReturn
           ? `${message}. eBarimt return requested (${ebarimtReturn.id}); sendData done. lastSentDate: ${lastSentDate}`
           : `${message}. eBarimt return skipped; sendData done. lastSentDate: ${lastSentDate}`;
-      } catch (syncError: any) {
-        syncedMessage = `${message}. eBarimt sync failed: ${syncError?.message || "unknown error"}`;
+      } catch (syncError: unknown) {
+        syncedMessage = `${message}. eBarimt sync failed: ${syncError instanceof Error ? syncError.message : "unknown error"}`;
       }
 
       setSaleVoidResult({ succeed: true, message: syncedMessage });
       onVoided?.(syncedMessage);
-    } catch (error: any) {
+    } catch (error: unknown) {
       setSaleVoidResult({
         succeed: false,
-        message: error?.message || "Буцаалт хийхэд алдаа гарлаа",
+        message: error instanceof Error ? error.message : "Буцаалт хийхэд алдаа гарлаа",
       });
     } finally {
       setSaleVoiding(false);
@@ -185,7 +207,7 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
           >
             Тусдаа цонхоор хэвлэх
           </button>
-          {allowReturns && !isVoided && cardLine && !terminalVoidResult?.succeed && (
+          {allowReturns && !isVoided && (cardLine || needsPgwVoid) && !terminalVoidResult?.succeed && (
             <button
               type="button"
               onClick={handleTerminalVoid}
@@ -200,7 +222,7 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
             <button
               type="button"
               onClick={handleSaleVoid}
-              disabled={saleVoiding || terminalVoiding}
+              disabled={saleVoiding || terminalVoiding || (needsPgwVoid && !terminalVoidResult?.succeed)}
               className="flex items-center gap-1.5 rounded-lg border border-amber-200 px-3 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50"
             >
               {saleVoiding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
@@ -210,6 +232,9 @@ export function ReceiptPreview({ receipt, register, onVoided, allowReturns = tru
         </div>
       </div>
 
+      {needsPgwVoid && !terminalVoidResult?.succeed && (
+        <p role="status" className="mt-2 text-xs text-slate-600">Картын буцаалт баталгаажсаны дараа барааны буцаалт бүртгэнэ.</p>
+      )}
       {terminalVoidResult && (
         <div className={`mt-2 rounded-lg px-3 py-2 text-xs font-medium ${terminalVoidResult.succeed ? "bg-green-50 text-green-700" : "bg-rose-50 text-rose-700"}`}>
           {terminalVoidResult.succeed

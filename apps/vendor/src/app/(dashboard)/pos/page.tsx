@@ -1,4 +1,7 @@
 "use client";
+
+import { runAndroidPgwCommand } from "@/features/pos/api/android-pgw";
+import { shiftSettlementTerminal, usesPairedAndroidPgwCommands } from "@/features/pos/utils/card-terminal-operations";
 import { readPosFiscalTaxTotals } from "@mgl/types";
 import { PosApiError, posRequest } from "@/features/pos/api/_pos-client";
 import { archiveMissingCardCheckout, canArchiveMissingCardCheckout, readMissingCardArchiveNotice, type MissingCardArchiveNotice } from "@/features/pos/utils/missing-card-checkout";
@@ -202,6 +205,7 @@ type PendingEbarimtSale = {
 };
 
 type CardPaymentRun = {
+  attemptId?: string;
   pendingId: string;
   terminalId?: string;
   provider?: string | null;
@@ -935,6 +939,20 @@ export default function PosDemoPage() {
       return;
     }
 
+    if (activeRun.provider === "ANDROID_PGW") {
+      setMinuCancellationRequested(true);
+      // Keep the purchase connection and entry alive until its final bank response.
+      setIsCancellingCard(true);
+      try {
+        if (registerConfig?.id && usesPairedAndroidPgwCommands(registerConfig) && activeRun.attemptId) {
+          const result = await runAndroidPgwCommand({ operation: "cancel", registerId: registerConfig.id, attemptId: activeRun.attemptId });
+          setScanMessage(result.message || "Цуцлалтын эцсийн хариуг хүлээж байна");
+        } else setScanMessage("Терминалын Cancel товчийг дарж эцсийн хариуг хүлээнэ үү");
+      } catch (error: unknown) {
+        setScanMessage(error instanceof Error ? error.message : "Цуцлалт баталгаажаагүй; төлбөрийн төлөвийг шалгана уу");
+      } finally { setIsCancellingCard(false); }
+      return;
+    }
     activeRun.cancelled = true;
     activeRun.abortController.abort();
     if (activeRun.provider === "MINU_AGENT") {
@@ -2775,6 +2793,7 @@ export default function PosDemoPage() {
         if (isCardRunCancelled()) return;
 
         createdAttemptId = attempt.attemptId;
+        cardRun.attemptId = attempt.attemptId;
         setPaymentEntries(previous => previous.map(entry => entry.id === pendingId ? { ...entry, attemptId: attempt.attemptId } : entry));
         let approvedAttempt = attempt;
         if (useClientBridge && attempt.status === "PENDING") {
@@ -2782,6 +2801,7 @@ export default function PosDemoPage() {
             const bridgeResult = await chargeClientBridge({
               bridgeUrl: freshRegisterConfig.terminalBridgeUrl!,
               attemptId: attempt.attemptId,
+              requestSignature: attempt.bridgeRequestSignature,
               amount: safeAmount,
               terminalId,
               signal: cardRun.abortController.signal,
@@ -4277,11 +4297,10 @@ export default function PosDemoPage() {
                   key={blockingShift.id}
                   shift={blockingShift}
                   busy={shiftLoading}
-                  settlesTerminal={getEffectiveCardProvider(registerConfig) === "PUSH_ECR"}
+                  settlesTerminal={Boolean(shiftSettlementTerminal(registerConfig, getEffectiveCardProvider(registerConfig)))}
                   onRefresh={() => void loadShift()}
                   onClose={async (shiftId, amount, note) => {
-                    const terminalId = getEffectiveCardProvider(registerConfig) === "PUSH_ECR"
-                      ? registerConfig.cardTerminalId ?? undefined : undefined;
+                    const terminalId = shiftSettlementTerminal(registerConfig, getEffectiveCardProvider(registerConfig));
                     await closeBlocking(shiftId, amount, note, terminalId);
                     reloadShiftHistory();
                     setScanMessage("Өмнөх ээлж хаагдлаа. Одоо өөрийн ээлжийг нээнэ үү.");
@@ -4412,7 +4431,7 @@ export default function PosDemoPage() {
                               `Тооцоолсон бэлэн: ${formatMoney(latestSummary.expectedCash)}`,
                               `Тоолсон бэлэн: ${formatMoney(countedClosingCash)}`,
                               `Зөрүү: ${formatMoney(latestDifference)}`,
-                              getEffectiveCardProvider(registerConfig) === "PUSH_ECR"
+                              Boolean(shiftSettlementTerminal(registerConfig, getEffectiveCardProvider(registerConfig)))
                                 ? "Картын терминалын өдрийн нэгтгэлийг эхэлж хийнэ."
                                 : "",
                             ]
@@ -4420,9 +4439,7 @@ export default function PosDemoPage() {
                               .join("\n"),
                           );
                           if (!confirmed) return;
-                          const termId = getEffectiveCardProvider(registerConfig) === "PUSH_ECR"
-                            ? registerConfig.cardTerminalId
-                            : undefined;
+                          const termId = shiftSettlementTerminal(registerConfig, getEffectiveCardProvider(registerConfig));
                           await closeShiftFn(
                             countedClosingCash,
                             shiftCloseNote || undefined,
@@ -4570,7 +4587,7 @@ export default function PosDemoPage() {
             {cardWaitDeadline !== null && <CardPaymentCountdown key={cardWaitDeadline}
               deadline={cardWaitDeadline} className="mt-4 text-blue-600" />}
             <p role="status" className="mt-1 text-sm text-slate-500">{minuCancellationRequested
-              ? "Терминалын Cancel товчийг дарна уу. Цуцлалтын хариуг хүлээж байна."
+              ? (usesPairedAndroidPgwCommands(registerConfig) ? "Цуцлалтыг хүссэн. Терминалын эцсийн хариуг хүлээж байна." : "Терминалын Cancel товчийг дарна уу. Цуцлалтын хариуг хүлээж байна.")
               : "Терминал дээр карт уншуулна уу"}</p>
             <button
               type="button"
