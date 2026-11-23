@@ -1178,6 +1178,7 @@ export async function getRestaurantMealReport(input: {
 }
 
 export interface CreateRestaurantCreditCustomerInput {
+  borrowerUserId: string;
   organizationId: string;
   targetType: "CUSTOMER";
   borrowerName: string;

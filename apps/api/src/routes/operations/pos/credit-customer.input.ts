@@ -24,6 +24,7 @@ export function parseCreditCustomerInput(value: unknown) {
   if (targetType !== "CUSTOMER" && targetType !== "COMPANY")
     throw new Error("Хэрэглэгчийн төрлийг сонгоно уу");
   const organizationId = text("organizationId", "Байгууллага", 100, true);
+  const borrowerUserId = text("borrowerUserId", "MGL хэрэглэгч", 100, true);
   const borrowerName = text("borrowerName", "Нэр", 120, true);
   const borrowerPhone = text("borrowerPhone", "Утас", 30, true);
   if (
@@ -48,13 +49,18 @@ export function parseCreditCustomerInput(value: unknown) {
   const employeeId = targetType === "COMPANY" ? `${borrowerId}-employee` : null;
   return {
     organizationId,
+    borrowerUserId,
     targetType,
     borrowerName,
     borrowerId,
     borrowerPhone,
     borrowerEmail: borrowerEmail || null,
     borrowerAddress: borrowerAddress || null,
-    ...parseCreditWorkDetails({ workplace: body.workplace ?? null, department: body.department ?? null, jobTitle: body.jobTitle ?? null }),
+    ...parseCreditWorkDetails({
+      workplace: body.workplace ?? null,
+      department: body.department ?? null,
+      jobTitle: body.jobTitle ?? null,
+    }),
     employeeName: employeeName || null,
     employeeId,
     normalizedBorrowerKey: buildCreditBorrowerKey({

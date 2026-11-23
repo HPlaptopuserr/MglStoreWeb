@@ -3625,6 +3625,7 @@ export default function PosDemoPage() {
 
       {view === "checkout" && registerConfig?.isActive !== false && (
         <PosCheckoutView
+          organizationId={organizationId}
           lines={state.cart}
           totals={totals}
           paymentMethod={paymentMethod}

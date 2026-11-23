@@ -4,6 +4,7 @@ import { parseCreditCustomerInput } from "./credit-customer.input";
 import { buildCreditBorrowerId, buildCreditBorrowerKey } from "@mgl/types";
 const customer = {
   organizationId: "org",
+  borrowerUserId: "registered-user",
   targetType: "CUSTOMER",
   borrowerName: " Болд ",
   borrowerPhone: "9911 2233",
@@ -43,6 +44,8 @@ test("company contacts share checkout identity and require contact name", () => 
 });
 test("malformed customer data is rejected before database writes", () => {
   for (const patch of [
+    { borrowerUserId: "" },
+    { borrowerUserId: 123 },
     { borrowerName: " " },
     { borrowerPhone: "123" },
     { borrowerPhone: "99112233abc" },
@@ -58,18 +61,37 @@ test("optional employment fields trim, preserve identity, and validate input", (
   const original = parseCreditCustomerInput(customer);
   for (const targetType of ["CUSTOMER", "COMPANY"]) {
     const result = parseCreditCustomerInput({
-      ...customer, targetType, employeeName: "Бат",
-      workplace: " МГЛ ", department: " Борлуулалт ", jobTitle: " Менежер ",
+      ...customer,
+      targetType,
+      employeeName: "Бат",
+      workplace: " МГЛ ",
+      department: " Борлуулалт ",
+      jobTitle: " Менежер ",
     });
     assert.equal(result.workplace, "МГЛ");
     assert.equal(result.department, "Борлуулалт");
     assert.equal(result.jobTitle, "Менежер");
   }
-  for (const [field, limit] of [["workplace", 200], ["department", 120], ["jobTitle", 120]] as const) {
+  for (const [field, limit] of [
+    ["workplace", 200],
+    ["department", 120],
+    ["jobTitle", 120],
+  ] as const) {
     assert.equal(original[field], null);
-    assert.equal(parseCreditCustomerInput({ ...customer, [field]: " " })[field], null);
-    assert.throws(() => parseCreditCustomerInput({ ...customer, [field]: 123 }));
-    assert.throws(() => parseCreditCustomerInput({ ...customer, [field]: "x".repeat(limit + 1) }));
-    assert.equal(parseCreditCustomerInput({ ...customer, [field]: "x".repeat(limit) }).normalizedBorrowerKey, original.normalizedBorrowerKey);
+    assert.equal(
+      parseCreditCustomerInput({ ...customer, [field]: " " })[field],
+      null,
+    );
+    assert.throws(() =>
+      parseCreditCustomerInput({ ...customer, [field]: 123 }),
+    );
+    assert.throws(() =>
+      parseCreditCustomerInput({ ...customer, [field]: "x".repeat(limit + 1) }),
+    );
+    assert.equal(
+      parseCreditCustomerInput({ ...customer, [field]: "x".repeat(limit) })
+        .normalizedBorrowerKey,
+      original.normalizedBorrowerKey,
+    );
   }
 });

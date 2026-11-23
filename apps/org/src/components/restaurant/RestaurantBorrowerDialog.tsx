@@ -4,6 +4,9 @@ import { useState, type FormEvent } from "react";
 import { Loader2 } from "lucide-react";
 import type { PosCreditBorrower } from "@mgl/types";
 import { createRestaurantCreditCustomer } from "@/lib/restaurant-pos-api";
+import { useRegisteredCreditBorrower } from "@/hooks/useRegisteredCreditBorrower";
+import { verifiedCreditBorrower } from "@/lib/registered-credit-borrower-state";
+import { RegisteredCreditUserLookup } from "./RegisteredCreditUserLookup";
 import { RestaurantDialog } from "./RestaurantDialog";
 
 interface RestaurantBorrowerDialogProps {
@@ -13,29 +16,6 @@ interface RestaurantBorrowerDialogProps {
 }
 
 const fields = [
-  {
-    name: "borrowerName",
-    label: "Овог, нэр",
-    type: "text",
-    required: true,
-    maxLength: 120,
-    autoComplete: "name",
-  },
-  {
-    name: "borrowerPhone",
-    label: "Утасны дугаар",
-    type: "tel",
-    required: true,
-    maxLength: 30,
-    autoComplete: "tel",
-  },
-  {
-    name: "borrowerEmail",
-    label: "И-мэйл",
-    type: "email",
-    maxLength: 254,
-    autoComplete: "email",
-  },
   {
     name: "borrowerAddress",
     label: "Хаяг",
@@ -71,6 +51,13 @@ export function RestaurantBorrowerDialog({
   onClose,
   onCreated,
 }: RestaurantBorrowerDialogProps) {
+  const [phone, setPhone] = useState("");
+  const lookup = useRegisteredCreditBorrower(organizationId);
+  const registeredUser = verifiedCreditBorrower(
+    lookup.state,
+    organizationId,
+    phone,
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -79,12 +66,8 @@ export function RestaurantBorrowerDialog({
     if (saving) return;
     const data = new FormData(event.currentTarget);
     const value = (name: string) => String(data.get(name) ?? "").trim();
-    const phone = value("borrowerPhone");
-    if (
-      !/^[+\d\s()-]+$/.test(phone) ||
-      !/^\d{8,15}$/.test(phone.replace(/\D/g, ""))
-    ) {
-      setError("Утасны дугаар 8–15 оронтой байна.");
+    if (!registeredUser) {
+      setError("Эхлээд MGL-д бүртгэлтэй хэрэглэгчийг утсаар шалгана уу.");
       return;
     }
     setSaving(true);
@@ -93,9 +76,10 @@ export function RestaurantBorrowerDialog({
       const borrower = await createRestaurantCreditCustomer({
         organizationId,
         targetType: "CUSTOMER",
-        borrowerName: value("borrowerName"),
-        borrowerPhone: phone,
-        borrowerEmail: value("borrowerEmail"),
+        borrowerUserId: registeredUser.id,
+        borrowerName: registeredUser.fullName,
+        borrowerPhone: registeredUser.phoneNumber,
+        borrowerEmail: registeredUser.email || undefined,
         borrowerAddress: value("borrowerAddress"),
         workplace: value("workplace"),
         department: value("department"),
@@ -126,23 +110,31 @@ export function RestaurantBorrowerDialog({
         aria-busy={saving}
       >
         <p className="text-xs leading-5 text-slate-400">
-          Нэр, утас заавал бөглөнө. Бүртгэсний дараа зээлийн төлбөрт сонгох
-          боломжтой.
+          MGL-д бүртгэлтэй хэрэглэгчийг утсаар шалгана. Нэр, утас, и-мэйл нь
+          тухайн хэрэглэгчийн бүртгэлээс бөглөгдөнө.
         </p>
+        <RegisteredCreditUserLookup
+          phone={phone}
+          state={lookup.state}
+          user={registeredUser}
+          disabled={saving}
+          onPhoneChange={(value) => {
+            lookup.invalidate();
+            setPhone(value);
+            setError("");
+          }}
+          onLookup={() => void lookup.lookup(phone)}
+        />
         <fieldset disabled={saving} className="grid gap-3 sm:grid-cols-2">
           {fields.map((field) => (
             <label
               key={field.name}
               className="flex flex-col gap-1.5 text-xs font-semibold text-slate-300"
             >
-              <span>
-                {field.label}
-                {"required" in field && field.required ? " *" : ""}
-              </span>
+              <span>{field.label}</span>
               <input
                 name={field.name}
                 type={field.type}
-                required={"required" in field && field.required}
                 maxLength={field.maxLength}
                 autoComplete={field.autoComplete}
                 className="h-11 min-w-0 rounded-lg border border-white/15 bg-[#122131] px-3 text-sm text-white outline-none transition focus:border-sky-300 disabled:opacity-60"
@@ -160,7 +152,7 @@ export function RestaurantBorrowerDialog({
         )}
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || !registeredUser}
           className="flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-sky-300 px-3 text-sm font-bold text-slate-950 transition hover:bg-sky-200 disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-100"
         >
           {saving && (

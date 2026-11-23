@@ -95,16 +95,35 @@ test("cash, credit and tax amounts preserve sale totals and retries without cont
         assert.equal(attached.status, 200, await attached.text());
       }
     });
-    const credit = { targetType: "CUSTOMER", borrowerId: "borrower", borrowerName: "Test borrower", monthlyInterestRate: 0.012, termMonths: 1, totalDue: 1111 };
+    const borrowerPhone = `99${(BigInt(`0x${key.replace(/-/g, "").slice(0, 12)}`) % 1000000n).toString().padStart(6, "0")}`;
+    const borrower = await prisma.user.create({ data: { email: `${key}@borrower.invalid`, profile: { create: { fullName: "Registered borrower", phoneNumber: borrowerPhone } } } });
+    const credit = { targetType: "CUSTOMER", borrowerUserId: borrower.id, borrowerId: "spoofed-borrower", borrowerName: "Spoofed name", borrowerPhone, monthlyInterestRate: 0.012, termMonths: 1, totalDue: 1111 };
+    await t.test("unregistered and inactive borrowers cannot create debt or reduce stock", async () => {
+      const before = (await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).stock;
+      const submitCredit = (details: object) => submit({ ...sale, clientSaleId: randomUUID(), paymentMethod: "CREDIT", paymentBreakdown: [{ method: "CREDIT", amount: 1111, credit: details }] });
+      const missing = await submitCredit({ ...credit, borrowerUserId: undefined });
+      assert.equal(missing.status, 400, await missing.text());
+      await prisma.user.update({ where: { id: borrower.id }, data: { isActive: false } });
+      const inactive = await submitCredit(credit);
+      assert.equal(inactive.status, 409, await inactive.text());
+      await prisma.user.update({ where: { id: borrower.id }, data: { isActive: true } });
+      assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).stock, before);
+      assert.equal(await prisma.posCreditSale.count({ where: { borrowerUserId: borrower.id } }), 0);
+    });
     await t.test("cash and credit split records only the principal as debt and preserves gross sale", async () => {
       const response = await submit({ ...sale, clientSaleId: randomUUID(), paymentMethod: "MIXED", paymentBreakdown: [{ method: "CASH", amount: 111, cash: { receivedAmount: 111 } }, { method: "CREDIT", amount: 1000, credit }] });
       assert.equal(response.status, 201, await response.clone().text());
-      const receipt = await response.json() as { id: string; grandTotal: number };
+      const receipt = await response.json() as { id: string; grandTotal: number; credit: { borrowerUserId: string; borrowerName: string }; paymentBreakdown: Array<{ credit?: { borrowerName: string } }> };
+      assert.equal(receipt.credit.borrowerUserId, borrower.id);
+      assert.equal(receipt.paymentBreakdown[1]?.credit?.borrowerName, "Registered borrower");
       assert.equal(receipt.grandTotal, 1111);
       const debt = await prisma.posCreditSale.findUniqueOrThrow({ where: { saleId: receipt.id } });
       assert.equal(Number(debt.principalAmount), 1000);
       assert.equal(Number(debt.totalDue), 1000);
-      assert.equal(debt.borrowerId, "borrower");
+      assert.equal(debt.borrowerId, `user:${borrower.id}`);
+      assert.equal(debt.borrowerUserId, borrower.id);
+      assert.equal(debt.borrowerName, "Registered borrower");
+      assert.equal(debt.borrowerPhone, borrowerPhone);
     });
     await t.test("multiple borrowers and mismatched totals fail before reducing stock", async () => {
       const before = (await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).stock;

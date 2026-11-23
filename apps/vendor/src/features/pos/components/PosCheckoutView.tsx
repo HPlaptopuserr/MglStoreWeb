@@ -38,6 +38,7 @@ import { PaymentKeypad } from "./PaymentKeypad";
 import { useCashPayment } from "../hooks/useCashPayment";
 
 export type PosCheckoutProps = {
+  organizationId: string;
   lines: CartLine[];
   totals: CartTotals;
   paymentMethod: PaymentMethod;
@@ -82,6 +83,7 @@ export type PosCheckoutProps = {
   onClearLoyaltyRedeemSession: () => void;
   creditBorrowers?: PosCreditBorrower[];
   cashTenderEnabled?: boolean;
+  repayingCredit?: boolean;
   splitPayment?: boolean;
   paymentFeedback?: PaymentFeedback;
   onCheckCard?: (id: string) => void;
@@ -138,6 +140,7 @@ export type CheckoutLoyaltyRedeemSession = {
 const PAYMENT_OPTIONS = PAYMENT_METHODS;
 
 export function PosCheckoutView({
+  organizationId,
   lines,
   totals,
   paymentMethod,
@@ -174,6 +177,7 @@ export function PosCheckoutView({
   onClearLoyaltyRedeemSession,
   creditBorrowers = [],
   cashTenderEnabled = true,
+  repayingCredit = false,
   splitPayment = false,
   paymentFeedback = {},
   onCheckCard,
@@ -186,7 +190,7 @@ export function PosCheckoutView({
 
   const isCashTender = cashTenderEnabled && paymentMethod === "CASH";
   const cashPayment = useCashPayment(enteredAmount, remaining);
-  const amountPreview = checkoutPaymentAmount(enteredAmount, remaining);
+  const amountPreview = checkoutPaymentAmount(repayingCredit ? "" : enteredAmount, remaining);
   const hasPendingPayment = paymentEntries.some((entry) => entry.status === "pending");
   const paymentBusy = Boolean(disabled || cashPayment.submitting || hasPendingPayment);
   const methodSelectionBusy = Boolean((methodSwitchDisabled ?? disabled) || cashPayment.submitting);
@@ -399,7 +403,7 @@ export function PosCheckoutView({
                   <button
                     key={opt.value}
                     type="button"
-                    disabled={methodSelectionBusy}
+                    disabled={methodSelectionBusy || (repayingCredit && opt.value === "CREDIT")}
                     aria-keyshortcuts={PAYMENT_SHORTCUTS[opt.value]}
                     aria-pressed={isActive}
                     onClick={() => {
@@ -434,10 +438,10 @@ export function PosCheckoutView({
               onChange={setEnteredAmount}
             />
           ) : (
-            <CheckoutPaymentAmount value={enteredAmount} remaining={remaining} preview={amountPreview} disabled={paymentBusy} onChange={setEnteredAmount} />
+            <CheckoutPaymentAmount value={repayingCredit ? "" : enteredAmount} remaining={remaining} preview={amountPreview} disabled={paymentBusy || repayingCredit} onChange={setEnteredAmount} />
           )}
 
-          {
+          {!repayingCredit && (
             <button
               type="button"
               onClick={() => {
@@ -448,7 +452,7 @@ export function PosCheckoutView({
             >
               M Point ашиглах (заавал биш)
             </button>
-          }
+          )}
           <div className="grid shrink-0 grid-cols-2 gap-2">
             {(!isCashTender ||
               (cashPayment.preview &&
@@ -487,12 +491,12 @@ export function PosCheckoutView({
             )}
           </div>
 
-          <PaymentKeypad
+          {!repayingCredit && <PaymentKeypad
             tone="light"
             disabled={paymentBusy}
             onKey={handleNumpad}
             onAmount={setEnteredAmount}
-          />
+          />}
           {pendingTotal > 0 && (
             <p
               role="status"
@@ -700,6 +704,7 @@ export function PosCheckoutView({
 
       {creditDialogOpen && (
         <CreditPaymentDialog
+          organizationId={organizationId}
           amount={paymentAmount}
           borrowers={creditBorrowers}
           onClose={() => setCreditDialogOpen(false)}

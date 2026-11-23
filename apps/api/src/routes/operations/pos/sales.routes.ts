@@ -1,3 +1,5 @@
+import { resolveCreditBorrowerIdentity } from "../../../services/credit-borrower-identity";
+import { mapCreditSaleResponse } from "./credit-response";
 import { readPosFiscalTaxTotals } from "@mgl/types";
 import { fiscalAmountError, fiscalIdentityConflict } from "./fiscal-amount-validation";
 import { generatePosReceiptNumber } from "./pos-receipt-number";
@@ -8,7 +10,6 @@ import {
   calculateCafeRegularCustomerUnitDiscount,
   normalizeCafeRegularCustomerPhone,
   normalizeCashPayment,
-  buildCreditBorrowerKey,
 } from "@mgl/types";
 import { parseCreditWorkDetails } from "./credit-work-details";
 import { checkoutFromPayload, isQrCancellationConfirmed, sameCheckout, type CardCheckout } from "../../../services/pos-card-checkout";
@@ -303,57 +304,6 @@ const updateRedeemSessionStatus = async (
   `;
 };
 
-const mapCreditSaleResponse = (creditSale: {
-  id: string;
-  customerId: string | null;
-  status: string;
-  targetType: string;
-  borrowerId: string;
-  borrowerName: string;
-  borrowerPhone: string | null;
-  borrowerEmail?: string | null;
-  borrowerAddress?: string | null;
-  employeeId: string | null;
-  employeeName: string | null;
-  principalAmount: unknown;
-  monthlyInterestRate: unknown;
-  totalInterest: unknown;
-  totalDue: unknown;
-  termMonths: number;
-  dueDate: Date | null;
-  createdAt?: Date | null;
-  paidAt?: Date | null;
-  paidAmount?: unknown;
-  paymentMethod?: string | null;
-  paymentNote?: string | null;
-}) => {
-  const payable = calculatePosCreditPayable(creditSale);
-
-  return {
-    id: creditSale.id,
-    customerId: creditSale.customerId,
-    status: creditSale.status,
-    targetType: creditSale.targetType,
-    borrowerId: creditSale.borrowerId,
-    borrowerName: creditSale.borrowerName,
-    borrowerPhone: creditSale.borrowerPhone,
-    borrowerEmail: creditSale.borrowerEmail ?? null,
-    borrowerAddress: creditSale.borrowerAddress ?? null,
-    employeeId: creditSale.employeeId,
-    employeeName: creditSale.employeeName,
-    principalAmount: payable.principalAmount,
-    monthlyInterestRate: payable.monthlyInterestRate,
-    totalInterest: payable.totalInterest,
-    totalDue: payable.totalDue,
-    termMonths: creditSale.termMonths,
-    dueDate: payable.dueDate?.toISOString() ?? null,
-    paidAt: creditSale.paidAt?.toISOString() ?? null,
-    paidAmount:
-      creditSale.paidAmount == null ? null : Number(creditSale.paidAmount),
-    paymentMethod: creditSale.paymentMethod ?? null,
-    paymentNote: creditSale.paymentNote ?? null,
-  };
-};
 
 const isMembershipActive = (user: {
   isPrime: boolean;
@@ -996,8 +946,7 @@ router.post("/pos/sales", async (req, res) => {
       }
       if (item.method === PaymentMethod.CREDIT) {
         if (
-          !item.credit?.borrowerId ||
-          !item.credit?.borrowerName ||
+          !item.credit?.borrowerUserId ||
           !item.credit?.targetType
         ) {
           return res.status(400).json({
@@ -1291,6 +1240,16 @@ router.post("/pos/sales", async (req, res) => {
         }
 
         await lockOrganizationInventory(tx, effectiveOrganizationId);
+        const creditIdentity = primaryCredit ? await resolveCreditBorrowerIdentity(tx, primaryCredit) : null;
+        if (creditIdentity) {
+          normalizedPayments = normalizedPayments.map(item => item.method === PaymentMethod.CREDIT && item.credit
+            ? { ...item, credit: { ...item.credit, ...creditIdentity,
+                borrowerEmail: creditIdentity.borrowerEmail ?? undefined,
+                employeeId: creditIdentity.employeeId ?? undefined,
+                employeeName: creditIdentity.employeeName ?? undefined,
+              } }
+            : item);
+        }
         const suppliedCardIds = normalizedPayments.filter(line => line.method === PaymentMethod.CARD)
           .map(line => String(line.attemptId || line.transactionId || ""));
         const unresolvedCard = await tx.cardPaymentAttempt.findFirst({ where: {
@@ -2145,7 +2104,8 @@ router.post("/pos/sales", async (req, res) => {
 
         const creditSale = primaryCredit
           ? await (async () => {
-              const borrowerKey = buildCreditBorrowerKey(primaryCredit);
+              if (!creditIdentity) throw toApiError(400, "MGL хэрэглэгч сонгоно уу");
+              const borrowerKey = creditIdentity.normalizedBorrowerKey;
               const savedCustomer = await tx.posCreditCustomer.upsert({
                 where: {
                   organizationId_normalizedBorrowerKey: {
@@ -2155,30 +2115,32 @@ router.post("/pos/sales", async (req, res) => {
                 },
                 update: {
                   ...creditWorkDetails,
-                  targetType: primaryCredit.targetType || "CUSTOMER",
-                  borrowerId: primaryCredit.borrowerId || borrowerKey,
-                  borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
-                  borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
-                  borrowerEmail: cleanOptionalText(primaryCredit.borrowerEmail),
+                  borrowerUserId: creditIdentity.borrowerUserId,
+                  targetType: creditIdentity.targetType,
+                  borrowerId: creditIdentity.borrowerId,
+                  borrowerName: creditIdentity.borrowerName,
+                  borrowerPhone: creditIdentity.borrowerPhone,
+                  borrowerEmail: creditIdentity.borrowerEmail,
                   borrowerAddress: cleanOptionalText(
                     primaryCredit.borrowerAddress,
                   ),
-                  employeeId: cleanOptionalText(primaryCredit.employeeId),
-                  employeeName: cleanOptionalText(primaryCredit.employeeName),
+                  employeeId: creditIdentity.employeeId,
+                  employeeName: creditIdentity.employeeName,
                 },
                 create: {
                   ...creditWorkDetails,
                   organizationId: effectiveOrganizationId,
-                  targetType: primaryCredit.targetType || "CUSTOMER",
-                  borrowerId: primaryCredit.borrowerId || borrowerKey,
-                  borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
-                  borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
-                  borrowerEmail: cleanOptionalText(primaryCredit.borrowerEmail),
+                  borrowerUserId: creditIdentity.borrowerUserId,
+                  targetType: creditIdentity.targetType,
+                  borrowerId: creditIdentity.borrowerId,
+                  borrowerName: creditIdentity.borrowerName,
+                  borrowerPhone: creditIdentity.borrowerPhone,
+                  borrowerEmail: creditIdentity.borrowerEmail,
                   borrowerAddress: cleanOptionalText(
                     primaryCredit.borrowerAddress,
                   ),
-                  employeeId: cleanOptionalText(primaryCredit.employeeId),
-                  employeeName: cleanOptionalText(primaryCredit.employeeName),
+                  employeeId: creditIdentity.employeeId,
+                  employeeName: creditIdentity.employeeName,
                   normalizedBorrowerKey: borrowerKey,
                 },
                 select: { id: true },
@@ -2193,16 +2155,17 @@ router.post("/pos/sales", async (req, res) => {
                   registerId: registerId || undefined,
                   shiftId: resolvedShiftId,
                   cashierId: actor.id,
-                  targetType: primaryCredit.targetType || "CUSTOMER",
-                  borrowerId: primaryCredit.borrowerId || borrowerKey,
-                  borrowerName: primaryCredit.borrowerName || "Зээлдэгч",
-                  borrowerPhone: cleanOptionalText(primaryCredit.borrowerPhone),
-                  borrowerEmail: cleanOptionalText(primaryCredit.borrowerEmail),
+                  borrowerUserId: creditIdentity.borrowerUserId,
+                  targetType: creditIdentity.targetType,
+                  borrowerId: creditIdentity.borrowerId,
+                  borrowerName: creditIdentity.borrowerName,
+                  borrowerPhone: creditIdentity.borrowerPhone,
+                  borrowerEmail: creditIdentity.borrowerEmail,
                   borrowerAddress: cleanOptionalText(
                     primaryCredit.borrowerAddress,
                   ),
-                  employeeId: cleanOptionalText(primaryCredit.employeeId),
-                  employeeName: cleanOptionalText(primaryCredit.employeeName),
+                  employeeId: creditIdentity.employeeId,
+                  employeeName: creditIdentity.employeeName,
                   principalAmount: creditPrincipal,
                   monthlyInterestRate: Number(
                     primaryCredit.monthlyInterestRate || 0.012,
@@ -2217,6 +2180,7 @@ router.post("/pos/sales", async (req, res) => {
                 select: {
                   id: true,
                   customerId: true,
+                  borrowerUserId: true,
                   status: true,
                   targetType: true,
                   borrowerId: true,

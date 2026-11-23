@@ -6,6 +6,9 @@ import workspaceStyles from "./RestaurantWorkspace.module.css";
 import { RestaurantManagementMenu } from "./RestaurantManagementMenu";
 import { RestaurantMenuCard } from "./RestaurantMenuCard";
 import { RestaurantNotice } from "@/components/feedback/RestaurantNotice";
+import { useRegisteredCreditBorrower } from "@/hooks/useRegisteredCreditBorrower";
+import { verifiedCreditBorrower } from "@/lib/registered-credit-borrower-state";
+import { RegisteredCreditUserLookup } from "./RegisteredCreditUserLookup";
 import { RestaurantBorrowerDialog } from "./RestaurantBorrowerDialog";
 import { RestaurantEmployeeDiscount } from "./RestaurantEmployeeDiscount";
 import { RestaurantPaymentDialog } from "./RestaurantPaymentDialog";
@@ -722,6 +725,7 @@ function RestaurantPosContent() {
   const [creditBorrowersError, setCreditBorrowersError] = useState("");
   const [creditSearch, setCreditSearch] = useState("");
   const [selectedCreditBorrowerId, setSelectedCreditBorrowerId] = useState("");
+  const registeredCreditLookup = useRegisteredCreditBorrower(user.organizationId || "");
   const [creditTermMonths, setCreditTermMonths] = useState("1");
   const [creditNote, setCreditNote] = useState("");
   const [creditListOpen, setCreditListOpen] = useState(false);
@@ -742,6 +746,8 @@ function RestaurantPosContent() {
   const dismissNotice = useCallback(() => setNotice(""), []);
   const [borrowerDialogOpen, setBorrowerDialogOpen] = useState(false);
   const handleBorrowerCreated = (borrower: PosCreditBorrower) => {
+    registeredCreditLookup.invalidate();
+    void registeredCreditLookup.lookup(borrower.borrowerPhone || "");
     setCreditBorrowers((current) => [borrower, ...current.filter((item) => item.id !== borrower.id)]);
     setSelectedCreditBorrowerId(borrower.id);
     setCreditSearch("");
@@ -1625,6 +1631,9 @@ function RestaurantPosContent() {
     creditBorrowers.find(
       (borrower) => borrower.id === selectedCreditBorrowerId,
     ) ?? null;
+  const registeredCreditUser = selectedCreditBorrower ? verifiedCreditBorrower(
+    registeredCreditLookup.state, user.organizationId || "", selectedCreditBorrower.borrowerPhone || "",
+  ) : null;
   const safeCreditTermMonths = readCreditTermMonths(creditTermMonths);
   const creditDueDate = addCreditMonths(new Date(), safeCreditTermMonths);
   const creditDueDateLabel = new Intl.DateTimeFormat("mn-MN", {
@@ -1745,6 +1754,7 @@ function RestaurantPosContent() {
     !ticketSaving &&
     !kitchenSubmitting &&
     ebarimtBuyerReady &&
+    (paymentMethod !== "CREDIT" || Boolean(selectedCreditBorrower && registeredCreditUser)) &&
     !(
       ebarimtReady &&
       paymentMethod !== "CREDIT" &&
@@ -2008,17 +2018,19 @@ function RestaurantPosContent() {
     borrower: PosCreditBorrower,
     amount: number,
   ): SaleCreditPaymentMeta => {
+    if (!registeredCreditUser) throw new Error("Зээлдэгчийн MGL бүртгэлийг дахин шалгана уу.");
     const safeAmount = Math.max(0, Number(amount) || 0);
     const dueDate = addCreditMonths(new Date(), safeCreditTermMonths);
     return {
+      borrowerUserId: registeredCreditUser.id,
       targetType: borrower.targetType,
       borrowerId: borrower.borrowerId,
-      borrowerName: borrower.borrowerName,
-      borrowerPhone: borrower.borrowerPhone || undefined,
-      borrowerEmail: borrower.borrowerEmail || undefined,
+      borrowerName: borrower.targetType === "COMPANY" ? borrower.borrowerName : registeredCreditUser.fullName,
+      borrowerPhone: registeredCreditUser.phoneNumber,
+      borrowerEmail: registeredCreditUser.email || undefined,
       borrowerAddress: borrower.borrowerAddress || undefined,
-      employeeId: borrower.employeeId || undefined,
-      employeeName: borrower.employeeName || undefined,
+      employeeId: borrower.targetType === "COMPANY" ? registeredCreditUser.id : undefined,
+      employeeName: borrower.targetType === "COMPANY" ? registeredCreditUser.fullName : undefined,
       termMonths: safeCreditTermMonths,
       monthlyInterestRate: CREDIT_MONTHLY_INTEREST_RATE,
       principal: safeAmount,
@@ -3012,9 +3024,9 @@ function RestaurantPosContent() {
       setCheckoutError("Нээлттэй ээлж сонгосон POS касстай таарахгүй байна.");
       return;
     }
-    if (paymentMethod === "CREDIT" && !selectedCreditBorrower) {
+    if (paymentMethod === "CREDIT" && (!selectedCreditBorrower || !registeredCreditUser)) {
       setCheckoutError(
-        "Зээлээр бүртгэхийн тулд бүртгэлтэй зээлдэгч сонгоно уу.",
+        "Зээлдэгчээ сонгоод MGL бүртгэлийг нь утсаар шалгана уу.",
       );
       return;
     }
@@ -3133,6 +3145,7 @@ function RestaurantPosContent() {
           credit: buildCreditPaymentMeta(selectedCreditBorrower, checkoutTotal),
         });
         setSelectedCreditBorrowerId("");
+        registeredCreditLookup.invalidate();
         setCreditNote("");
         void loadCreditBorrowers();
         void loadCreditSales();
@@ -4592,6 +4605,7 @@ function RestaurantPosContent() {
                           !qpayPaymentActive &&
                           !cardProcessing
                         ) {
+                          registeredCreditLookup.invalidate();
                           setPaymentMethod(option.value);
                           setPaymentDialogOpen(true);
                           setCheckoutError("");
@@ -4841,7 +4855,7 @@ function RestaurantPosContent() {
                       Бүртгэлтэй зээлдэгч
                     </p>
                     <p className="mt-1 text-[11px] font-semibold leading-4 text-amber-200">
-                      Бүртгэлтэй зээлдэгчээс сонгох эсвэл шинээр бүртгэнэ.
+                      Зээлдэгчээ сонгоод MGL бүртгэлийг утсаар шалгана.
                     </p>
                   </div>
                   <button
@@ -4896,8 +4910,11 @@ function RestaurantPosContent() {
                         <button
                           key={borrower.id}
                           type="button"
+                          disabled={checkoutSubmitting}
                           onClick={() => {
+                            registeredCreditLookup.invalidate();
                             setSelectedCreditBorrowerId(borrower.id);
+                            void registeredCreditLookup.lookup(borrower.borrowerPhone || "");
                             setCheckoutError("");
                           }}
                           className={`w-full rounded-lg border px-3 py-2 text-left transition ${
@@ -4928,6 +4945,12 @@ function RestaurantPosContent() {
                     })
                   )}
                 </div>
+
+                {selectedCreditBorrower && <div className="mt-3">
+                  <RegisteredCreditUserLookup phone={selectedCreditBorrower.borrowerPhone || ""} state={registeredCreditLookup.state}
+                    user={registeredCreditUser} disabled={checkoutSubmitting}
+                    onLookup={() => void registeredCreditLookup.lookup(selectedCreditBorrower.borrowerPhone || "")} />
+                </div>}
 
                 <div className="mt-3 grid grid-cols-[90px_minmax(0,1fr)] gap-2">
                   <label className="block">

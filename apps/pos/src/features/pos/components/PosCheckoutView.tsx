@@ -30,6 +30,7 @@ import { CreditPaymentDialog } from "./CreditPaymentDialog";
 import { formatPosQuantity } from "@mgl/types";
 
 type Props = {
+  organizationId: string;
   lines: CartLine[];
   totals: CartTotals;
   paymentMethod: PaymentMethod;
@@ -128,6 +129,7 @@ const NUMPAD_ROWS = [
 ] as const;
 
 export function PosCheckoutView({
+  organizationId,
   lines,
   totals,
   paymentMethod,
@@ -781,6 +783,7 @@ export function PosCheckoutView({
 
       {creditDialogOpen && (
         <CreditPaymentDialog
+          organizationId={organizationId}
           amount={paymentAmount}
           borrowers={creditBorrowers}
           onClose={() => setCreditDialogOpen(false)}

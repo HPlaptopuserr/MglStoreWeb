@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import { ACCOUNT_ROUTES } from "@/lib/account-routes";
+import { PersonalCreditPanel } from "./_components/PersonalCreditPanel";
 import { AccountLibraryPanel } from "./_components/AccountLibraryPanel";
 import { MembershipActivationPanel } from "./_components/MembershipActivationPanel";
 import { MembershipUpgradeModal } from "./_components/MembershipUpgradeModal";
@@ -128,6 +129,7 @@ export default function ProfilePage() {
         points={accountData.points}
         purchases={accountData.purchases}
       >
+        <PersonalCreditPanel />
         <AccountLibraryPanel
           purchases={accountData.purchases}
           contracts={accountData.contracts}

@@ -43,3 +43,10 @@ test("normalizes percent-style monthly interest rates", () => {
   assert.equal(payable.monthlyInterestRate, 0.012);
   assert.equal(payable.totalInterest, 1_200);
 });
+
+test("partial payments reduce outstanding balance without freezing interest or closing the credit", () => {
+  const payable = calculatePosCreditPayable({ ...credit, paidAmount: 30000 }, new Date("2026-03-01T00:00:00Z"));
+  assert.equal(payable.totalDue, 102400);
+  assert.equal(payable.remainingDue, 72400);
+  assert.equal(calculatePosCreditPayable({ ...credit, paidAmount: 200000 }).remainingDue, 0);
+});

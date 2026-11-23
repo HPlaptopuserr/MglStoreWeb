@@ -22,6 +22,9 @@ model User {
   warehouseRetailOrders WarehouseRetailOrder[]
   buildingPurchaseContracts BarilgaPurchaseContract[]
 
+  creditBorrowerCustomers PosCreditCustomer[] @relation("RegisteredCreditCustomer")
+  creditBorrowerSales PosCreditSale[] @relation("RegisteredCreditSale")
+
   platformAccounts PlatformAccount[]
   esimPurchases EsimPurchase[]
   createdStocktakes Stocktake[] @relation("StocktakeCreator")
@@ -3868,9 +3871,14 @@ model PosCreditCustomer {
   workplace             String?
   department            String?
   jobTitle              String?
+  mergedIntoId          String?
+  mergedInto            PosCreditCustomer? @relation("CreditCustomerAliases", fields: [mergedIntoId], references: [id], onDelete: Restrict)
+  mergedFrom            PosCreditCustomer[] @relation("CreditCustomerAliases")
   id                    String          @id @default(uuid())
   organizationId        String
   targetType            String
+  borrowerUserId        String?
+  borrowerUser          User? @relation("RegisteredCreditCustomer", fields: [borrowerUserId], references: [id], onDelete: Restrict)
   borrowerId            String
   borrowerName          String
   borrowerPhone         String?
@@ -3888,6 +3896,8 @@ model PosCreditCustomer {
   @@index([organizationId])
   @@index([borrowerName])
   @@index([borrowerId])
+  @@index([borrowerUserId])
+  @@index([mergedIntoId])
 }
 
 model PosCreditSale {
@@ -3900,6 +3910,8 @@ model PosCreditSale {
   shiftId             String
   cashierId           String
   targetType          String
+  borrowerUserId        String?
+  borrowerUser          User? @relation("RegisteredCreditSale", fields: [borrowerUserId], references: [id], onDelete: Restrict)
   borrowerId          String
   borrowerName        String
   borrowerPhone       String?
@@ -3939,6 +3951,7 @@ model PosCreditSale {
   @@index([status])
   @@index([dueDate])
   @@index([createdAt])
+  @@index([borrowerUserId])
 }
 
 /// Individual line item within a POS sale.

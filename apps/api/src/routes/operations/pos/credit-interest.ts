@@ -50,6 +50,7 @@ export type PosCreditInterestInput = {
   dueDate?: Date | string | null;
   createdAt?: Date | string | null;
   paidAt?: Date | string | null;
+  paidAmount?: unknown;
 };
 
 export function resolvePosCreditDueDate(credit: PosCreditInterestInput) {
@@ -85,5 +86,6 @@ export function calculatePosCreditPayable(
     interestMonths,
     totalInterest,
     totalDue,
+    remainingDue: roundMoney(Math.max(0, totalDue - Number(credit.paidAmount || 0))),
   };
 }

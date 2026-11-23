@@ -921,7 +921,9 @@ export async function attachEbarimtReceipt(
   payload: AttachEbarimtPayload,
 ): Promise<Pick<PosReceipt, "ebarimt">> {
   return posRequest<Pick<PosReceipt, "ebarimt">>(
-    `/pos/sales/${encodeURIComponent(saleId)}/ebarimt`,
+    saleId.startsWith("credit-payment:")
+      ? `/pos/credit-payments/${encodeURIComponent(saleId.slice("credit-payment:".length))}/ebarimt`
+      : `/pos/sales/${encodeURIComponent(saleId)}/ebarimt`,
     {
       method: "POST",
       body: payload,

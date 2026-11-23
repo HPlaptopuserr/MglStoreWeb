@@ -1,3 +1,4 @@
+import { isCreditRepaymentContext, type CreditRepaymentContext } from "./credit-repayment-context";
 import { isDefinitiveQPayCreationFailure } from "./qpay-server-recovery";
 import { isQPayCancellationConfirmed, type QPayCancellationProof } from "./qpay-cancel-policy";
 import type {
@@ -13,6 +14,7 @@ const STORAGE_PREFIX = "mglstore.pos.qpay-checkout.v1";
 
 export type QPayCheckoutRecovery = {
   clientSaleId: string;
+  creditRepayment?: CreditRepaymentContext;
   registerId?: string;
   cart?: CartLine[];
   paymentEntries: CheckoutPaymentEntry[];
@@ -70,6 +72,7 @@ export function loadQPayCheckoutRecovery(
 export function parseQPayCheckoutSnapshot(snapshot: string, registerId?: string): QPayCheckoutRecovery | null {
   try {
     const parsed = JSON.parse(snapshot) as Partial<QPayCheckoutRecovery>;
+    if (parsed.creditRepayment !== undefined && !isCreditRepaymentContext(parsed.creditRepayment)) return null;
     if (registerId && parsed.registerId && parsed.registerId !== registerId) return null;
     if (parsed.cart !== undefined && (!Array.isArray(parsed.cart) || !parsed.cart.length || !parsed.cart.every(isCartLine))) return null;
     const paymentEntries = Array.isArray(parsed.paymentEntries)
@@ -92,6 +95,7 @@ export function parseQPayCheckoutSnapshot(snapshot: string, registerId?: string)
 
     return {
       clientSaleId: parsed.clientSaleId,
+      creditRepayment: parsed.creditRepayment,
       registerId: parsed.registerId,
       cart: parsed.cart,
       paymentEntries,
@@ -143,7 +147,7 @@ export function saveQPayCheckoutRecovery(
     const saved = existing?.paymentEntries.find(item => item.id === entry.id);
     return saved?.status === "confirmed" ? saved : entry;
   });
-  window.localStorage.setItem(storageKey(organizationId, recovery.registerId), JSON.stringify({ ...recovery, paymentEntries, updatedAt: Date.now() }));
+  window.localStorage.setItem(storageKey(organizationId, recovery.registerId), JSON.stringify({ ...recovery, creditRepayment: recovery.creditRepayment ?? existing?.creditRepayment, paymentEntries, updatedAt: Date.now() }));
   if (recovery.registerId && loadQPayCheckoutRecovery(organizationId)?.clientSaleId === recovery.clientSaleId) {
     window.localStorage.removeItem(storageKey(organizationId));
   }

@@ -5,6 +5,7 @@ import { PosCheckoutView, type PosCheckoutProps } from "./PosCheckoutView";
 
 const noop = () => {};
 const base: PosCheckoutProps = {
+  organizationId: "org",
   lines: [{ productId: "coffee", name: "Coffee", unitPrice: 7500, baseUnitPrice: 7500, qty: 1, stockQty: 10, priceType: "UNIT", taxRate: 0, discountAmount: 0 }],
   totals: { subTotal: 7500, grandTotal: 7500, taxTotal: 0, discountTotal: 0 },
   paymentMethod: "CARD", paymentEntries: [], remaining: 7500,

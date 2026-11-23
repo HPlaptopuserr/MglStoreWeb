@@ -1,3 +1,5 @@
+import { creditRepaymentHandler, attachCreditPaymentEbarimt, listCreditRepayments, getCreditRepayment } from "./credit-repayments";
+import { mapCreditSaleResponse } from "./credit-response";
 import { readPosFiscalTaxTotals } from "@mgl/types";
 import { vendorProductReadScope } from "../../../services/warehouse-product-scope";
 import { readCashPayment } from "@mgl/types";
@@ -58,7 +60,6 @@ import {
   parseAuthClaims,
   runtimeEnv,
 } from "./_shared";
-import { calculatePosCreditPayable } from "./credit-interest";
 import { productImageOrderBy } from "../../../lib/product-images";
 import { sendCatalogResponse } from "../../../lib/catalog-response";
 import {
@@ -68,7 +69,6 @@ import {
   toPosStoredStockQuantity,
 } from "@mgl/types";
 
-import { parseCashDrawerMovement, recordCashDrawerMovement } from "./cash-drawer-movement";
 
 const router: ExpressRouter = Router();
 const RESTAURANT_MENU_AVAILABLE_QTY = 999_999;
@@ -150,57 +150,6 @@ const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) => {
   };
 };
 
-const mapCreditSaleResponse = (creditSale: {
-  id: string;
-  customerId: string | null;
-  status: string;
-  targetType: string;
-  borrowerId: string;
-  borrowerName: string;
-  borrowerPhone: string | null;
-  borrowerEmail?: string | null;
-  borrowerAddress?: string | null;
-  employeeId: string | null;
-  employeeName: string | null;
-  principalAmount: unknown;
-  monthlyInterestRate: unknown;
-  totalInterest: unknown;
-  totalDue: unknown;
-  termMonths: number;
-  dueDate: Date | null;
-  createdAt?: Date | null;
-  paidAt?: Date | null;
-  paidAmount?: unknown;
-  paymentMethod?: string | null;
-  paymentNote?: string | null;
-}) => {
-  const payable = calculatePosCreditPayable(creditSale);
-
-  return {
-    id: creditSale.id,
-    customerId: creditSale.customerId,
-    status: creditSale.status,
-    targetType: creditSale.targetType,
-    borrowerId: creditSale.borrowerId,
-    borrowerName: creditSale.borrowerName,
-    borrowerPhone: creditSale.borrowerPhone,
-    borrowerEmail: creditSale.borrowerEmail ?? null,
-    borrowerAddress: creditSale.borrowerAddress ?? null,
-    employeeId: creditSale.employeeId,
-    employeeName: creditSale.employeeName,
-    principalAmount: payable.principalAmount,
-    monthlyInterestRate: payable.monthlyInterestRate,
-    totalInterest: payable.totalInterest,
-    totalDue: payable.totalDue,
-    termMonths: creditSale.termMonths,
-    dueDate: payable.dueDate?.toISOString() ?? null,
-    paidAt: creditSale.paidAt?.toISOString() ?? null,
-    paidAmount:
-      creditSale.paidAmount == null ? null : Number(creditSale.paidAmount),
-    paymentMethod: creditSale.paymentMethod ?? null,
-    paymentNote: creditSale.paymentNote ?? null,
-  };
-};
 
 const getExpirySortValue = (value?: Date | string | null) => {
   if (!value) return Number.POSITIVE_INFINITY;
@@ -978,6 +927,7 @@ router.get("/pos/credit-sales", async (req, res) => {
         status: true,
         targetType: true,
         borrowerId: true,
+        borrowerUserId: true,
         borrowerName: true,
         borrowerPhone: true,
         borrowerEmail: true,
@@ -1085,6 +1035,7 @@ router.get("/pos/credit-customers", async (req, res) => {
     const customers = await prisma.posCreditCustomer.findMany({
       where: {
         organizationId: effectiveOrgId,
+        mergedIntoId: null,
         ...(targetType === "COMPANY" || targetType === "CUSTOMER"
           ? { targetType }
           : {}),
@@ -1104,6 +1055,7 @@ router.get("/pos/credit-customers", async (req, res) => {
         id: true,
         targetType: true,
         borrowerId: true,
+        borrowerUserId: true,
         borrowerName: true,
         borrowerPhone: true,
         borrowerEmail: true,
@@ -1137,503 +1089,11 @@ router.get("/pos/credit-customers", async (req, res) => {
   }
 });
 
-router.post("/pos/credit-sales/pay-bulk", async (req, res) => {
-  try {
-    const actor = await requirePosUser(req, res);
-    if (!actor) return;
-
-    const creditSaleIds: string[] = Array.isArray(req.body.creditSaleIds)
-      ? Array.from(
-          new Set<string>(
-            req.body.creditSaleIds
-              .map((value: unknown): string => String(value || "").trim())
-              .filter((value: string) => Boolean(value)),
-          ),
-        )
-      : [];
-    if (creditSaleIds.length < 2) {
-      return res
-        .status(400)
-        .json({ message: "Нийт төлөлтөд 2 буюу түүнээс олон зээл сонгоно уу" });
-    }
-
-    const paymentMethod =
-      normalizePaymentMethod(String(req.body.paymentMethod || "")) ||
-      PaymentMethod.CASH;
-    if (paymentMethod === PaymentMethod.CREDIT) {
-      return res.status(400).json({
-        message: "Зээлийн төлөлтийг CREDIT хэлбэрээр бүртгэх боломжгүй",
-      });
-    }
-
-    const credits = await prisma.posCreditSale.findMany({
-      where: { id: { in: creditSaleIds } },
-      select: {
-        id: true,
-        organizationId: true,
-        branchId: true,
-        registerId: true,
-        createdAt: true,
-        status: true,
-        principalAmount: true,
-        monthlyInterestRate: true,
-        totalDue: true,
-        termMonths: true,
-        dueDate: true,
-        paidAt: true,
-      },
-    });
-    if (credits.length !== creditSaleIds.length) {
-      return res
-        .status(404)
-        .json({ message: "Зарим зээлийн бүртгэл олдсонгүй" });
-    }
-
-    const organizationIds = new Set(
-      credits.map((credit) => credit.organizationId),
-    );
-    if (organizationIds.size !== 1) {
-      return res.status(400).json({
-        message: "Нийт төлөлт зөвхөн нэг байгууллагын зээлүүд дээр хийгдэнэ",
-      });
-    }
-    const organizationId = credits[0]!.organizationId;
-    if (
-      actor.role !== "ADMIN" &&
-      !(await hasOrgMembership(actor.id, organizationId))
-    ) {
-      return res
-        .status(403)
-        .json({ message: "Энэ байгууллагын зээлийн бүртгэлд хандах эрхгүй" });
-    }
-
-    const invalidCredit = credits.find(
-      (credit) =>
-        credit.status === PosCreditStatus.PAID ||
-        credit.status === PosCreditStatus.CANCELLED,
-    );
-    if (invalidCredit) {
-      return res.status(409).json({
-        message:
-          invalidCredit.status === PosCreditStatus.PAID
-            ? "Сонгосон зээлүүдийн нэг нь аль хэдийн төлөгдсөн байна"
-            : "Цуцлагдсан зээлийг төлсөн болгох боломжгүй",
-      });
-    }
-
-    const payables = credits.map((credit) => ({
-      credit,
-      payable: calculatePosCreditPayable({
-        principalAmount: credit.principalAmount,
-        monthlyInterestRate: credit.monthlyInterestRate,
-        termMonths: credit.termMonths,
-        dueDate: credit.dueDate,
-        createdAt: credit.createdAt,
-        paidAt: credit.paidAt,
-      }),
-    }));
-    const dueAmount = roundMoney(
-      payables.reduce((sum, item) => sum + item.payable.totalDue, 0),
-    );
-    const paidAmount = roundMoney(Number(req.body.amount || dueAmount));
-    if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
-      return res
-        .status(400)
-        .json({ message: "Төлсөн дүн 0-оос их байх ёстой" });
-    }
-    if (!moneyMatches(paidAmount, dueAmount)) {
-      return res
-        .status(400)
-        .json({ message: `Нийт зээлийг бүтэн төлөх дүн ${dueAmount} байна` });
-    }
-
-    const qpayInvoiceId = cleanOptionalText(req.body.qpayInvoiceId);
-    const cardAttemptId = cleanOptionalText(
-      req.body.cardAttemptId ?? req.body.attemptId ?? req.body.transactionId,
-    );
-    if (paymentMethod === PaymentMethod.CARD && !cardAttemptId) {
-      return res
-        .status(400)
-        .json({ message: "Картын төлөлтөд cardAttemptId шаардлагатай" });
-    }
-    const shiftId = cleanOptionalText(req.body.shiftId);
-    const paymentNote =
-      [
-        cleanOptionalText(req.body.note),
-        `Bulk credit count: ${credits.length}`,
-        qpayInvoiceId ? `Minu invoice: ${qpayInvoiceId}` : null,
-        cardAttemptId ? `Card attempt: ${cardAttemptId}` : null,
-      ]
-        .filter(Boolean)
-        .join(" | ") || null;
-
-    const paidAt = new Date();
-    const updated = await prisma.$transaction(
-      async (tx: Prisma.TransactionClient) => {
-        if (paymentMethod === PaymentMethod.QPAY) {
-          if (!qpayInvoiceId)
-            throw toApiError(400, "Minu төлөлтөд invoiceId шаардлагатай");
-          const invoice = await tx.qPayInvoice.findUnique({
-            where: { id: qpayInvoiceId },
-          });
-          if (!invoice) throw toApiError(404, "Minu invoice олдсонгүй");
-          if (invoice.status !== PosQPayStatus.PAID)
-            throw toApiError(409, "Minu төлбөр баталгаажаагүй байна");
-          if (invoice.saleReference || invoice.consumedAt)
-            throw toApiError(409, "Minu invoice аль хэдийн ашиглагдсан байна");
-          if (
-            !invoice.organizationId ||
-            invoice.organizationId !== organizationId
-          ) {
-            throw toApiError(400, "Minu invoice байгууллага зөрүүтэй байна");
-          }
-          if (!moneyMatches(Number(invoice.amount), paidAmount)) {
-            throw toApiError(
-              400,
-              "Minu invoice дүн төлсөн дүнтэй таарахгүй байна",
-            );
-          }
-          await tx.qPayInvoice.update({
-            where: { id: invoice.id },
-            data: {
-              saleReference: `CREDIT-BULK-${creditSaleIds[0]}`,
-              consumedAt: paidAt,
-            },
-          });
-        }
-
-        if (paymentMethod === PaymentMethod.CARD && cardAttemptId) {
-          const attempt = await tx.cardPaymentAttempt.findUnique({
-            where: { id: cardAttemptId },
-          });
-          if (!attempt) throw toApiError(404, "Card attempt олдсонгүй");
-          if (attempt.status !== PosPaymentStatus.APPROVED)
-            throw toApiError(409, "Картын төлбөр баталгаажаагүй байна");
-          if (attempt.saleReference || attempt.consumedAt)
-            throw toApiError(409, "Card attempt аль хэдийн ашиглагдсан байна");
-          if (
-            !attempt.organizationId ||
-            attempt.organizationId !== organizationId
-          ) {
-            throw toApiError(400, "Card attempt байгууллага зөрүүтэй байна");
-          }
-          if (!moneyMatches(Number(attempt.amount), paidAmount)) {
-            throw toApiError(
-              400,
-              "Card attempt дүн төлсөн дүнтэй таарахгүй байна",
-            );
-          }
-          await tx.cardPaymentAttempt.update({
-            where: { id: attempt.id },
-            data: {
-              saleReference: `CREDIT-BULK-${creditSaleIds[0]}`,
-              consumedAt: paidAt,
-            },
-          });
-        }
-
-        if (paymentMethod === PaymentMethod.CASH && shiftId) {
-          await recordCashDrawerMovement(tx, actor, parseCashDrawerMovement({
-            shiftId,
-            type: CashDrawerEventType.PAID_IN,
-            amount: paidAmount,
-            note: paymentNote || `Bulk credit payment ${creditSaleIds[0]}`,
-          }), organizationId);
-        }
-
-        return Promise.all(
-          payables.map(({ credit, payable }) =>
-            tx.posCreditSale.update({
-              where: { id: credit.id },
-              data: {
-                status: PosCreditStatus.PAID,
-                paidAt,
-                paidAmount: payable.totalDue,
-                paymentMethod,
-                paymentNote,
-                totalInterest: payable.totalInterest,
-                totalDue: payable.totalDue,
-              },
-              select: {
-                id: true,
-                customerId: true,
-                status: true,
-                targetType: true,
-                borrowerId: true,
-                borrowerName: true,
-                borrowerPhone: true,
-                borrowerEmail: true,
-                borrowerAddress: true,
-                employeeId: true,
-                employeeName: true,
-                principalAmount: true,
-                monthlyInterestRate: true,
-                totalInterest: true,
-                totalDue: true,
-                termMonths: true,
-                dueDate: true,
-                paidAt: true,
-                paidAmount: true,
-                paymentMethod: true,
-                paymentNote: true,
-                createdAt: true,
-              },
-            }),
-          ),
-        );
-      },
-    );
-
-    return res.status(200).json({
-      credits: updated.map((credit) =>
-        mapCreditSaleResponse({
-          ...credit,
-          createdAt: credit.createdAt,
-        }),
-      ),
-      paidAmount,
-    });
-  } catch (error) {
-    const known = error as ApiError;
-    if (known?.status && known?.message) {
-      return res.status(known.status).json({ message: known.message });
-    }
-    console.error("pay bulk credit sales error", error);
-    return res
-      .status(500)
-      .json({ message: "Нийт зээлийн төлөлт бүртгэхэд алдаа гарлаа" });
-  }
-});
-
-router.post("/pos/credit-sales/:id/pay", async (req, res) => {
-  try {
-    const actor = await requirePosUser(req, res);
-    if (!actor) return;
-
-    const creditSaleId = String(req.params.id || "").trim();
-    if (!creditSaleId) {
-      return res.status(400).json({ message: "creditSaleId шаардлагатай" });
-    }
-
-    const creditSale = await prisma.posCreditSale.findUnique({
-      where: { id: creditSaleId },
-      select: {
-        id: true,
-        organizationId: true,
-        branchId: true,
-        registerId: true,
-        status: true,
-        principalAmount: true,
-        monthlyInterestRate: true,
-        totalDue: true,
-        termMonths: true,
-        dueDate: true,
-        paidAt: true,
-        sale: { select: { createdAt: true } },
-      },
-    });
-    if (!creditSale) {
-      return res.status(404).json({ message: "Зээлийн бүртгэл олдсонгүй" });
-    }
-    if (
-      actor.role !== "ADMIN" &&
-      !(await hasOrgMembership(actor.id, creditSale.organizationId))
-    ) {
-      return res
-        .status(403)
-        .json({ message: "Энэ байгууллагын зээлийн бүртгэлд хандах эрхгүй" });
-    }
-    if (creditSale.status === PosCreditStatus.PAID) {
-      return res
-        .status(409)
-        .json({ message: "Энэ зээл аль хэдийн төлөгдсөн байна" });
-    }
-    if (creditSale.status === PosCreditStatus.CANCELLED) {
-      return res
-        .status(409)
-        .json({ message: "Цуцлагдсан зээлийг төлсөн болгох боломжгүй" });
-    }
-
-    const paymentMethod =
-      normalizePaymentMethod(String(req.body.paymentMethod || "")) ||
-      PaymentMethod.CASH;
-    if (paymentMethod === PaymentMethod.CREDIT) {
-      return res.status(400).json({
-        message: "Зээлийн төлөлтийг CREDIT хэлбэрээр бүртгэх боломжгүй",
-      });
-    }
-
-    const payable = calculatePosCreditPayable({
-      principalAmount: creditSale.principalAmount,
-      monthlyInterestRate: creditSale.monthlyInterestRate,
-      termMonths: creditSale.termMonths,
-      dueDate: creditSale.dueDate,
-      createdAt: creditSale.sale.createdAt,
-      paidAt: creditSale.paidAt,
-    });
-
-    const paidAmount = roundMoney(Number(req.body.amount || payable.totalDue));
-    const dueAmount = payable.totalDue;
-    if (!Number.isFinite(paidAmount) || paidAmount <= 0) {
-      return res
-        .status(400)
-        .json({ message: "Төлсөн дүн 0-оос их байх ёстой" });
-    }
-    if (!moneyMatches(paidAmount, dueAmount)) {
-      return res
-        .status(400)
-        .json({ message: `Зээлийг бүтэн төлөх дүн ${dueAmount} байна` });
-    }
-
-    const qpayInvoiceId = cleanOptionalText(req.body.qpayInvoiceId);
-    const cardAttemptId = cleanOptionalText(
-      req.body.cardAttemptId ?? req.body.attemptId ?? req.body.transactionId,
-    );
-    if (paymentMethod === PaymentMethod.CARD && !cardAttemptId) {
-      return res
-        .status(400)
-        .json({ message: "Картын төлөлтөд cardAttemptId шаардлагатай" });
-    }
-    const shiftId = cleanOptionalText(req.body.shiftId);
-    const paymentNote =
-      [
-        cleanOptionalText(req.body.note),
-        qpayInvoiceId ? `Minu invoice: ${qpayInvoiceId}` : null,
-        cardAttemptId ? `Card attempt: ${cardAttemptId}` : null,
-      ]
-        .filter(Boolean)
-        .join(" | ") || null;
-
-    const paidAt = new Date();
-    const updated = await prisma.$transaction(
-      async (tx: Prisma.TransactionClient) => {
-        if (paymentMethod === PaymentMethod.QPAY) {
-          if (!qpayInvoiceId)
-            throw toApiError(400, "Minu төлөлтөд invoiceId шаардлагатай");
-          const invoice = await tx.qPayInvoice.findUnique({
-            where: { id: qpayInvoiceId },
-          });
-          if (!invoice) throw toApiError(404, "Minu invoice олдсонгүй");
-          if (invoice.status !== PosQPayStatus.PAID)
-            throw toApiError(409, "Minu төлбөр баталгаажаагүй байна");
-          if (invoice.saleReference || invoice.consumedAt)
-            throw toApiError(409, "Minu invoice аль хэдийн ашиглагдсан байна");
-          if (
-            !invoice.organizationId ||
-            invoice.organizationId !== creditSale.organizationId
-          ) {
-            throw toApiError(400, "Minu invoice байгууллага зөрүүтэй байна");
-          }
-          if (!moneyMatches(Number(invoice.amount), paidAmount)) {
-            throw toApiError(
-              400,
-              "Minu invoice дүн төлсөн дүнтэй таарахгүй байна",
-            );
-          }
-          await tx.qPayInvoice.update({
-            where: { id: invoice.id },
-            data: {
-              saleReference: `CREDIT-${creditSale.id}`,
-              consumedAt: paidAt,
-            },
-          });
-        }
-
-        if (paymentMethod === PaymentMethod.CARD && cardAttemptId) {
-          const attempt = await tx.cardPaymentAttempt.findUnique({
-            where: { id: cardAttemptId },
-          });
-          if (!attempt) throw toApiError(404, "Card attempt олдсонгүй");
-          if (attempt.status !== PosPaymentStatus.APPROVED)
-            throw toApiError(409, "Картын төлбөр баталгаажаагүй байна");
-          if (attempt.saleReference || attempt.consumedAt)
-            throw toApiError(409, "Card attempt аль хэдийн ашиглагдсан байна");
-          if (
-            !attempt.organizationId ||
-            attempt.organizationId !== creditSale.organizationId
-          ) {
-            throw toApiError(400, "Card attempt байгууллага зөрүүтэй байна");
-          }
-          if (!moneyMatches(Number(attempt.amount), paidAmount)) {
-            throw toApiError(
-              400,
-              "Card attempt дүн төлсөн дүнтэй таарахгүй байна",
-            );
-          }
-          await tx.cardPaymentAttempt.update({
-            where: { id: attempt.id },
-            data: {
-              saleReference: `CREDIT-${creditSale.id}`,
-              consumedAt: paidAt,
-            },
-          });
-        }
-
-        if (paymentMethod === PaymentMethod.CASH && shiftId) {
-          await recordCashDrawerMovement(tx, actor, parseCashDrawerMovement({
-            shiftId,
-            type: CashDrawerEventType.PAID_IN,
-            amount: paidAmount,
-            note: paymentNote || `Credit payment ${creditSale.id}`,
-          }), creditSale.organizationId);
-        }
-
-        return tx.posCreditSale.update({
-          where: { id: creditSale.id },
-          data: {
-            status: PosCreditStatus.PAID,
-            paidAt,
-            paidAmount,
-            paymentMethod,
-            paymentNote,
-            totalInterest: payable.totalInterest,
-            totalDue: payable.totalDue,
-          },
-          select: {
-            id: true,
-            customerId: true,
-            status: true,
-            targetType: true,
-            borrowerId: true,
-            borrowerName: true,
-            borrowerPhone: true,
-            borrowerEmail: true,
-            borrowerAddress: true,
-            employeeId: true,
-            employeeName: true,
-            principalAmount: true,
-            monthlyInterestRate: true,
-            totalInterest: true,
-            totalDue: true,
-            termMonths: true,
-            dueDate: true,
-            paidAt: true,
-            paidAmount: true,
-            paymentMethod: true,
-            paymentNote: true,
-            sale: { select: { createdAt: true } },
-          },
-        });
-      },
-    );
-
-    return res.status(200).json({
-      credit: mapCreditSaleResponse({
-        ...updated,
-        createdAt: updated.sale.createdAt,
-      }),
-    });
-  } catch (error) {
-    const known = error as ApiError;
-    if (known?.status && known?.message) {
-      return res.status(known.status).json({ message: known.message });
-    }
-    console.error("pay credit sale error", error);
-    return res
-      .status(500)
-      .json({ message: "Зээлийн төлөлт бүртгэхэд алдаа гарлаа" });
-  }
-});
+router.post("/pos/credit-sales/pay-bulk", creditRepaymentHandler(true));
+router.post("/pos/credit-sales/:id/pay", creditRepaymentHandler(false));
+router.post("/pos/credit-payments/:id/ebarimt", attachCreditPaymentEbarimt);
+router.get("/pos/credit-payments", listCreditRepayments);
+router.get("/pos/credit-payments/:id", getCreditRepayment);
 
 router.get("/pos/reports", async (req, res) => {
   try {

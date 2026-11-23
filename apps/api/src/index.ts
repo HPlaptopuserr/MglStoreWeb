@@ -1,3 +1,4 @@
+import borrowerCreditAccountRoutes from "./routes/operations/pos/borrower-credit-account.routes";
 import warehouseViewerRoutes from "./routes/operations/warehouse-viewer.routes";
 import reelUploadRoutes from "./routes/content/reel-uploads.routes";
 import { startReelUploadWorker } from "./services/reel-upload/worker";
@@ -188,6 +189,7 @@ app.use("/api", dashboardRoutes);
 app.use("/api", jobApplicationRoutes);
 app.use("/api", jobPositionRoutes);
 app.use("/api", posRoutes);
+app.use("/api", borrowerCreditAccountRoutes);
 app.use("/api/mobile", posRoutes);
 app.use("/api", serviceRequestsRoutes);
 app.use("/api", warehouseViewerRoutes);

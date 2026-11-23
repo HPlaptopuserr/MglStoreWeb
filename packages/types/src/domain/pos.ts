@@ -256,7 +256,15 @@ export interface SalePaymentLine {
   credit?: SaleCreditPaymentMeta;
 }
 
+export interface RegisteredCreditBorrower {
+  id: string;
+  fullName: string;
+  phoneNumber: string;
+  email: string | null;
+}
+
 export interface SaleCreditPaymentMeta {
+  borrowerUserId?: string;
     workplace?: string;
     department?: string;
     jobTitle?: string;
@@ -278,6 +286,7 @@ export interface SaleCreditPaymentMeta {
 }
 
 export interface PosCreditBorrower {
+  borrowerUserId?: string | null;
   workplace?: string | null;
   department?: string | null;
   jobTitle?: string | null;

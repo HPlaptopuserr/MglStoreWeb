@@ -1,13 +1,17 @@
 "use client";
 
+import { useRegisteredCreditBorrower } from "../hooks/useRegisteredCreditBorrower";
+import {
+  registeredBorrowerPhone,
+  verifiedCreditBorrower,
+} from "../utils/registered-credit-borrower";
 import { CreditCustomerWorkFields } from "./CreditCustomerWorkFields";
 import { buildCreditBorrowerId } from "@mgl/types";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BriefcaseBusiness,
   CalendarClock,
   type LucideIcon,
-  Mail,
   MapPin,
   Percent,
   Phone,
@@ -24,6 +28,7 @@ type CreditTargetType = "COMPANY" | "CUSTOMER";
 
 type Props = {
   amount: number;
+  organizationId: string;
   borrowers?: PosCreditBorrower[];
   onClose: () => void;
   onConfirm: (meta: SaleCreditPaymentMeta) => void;
@@ -53,20 +58,35 @@ export function calculateCreditTotals(principal: number, termMonths: number) {
 
 export function CreditPaymentDialog({
   amount,
+  organizationId,
   borrowers = [],
   onClose,
   onConfirm,
 }: Props) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialog.current;
+    const previousFocus = document.activeElement;
+    element?.showModal();
+    return () => {
+      element?.close();
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected)
+        previousFocus.focus();
+    };
+  }, []);
   const [targetType, setTargetType] = useState<CreditTargetType>("CUSTOMER");
   const [borrowerSearch, setBorrowerSearch] = useState("");
   const [selectedBorrowerId, setSelectedBorrowerId] = useState<string | null>(
     null,
   );
-  const [customerName, setCustomerName] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [employeeName, setEmployeeName] = useState("");
   const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
+  const registeredLookup = useRegisteredCreditBorrower(organizationId);
+  const registeredUser = verifiedCreditBorrower(
+    registeredLookup.state,
+    organizationId,
+    phone,
+  );
   const [address, setAddress] = useState("");
   const [workDetails, setWorkDetails] = useState({
     workplace: "",
@@ -111,34 +131,33 @@ export function CreditPaymentDialog({
   }, [borrowers, targetType, borrowerSearch]);
   const dueDate = addMonths(new Date(), totals.termMonths);
   const borrowerName =
-    targetType === "COMPANY" ? cleanText(companyName) : cleanText(customerName);
-  const contactName = targetType === "COMPANY" ? cleanText(employeeName) : "";
-  const safePhone = cleanText(phone);
-  const canConfirm =
     targetType === "COMPANY"
-      ? Boolean(borrowerName && contactName && safePhone)
-      : Boolean(borrowerName && safePhone);
+      ? cleanText(companyName)
+      : registeredUser?.fullName || "";
+  const contactName =
+    targetType === "COMPANY" ? registeredUser?.fullName || "" : "";
+  const safePhone = registeredUser?.phoneNumber || "";
+  const canConfirm = Boolean(
+    registeredUser && (targetType !== "COMPANY" || borrowerName),
+  );
 
   const clearSelectedBorrower = () => setSelectedBorrowerId(null);
 
   const changeTargetType = (next: CreditTargetType) => {
+    registeredLookup.invalidate();
     setTargetType(next);
     setSelectedBorrowerId(null);
     setBorrowerSearch("");
   };
 
   const applyBorrower = (borrower: PosCreditBorrower) => {
+    registeredLookup.invalidate();
     setTargetType(borrower.targetType);
     setSelectedBorrowerId(borrower.id);
-    setCustomerName(
-      borrower.targetType === "CUSTOMER" ? borrower.borrowerName : "",
-    );
     setCompanyName(
       borrower.targetType === "COMPANY" ? borrower.borrowerName : "",
     );
-    setEmployeeName(borrower.employeeName || "");
     setPhone(borrower.borrowerPhone || "");
-    setEmail(borrower.borrowerEmail || "");
     setAddress(borrower.borrowerAddress || "");
     setWorkDetails({
       workplace: borrower.workplace || "",
@@ -148,7 +167,7 @@ export function CreditPaymentDialog({
   };
 
   const confirm = () => {
-    if (!canConfirm) return;
+    if (!canConfirm || !registeredUser) return;
     const borrowerId =
       selectedBorrower?.targetType === targetType
         ? selectedBorrower.borrowerId
@@ -159,19 +178,17 @@ export function CreditPaymentDialog({
             contactName,
           );
     onConfirm({
+      borrowerUserId: registeredUser.id,
       targetType,
       borrowerId,
       borrowerName,
       borrowerPhone: safePhone,
-      borrowerEmail: cleanText(email) || undefined,
+      borrowerEmail: registeredUser.email || undefined,
       borrowerAddress: cleanText(address) || undefined,
       workplace: workDetails.workplace.trim(),
       department: workDetails.department.trim(),
       jobTitle: workDetails.jobTitle.trim(),
-      employeeId:
-        targetType === "COMPANY"
-          ? selectedBorrower?.employeeId || `${borrowerId}-employee`
-          : undefined,
+      employeeId: targetType === "COMPANY" ? registeredUser.id : undefined,
       employeeName: targetType === "COMPANY" ? contactName : undefined,
       dueDate: dueDate.toISOString(),
       monthlyInterestRate: totals.monthlyInterestRate,
@@ -184,19 +201,23 @@ export function CreditPaymentDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-black/75 p-2 backdrop-blur-sm sm:p-4">
+    <dialog
+      ref={dialog}
+      aria-modal="true"
+      aria-labelledby="credit-dialog-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      className="fixed inset-0 z-[75] m-0 hidden h-full max-h-none w-full max-w-none items-center justify-center border-0 bg-transparent p-2 open:flex backdrop:bg-black/75 backdrop:backdrop-blur-sm sm:p-4"
+    >
       <button
         type="button"
         aria-label="Зээлийн popup хаах"
         onClick={onClose}
         className="absolute inset-0 cursor-default"
       />
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="credit-dialog-title"
-        className="relative max-h-[calc(100dvh-1rem)] w-full max-w-7xl overflow-y-auto rounded-3xl border border-zinc-800 bg-zinc-950 p-4 text-white shadow-2xl shadow-black/60 sm:max-h-[calc(100dvh-2rem)] sm:p-6"
-      >
+      <section className="relative max-h-[calc(100dvh-1rem)] w-full max-w-7xl overflow-y-auto rounded-3xl border border-zinc-800 bg-zinc-950 p-4 text-white shadow-2xl shadow-black/60 sm:max-h-[calc(100dvh-2rem)] sm:p-6">
         <button
           type="button"
           onClick={onClose}
@@ -256,7 +277,8 @@ export function CreditPaymentDialog({
                     Бүртгэлтэй зээлдэгчид
                   </p>
                   <p className="mt-1 text-xs font-semibold text-zinc-600">
-                    Өмнө бүртгэсэн хүнийг сонгоход мэдээлэл нь бөглөгдөнө.
+                    Хадгалсан зээлдэгчээ сонгоод MGL бүртгэлийг утсаар дахин
+                    шалгана.
                   </p>
                 </div>
                 <span className="shrink-0 rounded-full bg-zinc-950 px-3 py-1.5 text-xs font-black text-amber-300">
@@ -321,72 +343,109 @@ export function CreditPaymentDialog({
               ) : (
                 <p className="mt-3 rounded-xl border border-dashed border-zinc-800 px-4 py-3 text-xs font-semibold text-zinc-500">
                   {borrowerSearch.trim()
-                    ? "Хайлттай тохирох зээлдэгч олдсонгүй. Нэр, утсаа шалгах эсвэл доорх талбарт шинэ зээлдэгчийн мэдээллийг оруулна уу."
+                    ? "Хадгалсан зээлдэгч олдсонгүй. Доор MGL-д бүртгэлтэй утасны дугаараар шалгана уу."
                     : "Энэ төрлийн хадгалсан зээлдэгч одоогоор алга байна."}
                 </p>
               )}
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              {targetType === "COMPANY" ? (
-                <>
-                  <TextField
-                    label="Байгууллагын нэр"
-                    value={companyName}
-                    onChange={(value) => {
-                      clearSelectedBorrower();
-                      setCompanyName(value);
-                    }}
-                  />
-                  <TextField
-                    label="Ажилтны нэр"
-                    value={employeeName}
-                    onChange={(value) => {
-                      clearSelectedBorrower();
-                      setEmployeeName(value);
-                    }}
-                  />
-                </>
-              ) : (
+            <div
+              className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4"
+              aria-busy={registeredLookup.state.status === "loading"}
+            >
+              <p className="text-sm font-bold text-amber-200">
+                MGL-д бүртгэлтэй хэрэглэгч шаардлагатай
+              </p>
+              <p className="mt-1 text-xs text-zinc-400">
+                {targetType === "COMPANY"
+                  ? "Зээл авах ажилтны MGL бүртгэлийг утсаар шалгана."
+                  : "Зээл авах хүний MGL бүртгэлийг утсаар шалгана."}
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                 <TextField
-                  label="Зээлдэгчийн нэр"
-                  value={customerName}
+                  label={
+                    targetType === "COMPANY"
+                      ? "Ажилтны бүртгэлтэй утас"
+                      : "MGL-д бүртгэлтэй утас"
+                  }
+                  value={phone}
+                  icon={Phone}
+                  inputMode="tel"
+                  type="tel"
+                  onChange={(value) => {
+                    registeredLookup.invalidate();
+                    clearSelectedBorrower();
+                    setPhone(value);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => void registeredLookup.lookup(phone)}
+                  disabled={
+                    registeredLookup.state.status === "loading" ||
+                    !registeredBorrowerPhone(phone)
+                  }
+                  className="h-12 rounded-xl border border-amber-500/50 bg-amber-500/15 px-4 text-sm font-bold text-amber-200 transition hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {registeredLookup.state.status === "loading"
+                    ? "Шалгаж байна…"
+                    : "MGL хэрэглэгч шалгах"}
+                </button>
+              </div>
+              {registeredLookup.state.status === "loading" && (
+                <p role="status" className="mt-3 text-sm text-zinc-300">
+                  MGL хэрэглэгчийн мэдээллийг татаж байна…
+                </p>
+              )}
+              {registeredLookup.state.status === "error" && (
+                <p role="alert" className="mt-3 text-sm text-red-300">
+                  {registeredLookup.state.message}
+                </p>
+              )}
+              {registeredLookup.state.status === "empty" && (
+                <p role="status" className="mt-3 text-sm text-amber-200">
+                  Энэ дугаартай идэвхтэй MGL хэрэглэгч олдсонгүй. Эхлээд MGL-д
+                  бүртгүүлж, мэдээллээ гүйцээсний дараа дахин шалгана уу.
+                </p>
+              )}
+              {registeredUser && (
+                <div
+                  role="status"
+                  className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3"
+                >
+                  <p className="text-xs font-bold text-emerald-300">
+                    MGL бүртгэл баталгаажлаа
+                  </p>
+                  <p className="mt-1 font-bold text-white">
+                    {registeredUser.fullName}
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-300">
+                    {registeredUser.phoneNumber}
+                    {registeredUser.email ? ` • ${registeredUser.email}` : ""}
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {targetType === "COMPANY" && (
+                <TextField
+                  label="Байгууллагын нэр"
+                  value={companyName}
                   onChange={(value) => {
                     clearSelectedBorrower();
-                    setCustomerName(value);
+                    setCompanyName(value);
                   }}
                 />
               )}
-
               <TextField
-                label="Утас"
-                value={phone}
-                onChange={(value) => {
-                  clearSelectedBorrower();
-                  setPhone(value);
-                }}
-                icon={Phone}
-                inputMode="tel"
-              />
-              <TextField
-                label="Email"
-                value={email}
-                onChange={(value) => {
-                  clearSelectedBorrower();
-                  setEmail(value);
-                }}
-                icon={Mail}
-                type="email"
-              />
-              <TextField
-                label="Хаяг"
+                label="Хаяг (нэмэлт)"
                 value={address}
                 onChange={(value) => {
                   clearSelectedBorrower();
                   setAddress(value);
                 }}
                 icon={MapPin}
-                className="md:col-span-2"
+                className={targetType === "COMPANY" ? "" : "md:col-span-2"}
               />
             </div>
 
@@ -454,7 +513,7 @@ export function CreditPaymentDialog({
           </aside>
         </div>
       </section>
-    </div>
+    </dialog>
   );
 }
 
