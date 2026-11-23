@@ -106,6 +106,18 @@ test("pending QR fiscal receipts are organization-scoped and dispatch claims can
       assert.ok(!list.receipts.some(receipt => receipt.invoiceId === first.invoiceId));
       assert.ok(list.receipts.some(receipt => receipt.invoiceId === second.invoiceId));
     });
+    await t.test("voided and refunded sales never re-enter fiscal dispatch", async () => {
+      for (const status of ["VOIDED", "REFUNDED"] as const) {
+        await prisma.posSale.update({ where: { id: second.saleId }, data: { status } });
+        const list = await (await fetch(`${base}?registerId=${register.id}`, { headers: headers() })).json() as { receipts: { invoiceId: string }[] };
+        assert.ok(!list.receipts.some(receipt => receipt.invoiceId === second.invoiceId));
+        assert.equal((await claim(second.invoiceId, second.saleId, randomUUID())).status, 409);
+      }
+      assert.equal(await prisma.auditLog.count({ where: { AND: [
+        { meta: { path: ["event"], equals: "POS_FISCAL_DISPATCH_CLAIM" } },
+        { meta: { path: ["saleId"], equals: second.saleId } },
+      ] } }), 0);
+    });
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));

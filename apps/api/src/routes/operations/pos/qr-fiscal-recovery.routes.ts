@@ -27,6 +27,7 @@ router.get("/pos/payments/qpay/pending-receipts", async (req, res) => {
       WHERE q."organizationId" = ${register.organizationId} AND q."registerId" = ${registerId}
         AND q."status" = 'PAID' AND q."consumedAt" IS NOT NULL
         AND q."webhookPayload" #>> '{completedSale,fiscalPending}' = 'true'
+        AND s."status" = 'COMPLETED'
         AND s."ebarimtStatus" IS DISTINCT FROM 'SUCCESS'
       ORDER BY s."id", q."consumedAt" ASC LIMIT 25
     `;
@@ -70,12 +71,14 @@ router.post("/pos/payments/qpay/pending-receipts/:invoiceId/claim", async (req, 
     const result = await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT "id" FROM "PosSale" WHERE "id" = ${saleId} FOR UPDATE`;
       const sale = await tx.posSale.findUnique({ where: { id: saleId }, select: {
-        id: true, organizationId: true, registerId: true, receiptNo: true, ebarimtStatus: true,
+        id: true, organizationId: true, registerId: true, receiptNo: true, status: true, ebarimtStatus: true,
         ebarimtBillId: true, ebarimtReceiptId: true, ebarimtQrData: true, ebarimtLottery: true,
         ebarimtDate: true, ebarimtError: true, ebarimtPayload: true, ebarimtSyncedAt: true,
       } });
       if (!sale || sale.organizationId !== invoice.organizationId || sale.registerId !== invoice.registerId || sale.receiptNo !== invoice.saleReference)
         return { status: 409, body: { message: "QR төлбөр энэ борлуулалттай таарахгүй байна." } };
+      if (sale.status !== "COMPLETED")
+        return { status: 409, body: { message: "Цуцлагдсан эсвэл буцаагдсан борлуулалтад шинэ eBarimt үүсгэхгүй." } };
       if (sale.ebarimtStatus === "SUCCESS") {
         const checkout = checkoutFromPayload(invoice.webhookPayload);
         const saved = checkout ? await tx.posSaleIdempotency.findUnique({ where: {
