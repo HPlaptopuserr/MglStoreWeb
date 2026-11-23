@@ -1,3 +1,4 @@
+import { reconcilePendingPosQrPayments } from "./services/pos-qpay-lifecycle";
 import borrowerCreditAccountRoutes from "./routes/operations/pos/borrower-credit-account.routes";
 import warehouseViewerRoutes from "./routes/operations/warehouse-viewer.routes";
 import reelUploadRoutes from "./routes/content/reel-uploads.routes";
@@ -363,5 +364,16 @@ const minuCardReconciliationTimer = setInterval(() => {
     });
 }, 15_000);
 minuCardReconciliationTimer.unref();
+
+let qrReconciliationRunning = false;
+const qrReconciliationTimer = setInterval(() => {
+  if (qrReconciliationRunning) return;
+  qrReconciliationRunning = true;
+  void reconcilePendingPosQrPayments()
+    .catch(() => console.error("[pos qr] Reconciliation unavailable; original invoices retained"))
+    .finally(() => { qrReconciliationRunning = false; });
+}, 15_000);
+qrReconciliationTimer.unref();
+
 
 startReelUploadWorker();

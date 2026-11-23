@@ -109,7 +109,6 @@ beforeEach(() => {
   );
   stub(prisma, "$queryRaw", async () => []);
   stub(prisma.restaurantTicket, "count", async () => 0);
-  stub(prisma.qPayInvoice, "findMany", async () => []);
   stub(prisma.posSale, "findMany", async () => []);
   stub(prisma.posCashDrawerEvent, "findMany", async () => []);
 });
@@ -244,7 +243,6 @@ test("owner reconciliation preserves the cashier and records the closer and vari
       closingCash: 900,
       expectedCash: 1000,
       cashDifference: -100,
-      unpaidQrReviewCount: 0,
       note: "Previous cashier left",
     },
   );

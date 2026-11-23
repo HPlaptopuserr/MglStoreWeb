@@ -75,6 +75,28 @@ test("shift payment guard isolates frozen and legacy paid evidence without block
         webhookPayload: { checkout: { shiftId: shift.id }, providerCancellationConfirmed: false, cancelledAt: current.toISOString() },
       } });
       assert.deepEqual(await loadUnsettledShiftPayments(tx, shift), { cardCount: 0, qrCount: 1 });
+      await tx.qPayInvoice.update({ where: { id: qr.id }, data: {
+        webhookPayload: { checkout: { shiftId: shift.id }, paymentLifecycleReview: { archiveId: "forged-review" } },
+      } });
+      assert.deepEqual(await loadUnsettledShiftPayments(tx, shift), { cardCount: 0, qrCount: 1 });
+      const review = await tx.auditLog.create({ data: {
+        userId: cashier.id, action: "POS_REGISTER_UPDATED", meta: {
+          event: "POS_EXPIRED_UNPAID_QR_REVIEW", organizationId: org.id,
+          registerId: register.id, shiftId: shift.id, invoiceId: qr.id, providerState: "UNPAID",
+        },
+      } });
+      await tx.qPayInvoice.update({ where: { id: qr.id }, data: {
+        webhookPayload: { checkout: { shiftId: shift.id }, paymentLifecycleReview: { archiveId: review.id } },
+      } });
+      assert.deepEqual(await loadUnsettledShiftPayments(tx, shift), { cardCount: 0, qrCount: 0 });
+      await tx.qPayInvoice.update({ where: { id: qr.id }, data: { status: "PAID" } });
+      assert.deepEqual(await loadUnsettledShiftPayments(tx, shift), { cardCount: 0, qrCount: 1 });
+      await tx.qPayInvoice.update({ where: { id: qr.id }, data: { status: "EXPIRED" } });
+      await tx.auditLog.update({ where: { id: review.id }, data: { meta: {
+        event: "POS_EXPIRED_UNPAID_QR_REVIEW", organizationId: org.id,
+        registerId: "another-register", shiftId: shift.id, invoiceId: qr.id, providerState: "UNPAID",
+      } } });
+      assert.deepEqual(await loadUnsettledShiftPayments(tx, shift), { cardCount: 0, qrCount: 1 });
       throw new RollbackFixtures();
     }, { timeout: 20_000 });
   } catch (error: unknown) {

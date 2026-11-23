@@ -158,3 +158,32 @@ test("invalid-list parsing handles both object and JSON Content wrappers without
     false,
   );
 });
+
+test("local receipt mutation awaits the asynchronous server claim after read-only preparation", async () => {
+  const previous = globalThis.fetch;
+  let posted = 0;
+  let entered: () => void = () => {};
+  const enteredClaim = new Promise<void>(resolve => { entered = resolve; });
+  let granted: () => void = () => {};
+  const grantedClaim = new Promise<void>(resolve => { granted = resolve; });
+  globalThis.fetch = async input => {
+    if (String(input).endsWith("/rest/info")) return Response.json({ posNo: "10052245", merchants: [{ tin: "75200179693", vatPayer: true }] });
+    posted += 1;
+    return Response.json({ status: "SUCCESS", id: "fiscal-claimed" });
+  };
+  try {
+    const operation = issueLocalEbarimtReceipt(receipt, [], undefined, { type: "B2C" }, async () => {
+      entered();
+      await grantedClaim;
+    });
+    await enteredClaim;
+    assert.equal(posted, 0, "no fiscal mutation may precede exclusive claim acknowledgement");
+    granted();
+    await operation;
+    assert.equal(posted, 1);
+    await assert.rejects(issueLocalEbarimtReceipt(receipt, [], undefined, { type: "B2C" }, async () => {
+      throw new Error("Server claim is owned by another terminal");
+    }), /another terminal/);
+    assert.equal(posted, 1);
+  } finally { globalThis.fetch = previous; }
+});

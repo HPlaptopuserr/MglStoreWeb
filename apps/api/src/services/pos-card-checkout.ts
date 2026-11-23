@@ -15,6 +15,8 @@ export interface CardCheckout {
   branchId: string;
   shiftId: string;
   lines: CardCheckoutLine[];
+  /** Explicit plain QR checkout intent; omitted legacy context is not inferred. */
+  autoFinalizeEligible?: boolean;
 }
 function fail(message: string, code?: string): never {
   throw { status: 409, message, ...(code ? { code } : {}) };
@@ -33,6 +35,8 @@ export function parseCardCheckout(value: unknown): CardCheckout {
     input.lines.length > 500
   )
     return fail("Сагс, кассын ээлжийн мэдээлэл дутуу байна");
+  if (input.autoFinalizeEligible !== undefined && typeof input.autoFinalizeEligible !== "boolean")
+    return fail("Төлбөрийн автоматаар дуусгах тохиргоо буруу байна");
   const lines = input.lines.map((value: unknown): CardCheckoutLine => {
     if (!value || typeof value !== "object")
       return fail("Сагсны мөр буруу байна");
@@ -76,6 +80,7 @@ export function parseCardCheckout(value: unknown): CardCheckout {
     branchId: input.branchId as string,
     shiftId: input.shiftId as string,
     lines,
+    ...(typeof input.autoFinalizeEligible === "boolean" ? { autoFinalizeEligible: input.autoFinalizeEligible } : {}),
   };
 }
 

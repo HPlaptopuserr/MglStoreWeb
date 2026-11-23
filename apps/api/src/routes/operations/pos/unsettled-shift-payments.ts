@@ -8,7 +8,10 @@ type ShiftPaymentScope = {
   openedAt: Date;
 };
 
-/** Legacy evidence is scoped to this cashier's current register session only. */
+/** Legacy evidence is scoped to this cashier's current register session only.
+ * Paid QR always blocks. Only an immutable, scoped provider-unpaid review from
+ * the payment lifecycle worker can release an expired invoice from this guard.
+ * Shift closure itself never contacts a payment provider or resolves invoices. */
 export async function loadUnsettledShiftPayments(
   tx: Pick<Prisma.TransactionClient, "$queryRaw">,
   shift: ShiftPaymentScope,
@@ -37,11 +40,12 @@ export async function loadUnsettledShiftPayments(
               AND COALESCE("webhookPayload" ->> 'providerCancellationConfirmed', 'false') <> 'true'
               AND NOT EXISTS (
                 SELECT 1 FROM "AuditLog" a
-                WHERE a.id = "QPayInvoice"."webhookPayload" #>> '{shiftCloseReview,archiveId}'
-                  AND a.meta ->> 'event' = 'POS_SHIFT_UNPAID_QR_REVIEW'
+                WHERE a.id = "QPayInvoice"."webhookPayload" #>> '{paymentLifecycleReview,archiveId}'
+                  AND a.meta ->> 'event' = 'POS_EXPIRED_UNPAID_QR_REVIEW'
                   AND a.meta ->> 'providerState' = 'UNPAID'
                   AND a.meta ->> 'shiftId' = ${shift.id}
                   AND a.meta ->> 'organizationId' = ${shift.organizationId}
+                  AND a.meta ->> 'registerId' = ${shift.registerId}
                   AND a.meta ->> 'invoiceId' = "QPayInvoice".id
               )))
             AND "webhookPayload" #>> '{checkout,shiftId}' = ${shift.id})

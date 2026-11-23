@@ -2,6 +2,7 @@ import type { QPayInvoice } from "@mgl/types";
 import type { CheckoutPaymentEntry } from "../components/PosCheckoutView";
 
 export interface QPayCheckoutScope {
+  autoFinalizeEligible?: boolean;
   clientSaleId: string;
   branchId: string;
   shiftId: string;

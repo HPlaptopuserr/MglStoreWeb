@@ -408,7 +408,7 @@ const readEbarimtMetadata = (payload: Prisma.JsonValue | null) => {
   };
 };
 
-const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) => {
+export const mapEbarimtReceipt = (sale: PosSaleEbarimtFields) => {
   if (
     !sale.ebarimtStatus &&
     !sale.ebarimtBillId &&
@@ -671,12 +671,18 @@ router.get("/pos/loyalty/redeem-sessions/:id", async (req, res) => {
   }
 });
 
-router.post("/pos/sales", async (req, res) => {
-  try {
-    const actor = await requirePosUser(req, res);
-    if (!actor) return;
+type PosSaleExecutionResult = { status: number; body: object };
+const saleResult = (status: number, body: object): PosSaleExecutionResult => ({ status, body });
 
-    const body = req.body as CreateSaleBody;
+/** Internal recovery reuses the exact stock/payment/idempotency transaction.
+ * The recovery option is never accepted from an HTTP request body. */
+export async function executePosSale(
+  body: CreateSaleBody,
+  actor: AuthUser,
+  ip?: string,
+  recovery?: { verifiedQrInvoiceId: string },
+): Promise<PosSaleExecutionResult> {
+  try {
     const isSelfServiceSale =
       String(body.source || "")
         .trim()
@@ -694,23 +700,23 @@ router.post("/pos/sales", async (req, res) => {
     const packagingFee = roundMoney(Number(body.packagingFee || 0));
 
     if (isSelfServiceSale && !restaurantTicketId) {
-      return res.status(400).json({
+      return saleResult(400, {
         message: "Self-service борлуулалтад рестораны захиалга шаардлагатай",
       });
     }
     if (restaurantTicketId && !registerId) {
-      return res.status(400).json({
+      return saleResult(400, {
         message: "Рестораны борлуулалтад зориулалтын POS register шаардлагатай",
       });
     }
 
     if (!Number.isFinite(packagingFee) || packagingFee < 0) {
-      return res.status(400).json({
+      return saleResult(400, {
         message: "Савны үнэ 0 буюу түүнээс их тоо байх ёстой",
       });
     }
     if (packagingFee > 0 && !restaurantTicketId) {
-      return res.status(400).json({
+      return saleResult(400, {
         message: "Савны үнэ зөвхөн авч явах рестораны захиалгад нэмэгдэнэ",
       });
     }
@@ -722,7 +728,7 @@ router.post("/pos/sales", async (req, res) => {
         select: { id: true, organizationId: true },
       });
       if (!registerForScope) {
-        return res.status(404).json({ message: "POS register олдсонгүй" });
+        return saleResult(404, { message: "POS register олдсонгүй" });
       }
       idempotencyOrganizationId = registerForScope.organizationId;
     } else {
@@ -731,13 +737,11 @@ router.post("/pos/sales", async (req, res) => {
     }
 
     if (!idempotencyOrganizationId) {
-      return res
-        .status(400)
-        .json({ message: "idempotency organization тодорхойгүй байна" });
+      return saleResult(400, { message: "idempotency organization тодорхойгүй байна" });
     }
 
     if (!clientSaleId) {
-      return res.status(400).json({ message: "clientSaleId шаардлагатай" });
+      return saleResult(400, { message: "clientSaleId шаардлагатай" });
     }
 
     const existingSale = await prisma.posSaleIdempotency.findFirst({
@@ -750,11 +754,9 @@ router.post("/pos/sales", async (req, res) => {
     if (existingSale?.response) {
       const existingResponse = existingSale.response as Record<string, unknown>;
       if (existingResponse.pending === true) {
-        return res
-          .status(409)
-          .json({ message: "Sale request одоо боловсруулагдаж байна" });
+        return saleResult(409, { message: "Sale request одоо боловсруулагдаж байна" });
       }
-      return res.status(200).json(existingSale.response as object);
+      return saleResult(200, existingSale.response as object);
     }
 
     const requestedRegularCustomerPhone = String(
@@ -764,7 +766,7 @@ router.post("/pos/sales", async (req, res) => {
       ? normalizeCafeRegularCustomerPhone(requestedRegularCustomerPhone)
       : null;
     if (requestedRegularCustomerPhone && !regularCustomerPhone) {
-      return res.status(400).json({
+      return saleResult(400, {
         message: "Хөнгөлөлтийн бүртгэлийн утасны дугаар 8 оронтой байна",
       });
     }
@@ -799,7 +801,7 @@ router.post("/pos/sales", async (req, res) => {
         ),
       );
       if (!profileType) {
-        return res.status(403).json({
+        return saleResult(403, {
           message: "Өөртөө үйлчлэх кассын хөнгөлөлтийн горим идэвхгүй байна",
         });
       }
@@ -820,7 +822,7 @@ router.post("/pos/sales", async (req, res) => {
         },
       });
       if (!customer?.isActive) {
-        return res.status(409).json({
+        return saleResult(409, {
           message: "Хөнгөлөлтийн бүртгэл идэвхгүй эсвэл олдсонгүй",
         });
       }
@@ -845,13 +847,11 @@ router.post("/pos/sales", async (req, res) => {
     }));
 
     if (!body.branchId) {
-      return res.status(400).json({ message: "branchId шаардлагатай" });
+      return saleResult(400, { message: "branchId шаардлагатай" });
     }
 
     if (lines.length === 0) {
-      return res
-        .status(400)
-        .json({ message: "Зарах барааны мөрүүд хоосон байна" });
+      return saleResult(400, { message: "Зарах барааны мөрүүд хоосон байна" });
     }
 
     if (restaurantTicketId && !isSelfServiceSale) {
@@ -860,9 +860,7 @@ router.post("/pos/sales", async (req, res) => {
         select: { items: { select: { productId: true, unitPrice: true, discountPercent: true } } },
       });
       if (!pricingTicket) {
-        return res
-          .status(404)
-          .json({ message: "Рестораны захиалга олдсонгүй" });
+        return saleResult(404, { message: "Рестораны захиалга олдсонгүй" });
       }
 
       const ticketItemsByProductId = new Map(
@@ -907,7 +905,7 @@ router.post("/pos/sales", async (req, res) => {
         ? body.paymentBreakdown.map(normalizePayment)
         : [];
     } catch (error: unknown) {
-      return res.status(400).json({
+      return saleResult(400, {
         message:
           error instanceof Error
             ? error.message
@@ -935,21 +933,17 @@ router.post("/pos/sales", async (req, res) => {
           PaymentMethod.CREDIT,
         ].some((allowedMethod) => allowedMethod === item.method)
       ) {
-        return res
-          .status(400)
-          .json({ message: "paymentBreakdown.method буруу байна" });
+        return saleResult(400, { message: "paymentBreakdown.method буруу байна" });
       }
       if (!Number.isFinite(item.amount) || item.amount <= 0) {
-        return res
-          .status(400)
-          .json({ message: "paymentBreakdown.amount 0-оос их тоо байх ёстой" });
+        return saleResult(400, { message: "paymentBreakdown.amount 0-оос их тоо байх ёстой" });
       }
       if (item.method === PaymentMethod.CREDIT) {
         if (
           !item.credit?.borrowerUserId ||
           !item.credit?.targetType
         ) {
-          return res.status(400).json({
+          return saleResult(400, {
             message:
               "Зээлийн төлбөр дээр байгууллага/хэрэглэгчийн мэдээлэл шаардлагатай",
           });
@@ -958,17 +952,13 @@ router.post("/pos/sales", async (req, res) => {
           !Number.isFinite(Number(item.credit.monthlyInterestRate)) ||
           Number(item.credit.monthlyInterestRate) !== 0.012
         ) {
-          return res
-            .status(400)
-            .json({ message: "Зээлийн сарын хүү 1.2% байх ёстой" });
+          return saleResult(400, { message: "Зээлийн сарын хүү 1.2% байх ёстой" });
         }
         if (
           !Number.isFinite(Number(item.credit.totalDue)) ||
           Number(item.credit.totalDue) <= 0
         ) {
-          return res
-            .status(400)
-            .json({ message: "Зээлийн нийт төлөх дүн буруу байна" });
+          return saleResult(400, { message: "Зээлийн нийт төлөх дүн буруу байна" });
         }
       }
     }
@@ -982,7 +972,7 @@ router.post("/pos/sales", async (req, res) => {
         qty <= 0 ||
         Math.abs(qty * 1_000 - Math.round(qty * 1_000)) > 0.000001
       ) {
-        return res.status(400).json({ message: "Мөрийн өгөгдөл буруу байна" });
+        return saleResult(400, { message: "Мөрийн өгөгдөл буруу байна" });
       }
       qtyByProduct.set(
         line.productId,
@@ -1031,7 +1021,7 @@ router.post("/pos/sales", async (req, res) => {
             !Number.isInteger(qtyByProduct.get(product.id) || 0),
         );
         if (fractionalPieceProduct) {
-          return res.status(400).json({
+          return saleResult(400, {
             message: "Ширхэгээр зарагддаг хоолны тоо бүхэл байна",
           });
         }
@@ -1050,7 +1040,7 @@ router.post("/pos/sales", async (req, res) => {
               )
             : 0;
         if (!moneyMatches(packagingFee, expectedPackagingFee)) {
-          return res.status(409).json({
+          return saleResult(409, {
             message: `Савны үнэ шинэчлэгдсэн байна. Зөв дүн: ${expectedPackagingFee}₮`,
           });
         }
@@ -1087,7 +1077,7 @@ router.post("/pos/sales", async (req, res) => {
       (item) => item.method === PaymentMethod.CREDIT,
     );
     if (creditLines.length > 1) {
-      return res.status(400).json({
+      return saleResult(400, {
         message: "Нэг борлуулалтад нэг зээлдэгчийн нэг зээлийн төлөлт бүртгэнэ. Зээлийн мөрүүдээ нэгтгэнэ үү.",
       });
     }
@@ -1100,9 +1090,7 @@ router.post("/pos/sales", async (req, res) => {
       if (primaryCredit)
         creditWorkDetails = parseCreditWorkDetails(primaryCredit);
     } catch (error) {
-      return res
-        .status(400)
-        .json({
+      return saleResult(400, {
           message:
             error instanceof Error
               ? error.message
@@ -1125,29 +1113,23 @@ router.post("/pos/sales", async (req, res) => {
       : null;
 
     if (!["NONE", "EARN", "REDEEM"].includes(loyaltyMode)) {
-      return res.status(400).json({ message: "M Point сонголт буруу байна" });
+      return saleResult(400, { message: "M Point сонголт буруу байна" });
     }
 
     if (loyaltyMode !== "NONE" && loyaltyPhone.length < 6) {
-      return res
-        .status(400)
-        .json({ message: "M Point-д хэрэглэгчийн утас шаардлагатай" });
+      return saleResult(400, { message: "M Point-д хэрэглэгчийн утас шаардлагатай" });
     }
 
     if (loyaltyMode === "REDEEM" && requestedRedeemPoints <= 0) {
-      return res
-        .status(400)
-        .json({ message: "Хасуулах M Point 0-оос их байх ёстой" });
+      return saleResult(400, { message: "Хасуулах M Point 0-оос их байх ёстой" });
     }
 
     if (loyaltyMode === "REDEEM" && !loyaltyRedeemSessionId) {
-      return res
-        .status(409)
-        .json({ message: "M Point app QR confirmation required" });
+      return saleResult(409, { message: "M Point app QR confirmation required" });
     }
 
     if (!moneyMatches(paymentTotal, expectedPayableTotal)) {
-      return res.status(400).json({
+      return saleResult(400, {
         message: `Payment total (${paymentTotal}) нь төлөх дүн (${expectedPayableTotal})-тай таарахгүй байна`,
       });
     }
@@ -1161,6 +1143,7 @@ router.post("/pos/sales", async (req, res) => {
           mode: "RETAIL" | "RESTAURANT" | "SELF_SERVICE";
           activationStatus: PosActivationStatus;
           isActive: boolean;
+          ebarimtEnabled: boolean;
         } | null = null;
 
         if (registerId) {
@@ -1181,6 +1164,7 @@ router.post("/pos/sales", async (req, res) => {
               mode: true,
               activationStatus: true,
               isActive: true,
+              ebarimtEnabled: true,
             },
           });
           if (!register) throw toApiError(404, "POS register олдсонгүй");
@@ -1312,7 +1296,22 @@ router.post("/pos/sales", async (req, res) => {
         if (!activeShift) {
           throw toApiError(404, "Кассын ээлж олдсонгүй");
         }
-        if (activeShift.status !== ShiftStatus.OPEN) {
+        const recoveryInvoiceId = recovery?.verifiedQrInvoiceId;
+        let closedShiftQrRecovery = false;
+        if (recoveryInvoiceId && normalizedPayments.length === 1 &&
+            normalizedPayments[0]?.method === PaymentMethod.QPAY &&
+            normalizedPayments[0].invoiceId === recoveryInvoiceId &&
+            !restaurantTicketId && !isSelfServiceSale && loyaltyMode === "NONE") {
+          const invoice = await tx.qPayInvoice.findUnique({ where: { id: recoveryInvoiceId } });
+          const frozen = invoice ? checkoutFromPayload(invoice.webhookPayload) : null;
+          closedShiftQrRecovery = Boolean(invoice && frozen && invoice.status === PosQPayStatus.PAID &&
+            invoice.organizationId === effectiveOrganizationId && invoice.registerId === registerId &&
+            invoice.initiatedById === actor.id && !invoice.consumedAt && !invoice.saleReference &&
+            moneyMatches(Number(invoice.amount), normalizedPayments[0].amount) &&
+            sameCheckout(frozen, { clientSaleId, branchId: body.branchId!, shiftId: activeShift.id, lines: effectiveLines }));
+        }
+        if (activeShift.status !== ShiftStatus.OPEN &&
+            !(activeShift.status === ShiftStatus.CLOSED && closedShiftQrRecovery)) {
           throw toApiError(409, "Энэ ээлж хаагдсан байна. Шинэ ээлж нээнэ үү");
         }
         if (!isSelfServiceSale && activeShift.cashierId !== actor.id) {
@@ -2471,6 +2470,30 @@ router.post("/pos/sales", async (req, res) => {
           loyalty: loyaltyResponse,
         };
 
+        // Keep the receipt queue in the same commit as payment consumption.
+        // A crash after commit must not leave a consumed QR without its fiscal job.
+        for (const qr of qpayLines) {
+          const current = await tx.qPayInvoice.findUnique({ where: { id: String(qr.invoiceId) } });
+          if (!current) continue;
+          const payload = current.webhookPayload && typeof current.webhookPayload === "object" &&
+            !Array.isArray(current.webhookPayload) ? current.webhookPayload : {};
+          const frozen = checkoutFromPayload(current.webhookPayload);
+          const completedSale = { saleId: fullSale.id, receiptNo: fullSale.receiptNo, clientSaleId,
+            fiscalPending: register?.ebarimtEnabled === true && frozen?.autoFinalizeEligible === true };
+          await tx.qPayInvoice.update({ where: { id: current.id }, data: {
+            webhookPayload: { ...payload, completedSale,
+              ...(recovery ? { autoFinalizedSale: completedSale } : {}) },
+          } });
+        }
+
+        if (recovery) await tx.auditLog.create({ data: {
+          userId: actor.id, action: AuditAction.POS_SALE_CREATED,
+          meta: { event: "POS_QR_AUTOMATIC_SALE_COMPLETED", recoverySource: "QR_PAYMENT_RECONCILIATION",
+            invoiceId: recovery.verifiedQrInvoiceId, clientSaleId, receiptNo, saleId: fullSale.id,
+            registerId, originalShiftId: body.shiftId, organizationId: effectiveOrganizationId,
+            paymentBreakdown: persistedPaymentBreakdown, grandTotal },
+        } });
+
         await tx.posSaleIdempotency.update({
           where: {
             organizationId_clientSaleId: {
@@ -2495,11 +2518,11 @@ router.post("/pos/sales", async (req, res) => {
       { timeout: 30_000 },
     );
 
-    void prisma.auditLog.create({
+    if (!recovery) void prisma.auditLog.create({
       data: {
         userId: actor?.id || null,
         action: AuditAction.POS_SALE_CREATED,
-        ip: req.ip,
+        ip,
         meta: {
           clientSaleId,
           receiptNo,
@@ -2512,13 +2535,12 @@ router.post("/pos/sales", async (req, res) => {
           loyalty: result.loyalty,
         },
       },
-    });
+    }).catch(() => console.warn("[pos sale] Audit recording deferred", { clientSaleId }));
 
-    res.status(201).json(result.saleResponse);
+    return saleResult(201, result.saleResponse);
   } catch (error) {
     const maybeKnownError = error as { code?: string };
     if (maybeKnownError?.code === "P2002") {
-      const body = req.body as CreateSaleBody;
       const clientSaleId = String(body.clientSaleId || "").trim();
       const organizationId = String(body.organizationId || "").trim() || null;
       if (clientSaleId) {
@@ -2535,11 +2557,9 @@ router.post("/pos/sales", async (req, res) => {
             unknown
           >;
           if (existingResponse.pending === true) {
-            return res
-              .status(409)
-              .json({ message: "Sale request одоо боловсруулагдаж байна" });
+            return saleResult(409, { message: "Sale request одоо боловсруулагдаж байна" });
           }
-          return res.status(200).json(existingSale.response as object);
+          return saleResult(200, existingSale.response as object);
         }
       }
     }
@@ -2548,13 +2568,17 @@ router.post("/pos/sales", async (req, res) => {
 
     const maybeApiError = error as Partial<ApiError>;
     if (maybeApiError?.status && maybeApiError?.message) {
-      return res
-        .status(maybeApiError.status)
-        .json({ message: maybeApiError.message });
+      return saleResult(maybeApiError.status, { message: maybeApiError.message });
     }
 
-    res.status(500).json({ message: "POS борлуулалт үүсгэхэд алдаа гарлаа" });
-  }
+    return saleResult(500, { message: "POS борлуулалт үүсгэхэд алдаа гарлаа" });
+  }}
+
+router.post("/pos/sales", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+  const result = await executePosSale(req.body as CreateSaleBody, actor, req.ip);
+  return res.status(result.status).json(result.body);
 });
 
 /* ─────────────────────────────────────────────────────────────────────────

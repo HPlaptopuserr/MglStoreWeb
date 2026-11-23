@@ -2,6 +2,11 @@ import type { AttachEbarimtPayload } from "../api/ebarimt";
 
 const inFlight = new Map<string, Promise<AttachEbarimtPayload>>();
 const issuedInMemory = new Map<string, AttachEbarimtPayload>();
+/** Each browser tab has its own memory; the Web Lock and storage are shared. */
+export type EbarimtRecoveryMemory = {
+  inFlight: Map<string, Promise<AttachEbarimtPayload>>;
+  issuedInMemory: Map<string, AttachEbarimtPayload>;
+};
 const PREFIX = "mglstore.pos.ebarimt-attachment.v1:";
 type FiscalMetadata = {
   receiptNo?: string;
@@ -81,12 +86,15 @@ export async function issueRecoverableEbarimt(
   issue: (beforeDispatch: () => void) => Promise<AttachEbarimtPayload>,
   storage: Storage = window.localStorage,
   receiptNo?: string,
+  memory: EbarimtRecoveryMemory = { inFlight, issuedInMemory },
 ): Promise<AttachEbarimtPayload> {
+  const activeRequests = memory.inFlight;
+  const issuedReceipts = memory.issuedInMemory;
   const key = keyFor(organizationId, saleId);
-  const active = inFlight.get(key);
+  const active = activeRequests.get(key);
   if (active) return active;
   const operation = async () => {
-    const inMemory = issuedInMemory.get(key);
+    const inMemory = issuedReceipts.get(key);
     if (inMemory) return inMemory;
     const saved = readSnapshot(storage, key);
     if (saved?.state === "READY") return saved.payload;
@@ -118,7 +126,7 @@ export async function issueRecoverableEbarimt(
       }
       throw error;
     }
-    issuedInMemory.set(key, payload);
+    issuedReceipts.set(key, payload);
     try {
       storage.setItem(
         key,
@@ -137,11 +145,11 @@ export async function issueRecoverableEbarimt(
       ? navigator.locks.request(key, operation)
       : operation(),
   );
-  inFlight.set(key, promise);
+  activeRequests.set(key, promise);
   try {
     return await promise;
   } finally {
-    inFlight.delete(key);
+    activeRequests.delete(key);
   }
 }
 

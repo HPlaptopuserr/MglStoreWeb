@@ -1,3 +1,4 @@
+import qrFiscalRecoveryRoutes from "./qr-fiscal-recovery.routes";
 import checkoutRecoveryArchiveRoutes from "./checkout-recovery-archive.routes";
 import ebarimtVatRecoveryRoutes from "./ebarimt-vat-recovery.routes";
 import quickRestockRoutes from "./quick-restock.routes";
@@ -34,6 +35,7 @@ router.use(cardRecoveryRoutes);
 router.use(deferredCardRoutes);
 router.use(cardPaymentsRoutes);
 router.use(qpayRoutes);
+router.use(qrFiscalRecoveryRoutes);
 router.use(salesRoutes);
 router.use(shiftsRoutes);
 router.use(catalogRoutes);

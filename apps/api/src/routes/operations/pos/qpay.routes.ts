@@ -1,4 +1,5 @@
-import { reconcilePosQPayInvoicePayment, resolveSystemQrConfig, isSystemQrAuthenticationError } from "../../../services/pos-qpay-reconciliation";
+import { processPosQrInvoiceLifecycle } from "../../../services/pos-qpay-lifecycle";
+import { reconcilePosQPayInvoicePayment, observePosQrReconciliation, resolveSystemQrConfig, isSystemQrAuthenticationError } from "../../../services/pos-qpay-reconciliation";
 import type { QPayInvoice as QPayInvoiceResponse } from "@mgl/types";
 import type { CardCheckout } from "../../../services/pos-card-checkout";
 import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
@@ -444,6 +445,8 @@ router.post("/pos/payments/qpay/review", async (req, res) => {
     const invoice = await prisma.qPayInvoice.findUnique({ where: { id }, include: { register: true } });
     if (!invoice || !invoice.organizationId || !invoice.registerId) return res.sendStatus(404);
     if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, invoice.organizationId))) return res.sendStatus(403);
+    if (invoice.status !== PosQPayStatus.PAID && isQrCancellationConfirmed(invoice.webhookPayload))
+      return res.status(409).json({ message: "QR хүсэлт банканд цуцлагдсан байна. Дахин төлөв шалгах шаардлагагүй." });
     const checkout = checkoutFromPayload(invoice.webhookPayload);
     if (!checkout || basket.clientSaleId !== checkout.clientSaleId || basket.registerId !== invoice.registerId) return res.sendStatus(409);
     if (invoice.status !== PosQPayStatus.EXPIRED || invoice.expiresAt > new Date()) {
@@ -518,6 +521,13 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
       return res
         .status(409)
         .json({ message: "Төлбөр аль хэдийн баталгаажсан байна" });
+    }
+    // A retry after an explicit bank cancellation is a local idempotent read.
+    // Do not restart provider polling or send cancellation a second time.
+    if (isQrCancellationConfirmed(invoice.webhookPayload)) {
+      return res.json({ providerCancellationConfirmed: true, invoiceId: invoice.id,
+        amount: Number(invoice.amount), qrText: invoice.qrText, status: PosQPayStatus.EXPIRED,
+        expiresAt: invoice.expiresAt.toISOString(), createdAt: invoice.createdAt.toISOString() });
     }
     if (await reconcilePosQPayInvoicePayment(invoice)) {
       return res
@@ -639,13 +649,19 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
     const checkoutReleasedAt = new Date();
     const updated = await prisma.$transaction(async tx => {
       if (checkout && invoice.organizationId) await lockOrganizationInventory(tx, invoice.organizationId);
+      await tx.$queryRaw`SELECT "id" FROM "QPayInvoice" WHERE "id" = ${id} FOR UPDATE`;
+      const current = await tx.qPayInvoice.findUnique({ where: { id } });
+      if (!current || current.status === PosQPayStatus.PAID || current.consumedAt || current.saleReference)
+        return { count: 0 };
+      const latestPayload = current.webhookPayload && typeof current.webhookPayload === "object" &&
+        !Array.isArray(current.webhookPayload) ? current.webhookPayload : {};
       const updated = await tx.qPayInvoice.updateMany({
       where: { id, status: { in: [PosQPayStatus.PENDING, PosQPayStatus.EXPIRED] } },
       data: {
         status: PosQPayStatus.EXPIRED,
         expiresAt: checkoutReleasedAt,
         webhookPayload: {
-          ...payload,
+          ...latestPayload,
           ...(providerCancelWarning
             ? {
                 checkoutAbandonedAt: checkoutReleasedAt.toISOString(),
@@ -731,13 +747,19 @@ router.get(["/pos/payments/qpay/status/:invoiceId", "/pos/payments/systemqr/stat
     // delayed callback cannot lose a completed payment.
     const refreshProvider = String(req.query.refresh || "") === "1";
     let current = invoice;
-    const shouldReconcile = refreshProvider
+    let reconciliationPending = false;
+    const shouldReconcile = !isQrCancellationConfirmed(invoice.webhookPayload) && (refreshProvider
       ? invoice.status === PosQPayStatus.PENDING ||
         invoice.status === PosQPayStatus.EXPIRED
       : invoice.status === PosQPayStatus.PENDING &&
-        invoice.expiresAt <= new Date();
+        invoice.expiresAt <= new Date());
     if (shouldReconcile) {
-      await reconcilePosQPayInvoicePayment(invoice);
+      const work = checkoutFromPayload(invoice.webhookPayload)
+        ? processPosQrInvoiceLifecycle(invoice.id).then(() => true)
+        : reconcilePosQPayInvoicePayment(invoice);
+      reconciliationPending = (await observePosQrReconciliation(work)) === "PENDING";
+      if (reconciliationPending) void work.catch(() =>
+        console.warn("[pos qr] Provider check continues after UI deadline", { invoiceId: invoice.id }));
       current = await prisma.qPayInvoice.findUniqueOrThrow({
         where: { id },
         include: {
@@ -754,7 +776,7 @@ router.get(["/pos/payments/qpay/status/:invoiceId", "/pos/payments/systemqr/stat
       });
 
       if (
-        current.status === PosQPayStatus.PENDING &&
+        !reconciliationPending && current.status === PosQPayStatus.PENDING &&
         current.expiresAt <= new Date()
       ) {
         await prisma.qPayInvoice.updateMany({
@@ -781,7 +803,12 @@ router.get(["/pos/payments/qpay/status/:invoiceId", "/pos/payments/systemqr/stat
     const currentPayload = current.webhookPayload as Record<string, unknown> | null;
     return res.json({
       invoiceId: current.id,
-      reviewArchiveId: current.status === PosQPayStatus.EXPIRED ? (current.webhookPayload as Prisma.JsonObject | null)?.reviewArchiveId : undefined,
+      reconciliationPending,
+      reviewArchiveId: current.status === PosQPayStatus.EXPIRED
+        ? (currentPayload?.reviewArchiveId ||
+          (currentPayload?.paymentLifecycleReview && typeof currentPayload.paymentLifecycleReview === "object"
+            ? (currentPayload.paymentLifecycleReview as Record<string, unknown>).archiveId : undefined))
+        : undefined,
       ...(typeof currentPayload?.providerCancellationConfirmed === "boolean"
         ? { providerCancellationConfirmed: currentPayload.providerCancellationConfirmed } : {}),
       ...(!String((current.webhookPayload as Record<string, unknown> | null)?.providerInvoiceId || "").trim() && current.status !== PosQPayStatus.PAID ? {
@@ -884,6 +911,7 @@ router.all("/pos/qpay/cb", async (req, res) => {
       query: req.query,
       body: req.body,
     });
+    void processPosQrInvoiceLifecycle(invoice.id).catch(() => console.warn("[pos qr] Callback reconciliation queued", { invoiceId: invoice.id }));
     return res.json({ ok: true, paid });
   } catch (error) {
     console.error("qpay short callback error", error);

@@ -25,7 +25,22 @@ export function canAutoCompletePayment({
 
 /** Resumption only finalizes saved funds; it never dispatches a bank request. */
 export function canResumePaidCheckout({
-  hasConfirmedBankPayment, canFinalizeSale, hasBasket,
-}: { hasConfirmedBankPayment: boolean; canFinalizeSale: boolean; hasBasket: boolean }): boolean {
-  return hasConfirmedBankPayment && canFinalizeSale && hasBasket;
+  hasConfirmedBankPayment, canFinalizeSale, hasBasket, blocked = false,
+}: { hasConfirmedBankPayment: boolean; canFinalizeSale: boolean; hasBasket: boolean; blocked?: boolean }): boolean {
+  return hasConfirmedBankPayment && canFinalizeSale && hasBasket && !blocked;
+}
+
+/** Only a plain full-QR basket contains all context needed by server recovery. */
+export function canFinalizeQrWithoutBrowser(input: {
+  amount: number;
+  basketTotal: number;
+  priorPaymentCount: number;
+  loyaltyMode: string;
+  companyReceipt: boolean;
+  creditRepayment: boolean;
+}): boolean {
+  return Number.isFinite(input.amount) && Number.isFinite(input.basketTotal) &&
+    input.amount > 0 && Math.round(input.amount * 100) === Math.round(input.basketTotal * 100) &&
+    input.priorPaymentCount === 0 && input.loyaltyMode === "NONE" &&
+    !input.companyReceipt && !input.creditRepayment;
 }

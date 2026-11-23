@@ -107,6 +107,10 @@ test("expired or failed cancellation cannot erase durable QR evidence; explicit 
       { status: 409, code: "PAYMENT_NOT_STARTED" },
     );
     assert.equal(loadQPayCheckoutRecovery("org", "register"), null);
+    saveQPayCheckoutRecovery("org", { ...snapshot, paymentEntries: snapshot.paymentEntries.map(entry => ({ ...entry, status: "confirmed" })) });
+    assert.throws(() => acknowledgeCancelledQPayRecovery("org", "register", snapshot.clientSaleId,
+      "original-invoice", { status: "EXPIRED", providerCancellationConfirmed: true }), /Баталгаажсан QR төлбөр/);
+    assert.equal(loadQPayCheckoutRecovery("org", "register")?.paymentEntries[0]?.status, "confirmed");
   } finally {
     if (descriptor) Object.defineProperty(globalThis, "window", descriptor);
     else Reflect.deleteProperty(globalThis, "window");

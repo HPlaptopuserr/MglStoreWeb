@@ -724,7 +724,7 @@ export async function issueLocalEbarimtReceipt(
   payments: SalePaymentLine[],
   register?: RegisterConfig | null,
   buyer: EbarimtBuyer = { type: "B2C" },
-  beforeDispatch?: () => void,
+  beforeDispatch?: () => void | Promise<void>,
 ): Promise<AttachEbarimtPayload> {
   const baseUrl = getRegisterPosApiUrl(register);
   const info = await fetchLocalPosApi<EbarimtInfo>(
@@ -849,7 +849,7 @@ export async function issueLocalEbarimtReceipt(
   if (itemTotalCents !== Math.round(payload.totalAmount * 100)) {
     throw new Error("eBarimt барааны нийлбэр болон борлуулалтын нийт дүн зөрүүтэй байна. Борлуулалтын баримтаа шалгана уу.");
   }
-  beforeDispatch?.();
+  await beforeDispatch?.();
   const raw = await fetchLocalPosApi<
     EbarimtWrapperResponse | EbarimtReceiptContent
   >(

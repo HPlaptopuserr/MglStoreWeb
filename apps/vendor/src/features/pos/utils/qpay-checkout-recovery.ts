@@ -192,6 +192,9 @@ export function acknowledgeCancelledQPayRecovery(organizationId: string, registe
   if (!isQPayCancellationConfirmed(proof)) throw new Error("QR цуцлалтыг банк баталгаажуулаагүй байна.");
   const saved = loadQPayCheckoutRecovery(organizationId, registerId);
   if (!saved || saved.clientSaleId !== clientSaleId) return;
+  if (saved.paymentEntries.some(entry => entry.status === "confirmed" && (entry.invoiceId === invoiceId || entry.id === invoiceId))) {
+    throw new Error("Баталгаажсан QR төлбөрт цуцлалтын зөрүүтэй хариу ирлээ. Борлуулалтаа тулгаж шалгана уу.");
+  }
   const paymentEntries = saved.paymentEntries.filter(entry => entry.invoiceId !== invoiceId && entry.id !== invoiceId);
   if (hasCheckoutPaymentEvidence(paymentEntries)) {
     window.localStorage.setItem(storageKey(organizationId, registerId), JSON.stringify({ ...saved, paymentEntries, qpayModal: saved.qpayModal?.invoiceId === invoiceId ? null : saved.qpayModal, updatedAt: Date.now() }));

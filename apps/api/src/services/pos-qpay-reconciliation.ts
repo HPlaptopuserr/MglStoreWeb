@@ -66,7 +66,7 @@ export const isSystemQrAuthenticationError = (error: unknown) => {
   );
 };
 
-export async function reconcilePosQrPayment(
+async function reconcilePosQrPaymentNow(
   invoice: ReconciliablePosQPayInvoice,
   lastWebhook?: Record<string, unknown>,
 ): Promise<{ state: "PAID" | "UNPAID" | "UNKNOWN" }> {
@@ -142,28 +142,55 @@ export async function reconcilePosQrPayment(
     if (!paymentId) return { state: "UNKNOWN" };
   }
 
-  await prisma.qPayInvoice.updateMany({
-    where: {
-      id: invoice.id,
-      status: { in: [PosQPayStatus.PENDING, PosQPayStatus.EXPIRED] },
-    },
-    data: {
-      status: PosQPayStatus.PAID,
-      paymentId,
-      paidAt: new Date(),
-      webhookPayload: {
-        ...payload,
-        lastPaymentCheck: paymentCheck,
-        ...(lastWebhook ? { lastWebhook } : {}),
-      } as unknown as Prisma.JsonObject,
-    },
+  // Provider I/O may overlap a review, cancellation or another callback. Merge
+  // against the row we lock now rather than replacing its newer recovery data.
+  return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT "id" FROM "QPayInvoice" WHERE "id" = ${invoice.id} FOR UPDATE`;
+    const current = await tx.qPayInvoice.findUnique({ where: { id: invoice.id } });
+    if (!current) return { state: "UNKNOWN" as const };
+    if (current.status === PosQPayStatus.PAID) return { state: "PAID" as const };
+    if (current.consumedAt || current.saleReference ||
+        ![PosQPayStatus.PENDING, PosQPayStatus.EXPIRED].includes(current.status))
+      return { state: "UNKNOWN" as const };
+    const currentPayload = current.webhookPayload && typeof current.webhookPayload === "object" &&
+      !Array.isArray(current.webhookPayload) ? current.webhookPayload : {};
+    await tx.qPayInvoice.updateMany({
+      where: { id: invoice.id, status: { in: [PosQPayStatus.PENDING, PosQPayStatus.EXPIRED] }, consumedAt: null, saleReference: null },
+      data: { status: PosQPayStatus.PAID, paymentId, paidAt: new Date(),
+        webhookPayload: { ...currentPayload, lastPaymentCheck: paymentCheck,
+          ...(lastWebhook ? { lastWebhook } : {}) } as unknown as Prisma.JsonObject },
+    });
+    return { state: "PAID" as const };
   });
+}
 
-  const current = await prisma.qPayInvoice.findUnique({
-    where: { id: invoice.id },
-    select: { status: true },
-  });
-  return { state: current?.status === PosQPayStatus.PAID ? "PAID" : "UNKNOWN" };
+const providerChecks = new Map<string, Promise<{ state: "PAID" | "UNPAID" | "UNKNOWN" }>>();
+
+export function reconcilePosQrPayment(
+  invoice: ReconciliablePosQPayInvoice,
+  lastWebhook?: Record<string, unknown>,
+): Promise<{ state: "PAID" | "UNPAID" | "UNKNOWN" }> {
+  const active = providerChecks.get(invoice.id);
+  if (active) return active;
+  const work = reconcilePosQrPaymentNow(invoice, lastWebhook).finally(() => providerChecks.delete(invoice.id));
+  providerChecks.set(invoice.id, work);
+  return work;
+}
+
+/** A UI observation deadline never aborts or cancels the bank reconciliation. */
+export async function observePosQrReconciliation(
+  work: Promise<boolean>,
+  maxWaitMs = 14_000,
+): Promise<"COMPLETE" | "PENDING"> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work.then(() => "COMPLETE" as const),
+      new Promise<"PENDING">(resolve => { timer = setTimeout(() => resolve("PENDING"), maxWaitMs); }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export async function reconcilePosQPayInvoicePayment(
