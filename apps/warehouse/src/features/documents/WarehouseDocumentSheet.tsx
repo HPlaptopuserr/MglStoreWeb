@@ -110,12 +110,8 @@ export function WarehouseDocumentItemsTable({
         (sum, item) => sum + item.quantity * (item.unitPrice ?? 0),
         0,
       );
-  const codeHeading =
-    codeMode === "SKU"
-      ? "SKU"
-      : codeMode === "BARCODE"
-        ? "Баркод"
-        : "SKU / баркод";
+  const showSku = codeMode !== "BARCODE";
+  const showBarcode = codeMode !== "SKU";
 
   return (
     <div className="overflow-x-auto print:overflow-visible">
@@ -127,9 +123,22 @@ export function WarehouseDocumentItemsTable({
             <th className="border border-slate-300 px-3 py-2 text-left">
               Бүтээгдэхүүний нэр
             </th>
-            <th className="border border-slate-300 px-3 py-2 text-left">
-              {codeHeading}
-            </th>
+            {showSku && (
+              <th
+                scope="col"
+                className="border border-slate-300 px-3 py-2 text-left"
+              >
+                SKU
+              </th>
+            )}
+            {showBarcode && (
+              <th
+                scope="col"
+                className="border border-slate-300 px-3 py-2 text-left"
+              >
+                Баркод
+              </th>
+            )}
             <th className="border border-slate-300 px-3 py-2 text-right">
               Тоо ширхэг
             </th>
@@ -148,13 +157,18 @@ export function WarehouseDocumentItemsTable({
               <td className="border border-slate-300 px-3 py-2 font-medium">
                 {item.name}
               </td>
-              <td className="border border-slate-300 px-3 py-2 text-slate-500">
-                {codeMode === "SKU"
-                  ? item.sku || "—"
-                  : codeMode === "BARCODE"
-                    ? item.barcode || item.sku || "—"
-                    : `${item.sku || "—"} / ${item.barcode || "—"}`}
-              </td>
+              {showSku && (
+                <td className="break-all border border-slate-300 px-3 py-2 text-slate-500">
+                  {item.sku || "—"}
+                </td>
+              )}
+              {showBarcode && (
+                <td className="break-all border border-slate-300 px-3 py-2 text-slate-500">
+                  {item.barcode ||
+                    (codeMode === "BARCODE" ? item.sku : null) ||
+                    "—"}
+                </td>
+              )}
               <td className="border border-slate-300 px-3 py-2 text-right font-bold tabular-nums">
                 {item.quantity.toLocaleString()} {item.unit || ""}
               </td>
@@ -174,7 +188,7 @@ export function WarehouseDocumentItemsTable({
         <tfoot>
           <tr className="total-row bg-slate-50 font-bold">
             <td
-              colSpan={3}
+              colSpan={codeMode === "BOTH" ? 4 : 3}
               className="border border-slate-300 px-3 py-2 text-right"
             >
               Нийт:
