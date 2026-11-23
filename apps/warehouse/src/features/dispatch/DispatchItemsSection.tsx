@@ -12,6 +12,7 @@ export interface DispatchLineItem {
   productId: string;
   name: string;
   sku: string | null;
+  barcode: string | null;
   imageUrl: string | null;
   unitPrice: number;
   available: number;
@@ -110,6 +111,9 @@ export function DispatchItemsSection({
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
                         <span className="text-slate-400">
                           {item.sku || "SKU байхгүй"}
+                        </span>
+                        <span className="break-all text-slate-500">
+                          Баркод: {item.barcode || "Байхгүй"}
                         </span>
                         <span className="rounded-md bg-emerald-50 px-2 py-0.5 font-semibold text-emerald-700">
                           Гаргах боломжтой {item.available}

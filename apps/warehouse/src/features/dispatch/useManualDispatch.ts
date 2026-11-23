@@ -89,6 +89,7 @@ export function useManualDispatch(warehouseId: string) {
               productId: inv.product.id,
               name: inv.product.name,
               sku: inv.product.sku,
+              barcode: inv.product.barcode,
               imageUrl: inv.product.images?.[0]?.url ?? null,
               unitPrice: Number(inv.product.price) || 0,
               available: inv.availableQuantity,
