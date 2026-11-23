@@ -18,7 +18,7 @@ import { ReceiptPrintNotice } from "@/features/pos/components/ReceiptPrintNotice
 import { reconcilePaymentEntry } from "@/features/pos/utils/reconcile-payment-entry";
 import { isQPayCancellationConfirmed, type QPayCancellationProof, canClearCheckoutAfterCancelFailure } from "@/features/pos/utils/qpay-cancel-policy";
 import { hasProtectedCheckoutPayment, hasUnresolvedCardPayment } from "@/features/pos/utils/checkout-cart-guard";
-import { getQPayCheckoutRecovery, cancelQPayInvoice } from "@/features/pos/api/qpay";
+import { archiveExpiredQPayCheckout, getQPayCheckoutRecovery, cancelQPayInvoice } from "@/features/pos/api/qpay";
 
 import { normalizeCashPayment, summarizeCashPayments, type CashPaymentDetails } from "@mgl/types";
 import { VendorNavigationActions } from "@/features/session/VendorNavigationActions";
@@ -42,7 +42,7 @@ import { persistPosCart } from "@/features/pos/hooks/usePosCart";
 import { useDeferredCardCheckouts } from "@/features/pos/hooks/useDeferredCardCheckouts";
 import { DeferredCardCheckouts } from "@/features/pos/components/DeferredCardCheckouts";
 import { deferCardCheckout, acknowledgeDeferredCardCheckout } from "@/features/pos/api/card-payment-recovery";
-import { detachDeferredQPayCheckout, restoreDeferredQPayCheckout, parseQPayCheckoutSnapshot } from "@/features/pos/utils/qpay-checkout-recovery";
+import { detachReviewedQPayCheckout, detachDeferredQPayCheckout, restoreDeferredQPayCheckout, parseQPayCheckoutSnapshot } from "@/features/pos/utils/qpay-checkout-recovery";
 import { usePendingCardPayments } from "@/features/pos/hooks/usePendingCardPayments";
 import dynamic from "next/dynamic";
 import type { PosCheckoutProps } from "@/features/pos/components/PosCheckoutView";
@@ -3222,6 +3222,28 @@ export default function PosDemoPage() {
     clientSaleIdRef.current = null;
   };
 
+  const releaseReviewedQrCheckout = (invoiceId: string, archiveId: string) => {
+    if (!registerConfig?.id || paymentEntries.length !== 1 || !paymentEntries.every(entry =>
+      entry.method === "QR" && entry.status === "pending" && entry.invoiceId === invoiceId)) return false;
+    const saleId = detachReviewedQPayCheckout(organizationId, registerConfig.id, invoiceId, archiveId);
+    clearQPayCheckoutAnchor(organizationId, registerConfig.id, saleId);
+    clearProgressTicker();
+    setAutoCheckoutActive(false);
+    setPaymentEntries([]);
+    setPaymentFeedback({});
+    setQpayModal(null);
+    setLoyalty(initialLoyaltyState);
+    setLoyaltyRedeemSession(null);
+    setCustomerDisplaySuccess(null);
+    setCashChangeReceipt(null);
+    clientSaleIdRef.current = null;
+    dispatch({ type: "clear-cart" });
+    setView("register");
+    setScanStatus("idle");
+    setScanMessage(`Өмнөх QR сагсыг тулгалтад хадгалж, касс чөлөөлөгдлөө. Банкны цуцлалт баталгаажаагүй. Төлсөн бол дахин төлүүлэхгүй. Лавлах: ${archiveId}`);
+    return true;
+  };
+
   const cancelCheckoutAndClearCart = async () => {
     try { if (await recoverMissingQrBeforeAction()) return; }
     catch (error: unknown) { setScanStatus("not-found"); setScanMessage(error instanceof Error ? error.message : "Өмнөх QR төлбөрийг шалгаж чадсангүй. Сагсыг хэвээр үлдээлээ."); return; }
@@ -3348,6 +3370,20 @@ export default function PosDemoPage() {
         recheckFailed ||
         !canClearCheckoutAfterCancelFailure(recheckedStatuses)
       ) {
+        if (!recheckFailed && recheckedStatuses.length === 1 && recheckedStatuses[0]?.status === "EXPIRED" &&
+            pendingQpayIds.length === 1 && paymentEntries.length === 1 && registerConfig?.id) {
+          const saved = loadQPayCheckoutRecovery(organizationId, registerConfig.id);
+          if (saved && window.confirm("QR цуцлалтыг банк баталгаажуулсангүй. Сагсыг төлбөрийн лавлахтай нь тулгалтад хадгалж, кассыг чөлөөлөх үү? Төлсөн бол дахин төлүүлэхгүй.")) {
+            try {
+              const archive = await archiveExpiredQPayCheckout(pendingQpayIds[0]!, JSON.stringify(saved));
+              if (releaseReviewedQrCheckout(pendingQpayIds[0]!, archive.archiveId)) return;
+            } catch (archiveError: unknown) {
+              setScanStatus("not-found");
+              setScanMessage(archiveError instanceof Error ? archiveError.message : "Сагсыг хадгалж чадсангүй");
+              return;
+            }
+          }
+        }
         setScanStatus("not-found");
         setScanMessage(
           error instanceof Error
@@ -3690,6 +3726,7 @@ export default function PosDemoPage() {
             if (refreshProvider) lastProviderCheck.set(invoiceId, Date.now());
             const status = await getQPayInvoiceStatus(invoiceId, controller.signal, refreshProvider);
             if (controller.signal.aborted) return;
+            if (status.status === "EXPIRED" && status.reviewArchiveId && releaseReviewedQrCheckout(invoiceId, status.reviewArchiveId)) return;
             if (status.recoveryRequired) {
               setScanStatus("not-found");
               setScanMessage(status.recoveryMessage || "QR төлбөрийн банкны хариуг тулгаж шалгуулна уу. Дахин төлөхгүй.");
