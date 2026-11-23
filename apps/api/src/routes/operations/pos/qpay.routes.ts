@@ -588,6 +588,61 @@ router.get("/pos/payments/qpay/recovery", async (req, res) => {
   }
 });
 
+// Quarantine an expired, unpaid basket without claiming that the bank cancelled it.
+// Payment references and inventory reservations remain available for late settlement.
+router.post("/pos/payments/qpay/review", async (req, res) => {
+  const actor = await requirePosUser(req, res);
+  if (!actor) return;
+  const id = typeof req.body?.invoiceId === "string" ? req.body.invoiceId : "";
+  const snapshot = typeof req.body?.snapshot === "string" ? req.body.snapshot : "";
+  if (!id || !snapshot || Buffer.byteLength(snapshot, "utf8") > 120_000) {
+    return res.status(400).json({ message: "Хадгалах сагсны мэдээлэл шаардлагатай" });
+  }
+  try {
+    const saved: unknown = JSON.parse(snapshot);
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) throw new Error("Invalid snapshot");
+    const basket = saved as Record<string, unknown>;
+    const entries = basket.paymentEntries;
+    if (!Array.isArray(entries) || entries.length !== 1 || !entries.every((entry: unknown) => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+      const payment = entry as Record<string, unknown>;
+      return payment.method === "QR" && payment.status === "pending" && payment.invoiceId === id;
+    })) return res.status(409).json({ message: "Зөвхөн төлөгдөөгүй нэг QR хүсэлттэй сагсыг тусад нь хадгална" });
+    const invoice = await prisma.qPayInvoice.findUnique({ where: { id }, include: { register: true } });
+    if (!invoice || !invoice.organizationId || !invoice.registerId) return res.sendStatus(404);
+    if (actor.role !== "ADMIN" && !(await hasOrgMembership(actor.id, invoice.organizationId))) return res.sendStatus(403);
+    const checkout = checkoutFromPayload(invoice.webhookPayload);
+    if (!checkout || basket.clientSaleId !== checkout.clientSaleId || basket.registerId !== invoice.registerId) return res.sendStatus(409);
+    if (invoice.status !== PosQPayStatus.EXPIRED || invoice.expiresAt > new Date()) {
+      return res.status(409).json({ message: "QR-ийн хугацаа дуусаагүй эсвэл төлбөр баталгаажсан байна" });
+    }
+    if (await reconcilePosQPayInvoicePayment(invoice)) return res.status(409).json({ message: "Төлбөр баталгаажсан. Борлуулалтаа дуусгана уу." });
+    const archiveId = await prisma.$transaction(async tx => {
+      await lockOrganizationInventory(tx, invoice.organizationId!);
+      const current = await tx.qPayInvoice.findUniqueOrThrow({ where: { id } });
+      if (current.status !== PosQPayStatus.EXPIRED || current.paidAt || current.consumedAt) throw new Error("Payment changed");
+      const payload = (current.webhookPayload || {}) as Prisma.JsonObject;
+      if (typeof payload.reviewArchiveId === "string") return payload.reviewArchiveId;
+      const cards = await tx.cardPaymentAttempt.count({ where: { organizationId: invoice.organizationId,
+        providerPayload: { path: ["checkout", "clientSaleId"], equals: checkout.clientSaleId } } });
+      const otherQr = await tx.qPayInvoice.count({ where: { organizationId: invoice.organizationId, id: { not: id },
+        webhookPayload: { path: ["checkout", "clientSaleId"], equals: checkout.clientSaleId } } });
+      const sale = await tx.posSaleIdempotency.count({ where: { organizationId: invoice.organizationId!, clientSaleId: checkout.clientSaleId } });
+      if (cards || otherQr || sale) throw new Error("Other payment evidence exists");
+      const archive = await tx.auditLog.create({ data: { userId: actor.id, action: AuditAction.POS_REGISTER_UPDATED,
+        meta: { event: "EXPIRED_QR_CHECKOUT_REVIEW", organizationId: invoice.organizationId, registerId: invoice.registerId,
+          invoiceId: id, clientSaleId: checkout.clientSaleId, snapshot, reviewRequired: true, financialStateUnchanged: true } } });
+      await tx.qPayInvoice.update({ where: { id }, data: { webhookPayload: { ...payload,
+        reviewArchiveId: archive.id, reviewRequestedAt: new Date().toISOString(), requiresPaymentReconciliation: true } } });
+      return archive.id;
+    });
+    return res.json({ archiveId });
+  } catch (error: unknown) {
+    console.error("QR checkout review archive failed", error);
+    return res.status(503).json({ message: "Төлбөрийн мэдээллийг баталгаатай хадгалж чадсангүй. Сагсыг хэвээр үлдээлээ." });
+  }
+});
+
 router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], async (req, res) => {
   const actor = await requirePosUser(req, res);
   if (!actor) return;
@@ -893,6 +948,7 @@ router.get(["/pos/payments/qpay/status/:invoiceId", "/pos/payments/systemqr/stat
     const currentPayload = current.webhookPayload as Record<string, unknown> | null;
     return res.json({
       invoiceId: current.id,
+      reviewArchiveId: current.status === PosQPayStatus.EXPIRED ? (current.webhookPayload as Prisma.JsonObject | null)?.reviewArchiveId : undefined,
       ...(typeof currentPayload?.providerCancellationConfirmed === "boolean"
         ? { providerCancellationConfirmed: currentPayload.providerCancellationConfirmed } : {}),
       ...(!String((current.webhookPayload as Record<string, unknown> | null)?.providerInvoiceId || "").trim() && current.status !== PosQPayStatus.PAID ? {

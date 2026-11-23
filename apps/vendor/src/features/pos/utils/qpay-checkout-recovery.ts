@@ -204,3 +204,16 @@ export function acknowledgeUnstartedQPayRecovery(organizationId: string, registe
   if (hasCheckoutPaymentEvidence(paymentEntries)) window.localStorage.setItem(storageKey(organizationId, registerId), JSON.stringify({ ...saved, paymentEntries, updatedAt: Date.now() }));
   else clearQPayCheckoutRecovery(organizationId, registerId, clientSaleId, false, true);
 }
+
+/** Keep the full browser snapshot before detaching a server-archived unpaid QR basket. */
+export function detachReviewedQPayCheckout(organizationId: string, registerId: string, invoiceId: string, archiveId: string): string {
+  if (!archiveId) throw new Error("Серверийн хадгалалтын дугаар шаардлагатай");
+  const saved = loadQPayCheckoutRecovery(organizationId, registerId);
+  if (!saved || saved.paymentEntries.length !== 1 || !saved.paymentEntries.every(entry =>
+    entry.method === "QR" && entry.status === "pending" && entry.invoiceId === invoiceId)) {
+    throw new Error("Сагсны төлбөрийн мэдээлэл өөрчлөгдсөн байна");
+  }
+  window.localStorage.setItem(`${storageKey(organizationId, registerId)}:review:${archiveId}`, JSON.stringify(saved));
+  detachDeferredQPayCheckout(organizationId, registerId, saved.clientSaleId, saved.updatedAt);
+  return saved.clientSaleId;
+}
