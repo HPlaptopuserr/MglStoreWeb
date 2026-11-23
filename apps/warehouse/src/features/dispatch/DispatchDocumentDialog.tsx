@@ -140,12 +140,12 @@ export function DispatchDocumentDialog({
               </WarehouseDocumentInfoCard>
             </WarehouseDocumentInfoGrid>
             <WarehouseDocumentItemsTable
-              codeMode="SKU"
+              codeMode="BOTH"
               items={data.items.map((item) => ({
                 id: item.id,
                 name: item.name,
                 sku: item.sku,
-                barcode: null,
+                barcode: item.barcode ?? null,
                 quantity: item.quantity,
                 unitPrice:
                   item.unitPrice === null ? null : Number(item.unitPrice),
