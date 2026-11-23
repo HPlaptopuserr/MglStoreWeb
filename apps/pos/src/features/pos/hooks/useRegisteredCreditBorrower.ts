@@ -64,5 +64,14 @@ export function useRegisteredCreditBorrower(organizationId: string) {
     },
     [organizationId],
   );
-  return { state, invalidate, lookup };
+  const select = useCallback(() => {
+    if (state.status === "found" && state.organizationId === organizationId) {
+      dispatch({
+        type: "select",
+        requestId: state.requestId,
+        userId: state.user.id,
+      });
+    }
+  }, [state, organizationId]);
+  return { state, invalidate, lookup, select };
 }

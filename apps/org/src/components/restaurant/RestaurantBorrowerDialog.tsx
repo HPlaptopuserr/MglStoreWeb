@@ -124,6 +124,7 @@ export function RestaurantBorrowerDialog({
             setError("");
           }}
           onLookup={() => void lookup.lookup(phone)}
+          onSelect={lookup.select}
         />
         <fieldset disabled={saving} className="grid gap-3 sm:grid-cols-2">
           {fields.map((field) => (

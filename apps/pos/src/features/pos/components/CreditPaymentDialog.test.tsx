@@ -24,7 +24,7 @@ test("saved borrower details alone never enable issuing a new credit", () => {
     />,
   );
   assert.match(html, /MGL-д бүртгэлтэй хэрэглэгч шаардлагатай/);
-  assert.match(html, /MGL хэрэглэгч шалгах/);
+  assert.match(html, /Утсаар хайх/);
   assert.match(html, /<button[^>]*disabled[^>]*>Зээлээр нэмэх<\/button>/);
   assert.ok(
     !html.includes("Зээлдэгчийн нэр</span>"),

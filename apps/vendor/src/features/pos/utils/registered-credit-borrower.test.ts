@@ -35,6 +35,9 @@ test("only exact full phone numbers are searched and accepted country prefix is 
 test("saved details and late responses cannot bypass a fresh registered-user lookup", () => {
   let state: RegisteredBorrowerLookupState = reduce({ status: "idle" }, first);
   state = reduce(state, { type: "resolved", requestId: 1, user });
+  assert.equal(state.status, "found");
+  assert.equal(verifiedCreditBorrower(state, "org-a", user.phoneNumber), null);
+  state = reduce(state, { type: "select", requestId: 1, userId: user.id });
   assert.equal(
     verifiedCreditBorrower(state, "org-a", "+97699489147")?.id,
     user.id,
@@ -63,4 +66,27 @@ test("out-of-order lookup results never replace the current selected phone", () 
     message: "late error",
   });
   assert.equal(state.status, "empty");
+});
+
+test("an explicit choice is tied to the exact current result and is invalidated by another search", () => {
+  let state: RegisteredBorrowerLookupState = reduce({ status: "idle" }, first);
+  state = reduce(state, { type: "resolved", requestId: 1, user });
+  assert.equal(verifiedCreditBorrower(state, "org-a", user.phoneNumber), null);
+  state = reduce(state, {
+    type: "select",
+    requestId: 1,
+    userId: "another-person",
+  });
+  assert.equal(state.status, "found");
+  state = reduce(state, { type: "select", requestId: 0, userId: user.id });
+  assert.equal(state.status, "found");
+  state = reduce(state, { type: "select", requestId: 1, userId: user.id });
+  assert.equal(
+    verifiedCreditBorrower(state, "org-a", user.phoneNumber)?.id,
+    user.id,
+  );
+  state = reduce(state, { ...first, requestId: 2 });
+  assert.equal(verifiedCreditBorrower(state, "org-a", user.phoneNumber), null);
+  state = reduce(state, { type: "select", requestId: 1, userId: user.id });
+  assert.equal(state.status, "loading");
 });

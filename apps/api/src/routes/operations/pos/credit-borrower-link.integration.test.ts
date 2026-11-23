@@ -6,7 +6,9 @@ import { test } from "node:test";
 import express from "express";
 import jwt from "jsonwebtoken";
 import { prisma, type Prisma } from "@mgl/database";
-import { linkExistingCreditBorrower } from "./credit-borrower-link";
+import creditCustomersRoutes from "./credit-customers.routes";
+import borrowerCreditAccountRoutes from "./borrower-credit-account.routes";
+import type { RegisteredCreditBorrower } from "@mgl/types";
 import {
   findRegisteredCreditBorrower,
   CreditBorrowerError,
@@ -25,7 +27,8 @@ test(
   async (t) => {
     const app = express();
     app.use(express.json());
-    app.post("/link", linkExistingCreditBorrower);
+    app.use(creditCustomersRoutes);
+    app.use(borrowerCreditAccountRoutes);
     const server = createServer(app);
     server.listen(0, "127.0.0.1");
     await once(server, "listening");
@@ -137,22 +140,82 @@ test(
         borrowerPhone: row.borrowerPhone,
         borrowerUserId: row.borrowerUserId,
       }));
+      const headers = {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${jwt.sign({ userId: owner.id, organizationId: organization.id }, JWT_SECRET)}`,
+      };
+      const lookup = await fetch(
+        `http://127.0.0.1:${address.port}/pos/credit-customers/registered-user?organizationId=${organization.id}&phone=${encodeURIComponent(`+976 ${phone}`)}`,
+        { headers },
+      );
+      const selected: { user: RegisteredCreditBorrower | null } =
+        await lookup.json();
+      await t.test(
+        "already issued unlinked debts select an exact registered user by phone over HTTP",
+        async () => {
+          assert.equal(lookup.status, 200);
+          assert.ok(loans.every((row) => row.borrowerUserId === null));
+          assert.equal(selected.user?.id, borrower.id);
+          assert.equal(selected.user?.phoneNumber, phone);
+          assert.equal(selected.user?.fullName, "Canonical borrower");
+        },
+      );
+      assert.ok(selected.user);
       const payload = {
         organizationId: organization.id,
         creditSaleIds: loans.map((row) => row.id),
-        borrowerUserId: borrower.id,
-        borrowerPhone: phone,
+        borrowerUserId: selected.user.id,
+        borrowerPhone: selected.user.phoneNumber,
         expectedCredits,
       };
       const post = () =>
-        fetch(`http://127.0.0.1:${address.port}/link`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${jwt.sign({ userId: owner.id, organizationId: organization.id }, JWT_SECRET)}`,
+        fetch(
+          `http://127.0.0.1:${address.port}/pos/credit-customers/link-existing`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${jwt.sign({ userId: owner.id, organizationId: organization.id }, JWT_SECRET)}`,
+            },
+            body: JSON.stringify(payload),
           },
-          body: JSON.stringify(payload),
-        });
+        );
+      await t.test(
+        "foreign organization cannot look up or link the reviewed debts",
+        async () => {
+          const foreign = await prisma.organization.create({
+            data: {
+              name: "Foreign local test",
+              slug: `foreign-${key}`,
+              taxId: `foreign-${key}`,
+              status: "ACTIVE",
+            },
+          });
+          const foreignLookup = await fetch(
+            `http://127.0.0.1:${address.port}/pos/credit-customers/registered-user?organizationId=${foreign.id}&phone=${phone}`,
+            { headers },
+          );
+          assert.equal(foreignLookup.status, 403);
+          const foreignLink = await fetch(
+            `http://127.0.0.1:${address.port}/pos/credit-customers/link-existing`,
+            {
+              method: "POST",
+              headers,
+              body: JSON.stringify({ ...payload, organizationId: foreign.id }),
+            },
+          );
+          assert.equal(foreignLink.status, 403);
+          assert.equal(
+            await prisma.posCreditSale.count({
+              where: {
+                id: { in: loans.map((row) => row.id) },
+                borrowerUserId: { not: null },
+              },
+            }),
+            0,
+          );
+        },
+      );
       await t.test(
         "STAFF cannot correct another person's legacy debt",
         async () => {
@@ -236,6 +299,37 @@ test(
             (audit[0]!.meta as { event: string }).event,
             "CREDIT_BORROWER_LINKED",
           );
+        },
+      );
+      await t.test(
+        "the selected MGL account sees linked debts and another account cannot read them",
+        async () => {
+          const borrowerHeaders = {
+            Authorization: `Bearer ${jwt.sign({ userId: borrower.id }, JWT_SECRET)}`,
+          };
+          const response = await fetch(
+            `http://127.0.0.1:${address.port}/credit-account?userId=${owner.id}`,
+            { headers: borrowerHeaders },
+          );
+          assert.equal(response.status, 200);
+          const account: {
+            credits: Array<{ id: string; remainingDue: number }>;
+            totalRemaining: number;
+          } = await response.json();
+          assert.deepEqual(
+            account.credits.map((row) => row.id).sort(),
+            loans.map((row) => row.id).sort(),
+          );
+          assert.equal(account.totalRemaining, 170000);
+          const unrelated = await fetch(
+            `http://127.0.0.1:${address.port}/credit-account?userId=${borrower.id}`,
+            { headers },
+          );
+          assert.equal(unrelated.status, 200);
+          const other: { credits: unknown[]; totalRemaining: number } =
+            await unrelated.json();
+          assert.deepEqual(other.credits, []);
+          assert.equal(other.totalRemaining, 0);
         },
       );
       await t.test(

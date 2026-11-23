@@ -388,8 +388,8 @@ export function CreditPaymentDialog({
                   className="h-12 rounded-xl border border-amber-500/50 bg-amber-500/15 px-4 text-sm font-bold text-amber-200 transition hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {registeredLookup.state.status === "loading"
-                    ? "Шалгаж байна…"
-                    : "MGL хэрэглэгч шалгах"}
+                    ? "Хайж байна…"
+                    : "Утсаар хайх"}
                 </button>
               </div>
               {registeredLookup.state.status === "loading" && (
@@ -408,13 +408,36 @@ export function CreditPaymentDialog({
                   бүртгүүлж, мэдээллээ гүйцээсний дараа дахин шалгана уу.
                 </p>
               )}
+              {registeredLookup.state.status === "found" && (
+                <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                  <p role="status" className="text-xs font-bold text-amber-200">
+                    MGL хэрэглэгч олдлоо. Зээл авах хүнийг сонгоно уу.
+                  </p>
+                  <p className="mt-2 font-bold text-white">
+                    {registeredLookup.state.user.fullName}
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-300">
+                    {registeredLookup.state.user.phoneNumber}
+                    {registeredLookup.state.user.email
+                      ? ` • ${registeredLookup.state.user.email}`
+                      : ""}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={registeredLookup.select}
+                    className="mt-3 min-h-11 rounded-xl bg-amber-500 px-5 py-2 text-sm font-black text-black transition hover:bg-amber-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+                  >
+                    Сонгох
+                  </button>
+                </div>
+              )}
               {registeredUser && (
                 <div
                   role="status"
                   className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3"
                 >
                   <p className="text-xs font-bold text-emerald-300">
-                    MGL бүртгэл баталгаажлаа
+                    Сонгосон MGL хэрэглэгч
                   </p>
                   <p className="mt-1 font-bold text-white">
                     {registeredUser.fullName}

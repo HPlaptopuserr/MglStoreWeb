@@ -160,8 +160,8 @@ export function LegacyCreditBorrowerLinkDialog({
               className="rounded-xl border border-blue-300 px-3 py-3 text-sm font-bold text-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {lookup.state.status === "loading"
-                ? "Шалгаж байна…"
-                : "MGL хэрэглэгч шалгах"}
+                ? "Хайж байна…"
+                : "Утсаар хайх"}
             </button>
           </div>
           {targetType === "COMPANY" && (
@@ -192,12 +192,32 @@ export function LegacyCreditBorrowerLinkDialog({
             шалгана уу. Нэр төстэй хэрэглэгчийг автоматаар сонгохгүй.
           </p>
         )}
+        {lookup.state.status === "found" && (
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-slate-900">
+            <p role="status" className="font-semibold text-blue-800">
+              MGL хэрэглэгч олдлоо. Холбох хүнийг сонгоно уу.
+            </p>
+            <p className="mt-2 font-bold">{lookup.state.user.fullName}</p>
+            <p className="mt-1">
+              {lookup.state.user.phoneNumber}
+              {lookup.state.user.email ? ` · ${lookup.state.user.email}` : ""}
+            </p>
+            <button
+              type="button"
+              onClick={lookup.select}
+              disabled={saving}
+              className="mt-3 min-h-11 rounded-xl border border-blue-300 bg-white px-5 py-2 font-bold text-blue-800 transition hover:bg-blue-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:opacity-50"
+            >
+              Сонгох
+            </button>
+          </div>
+        )}
         {user && (
           <div
             role="status"
             className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900"
           >
-            <p className="font-bold">Холбох MGL хэрэглэгч: {user.fullName}</p>
+            <p className="font-bold">Сонгосон MGL хэрэглэгч: {user.fullName}</p>
             <p className="mt-1">
               {user.phoneNumber}
               {user.email ? ` · ${user.email}` : ""}

@@ -13,11 +13,13 @@ type LookupScope = { requestId: number; organizationId: string; phone: string };
 export type RegisteredBorrowerLookupState =
   | { status: "idle" }
   | ({ status: "loading" } & LookupScope)
+  | ({ status: "found"; user: RegisteredCreditBorrower } & LookupScope)
   | ({ status: "ready"; user: RegisteredCreditBorrower } & LookupScope)
   | ({ status: "empty" } & LookupScope)
   | { status: "error"; message: string };
 export type RegisteredBorrowerLookupAction =
   | { type: "reset" }
+  | { type: "select"; requestId: number; userId: string }
   | ({ type: "start" } & LookupScope)
   | {
       type: "resolved";
@@ -32,6 +34,14 @@ export function registeredBorrowerLookupReducer(
   action: RegisteredBorrowerLookupAction,
 ): RegisteredBorrowerLookupState {
   if (action.type === "reset") return { status: "idle" };
+  if (action.type === "select") {
+    return state.status === "found" &&
+      state.requestId === action.requestId &&
+      state.user.id === action.userId &&
+      state.user.phoneNumber === state.phone
+      ? { ...state, status: "ready" }
+      : state;
+  }
   if (action.type === "invalid")
     return { status: "error", message: action.message };
   if (action.type === "start")
@@ -46,7 +56,7 @@ export function registeredBorrowerLookupReducer(
   if (action.type === "failed")
     return { status: "error", message: action.message };
   return action.user
-    ? { ...state, status: "ready", user: action.user }
+    ? { ...state, status: "found", user: action.user }
     : { ...state, status: "empty" };
 }
 

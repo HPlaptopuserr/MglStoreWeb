@@ -4949,7 +4949,7 @@ function RestaurantPosContent() {
                 {selectedCreditBorrower && <div className="mt-3">
                   <RegisteredCreditUserLookup phone={selectedCreditBorrower.borrowerPhone || ""} state={registeredCreditLookup.state}
                     user={registeredCreditUser} disabled={checkoutSubmitting}
-                    onLookup={() => void registeredCreditLookup.lookup(selectedCreditBorrower.borrowerPhone || "")} />
+                    onLookup={() => void registeredCreditLookup.lookup(selectedCreditBorrower.borrowerPhone || "")} onSelect={registeredCreditLookup.select} />
                 </div>}
 
                 <div className="mt-3 grid grid-cols-[90px_minmax(0,1fr)] gap-2">

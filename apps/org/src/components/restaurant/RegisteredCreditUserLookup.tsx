@@ -6,6 +6,7 @@ interface Props {
   phone: string;
   onPhoneChange?: (phone: string) => void;
   onLookup: () => void;
+  onSelect: () => void;
   state: RegisteredBorrowerLookupState;
   user: RegisteredCreditBorrower | null;
   disabled?: boolean;
@@ -15,6 +16,7 @@ export function RegisteredCreditUserLookup({
   phone,
   onPhoneChange,
   onLookup,
+  onSelect,
   state,
   user,
   disabled = false,
@@ -51,9 +53,7 @@ export function RegisteredCreditUserLookup({
           }
           className="min-h-11 rounded-lg border border-amber-300 px-3 text-xs font-bold text-amber-200 transition hover:bg-amber-300/10 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {state.status === "loading"
-            ? "Шалгаж байна…"
-            : "MGL хэрэглэгч шалгах"}
+          {state.status === "loading" ? "Хайж байна…" : "Утсаар хайх"}
         </button>
       </div>
       {state.status === "loading" && (
@@ -72,14 +72,32 @@ export function RegisteredCreditUserLookup({
           гүйцээсний дараа дахин шалгана уу.
         </p>
       )}
+      {state.status === "found" && (
+        <div className="mt-3 rounded-lg border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-100">
+          <p role="status" className="text-xs font-bold">
+            MGL хэрэглэгч олдлоо. Зээл авах хүнийг сонгоно уу.
+          </p>
+          <p className="mt-2 font-bold">{state.user.fullName}</p>
+          <p className="mt-1 text-xs">
+            {state.user.phoneNumber}
+            {state.user.email ? ` • ${state.user.email}` : ""}
+          </p>
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={onSelect}
+            className="mt-3 min-h-11 rounded-lg bg-sky-300 px-5 py-2 text-xs font-bold text-slate-950 transition hover:bg-sky-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-100 disabled:opacity-50"
+          >
+            Сонгох
+          </button>
+        </div>
+      )}
       {user && (
         <div
           role="status"
           className="mt-3 rounded-lg border border-emerald-300/30 bg-emerald-300/10 p-3 text-sm text-emerald-100"
         >
-          <p className="font-bold">
-            MGL бүртгэл баталгаажлаа · {user.fullName}
-          </p>
+          <p className="font-bold">Сонгосон MGL хэрэглэгч · {user.fullName}</p>
           <p className="mt-1 text-xs">
             {user.phoneNumber}
             {user.email ? ` • ${user.email}` : ""}
