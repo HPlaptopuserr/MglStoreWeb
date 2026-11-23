@@ -4390,6 +4390,11 @@ export default function PosDemoPage() {
                     className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-100"
                   />
                   <div className="sticky bottom-0 -mx-5 flex flex-wrap gap-2 border-t border-slate-100 bg-white px-5 py-3">
+                    {shiftError && (
+                      <p role="alert" className="w-full rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm leading-6 text-rose-800">
+                        {shiftError}
+                      </p>
+                    )}
                     <input
                       type="number"
                       min="0"
@@ -4433,7 +4438,7 @@ export default function PosDemoPage() {
                           const termId = getEffectiveCardProvider(registerConfig) === "PUSH_ECR"
                             ? registerConfig.cardTerminalId
                             : undefined;
-                          await closeShiftFn(
+                          const closedShift = await closeShiftFn(
                             countedClosingCash,
                             shiftCloseNote || undefined,
                             termId ?? undefined,
@@ -4447,10 +4452,12 @@ export default function PosDemoPage() {
                           setClosingCashInput("");
                           setShiftCloseNote("");
                           setCashCounts({});
-                          setScanMessage("Өдрийн хаалт амжилттай хийгдлээ.");
+                          setScanMessage(closedShift.unpaidQrReviewCount
+                            ? `Ээлж хаагдлаа. Банканд төлөгдөөгүй ${closedShift.unpaidQrReviewCount} QR хүсэлтийг дараагийн тулгалтад хадгаллаа.`
+                            : "Өдрийн хаалт амжилттай хийгдлээ.");
                           setScanStatus("success");
-                        } catch (e: any) {
-                          setScanMessage(e?.message || "Ээлж хаахад алдаа гарлаа");
+                        } catch (error: unknown) {
+                          setScanMessage(error instanceof Error ? error.message : "Ээлж хаахад алдаа гарлаа");
                           setScanStatus("not-found");
                         }
                       }}

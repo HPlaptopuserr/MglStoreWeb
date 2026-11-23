@@ -600,7 +600,7 @@ export async function createSystemQrInvoice(
   }
 }
 
-export async function checkSystemQrPayment(
+export async function checkSystemQrPaymentEvidence(
   params: SystemQrCheckInvoiceParams,
   username?: string,
   password?: string,
@@ -642,14 +642,31 @@ export async function checkSystemQrPayment(
             (!Number.isFinite(Number(entity.amount)) || Math.round(Number(entity.amount) * 100) !== Math.round(params.expectedAmount * 100)))) {
         throw new Error("SystemQR төлбөрийн нэхэмжлэл эсвэл дүн зөрүүтэй байна");
       }
-      return { paid: true };
+      return { paid: true, verifiedUnpaid: false };
     }
 
-    return { paid: false };
+    // A generic non-success response is not proof that this invoice is unpaid.
+    // Shift reconciliation requires the provider to echo this invoice and amount.
+    const verifiedUnpaid = Boolean(entity && entity.status === null &&
+      entity.invoiceNumber === params.invoiceNumber &&
+      params.expectedAmount !== undefined && entity.amount !== undefined &&
+      Number.isFinite(Number(entity.amount)) &&
+      Math.round(Number(entity.amount) * 100) === Math.round(params.expectedAmount * 100) &&
+      (entity.merchantCode === undefined || entity.merchantCode === params.merchantCode));
+    return { paid: false, verifiedUnpaid };
   } catch (error: unknown) {
     console.error("SystemQR checkInvoice error:", error instanceof Error ? error.message : "Unknown provider error");
     throw error;
   }
+}
+
+export async function checkSystemQrPayment(
+  params: SystemQrCheckInvoiceParams,
+  username?: string,
+  password?: string,
+) {
+  const evidence = await checkSystemQrPaymentEvidence(params, username, password);
+  return { paid: evidence.paid };
 }
 
 export async function cancelSystemQrInvoice(

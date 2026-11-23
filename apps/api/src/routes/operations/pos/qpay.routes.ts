@@ -1,3 +1,4 @@
+import { reconcilePosQPayInvoicePayment, resolveSystemQrConfig, isSystemQrAuthenticationError } from "../../../services/pos-qpay-reconciliation";
 import type { QPayInvoice as QPayInvoiceResponse } from "@mgl/types";
 import type { CardCheckout } from "../../../services/pos-card-checkout";
 import { lockOrganizationInventory } from "../../../services/vendor-inventory-warehouse.service";
@@ -6,7 +7,6 @@ import { canSimulateLocalPosPayment } from "../../../services/local-pos-payment-
 import { usesOrganizationMerchant } from "../../../services/pos-merchant-scope";
 import { isPaymentRequestId, matchesPaymentRequest } from "../../../services/payment-request-identity";
 import { canReleaseCheckoutAfterCancelFailure } from "../../../services/pos-qpay-cancel-policy";
-import { verifiedQPayPaymentId } from "../../../services/qpay-payment-verification";
 import crypto from "crypto";
 import { Router, type Router as ExpressRouter } from "express";
 import { prisma, AuditAction, InventoryReason, PaymentMethod, PosPaymentStatus, PosQPayStatus, PosActivationStatus, ShiftStatus, PosSaleStatus } from "@mgl/database";
@@ -15,17 +15,14 @@ import { adjustStock, resolveOrgWarehouse } from "../../../services/inventory.se
 import { hasOrgMembership } from "../../../services/permission.service";
 import {
   cancelQPayInvoice,
-  checkQPayPayment,
   createQPayInvoice,
 } from "../../../services/qpay";
 import { buildQPayMerchantContextFromPosRegister } from "../../../services/qpay.merchant-context";
 import { getVendorMerchantConfig } from "../../../services/vendor-merchant.service";
 import {
   cancelSystemQrInvoice,
-  checkSystemQrPayment,
   createSystemQrInvoice,
 } from "../../../services/systemqr";
-import { decodeSystemQrMerchantAuth } from "../../../services/systemqr-merchant-auth";
 import {
   requirePosUser, requireAdminUser, normalizePaymentMethod, normalizeRegisterName,
   roundMoney, moneyMatches, signPayload, timingSafeEqualHex, getHeaderValue,
@@ -51,10 +48,6 @@ router.get("/pos/payments/capabilities", async (req, res) => {
   return res.json({ paymentRecoveryVersion: 1, qrCheckoutVersion: 1, organizationMerchantScope: true, systemQrOrganizationInvoices: true });
 });
 
-const isSystemQrMarker = (value?: string | null) =>
-  String(value || "").trim().toUpperCase() === "SYSTEMQR" ||
-  String(value || "").trim().toLowerCase().startsWith("systemqr");
-
 const isPublicCallbackBaseUrl = (value?: string | null) => {
   if (!value) return false;
   try {
@@ -69,166 +62,6 @@ const isPublicCallbackBaseUrl = (value?: string | null) => {
     return false;
   }
 };
-
-async function resolveSystemQrConfig(
-  organizationId: string | null,
-  registerQpayConfig: {
-    qpayEnabled: boolean;
-    qpayMerchantId: string | null;
-    qpayTerminalId: string | null;
-  } | null,
-) {
-  if (
-    registerQpayConfig?.qpayEnabled &&
-    registerQpayConfig.qpayMerchantId &&
-    isSystemQrMarker(registerQpayConfig.qpayTerminalId)
-  ) {
-    return { merchantCode: registerQpayConfig.qpayMerchantId.trim() };
-  }
-
-  if (!organizationId) return null;
-
-  const org = await prisma.organization.findUnique({
-    where: { id: organizationId },
-    select: {
-      qpayEnabled: true,
-      qpayMerchantId: true,
-      qpayMerchantKey: true,
-      qpayInvoiceCode: true,
-    },
-  });
-
-  if (!org?.qpayEnabled || !org.qpayMerchantId) return null;
-  if (!isSystemQrMarker(org.qpayInvoiceCode) && !isSystemQrMarker(org.qpayMerchantKey)) return null;
-
-  const merchantCode = org.qpayMerchantId.trim();
-  const auth = decodeSystemQrMerchantAuth(org.qpayMerchantKey, merchantCode);
-  return {
-    merchantCode,
-    ...(auth.password
-      ? { username: auth.username || merchantCode, password: auth.password }
-      : {}),
-  };
-}
-
-type ReconciliablePosQPayInvoice = {
-  amount: Prisma.Decimal | number;
-  id: string;
-  organizationId: string | null;
-  status: PosQPayStatus;
-  webhookPayload: Prisma.JsonValue | null;
-  register: {
-    qpayEnabled: boolean;
-    qpayMerchantId: string | null;
-    qpayTerminalId: string | null;
-  } | null;
-};
-
-const isSystemQrAuthenticationError = (error: unknown) => {
-  const message = error instanceof Error ? error.message : String(error);
-  return /SystemQR Login Error|username or password|credential|unauthorized|401|403/i.test(
-    message,
-  );
-};
-
-async function reconcilePosQPayInvoicePayment(
-  invoice: ReconciliablePosQPayInvoice,
-  lastWebhook?: Record<string, unknown>,
-) {
-  if (invoice.status === PosQPayStatus.PAID) return true;
-  if (
-    invoice.status !== PosQPayStatus.PENDING &&
-    invoice.status !== PosQPayStatus.EXPIRED
-  ) {
-    return false;
-  }
-
-  const payload = (invoice.webhookPayload || {}) as Record<string, unknown>;
-  const providerInvoiceId = String(payload.providerInvoiceId || "").trim();
-  if (!providerInvoiceId) return false;
-
-  const registerConfig = !usesOrganizationMerchant(payload) && invoice.register
-    ? {
-        qpayEnabled: invoice.register.qpayEnabled,
-        qpayMerchantId: invoice.register.qpayMerchantId,
-        qpayTerminalId: invoice.register.qpayTerminalId,
-      }
-    : null;
-  const systemProvider =
-    String(payload.provider || "").toUpperCase() === "SYSTEMQR";
-
-  let paymentId = "";
-  let paymentCheck: unknown;
-  if (systemProvider) {
-    const resolved = await resolveSystemQrConfig(
-      invoice.organizationId,
-      registerConfig,
-    );
-    const merchantCode = String(
-      payload.merchantCode || resolved?.merchantCode || "",
-    ).trim();
-    if (!merchantCode) return false;
-
-    try {
-      paymentCheck = await checkSystemQrPayment(
-        { merchantCode, invoiceNumber: providerInvoiceId, expectedAmount: Number(invoice.amount) },
-        resolved?.username,
-        resolved?.password,
-      );
-    } catch (error) {
-      if (!resolved?.password || !isSystemQrAuthenticationError(error)) {
-        throw error;
-      }
-      paymentCheck = await checkSystemQrPayment({
-        merchantCode,
-        invoiceNumber: providerInvoiceId,
-        expectedAmount: Number(invoice.amount),
-      });
-    }
-
-    if (!(paymentCheck as { paid?: boolean }).paid) return false;
-    paymentId = `systemqr-${providerInvoiceId}`;
-  } else {
-    let merchantContext = registerConfig
-      ? buildQPayMerchantContextFromPosRegister(registerConfig)
-      : null;
-    if (!merchantContext && invoice.organizationId) {
-      const orgResult = await getVendorMerchantConfig(invoice.organizationId, "POS", { allowCentralFallback: !usesOrganizationMerchant(payload) });
-      merchantContext = orgResult.config ?? null;
-    }
-
-    const checked = await checkQPayPayment(
-      providerInvoiceId,
-      merchantContext || undefined,
-    );
-    paymentCheck = checked;
-    paymentId = verifiedQPayPaymentId(checked, Number(invoice.amount)) || "";
-    if (!paymentId) return false;
-  }
-
-  await prisma.qPayInvoice.updateMany({
-    where: {
-      id: invoice.id,
-      status: { in: [PosQPayStatus.PENDING, PosQPayStatus.EXPIRED] },
-    },
-    data: {
-      status: PosQPayStatus.PAID,
-      paymentId,
-      paidAt: new Date(),
-      webhookPayload: {
-        ...payload,
-        lastPaymentCheck: paymentCheck,
-        ...(lastWebhook ? { lastWebhook } : {}),
-      } as unknown as Prisma.JsonObject,
-    },
-  });
-
-  const current = await prisma.qPayInvoice.findUnique({
-    where: { id: invoice.id },
-    select: { status: true },
-  });
-  return current?.status === PosQPayStatus.PAID;
-}
 
 router.post(["/pos/payments/qpay/invoice", "/pos/payments/systemqr/invoice"], async (req, res) => {
   const actor = await requirePosUser(req, res);

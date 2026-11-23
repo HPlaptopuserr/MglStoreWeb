@@ -34,7 +34,16 @@ export async function loadUnsettledShiftPayments(
          AND (
            (("status" IN ('PENDING', 'PAID') OR
              ("status" = 'EXPIRED'
-              AND COALESCE("webhookPayload" ->> 'providerCancellationConfirmed', 'false') <> 'true'))
+              AND COALESCE("webhookPayload" ->> 'providerCancellationConfirmed', 'false') <> 'true'
+              AND NOT EXISTS (
+                SELECT 1 FROM "AuditLog" a
+                WHERE a.id = "QPayInvoice"."webhookPayload" #>> '{shiftCloseReview,archiveId}'
+                  AND a.meta ->> 'event' = 'POS_SHIFT_UNPAID_QR_REVIEW'
+                  AND a.meta ->> 'providerState' = 'UNPAID'
+                  AND a.meta ->> 'shiftId' = ${shift.id}
+                  AND a.meta ->> 'organizationId' = ${shift.organizationId}
+                  AND a.meta ->> 'invoiceId' = "QPayInvoice".id
+              )))
             AND "webhookPayload" #>> '{checkout,shiftId}' = ${shift.id})
            OR ("status" = 'PAID'
                AND "webhookPayload" #>> '{checkout,shiftId}' IS NULL

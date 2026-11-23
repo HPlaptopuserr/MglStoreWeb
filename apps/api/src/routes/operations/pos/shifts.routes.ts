@@ -1,3 +1,4 @@
+import { checkExpiredShiftQrPayments, archiveUnpaidShiftQrPayments } from "../../../services/pos-shift-qr-reconciliation";
 import { loadUnsettledShiftPayments } from "./unsettled-shift-payments";
 import { Router, type Router as ExpressRouter } from "express";
 import {
@@ -497,7 +498,7 @@ router.post("/pos/shifts/close", async (req, res) => {
 
     const shiftForAccess = await prisma.posShift.findUnique({
       where: { id: shiftId },
-      select: { id: true, cashierId: true, organizationId: true },
+      select: { id: true, cashierId: true, organizationId: true, registerId: true, mode: true, status: true },
     });
     if (!shiftForAccess) {
       return res.status(404).json({ message: "Ээлж олдсонгүй" });
@@ -512,6 +513,11 @@ router.post("/pos/shifts/close", async (req, res) => {
       return res.status(400).json({ message: "Бусдын ээлжийг хаах шалтгааныг бичнэ үү." });
     }
 
+    const unpaidQrProofs = shiftForAccess.status === ShiftStatus.OPEN &&
+      shiftForAccess.mode === "RETAIL" && shiftForAccess.registerId
+      ? await checkExpiredShiftQrPayments({ ...shiftForAccess, registerId: shiftForAccess.registerId })
+      : [];
+    let unpaidQrReviewCount = 0;
     const updatedShift = await prisma.$transaction(
       async (tx: Prisma.TransactionClient) => {
         // A sale transaction locks the same row before inserting. This guarantees
@@ -537,6 +543,9 @@ router.post("/pos/shifts/close", async (req, res) => {
         }
 
         if (shift.mode === "RETAIL" && shift.registerId) {
+          unpaidQrReviewCount = await archiveUnpaidShiftQrPayments(tx,
+            { id: shift.id, organizationId: shift.organizationId, registerId: shift.registerId },
+            unpaidQrProofs, actor.id);
           const unresolved = await loadUnsettledShiftPayments(tx, {
             id: shift.id,
             organizationId: shift.organizationId,
@@ -646,6 +655,7 @@ router.post("/pos/shifts/close", async (req, res) => {
               closingCash,
               expectedCash,
               cashDifference,
+              unpaidQrReviewCount,
               note,
             },
           },
@@ -654,7 +664,7 @@ router.post("/pos/shifts/close", async (req, res) => {
       },
     );
 
-    res.status(200).json(toShiftResponse(updatedShift));
+    res.status(200).json({ ...toShiftResponse(updatedShift), unpaidQrReviewCount });
   } catch (error) {
     const known = error as ApiError;
     if (known?.status && known?.message) {

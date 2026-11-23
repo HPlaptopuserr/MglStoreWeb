@@ -6,8 +6,8 @@ import {
 } from "../utils/pos-security";
 import { posRequest } from "./_pos-client";
 
-export function closeShift(payload: CloseShiftPayload): Promise<PosShift> {
-  return posRequest<PosShift>("/pos/shifts/close", {
+export function closeShift(payload: CloseShiftPayload): Promise<PosShift & { unpaidQrReviewCount?: number }> {
+  return posRequest<PosShift & { unpaidQrReviewCount?: number }>("/pos/shifts/close", {
     method: "POST",
     body: {
       shiftId: assertNonEmptyString(payload.shiftId, "shiftId"),

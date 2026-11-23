@@ -55,6 +55,7 @@ afterEach(() => { while (restores.length) restores.pop()?.(); });
 beforeEach(() => {
   paid = providerFails = archiveFails = foreign = otherPayment = false;
   status = currentStatus = "EXPIRED"; writes = [];
+  stub(prisma.organization, "findUnique", async () => null);
   stub(prisma.user, "findUnique", async () => ({ id: "cashier", role: "USER", isActive: true, deletedAt: null }));
   stub(prisma.organizationMember, "findFirst", async () => foreign ? null : ({ organizationId: "org", role: "STAFF", capabilities: ["POS_CASHIER"] }));
   stub(prisma.organizationMember, "count", async () => foreign ? 0 : 1);
