@@ -1,4 +1,5 @@
 "use client";
+import { CUSTOMER_DISPLAY_REQUEST, createCustomerDisplayChannel, publishCustomerDisplayPayload, readDisplayStorage, sendCustomerDisplayPayload } from "@/features/pos/utils/customer-display-sync";
 import { readPosFiscalTaxTotals } from "@mgl/types";
 import { PosApiError, posRequest } from "@/features/pos/api/_pos-client";
 import { archiveMissingCardCheckout, canArchiveMissingCardCheckout, readMissingCardArchiveNotice, type MissingCardArchiveNotice } from "@/features/pos/utils/missing-card-checkout";
@@ -178,8 +179,6 @@ import { useLockBodyScroll } from "@/hooks/use-lock-body-scroll";
 import { createPosProductSearchScorer, formatPosQuantity } from "@mgl/types";
 
 type PosView = "register" | "checkout";
-
-const CUSTOMER_DISPLAY_CHANNEL = "mgl-pos-customer-display";
 
 type QPayModalPayload = {
   open: boolean;
@@ -652,6 +651,7 @@ export default function PosDemoPage() {
   const paymentSectionRef = useRef<HTMLElement>(null);
   const customerWindowRef = useRef<Window | null>(null);
   const syncChannelRef = useRef<BroadcastChannel | null>(null);
+  const customerPayloadRef = useRef<CustomerDisplayPayload | null>(null);
   const keyBufferRef = useRef("");
   const lastKeyTsRef = useRef(0);
   const clientSaleIdRef = useRef<string | null>(null);
@@ -1622,7 +1622,12 @@ export default function PosDemoPage() {
 
   useEffect(() => {
     if (!posEnabled) return;
-    syncChannelRef.current = new BroadcastChannel(CUSTOMER_DISPLAY_CHANNEL);
+    const channel = createCustomerDisplayChannel();
+    syncChannelRef.current = channel;
+    if (channel) channel.onmessage = (event: MessageEvent<unknown>) => {
+      if (event.data === CUSTOMER_DISPLAY_REQUEST && customerPayloadRef.current)
+        sendCustomerDisplayPayload(customerPayloadRef.current, channel);
+    };
     return () => {
       syncChannelRef.current?.close();
       syncChannelRef.current = null;
@@ -1630,7 +1635,7 @@ export default function PosDemoPage() {
   }, [posEnabled]);
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem(CUSTOMER_DISPLAY_THEME_STORAGE_KEY);
+    const savedTheme = readDisplayStorage(CUSTOMER_DISPLAY_THEME_STORAGE_KEY, () => localStorage);
     if (isCustomerDisplayThemeId(savedTheme)) {
       setCustomerDisplayTheme(savedTheme);
     }
@@ -1639,7 +1644,7 @@ export default function PosDemoPage() {
   const updateCustomerDisplayTheme = useCallback(
     (theme: CustomerDisplayThemeId) => {
       setCustomerDisplayTheme(theme);
-      localStorage.setItem(CUSTOMER_DISPLAY_THEME_STORAGE_KEY, theme);
+      try { localStorage.setItem(CUSTOMER_DISPLAY_THEME_STORAGE_KEY, theme); } catch { /* The selected theme still works in memory. */ }
     },
     [],
   );
@@ -3795,8 +3800,8 @@ export default function PosDemoPage() {
       ts: Date.now(),
     };
 
-    localStorage.setItem("mgl_pos_customer_payload", JSON.stringify(payload));
-    syncChannelRef.current?.postMessage(payload);
+    customerPayloadRef.current = payload;
+    publishCustomerDisplayPayload(payload, () => localStorage, syncChannelRef.current);
   }, [
     state.cart,
     totals,
