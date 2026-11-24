@@ -130,6 +130,7 @@ export function PosRegistersSection({
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [releasingPosNoId, setReleasingPosNoId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [checkingBridge, setCheckingBridge] = useState(false);
   const [bridgeCheckMessage, setBridgeCheckMessage] = useState<{
@@ -530,6 +531,31 @@ export function PosRegistersSection({
     }
   };
 
+  const releasePosNo = async (register: PosRegister) => {
+    if (!confirm(
+      `«${register.name}» кассын ${register.ebarimtPosNo} POS дугаарыг салгах уу? eBarimt унтарч, дугаарыг өөр дэлгүүрт бүртгэх боломжтой болно.`,
+    )) return;
+    setReleasingPosNoId(register.id);
+    setError("");
+    try {
+      const response = await adminFetch(`${API}/admin/pos-registers/${register.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ebarimtPosNo: null, ebarimtEnabled: false }),
+      });
+      if (!response.ok) {
+        const data: { message?: string } = await response.json().catch(() => ({}));
+        setError(data.message || "POS дугаар салгахад алдаа гарлаа.");
+        return;
+      }
+      await reload(activeOrgId);
+    } catch {
+      setError("Сервертэй холбогдоход алдаа гарлаа.");
+    } finally {
+      setReleasingPosNoId(null);
+    }
+  };
+
   /* delete */
   const handleDelete = async (id: string) => {
     if (!confirm("POS касс устгах уу?")) return;
@@ -719,6 +745,21 @@ export function PosRegistersSection({
                           {r.ebarimtPosNo && (
                             <span className="inline-flex items-center gap-1 rounded-lg bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
                               POS No · {r.ebarimtPosNo}
+                              <button
+                                type="button"
+                                onClick={() => releasePosNo(r)}
+                                disabled={releasingPosNoId !== null || deletingId === r.id}
+                                aria-label={`${r.ebarimtPosNo} POS дугаар салгах`}
+                                title="POS дугаар салгах"
+                                className="ml-1 inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-indigo-100 focus-visible:outline-2 focus-visible:outline-indigo-600 disabled:opacity-50"
+                              >
+                                {releasingPosNoId === r.id ? (
+                                  <Loader2 size={11} className="animate-spin" />
+                                ) : (
+                                  <X size={11} />
+                                )}
+                                Салгах
+                              </button>
                             </span>
                           )}
                           {r.ebarimtEnabled ? (
