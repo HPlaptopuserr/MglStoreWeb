@@ -1,6 +1,6 @@
 "use client";
 
-import { missingQrCancellationTarget } from "@/features/pos/utils/missing-qr-cancellation";
+import { resolveMissingQrCancellationTarget } from "@/features/pos/utils/missing-qr-cancellation";
 import { issueClaimedQrFiscalReceipt } from "@/features/pos/utils/qr-fiscal-recovery";
 import { usePendingQrFiscalReceipts } from "@/features/pos/hooks/usePendingQrFiscalReceipts";
 import { isCurrentPaymentCheckout, verifiedQPayObservation, verifiedQPayCancellation, canReleaseReviewedUnpaidQr, type PaymentCheckoutScope } from "@/features/pos/utils/payment-checkout-scope";
@@ -3225,7 +3225,18 @@ export default function PosDemoPage() {
       setScanMessage("Банкны төлбөрийг шууд устгах боломжгүй. Төлбөрийн төлөвийг тулгаж шалгана уу.");
       return;
     }
-    if (missingQrCancellationTarget(paymentEntries, qpayModal, qpayCreatingRef.current) === target.invoiceId) {
+    const missingQrScope = currentPaymentCheckoutScope();
+    let missingQrId: string | null;
+    try {
+      missingQrId = await resolveMissingQrCancellationTarget(paymentEntries, qpayModal, qpayCreatingRef.current,
+        invoiceId => getQPayInvoiceStatus(invoiceId, undefined, false));
+      if (!isCurrentPaymentCheckout(missingQrScope, currentPaymentCheckoutScope())) return;
+    } catch (error: unknown) {
+      setScanStatus("not-found");
+      setScanMessage(error instanceof Error ? error.message : "QR хүсэлтийн мэдээллийг авч чадсангүй. Дахин оролдоно уу.");
+      return;
+    }
+    if (missingQrId === target.invoiceId) {
       await cancelCheckoutAndClearCart();
       return;
     }
@@ -3368,7 +3379,17 @@ export default function PosDemoPage() {
       return;
     }
 
-    const missingQrId = missingQrCancellationTarget(paymentEntries, qpayModal, qpayCreatingRef.current);
+    const missingQrScope = currentPaymentCheckoutScope();
+    let missingQrId: string | null;
+    try {
+      missingQrId = await resolveMissingQrCancellationTarget(paymentEntries, qpayModal, qpayCreatingRef.current,
+        invoiceId => getQPayInvoiceStatus(invoiceId, undefined, false));
+      if (!isCurrentPaymentCheckout(missingQrScope, currentPaymentCheckoutScope())) return;
+    } catch (error: unknown) {
+      setScanStatus("not-found");
+      setScanMessage(error instanceof Error ? error.message : "QR хүсэлтийн мэдээллийг авч чадсангүй. Дахин оролдоно уу.");
+      return;
+    }
     if (missingQrId && registerConfig?.id) {
       if (deferringCheckoutRef.current) return;
       const scope = currentPaymentCheckoutScope();

@@ -551,7 +551,8 @@ router.post(["/pos/payments/qpay/cancel", "/pos/payments/systemqr/cancel"], asyn
     const payload = (invoice.webhookPayload || {}) as Record<string, unknown>;
     const providerInvoiceId = String(payload.providerInvoiceId || "").trim();
     if (!providerInvoiceId) {
-      return res.status(400).json({ message: "Provider invoice ID олдсонгүй" });
+      return res.status(409).json({ code: "QR_CREATION_INCOMPLETE",
+        message: "QR үүсээгүй хүсэлт байна. Гүйлгээ цуцлах товчоор сагсыг хаана уу. Хуудас шинэчлээд дахин оролдоно уу." });
     }
 
     const registerConfig = !usesOrganizationMerchant(payload) && invoice.register
